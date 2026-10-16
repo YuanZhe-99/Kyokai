@@ -22,6 +22,7 @@ Studio 2026 without its Clang component):
 | App (x64 package) | runs under emulation with the same identity; window rendered with the system's dark theme |
 | Packages | `scripts/build.sh windows/arm64 windows/amd64` builds `Kyokai.exe` and the per-user installer for both |
 | S2 viewer spike | 1920×1080 RGBA frames from Rust shown through `ui.Bitmap` next to a 500-row list at 59–60 fps; the viewer costs about 21–25 % of one core |
+| S3-lite capture spike | RustDesk's DXGI capturer, vendored and decoupled from `hbb_common`, captures the 4K display at about 60 fps; converting to RGBA and scaling to 1080p costs about 15 % of one core |
 | `cargo-deny` | does not build here yet: `ring` needs clang on ARM64 (CI runs it) |
 
 ## Known limitations

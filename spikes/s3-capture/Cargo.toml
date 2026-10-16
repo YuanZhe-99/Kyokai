@@ -1,0 +1,23 @@
+[package]
+name = "s3-capture"
+version = "0.0.0"
+# The vendored RustDesk code is written for the 2018 edition.
+edition = "2018"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+name = "s3_capture"
+crate-type = ["cdylib"]
+
+[dependencies]
+log = "0.4"
+
+[dependencies.winapi]
+version = "0.3"
+features = ["dxgi", "dxgi1_2", "dxgi1_5", "dxgi1_6", "d3d11", "winuser", "winerror", "errhandlingapi", "libloaderapi", "wingdi", "d3dcommon"]
+
+[workspace]
+
+[profile.release]
+codegen-units = 1

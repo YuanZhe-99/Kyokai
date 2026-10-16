@@ -124,6 +124,11 @@ when they run; anything not listed here is not assumed.
   `AXIsProcessTrustedWithOptions`, `IOHIDCheckAccess` / `IOHIDRequestAccess`.
 - Without its SYSTEM service RustDesk cannot capture the UAC secure desktop or the lock screen, and
   `SendInput` into elevated windows is dropped (UIPI).
+- **Measured (S3-lite, Windows ARM64, `spikes/s3-capture`).** The DXGI capturer from `libs/scrap/src/dxgi`
+  builds on its own once `hbb_common`, `base` and libyuv are replaced by a small shim (frame types,
+  rotate/mirror in plain Rust) and the Magnification module is dropped; it captures a 3840×2160
+  display at about 60 fps.
+
 
 ## OpenAI computer use
 

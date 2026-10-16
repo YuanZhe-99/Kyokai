@@ -22,6 +22,7 @@ Studio 2026）：
 | 应用（x64 安装包） | 在模拟下以同一身份运行；窗口按系统深色主题渲染 |
 | 安装包 | `scripts/build.sh windows/arm64 windows/amd64` 为两者构建 `Kyokai.exe` 与按用户安装的安装包 |
 | S2 画面可行性验证 | 来自 Rust 的 1920×1080 RGBA 帧经 `ui.Bitmap` 显示在 500 行列表旁，59–60 fps；画面显示约占一个核心的 21–25 % |
+| S3-lite 采集可行性验证 | 复用并解除 `hbb_common` 耦合的 RustDesk DXGI 采集器以约 60 fps 采集 4K 显示器；转换为 RGBA 并缩放到 1080p 约占一个核心的 15 % |
 | `cargo-deny` | 暂时无法在本机构建：ARM64 上的 `ring` 需要 clang（由 CI 运行） |
 
 ## 已知限制

@@ -47,7 +47,6 @@ The active plan: milestones, done-when criteria and open decisions. Long-lived c
 | Spike | Done when | Fallback |
 |---|---|---|
 | S1 EasyTier | two embedded nodes + an official core: routes carry `inst_id`/hostname, data-plane both ways, whitelist holds, duplicate `inst_id` behavior known, clean restart, minimal features build on ARM64 and x64 | sidecar core with `no_tun` + whitelist |
-| S3-lite capture | the DXGI capturer feeds the S2 viewer at 1080p; CPU and latency measured | `windows-capture` |
 | S4 providers | OpenAI and Claude two-turn round trips accepted with synthetic screenshots; fixtures saved | adapter fixes before Phase 4 |
 | S5 macOS | self-signed signing through `mygo build` (hardened runtime, timestamp), dylib loads, privacy grant survives an update, engine child attributed to Kyokai, Windows update with the DLL loaded | timestamp shim, upstream MyGo option, or ad hoc |
 

@@ -97,6 +97,10 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
 - macOS 权限：`CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess`、`AXIsProcessTrustedWithOptions`、
   `IOHIDCheckAccess` / `IOHIDRequestAccess`。
 - 没有 SYSTEM 服务时，RustDesk 无法采集 UAC 安全桌面或锁屏，向提权窗口发送的 `SendInput` 会被丢弃（UIPI）。
+- **实测（S3-lite，Windows ARM64，`spikes/s3-capture`）。** 用一个小的替代模块（帧类型、纯 Rust 的旋转/镜像）取代 `hbb_common`、
+  `base` 与 libyuv 并去掉 Magnification 模块后，`libs/scrap/src/dxgi` 中的 DXGI 采集器可以独立构建；它以约 60 fps 采集
+  3840×2160 显示器。
+
 
 ## OpenAI 电脑操作
 
