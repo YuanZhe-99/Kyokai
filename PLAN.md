@@ -108,6 +108,8 @@ User decision (2026-10-16): RustDesk's manual-control systems are reused, decoup
 - EasyTier on x64 Windows relinks against `msvcrt.dll` through `thunk-rs` (VC-LTL), against the
   plan's static CRT; pin `PROTOC` to a vetted binary — before Phase 2.
 - Hole punching through real NATs (S1 could not test it) — Phase 2 with the Mac.
+- Which EasyTier feature brings back TXT DNS resolution for STUN (missing in the minimal set) —
+  before Phase 2.
 - Worth a spike: EasyTier v2.7's `easytier-go` (the wasm core inside a pure-Go process).
 - Video codec (OS-native H.264 vs libvpx VP9) — start of Phase 3.
 - EasyTier listeners vs. hole punching only (firewall and Local Network prompts) — S1 / Phase 2.

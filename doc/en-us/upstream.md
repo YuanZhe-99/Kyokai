@@ -111,6 +111,9 @@ when they run; anything not listed here is not assumed.
   `ring`; `protoc` is auto-downloaded unverified unless `PROTOC` is set; on x64 `thunk-rs` downloads
   VC-LTL and relinks the binary against `msvcrt.dll`. Not proven here: hole punching (this network
   is symmetric NAT on both sides).
+  Also verified through a real public server running stable v2.6.4 (the network carried as a foreign
+  network; connect in 45 ms). The minimal feature set cannot resolve STUN servers (no TXT DNS
+  resolution), which NAT detection and hole punching need.
 
 ## RustDesk 1.5.0
 
