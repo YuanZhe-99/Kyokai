@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # The Windows core links with MSVC, so each architecture builds on its own
+  # runner; packaging then runs on Ubuntu like Easytier-MyGo (NSIS).
+  core-windows:
+    name: Core (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - { os: windows-latest, arch: amd64, target: x86_64-pc-windows-msvc }
+          - { os: windows-11-arm, arch: arm64, target: aarch64-pc-windows-msvc }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --manifest-path core/Cargo.toml --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: core-windows-${{ matrix.arch }}
+          path: core/target/${{ matrix.target }}/release/kyokai_core.dll
+          if-no-files-found: error
+
+  windows:
+    name: Windows packages
+    needs: core-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Install NSIS, for the installers
+        run: sudo apt-get update && sudo apt-get install -y nsis zip
+      - uses: actions/download-artifact@v8
+        with:
+          name: core-windows-amd64
+          path: resources/windows-amd64/bin
+      - uses: actions/download-artifact@v8
+        with:
+          name: core-windows-arm64
+          path: resources/windows-arm64/bin
+      - name: Build
+        env:
+          CORE_PREBUILT: "1"
+          # Signs the app updates (archive, deltas and update-<target>.json);
+          # unset, no updates are published.
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: scripts/build.sh windows/amd64 windows/arm64
+      - name: Collect the downloads
+        run: |
+          mkdir -p dist
+          version=$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)
+          for arch in amd64 arm64; do
+            (cd build && zip -qr "../dist/Kyokai-$version-windows-$arch.zip" "windows-$arch" -x '*Setup*.exe' '*.tar.gz' '*.delta' '*/update-*.json')
+          done
+          find build -maxdepth 2 -type f \( -name '*Setup*.exe' -o -name '*.tar.gz' -o -name '*.delta' -o -name 'update-*.json' \) -exec cp {} dist/ \;
+          ls -l dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: dist/*
+
+  macos:
+    name: macOS packages
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      # The self-signed "Kyokai Code Signing" identity keeps privacy grants
+      # across updates (doc/en-us/packaging.md). Without the secrets the
+      # build is ad hoc signed, and the release notes must say so.
+      - name: Import the signing certificate
+        env:
+          CERT_P12: ${{ secrets.KYOKAI_MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.KYOKAI_MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$CERT_P12" ]; then echo "No signing certificate: ad hoc signature."; exit 0; fi
+          kc="$RUNNER_TEMP/kyokai.keychain-db"
+          kcpw=$(openssl rand -hex 16)
+          security create-keychain -p "$kcpw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kcpw" "$kc"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpw" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          openssl pkcs12 -in "$RUNNER_TEMP/cert.p12" -passin env:CERT_PASSWORD -nokeys -clcerts -legacy -out "$RUNNER_TEMP/cert.pem" 2>/dev/null \
+            || openssl pkcs12 -in "$RUNNER_TEMP/cert.p12" -passin env:CERT_PASSWORD -nokeys -clcerts -out "$RUNNER_TEMP/cert.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$RUNNER_TEMP/cert.pem"
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security find-identity -p codesigning "$kc"
+          echo "MYGO_SIGN=Kyokai Code Signing" >> "$GITHUB_ENV"
+      - name: Build
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: scripts/build.sh darwin/arm64 darwin/amd64
+      - name: Collect the downloads
+        run: |
+          mkdir -p dist
+          find build -maxdepth 2 -type f \( -name '*.dmg' -o -name '*.tar.gz' -o -name '*.delta' -o -name 'update-*.json' \) -exec cp {} dist/ \;
+          ls -l dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos
+          path: dist/*
+
+  # Only a tag publishes. Started by hand, the workflow builds every package
+  # and stops, leaving them as run artifacts.
+  release:
+    name: Publish
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: The tag and the version agree
+        run: |
+          version=$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version $version."
+            exit 1
+          fi
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: "{windows,macos}"
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

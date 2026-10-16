@@ -17,3 +17,4 @@ mygo_windows_*.syso
 *.pfx
 *.key
 *.pem
+/resources/licenses/

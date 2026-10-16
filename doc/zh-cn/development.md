@@ -29,6 +29,20 @@ cargo deny --manifest-path core/Cargo.toml check
 请在仓库根目录运行 cargo：`rust-toolchain.toml` 与 `.cargo/config.toml` 是从当前目录读取的，而不是从
 `--manifest-path` 所在目录。
 
+## 开发流程
+
+```bash
+scripts/build.sh windows/arm64           # or no target: this machine's platform
+KYOKAI_PROFILE=dev build/windows-arm64/Kyokai.exe
+KYOKAI_PROFILE=dev build/windows-arm64/bin/kyokai-svc.exe ctl status
+scripts/smoke.sh user                    # the engine end to end with the real core
+SCREENSHOT_DIR=$PWD/.dev/shots go test ./internal/gui/
+KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
+```
+
+`KYOKAI_PROFILE` 让开发实例与已安装的 Kyokai 分开：拥有自己的应用名、单实例锁、套接字与状态目录（`Kyokai-<profile>`）。
+`KYOKAI_SVC` 让界面使用另一个引擎可执行文件，`KYOKAI_SOCKET` 指定另一个套接字。ABI 冒烟测试需要库的绝对路径。
+
 ## 可行性验证
 
 `spikes/` 存放 Phase 0 的可行性验证程序，各自带有自己的 `go.mod` 或 Cargo 工作区，产品检查不会构建它们。结果写入

@@ -10,10 +10,15 @@ embedded EasyTier P2P network, and AI tasks run on the computer being operated. 
 
 | Document | Covers |
 |---|---|
+| [architecture.md](architecture.md) | Processes, run modes, packages and crates, the FFI, the local API, state |
+| [security.md](security.md) | Secrets store, device identity, temporary password, logging |
+| [gui.md](gui.md) | Interface structure, wording, tray, languages |
 | [upstream.md](upstream.md) | Verified upstream contracts and quirks: MyGo, EasyTier, RustDesk, OpenAI, Claude |
 | [third-party.md](third-party.md) | Reused code and dependencies, licenses and obligations |
 | [platform-notes.md](platform-notes.md) | What is implemented and verified on each platform |
 | [development.md](development.md) | Environment, commands, the dev loop, spikes |
+| [ci-cd.md](ci-cd.md) | Workflows, secrets, the upstream update procedure |
+| [packaging.md](packaging.md) | Build script, artifacts, signing, licenses |
 | [translation-guide.md](translation-guide.md) | Mirror rules and the glossary |
 | [version-history.md](version-history.md) | Releases and the upstream versions they pin |
 | [functions/INDEX.md](functions/INDEX.md) | Per-package and per-crate roles and key declarations |

@@ -18,7 +18,18 @@ Rust and Go dependencies with their license texts.
 
 ## Rust crates (core library)
 
-The core has no third-party crates yet; each one added appears here and in the generated list.
+| Crate | License | Source |
+|---|---|---|
+| ed25519-dalek, curve25519-dalek | BSD-3-Clause | https://github.com/dalek-cryptography/curve25519-dalek |
+| chacha20poly1305, sha2 and their RustCrypto dependencies | Apache-2.0 OR MIT | https://github.com/RustCrypto |
+| getrandom | MIT OR Apache-2.0 | https://github.com/rust-random/getrandom |
+| serde, serde_json | MIT OR Apache-2.0 | https://github.com/serde-rs |
+| base64 | MIT OR Apache-2.0 | https://github.com/marshallpierce/rust-base64 |
+| zeroize | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
+| windows-sys (Windows) | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
+| security-framework (macOS) | MIT OR Apache-2.0 | https://github.com/kornelski/rust-security-framework |
+
+`cargo deny` checks every crate in the graph against the allowed licenses (`core/deny.toml`).
 
 ## Planned components
 

@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the secret scan reads the history
+
+      # The Go version comes from go.mod, so a Go release never changes the
+      # build underneath a working checkout.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Formatting
+        run: |
+          unformatted=$(gofmt -l cmd internal tools)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed:"; echo "$unformatted"; exit 1
+          fi
+
+      # The app targets Windows and macOS only.
+      - run: GOOS=windows go vet ./...
+      - run: GOOS=darwin go vet ./...
+      - name: Interface catalogs
+        run: go tool mygo i18n check
+      - name: Documentation mirror
+        run: go run ./tools/checkdocs
+
+      - name: Rust formatting
+        run: cargo fmt --manifest-path core/Cargo.toml --all --check
+
+      - name: Dependency licenses and advisories
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: core/Cargo.toml
+
+      - name: Secret scan
+        run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --no-banner --redact .
+
+      # Informational here; the weekly upstream workflow opens an issue.
+      - name: Upstream pins
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run ./tools/deps check
+
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Full gate on one runner per OS; build-only on the other arch.
+          - { os: windows-11-arm, full: true }
+          - { os: macos-latest, full: true }
+          - { os: windows-latest, full: false }
+          - { os: macos-15-intel, full: false }
+    runs-on: ${{ matrix.os }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      - name: Clippy
+        if: matrix.full
+        run: cargo clippy --manifest-path core/Cargo.toml --workspace --all-targets -- -D warnings
+      - name: Rust tests
+        if: matrix.full
+        run: cargo test --manifest-path core/Cargo.toml --workspace
+
+      - name: Core library
+        shell: bash
+        run: cargo build --release --manifest-path core/Cargo.toml
+      - name: Go tests with the real core (ABI smoke test)
+        shell: bash
+        run: |
+          lib=core/target/release/kyokai_core.dll
+          [ "$RUNNER_OS" = macOS ] && lib=core/target/release/libkyokai_core.dylib
+          path="$PWD/$lib"
+          [ "$RUNNER_OS" = Windows ] && path=$(cygpath -w "$path")
+          KYOKAI_CORE_LIB="$path" go test ./...
+          CGO_ENABLED=0 KYOKAI_CORE_LIB="$path" go test ./...
+      - name: MyGo vet
+        if: matrix.full
+        run: go tool mygo vet .
+      - name: Engine smoke test
+        if: matrix.full
+        shell: bash
+        run: scripts/smoke.sh user
+
+      - name: Package (unsigned)
+        if: matrix.full
+        shell: bash
+        run: scripts/build.sh
+
+      - uses: actions/upload-artifact@v7
+        if: matrix.full
+        with:
+          name: unsigned-${{ matrix.os }}
+          path: |
+            build/*/*.exe
+            build/*/*.dmg
+          if-no-files-found: error

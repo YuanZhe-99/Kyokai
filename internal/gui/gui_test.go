@@ -1,0 +1,89 @@
+package gui
+
+import (
+	"image/png"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo/i18n"
+	"github.com/egoist/mygo/ui"
+
+	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+)
+
+func TestGrouping(t *testing.T) {
+	cases := []struct {
+		f        func(string) string
+		in, want string
+	}{
+		{groupDigits, "482916735", "482 916 735"},
+		{groupDigits, "1234", "1 234"},
+		{groupHex, "59c68587466e", "59c6 8587 466e"},
+	}
+	for _, c := range cases {
+		if got := c.f(c.in); got != c.want {
+			t.Errorf("%q → %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// demoApp is an App with the status a running engine pushes.
+func demoApp(t *testing.T) *App {
+	a := New("", t.TempDir(), filepath.Join(t.TempDir(), "none.sock"))
+	a.connected = true
+	a.status = &localapi.Status{
+		Version: "0.1.0", ABI: 1, DeviceID: "482916735",
+		Fingerprint: "59c68587466e421ef9a0ec25d8136406b3f5b36882c243f989c273b41cb82b99",
+		StateDir:    `C:\Users\demo\AppData\Roaming\Kyokai`, RunMode: "user", Persistence: "os-store",
+		PasswordSerial: 7, Started: time.Date(2026, 10, 16, 9, 30, 0, 0, time.Local),
+	}
+	return a
+}
+
+// TestViewsRender renders every page in each language and theme; it fails
+// on a panic. With SCREENSHOT_DIR set it writes PNGs for review.
+func TestViewsRender(t *testing.T) {
+	dir := os.Getenv("SCREENSHOT_DIR")
+	pages := map[string]func(a *App){
+		"home":          func(a *App) {},
+		"home-password": func(a *App) { a.password, a.passwordFor, a.showPassword = "k7mq2xpa", 7, true },
+		"home-memory":   func(a *App) { a.status.Persistence = "memory-only" },
+		"starting":      func(a *App) { a.connected, a.status = false, nil },
+		"engine-down":   func(a *App) { a.connected, a.status, a.engineErr = false, nil, "kyokai-svc not found" },
+		"settings":      func(a *App) { a.page = pageSettings },
+		"licenses":      func(a *App) { a.page, a.showLicenses = pageSettings, true },
+	}
+	for _, lang := range []string{"en", "zh-Hans", "zh-Hant", "ja"} {
+		i18n.SetLocaleFunc(func() string { return lang })
+		for name, setup := range pages {
+			for _, dark := range []bool{false, true} {
+				if dark && lang != "en" {
+					continue
+				}
+				a := demoApp(t)
+				setup(a)
+				tt := ui.NewTester(a.View, 1000, 700)
+				tt.SetDark(dark)
+				tt.Frame()
+				if dir == "" {
+					continue
+				}
+				suffix := ""
+				if dark {
+					suffix = "-dark"
+				}
+				f, err := os.Create(filepath.Join(dir, lang+"-"+name+suffix+".png"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := png.Encode(f, tt.Image()); err != nil {
+					t.Fatal(err)
+				}
+				f.Close()
+			}
+		}
+	}
+	i18n.SetLocaleFunc(nil)
+}

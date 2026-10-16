@@ -34,6 +34,9 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   为嵌套代码单独指定 entitlements；`minimumSystemVersion` 默认为 12.0。
 - **purego。** Windows 上用 `syscall.LoadLibrary` 加载库（purego 的 `Dlopen` 在那里不编译）；macOS 上用
   `purego.Dlopen`。回调永不释放（共享上限约 1000–2000 个），不能带浮点参数；在 Windows ARM64 上调用完全不能传浮点。
+- **实测（S2，Windows ARM64，`spikes/s2-viewer`）。** 来自 Rust 库的 1920×1080 RGBA 帧经 `Bitmap.Update` 显示在 500 行列表旁：
+  每秒显示 59–60 帧，MyGo 的帧统计显示受垂直同步约束的约 16 毫秒帧，构建与布局约 1 毫秒；画面显示约占一个核心的
+  21–25 %（进程 31–37 % 减去测试图案的绘制）。
 
 ## EasyTier v2.7.0
 

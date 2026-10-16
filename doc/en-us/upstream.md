@@ -47,6 +47,10 @@ when they run; anything not listed here is not assumed.
 - **purego.** On Windows libraries load with `syscall.LoadLibrary` (purego's `Dlopen` is not
   built there); on macOS with `purego.Dlopen`. Callbacks are never freed (shared limit of about
   1000–2000), cannot take floats, and on Windows ARM64 calls cannot pass floats at all.
+- **Measured (S2, Windows ARM64, `spikes/s2-viewer`).** 1920×1080 RGBA frames from a Rust
+  library shown through `Bitmap.Update` beside a 500-row list: 59–60 frames shown per second,
+  MyGo's frame statistics show vsync-bound frames of about 16 ms with build and layout near 1 ms;
+  the viewer costs about 21–25 % of one core (process 31–37 % minus the test pattern's drawing).
 
 ## EasyTier v2.7.0
 

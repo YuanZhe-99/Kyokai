@@ -80,12 +80,14 @@ scripts/build.sh               # this platform: Rust core, engine, then `mygo bu
 
 ## GitHub Actions
 
-Continuous integration and releases run on GitHub Actions (workflows arrive with 0.1.0).
+Continuous integration and releases run on GitHub Actions; see
+[doc/en-us/ci-cd.md](doc/en-us/ci-cd.md).
 
 ## Architecture
 
 A Go + [MyGo](https://github.com/egoist/mygo) GUI, a headless engine (`kyokai-svc`) and a Rust core
-library loaded by both; the engine embeds EasyTier. The architecture document arrives with 0.1.0.
+library loaded by both; the engine will embed EasyTier. See
+[doc/en-us/architecture.md](doc/en-us/architecture.md).
 
 ## Documentation
 

@@ -1,0 +1,208 @@
+package gui
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/egoist/mygo"
+
+	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	L "github.com/YuanZhe-99/Kyokai/locales"
+)
+
+// EngineEnv overrides where kyokai-svc is (development).
+const EngineEnv = "KYOKAI_SVC"
+
+// engineChild runs the No privileges engine as a child tied to this process:
+// by a lifeline pipe on macOS, by watching our PID on Windows (a pipe cannot
+// be handed to a child there). When the GUI exits, even by a crash, the
+// engine stops.
+type engineChild struct {
+	mu       sync.Mutex
+	cmd      *exec.Cmd
+	lifeline *os.File // write end, held for the GUI's lifetime
+	starts   []time.Time
+}
+
+// engineBinary finds kyokai-svc: $KYOKAI_SVC, the app's resources/bin, then
+// next to the GUI.
+func engineBinary() (string, error) {
+	name := "kyokai-svc"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if p := os.Getenv(EngineEnv); p != "" {
+		return p, nil
+	}
+	var dirs []string
+	if res, err := mygo.App.Path(mygo.PathResources); err == nil && res != "" {
+		dirs = append(dirs, filepath.Join(res, "bin"))
+	}
+	if exe, err := os.Executable(); err == nil {
+		dirs = append(dirs, filepath.Join(filepath.Dir(exe), "bin"), filepath.Dir(exe))
+	}
+	for _, d := range dirs {
+		if p := filepath.Join(d, name); fileExists(p) {
+			return p, nil
+		}
+	}
+	return "", errors.New("kyokai-svc not found")
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+// ensure starts the engine unless one already answers on the socket, and
+// waits until it does.
+// Notes: three starts within a minute are reported instead of retried.
+func (e *engineChild) ensure(ctx context.Context, socket string) error {
+	client := localapi.NewClient(socket)
+	if _, err := client.Do(ctx, localapi.Request{Type: localapi.RequestStatus}); err == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	now := time.Now()
+	recent := e.starts[:0]
+	for _, t := range e.starts {
+		if now.Sub(t) < time.Minute {
+			recent = append(recent, t)
+		}
+	}
+	e.starts = recent
+	if len(e.starts) >= 3 {
+		return errors.New("the engine keeps stopping")
+	}
+	bin, err := engineBinary()
+	if err != nil {
+		return err
+	}
+	var cmd *exec.Cmd
+	var r, w *os.File
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command(bin, "run", "--host", "user", "--socket", socket, "--parent-pid", strconv.Itoa(os.Getpid()))
+		hideWindow(cmd)
+	} else {
+		if r, w, err = os.Pipe(); err != nil {
+			return err
+		}
+		cmd = exec.Command(bin, "run", "--host", "user", "--socket", socket, "--lifeline-fd", "3")
+		cmd.ExtraFiles = []*os.File{r}
+	}
+	if err := cmd.Start(); err != nil {
+		if r != nil {
+			r.Close()
+			w.Close()
+		}
+		return fmt.Errorf("start the engine: %w", err)
+	}
+	if r != nil {
+		r.Close()
+	}
+	if e.lifeline != nil {
+		e.lifeline.Close()
+	}
+	e.cmd, e.lifeline = cmd, w
+	e.starts = append(e.starts, now)
+	go func() { _ = cmd.Wait() }()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := client.Do(ctx, localapi.Request{Type: localapi.RequestStatus}); err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return errors.New("the engine did not start")
+}
+
+// stop ends the engine and waits briefly for its socket to go: the engine is
+// asked to shut down and the lifeline closes (macOS). On Windows the engine
+// would also notice our exit, but an update must replace its files first.
+func (e *engineChild) stop(socket string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	client := localapi.NewClient(socket)
+	_, _ = client.Do(ctx, localapi.Request{Type: localapi.RequestShutdown})
+	e.mu.Lock()
+	if e.lifeline != nil {
+		e.lifeline.Close()
+		e.lifeline = nil
+	}
+	cmd := e.cmd
+	e.mu.Unlock()
+	if cmd == nil {
+		return
+	}
+	for ctx.Err() == nil {
+		if _, err := client.Do(ctx, localapi.Request{Type: localapi.RequestStatus}); errors.Is(err, localapi.ErrNotRunning) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// connectLoop keeps a session attached to the engine, starting the engine
+// when needed, until the GUI stops.
+func (a *App) connectLoop() {
+	client := localapi.NewClient(a.socket)
+	for a.ctx.Err() == nil {
+		if err := a.engine.ensure(a.ctx, a.socket); err != nil {
+			a.update(func() { a.connected, a.engineErr = false, err.Error() })
+		} else {
+			err := client.Attach(a.ctx, func(st *localapi.Status) error {
+				a.update(func() {
+					if a.status == nil || a.status.PasswordSerial != st.PasswordSerial {
+						a.password, a.showPassword = "", false
+					}
+					a.status, a.connected, a.engineErr = st, true, ""
+				})
+				return nil
+			})
+			if a.ctx.Err() != nil {
+				return
+			}
+			a.update(func() { a.connected, a.engineErr = false, fmt.Sprint(err) })
+		}
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+// request sends one request to the engine.
+func (a *App) request(t localapi.RequestType) (*localapi.Response, error) {
+	return localapi.NewClient(a.socket).Do(a.ctx, localapi.Request{Type: t})
+}
+
+// revealPassword fetches the temporary password for the Home page or the
+// clipboard; it never reaches a log or a file.
+func (a *App) revealPassword(then func(pw string)) {
+	go func() {
+		resp, err := a.request(localapi.RequestPasswordReveal)
+		a.update(func() {
+			if err != nil {
+				a.setToast(L.EngineDown(), true)
+				return
+			}
+			a.password = resp.Password
+			if a.status != nil {
+				a.passwordFor = a.status.PasswordSerial
+			}
+			if then != nil {
+				then(resp.Password)
+			}
+		})
+	}()
+}

@@ -1,0 +1,14 @@
+[package]
+name = "s2-frames"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "s2_frames"
+crate-type = ["cdylib"]
+
+[workspace]
+
+[profile.release]
+codegen-units = 1

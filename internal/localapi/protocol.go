@@ -1,0 +1,221 @@
+// Package localapi is the protocol between the GUI (and `kyokai-svc ctl`)
+// and the engine, adapted from Easytier-MyGo. The engine owns the device
+// identity and the host role; clients read state and send commands.
+//
+// Transport: a Unix domain socket (AF_UNIX also on Windows),
+// newline-delimited JSON. A request names the protocol version; a mismatch
+// fails instead of guessing. Most requests are one request and one
+// response; a session (RequestSessionAttach) keeps its connection open and
+// receives pushed status until either side closes it.
+package localapi
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+// ProtocolVersion is bumped when a request or response changes meaning.
+const ProtocolVersion = 1
+
+// SocketEnv overrides the socket path (tests, development).
+const SocketEnv = "KYOKAI_SOCKET"
+
+// UserSocketPath is the No privileges engine's per-user socket:
+// $KYOKAI_SOCKET, else the user's temporary directory (%TEMP% on Windows,
+// a per-user folder under $TMPDIR on macOS) + kyokai/engine[-profile].sock.
+func UserSocketPath(profile string) string {
+	if p := os.Getenv(SocketEnv); p != "" {
+		return p
+	}
+	name := "engine.sock"
+	if profile != "" {
+		name = "engine-" + profile + ".sock"
+	}
+	return filepath.Join(userRuntimeDir(), "kyokai", name)
+}
+
+// RequestType enumerates the engine's commands.
+type RequestType string
+
+const (
+	RequestStatus             RequestType = "status"              // identity summary, never a secret
+	RequestPasswordReveal     RequestType = "password.reveal"     // the temporary password, for the host's own GUI
+	RequestPasswordRegenerate RequestType = "password.regenerate" // a new temporary password
+	RequestSessionAttach      RequestType = "session.attach"      // streaming; see package doc
+	RequestShutdown           RequestType = "shutdown"
+)
+
+// ErrorCode classifies a failed request for clients that react to it.
+type ErrorCode string
+
+const (
+	CodeUnknown  ErrorCode = "unknown-request"
+	CodeInternal ErrorCode = "internal"
+)
+
+// Request is one line from a client.
+type Request struct {
+	Version int         `json:"version"`
+	Type    RequestType `json:"type"`
+}
+
+// Response is one line from the engine: an answer, or a pushed frame of a
+// session.
+type Response struct {
+	Version  int       `json:"version"`
+	OK       bool      `json:"ok"`
+	Code     ErrorCode `json:"code,omitempty"`
+	Error    string    `json:"error,omitempty"`
+	Status   *Status   `json:"status,omitempty"`
+	Password string    `json:"password,omitempty"`
+}
+
+// Status is the engine's state: product and ABI version, the device
+// identity and how secrets are kept. It never holds a secret.
+type Status struct {
+	Version     string `json:"version"`
+	ABI         int    `json:"abi"`
+	DeviceID    string `json:"device_id"`
+	Fingerprint string `json:"fingerprint"`
+	StateDir    string `json:"state_dir"`
+	// RunMode is "user" (No privileges).
+	RunMode string `json:"run_mode"`
+	// Persistence is "os-store", "memory-only" or "unreadable".
+	Persistence string `json:"persistence"`
+	// PasswordSerial changes whenever the temporary password does.
+	PasswordSerial uint64    `json:"password_serial"`
+	Started        time.Time `json:"started"`
+}
+
+// ErrNotRunning reports that no engine listens on the socket.
+var ErrNotRunning = errors.New("the engine is not running")
+
+// RequestError is a request the engine refused.
+type RequestError struct {
+	Code    ErrorCode
+	Message string
+}
+
+func (e *RequestError) Error() string { return e.Message }
+
+// Client talks to one engine socket. Safe for concurrent use.
+type Client struct {
+	SocketPath string
+	Timeout    time.Duration
+}
+
+// NewClient returns a client for path.
+func NewClient(path string) *Client {
+	return &Client{SocketPath: path, Timeout: 15 * time.Second}
+}
+
+// Do sends one request and returns the response.
+// Returns: ErrNotRunning (wrapped) when nothing listens; a *RequestError
+// when the engine refused the request.
+func (c *Client) Do(ctx context.Context, req Request) (*Response, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
+	defer cancel()
+	conn, err := c.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	if err := writeRequest(conn, req); err != nil {
+		return nil, err
+	}
+	resp, err := readResponse(bufio.NewReaderSize(conn, maxResponseSize))
+	if err != nil && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	return resp, err
+}
+
+// Attach opens a session. fn receives every pushed status until ctx ends,
+// the engine goes away, or fn returns an error.
+// Returns: the reason the session ended.
+func (c *Client) Attach(ctx context.Context, fn func(*Status) error) error {
+	conn, err := c.dial(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	if err := writeRequest(conn, Request{Type: RequestSessionAttach}); err != nil {
+		return err
+	}
+	r := bufio.NewReaderSize(conn, maxResponseSize)
+	for {
+		resp, err := readResponse(r)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return err
+		}
+		if resp.Status != nil {
+			if err := fn(resp.Status); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func (c *Client) dial(ctx context.Context) (net.Conn, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "unix", c.SocketPath)
+	if err != nil {
+		var opErr *net.OpError
+		if errors.Is(err, os.ErrNotExist) || (errors.As(err, &opErr) && opErr.Op == "dial") {
+			return nil, fmt.Errorf("%w: %v", ErrNotRunning, err)
+		}
+		return nil, err
+	}
+	return conn, nil
+}
+
+// maxResponseSize bounds one response line.
+const maxResponseSize = 1 << 20
+
+func writeRequest(conn net.Conn, req Request) error {
+	req.Version = ProtocolVersion
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Write(append(payload, '\n'))
+	return err
+}
+
+func readResponse(r *bufio.Reader) (*Response, error) {
+	line, err := r.ReadBytes('\n')
+	if err != nil {
+		return nil, err
+	}
+	var resp Response
+	if err := json.Unmarshal(bytes.TrimSpace(line), &resp); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	if resp.Version != ProtocolVersion {
+		return nil, fmt.Errorf("protocol version mismatch: engine %d, client %d", resp.Version, ProtocolVersion)
+	}
+	if !resp.OK {
+		return &resp, &RequestError{Code: resp.Code, Message: resp.Error}
+	}
+	return &resp, nil
+}
+
+// Fail builds an error response.
+func Fail(code ErrorCode, format string, args ...any) Response {
+	return Response{OK: false, Code: code, Error: fmt.Sprintf(format, args...)}
+}

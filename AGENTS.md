@@ -27,16 +27,19 @@ about to change, verify against the code, then fix the docs in the same commit.
 | Question | Read |
 |---|---|
 | Current plan, milestones and open decisions (only while a plan is active) | `PLAN.md` |
+| Processes, run modes, packages, crates, FFI, local API, state | `doc/en-us/architecture.md` |
+| Secrets, identity, passwords, logging | `doc/en-us/security.md` |
+| Interface structure, wording, tray, languages | `doc/en-us/gui.md` |
 | Verified upstream contracts (MyGo, EasyTier, RustDesk, OpenAI, Claude) and quirks | `doc/en-us/upstream.md` |
 | Reused third-party code, licenses and obligations | `doc/en-us/third-party.md` |
 | What is implemented and verified per platform | `doc/en-us/platform-notes.md` |
 | Environment, commands, dev loop, spikes | `doc/en-us/development.md` |
+| Workflows, upstream update procedure, releases, packages | `doc/en-us/ci-cd.md`, `doc/en-us/packaging.md` |
 | English→Chinese terminology | `doc/en-us/translation-guide.md` |
 | Past releases and pinned upstream versions | `doc/en-us/version-history.md` |
 | Per-package and per-crate roles | `doc/en-us/functions/INDEX.md` |
 
-Concept docs (architecture, security, interface, identity and access, networking, the wire
-protocol, computer use, CI/CD, packaging) are added with the code they describe; add their rows
+Concept docs (identity and access, networking, the wire protocol, computer use) are added with the code they describe; add their rows
 here in the same commit.
 
 ## Required workflow

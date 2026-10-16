@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # MyGo moves with the upstream procedure (tools/deps update), which also
+  # migrates the UI code; Dependabot covers the remaining modules.
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: github.com/egoist/mygo
+
+  - package-ecosystem: cargo
+    directory: "/core"
+    schedule:
+      interval: weekly

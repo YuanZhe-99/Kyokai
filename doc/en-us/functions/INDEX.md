@@ -6,9 +6,15 @@ returns, side effects and notes where non-trivial).
 
 | Package / crate | Role | Start with |
 |---|---|---|
-| `core/kyokai-core` | The native core library and its C ABI | `kyokai_abi_version`, `ABI_VERSION` |
+| `cmd/kyokai` | GUI entry point | `main` |
+| `cmd/kyokai-svc` | Engine entry point | `run`, `ctl` |
+| `internal/gui` | GUI state, views, tray, updates, the engine child | `App`, `App.View`, `App.connectLoop`, `engineChild.ensure` |
+| `internal/engine` | Engine host | `Run`, `Options`, `DefaultStateDir` |
+| `internal/localapi` | Local API protocol, server, client, authorization | `ProtocolVersion`, `Request`, `Status`, `Client.Attach`, `Authorizer.Allows` |
+| `internal/core` | purego binding to the Rust core | `Load`, `Lib.Start`, `Lib.Call` |
 | `internal/version` | Product version | `Version`, `Older` |
 | `internal/fsutil` | Atomic writes and JSON documents | `WriteFileAtomic`, `WriteJSON`, `ReadJSON` |
+| `core/kyokai-core` | Rust core: C ABI, secrets, identity, temporary password | `kyokai_start`, `kyokai_call`, `store::open`, `Identity::load_or_create`, `device_id` |
 | `tools/deps` | Upstream pins | `check`, `update` |
 | `tools/checkdocs` | Documentation mirror check | `main` |
 | `tools/sign` | Helper bundle signing key | `keygen` |

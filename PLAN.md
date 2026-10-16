@@ -42,16 +42,10 @@ The active plan: milestones, done-when criteria and open decisions. Long-lived c
 
 ## Milestones
 
-### M0 — Scaffold
-
-Conventions, docs skeleton, tools (`checkdocs`, `deps`, `sign`), Go module, `mygo.json`, version,
-Rust workspace with `kyokai-core`, signing material generated and recorded offline, secret scan.
-
 ### Phase 0 — Spikes (`spikes/`, results recorded in `doc/en-us/upstream.md` / `platform-notes.md`)
 
 | Spike | Done when | Fallback |
 |---|---|---|
-| S2 viewer | 1920×1080 RGBA frames from Rust shown through purego + `ui.Bitmap` beside a 500-item list at ≥ 55 fps, GUI ≤ 25 % of one core on the Windows ARM64 dev machine; input events mapped to HID usages; no VC++ runtime dependency | separate viewer window, 30 fps cap, or the shader path |
 | S1 EasyTier | two embedded nodes + an official core: routes carry `inst_id`/hostname, data-plane both ways, whitelist holds, duplicate `inst_id` behavior known, clean restart, minimal features build on ARM64 and x64 | sidecar core with `no_tun` + whitelist |
 | S3-lite capture | the DXGI capturer feeds the S2 viewer at 1080p; CPU and latency measured | `windows-capture` |
 | S4 providers | OpenAI and Claude two-turn round trips accepted with synthetic screenshots; fixtures saved | adapter fixes before Phase 4 |
@@ -59,16 +53,9 @@ Rust workspace with `kyokai-core`, signing material generated and recorded offli
 
 ### Phase 1 — Foundation (0.1.0)
 
-Rust core (state dir, secrets store, identity, temporary password, scrubbed logs, events), the
-engine with lifeline and local API v1 (+ `ctl`), the GUI shell (single instance with a dev profile
-override, tray, close-to-tray, notifications, theme, four languages), Home (Device ID, temporary
-password), Settings (General with Open at login off by default, Storage, Diagnostics, About with
-updates and source link, Open Source Licenses), CI and release workflows, local packages.
-
-Done when: the gate is green on Windows ARM64, the x64 build runs under emulation, the engine starts
-without a prompt, the Device ID survives restarts, a new temporary password appears each start,
-quitting or killing the GUI ends the engine, nothing is registered for autostart, and the installer
-and portable zip build.
+Implemented and verified on Windows ARM64 and x64 (doc/en-us/platform-notes.md). Remaining: the
+first CI run on GitHub (after the push is approved), the macOS build and a real-Mac run (S5), and
+the input-event mapping check of S2 with real keys.
 
 ### Later phases
 

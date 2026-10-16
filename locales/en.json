@@ -1,0 +1,97 @@
+{
+  "@@locale": "en",
+  "AboutLicense": "AGPL-3.0-only. Includes MyGo (MIT).",
+  "AboutSource": "Source code",
+  "AboutTagline": "AI Computer Use Across Devices",
+  "ActionCheckAppUpdate": "Check for updates",
+  "ActionCopy": "Copy",
+  "ActionHide": "Hide",
+  "ActionInstallUpdate": "Install and restart",
+  "ActionNewPassword": "New password",
+  "ActionOpenFolder": "Open folder",
+  "ActionRetry": "Retry",
+  "ActionShow": "Show",
+  "AppUpToDate": "Kyokai is up to date.",
+  "AppUpdateAvailable": "Version {version} is available.",
+  "@AppUpdateAvailable": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "AppUpdateCheckFailed": "Could not check for updates.",
+  "AppUpdateInstallFailed": "The update could not be installed.",
+  "AppUpdateInstalling": "Installing… {percent}%",
+  "@AppUpdateInstalling": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "AppUpdateUnavailable": "This copy of Kyokai cannot update itself.",
+  "CloseHide": "Keep running in the tray",
+  "CloseQuit": "Quit",
+  "Copied": "Copied",
+  "DiagEngine": "Engine",
+  "DiagEngineRunning": "Running since {time}",
+  "@DiagEngineRunning": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "DiagLogs": "Logs",
+  "DiagRunMode": "Run mode",
+  "DiagVersion": "Version",
+  "EngineDown": "The Kyokai engine is not running.",
+  "EngineStarting": "Starting…",
+  "HomeComingSoon": "Connecting to other devices arrives in a later version.",
+  "HomeDeviceID": "Device ID",
+  "HomePasswordHint": "Changes every time Kyokai starts, or when you ask for a new one.",
+  "HomeTemporaryPassword": "Temporary password",
+  "HomeThisDevice": "This device",
+  "IdentityFingerprint": "Fingerprint",
+  "IdentityFingerprintHint": "The full identity behind the Device ID. Compare it when another computer asks you to confirm this device.",
+  "LanguageSystem": "System",
+  "LicensesHint": "Kyokai and the components it includes.",
+  "NavHome": "Home",
+  "NavSettings": "Settings",
+  "NotifyAppUpdateTitle": "Kyokai update",
+  "NotifyStillRunningBody": "Kyokai keeps running in the tray. Quit it from the tray menu.",
+  "NotifyStillRunningTitle": "Kyokai is still running",
+  "RunModeUser": "No privileges",
+  "SecretsMemoryOnly": "In memory only: this computer's credential store is not available, so the Device ID changes on the next start.",
+  "SecretsOSStore": "Encrypted with this computer's credential store",
+  "SecretsUnreadable": "The saved identity cannot be unlocked. Kyokai uses a temporary one this time and leaves the saved one untouched.",
+  "SettingsAbout": "About",
+  "SettingsCheckAppUpdates": "Check for updates daily",
+  "SettingsCheckAppUpdatesHint": "Only signed updates from Kyokai's GitHub releases are offered.",
+  "SettingsCloseButton": "Close button",
+  "SettingsDiagnostics": "Diagnostics",
+  "SettingsGeneral": "General",
+  "SettingsIdentity": "Device identity",
+  "SettingsLanguage": "Language",
+  "SettingsLicenses": "Open source licenses",
+  "SettingsOpenAtLogin": "Open at login",
+  "SettingsOpenAtLoginHint": "Off unless you turn it on: Kyokai never starts by itself.",
+  "SettingsStorage": "Storage",
+  "SettingsTheme": "Appearance",
+  "StorageLocation": "Data folder",
+  "StorageSecrets": "Secrets",
+  "ThemeDark": "Dark",
+  "ThemeLight": "Light",
+  "ThemeSystem": "System",
+  "TrayDeviceID": "Device ID {id}",
+  "@TrayDeviceID": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "TrayQuit": "Quit Kyokai",
+  "TrayShow": "Show Kyokai"
+}

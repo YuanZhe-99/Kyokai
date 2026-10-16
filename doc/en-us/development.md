@@ -33,6 +33,22 @@ cargo deny --manifest-path core/Cargo.toml check
 Run cargo from the repository root: `rust-toolchain.toml` and `.cargo/config.toml` are read from
 the current directory, not from `--manifest-path`.
 
+## Dev loop
+
+```bash
+scripts/build.sh windows/arm64           # or no target: this machine's platform
+KYOKAI_PROFILE=dev build/windows-arm64/Kyokai.exe
+KYOKAI_PROFILE=dev build/windows-arm64/bin/kyokai-svc.exe ctl status
+scripts/smoke.sh user                    # the engine end to end with the real core
+SCREENSHOT_DIR=$PWD/.dev/shots go test ./internal/gui/
+KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
+```
+
+`KYOKAI_PROFILE` keeps a development instance apart from an installed Kyokai: its own app name,
+single-instance lock, socket and state directory (`Kyokai-<profile>`). `KYOKAI_SVC` points the GUI at
+another engine binary, `KYOKAI_SOCKET` at another socket. The ABI smoke test needs an absolute
+library path.
+
 ## Spikes
 
 `spikes/` holds the Phase 0 feasibility programs, each with its own `go.mod` or Cargo workspace so
