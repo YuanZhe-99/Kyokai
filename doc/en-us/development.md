@@ -7,7 +7,8 @@
 - Rust 1.99.1 with `rustfmt` and `clippy` (`rust-toolchain.toml`; rustup installs it on first use).
 - Windows: Visual Studio 2026 (or its Build Tools) with the C++ tools for the target architecture
   (ARM64 and/or x64), the Windows SDK, and the component "C++ Clang Compiler for Windows" — `ring`
-  needs clang on `aarch64-pc-windows-msvc`. Git for Windows provides bash and OpenSSL.
+  needs clang on `aarch64-pc-windows-msvc`; put the installation's `VC\Tools\Llvm\ARM64\bin` on
+  `PATH` (the component does not). Git for Windows provides bash and OpenSSL.
 - macOS: the Xcode command line tools; Go and rustup (Homebrew works); `protoc` (Homebrew
   `protobuf`) once EasyTier is embedded.
 - `cargo-deny` (`cargo install cargo-deny --locked`) for the dependency check; on Windows ARM64 it

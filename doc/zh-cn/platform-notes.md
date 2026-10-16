@@ -23,12 +23,13 @@ Studio 2026）：
 | 安装包 | `scripts/build.sh windows/arm64 windows/amd64` 为两者构建 `Kyokai.exe` 与按用户安装的安装包 |
 | S2 画面可行性验证 | 来自 Rust 的 1920×1080 RGBA 帧经 `ui.Bitmap` 显示在 500 行列表旁，59–60 fps；画面显示约占一个核心的 21–25 % |
 | S3-lite 采集可行性验证 | 复用并解除 `hbb_common` 耦合的 RustDesk DXGI 采集器以约 60 fps 采集 4K 显示器；转换为 RGBA 并缩放到 1080p 约占一个核心的 15 % |
-| `cargo-deny` | 暂时无法在本机构建：ARM64 上的 `ring` 需要 clang（由 CI 运行） |
+| `cargo deny` | 把 VS 的 clang 加入 `PATH` 后通过（advisories、bans、licenses、sources） |
 
 ## 已知限制
 
 - 在开发机上，`AppData\Local` 或 `AppData\Roaming` 下文件夹中创建的 AF_UNIX 套接字文件在监听关闭后会残留为无法访问的条目，
   导致再次绑定失败；`%TEMP%` 与用户文件夹表现正常。因此引擎的套接字放在 `%TEMP%\kyokai`。残留条目
   （`AppData\Local\kyokai` 与测试文件夹）无法在创建它们的会话中删除。
-- 安装 Clang 组件之前，依赖 `ring` 的内容（EasyTier、TLS 客户端、`cargo-deny`）都无法在 Windows ARM64 上构建。
+- `ring`（EasyTier、TLS 客户端、`cargo-deny`）在 Windows ARM64 上需要 clang：VS 组件把它装在 `VC\Tools\Llvm\ARM64\bin`，
+  但不会加入 `PATH`。
 - Windows 安装包没有代码签名；首次启动时 SmartScreen 会警告。

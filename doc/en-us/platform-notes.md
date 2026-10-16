@@ -23,7 +23,7 @@ Studio 2026 without its Clang component):
 | Packages | `scripts/build.sh windows/arm64 windows/amd64` builds `Kyokai.exe` and the per-user installer for both |
 | S2 viewer spike | 1920×1080 RGBA frames from Rust shown through `ui.Bitmap` next to a 500-row list at 59–60 fps; the viewer costs about 21–25 % of one core |
 | S3-lite capture spike | RustDesk's DXGI capturer, vendored and decoupled from `hbb_common`, captures the 4K display at about 60 fps; converting to RGBA and scaling to 1080p costs about 15 % of one core |
-| `cargo-deny` | does not build here yet: `ring` needs clang on ARM64 (CI runs it) |
+| `cargo deny` | passes (advisories, bans, licenses, sources) once VS's clang is on `PATH` |
 
 ## Known limitations
 
@@ -32,6 +32,6 @@ Studio 2026 without its Clang component):
   bind failed; `%TEMP%` and the profile folder behaved. The engine's socket therefore lives in
   `%TEMP%\kyokai`. Leftover entries (`AppData\Local\kyokai`, test folders) cannot be deleted from
   the session that created them.
-- Until the Clang component is installed, nothing that depends on `ring` (EasyTier, TLS clients,
-  `cargo-deny`) builds on Windows ARM64.
+- `ring` (EasyTier, TLS clients, `cargo-deny`) needs clang on Windows ARM64: the VS component
+  installs it under `VC\Tools\Llvm\ARM64\bin` but does not put it on `PATH`.
 - Windows packages are not code signed; SmartScreen warns on first launch.

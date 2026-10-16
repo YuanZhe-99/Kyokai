@@ -69,6 +69,21 @@ the input-event mapping check of S2 with real keys.
 | 8 Release path | tagged release, packages, checksums, app and helper updates from the previous version | §26 Build and Release |
 | 9 Docs & acceptance | user guide, final README, third-party inventory, §27 acceptance with evidence | every §26 group recorded |
 
+## Phase 3 quality, bandwidth and latency controls (RustDesk parity)
+
+RustDesk's own controls, all to be offered; the host-side adaptation reuses RustDesk's QoS logic
+(`src/server/video_qos.rs`, AGPL) where it fits:
+
+- Image quality presets: Best quality, Balanced, Optimize reaction time, and Custom (quality and
+  frame rate); a frame-rate cap (RustDesk: 30 by default, up to 120).
+- Automatic adaptation: bitrate and frame rate follow measured delay and loss; key frame on loss;
+  unchanged frames are skipped.
+- Codec preference (Auto / the codecs Kyokai ships) and a hardware-codec switch; full-colour 4:4:4
+  where the codec supports it.
+- View: original size, scale to fit, full screen; remote cursor shown or not; monitor selection.
+- Per-session: clipboard on/off and lock after the session ends (audio and file transfer later).
+- Shown to the controller: latency, frame rate, bitrate, codec and direct-vs-relay path.
+
 ## Open decisions
 
 - Video codec (OS-native H.264 vs libvpx VP9) — start of Phase 3.
