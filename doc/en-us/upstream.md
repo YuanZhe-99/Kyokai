@@ -1,0 +1,191 @@
+# Upstream contracts
+
+What Kyokai relies on from each upstream, verified by reading the pinned source or the official
+documentation on 2026-10-16. Measured results from the Phase 0 spikes are added to each section
+when they run; anything not listed here is not assumed.
+
+## MyGo v0.5.5
+
+- **Rendering.** Own GPU renderer: Direct3D 11 on Windows, Metal on macOS, a CPU rasterizer as
+  fallback. OS calls go through purego and hand-written COM; everything builds with
+  `CGO_ENABLED=0`. The UI is immediate-mode with retained per-identity state; `Window.Update(fn)`
+  runs `fn` on the main thread and rebuilds the view.
+- **Live pictures.** `(*ui.Bitmap).Update(img)` keeps the texture and swaps the pixels; an
+  `*image.RGBA` whose stride is 4 × width is taken without a copy and must stay unchanged until the
+  next `Update`. It runs on the main thread. Every frame is a full premultiplied-RGBA upload (no
+  BGRA, YUV, dirty rectangles or shared textures); Metal waits for frames in flight. A bitmap drawn
+  at half size or less is box-filtered on the CPU after every update, unless it is drawn through
+  `ui/shader`. `ui.Image(c, bm).Fit(...)` scales; `Pixelated()` gives nearest-neighbour.
+- **Input.** `Element.Focusable().HandleInput(func(ui.InputEvent) bool)` delivers key down/up,
+  text, IME composition, commands, pointer down/up/move, scroll (`DX`, `DY`, `Precise`) with
+  element-local coordinates in DIPs. Gaps: no scancodes; about 70 `Key` values (no numpad keys,
+  CapsLock, NumLock, PrintScreen, F13–F24, media keys); modifiers only as a bitmask (no left/right);
+  Windows drops unmapped keys and always passes `WM_SYSKEYDOWN` (Alt, F10, Alt+F4) to
+  `DefWindowProc`; X1/X2 arrive as `KeyBack`/`KeyForward` on release; macOS turns Control-click
+  into a right click, ignores CapsLock and lets menu shortcuts (Cmd+Q/W/H/C/V) win; no pointer lock,
+  no low-level hooks.
+- **Windows of the app.** Several windows, full screen, bounds, always-on-top,
+  `SetContentProtection`, and `NativeHandle()` (HWND / NSWindow).
+- **App services.** Tray (menu, icon), notifications (balloons on Windows), clipboard (text,
+  HTML, PNG image; no change event), dialogs, shell open, a single-instance lock keyed by the app
+  name, open at login, power events (lock/unlock, idle time), `App.Path` kinds (no separate
+  config kind), `Relaunch`, cancelable quit hooks.
+- **Updater.** `go tool mygo keygen` writes an Ed25519 pair (base64 of the 64-byte private key and
+  of the 32-byte public key) into `-o DIR`, by default a per-user folder shared by every MyGo
+  project; it refuses to overwrite without `-force`. With `MYGO_UPDATER_PRIVATE_KEY` set,
+  `mygo build` signs the whole-app archive per target and up to three deltas; `update-<target>.json`
+  itself is unsigned. Apps read the manifest of the latest GitHub release over HTTPS and check size
+  and signature before installing. Windows renames the old files aside (a loaded DLL can be
+  renamed); macOS swaps the `.app`. Updating needs write access to the install location.
+- **Packaging.** Windows: `.exe` and an NSIS installer that installs per user
+  (`%LOCALAPPDATA%\Programs\<Name>`, no elevation). macOS: `.app` and `.dmg`, signed only on a
+  macOS host. Files under `resources/` and `resources/<goos>-<goarch>/` ship next to the exe or in
+  `Contents/Resources` and are found with `App.Path(PathResources)`. Nested Mach-O files are
+  re-signed with the app's identity; a non-ad-hoc identity adds `--options runtime --timestamp`
+  (the `.dmg` gets `--timestamp` too). `macos.helperEntitlements` gives nested code its own
+  entitlements; `minimumSystemVersion` defaults to 12.0.
+- **purego.** On Windows libraries load with `syscall.LoadLibrary` (purego's `Dlopen` is not
+  built there); on macOS with `purego.Dlopen`. Callbacks are never freed (shared limit of about
+  1000–2000), cannot take floats, and on Windows ARM64 calls cannot pass floats at all.
+
+## EasyTier v2.7.0
+
+- **Source.** Prerelease of 2026-10-06 (latest stable: v2.6.4). Root license LGPL-3.0 (no "or
+  later" grant). crates.io stops at 2.0.3, so the crate is a git dependency pinned by commit
+  (`8b7f1f0196edb5b580829ed5f135050fb5853478`); several of its own dependencies are git
+  dependencies too. Edition 2024, rust-version 1.95. The moving `nightly` tag is not a release.
+- **Build.** Needs `protoc` (the build script downloads an x64 one on Windows only); `ring` needs
+  clang on `aarch64-pc-windows-msvc`; on x86/x64 Windows `thunk-rs` downloads VC-LTL/YY-Thunks and
+  WinDivert is compiled from C. The `kcp` feature needs libclang. v2.7.0 links `Packet` only with
+  `faketcp`.
+- **Features.** TUN is a feature and can be left out (untested upstream on Windows and macOS).
+  Without `wireguard`, `aes-gcm` or `openssl-crypto` the network cipher silently falls back to
+  XOR.
+- **Embedding API.** `easytier::instance::factory::create_native_instance(TomlConfig)` →
+  `start()` / `stop()`; `route_snapshots()`, `peer_snapshots()`, `node_snapshot()`,
+  `add_connector()`. The data plane: `data_plane_tcp_connect`, `data_plane_tcp_bind`,
+  `data_plane_udp_bind` return tokio streams over the virtual network (IPv4 only, 128 KiB
+  buffers, smoltcp without congestion control); `accept()` reports the peer's virtual address;
+  streams close when the node's IPv4 changes.
+- **`no_tun` inbound.** Packets to the node's own virtual IPv4 terminate in smoltcp (16 KiB
+  window) and are forwarded to `127.0.0.1:<same port>`, so every loopback service is reachable from
+  the network unless `tcp_whitelist` / `udp_whitelist` restrict it; the application sees the caller
+  as `127.0.0.1`. Inbound needs an IPv4 (static or DHCP; DHCP assigns once a peer route exists).
+- **Peers and routes.** Route entries carry `inst_id` (the configured `instance_id`),
+  `hostname` (control characters stripped, at most 32 characters), IPv4, NAT type, version and
+  feature flags; `peer_id` changes every run. Only reachable peers are listed; unreachable entries
+  are purged after 90 s. There is no free-form metadata field.
+- **Network secret.** Legacy mode checks membership with a non-cryptographic hash of name +
+  secret (sent in the first handshake, also to public servers, so weak secrets can be guessed
+  offline) and encrypts with one static AES-128-GCM key per network, without forward secrecy.
+  Relays forward ciphertext. Secure mode (Noise per link) must match across the whole network;
+  stock public servers likely refuse it.
+- **Server URLs.**
+
+| Scheme | Default port | Notes |
+|---|---|---|
+| `tcp`, `udp` | 11010 | |
+| `wg` | 11011 | |
+| `quic` | 11012 | |
+| `faketcp` | 11013 | needs the `faketcp` feature |
+| `ws`, `wss` | 80, 443 | |
+| `http`, `https` | — | connector only: follows a redirect or reads a list of URLs |
+| `txt` | — | connector only: a DNS TXT record of URLs |
+| `srv` | — | connector only: `_easytier._<proto>.<domain>` |
+
+- **Public servers.** A public server outside network N joins it as a `PublicServer_…` peer,
+  always relays RPC and relays data unless it is configured not to; nodes of N try UDP hole
+  punching toward every reachable peer they are not directly connected to.
+
+## RustDesk 1.5.0
+
+| Module | License status | Kyokai's use |
+|---|---|---|
+| repository | AGPL-3.0 | vendored files keep their notices |
+| `libs/scrap` | upstream scrap was MIT; RustDesk's additions are AGPL | the Windows DXGI capturer, decoupled |
+| `libs/enigo` | MIT file from upstream enigo, with RustDesk changes | logic for virtual-desktop moves and scancodes |
+| `libs/clipboard` | AGPL, plus Apache-2.0 C code from FreeRDP | not used (file copy over RDP) |
+| `libs/hbb_common` | no license grant | never copied |
+| `rustdesk-org/hwcodec` | no license grant | never copied |
+
+- `libs/scrap` imports `hbb_common` and `libs/base` and reads RustDesk's configuration store; it
+  cannot be used as a crate. Windows capture is DXGI Desktop Duplication with HDR tone mapping and
+  a GDI fallback; rotated screens go through libyuv. macOS capture is CGDisplayStream, obsoleted in
+  the macOS 15 SDK, with black frames reported on macOS 15 and 26.
+- Codecs: libvpx (VP8/VP9), aom (AV1) and libyuv through vcpkg, plus FFmpeg-based hardware codecs;
+  Windows ARM64 builds (shipped since 1.4.8) encode in software only.
+- Upstream `enigo` 0.6.1 (MIT) scales absolute moves to the primary monitor only; RustDesk's fork
+  spreads them over the virtual desktop with `MOUSEEVENTF_VIRTUALDESK`.
+- macOS permissions: `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess`,
+  `AXIsProcessTrustedWithOptions`, `IOHIDCheckAccess` / `IOHIDRequestAccess`.
+- Without its SYSTEM service RustDesk cannot capture the UAC secure desktop or the lock screen, and
+  `SendInput` into elevated windows is dropped (UIPI).
+
+## OpenAI computer use
+
+Verified against the computer use guide and the openai-python types on 2026-10-16.
+
+- Responses API with `tools: [{"type": "computer"}]` (no other fields). Models named by the guide:
+  `gpt-6.1-sol` for the computer tool; `gpt-6-astra` prefers code execution, which Kyokai does not
+  use. `computer-use-preview` remains for older integrations.
+- Output items `computer_call`: `id`, `call_id`, `status`, `pending_safety_checks` (`id`, `code`,
+  `message`), and the actions as an ordered `actions` list (a legacy single `action` also exists).
+- Actions: `click` (`button`: left, right, wheel, back, forward; `x`, `y`; optional `keys`),
+  `double_click` (`x`, `y`, `keys`), `drag` (`path` of points, `keys`), `keypress` (`keys`), `move`
+  (`x`, `y`, `keys`), `screenshot`, `scroll` (`x`, `y`, `scroll_x`, `scroll_y`, `keys`), `type`
+  (`text`), `wait`.
+- The reply is a `computer_call_output` with the `call_id`, `output: {type: "computer_screenshot",
+  image_url: "data:image/png;base64,…"}` and, after approval, `acknowledged_safety_checks`; the
+  request carries `previous_response_id`. Coordinates are in the screenshot's pixel space; a
+  downscaled screenshot needs its coordinates mapped back.
+
+## Claude computer use
+
+Verified against Anthropic's computer use documentation and API reference on 2026-10-16.
+
+- Tool entry `{"type": "computer_toolset_20260801"}`: GA on the Claude API, no beta header, no
+  `name` and no display size; optional `configs` turns members off (all 17 are on); it cannot share
+  a request with `computer_20251124`. Claude Opus 5.5 and Sonnet 5.5 accept only the toolset on the
+  Claude API. Models: Fable 5.1, Fable 5, Opus 5.5, Opus 5, Sonnet 5.5, Sonnet 5, Opus 4.8, Haiku
+  5.5.
+- Calls are `tool_use` blocks whose `name` is the member, with `"toolset_name": "computer"`;
+  several can come in one turn and run in order. Every block gets one `tool_result` in the next user
+  message, each echoing `"toolset_name": "computer"`; after the first failure the rest are answered
+  with `is_error` ("Not executed …"). `screenshot` and `zoom` return images, `cursor_position`
+  text, the rest a short `OK`.
+
+| Member | Input |
+|---|---|
+| `screenshot`, `cursor_position`, `left_mouse_down`, `left_mouse_up` | none |
+| `zoom` | `region` `[x0, y0, x1, y1]` |
+| `left_click`, `right_click`, `middle_click`, `double_click`, `triple_click` | optional `coordinate` `[x, y]`, optional modifier `text` (`shift`, `ctrl`, `alt`, `super`, joined with `+`) |
+| `left_click_drag` | `start_coordinate`, `coordinate`, optional `text` |
+| `mouse_move` | `coordinate` |
+| `scroll` | `scroll_direction` (up, down, left, right), `scroll_amount`, optional `coordinate`, `text` |
+| `type` | `text` |
+| `key` | `text` (`Return`, `ctrl+s`, `alt+Tab`), optional `repeat` 1–100 |
+| `hold_key` | `text`, `duration` seconds up to 300 |
+| `wait` | `duration` seconds up to 300 |
+
+- Coordinates are in the pixel space of the full screenshots returned, also after `zoom`. Images:
+  at most 2576 px on the long edge and about 3.75 MP, never downscaled by the API; once a request
+  holds more than 20 images, at most 2000 px per side. Recommended: about 1280×720 to 1366×768; a
+  macOS Retina capture is downscaled or its coordinates halved.
+- The history is append-only: editing or removing an earlier turn (such as pruning old
+  screenshots) invalidates later thinking blocks and is rejected on new accounts; context is
+  bounded with server-side tool-result clearing (`context-management-2025-06-27`) or compaction.
+- Claude Opus 5.5: adaptive thinking cannot be turned off, effort defaults to `medium`, forced
+  `tool_choice` returns 400, refusals arrive as `stop_reason: "refusal"` with `stop_details`;
+  server-side fallbacks (`server-side-fallback-2026-07-01`, `fallbacks: "default"`) retry on
+  another model. Progress notes between tool calls come back as `thinking` blocks, readable with
+  `thinking.display: "updates"` (`thinking-display-updates-2026-08-18`).
+- Classifiers scan returned screenshots for prompt injection and steer the model to confirm with
+  the user; Anthropic still asks for human confirmation of consequential actions.
+
+## Operating systems
+
+- **macOS:** since Sequoia, apps that capture the screen without the system picker are asked to
+  re-confirm monthly; the "Persistent Content Capture" entitlement that avoids it needs Apple's
+  approval. Privacy grants follow the code signature: an ad-hoc signature changes with every build.
+- **Windows:** a normal user process captures and controls the normal desktop only; elevated
+  windows (UIPI), the UAC secure desktop and the lock screen need a SYSTEM process.

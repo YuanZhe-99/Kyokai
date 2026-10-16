@@ -1,0 +1,15 @@
+{
+  "easytier": {
+    "repository": "EasyTier/EasyTier",
+    "tag": "v2.7.0",
+    "commit": "8b7f1f0196edb5b580829ed5f135050fb5853478",
+    "license": "LGPL-3.0",
+    "prerelease": true
+  },
+  "rustdesk": {
+    "repository": "rustdesk/rustdesk",
+    "tag": "1.5.0",
+    "commit": "fada664df7a294d1d1a9ca3e7cd3637069122f17",
+    "license": "AGPL-3.0"
+  }
+}

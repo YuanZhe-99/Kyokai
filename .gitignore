@@ -1,0 +1,19 @@
+/build/
+/.mygo/
+mygo_windows_*.syso
+/.dev/
+# Build outputs: the Rust core and the engine (scripts/build.sh)
+/resources/*-*/
+/core/target/
+/spikes/*/target/
+/spikes/*/.dev/
+# Stray build outputs at the repository root
+/kyokai
+/kyokai.exe
+/kyokai-svc
+/kyokai-svc.exe
+# Signing material never lives in the repository
+*.p12
+*.pfx
+*.key
+*.pem

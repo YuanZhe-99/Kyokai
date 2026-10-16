@@ -1,0 +1,5 @@
+# LF everywhere, also in Windows working trees (gofmt and rustfmt expect it).
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary

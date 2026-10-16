@@ -1,0 +1,28 @@
+{
+  "name": "Kyokai",
+  "identifier": "com.yuanzhe.kyokai",
+  "version": "0.1.0",
+  "copyright": "Copyright (C) 2026 YuanZhe",
+  "main": "./cmd/kyokai",
+  "out": "build",
+  "i18n": {
+    "dir": "locales",
+    "source": "en"
+  },
+  "description": "AI Computer Use across devices",
+  "updates": {
+    "publicKey": "hxYzzr97hrfpwdw1aJBeJeiHpHBWZNtFE98WOi7JjmY=",
+    "github": "YuanZhe-99/Kyokai",
+    "changelog": "doc/en-us/version-history.md"
+  },
+  "macos": {
+    "minimumSystemVersion": "14.0",
+    "entitlements": "packaging/macos/app.entitlements",
+    "helperEntitlements": {
+      "bin/kyokai-svc": "packaging/macos/engine.entitlements"
+    },
+    "infoPlist": {
+      "NSLocalNetworkUsageDescription": "Kyokai connects directly to your other devices on this network."
+    }
+  }
+}

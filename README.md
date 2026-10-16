@@ -1,0 +1,107 @@
+# Kyokai (鏡界)
+
+**AI Computer Use Across Devices**
+
+Kyokai is a cross-platform Computer Use application that enables people and AI agents to interact
+with computers across devices. It combines secure peer-to-peer connectivity, direct human control,
+and host-side AI execution in one unified experience.
+
+> **Status:** early development. Version 0.1.0 is the foundation (the app, its engine, the device
+> identity); connections, manual control and AI tasks arrive in the following milestones. Nothing
+> here is ready for use yet. See [PLAN.md](PLAN.md) and the [platform notes](doc/en-us/platform-notes.md).
+
+## Features
+
+| Feature | Status |
+|---|---|
+| Persistent Device ID backed by a cryptographic device key | in progress (0.1.0) |
+| Temporary and permanent host passwords | temporary password in progress; permanent password planned |
+| Connect by Device ID + password over a standard EasyTier network, no IP addresses | planned |
+| Manual Computer Use: view the host screen, mouse, keyboard, monitors | planned |
+| AI Computer Use with OpenAI or Claude, executed on the host with its own key | planned |
+| Human take-over, pause, cancel and emergency stop | planned |
+| Optional privileged helper for UAC prompts, the lock screen and unattended access | planned |
+| English, Simplified Chinese, Traditional Chinese, Japanese | in progress |
+
+## AI Computer Use
+
+You send a task in plain language to another computer. That computer — the host — captures its own
+screen, asks its configured AI provider (OpenAI or Claude) for the next actions, checks every action
+against its own policies, and performs the allowed ones itself. The controller never sees the
+host's API key. The host user can always take over or stop the task.
+
+## Manual Computer Use
+
+The same connection shows the host's screen and forwards your mouse and keyboard, with monitor
+selection and quality settings. It works without any AI provider configured.
+
+## Device ID & Password
+
+Every installation has a persistent Device ID such as `482 916 735`, derived from a device key that
+stays on the device. A host offers a temporary password (new on every start by default) and,
+optionally, a permanent password. Both are checked with a password-authenticated key exchange, so
+neither is ever sent.
+
+## EasyTier Network Configuration
+
+Kyokai embeds [EasyTier](https://github.com/EasyTier/EasyTier) and connects through standard,
+unmodified EasyTier servers: you enter the server address(es), the network name and the network
+secret. No TUN device, no administrator rights and no Kyokai server are needed. Membership of the
+network grants nothing by itself: every connection still needs the host's password and permission.
+
+## OpenAI and Claude Configuration
+
+The host stores its own provider key and model in its settings. Controllers only see the model
+name.
+
+## Security & Privacy
+
+- Secrets (device key, passwords, network secret, API keys) are kept encrypted with the operating
+  system's credential store and never logged or sent.
+- The host confirms who connects and what they may do; viewing does not imply control, control does
+  not imply AI tasks.
+- Screen content is treated as untrusted data; the AI cannot grant itself permissions.
+- By default Kyokai starts nothing at boot, installs no service and never asks for administrator
+  rights. The optional privileged helper asks once, when you install it.
+
+## Getting Started
+
+Builds are not published yet. See [Building from Source](#building-from-source).
+
+## Building from Source
+
+Requirements: Go 1.27.2, Rust 1.99.1 (`rust-toolchain.toml`), and on Windows Visual Studio
+2026 with the C++ tools for your architecture plus the "C++ Clang Compiler for Windows" component;
+on macOS Xcode command line tools. Details: [doc/en-us/development.md](doc/en-us/development.md).
+
+```bash
+scripts/build.sh               # this platform: Rust core, engine, then `mygo build`
+```
+
+## GitHub Actions
+
+Continuous integration and releases run on GitHub Actions (workflows arrive with 0.1.0).
+
+## Architecture
+
+A Go + [MyGo](https://github.com/egoist/mygo) GUI, a headless engine (`kyokai-svc`) and a Rust core
+library loaded by both; the engine embeds EasyTier. The architecture document arrives with 0.1.0.
+
+## Documentation
+
+- [English documentation](doc/en-us/README.md) · [中文文档](doc/zh-cn/README.md)
+
+## Acknowledgements
+
+- **[RustDesk](https://github.com/rustdesk/rustdesk)** — for its mature open-source desktop
+  capture, input control, video processing, and cross-platform desktop technologies.
+- **[EasyTier](https://github.com/EasyTier/EasyTier)** — for its open-source peer-to-peer
+  networking, NAT traversal, and connectivity technologies.
+- **[MyGo](https://github.com/egoist/mygo)** — for its cross-platform desktop application
+  framework and application integration capabilities.
+
+## Open Source Licenses
+
+Kyokai is licensed under [AGPL-3.0-only](LICENSE). Third-party components and their licenses are
+listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
+[doc/en-us/third-party.md](doc/en-us/third-party.md).

@@ -1,0 +1,5 @@
+# The Windows core links the C runtime statically, so it loads on machines
+# without the Visual C++ redistributable and resolves no runtime DLL through
+# the search path.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]
