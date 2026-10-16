@@ -23,6 +23,7 @@ Studio 2026）：
 | 安装包 | `scripts/build.sh windows/arm64 windows/amd64` 为两者构建 `Kyokai.exe` 与按用户安装的安装包 |
 | S2 画面可行性验证 | 来自 Rust 的 1920×1080 RGBA 帧经 `ui.Bitmap` 显示在 500 行列表旁，59–60 fps；画面显示约占一个核心的 21–25 % |
 | S3-lite 采集可行性验证 | 复用并解除 `hbb_common` 耦合的 RustDesk DXGI 采集器以约 60 fps 采集 4K 显示器；转换为 RGBA 并缩放到 1080p 约占一个核心的 15 % |
+| S1 EasyTier 可行性验证 | v2.7.0 进程内内嵌、无 TUN、无需管理员：经原版服务器双向数据面可用，白名单有效，可干净重启；UDP 打洞未测（对称型 NAT） |
 | `cargo deny` | 把 VS 的 clang 加入 `PATH` 后通过（advisories、bans、licenses、sources） |
 
 ## 已知限制

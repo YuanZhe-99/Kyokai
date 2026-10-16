@@ -7,6 +7,6 @@
 - 基础：Rust 核心（系统凭据存储保护的机密存储、持久的设备身份与设备 ID、临时密码）及带版本的 C ABI；作为界面用户级
   子进程运行并提供本地 API 的 `kyokai-svc` 引擎；界面（主页、设置、托盘、四种语言、签名的应用更新）；CI 与发布工作流；
   Windows 安装包。
-- Phase 0：S2 画面与 S3-lite 采集可行性验证在 Windows ARM64 上通过。
+- Phase 0：S1 EasyTier、S2 画面与 S3-lite 采集可行性验证在 Windows ARM64 上通过。
 - MyGo v0.5.5 / Rust 1.99.1；为后续阶段固定 EasyTier v2.7.0（预发布版，提交 `8b7f1f0`）与 RustDesk 1.5.0
   （提交 `fada664`）（2026-10-16 检查）。

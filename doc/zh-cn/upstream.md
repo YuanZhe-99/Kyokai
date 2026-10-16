@@ -76,6 +76,12 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
 
 - **公共服务器。** 不属于网络 N 的公共服务器以 `PublicServer_…` 节点身份加入 N，始终中继 RPC，除非另行配置也会中继数据；
   N 中的节点会对所有可达但未直连的节点尝试 UDP 打洞。
+- **实测（S1，Windows ARM64，`spikes/s1-easytier`）。** 两个内嵌节点加一个原版 v2.7.0 `easytier-core`（也以外部网络公共服务器方式）：
+  路由带有 `inst_id` 与 hostname；`data_plane_tcp_bind/connect` 经 tcp、udp、ws、quic、wg 连接器双向可用，`accept()` 给出对端虚拟地址；
+  `tcp_whitelist` 拦截其他端口（表现为连接超时）且不影响出站；十次停止/启动无泄漏；无需管理员、无 TUN、无 `wintun`/`Packet.dll`。
+  两个节点可以宣告同一个 `inst_id` 且都可路由，因此路由只是线索，绝不是身份。同机吞吐约 1 Gbit/s（中继）、1.4 Gbit/s（直连）。
+  v2.7.0 中不可用的加密算法会报错，不会静默退化为 XOR。构建：`ring` 需要 PATH 中有 clang；未设 `PROTOC` 时会未经校验地自动下载 `protoc`；
+  x64 上 `thunk-rs` 会下载 VC-LTL 并把程序改为链接 `msvcrt.dll`。此处未证实：UDP 打洞（本网络两端都是对称型 NAT）。
 
 ## RustDesk 1.5.0
 

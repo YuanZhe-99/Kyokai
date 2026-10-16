@@ -100,6 +100,17 @@ when they run; anything not listed here is not assumed.
 - **Public servers.** A public server outside network N joins it as a `PublicServer_…` peer,
   always relays RPC and relays data unless it is configured not to; nodes of N try UDP hole
   punching toward every reachable peer they are not directly connected to.
+- **Measured (S1, Windows ARM64, `spikes/s1-easytier`).** Two embedded nodes and a stock v2.7.0
+  `easytier-core` (also as a foreign-network public server): routes carry `inst_id` and hostname;
+  `data_plane_tcp_bind/connect` works both ways over tcp, udp, ws, quic and wg connectors and
+  `accept()` reports the peer's virtual address; `tcp_whitelist` blocks other ports (as a connect
+  timeout) without breaking outbound; ten stop/start cycles leak nothing; no admin, no TUN, no
+  `wintun`/`Packet.dll`. Two nodes may announce the same `inst_id` and both stay routable, so routes
+  are hints, never identity. Same-machine throughput about 1 Gbit/s relayed, 1.4 Gbit/s direct.
+  At v2.7.0 an unavailable cipher is an error, not a silent XOR fallback. Build: clang on PATH for
+  `ring`; `protoc` is auto-downloaded unverified unless `PROTOC` is set; on x64 `thunk-rs` downloads
+  VC-LTL and relinks the binary against `msvcrt.dll`. Not proven here: hole punching (this network
+  is symmetric NAT on both sides).
 
 ## RustDesk 1.5.0
 

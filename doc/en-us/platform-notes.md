@@ -23,6 +23,7 @@ Studio 2026 without its Clang component):
 | Packages | `scripts/build.sh windows/arm64 windows/amd64` builds `Kyokai.exe` and the per-user installer for both |
 | S2 viewer spike | 1920×1080 RGBA frames from Rust shown through `ui.Bitmap` next to a 500-row list at 59–60 fps; the viewer costs about 21–25 % of one core |
 | S3-lite capture spike | RustDesk's DXGI capturer, vendored and decoupled from `hbb_common`, captures the 4K display at about 60 fps; converting to RGBA and scaling to 1080p costs about 15 % of one core |
+| S1 EasyTier spike | v2.7.0 embedded in-process, no TUN, no admin: data plane both ways through a stock server, whitelist holds, clean restarts; hole punching untested (symmetric NAT) |
 | `cargo deny` | passes (advisories, bans, licenses, sources) once VS's clang is on `PATH` |
 
 ## Known limitations

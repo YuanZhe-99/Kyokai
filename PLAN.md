@@ -46,7 +46,6 @@ The active plan: milestones, done-when criteria and open decisions. Long-lived c
 
 | Spike | Done when | Fallback |
 |---|---|---|
-| S1 EasyTier | two embedded nodes + an official core: routes carry `inst_id`/hostname, data-plane both ways, whitelist holds, duplicate `inst_id` behavior known, clean restart, minimal features build on ARM64 and x64 | sidecar core with `no_tun` + whitelist |
 | S4 providers | OpenAI and Claude two-turn round trips accepted with synthetic screenshots; fixtures saved | adapter fixes before Phase 4 |
 | S5 macOS | self-signed signing through `mygo build` (hardened runtime, timestamp), dylib loads, privacy grant survives an update, engine child attributed to Kyokai, Windows update with the DLL loaded | timestamp shim, upstream MyGo option, or ad hoc |
 
@@ -106,6 +105,10 @@ User decision (2026-10-16): RustDesk's manual-control systems are reused, decoup
 
 ## Open decisions
 
+- EasyTier on x64 Windows relinks against `msvcrt.dll` through `thunk-rs` (VC-LTL), against the
+  plan's static CRT; pin `PROTOC` to a vetted binary — before Phase 2.
+- Hole punching through real NATs (S1 could not test it) — Phase 2 with the Mac.
+- Worth a spike: EasyTier v2.7's `easytier-go` (the wasm core inside a pure-Go process).
 - Video codec (OS-native H.264 vs libvpx VP9) — start of Phase 3.
 - EasyTier listeners vs. hole punching only (firewall and Local Network prompts) — S1 / Phase 2.
 - Video over smoltcp TCP vs. a UDP data plane with Kyokai congestion control — Phase 2 measurements.

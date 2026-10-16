@@ -1,0 +1,40 @@
+# S1 feasibility spike: embed EasyTier v2.7.0 in-process as Kyokai's P2P transport.
+# Deliberately its own workspace (own Cargo.lock), outside the product build.
+[workspace]
+resolver = "2"
+members = ["."]
+
+[package]
+name = "s1-easytier"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# v2.7.0 is a lightweight tag pointing at this commit (prerelease, 2026-10-06).
+# Only what app-level P2P needs:
+#   smoltcp    -> in-process userspace data plane (data_plane_tcp_bind/connect)
+#   aes-gcm    -> RustCrypto AES-GCM (default algorithm; unavailable => config error)
+#   websocket  -> ws:// and wss:// connectors
+#   quic       -> quic:// connector
+#   wireguard  -> wg:// connector (also pulls vpn-portal + ring-crypto)
+#   dhcp-ipv4  -> virtual IPv4 from the network
+# tcp/udp connectors and UDP hole punching are always compiled in.
+easytier = { git = "https://github.com/EasyTier/EasyTier", rev = "8b7f1f0196edb5b580829ed5f135050fb5853478", default-features = false, features = [
+    "smoltcp",
+    "aes-gcm",
+    "dhcp-ipv4",
+] }
+easytier-core = { git = "https://github.com/EasyTier/EasyTier", rev = "8b7f1f0196edb5b580829ed5f135050fb5853478", default-features = false }
+anyhow = "1"
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "process"] }
+uuid = { version = "1.26", features = ["v5"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[features]
+# `--no-default-features` builds the tcp/udp-only variant for footprint comparison.
+default = ["extra-connectors"]
+extra-connectors = ["easytier/websocket", "easytier/quic", "easytier/wireguard"]
+
+[profile.release]
+debug = 1
