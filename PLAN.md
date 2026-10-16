@@ -137,6 +137,14 @@ OS APIs (whose vendors license H.264 / H.265):
 Host and controller exchange capability lists and use the best common codec; without hardware
 (e.g. Windows N editions) they fall back to VP9.
 
+RustDesk's QoS stays codec-independent: frame rate is paced by the capture loop and unchanged frames
+are skipped before encoding; each encoder implements RustDesk's `EncoderApi` contract (`set_quality`
+ratio → bitrate while running, `bitrate`, forced key frame, low-latency mode). Media Foundation
+(`CODECAPI_AVEncCommonMeanBitRate`, `AVEncVideoForceKeyFrame`, `AVLowLatencyMode`) and
+VideoToolbox (`AverageBitRate`, `ForceKeyFrame`, `RealTime`) provide these; an encoder that ignores
+a live bitrate change is recreated. Full-colour 4:4:4 stays a software VP9 / AV1 option, as in
+RustDesk. Done when each encoder follows the QoS on two machines.
+
 ## Decided (2026-10-16)
 
 - STUN: enable EasyTier's `dns-resolver` feature (hickory, no magic-DNS server); done when the log
@@ -149,12 +157,10 @@ Host and controller exchange capability lists and use the best common codec; wit
   MyGo gains an option to skip the timestamp.
 - The `easytier-go` spike is dropped.
 
-## Open decisions (recommendation awaiting the user)
-
-- Windows x64 C runtime: EasyTier's build runs `thunk-rs`, which downloads VC-LTL / YY-Thunks
-  unverified (needs `7z`) and relinks `kyokai-svc` against `msvcrt.dll` for Windows 7 support.
-  Recommended: turn it off so x64 uses the static CRT like ARM64 — before Phase 2.
-- `protoc`: EasyTier downloads an unverified release candidate when none is found. Recommended: a
-  pinned stable release with its SHA-256 in the repo, passed as `PROTOC` — before Phase 2.
+- Windows 7 is not supported: EasyTier's `thunk-rs` step (unverified VC-LTL / YY-Thunks
+  downloads, `7z`, relink against `msvcrt.dll`) is turned off, so x64 uses the static CRT like
+  ARM64 — before Phase 2.
+- `protoc`: a pinned stable release with its SHA-256 in the repo, verified and passed as `PROTOC`,
+  never EasyTier's unverified download — before Phase 2.
 - Video inside the EasyTier tunnel: `data_plane_tcp` (smoltcp, no congestion control) first; if
   real-link latency is poor, `data_plane_udp` with KCP like RustDesk's direct path — Phase 2.
