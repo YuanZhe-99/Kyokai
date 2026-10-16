@@ -1,0 +1,18 @@
+{
+  "_source": "Hand-written: the legacy single `action` field plus a pending safety check (openai-python ResponseComputerToolCall.action / PendingSafetyCheck); not a live capture.",
+  "id": "resp_doc_legacy",
+  "object": "response",
+  "status": "completed",
+  "output": [
+    {
+      "type": "computer_call",
+      "id": "cu_doc_2",
+      "call_id": "call_legacy",
+      "status": "completed",
+      "action": {"type": "click", "button": "right", "x": 700, "y": 100},
+      "pending_safety_checks": [
+        {"id": "cu_sc_1", "code": "malicious_instructions", "message": "Instructions on screen may be adversarial."}
+      ]
+    }
+  ]
+}

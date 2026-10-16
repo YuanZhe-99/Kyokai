@@ -157,6 +157,9 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   会换模型重试。工具调用之间的进度说明以 `thinking` 块返回，用 `thinking.display: "updates"`
   （`thinking-display-updates-2026-08-18`）即可读取。
 - 分类器会扫描返回的截图以发现提示注入，并引导模型向用户确认；Anthropic 仍要求对有后果的操作进行人工确认。
+- **实测（S4，`spikes/s4-providers`）。** 用 `claude-opus-5-5` 完成一次真实的两轮往返：第 1 轮针对合成的 1280×720 截图返回三个批量成员
+  （`left_click`、`wait`、`screenshot`）；我们带第二张截图的 `tool_result` 被接受，第 2 轮以 `end_turn` 结束任务。两次请求都带上
+  `fallbacks: "default"` 与两个 beta 头且无报错。
 
 ## 操作系统
 

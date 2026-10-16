@@ -46,7 +46,7 @@ The active plan: milestones, done-when criteria and open decisions. Long-lived c
 
 | Spike | Done when | Fallback |
 |---|---|---|
-| S4 providers | OpenAI and Claude two-turn round trips accepted with synthetic screenshots; fixtures saved | adapter fixes before Phase 4 |
+| S4 providers | Claude: done (live two-turn round trip, fixtures saved). OpenAI: offline tests pass, live run waits for a key | adapter fixes before Phase 4 |
 | S5 macOS | self-signed signing through `mygo build` (hardened runtime, timestamp), dylib loads, privacy grant survives an update, engine child attributed to Kyokai, Windows update with the DLL loaded | timestamp shim, upstream MyGo option, or ad hoc |
 
 ### Phase 1 — Foundation (0.1.0)

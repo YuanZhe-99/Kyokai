@@ -201,6 +201,10 @@ Verified against Anthropic's computer use documentation and API reference on 202
   `thinking.display: "updates"` (`thinking-display-updates-2026-08-18`).
 - Classifiers scan returned screenshots for prompt injection and steer the model to confirm with
   the user; Anthropic still asks for human confirmation of consequential actions.
+- **Measured (S4, `spikes/s4-providers`).** A live two-turn round trip with `claude-opus-5-5`: turn 1
+  returned three batched members (`left_click`, `wait`, `screenshot`) for a synthetic 1280×720
+  screenshot; our `tool_result`s with the second screenshot were accepted and turn 2 ended the task
+  (`end_turn`). Both requests carried `fallbacks: "default"` and the two beta headers without error.
 
 ## Operating systems
 
