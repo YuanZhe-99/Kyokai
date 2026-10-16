@@ -112,6 +112,25 @@ jobs:
           security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
           security default-keychain -d user -s "$kc"
 
+      # Diagnostic: with CGO_ENABLED=0 (how MyGo builds the app) kyokai_start
+      # hangs on macOS; with cgo it returns at once. Sample the native stacks
+      # of the hung test so the blocking call shows.
+      - name: Core start diagnostic (macOS, no cgo)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        shell: bash
+        run: |
+          CGO_ENABLED=0 go test -c -o coretest ./internal/core
+          KYOKAI_CORE_LIB="$PWD/core/target/release/libkyokai_core.dylib" ./coretest -test.run TestRealLibrary -test.v > coretest.log 2>&1 &
+          pid=$!
+          for _ in $(seq 1 30); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+          if kill -0 $pid 2>/dev/null; then
+            sample $pid 5 -file sample.txt > /dev/null 2>&1 || true
+            kill -9 $pid
+            sed -n '/^Call graph:/,/^Total number in stack/p' sample.txt | cut -c1-200 | head -250
+          else
+            echo "finished on its own"; cat coretest.log
+          fi
       - name: Go tests with the real core (ABI smoke test)
         shell: bash
         run: |

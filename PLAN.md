@@ -97,8 +97,8 @@ RustDesk's own controls, all to be offered; the host-side adaptation reuses Rust
   frame rate); a frame-rate cap (RustDesk: 30 by default, up to 120).
 - Automatic adaptation: bitrate and frame rate follow measured delay and loss; key frame on loss;
   unchanged frames are skipped.
-- Codec preference (Auto / the codecs Kyokai ships) and a hardware-codec switch; full-colour 4:4:4
-  where the codec supports it.
+- Codec preference (Auto / each codec below) and a hardware-codec switch; full-colour 4:4:4 where
+  the codec supports it.
 - View: original size, scale to fit, full screen; remote cursor shown or not; monitor selection.
 - Per-session: clipboard on/off and lock after the session ends (audio and file transfer later).
 - Shown to the controller: latency, frame rate, bitrate, codec and direct-vs-relay path.
@@ -123,16 +123,38 @@ User decision (2026-10-16): RustDesk's manual-control systems are reused, decoup
 - Each vendored file keeps its header, gains a "Modified by Kyokai" note and an entry in
   `doc/en-us/third-party.md`.
 
-## Open decisions
+## Phase 3 codecs: every mainstream codec, hardware where available
 
-- EasyTier on x64 Windows relinks against `msvcrt.dll` through `thunk-rs` (VC-LTL), against the
-  plan's static CRT; pin `PROTOC` to a vetted binary — before Phase 2.
-- Hole punching through real NATs (S1 could not test it) — Phase 2 with the Mac.
-- Which EasyTier feature brings back TXT DNS resolution for STUN (missing in the minimal set) —
-  before Phase 2.
-- Worth a spike: EasyTier v2.7's `easytier-go` (the wasm core inside a pure-Go process).
-- Video codec (OS-native H.264 vs libvpx VP9) — start of Phase 3.
-- EasyTier listeners vs. hole punching only (firewall and Local Network prompts) — S1 / Phase 2.
-- Video over smoltcp TCP vs. a UDP data plane with Kyokai congestion control — Phase 2 measurements.
-- Privilege separation of the network-facing host role in helper modes — Phase 6.
-- macOS timestamping with the self-signed identity — S5.
+User decision (2026-10-16). RustDesk's `hwcodec` carries no license, so the hardware path uses the
+OS APIs (whose vendors license H.264 / H.265):
+
+| Codec | Implementation |
+|---|---|
+| VP8 / VP9 | software libvpx, RustDesk's `vpxcodec.rs` / `vpx.rs` |
+| AV1 | software libaom (RustDesk's `aom.rs`); hardware where the device has it |
+| H.264 / H.265 | hardware through Media Foundation (Windows; NVIDIA / AMD / Intel / Qualcomm MFTs) and VideoToolbox (macOS) |
+
+Host and controller exchange capability lists and use the best common codec; without hardware
+(e.g. Windows N editions) they fall back to VP9.
+
+## Decided (2026-10-16)
+
+- STUN: enable EasyTier's `dns-resolver` feature (hickory, no magic-DNS server); done when the log
+  shows a NAT type found through STUN — before Phase 2.
+- No EasyTier listeners by default (outbound + hole punching, no firewall or Local Network
+  prompt); a listener option only if the two-machine test shows LAN paths need it — Phase 2.
+- Hole punching through real NATs is tested with the two machines on different networks — Phase 2.
+- Privilege separation of the network-facing host role in helper modes — decided in Phase 6.
+- macOS timestamping with the self-signed identity — tested in S5; if Apple's service refuses,
+  MyGo gains an option to skip the timestamp.
+- The `easytier-go` spike is dropped.
+
+## Open decisions (recommendation awaiting the user)
+
+- Windows x64 C runtime: EasyTier's build runs `thunk-rs`, which downloads VC-LTL / YY-Thunks
+  unverified (needs `7z`) and relinks `kyokai-svc` against `msvcrt.dll` for Windows 7 support.
+  Recommended: turn it off so x64 uses the static CRT like ARM64 — before Phase 2.
+- `protoc`: EasyTier downloads an unverified release candidate when none is found. Recommended: a
+  pinned stable release with its SHA-256 in the repo, passed as `PROTOC` — before Phase 2.
+- Video inside the EasyTier tunnel: `data_plane_tcp` (smoltcp, no congestion control) first; if
+  real-link latency is poor, `data_plane_udp` with KCP like RustDesk's direct path — Phase 2.
