@@ -84,6 +84,26 @@ RustDesk's own controls, all to be offered; the host-side adaptation reuses Rust
 - Per-session: clipboard on/off and lock after the session ends (audio and file transfer later).
 - Shown to the controller: latency, frame rate, bitrate, codec and direct-vs-relay path.
 
+## Phase 3 manual control: reuse RustDesk's input stack
+
+User decision (2026-10-16): RustDesk's manual-control systems are reused, decoupled from
+`hbb_common` the way S3-lite decoupled the capturer (wire types become Kyokai's own protobuf):
+
+- **Controller keyboard:** `src/keyboard.rs` — the grab loop on top of `rustdesk-org/rdev` (MIT;
+  low-level hook while the viewer has focus), and the Map / Translate / Legacy keyboard modes with
+  their numpad, lock-key and layout handling. This replaces MyGo's key events for the viewer (no
+  scancodes, consumed shortcuts) instead of new hook code.
+- **Host input:** `src/server/input_service.rs` — key events per mode, lock-mode (CapsLock /
+  NumLock) sync, mouse with virtual-desktop coordinates, release of held keys and buttons, cursor
+  shape and position services (the remote cursor), window-focus tracking; injection through
+  RustDesk's `libs/enigo` changes where upstream `enigo` 0.6.1 lacks them.
+- **Session actions** from `src/client.rs` / `src/ui_session_interface.rs`: send Ctrl+Alt+Del (works
+  only with the helper, Phase 6), lock the remote screen, block the host's local input (only while a
+  human controls, never against the host user's take-over), show the remote cursor, keyboard mode
+  choice.
+- Each vendored file keeps its header, gains a "Modified by Kyokai" note and an entry in
+  `doc/en-us/third-party.md`.
+
 ## Open decisions
 
 - Video codec (OS-native H.264 vs libvpx VP9) — start of Phase 3.
