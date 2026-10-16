@@ -97,34 +97,20 @@ jobs:
       - name: Core library
         shell: bash
         run: cargo build --release --manifest-path core/Cargo.toml
-      # Diagnostic: kyokai_start hung when Go called it on macOS. Run the core
-      # test alone; if it is still running after 60 s, sample its native
-      # stacks (they show where the core waits) and stop it.
-      - name: Core start diagnostic (macOS)
+      # The core keeps its master key in the default keychain. A runner's
+      # login keychain can block a write on an access prompt nobody answers,
+      # so the macOS jobs use their own unlocked default keychain.
+      - name: Test keychain (macOS)
         if: runner.os == 'macOS'
-        continue-on-error: true
         shell: bash
         run: |
-          go test -c -o coretest ./internal/core
-          KYOKAI_CORE_LIB="$PWD/core/target/release/libkyokai_core.dylib" ./coretest -test.run TestRealLibrary -test.v > coretest.log 2>&1 &
-          pid=$!
-          for _ in $(seq 1 60); do kill -0 $pid 2>/dev/null || break; sleep 1; done
-          if kill -0 $pid 2>/dev/null; then
-            echo "still running after 60 s: sampling"
-            sample $pid 5 -file sample.txt > /dev/null 2>&1 || true
-            kill -9 $pid
-            grep -nE "kyokai|Sec|security|keychain|Keychain|mach_msg|dispatch|xpc|CFRunLoop|semaphore" sample.txt | head -80
-          else
-            echo "finished on its own"; cat coretest.log
-          fi
-      - uses: actions/upload-artifact@v7
-        if: runner.os == 'macOS' && always()
-        with:
-          name: core-start-sample-${{ matrix.os }}
-          path: |
-            sample.txt
-            coretest.log
-          if-no-files-found: ignore
+          kc="$RUNNER_TEMP/kyokai-test.keychain-db"
+          kcpw=$(openssl rand -hex 16)
+          security create-keychain -p "$kcpw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kcpw" "$kc"
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -d user -s "$kc"
 
       - name: Go tests with the real core (ABI smoke test)
         shell: bash

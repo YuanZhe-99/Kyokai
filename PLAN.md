@@ -33,8 +33,9 @@ The active plan: milestones, done-when criteria and open decisions. Long-lived c
   password and an expiring grant; delegated, audience-bound controller certificates.
 - **Networking:** `instance_id = UUIDv5(device id)`, data-plane bind/connect, loopback whitelists,
   EasyTier treated as an untrusted pipe.
-- **Desktop:** RustDesk's DXGI capturer (decoupled from `hbb_common`) on Windows, ScreenCaptureKit
-  on macOS; enigo + RustDesk's virtual-desktop logic for input; arboard for the clipboard.
+- **Desktop:** RustDesk's platform layers on both systems (see "RustDesk reuse per platform"),
+  decoupled from `hbb_common`; macOS capture is new ScreenCaptureKit code (no CGDisplayStream);
+  arboard for the clipboard.
 - **AI:** append-only Claude history (server-side clearing, never client pruning), per-provider
   screenshot scaling, ordered batches with an approval check before each action.
 - **Secrets:** OS-protected master key + encrypted store; helper stores in SYSTEM / root scope;
@@ -67,6 +68,25 @@ the input-event mapping check of S2 with real keys.
 | 7 Security & reliability | threat model, fuzzing, revocation, lease cleanup, sleep / lock / display changes, privacy masking, resource limits, log audit | §26 Authorization and Safety complete |
 | 8 Release path | tagged release, packages, checksums, app and helper updates from the previous version | §26 Build and Release |
 | 9 Docs & acceptance | user guide, final README, third-party inventory, §27 acceptance with evidence | every §26 group recorded |
+
+## RustDesk reuse per platform
+
+User decision (2026-10-16): RustDesk's per-OS code is reused on macOS as well as Windows, not only
+the DXGI capturer. Each module is vendored with its header and a "Modified by Kyokai" note.
+
+| Area | Windows | macOS |
+|---|---|---|
+| Capture | `libs/scrap/src/dxgi/{mod,gdi,hdr,mag}.rs` (S3-lite) | New: ScreenCaptureKit only (`SCStream` for video, `SCScreenshotManager` for AI screenshots, `SCContentFilter` excludes Kyokai's windows). RustDesk's `quartz` capturer is not used: CGDisplayStream is obsoleted in the macOS 15 SDK, gives black frames on 15 / 26 and cannot exclude windows |
+| Displays | `src/server/display_service.rs`, resolutions | same, plus `platform/macos.rs` resolutions, focused display, backing scale |
+| Cursor | `platform/windows.rs` cursor shape / position | `platform/macos.rs` `get_cursor`, `get_cursor_data`, `set_cursor_pos`, `clip_cursor` |
+| Input | `src/server/input_service.rs`, `libs/enigo` changes, `src/keyboard.rs` + rdev | same modules (macOS branches) |
+| Permissions | — | `platform/macos.rs` / `macos.mm`: screen recording, accessibility, input monitoring checks and prompts |
+| Session state | `platform/windows.rs` locked / logon desktop, `lock_screen` | `is_locked`, `is_prelogin`, `lock_screen`, active user |
+| Privacy mode | `src/privacy_mode/win_*` (exclude from capture, input block) | `src/privacy_mode/macos.rs` |
+| Helper (Phase 6) | `portable_service.rs`, SYSTEM service → session process, `windows/acl.rs` | LaunchDaemon / LaunchAgent plists and install / uninstall scripts in `platform/privileges_scripts` |
+
+RustDesk's own update paths (`update_me`, DMG / MSI handling) are not used: MyGo's updater and the
+helper's verified self-update replace them.
 
 ## Phase 3 quality, bandwidth and latency controls (RustDesk parity)
 
