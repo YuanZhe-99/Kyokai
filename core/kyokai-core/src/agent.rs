@@ -11,6 +11,10 @@
 //! This module is both ends: [`Link`] in the helper, [`serve`] in the agent.
 //! Video, input, the pointer, the clipboard and the AI's desktop check
 //! [`link`] and send their work through it when it is set.
+//!
+//! The helper runs on Windows only until the Mac pass; elsewhere the link
+//! is never set and most of this module has no caller.
+#![cfg_attr(not(windows), allow(dead_code))]
 
 use crate::ai::desktop::Frame;
 use crate::input::{Area, Event, LocalInput};
