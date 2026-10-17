@@ -19,6 +19,7 @@ type netForm struct {
 	secret     string
 	hasSecret  bool
 	weakSecret bool
+	direct     bool
 }
 
 // networkView is the Network page: the node's live status and its settings.
@@ -127,6 +128,14 @@ func (a *App) networkSettings(c *ui.Context) {
 		if f.weakSecret {
 			ui.Text(c, L.NetworkSecretWeak()).FontSize(sizeSmall).TextColor(t.Warning)
 		}
+		helperMode := a.currentMode() != modeUser
+		directHint := L.NetworkDirectHint()
+		if helperMode {
+			directHint = L.NetworkDirectHelper()
+		}
+		settingRow(c, "net-direct", L.NetworkDirect(), directHint, func() {
+			edit(ui.Switch(c.Key("net-direct-sw"), &f.direct).Label(L.NetworkDirect()).Disabled(busy || helperMode))
+		})
 		ui.Row(c).Gap(gap).Children(func() {
 			if ui.Button(c.Key("net-save"), L.ActionSave()).Disabled(busy).Clicked() {
 				a.saveNetwork(f, false)
@@ -163,7 +172,8 @@ func (a *App) loadNetwork() {
 // the name, which turns the node off.
 // Side effects: the engine stores the settings and reconnects.
 func (a *App) saveNetwork(f netForm, leave bool) {
-	ns := &localapi.NetworkSettings{Servers: serverLines(f.servers), Name: strings.TrimSpace(f.name)}
+	direct := f.direct
+	ns := &localapi.NetworkSettings{Servers: serverLines(f.servers), Name: strings.TrimSpace(f.name), Direct: &direct}
 	if leave {
 		ns.Servers, ns.Name = nil, ""
 	} else if f.secret != "" {
@@ -197,7 +207,7 @@ func (a *App) saveNetwork(f netForm, leave bool) {
 func formFrom(ns *localapi.NetworkSettings) netForm {
 	return netForm{
 		loaded: true, servers: strings.Join(ns.Servers, "\n"), name: ns.Name,
-		hasSecret: ns.HasSecret, weakSecret: ns.WeakSecret,
+		hasSecret: ns.HasSecret, weakSecret: ns.WeakSecret, direct: ns.Direct != nil && *ns.Direct,
 	}
 }
 

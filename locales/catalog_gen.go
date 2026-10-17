@@ -1592,6 +1592,36 @@ func (msgs Messages) NetworkDevicesHint() string {
 	return Catalog.Format(msgs.locale, "NetworkDevicesHint", nil)
 }
 
+// NetworkDirect says "Try direct connections"
+// in the language the app shows.
+func NetworkDirect() string { return In(i18n.Locale()).NetworkDirect() }
+
+// NetworkDirect says "Try direct connections"
+// in the language of msgs.
+func (msgs Messages) NetworkDirect() string {
+	return Catalog.Format(msgs.locale, "NetworkDirect", nil)
+}
+
+// NetworkDirectHelper says "The helper always tries direct connections: its installer allowed it through the firewall."
+// in the language the app shows.
+func NetworkDirectHelper() string { return In(i18n.Locale()).NetworkDirectHelper() }
+
+// NetworkDirectHelper says "The helper always tries direct connections: its installer allowed it through the firewall."
+// in the language of msgs.
+func (msgs Messages) NetworkDirectHelper() string {
+	return Catalog.Format(msgs.locale, "NetworkDirectHelper", nil)
+}
+
+// NetworkDirectHint says "Faster when both networks allow it. Windows may ask to let Kyokai through its firewall; while this is off, connection…"
+// in the language the app shows.
+func NetworkDirectHint() string { return In(i18n.Locale()).NetworkDirectHint() }
+
+// NetworkDirectHint says "Faster when both networks allow it. Windows may ask to let Kyokai through its firewall; while this is off, connection…"
+// in the language of msgs.
+func (msgs Messages) NetworkDirectHint() string {
+	return Catalog.Format(msgs.locale, "NetworkDirectHint", nil)
+}
+
 // NetworkError says "Could not connect"
 // in the language the app shows.
 func NetworkError() string { return In(i18n.Locale()).NetworkError() }

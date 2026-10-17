@@ -19,6 +19,15 @@ import (
 // ServiceName is the Windows service of the helper.
 const ServiceName = "KyokaiHelper"
 
+// FirewallRule is the inbound rule that lets the helper's engine take
+// direct (hole-punched) connections without Windows Firewall asking.
+const FirewallRule = "Kyokai helper"
+
+// removeFirewallRule deletes the helper's firewall rule, if there is one.
+func removeFirewallRule() {
+	_ = exec.Command("netsh", "advfirewall", "firewall", "delete", "rule", "name="+FirewallRule).Run()
+}
+
 // BinDir holds the helper's administrator-owned copies of the app's files,
 // so a user cannot swap what the service runs.
 var BinDir = filepath.Join(os.Getenv("ProgramFiles"), "Kyokai", "helper")
@@ -88,6 +97,13 @@ func Install(o InstallOptions) error {
 	if err := fsutil.WriteJSON(filepath.Join(StateDir, "helper.json"), Settings{OperatorSID: o.OperatorSID, AppDir: o.From}); err != nil {
 		return err
 	}
+	// The helper always tries direct paths, whose UDP sockets Windows
+	// Firewall would otherwise ask about.
+	removeFirewallRule()
+	if out, err := exec.Command("netsh", "advfirewall", "firewall", "add", "rule", "name="+FirewallRule,
+		"dir=in", "action=allow", "program="+svcPath(), "enable=yes", "profile=any").CombinedOutput(); err != nil {
+		return fmt.Errorf("firewall rule: %v: %s", err, out)
+	}
 	m, err := mgr.Connect()
 	if err != nil {
 		return err
@@ -146,6 +162,7 @@ func Uninstall(purge bool) error {
 		}
 		m.Disconnect()
 	}
+	removeFirewallRule()
 	if err := removeWithParent(BinDir); err != nil {
 		return err
 	}
@@ -219,6 +236,7 @@ func Retire() error {
 		s.Close()
 	}
 	m.Disconnect()
+	removeFirewallRule()
 	_ = os.Remove(SocketPath)
 	if err := removeWithParent(StateDir); err != nil {
 		return err

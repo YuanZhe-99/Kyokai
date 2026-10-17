@@ -54,6 +54,12 @@ pub struct Settings {
     pub name: String,
     /// The EasyTier network secret.
     pub secret: String,
+    /// Tries direct paths (hole punching, UPnP), which open a UDP socket
+    /// on every address and make Windows Firewall ask; off, traffic goes
+    /// through the server's relay (doc/en-us/networking.md, "Direct
+    /// paths").
+    #[serde(default)]
+    pub direct: bool,
 }
 
 /// A `network.set` request: a missing secret keeps the stored one.
@@ -65,6 +71,9 @@ pub struct Update {
     #[serde(default)]
     name: Option<String>,
     secret: Option<String>,
+    /// Missing keeps the current choice.
+    #[serde(default)]
+    direct: Option<bool>,
 }
 
 /// Where the node is in its life.
@@ -88,12 +97,16 @@ pub struct Network {
     /// Starts the node, then accepts sessions; aborted when the node stops.
     serving: Option<JoinHandle<()>>,
     phase: Arc<Mutex<Phase>>,
+    /// The helper always tries direct paths (its installer allowed them).
+    always_direct: bool,
 }
 
 impl Network {
     /// Starts the node with the stored settings, if there are any.
     /// Side effects: starts a tokio runtime; connects to the configured servers.
-    pub fn start(secrets: &Secrets, ctx: Arc<Ctx>) -> Result<Self, String> {
+    /// Inputs: `always_direct`, set in the helper, whose installer allowed
+    /// its own executable through the firewall.
+    pub fn start(secrets: &Secrets, ctx: Arc<Ctx>, always_direct: bool) -> Result<Self, String> {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("kyokai-net")
@@ -112,6 +125,7 @@ impl Network {
             node: None,
             serving: None,
             phase: Arc::new(Mutex::new(Phase::Off)),
+            always_direct,
         };
         net.restart();
         Ok(net)
@@ -124,6 +138,7 @@ impl Network {
             "name": self.settings.name,
             "has_secret": !self.settings.secret.is_empty(),
             "weak_secret": is_weak(&self.settings.secret),
+            "direct": self.settings.direct || self.always_direct,
         })
     }
 
@@ -141,6 +156,7 @@ impl Network {
                 .map(|s| s.trim().to_owned())
                 .collect(),
             name: update.name.unwrap_or_default().trim().to_owned(),
+            direct: update.direct.unwrap_or(self.settings.direct),
         };
         validate(&settings)?;
         let text =
@@ -201,7 +217,10 @@ impl Network {
         }
         // EasyTier builds its peer manager on the current Tokio runtime.
         let _rt = self.rt.enter();
-        let node = match config(&self.settings, &self.device_id).and_then(create_native_instance) {
+        let direct = self.settings.direct || self.always_direct;
+        let node = match config(&self.settings, &self.device_id, direct)
+            .and_then(create_native_instance)
+        {
             Ok(node) => node,
             Err(e) => {
                 self.set_phase(Phase::Failed(format!("network settings: {e}")));
@@ -395,9 +414,10 @@ pub fn instance_id(device_id: &str) -> Uuid {
     Uuid::new_v5(&KYOKAI_NS, device_id.as_bytes())
 }
 
-/// Builds the node's configuration: no TUN, DHCP, no listeners, and data
-/// plane whitelists that admit only Kyokai's port.
-fn config(s: &Settings, device_id: &str) -> anyhow::Result<TomlConfig> {
+/// Builds the node's configuration: no TUN, DHCP, no listeners, data plane
+/// whitelists that admit only Kyokai's port, and without `direct` no hole
+/// punching or UPnP (nothing that waits for unsolicited packets).
+fn config(s: &Settings, device_id: &str, direct: bool) -> anyhow::Result<TomlConfig> {
     // JSON string literals are valid TOML basic strings, which keeps user
     // input from changing the document's structure.
     let q = |v: &str| serde_json::to_string(v).unwrap_or_default();
@@ -423,7 +443,12 @@ network_secret = {secret}
 {peers}
 [flags]
 no_tun = true
+disable_udp_hole_punching = {off}
+disable_tcp_hole_punching = {off}
+disable_sym_hole_punching = {off}
+disable_upnp = {off}
 "#,
+        off = !direct,
         id = instance_id(device_id),
         name = q(&s.name),
         secret = q(&s.secret),
@@ -490,6 +515,7 @@ mod tests {
             servers: servers.iter().map(|s| s.to_string()).collect(),
             name: name.into(),
             secret: secret.into(),
+            direct: false,
         }
     }
 
@@ -518,7 +544,7 @@ mod tests {
         use easytier_core::config::toml::ConfigLoader;
         let name = "n\"\nnetwork_secret = \"x";
         let s = settings(&["tcp://a:1"], name, "p\"w\\");
-        let cfg = config(&s, "100000002").unwrap();
+        let cfg = config(&s, "100000002", false).unwrap();
         let identity = cfg.get_network_identity();
         assert_eq!(identity.network_name, name);
         assert_eq!(identity.network_secret.as_deref(), Some("p\"w\\"));
@@ -531,6 +557,21 @@ mod tests {
         assert!(u.servers.is_none());
         let u: Update = serde_json::from_str("{}").unwrap();
         assert!(u.name.is_none());
+    }
+
+    #[test]
+    fn direct_paths_are_off_unless_chosen() {
+        use easytier_core::config::toml::ConfigLoader;
+        let s = settings(&["tcp://a:1"], "n", "p");
+        for direct in [false, true] {
+            let f = config(&s, "100000002", direct).unwrap().get_flags();
+            // Off: nothing waits for unsolicited packets, so no firewall prompt.
+            assert_eq!(f.disable_udp_hole_punching, !direct);
+            assert_eq!(f.disable_tcp_hole_punching, !direct);
+            assert_eq!(f.disable_sym_hole_punching, !direct);
+            assert_eq!(f.disable_upnp, !direct);
+            assert!(f.no_tun);
+        }
     }
 
     #[test]

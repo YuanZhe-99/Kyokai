@@ -354,6 +354,9 @@ type NetworkSettings struct {
 	// HasSecret and WeakSecret describe the stored secret in a response.
 	HasSecret  bool `json:"has_secret,omitempty"`
 	WeakSecret bool `json:"weak_secret,omitempty"`
+	// Direct tries hole-punched paths and UPnP (Windows Firewall may ask);
+	// nil in a request keeps the current choice. The helper always does.
+	Direct *bool `json:"direct,omitempty"`
 }
 
 // NetworkStatus is the engine's EasyTier node as it is now.

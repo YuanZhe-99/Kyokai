@@ -43,7 +43,8 @@ last connection) that fill in the Device ID; a
   virtual address; the NAT type in plain words) and the Kyokai devices it routes to (Device ID,
   direct or relayed, latency), with a note that announced Device IDs are not proof; then the
   settings form: servers (one URL per line), network name, and a write-only secret field (empty
-  keeps the stored secret; a weak secret is flagged), Save and Leave network. Refused settings show
+  keeps the stored secret; a weak secret is flagged), Try direct connections (off by default;
+  on and fixed in the helper modes, [networking.md](networking.md)), Save and Leave network. Refused settings show
   the engine's reason.
 - **Device names:** wherever a device appears (a confirmation, Recent, the sessions, trusted
   devices, the viewer's title) its friendly name goes beside the Device ID, never instead of it,

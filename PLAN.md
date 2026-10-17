@@ -232,8 +232,10 @@ on the VM for each test, and to uninstall it afterwards; the VM's interactive se
 
 ## Decided (2026-10-16)
 
-- No EasyTier listeners by default (outbound + hole punching, no firewall or Local Network
-  prompt); a listener option only if the two-machine test shows LAN paths need it — Phase 2.
+- No EasyTier listeners by default. Hole punching turned out to make Windows Firewall ask (its UDP
+  sockets wait for unsolicited packets), so by user decision (2026-10-17) direct paths are off in No
+  privileges unless "Try direct connections" is on, and always on in the helper, whose installer
+  adds a firewall rule.
 - Hole punching through real NATs is tested with the two machines on different networks — Phase 2.
 - Privilege separation of the network-facing host role in helper modes — decided in Phase 6.
 - macOS timestamping with the self-signed identity — tested in S5; if Apple's service refuses,

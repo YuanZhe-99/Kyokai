@@ -25,7 +25,8 @@ Kyokai 沿用 Easytier-MyGo 的做法：管理员授权只在安装特权助手�
 
 `kyokai-svc helper install`（需要管理员）把应用的 `kyokai-svc.exe` 与核心库复制到只有管理员能修改的 `%ProgramFiles%\Kyokai\helper`，
 因此用户无法替换服务运行的文件。它为 SYSTEM 与 Administrators 创建 `%ProgramData%\Kyokai`（用户只能打开该文件夹本身以访问套接字；
-其下的 `state` 文件夹对用户关闭），把执行安装的用户作为**操作者**记录在 `state\helper.json` 中，并注册自动启动的服务 `KyokaiHelper`：
+其下的 `state` 文件夹对用户关闭），把执行安装的用户作为**操作者**记录在 `state\helper.json` 中，为它自己的 `kyokai-svc.exe` 添加一条入站防火墙规则（`Kyokai helper`，
+这样助手的直接连接无需提示；[networking.md](networking.md)），并注册自动启动的服务 `KyokaiHelper`：
 它以 SYSTEM 身份运行 `kyokai-svc run --host helper`，失败后会重新启动。`helper uninstall` 停止并删除该服务、它的文件与套接字
 （`--purge` 还会删除助手的身份与受信任设备）；`helper status` 不需要任何权限。
 

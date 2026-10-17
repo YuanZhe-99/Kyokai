@@ -395,7 +395,7 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
     if let Some(exe) = &cfg.agent {
         agent::start_helper(exe.clone());
     }
-    let network = net::Network::start(&secrets, ctx.clone())?;
+    let network = net::Network::start(&secrets, ctx.clone(), cfg.agent.is_some())?;
     let mut core = Core {
         state_dir: cfg.state_dir.clone(),
         cfg,

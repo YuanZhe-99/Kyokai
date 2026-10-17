@@ -36,7 +36,9 @@ helper keeps running.
 `%ProgramFiles%\Kyokai\helper`, which only administrators can change, so a user cannot swap what
 the service runs. It creates `%ProgramData%\Kyokai` for SYSTEM and Administrators only (users may
 open the folder itself, to reach the socket; the `state` folder below it is closed to them),
-records the installing user as the **operator** in `state\helper.json` and registers the automatic
+records the installing user as the **operator** in `state\helper.json`, adds an inbound firewall rule
+for its own `kyokai-svc.exe` (`Kyokai helper`, so the helper's direct paths need no prompt;
+[networking.md](networking.md)) and registers the automatic
 service `KyokaiHelper`, which runs `kyokai-svc run --host helper` as SYSTEM and restarts after a
 failure. `helper uninstall` stops and deletes the service, its files and the socket (`--purge`
 also deletes the helper's identity and trusted devices); `helper status` needs no rights.

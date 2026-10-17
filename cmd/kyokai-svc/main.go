@@ -6,7 +6,7 @@
 //	kyokai-svc helper install [--from DIR] [--operator-sid SID] | uninstall [--purge] | status
 //	kyokai-svc agent --down PIPE --up PIPE --helper-pid N   (started by the helper)
 //	kyokai-svc ctl status | password | regenerate | shutdown | network | trusted [--socket P]
-//	kyokai-svc ctl network-set --server URL [--server URL…] --name N
+//	kyokai-svc ctl network-set --server URL [--server URL…] --name N [--direct=true|false]
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--want P,P…]
@@ -159,6 +159,7 @@ func ctl(args []string) error {
 		servers = append(servers, s)
 		return nil
 	})
+	direct := fs.Bool("direct", false, "network-set: try direct (hole-punched) paths; omitted keeps the current choice")
 	name := fs.String("name", "", "network-set: the network name; name-set: this device's friendly name")
 	device := fs.String("device", "", "connect, forget: the Device ID")
 	want := fs.String("want", localapi.PermViewScreen+","+localapi.PermControlInput, "connect: the permissions to ask for")
@@ -232,6 +233,11 @@ func ctl(args []string) error {
 		req.From = *from
 	case "network-set":
 		req.Network = &localapi.NetworkSettings{Servers: servers, Name: *name}
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "direct" {
+				req.Network.Direct = direct
+			}
+		})
 		if s, ok := os.LookupEnv(networkSecretEnv); ok {
 			req.Network.Secret = &s
 		}
@@ -311,8 +317,8 @@ func ctl(args []string) error {
 		printStatus(resp.Status)
 	case resp.Network != nil:
 		n := resp.Network
-		fmt.Printf("servers %s\nname %q\nsecret set: %v (weak: %v)\n",
-			strings.Join(n.Servers, ", "), n.Name, n.HasSecret, n.WeakSecret)
+		fmt.Printf("servers %s\nname %q\nsecret set: %v (weak: %v)\ndirect paths: %v\n",
+			strings.Join(n.Servers, ", "), n.Name, n.HasSecret, n.WeakSecret, n.Direct != nil && *n.Direct)
 	case resp.Password != "":
 		fmt.Println(resp.Password)
 	case resp.Document != "":

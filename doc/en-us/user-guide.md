@@ -29,7 +29,9 @@ Devices find each other through an EasyTier network. On the **Network** page ent
 **Servers** (one address per line), the **Network name** and the **Network secret** that whoever runs
 your network gave you, and save. The page then shows the network's state, this device's address
 and the Kyokai devices it can reach, directly or through a relay. A device's announced ID is only a
-hint: who a device is gets proven when you connect. **Leave network** disconnects.
+hint: who a device is gets proven when you connect. **Leave network** disconnects. Connections go
+through the server unless you switch on **Try direct connections**, which is faster where both
+networks allow it; Windows may then ask to let Kyokai through its firewall.
 
 ## Control another device
 
