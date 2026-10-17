@@ -67,6 +67,7 @@ Studio 2026 without its Clang component):
 |---|---|
 | CI (`macos-latest`, `macos-15-intel`) | gate, ABI smoke test, engine smoke test and unsigned package pass |
 | Capture, input, permissions (2026-10-17) | ScreenCaptureKit capture, Core Graphics input, the event-tap watch, the AI desktop and the permission requests are written and type-check for `aarch64-apple-darwin`; not run on a Mac yet |
+| Disk images and signing (2026-10-17) | on GitHub's runner both DMGs pass `hdiutil verify`; the app in each is valid on disk, satisfies its designated requirement and carries the "Kyokai Code Signing" authority with a secure timestamp (so timestamping works with the self-signed identity) and the hardened runtime; Gatekeeper rejects it as not notarized. A downloaded copy therefore reports itself as damaged until its quarantine is removed (`xattr -dr com.apple.quarantine /Applications/Kyokai.app`) |
 | Keychain | a test binary that reads a Keychain item another (differently signed) binary created raises an access prompt, which hangs a headless run; tests therefore use a fresh profile per run, and the shipped app is always signed with the same certificate |
 
 ## Known limitations

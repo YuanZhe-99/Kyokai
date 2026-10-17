@@ -11,7 +11,10 @@ Kyokai starts with its window and an icon in the notification area; closing the 
 running there (Settings, General, can make the close button quit instead). Kyokai does not start
 with Windows unless you switch on "Open at login".
 
-On macOS, Kyokai asks on its first start for **Screen Recording** (so others can see this screen)
+On macOS, open the disk image and drag Kyokai to Applications. Kyokai is signed but not notarized
+by Apple, so macOS may call the downloaded app damaged: run
+`xattr -dr com.apple.quarantine /Applications/Kyokai.app` in Terminal once, then open it.
+Kyokai asks on its first start for **Screen Recording** (so others can see this screen)
 and **Accessibility** (so they can use the mouse and keyboard). Allow both in System Settings,
 Privacy & Security, then quit and reopen Kyokai; **Privacy permissions** on Home and in Settings
 shows what is still missing and opens the right pane with **Allow…**.

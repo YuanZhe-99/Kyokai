@@ -67,6 +67,7 @@ Studio 2026）：
 |---|---|
 | CI（`macos-latest`、`macos-15-intel`） | 检查、ABI 冒烟测试、引擎冒烟测试与未签名安装包均通过 |
 | 采集、输入、权限（2026-10-17） | ScreenCaptureKit 采集、Core Graphics 输入、事件监听器监视、AI 桌面与权限请求已写好，并通过 `aarch64-apple-darwin` 的类型检查；尚未在 Mac 上运行 |
+| 磁盘映像与签名（2026-10-17） | 在 GitHub 的运行器上，两个 DMG 都通过 `hdiutil verify`；其中的应用在磁盘上有效、满足其指定要求，带“Kyokai Code Signing”签名机构与安全时间戳（因此自签名身份可以加时间戳），并启用强化运行时；Gatekeeper 因未经公证而拒绝它。因此下载的副本在去除隔离属性之前会显示已损坏（`xattr -dr com.apple.quarantine /Applications/Kyokai.app`） |
 | 钥匙串 | 测试程序读取另一个（签名不同的）程序创建的钥匙串项目时会弹出访问提示，无人值守运行会因此卡住；因此测试每次使用新的配置，而发布的应用始终使用同一证书签名 |
 
 ## 已知限制

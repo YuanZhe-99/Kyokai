@@ -18,7 +18,7 @@ this file when the plan is complete.
 
 | Item | Scope | Done when |
 |---|---|---|
-| macOS crash and package | the Mac app crashed once when a connection request came in; the DMG reports itself damaged | cause found from the Mac's logs and fixed; the DMG verifies (`hdiutil verify`, `codesign --verify --deep --strict`) in CI |
+| macOS crash | the Mac app crashed once when a connection request came in | cause found from the Mac's logs and fixed |
 | macOS pass | ScreenCaptureKit capture (Kyokai's windows left out), privacy permissions, VideoToolbox H.264 / HEVC, input, the clipboard, the LaunchDaemon helper and LaunchAgent session agent, signing (S5: timestamping with the self-signed identity, TCC grants surviving an update), sleep notifications | the acceptance record's rows hold on macOS, both directions Mac ↔ Windows |
 | OpenAI live run | the Responses adapter against the real API (fixtures and fakes only so far) | a task on a real desktop, recorded in platform-notes |
 | Viewer controls (RustDesk parity) | original size and full screen; Custom quality (quality and frame rate); codec preference (Auto / each codec) and a hardware-codec switch, which also lets a session exercise libvpx and libaom between two machines; remote cursor shown or not; per-session clipboard on/off; lock after the session ends; direct-vs-relay shown in the viewer | each control in the viewer, carried by the protocol where the host decides |
@@ -33,5 +33,5 @@ this file when the plan is complete.
   Ctrl+Alt+Del is switched on only for the call.
 - HEVC decodes on the GPU only (the software decoder never outputs the uneven-tile streams of one
   hardware encoder); a host with a free hardware HEVC encoder prefers HEVC.
-- macOS timestamping with the self-signed identity is tested in S5; if Apple's service refuses,
-  MyGo gains an option to skip the timestamp.
+- macOS timestamping with the self-signed identity works (the CI image check, 2026-10-17); the
+  apps are not notarized, so a downloaded copy needs its quarantine removed (the user guide says how).
