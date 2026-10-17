@@ -154,8 +154,8 @@ User decision (2026-10-16): RustDesk's manual-control systems are reused, decoup
   shape and position services (the remote cursor), window-focus tracking; injection through
   RustDesk's `libs/enigo` changes where upstream `enigo` 0.6.1 lacks them.
 - **Session actions** (done in code, protocol 3: lock, Ctrl+Alt+Del in the helper modes, block the
-  host's input; the remote cursor was done before). Left: running lock, block and Ctrl+Alt+Del on
-  a real host (they act on that desktop), and the keyboard mode choice with the keyboard modes.
+  host's input; the remote cursor was done before). Lock, block and privacy mode ran on the VM;
+  left: Ctrl+Alt+Del in the helper modes, and the keyboard mode choice with the keyboard modes.
 - Each vendored file keeps its header, gains a "Modified by Kyokai" note and an entry in
   `doc/en-us/third-party.md`.
 

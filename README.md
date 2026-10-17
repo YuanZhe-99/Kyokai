@@ -20,7 +20,7 @@ and host-side AI execution in one unified experience.
 | Temporary and permanent host passwords, trusted devices, unattended access | done |
 | Connect by Device ID + password over a standard EasyTier network, no IP addresses | done (Windows) |
 | Manual Computer Use: the host's screen (H.264, HEVC, VP9; adaptive quality), mouse, keyboard, clipboard text and images, monitors, the remote pointer | done (Windows) |
-| Session actions: lock the screen, Ctrl+Alt+Del, block the host's input, privacy mode | done in code (Windows); not yet run on a real host |
+| Session actions: lock the screen, Ctrl+Alt+Del, block the host's input, privacy mode | done (Windows): lock, block and privacy mode run on a test VM; Ctrl+Alt+Del in the helper modes not yet run |
 | AI Computer Use with Claude, OpenAI or any of 20+ provider templates and custom OpenAI-compatible servers, executed on the host with its own key | done (Windows); Claude verified live |
 | Human take-over, pause, cancel, emergency stop; tasks pause at sleep | done |
 | Optional privileged helper for UAC prompts, the lock screen and unattended access | done (Windows); macOS follows |
