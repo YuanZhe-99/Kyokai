@@ -66,7 +66,7 @@ for t in "${targets[@]}"; do
 	# Release builds sign the helper's files, so an installed helper updates
 	# itself without a prompt (doc/en-us/run-modes.md, "Updates").
 	if [ "$goos" = windows ] && [ -n "${KYOKAI_SIGNING_KEY:-}" ]; then
-		go run ./tools/sign bundle -dir "$bin" -version "$(sed -n 's/^const Version = "(.*)"//p' internal/version/version.go)"
+		go run ./tools/sign bundle -dir "$bin" -version "$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)"
 	fi
 done
 
