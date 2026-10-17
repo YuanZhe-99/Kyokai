@@ -213,12 +213,17 @@ pub fn plan(
             }));
         }
         Action::Type { text } => {
-            for (i, line) in text.replace('\r', "").split('\n').enumerate() {
+            // One character at a time, paced: apps that fall behind a burst
+            // (Windows 11 Notepad) type some characters as the next one or
+            // drop them.
+            for (i, c) in text.chars().filter(|c| *c != '\r').enumerate() {
                 if i > 0 {
-                    tap("enter", Mods::default(), &mut steps);
+                    steps.push(Step::Sleep(TYPE_PACE));
                 }
-                for chunk in chunks(line, TEXT_CHUNK) {
-                    steps.push(Step::Inject(Event::Text { text: chunk.into() }));
+                if c == '\n' {
+                    tap("enter", Mods::default(), &mut steps);
+                } else {
+                    steps.push(Step::Inject(Event::Text { text: c.into() }));
                 }
             }
         }
@@ -259,8 +264,8 @@ pub fn plan(
 
 /// Pointer moves per drag segment.
 const DRAG_STEPS: u32 = 8;
-/// Bytes per text event (the input service's limit is 4096).
-const TEXT_CHUNK: usize = 1024;
+/// Milliseconds between typed characters.
+const TYPE_PACE: u32 = 30;
 
 fn button_index(b: Button) -> Result<u8, String> {
     match b {
@@ -379,21 +384,6 @@ fn key_name(k: &Key) -> Result<Pressed, String> {
         },
         modifier => Err(format!("{modifier} is a modifier")),
     }
-}
-
-/// Splits text into pieces of at most `max` bytes on character boundaries.
-fn chunks(text: &str, max: usize) -> Vec<&str> {
-    let mut out = Vec::new();
-    let mut rest = text;
-    while !rest.is_empty() {
-        let mut end = rest.len().min(max);
-        while !rest.is_char_boundary(end) {
-            end -= 1;
-        }
-        out.push(&rest[..end]);
-        rest = &rest[end..];
-    }
-    out
 }
 
 #[cfg(windows)]

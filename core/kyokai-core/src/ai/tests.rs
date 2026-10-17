@@ -671,8 +671,10 @@ fn actions_become_input_steps() {
             },
             vec![
                 Step::Inject(Event::Text { text: "a".into() }),
+                Step::Sleep(30),
                 key("enter", true, none),
                 key("enter", false, none),
+                Step::Sleep(30),
                 Step::Inject(Event::Text { text: "b".into() }),
                 Step::Release,
             ],
@@ -765,20 +767,28 @@ fn actions_become_input_steps() {
         )
         .is_err()
     );
-    // Long text is split on character boundaries.
-    let long = "é".repeat(1500);
-    let steps = desktop::plan(&Action::Type { text: long.clone() }, seen, None).unwrap();
-    let typed: String = steps
-        .iter()
-        .filter_map(|s| match s {
-            Step::Inject(Event::Text { text }) => {
-                assert!(text.len() <= 4096);
-                Some(text.as_str())
+}
+
+/// Regression (2026-10-17): text sent as one burst came out garbled in
+/// Windows 11 Notepad ("Hello iiiiiiiiiii"); it is typed one character
+/// per event, 30 ms apart, surrogate pairs kept whole.
+#[test]
+fn typing_is_paced_one_character_at_a_time() {
+    let text = "Hé😀".to_string() + &"x".repeat(5000);
+    let steps = desktop::plan(&Action::Type { text: text.clone() }, (100, 100), None).unwrap();
+    let mut typed = String::new();
+    for (i, s) in steps[..steps.len() - 1].iter().enumerate() {
+        match s {
+            Step::Inject(Event::Text { text }) if i % 2 == 0 => {
+                assert_eq!(text.chars().count(), 1);
+                typed += text;
             }
-            _ => None,
-        })
-        .collect();
-    assert_eq!(typed, long);
+            Step::Sleep(30) if i % 2 == 1 => {}
+            other => panic!("step {i}: {other:?}"),
+        }
+    }
+    assert_eq!(typed, text);
+    assert_eq!(steps.last(), Some(&Step::Release));
 }
 
 #[test]
