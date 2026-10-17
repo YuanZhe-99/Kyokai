@@ -534,7 +534,7 @@ type Injector = crate::input::Injector;
 /// Off Windows there is nothing to inject into yet.
 #[cfg(not(windows))]
 #[derive(Default)]
-struct Injector;
+struct Injector {}
 
 #[cfg(not(windows))]
 impl Injector {

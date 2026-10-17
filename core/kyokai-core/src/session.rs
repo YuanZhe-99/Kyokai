@@ -2620,7 +2620,19 @@ mod tests {
         )
         .await;
         let long: String = "kyokai ".repeat(30_000);
-        tokio::time::sleep(Duration::from_millis(600)).await;
+        // Sharing starts after the session does, and what was copied before
+        // stays put: a short text arriving first shows it is live (a fixed
+        // wait raced a busy machine).
+        let mut live = false;
+        for n in 0..20 {
+            let marker = format!("ready {n}");
+            *controller_board.lock().unwrap() = Some(crate::clipboard::Item::Text(marker.clone()));
+            if board_holds(&host_board, &marker).await {
+                live = true;
+                break;
+            }
+        }
+        assert!(live, "clipboard sharing never started");
         *controller_board.lock().unwrap() = Some(crate::clipboard::Item::Text(long.clone()));
         assert!(
             board_holds(&host_board, &long).await,

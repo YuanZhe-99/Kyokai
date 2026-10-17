@@ -6,7 +6,7 @@
 //! user chose it, a lid closed), the AI task in progress pauses: it never
 //! carries on from a screen it saw before the sleep.
 
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 
 /// Keeps the computer and its displays awake while held; every holder
 /// shares one power request.
@@ -14,7 +14,7 @@ pub struct Awake(());
 
 /// The shared power request and how many hold it.
 #[cfg(windows)]
-static AWAKE: Mutex<(usize, Option<isize>)> = Mutex::new((0, None));
+static AWAKE: std::sync::Mutex<(usize, Option<isize>)> = std::sync::Mutex::new((0, None));
 
 /// Keeps the computer awake until the guard is dropped.
 /// Side effects: the first guard sets a system and a display power request
