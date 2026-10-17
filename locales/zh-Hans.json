@@ -23,6 +23,7 @@
   "ActionRetry": "重试",
   "ActionSave": "保存",
   "ActionShow": "显示",
+  "ActionView": "查看",
   "AppUpToDate": "Kyokai 已是最新版本。",
   "AppUpdateAvailable": "有新版本 {version}。",
   "AppUpdateCheckFailed": "无法检查更新。",
@@ -158,5 +159,9 @@
   "TrustedHint": "你以前允许过的设备。移除后，它下次会显示为新设备。",
   "TrustedLast": "上次连接 {time}",
   "TrustedNone": "暂无。",
-  "TrustedTitle": "受信任设备"
+  "TrustedTitle": "受信任设备",
+  "ViewerEnded": "会话已结束。",
+  "ViewerTitle": "{device} — Kyokai",
+  "ViewerUnsupported": "这个画面使用 {codec}，当前版本还无法显示。",
+  "ViewerWaiting": "正在等待画面…"
 }

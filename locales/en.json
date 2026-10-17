@@ -23,6 +23,7 @@
   "ActionRetry": "Retry",
   "ActionSave": "Save",
   "ActionShow": "Show",
+  "ActionView": "View",
   "AppUpToDate": "Kyokai is up to date.",
   "AppUpdateAvailable": "Version {version} is available.",
   "@AppUpdateAvailable": {
@@ -228,5 +229,23 @@
     }
   },
   "TrustedNone": "None yet.",
-  "TrustedTitle": "Trusted devices"
+  "TrustedTitle": "Trusted devices",
+  "ViewerEnded": "The session ended.",
+  "ViewerTitle": "{device} — Kyokai",
+  "@ViewerTitle": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "ViewerUnsupported": "This picture uses {codec}, which this version can't show yet.",
+  "@ViewerUnsupported": {
+    "placeholders": {
+      "codec": {
+        "type": "String"
+      }
+    }
+  },
+  "ViewerWaiting": "Waiting for the picture…"
 }

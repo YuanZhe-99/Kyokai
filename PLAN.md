@@ -19,18 +19,19 @@ The active plan: milestones, done-when criteria and open decisions. Long-lived c
 
 ## Design for the coming phases
 
-- **Processes:** GUI (`Kyokai`, MyGo; controller role in-process from Phase 2) · engine
+- **Processes:** GUI (`Kyokai`, MyGo; decoding, display and input capture in-process from Phase 3) · engine
   (`kyokai-svc run --host user`, child of the GUI; EasyTier, device identity, host role, local API)
   · helper (`--host helper`, SYSTEM / root, Phase 6) · session agents (Phase 6). The GUI never
   runs elevated; privileged processes never decode remote media.
 - **FFI:** C ABI with integers and pointers only; JSON calls and a blocking event poll; zero-copy
-  RGBA frame slots; controller byte streams pumped by Go over a CONNECT-style local API upgrade.
+  RGBA frame slots in the GUI; encoded media and input events pass engine ↔ GUI over a streaming
+  local API connection (Phase 3 breakdown).
 - **Identity:** Ed25519 device key; 9-digit Device ID from its hash (locates, never authenticates);
   keys pinned after the first authentication; "new key claiming this ID" shown differently.
 - **Authentication:** Noise XX + OPAQUE (temporary and permanent password slots in one round trip,
   bound to the Noise handshake); rate limits per overlay address and a global backoff that exempts
   pinned keys; host confirmation by default; unattended access only with a pinned key, the permanent
-  password and an expiring grant; delegated, audience-bound controller certificates.
+  password and an expiring grant.
 - **Networking:** `instance_id = UUIDv5(device id)`, data-plane bind/connect, loopback whitelists,
   EasyTier treated as an untrusted pipe.
 - **Desktop:** RustDesk's platform layers on both systems (see "RustDesk reuse per platform"),
@@ -101,6 +102,28 @@ the DXGI capturer. Each module is vendored with its header and a "Modified by Ky
 
 RustDesk's own update paths (`update_me`, DMG / MSI handling) are not used: MyGo's updater and the
 helper's verified self-update replace them.
+
+## Phase 3 breakdown (decided 2026-10-17)
+
+Architecture change from the original design: the controller's **session stays in the engine**
+(network, Noise, OPAQUE, keys, as built in Phase 2). The GUI loads the core only to **decode,
+display and capture input**: the engine forwards encoded video to the GUI over a streaming local
+API connection and takes input events back. Decoded frames never cross processes, no delegated
+certificates are needed, and privileged processes (Phase 6) relay encoded bytes only.
+
+| Step | Scope | Done when |
+|---|---|---|
+| 3.1 Video channel | binary session messages (chunked frames, key-frame requests, latest-frame-wins), engine ↔ GUI media stream over the local API, the GUI-side core | a synthetic test pattern from the host shows in the controller's viewer |
+| 3.2 Capture | RustDesk DXGI + GDI fallback (from S3-lite) in the core, capture thread, monitor choice; the GUI excludes its own windows (`WDA_EXCLUDEFROMCAPTURE`) | the host's screen at 1080p / 30+ fps in the viewer |
+| 3.3 First codec | Media Foundation H.264: a hardware encoder when present, Microsoft's software MFT otherwise; decode in the GUI | 1080p60 over the VM path; latency and bitrate shown |
+| 3.4 Viewer | its own window, fit / original size / full screen, stats, Disconnect | §26 viewing items on Windows |
+| 3.5 Input | mouse and keyboard to the host only with `control-input`, virtual-desktop coordinates, nothing into Kyokai's own windows, held keys released | typing and clicking into apps on the VM |
+| 3.6 QoS | RustDesk's `video_qos.rs`, delay probes, bitrate / frame-rate adaptation, presets | adapts on the VM path; unchanged frames skipped |
+| 3.7 Codecs | VP8 / VP9 (libvpx), AV1 (libaom), HEVC through Media Foundation, negotiation, 4:4:4 | every codec the plan lists, chosen by capability |
+| 3.8 Manual control | RustDesk keyboard modes with rdev, clipboard (arboard), multi-monitor and DPI | §26 Manual Computer Use on Windows |
+
+Testing: this machine as controller, the remote VM as host. Capture needs the host engine in the
+VM's interactive desktop session, not the SSH session.
 
 ## Phase 3 quality, bandwidth and latency controls (RustDesk parity)
 

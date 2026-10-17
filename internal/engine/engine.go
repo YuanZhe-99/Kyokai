@@ -7,12 +7,14 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -212,6 +214,57 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		return localapi.Response{OK: true}
 	}
 	return localapi.Fail(localapi.CodeUnknown, "unknown request %q", req.Type)
+}
+
+// mediaPoll is how long one wait for a media packet lasts, so the pump
+// notices a closed GUI connection soon.
+const mediaPoll = 500 * time.Millisecond
+
+// Media pumps a controller session's media between the core and the GUI:
+// packets from the core (video) go to the GUI, packets from the GUI
+// (control messages) go to the core, until either side ends.
+func (h *handler) Media(ctx context.Context, req localapi.Request, open func() io.ReadWriter) localapi.Response {
+	st, err := h.status()
+	if err != nil {
+		return localapi.Fail(localapi.CodeInternal, "%v", err)
+	}
+	live := slices.ContainsFunc(st.Sessions, func(s localapi.SessionInfo) bool {
+		return s.ID == req.ID && s.Role == "controller" && (s.State == "connected" || s.State == "reconnecting")
+	})
+	if !live {
+		return localapi.Fail(localapi.CodeInvalid, "no live session %d", req.ID)
+	}
+	rw := open()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		defer cancel()
+		var buf []byte
+		for {
+			p, err := localapi.ReadPacket(rw, buf)
+			if err != nil {
+				return
+			}
+			buf = p
+			if errors.Is(h.lib.MediaWrite(req.ID, p), core.ErrMediaEnded) {
+				return
+			}
+		}
+	}()
+	buf := make([]byte, localapi.MaxPacket)
+	for ctx.Err() == nil {
+		n, err := h.lib.MediaRead(req.ID, buf, mediaPoll)
+		switch {
+		case errors.Is(err, core.ErrMediaTimeout), errors.Is(err, core.ErrMediaTooBig):
+			continue
+		case err != nil:
+			return localapi.Response{OK: true}
+		}
+		if localapi.WritePacket(rw, buf[:n]) != nil {
+			return localapi.Response{OK: true}
+		}
+	}
+	return localapi.Response{OK: true}
 }
 
 // command runs a core method that changes state and answers ok or the

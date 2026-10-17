@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"image"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -122,5 +123,39 @@ func TestServerLines(t *testing.T) {
 		if got := serverLines(c.in); !slices.Equal(got, c.want) {
 			t.Errorf("%q → %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// TestViewerRenders draws the viewer window's states: waiting, a picture
+// with stats, and an unsupported codec.
+func TestViewerRenders(t *testing.T) {
+	dir := os.Getenv("SCREENSHOT_DIR")
+	pic := image.NewRGBA(image.Rect(0, 0, 320, 180))
+	for i := range pic.Pix {
+		pic.Pix[i] = byte(i * 7)
+	}
+	cases := map[string]func(v *viewer){
+		"viewer-waiting": func(v *viewer) {},
+		"viewer-picture": func(v *viewer) {
+			v.start, v.bm, v.fps, v.kbps = videoStart{Codec: "raw-rgba", Width: 320, Height: 180}, ui.NewBitmap(pic), 15, 6900
+		},
+		"viewer-unsupported": func(v *viewer) { v.state = "This picture uses h265, which this version can't show yet." },
+	}
+	for name, setup := range cases {
+		v := &viewer{device: "657365333"}
+		setup(v)
+		tt := ui.NewTester(v.view, 800, 500)
+		tt.Frame()
+		if dir == "" {
+			continue
+		}
+		f, err := os.Create(filepath.Join(dir, "en-"+name+".png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := png.Encode(f, tt.Image()); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
 	}
 }

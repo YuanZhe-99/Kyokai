@@ -58,6 +58,19 @@ After an accepted verdict both sides exchange `{"type": …}` documents: `ping` 
 5 seconds, and `bye`. A session with no frame for 15 seconds is closed. Later phases add video,
 input and AI messages to this channel.
 
+## Media
+
+A plaintext that starts with byte `0x01` is a media chunk, not JSON: the frame number (u32), the
+chunk index and count (u16 each), flags (bit 0: key frame) and the presentation time in
+microseconds (u64), all big-endian, then a part of the frame. A frame is split into as many chunks
+as it needs and put back together on the other side; a chunk of a newer frame drops an unfinished
+older one (latest frame wins), and frames over 64 MiB are dropped. Before its first frame the host
+sends `{"type": "video-start", codec, width, height}`; the controller may send `{"type":
+"key-frame"}` (the host then describes the stream again and sends a key frame) and, with
+`control-input`, `{"type": "input", event}`. The host sends video only while the controller may
+view the screen. For now the stream is a 320×180 test pattern at 15 fps as raw RGBA (codec
+`raw-rgba`); captured, encoded video follows in Phase 3.
+
 ## Decoders
 
 Every frame is size-checked before it is read, decrypted before it is parsed, and parsed into

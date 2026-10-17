@@ -202,6 +202,11 @@ func (a *App) sessionsCard(c *ui.Context) {
 						go func() { _, _ = a.requestWith(localapi.Request{Type: localapi.RequestHostForget, DeviceID: device}) }()
 					}
 				}
+				if s.Role == "controller" && s.State == "connected" && slices.Contains(s.Granted, localapi.PermViewScreen) {
+					if ui.Button(c.Key("sess-view-"+itoa(s.ID)), L.ActionView()).Clicked() {
+						a.openViewer(s)
+					}
+				}
 				if s.State == "connected" || s.State == "connecting" || s.State == "confirming" || s.State == "reconnecting" {
 					if ui.Button(c.Key("sess-close-"+itoa(s.ID)), L.ActionDisconnect()).Clicked() {
 						id := s.ID

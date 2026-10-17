@@ -15,7 +15,9 @@ use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::Notify;
+use tokio::sync::{Notify, mpsc};
+
+use crate::media;
 
 /// Version of the wire protocol; a mismatch closes the connection.
 pub const PROTOCOL: u32 = 1;
@@ -87,6 +89,14 @@ enum Message {
     Ping,
     Pong,
     Bye,
+    /// host → controller: the video stream that follows.
+    VideoStart(media::VideoStart),
+    /// controller → host: send a key frame next.
+    KeyFrame,
+    /// controller → host: one input event (Phase 3 step 3.5).
+    Input {
+        event: Value,
+    },
 }
 
 /// Why a session ended or never started, as shown to people.
@@ -152,6 +162,10 @@ struct Entry {
     peer_version: String,
     peer_source: String,
     stop: Arc<Notify>,
+    /// Controller side: media for the GUI, and the GUI's control messages.
+    media: Arc<media::Queue>,
+    control_tx: mpsc::Sender<Value>,
+    control_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<Value>>>,
 }
 
 /// Every session of this device, live and recently finished.
@@ -166,6 +180,7 @@ impl Sessions {
         s.0 += 1;
         let id = s.0;
         let stop = Arc::new(Notify::new());
+        let (control_tx, control_rx) = mpsc::channel(64);
         s.1.push(Entry {
             id,
             role,
@@ -176,6 +191,9 @@ impl Sessions {
             peer_version: String::new(),
             peer_source: String::new(),
             stop: stop.clone(),
+            media: Arc::default(),
+            control_tx,
+            control_rx: Arc::new(tokio::sync::Mutex::new(control_rx)),
         });
         (id, stop)
     }
@@ -201,6 +219,7 @@ impl Sessions {
 
     fn end(&self, id: u64, failure: Option<Failure>) {
         self.update(id, |e| {
+            e.media.close();
             e.state = if failure.is_some() {
                 State::Failed
             } else {
@@ -208,6 +227,24 @@ impl Sessions {
             };
             e.failure = failure;
         });
+    }
+
+    /// A controller session's media queue and control sender, for the GUI.
+    pub fn media(&self, id: u64) -> Option<(Arc<media::Queue>, mpsc::Sender<Value>)> {
+        let s = self.inner.lock().ok()?;
+        let e =
+            s.1.iter()
+                .find(|e| e.id == id && e.role == Role::Controller)?;
+        Some((e.media.clone(), e.control_tx.clone()))
+    }
+
+    fn side(&self, id: u64) -> Option<Side> {
+        let s = self.inner.lock().ok()?;
+        let e = s.1.iter().find(|e| e.id == id)?;
+        Some(Side::Controller {
+            queue: e.media.clone(),
+            control: e.control_rx.clone(),
+        })
     }
 
     /// Asks a live session to end.
@@ -339,7 +376,11 @@ fn verify_static(
 /// Serves one incoming connection as the host.
 /// Side effects: registers the session, may ask the host's user, records the
 /// controller as trusted when accepted, counts failed logins.
-pub async fn serve<S: AsyncRead + AsyncWrite + Unpin>(ctx: Arc<Ctx>, mut stream: S, from: IpAddr) {
+pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
+    ctx: Arc<Ctx>,
+    mut stream: S,
+    from: IpAddr,
+) {
     let (hs, my_static) = match noise(false) {
         Ok(v) => v,
         Err(_) => return,
@@ -392,11 +433,12 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin>(ctx: Arc<Ctx>, mut stream:
     });
     match host_login(&ctx, &mut ch, &client, &client_key, &context, from, id).await {
         Ok(granted) => {
+            let video = granted.contains(&Permission::ViewScreen);
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
                 e.granted = granted;
             });
-            let failure = run(&mut ch, &stop).await.err();
+            let failure = run(ch, &stop, Side::Host { video }).await.err();
             ctx.sessions.end(id, failure);
         }
         Err(f) => ctx.sessions.end(id, Some(f)),
@@ -511,7 +553,7 @@ pub enum Outcome {
 /// Side effects: pins the host key on success, then keeps the session alive
 /// until either side ends it; records how it ended unless it returns `Lost`.
 #[allow(clippy::too_many_arguments)]
-pub async fn connect<S: AsyncRead + AsyncWrite + Unpin>(
+pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     ctx: Arc<Ctx>,
     id: u64,
     stop: Arc<Notify>,
@@ -602,12 +644,17 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin>(
     }
     .await;
     match result {
-        Ok((mut ch, granted, token)) => {
+        Ok((ch, granted, token)) => {
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
                 e.granted = granted;
             });
-            match (run(&mut ch, &stop).await, token) {
+            let side = ctx.sessions.side(id).ok_or(Failure::Broken);
+            let result = match side {
+                Ok(side) => run(ch, &stop, side).await,
+                Err(f) => Err(f),
+            };
+            match (result, token) {
                 (Err(Failure::Broken), Some(token)) => {
                     ctx.sessions.update(id, |e| e.state = State::Reconnecting);
                     Outcome::Lost(zeroize::Zeroizing::new(token))
@@ -644,36 +691,197 @@ pub fn give_up(ctx: &Ctx, id: u64, failure: Failure) {
     ctx.sessions.end(id, Some(failure));
 }
 
-/// Keeps an established session alive: pings, answers pings, and ends on
-/// `bye`, silence, a broken channel or a local stop.
-async fn run<S: AsyncRead + AsyncWrite + Unpin>(
-    ch: &mut Channel<S>,
-    stop: &Notify,
+/// What one end of an established session does besides the heartbeat.
+pub enum Side {
+    /// The host: sends video while the controller may view the screen.
+    Host { video: bool },
+    /// The controller: puts media into the queue its GUI drains, and sends
+    /// the GUI's control messages (input, key-frame requests) to the host.
+    Controller {
+        queue: Arc<media::Queue>,
+        control: Arc<tokio::sync::Mutex<mpsc::Receiver<Value>>>,
+    },
+}
+
+/// Encrypts one plaintext and writes it as a frame.
+async fn seal<W: AsyncWrite + Unpin>(
+    noise: &mut snow::TransportState,
+    buf: &mut [u8],
+    w: &mut W,
+    plain: &[u8],
 ) -> Result<(), Failure> {
+    let n = noise.write_message(plain, buf)?;
+    step(write_frame(w, &buf[..n])).await
+}
+
+async fn seal_json<W: AsyncWrite + Unpin, T: Serialize>(
+    noise: &mut snow::TransportState,
+    buf: &mut [u8],
+    w: &mut W,
+    msg: &T,
+) -> Result<(), Failure> {
+    let plain = serde_json::to_vec(msg).map_err(|_| Failure::Broken)?;
+    seal(noise, buf, w, &plain).await
+}
+
+/// Aborts a task when dropped (the reader of an ending session).
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Keeps an established session alive: pings, answers pings, carries
+/// media, and ends on `bye`, silence, a broken channel or a local stop.
+/// Notes: a reader task reads whole frames into a channel, so a select
+/// branch that wins never leaves a frame half read.
+async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
+    ch: Channel<S>,
+    stop: &Notify,
+    side: Side,
+) -> Result<(), Failure> {
+    let Channel {
+        stream,
+        mut noise,
+        mut buf,
+    } = ch;
+    let (mut rd, mut wr) = tokio::io::split(stream);
+    let (frames_tx, mut frames) = mpsc::channel::<Vec<u8>>(64);
+    let _reader = AbortOnDrop(tokio::spawn(async move {
+        while let Ok(f) = read_frame(&mut rd).await {
+            if frames_tx.send(f).await.is_err() {
+                break;
+            }
+        }
+    }));
+    // The host's video: a producer that drops frames the channel cannot take.
+    let (video_tx, mut video) = mpsc::channel::<(u64, Vec<u8>)>(1);
+    let mut _producer = None;
+    let mut stream_start = None;
+    if let Side::Host { video: true } = side {
+        let mut pattern = media::TestPattern::new();
+        stream_start = Some(pattern.start());
+        seal_json(
+            &mut noise,
+            &mut buf,
+            &mut wr,
+            &Message::VideoStart(pattern.start()),
+        )
+        .await?;
+        let started = Instant::now();
+        _producer = Some(AbortOnDrop(tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(1) / media::TestPattern::FPS);
+            loop {
+                tick.tick().await;
+                let frame = pattern.next_frame();
+                let pts = started.elapsed().as_micros() as u64;
+                if video_tx.is_closed() {
+                    break;
+                }
+                let _ = video_tx.try_send((pts, frame));
+            }
+        })));
+    }
+    let (queue, control) = match &side {
+        Side::Controller { queue, control } => (Some(queue.clone()), Some(control.clone())),
+        Side::Host { .. } => (None, None),
+    };
+    let mut control = match &control {
+        Some(c) => Some(c.lock().await),
+        None => None,
+    };
+    let mut reassembler = media::Reassembler::default();
+    let mut frame_no: u32 = 0;
     let mut ping = tokio::time::interval(PING_EVERY);
     let mut heard = Instant::now();
-    loop {
+    let mut plain = vec![0u8; MAX_FRAME];
+    let outcome: Result<(), Failure> = async { loop {
         tokio::select! {
             _ = stop.notified() => {
-                let _ = ch.send(&Message::Bye).await;
+                let _ = seal_json(&mut noise, &mut buf, &mut wr, &Message::Bye).await;
                 return Ok(());
             }
             _ = ping.tick() => {
                 if heard.elapsed() > IDLE_LIMIT {
                     return Err(Failure::Broken);
                 }
-                ch.send(&Message::Ping).await?;
+                seal_json(&mut noise, &mut buf, &mut wr, &Message::Ping).await?;
             }
-            msg = ch.recv::<Message>() => {
+            Some((pts, data)) = video.recv() => {
+                frame_no = frame_no.wrapping_add(1);
+                for chunk in media::chunks(frame_no, media::KEY_FRAME, pts, &data, MAX_PLAINTEXT) {
+                    seal(&mut noise, &mut buf, &mut wr, &chunk).await?;
+                }
+            }
+            Some(msg) = async {
+                match control.as_mut() {
+                    Some(rx) => rx.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                // Only messages a GUI may send pass on to the host.
+                if let Ok(m @ (Message::KeyFrame | Message::Input { .. })) = serde_json::from_value::<Message>(msg) {
+                    seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+                }
+            }
+            frame = frames.recv() => {
+                let frame = frame.ok_or(Failure::Broken)?;
                 heard = Instant::now();
-                match msg? {
-                    Message::Ping => ch.send(&Message::Pong).await?,
+                let n = noise.read_message(&frame, &mut plain)?;
+                let plain = &plain[..n];
+                if plain.first() == Some(&media::CHUNK_TAG) {
+                    if let (Some(q), Some(f)) = (&queue, reassembler.push(plain)) {
+                        let mut packet = Vec::with_capacity(10 + f.data.len());
+                        packet.push(media::packet::FRAME);
+                        packet.push(f.flags);
+                        packet.extend_from_slice(&f.pts_us.to_be_bytes());
+                        packet.extend_from_slice(&f.data);
+                        q.push(packet);
+                    }
+                    continue;
+                }
+                match serde_json::from_slice::<Message>(plain).map_err(|_| Failure::Broken)? {
+                    Message::Ping => seal_json(&mut noise, &mut buf, &mut wr, &Message::Pong).await?,
                     Message::Pong => {}
                     Message::Bye => return Ok(()),
+                    Message::VideoStart(v) => {
+                        if let Some(q) = &queue {
+                            let mut packet = vec![media::packet::VIDEO_START];
+                            packet.extend(serde_json::to_vec(&v).map_err(|_| Failure::Broken)?);
+                            q.push(packet);
+                        }
+                    }
+                    // A viewer that (re)opens asks for a key frame: describe the
+                    // stream again (every test-pattern frame is a key frame).
+                    Message::KeyFrame => {
+                        if let Some(start) = &stream_start {
+                            seal_json(&mut noise, &mut buf, &mut wr, &Message::VideoStart(start.clone())).await?;
+                        }
+                    }
+                    // Input reaches the host's input service (Phase 3 step 3.5).
+                    Message::Input { .. } => {}
                 }
             }
         }
+    } }
+    .await;
+    // A write that failed because the peer left after saying bye (its bye
+    // waiting behind our frames) is an orderly close, not a broken one.
+    if outcome.is_err() {
+        while let Ok(frame) = frames.try_recv() {
+            if let Ok(n) = noise.read_message(&frame, &mut plain)
+                && matches!(
+                    serde_json::from_slice::<Message>(&plain[..n]),
+                    Ok(Message::Bye)
+                )
+            {
+                return Ok(());
+            }
+        }
     }
+    outcome
 }
 
 #[cfg(test)]
@@ -788,6 +996,18 @@ mod tests {
         assert_eq!(s["peer_version"], "1.0.0");
         assert_eq!(s["peer_source"], SOURCE_URL);
         assert_eq!(state(&host)["state"], "connected");
+        // Video flows: the stream description, then whole test-pattern frames.
+        let (queue, _) = controller.sessions.media(id).unwrap();
+        let start = queue.pop(Duration::from_secs(5)).unwrap();
+        assert_eq!(start[0], media::packet::VIDEO_START);
+        let v: media::VideoStart = serde_json::from_slice(&start[1..]).unwrap();
+        assert_eq!(
+            (v.codec.as_str(), v.width, v.height),
+            ("raw-rgba", 320, 180)
+        );
+        let frame = queue.pop(Duration::from_secs(5)).unwrap();
+        assert_eq!(frame[0], media::packet::FRAME);
+        assert_eq!(frame.len(), 1 + 1 + 8 + 320 * 180 * 4);
         // The host now trusts the controller; the controller pinned the host.
         assert_eq!(host.access.trusted().len(), 1);
         assert!(controller.access.known_host(&dialed).is_some());

@@ -266,6 +266,16 @@ func (msgs Messages) ActionShow() string {
 	return Catalog.Format(msgs.locale, "ActionShow", nil)
 }
 
+// ActionView says "View"
+// in the language the app shows.
+func ActionView() string { return In(i18n.Locale()).ActionView() }
+
+// ActionView says "View"
+// in the language of msgs.
+func (msgs Messages) ActionView() string {
+	return Catalog.Format(msgs.locale, "ActionView", nil)
+}
+
 // AppUpToDate says "Kyokai is up to date."
 // in the language the app shows.
 func AppUpToDate() string { return In(i18n.Locale()).AppUpToDate() }
@@ -1626,4 +1636,44 @@ func TrustedTitle() string { return In(i18n.Locale()).TrustedTitle() }
 // in the language of msgs.
 func (msgs Messages) TrustedTitle() string {
 	return Catalog.Format(msgs.locale, "TrustedTitle", nil)
+}
+
+// ViewerEnded says "The session ended."
+// in the language the app shows.
+func ViewerEnded() string { return In(i18n.Locale()).ViewerEnded() }
+
+// ViewerEnded says "The session ended."
+// in the language of msgs.
+func (msgs Messages) ViewerEnded() string {
+	return Catalog.Format(msgs.locale, "ViewerEnded", nil)
+}
+
+// ViewerTitle says "{device} — Kyokai"
+// in the language the app shows.
+func ViewerTitle(device string) string { return In(i18n.Locale()).ViewerTitle(device) }
+
+// ViewerTitle says "{device} — Kyokai"
+// in the language of msgs.
+func (msgs Messages) ViewerTitle(device string) string {
+	return Catalog.Format(msgs.locale, "ViewerTitle", map[string]any{"device": device})
+}
+
+// ViewerUnsupported says "This picture uses {codec}, which this version can't show yet."
+// in the language the app shows.
+func ViewerUnsupported(codec string) string { return In(i18n.Locale()).ViewerUnsupported(codec) }
+
+// ViewerUnsupported says "This picture uses {codec}, which this version can't show yet."
+// in the language of msgs.
+func (msgs Messages) ViewerUnsupported(codec string) string {
+	return Catalog.Format(msgs.locale, "ViewerUnsupported", map[string]any{"codec": codec})
+}
+
+// ViewerWaiting says "Waiting for the picture…"
+// in the language the app shows.
+func ViewerWaiting() string { return In(i18n.Locale()).ViewerWaiting() }
+
+// ViewerWaiting says "Waiting for the picture…"
+// in the language of msgs.
+func (msgs Messages) ViewerWaiting() string {
+	return Catalog.Format(msgs.locale, "ViewerWaiting", nil)
 }

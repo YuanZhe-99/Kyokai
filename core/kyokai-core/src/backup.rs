@@ -28,8 +28,15 @@ const AAD: &[u8] = b"kyokai/identity-backup/v1";
 /// Shortest passphrase accepted for a backup.
 pub const MIN_PASSPHRASE: usize = 10;
 /// Argon2id cost for backups: 64 MiB, 3 passes (a backup is opened rarely).
+#[cfg(not(test))]
 const KDF_M: u32 = 64 * 1024;
+#[cfg(not(test))]
 const KDF_T: u32 = 3;
+// Tests check the format and the checks, not the cost: keep them quick.
+#[cfg(test)]
+const KDF_M: u32 = 64;
+#[cfg(test)]
+const KDF_T: u32 = 1;
 
 #[derive(Serialize, Deserialize)]
 struct Kdf {
@@ -234,7 +241,8 @@ mod tests {
             let _ = import(&s, &damaged, "correct horse battery");
             assert_eq!(Identity::load_or_create(&s).unwrap().device_id(), id);
         }
-        let huge = doc.replace("\"m\": 65536", "\"m\": 4000000000");
+        let huge = doc.replace(&format!("\"m\": {KDF_M}"), "\"m\": 4000000000");
+        assert_ne!(huge, doc);
         assert!(
             import(&s, &huge, "correct horse battery").is_err(),
             "the KDF cost is bounded"

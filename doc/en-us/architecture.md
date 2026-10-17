@@ -47,11 +47,13 @@ integers and pointers only:
 
 | Export | Does |
 |---|---|
-| `kyokai_abi_version() -> u32` | ABI version (1); hosts refuse a mismatch |
+| `kyokai_abi_version() -> u32` | ABI version (2); hosts refuse a mismatch |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | Starts the core with `{version, state_dir, profile}` |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | Answers `{method, params}` |
 | `kyokai_free(ptr, len)` | Frees a response buffer |
 | `kyokai_stop()` | Drops the core's state, including its in-memory secrets |
+| `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | Waits for a controller session's next media packet and copies it into the caller's buffer; -1 timeout, -2 ended, -3 too large |
+| `kyokai_media_write(session, ptr, len) -> i32` | Passes a control packet from the GUI (input, key-frame request) to the session |
 
 Responses are `{"ok": true, "result": …}` or `{"ok": false, "error": "…"}` in a buffer the core
 allocates; panics are caught at the boundary and reported as errors. Methods: `status` (never a
@@ -79,7 +81,9 @@ runtime statically, so nothing is resolved through the search path.
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
   `password.set_permanent`, `session.connect`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
-  `session.attach`, `shutdown`. The status includes the open host
+  `session.attach`, `session.media`, `shutdown`. `session.media` (`{id}` of a live controller
+  session) answers OK and then carries length-prefixed packets both ways: video from the engine,
+  control messages from the GUI; the GUI asks for a key frame first. The status includes the open host
   confirmations and the sessions; secrets travel only towards the engine (the network secret, the
   permanent password, a typed password). A session receives the status after every command that changes it
   and whenever the network's status moves.

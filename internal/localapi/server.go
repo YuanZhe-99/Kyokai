@@ -27,6 +27,10 @@ type Handler interface {
 	// ctx ends (the client closed the connection or the server stops) and
 	// then returns. send fails once the client is gone.
 	Stream(ctx context.Context, req Request, send func(Response) error)
+	// Media serves a media stream (RequestMedia). It checks the request and
+	// returns a refusal, or calls open, which answers OK and hands over the
+	// connection for packets, and returns when the stream ends.
+	Media(ctx context.Context, req Request, open func() io.ReadWriter) Response
 }
 
 // maxSocketPath is the longest socket path the kernel accepts: sun_path
@@ -210,6 +214,9 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, authz Authorizer) 
 		} else if req.Type == RequestSessionAttach {
 			stream(ctx, conn, reader, h, req)
 			return
+		} else if req.Type == RequestMedia {
+			media(ctx, conn, reader, h, req)
+			return
 		} else {
 			resp = h.Handle(ctx, req)
 		}
@@ -260,4 +267,37 @@ func stream(ctx context.Context, conn net.Conn, reader *bufio.Reader, h Handler,
 		return nil
 	}
 	h.Stream(ctx, req, send)
+}
+
+// media runs a media stream on conn: the handler either refuses (the
+// answer is written as usual) or opens it, after which the connection
+// carries packets in both directions until either side closes it.
+func media(ctx context.Context, conn net.Conn, reader *bufio.Reader, h Handler, req Request) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	write := func(resp Response) bool {
+		resp.Version = ProtocolVersion
+		payload, err := json.Marshal(resp)
+		if err != nil {
+			return false
+		}
+		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, err = conn.Write(append(payload, '\n'))
+		return err == nil
+	}
+	opened := false
+	resp := h.Media(ctx, req, func() io.ReadWriter {
+		opened = true
+		write(Response{OK: true})
+		_ = conn.SetDeadline(time.Time{})
+		// Packets the client sent are read through the request reader,
+		// which may already hold some of them.
+		return struct {
+			io.Reader
+			io.Writer
+		}{reader, conn}
+	})
+	if !opened {
+		write(resp)
+	}
 }

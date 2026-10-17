@@ -10,6 +10,7 @@ mod access;
 mod auth;
 mod backup;
 mod identity;
+mod media;
 mod net;
 mod password;
 mod session;
@@ -23,7 +24,7 @@ use std::sync::{Arc, Mutex};
 
 /// Version of the C ABI. Hosts compare it with their own before any other
 /// call; changing an export's signature or meaning bumps it.
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 2;
 
 /// The running core: what `kyokai_start` set up, until `kyokai_stop`.
 struct Core {
@@ -149,6 +150,82 @@ pub extern "C" fn kyokai_stop() {
             *core = None;
         }
     });
+}
+
+/// Waits for the next media packet of a controller session, for the GUI
+/// (doc/en-us/architecture.md, "FFI").
+/// Inputs: `buf`/`cap` — memory the caller owns, written by the core.
+/// Returns: the packet's length; -1 when `timeout_ms` passed without one;
+/// -2 when the session's media ended or there is no such session; -3 when
+/// the packet does not fit `cap` (it is dropped).
+///
+/// # Safety
+/// `buf` is valid for `cap` bytes of writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kyokai_media_read(
+    session: u64,
+    buf: *mut u8,
+    cap: usize,
+    timeout_ms: u32,
+) -> i64 {
+    let got = catch_unwind(|| {
+        // The core's lock is held only to find the queue, never while waiting.
+        let queue = CORE
+            .lock()
+            .ok()?
+            .as_ref()?
+            .ctx
+            .sessions
+            .media(session)
+            .map(|(q, _)| q)?;
+        Some(queue.pop(std::time::Duration::from_millis(timeout_ms.into())))
+    });
+    let packet = match got {
+        Ok(Some(Ok(p))) => p,
+        Ok(Some(Err(media::Empty::Timeout))) => return -1,
+        _ => return -2,
+    };
+    if buf.is_null() || packet.len() > cap {
+        return -3;
+    }
+    // SAFETY: the caller guarantees `cap` writable bytes; `packet.len() <= cap`.
+    unsafe { std::ptr::copy_nonoverlapping(packet.as_ptr(), buf, packet.len()) };
+    packet.len() as i64
+}
+
+/// Passes one packet from the GUI to a controller session: a control message
+/// (`media::packet::CONTROL` + JSON) for the host.
+/// Inputs: `ptr`/`len` — the packet, borrowed for the call.
+/// Returns: 0; -1 for a malformed packet; -2 when there is no such session
+/// or it is not taking messages (full or ended).
+///
+/// # Safety
+/// `ptr` points to `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kyokai_media_write(session: u64, ptr: *const u8, len: usize) -> i32 {
+    if ptr.is_null() {
+        return -1;
+    }
+    // SAFETY: the caller guarantees `len` readable bytes at `ptr`.
+    let packet = unsafe { std::slice::from_raw_parts(ptr, len) };
+    catch_unwind(|| {
+        let Some((&media::packet::CONTROL, json)) = packet.split_first() else {
+            return -1;
+        };
+        let Ok(msg) = serde_json::from_slice::<Value>(json) else {
+            return -1;
+        };
+        let sender = CORE
+            .lock()
+            .ok()
+            .and_then(|c| c.as_ref()?.ctx.sessions.media(session))
+            .map(|(_, tx)| tx);
+        match sender {
+            Some(tx) if tx.try_send(msg).is_ok() => 0,
+            _ => -2,
+        }
+    })
+    .unwrap_or(-2)
 }
 
 /// Frees a response buffer from `kyokai_start` or `kyokai_call`.

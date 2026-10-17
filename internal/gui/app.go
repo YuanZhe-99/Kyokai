@@ -59,6 +59,8 @@ type App struct {
 	access  accessForm
 	// Identity backup passphrase (identity.go), write-only.
 	passphrase string
+	// Open viewer windows by session id (viewer.go).
+	viewers map[uint64]*viewer
 
 	// View state.
 	page         page
@@ -80,7 +82,7 @@ func New(profile, stateDir, socket string) *App {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &App{
 		profile: profile, stateDir: stateDir, socket: socket, ctx: ctx, cancel: cancel,
-		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{},
+		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{}, viewers: map[uint64]*viewer{},
 	}
 }
 

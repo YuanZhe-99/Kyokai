@@ -28,6 +28,7 @@ Studio 2026 without its Clang component):
 | Sessions (2026-10-17) | two engines through a standard server: a wrong password is refused as such on both sides; the right temporary password raises the host's confirmation, which granted view-screen only, and the session connected with exactly that; the controller then became a trusted device ("known"); a permanent password works the same; closing from the controller ends both sides |
 | Identity backup (2026-10-17) | backup → reset (new Device ID) → restore with a wrong passphrase refused, with the right one the old Device ID, permanent password and trusted device are back and the network reconnects |
 | Remote x64 VM (2026-10-17) | the CI-built x64 installer installs per user without a prompt; its engine joins the network through the standard server (symmetric NAT on both sides, so relayed, about 99 ms); a session from this machine to the VM raised the VM's confirmation and connected with the granted subset; after the VM's node restarted, the session resumed within 7 s with the same permissions and no new confirmation |
+| Video channel (2026-10-17) | the test pattern (320×180 raw RGBA) through two engines and the public server's relay: 4 fps at about 7.6 Mbit/s, the relay's limit for this path; the stream description arrives and is repeated on a key-frame request |
 | `cargo deny` | passes (advisories, bans, licenses, sources) once VS's clang is on `PATH` |
 
 ## macOS

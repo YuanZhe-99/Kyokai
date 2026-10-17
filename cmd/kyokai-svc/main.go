@@ -6,7 +6,7 @@
 //	kyokai-svc ctl network-set --server URL [--server URL…] --name N
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--want P,P…]
-//	kyokai-svc ctl close --id N
+//	kyokai-svc ctl close --id N | watch --id N [--seconds S]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
 	"github.com/YuanZhe-99/Kyokai/internal/engine"
@@ -130,6 +131,7 @@ func ctl(args []string) error {
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
 	file := fs.String("file", "", "backup, restore: the backup file")
 	yes := fs.Bool("yes", false, "reset-identity: confirm a new Device ID")
+	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
 	// The command comes first, its flags after it.
 	if len(args) == 0 {
 		usage()
@@ -139,6 +141,9 @@ func ctl(args []string) error {
 		usage()
 	}
 	cmd := args[0]
+	if cmd == "watch" {
+		return watch(*socket, *id, time.Duration(*seconds)*time.Second)
+	}
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
@@ -286,4 +291,41 @@ func printStatus(s *localapi.Status) {
 		}
 		fmt.Println()
 	}
+}
+
+// watch reads a controller session's media like the GUI's viewer does and
+// prints what arrives: the stream, frames per second and bitrate.
+func watch(socket string, id uint64, d time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), d+10*time.Second)
+	defer cancel()
+	conn, err := localapi.NewClient(socket).Media(ctx, id)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	// Like the viewer: ask for a key frame (and the stream description) first.
+	if err := localapi.WritePacket(conn, append([]byte{3}, `{"type":"key-frame"}`...)); err != nil {
+		return err
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(d))
+	var buf []byte
+	frames, bytes := 0, 0
+	start := time.Now()
+	for {
+		p, err := localapi.ReadPacket(conn, buf)
+		if err != nil {
+			break
+		}
+		buf = p
+		switch {
+		case len(p) > 0 && p[0] == 1:
+			fmt.Printf("stream %s\n", p[1:])
+		case len(p) >= 10 && p[0] == 2:
+			frames++
+			bytes += len(p) - 10
+		}
+	}
+	el := time.Since(start).Seconds()
+	fmt.Printf("%d frames in %.1f s: %.1f fps, %.0f kbit/s\n", frames, el, float64(frames)/el, float64(bytes)*8/1000/el)
+	return nil
 }

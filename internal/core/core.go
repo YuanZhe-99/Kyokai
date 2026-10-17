@@ -11,12 +11,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 	"unsafe"
 )
 
 // ABIVersion is the C ABI this package speaks; the library must report the
 // same one.
-const ABIVersion = 1
+const ABIVersion = 2
 
 // LibraryName is the file name of the core library on this platform.
 func LibraryName() string {
@@ -32,6 +33,7 @@ func LibraryName() string {
 // Lib is a loaded core library.
 type Lib struct {
 	abiVersion, start, call, stop, free uintptr
+	mediaRead, mediaWrite               uintptr
 	mu                                  sync.Mutex // the core is one process-wide instance
 	// out receives a response's buffer. It lives in the Lib (on the heap,
 	// which never moves) rather than on a goroutine stack, which may move
@@ -90,6 +92,7 @@ func Load(path string) (*Lib, error) {
 	for name, dst := range map[string]*uintptr{
 		"kyokai_abi_version": &l.abiVersion, "kyokai_start": &l.start, "kyokai_call": &l.call,
 		"kyokai_stop": &l.stop, "kyokai_free": &l.free,
+		"kyokai_media_read": &l.mediaRead, "kyokai_media_write": &l.mediaWrite,
 	} {
 		if *dst, err = symbol(h, name); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
@@ -157,4 +160,53 @@ func (l *Lib) exchange(fn uintptr, req, out any) error {
 		return nil
 	}
 	return json.Unmarshal(resp.Result, out)
+}
+
+// Media errors from MediaRead and MediaWrite.
+var (
+	ErrMediaTimeout = errors.New("no media within the timeout")
+	ErrMediaEnded   = errors.New("the session's media ended")
+	ErrMediaTooBig  = errors.New("media packet larger than the buffer")
+)
+
+// MediaRead waits up to timeout for the next media packet of a controller
+// session and copies it into buf.
+// Returns: the packet's length, or ErrMediaTimeout, ErrMediaEnded or
+// ErrMediaTooBig (that packet is dropped).
+// Notes: blocks its goroutine's OS thread; it does not take the Lib's lock,
+// so status calls go on meanwhile. buf must be heap memory (any slice from
+// make is), which never moves during the call.
+func (l *Lib) MediaRead(session uint64, buf []byte, timeout time.Duration) (int, error) {
+	if len(buf) == 0 {
+		return 0, ErrMediaTooBig
+	}
+	n := int64(syscallN(l.mediaRead, uintptr(session), uintptr(unsafe.Pointer(unsafe.SliceData(buf))),
+		uintptr(len(buf)), uintptr(timeout.Milliseconds())))
+	runtime.KeepAlive(buf)
+	switch {
+	case n >= 0:
+		return int(n), nil
+	case n == -1:
+		return 0, ErrMediaTimeout
+	case n == -3:
+		return 0, ErrMediaTooBig
+	}
+	return 0, ErrMediaEnded
+}
+
+// MediaWrite passes one packet from the GUI (a control message) to a
+// controller session.
+func (l *Lib) MediaWrite(session uint64, packet []byte) error {
+	if len(packet) == 0 {
+		return errors.New("empty media packet")
+	}
+	rc := int32(syscallN(l.mediaWrite, uintptr(session), uintptr(unsafe.Pointer(unsafe.SliceData(packet))), uintptr(len(packet))))
+	runtime.KeepAlive(packet)
+	switch rc {
+	case 0:
+		return nil
+	case -1:
+		return errors.New("malformed media packet")
+	}
+	return ErrMediaEnded
 }

@@ -44,11 +44,13 @@
 
 | 导出 | 作用 |
 |---|---|
-| `kyokai_abi_version() -> u32` | ABI 版本（1）；不一致时宿主拒绝加载 |
+| `kyokai_abi_version() -> u32` | ABI 版本（2）；不一致时宿主拒绝加载 |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | 以 `{version, state_dir, profile}` 启动核心 |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | 应答 `{method, params}` |
 | `kyokai_free(ptr, len)` | 释放响应缓冲区 |
 | `kyokai_stop()` | 丢弃核心的状态，包括内存中的机密 |
+| `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | 等待控制端会话的下一个媒体包，并复制到调用方的缓冲区；-1 超时，-2 已结束，-3 过大 |
+| `kyokai_media_write(session, ptr, len) -> i32` | 把界面发来的控制包（输入、关键帧请求）交给会话 |
 
 响应是核心分配的缓冲区中的 `{"ok": true, "result": …}` 或 `{"ok": false, "error": "…"}`；panic 在边界处捕获并作为错误返回。
 方法：`status`（从不含机密；包含网络状态）、`password.reveal`、`password.regenerate`、`network.get`（不含密钥的设置）、
@@ -68,7 +70,8 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
   请求，`session.attach` 除外：它保持连接，状态变化时收到推送。
 - 请求：`status`（含网络状态）、`password.reveal`、`password.regenerate`、`network.get`、`network.set`（被拒绝的设置
   以 `invalid` 和原因答复）、`password.set_permanent`、`session.connect`、`session.close`、`request.decide`、`trusted.list`、
-  `trusted.remove`、`host.forget`、`identity.export`、`identity.import`、`identity.reset`、`session.attach`、`shutdown`。状态包含待处理的被控端确认与会话；机密只朝引擎方向传递
+  `trusted.remove`、`host.forget`、`identity.export`、`identity.import`、`identity.reset`、`session.attach`、`session.media`、`shutdown`。`session.media`（某个进行中的控制端会话的 `{id}`）先答复 OK，
+  之后双向传输带长度前缀的包：引擎发出视频，界面发出控制消息；界面首先请求关键帧。状态包含待处理的被控端确认与会话；机密只朝引擎方向传递
   （网络密钥、固定密码、用户输入的密码）。会话在每个改变状态的命令之后、以及网络状态变化时收到状态。
 - 授权来自操作系统的对端凭据（macOS 为 `LOCAL_PEERCRED`；Windows 为 `SIO_AF_UNIX_GETPEERPID` 与进程令牌的 SID），
   从不取自请求内容：只服务引擎自己的用户；读不出身份的连接一律拒绝。

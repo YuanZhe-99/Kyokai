@@ -13,9 +13,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -61,6 +63,7 @@ const (
 	RequestIdentityExport     RequestType = "identity.export"        // an encrypted identity backup (Request.Backup.Passphrase)
 	RequestIdentityImport     RequestType = "identity.import"        // restore an identity backup (Request.Backup)
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
+	RequestMedia              RequestType = "session.media"          // a controller session's media (Request.ID); the connection then carries packets
 	RequestSessionAttach      RequestType = "session.attach"         // streaming; see package doc
 	RequestShutdown           RequestType = "shutdown"
 )
@@ -373,4 +376,78 @@ func readResponse(r *bufio.Reader) (*Response, error) {
 // Fail builds an error response.
 func Fail(code ErrorCode, format string, args ...any) Response {
 	return Response{OK: false, Code: code, Error: fmt.Sprintf(format, args...)}
+}
+
+// MaxPacket is the largest media packet either side accepts.
+const MaxPacket = 32 << 20
+
+// WritePacket writes one media packet: a 4-byte big-endian length, then
+// the bytes.
+func WritePacket(w io.Writer, p []byte) error {
+	var head [4]byte
+	binary.BigEndian.PutUint32(head[:], uint32(len(p)))
+	if _, err := w.Write(head[:]); err != nil {
+		return err
+	}
+	_, err := w.Write(p)
+	return err
+}
+
+// ReadPacket reads one media packet into buf (grown when it is too small).
+// Returns: the packet, a slice of the (possibly new) buffer.
+func ReadPacket(r io.Reader, buf []byte) ([]byte, error) {
+	var head [4]byte
+	if _, err := io.ReadFull(r, head[:]); err != nil {
+		return nil, err
+	}
+	n := int(binary.BigEndian.Uint32(head[:]))
+	if n > MaxPacket {
+		return nil, fmt.Errorf("media packet of %d bytes exceeds the limit", n)
+	}
+	if cap(buf) < n {
+		buf = make([]byte, n)
+	}
+	buf = buf[:n]
+	_, err := io.ReadFull(r, buf)
+	return buf, err
+}
+
+// Media opens a controller session's media stream: after the engine's
+// answer the connection carries packets (ReadPacket / WritePacket) until
+// either side closes it.
+func (c *Client) Media(ctx context.Context, session uint64) (net.Conn, error) {
+	conn, err := c.dial(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeRequest(conn, Request{Type: RequestMedia, ID: session}); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	// Read the answer byte by byte: what follows it is packets, which a
+	// buffered reader would swallow.
+	var line []byte
+	one := make([]byte, 1)
+	_ = conn.SetReadDeadline(time.Now().Add(c.Timeout))
+	for len(line) < maxResponseSize {
+		if _, err := conn.Read(one); err != nil {
+			conn.Close()
+			return nil, err
+		}
+		if one[0] == '\n' {
+			break
+		}
+		line = append(line, one[0])
+	}
+	_ = conn.SetReadDeadline(time.Time{})
+	var resp Response
+	if err := json.Unmarshal(line, &resp); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	if !resp.OK {
+		conn.Close()
+		return nil, &RequestError{Code: resp.Code, Message: resp.Error}
+	}
+	return conn, nil
 }

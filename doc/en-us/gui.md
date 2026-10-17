@@ -12,7 +12,10 @@ when `SCREENSHOT_DIR` is set.
   "Control another device" (Device ID, password, Connect; needs a network) and the sessions, newest
   first (to or from which device, state or why it failed, Disconnect; "Forget old identity" when a
   host's key changed). Recent devices sit under the form as buttons that fill in the Device ID; a
-  dropped session shows "reconnecting" while it resumes.
+  dropped session shows "reconnecting" while it resumes. A connected session that may view the
+  screen has View, which opens the viewer: its own window with the picture scaled to fit on black,
+  and a status line (Device ID, size, codec, frame rate, bitrate); closing it stops the stream, not
+  the session.
 - **Confirmations:** a controller waiting for this host's user shows at the top of every page with
   its Device ID, whether it is known or a new key claiming a known ID, and a switch per requested
   permission, with Allow and Deny; a notification and the window coming forward announce it.
