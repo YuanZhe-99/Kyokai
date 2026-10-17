@@ -19,6 +19,7 @@ AI 任务在被操作的那台电脑上运行。支持 Windows（x64、ARM64）�
 | [upstream.md](upstream.md) | 已核实的上游契约与特殊行为：MyGo、EasyTier、RustDesk、OpenAI、Claude |
 | [third-party.md](third-party.md) | 复用的代码与依赖、许可证与义务 |
 | [platform-notes.md](platform-notes.md) | 各平台已实现与已验证的内容 |
+| [acceptance.md](acceptance.md) | 规格中的测试场景与双机验收，附证据 |
 | [development.md](development.md) | 环境、命令、开发流程、可行性验证 |
 | [ci-cd.md](ci-cd.md) | 工作流、secrets、上游更新流程 |
 | [packaging.md](packaging.md) | 构建脚本、产物、签名、许可证 |

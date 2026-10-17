@@ -21,6 +21,7 @@ embedded EasyTier P2P network, and AI tasks run on the computer being operated. 
 | [upstream.md](upstream.md) | Verified upstream contracts and quirks: MyGo, EasyTier, RustDesk, OpenAI, Claude |
 | [third-party.md](third-party.md) | Reused code and dependencies, licenses and obligations |
 | [platform-notes.md](platform-notes.md) | What is implemented and verified on each platform |
+| [acceptance.md](acceptance.md) | The specification's test scenarios and two-computer acceptance, with evidence |
 | [development.md](development.md) | Environment, commands, the dev loop, spikes |
 | [ci-cd.md](ci-cd.md) | Workflows, secrets, the upstream update procedure |
 | [packaging.md](packaging.md) | Build script, artifacts, signing, licenses |

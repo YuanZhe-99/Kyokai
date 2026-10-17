@@ -38,6 +38,11 @@ The core's direct dependencies; `RUST_LICENSES.txt` lists all of them, transitiv
 | RustDesk's DXGI and GDI screen capture (`rustdesk-dxgi`, vendored from 1.5.0 at commit `fada664`; Windows) | AGPL-3.0 (the original scrap code by Ram is MIT) | https://github.com/rustdesk/rustdesk |
 | windows, winapi (Windows: Media Foundation, DXGI) | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs, https://github.com/retep998/winapi-rs |
 | snow, opaque-ke | Apache-2.0 OR MIT; MIT | https://github.com/mcginty/snow, https://github.com/facebook/opaque-ke |
+| rand_core | MIT OR Apache-2.0 | https://github.com/rust-random/rand |
+| reqwest (AI providers' HTTPS) | MIT OR Apache-2.0 | https://github.com/seanmonstar/reqwest |
+| rustls, with ring | Apache-2.0 OR ISC OR MIT; ring: Apache-2.0 AND ISC | https://github.com/rustls/rustls, https://github.com/briansmith/ring |
+| png | MIT OR Apache-2.0 | https://github.com/image-rs/image-png |
+| arboard (clipboard) | MIT OR Apache-2.0; its Windows crates `clipboard-win` and `error-code` are BSL-1.0 | https://github.com/1Password/arboard |
 
 `cargo deny` checks every crate in the graph against the allowed licenses (`core/deny.toml`).
 
@@ -45,4 +50,4 @@ The core's direct dependencies; `RUST_LICENSES.txt` lists all of them, transitiv
 
 | Component | License | Used for |
 |---|---|---|
-| RustDesk (more vendored modules, 1.5.0) | AGPL-3.0 | input logic, privileged helper |
+| RustDesk's keyboard modes (`src/keyboard.rs`, 1.5.0) with `rustdesk-org/rdev` | AGPL-3.0; rdev MIT | the controller's keyboard modes |

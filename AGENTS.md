@@ -39,6 +39,7 @@ about to change, verify against the code, then fix the docs in the same commit.
 | Verified upstream contracts (MyGo, EasyTier, RustDesk, OpenAI, Claude) and quirks | `doc/en-us/upstream.md` |
 | Reused third-party code, licenses and obligations | `doc/en-us/third-party.md` |
 | What is implemented and verified per platform | `doc/en-us/platform-notes.md` |
+| The specification's test scenarios and acceptance, with evidence | `doc/en-us/acceptance.md` |
 | Environment, commands, dev loop, spikes | `doc/en-us/development.md` |
 | Workflows, upstream update procedure, releases, packages | `doc/en-us/ci-cd.md`, `doc/en-us/packaging.md` |
 | English→Chinese terminology | `doc/en-us/translation-guide.md` |
