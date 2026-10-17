@@ -13,7 +13,7 @@ device, no administrator right and no custom coordination server.
 | TUN | none (`no_tun`); traffic uses EasyTier's in-process data plane (smoltcp) |
 | Address | IPv4 from the network's DHCP |
 | Listeners | none |
-| Direct paths | off by default: no UDP, TCP or symmetric hole punching and no UPnP, so nothing waits for unsolicited packets and Windows Firewall does not ask; traffic goes through the server's relay. On with "Try direct connections" (`direct`), and always in the helper (see below) |
+| Direct paths | off by default: no UDP, TCP or symmetric hole punching, no UPnP and no STUN, so the node opens only its outbound connection to the server and Windows Firewall does not ask (the NAT type then reads "unknown"); traffic goes through the server's relay. On with "Try direct connections" (`direct`), and always in the helper (see below) |
 | Data plane whitelists | TCP and UDP port 47310 only; everything else from the network is dropped |
 | Runtime | a two-thread Tokio runtime owned by the core |
 
@@ -33,9 +33,11 @@ reported as weak. Clearing the servers and the name turns the node off.
 Hole punching binds a UDP socket on every address (`0.0.0.0:port`, with a UPnP mapping) and waits
 for the other side's packets; Windows Firewall treats that as accepting inbound traffic and asks to
 allow the program, a prompt a standard user cannot approve (seen on the test VM; this machine had
-rules from earlier answers). So in No privileges the node starts with
-`disable_udp_hole_punching`, `disable_tcp_hole_punching`, `disable_sym_hole_punching` and
-`disable_upnp`, and sessions use the server's relay. The Network page's **Try direct connections**
+rules from earlier answers). STUN, which finds the NAT type for punching, does the same at
+start (two short-lived UDP sockets on every address, seen on this machine). So in No privileges
+the node starts with `disable_udp_hole_punching`, `disable_tcp_hole_punching`,
+`disable_sym_hole_punching`, `disable_upnp` and empty `stun_servers` and `stun_servers_v6`; it then
+holds only its TCP connection to the server, and sessions use the server's relay. The Network page's **Try direct connections**
 (`direct` in the settings, kept with them) turns punching on, accepting that Windows may ask. The
 helper always punches: its installer adds an inbound allow rule (`Kyokai helper`) for its own
 `kyokai-svc.exe`, removed with it ([run-modes.md](run-modes.md)).

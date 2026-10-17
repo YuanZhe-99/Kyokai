@@ -227,34 +227,24 @@ func SelfUpdate(from, running string) error {
 // Side effects: deletes the KyokaiHelper service and the helper's state;
 // the caller exits right after.
 func Retire() error {
-	m, err := mgr.Connect()
-	if err != nil {
-		return err
-	}
-	if s, err := m.OpenService(ServiceName); err == nil {
-		_ = s.Delete()
-		s.Close()
-	}
-	m.Disconnect()
-	removeFirewallRule()
-	_ = os.Remove(SocketPath)
-	if err := removeWithParent(StateDir); err != nil {
-		return err
-	}
-	// A running executable cannot be deleted: Windows removes the files,
-	// then the folders, when it next starts.
-	entries, _ := os.ReadDir(BinDir)
-	paths := []string{}
-	for _, e := range entries {
-		paths = append(paths, filepath.Join(BinDir, e.Name()))
-	}
-	paths = append(paths, BinDir, filepath.Dir(BinDir))
-	for _, p := range paths {
-		name, err := windows.UTF16PtrFromString(p)
-		if err != nil {
-			continue
+	if m, err := mgr.Connect(); err == nil {
+		if s, err := m.OpenService(ServiceName); err == nil {
+			_ = s.Delete()
+			s.Close()
 		}
-		_ = windows.MoveFileEx(name, nil, windows.MOVEFILE_DELAY_UNTIL_REBOOT)
+		m.Disconnect()
+	}
+	removeFirewallRule()
+	// What can go now goes. What is still open (the running engine's log,
+	// its executables) goes when Windows next starts, children before
+	// their folders.
+	_ = os.RemoveAll(root)
+	for _, dir := range []string{root, filepath.Dir(BinDir)} {
+		for _, p := range deepestFirst(dir) {
+			if name, err := windows.UTF16PtrFromString(p); err == nil {
+				_ = windows.MoveFileEx(name, nil, windows.MOVEFILE_DELAY_UNTIL_REBOOT)
+			}
+		}
 	}
 	return nil
 }

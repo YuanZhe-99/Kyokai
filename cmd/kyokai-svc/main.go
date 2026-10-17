@@ -10,7 +10,7 @@
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--want P,P…]
-//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T]
+//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T] [--click X,Y]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID | unattended --key K [--days N]
 //	kyokai-svc ctl background [--on]     (the helper: Background service or Follow GUI)
@@ -177,6 +177,7 @@ func ctl(args []string) error {
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
 	fpsCap := fs.Int("fps", 0, "watch: ask for a frame-rate cap first")
+	click := fs.String("click", "", "watch: click at X,Y (fractions of the picture) after 2 s")
 	provider := fs.String("provider", "", "ai-set, ai-key: claude or openai")
 	openaiModel := fs.String("openai-model", "", "ai-set: the OpenAI model")
 	claudeModel := fs.String("claude-model", "", "ai-set: the Claude model")
@@ -199,7 +200,7 @@ func ctl(args []string) error {
 		return err
 	}
 	if cmd == "watch" {
-		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *text)
+		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *text, *click)
 	}
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
@@ -429,7 +430,7 @@ func printStatus(s *localapi.Status) {
 // host's AI task. With a snapshot path it also decodes the frames (the
 // viewer's decoder) and saves the last picture; with a text it first asks
 // the host's AI to do it (the viewer's AI panel).
-func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, aiText string) error {
+func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, aiText, click string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), d+10*time.Second)
 	defer cancel()
 	conn, err := localapi.NewClient(socket).Media(ctx, id)
@@ -459,6 +460,22 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 		if err := localapi.WritePacket(conn, append([]byte{3}, body...)); err != nil {
 			return err
 		}
+	}
+	if click != "" {
+		// A press and release at a point of the picture, as the viewer sends
+		// them (the session needs control-input).
+		var x, y float64
+		if _, err := fmt.Sscanf(click, "%f,%f", &x, &y); err != nil {
+			return fmt.Errorf("--click wants X,Y as fractions: %w", err)
+		}
+		go func() {
+			time.Sleep(2 * time.Second)
+			for _, action := range []string{"move", "down", "up"} {
+				body, _ := json.Marshal(map[string]any{"type": "input", "event": map[string]any{"kind": "pointer", "action": action, "button": 0, "x": x, "y": y}})
+				_ = localapi.WritePacket(conn, append([]byte{3}, body...))
+				time.Sleep(80 * time.Millisecond)
+			}
+		}()
 	}
 	if aiText != "" {
 		body, _ := json.Marshal(map[string]any{"type": "ai-start", "key": strconv.FormatInt(time.Now().UnixNano(), 36), "instruction": aiText})

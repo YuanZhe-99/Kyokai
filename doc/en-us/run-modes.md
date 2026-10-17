@@ -96,9 +96,9 @@ session agent (its link, start in the console session and desktop following) are
 Windows; the link is tested in-process, the service and the agent not yet on a machine. The macOS
 helper (a root LaunchDaemon) comes with the Mac pass and reports "not available yet" until then.
 The helper ran as a service on Windows ARM64 ([platform-notes.md](platform-notes.md), "The
-helper"): install, authorization, the agent and its secure-desktop capture, the store move both
-ways, unattended access and uninstall. The run-mode switch in the GUI and the signed update have
-not run there yet.
+helper"): install, authorization, the agent with capture of and a click on the secure desktop,
+the store move both ways, unattended access, uninstall and self-disable. The run-mode switch in
+the GUI and the signed update have not run there yet.
 The signed self-update and the self-disable are implemented and their rules tested (a file
 swapped after the check is not installed); none of this has run as a service yet. A helper
 installed with `kyokai-svc helper install` alone runs an engine of its own with a separate Device ID

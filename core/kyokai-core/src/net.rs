@@ -435,7 +435,7 @@ dhcp = true
 listeners = []
 tcp_whitelist = ["{KYOKAI_PORT}"]
 udp_whitelist = ["{KYOKAI_PORT}"]
-
+{stun}
 [network_identity]
 network_name = {name}
 network_secret = {secret}
@@ -449,6 +449,15 @@ disable_sym_hole_punching = {off}
 disable_upnp = {off}
 "#,
         off = !direct,
+        // STUN only serves hole punching; its UDP sockets on every address
+        // would make Windows Firewall ask too.
+        stun = if direct {
+            ""
+        } else {
+            "stun_servers = []
+stun_servers_v6 = []
+"
+        },
         id = instance_id(device_id),
         name = q(&s.name),
         secret = q(&s.secret),
@@ -570,6 +579,12 @@ mod tests {
             assert_eq!(f.disable_tcp_hole_punching, !direct);
             assert_eq!(f.disable_sym_hole_punching, !direct);
             assert_eq!(f.disable_upnp, !direct);
+            let stun = config(&s, "100000002", direct).unwrap().get_stun_servers();
+            assert_eq!(
+                stun.is_some_and(|v| v.is_empty()),
+                !direct,
+                "no STUN without direct paths"
+            );
             assert!(f.no_tun);
         }
     }

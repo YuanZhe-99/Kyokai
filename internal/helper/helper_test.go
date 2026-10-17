@@ -112,3 +112,28 @@ func TestAppGone(t *testing.T) {
 		t.Error("the app's engine is there")
 	}
 }
+
+// TestDeepestFirst: a removal scheduled for the next restart deletes
+// files before their folders (regression: the helper could not delete its
+// state while its own log was open, and stayed running).
+func TestDeepestFirst(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Kyokai")
+	if got := deepestFirst(dir); len(got) != 0 {
+		t.Fatalf("missing dir: %v", got)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "state", "logs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "state", "logs", "engine.log"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := deepestFirst(dir)
+	pos := map[string]int{}
+	for i, p := range got {
+		pos[p] = i
+	}
+	log, logs, state := filepath.Join(dir, "state", "logs", "engine.log"), filepath.Join(dir, "state", "logs"), filepath.Join(dir, "state")
+	if !(pos[log] < pos[logs] && pos[logs] < pos[state] && pos[state] < pos[dir]) || len(got) != 4 {
+		t.Fatalf("order %v", got)
+	}
+}

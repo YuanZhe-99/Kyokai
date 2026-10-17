@@ -174,3 +174,20 @@ func installBundle(dir string, b bundlesig.Bundle) error {
 	}
 	return nil
 }
+
+// deepestFirst lists dir and everything below it, each entry before the
+// folder that holds it, so deleting in this order empties folders first;
+// nothing for a missing dir.
+func deepestFirst(dir string) []string {
+	var all []string
+	_ = filepath.WalkDir(dir, func(p string, _ fs.DirEntry, err error) error {
+		if err == nil {
+			all = append(all, p)
+		}
+		return nil
+	})
+	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+		all[i], all[j] = all[j], all[i]
+	}
+	return all
+}
