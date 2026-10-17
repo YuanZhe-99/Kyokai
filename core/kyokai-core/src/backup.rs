@@ -213,6 +213,35 @@ mod tests {
     }
 
     #[test]
+    fn damaged_backups_are_refused_without_writing() {
+        let s = Secrets::memory();
+        let id = Identity::load_or_create(&s).unwrap().device_id();
+        let doc = export(&s, "correct horse battery").unwrap();
+        let mut x = 0x1234_5678_9abc_def1u64;
+        for i in 0..200 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            // Flip one character of a real backup, or cut it short.
+            let mut bytes = doc.clone().into_bytes();
+            let at = (x as usize) % bytes.len();
+            if i % 2 == 0 {
+                bytes[at] ^= 1 << (x % 7);
+            } else {
+                bytes.truncate(at);
+            }
+            let damaged = String::from_utf8_lossy(&bytes);
+            let _ = import(&s, &damaged, "correct horse battery");
+            assert_eq!(Identity::load_or_create(&s).unwrap().device_id(), id);
+        }
+        let huge = doc.replace("\"m\": 65536", "\"m\": 4000000000");
+        assert!(
+            import(&s, &huge, "correct horse battery").is_err(),
+            "the KDF cost is bounded"
+        );
+    }
+
+    #[test]
     fn a_reset_gives_a_new_identity() {
         let s = Secrets::memory();
         let before = Identity::load_or_create(&s).unwrap().device_id();

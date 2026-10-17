@@ -63,3 +63,6 @@ input and AI messages to this channel.
 Every frame is size-checked before it is read, decrypted before it is parsed, and parsed into
 fixed types; unknown message types close the session. The protocol is versioned: a mismatch closes
 the connection with a reason.
+Randomized tests feed both ends garbage, wrongly framed and truncated input, also after a real
+first handshake message, and damaged identity backups: every connection ends, nothing panics, and a
+damaged backup never changes the identity.

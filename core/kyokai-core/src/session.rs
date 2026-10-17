@@ -902,6 +902,96 @@ mod tests {
         assert_eq!(host.access.pending(), json!([]));
     }
 
+    /// A small xorshift generator: the fuzz rounds are random but repeatable.
+    fn rng(seed: u64) -> impl FnMut() -> u64 {
+        let mut s = seed;
+        move || {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            s
+        }
+    }
+
+    /// Writes 1–3 random frames, with a well-formed length prefix or none.
+    async fn garbage(
+        w: &mut (impl AsyncWrite + Unpin),
+        next: &mut impl FnMut() -> u64,
+        prefixed: bool,
+    ) {
+        for _ in 0..next() % 3 + 1 {
+            let len = (next() % 700) as usize;
+            let bytes: Vec<u8> = (0..len).map(|_| next() as u8).collect();
+            if prefixed {
+                let _ = w.write_u16(len as u16).await;
+            }
+            let _ = w.write_all(&bytes).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn garbage_never_panics_and_always_ends_the_host_side() {
+        let host = device("1.0.0");
+        let from: IpAddr = "10.126.126.9".parse().unwrap();
+        let mut next = rng(0x9e37_79b9_7f4a_7c15);
+        for round in 0..400 {
+            let (mut a, b) = tokio::io::duplex(1 << 16);
+            let served = tokio::spawn(serve(host.clone(), b, from));
+            if round % 3 == 2 {
+                // A real first message, then garbage where frame 3 belongs.
+                let (mut hs, _) = noise(true).unwrap();
+                let mut buf = vec![0u8; MAX_FRAME];
+                let n = hs.write_message(&[], &mut buf).unwrap();
+                write_frame(&mut a, &buf[..n]).await.unwrap();
+                let _ = read_frame(&mut a).await;
+            }
+            garbage(&mut a, &mut next, round % 2 == 0).await;
+            drop(a);
+            tokio::time::timeout(Duration::from_secs(5), served)
+                .await
+                .expect("the host gives up on garbage")
+                .expect("no panic");
+        }
+        assert!(host.access.pending().as_array().unwrap().is_empty());
+        let sessions = host.sessions.list();
+        assert!(
+            sessions
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|s| s["state"] == "failed" || s["state"] == "closed"),
+            "{sessions}"
+        );
+    }
+
+    #[tokio::test]
+    async fn garbage_never_panics_the_controller() {
+        let controller = device("1.0.0");
+        let mut next = rng(0x2545_f491_4f6c_dd1d);
+        for round in 0..200 {
+            let (a, mut b) = tokio::io::duplex(1 << 16);
+            let (id, stop) = begin(&controller, "100000002");
+            let dialing = tokio::spawn(connect(
+                controller.clone(),
+                id,
+                stop,
+                a,
+                "100000002".into(),
+                zeroize::Zeroizing::new("k7mq2xpa".into()),
+                vec![Permission::ViewScreen],
+                None,
+            ));
+            let _ = read_frame(&mut b).await;
+            garbage(&mut b, &mut next, round % 2 == 0).await;
+            drop(b);
+            let outcome = tokio::time::timeout(Duration::from_secs(5), dialing)
+                .await
+                .expect("the controller gives up on garbage")
+                .expect("no panic");
+            assert!(!matches!(outcome, Outcome::Lost(_)), "nothing to resume");
+        }
+    }
+
     #[tokio::test]
     async fn a_changed_host_key_is_refused() {
         let host = device("1.0.0");
