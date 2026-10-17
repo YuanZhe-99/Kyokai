@@ -54,7 +54,8 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 
 以字节 `0x01` 开头的明文是媒体分片，而不是 JSON：帧号（u32）、分片序号与分片数（各 u16）、标志（第 0 位：关键帧）以及以微秒计的
 显示时间（u64），均为大端，之后是帧的一部分。一帧按需拆成若干分片，在另一端重新拼合；较新帧的分片会丢弃尚未拼完的旧帧
-（最新帧优先），超过 64 MiB 的帧会被丢弃。被控端在第一帧之前发送 `{"type": "video-start", codec, width, height}`；控制端可以发送
+（最新帧优先），超过 64 MiB 的帧会被丢弃。会话开始时，控制端发送 `{"type": "codecs", decode}`，即它能解码的编解码器（`h264`、`hevc`、`vp9`）。
+被控端在第一帧之前发送 `{"type": "video-start", codec, width, height}`；控制端可以发送
 `{"type": "key-frame"}`（被控端随后重新描述视频流并发送关键帧），在拥有 `control-input` 时还可发送 `{"type": "input", event}`。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
 回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate}`（[computer-use.md](computer-use.md)）；控制端可用
 `{"type": "quality", preset, fps}` 设置画质。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用

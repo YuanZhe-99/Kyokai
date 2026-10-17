@@ -67,7 +67,9 @@ A plaintext that starts with byte `0x01` is a media chunk, not JSON: the frame n
 chunk index and count (u16 each), flags (bit 0: key frame) and the presentation time in
 microseconds (u64), all big-endian, then a part of the frame. A frame is split into as many chunks
 as it needs and put back together on the other side; a chunk of a newer frame drops an unfinished
-older one (latest frame wins), and frames over 64 MiB are dropped. Before its first frame the host
+older one (latest frame wins), and frames over 64 MiB are dropped. As the session starts the
+controller sends `{"type": "codecs", decode}`, the codecs it decodes (`h264`, `hevc`, `vp9`).
+Before its first frame the host
 sends `{"type": "video-start", codec, width, height}`; the controller may send `{"type":
 "key-frame"}` (the host then describes the stream again and sends a key frame) and, with
 `control-input`, `{"type": "input", event}`. While it sends video the host sends `{"type":

@@ -168,6 +168,10 @@ enum Message {
     Display {
         index: usize,
     },
+    /// controller → host, as the session starts: the codecs it decodes.
+    Codecs {
+        decode: Vec<String>,
+    },
     /// host → controller, with video: where the host's pointer is, as
     /// fractions of the picture, and whether it shows there.
     Cursor {
@@ -185,6 +189,43 @@ enum Steer {
     Resume,
     Cancel,
     Reply,
+}
+
+/// How long a host waits for the controller's codecs before it starts the
+/// video in H.264.
+const CODECS_WAIT: Duration = Duration::from_secs(1);
+
+/// The codec a host sends in, from those the controller decodes: H.264
+/// whenever it can (one GPU's HEVC did not decode at 720p and above with
+/// Microsoft's HEVC decoder), else HEVC, else VP9 (a controller without
+/// H.264, such as Windows N).
+fn choose(decode: &[String]) -> &'static str {
+    #[cfg(windows)]
+    {
+        use crate::mf::Codec;
+        let has = |c: Codec| decode.iter().any(|d| d == c.name());
+        if let Some(c) = Codec::ALL.into_iter().find(|&c| has(c)) {
+            return c.name();
+        }
+    }
+    let _ = decode;
+    "h264"
+}
+
+/// Describes a newly opened video to the controller: the stream, and the
+/// displays when there is a choice.
+async fn announce<W: AsyncWrite + Unpin>(
+    noise: &mut snow::TransportState,
+    buf: &mut [u8],
+    w: &mut W,
+    s: &video::Source,
+    displays: &[video::Display],
+) -> Result<(), Failure> {
+    seal_json(noise, buf, w, &Message::VideoStart(s.start.clone())).await?;
+    if let Some(m) = shown(displays, s) {
+        seal_json(noise, buf, w, &m).await?;
+    }
+    Ok(())
 }
 
 /// A display as the input service's area.
@@ -1091,11 +1132,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             }
         }
     }));
-    // The host's video: the screen through H.264, or the test pattern.
-    let mut source = match side {
-        Side::Host { video: true, .. } => Some(video::Source::open(None)),
-        _ => None,
-    };
+    // The host's video starts once the controller said which codecs it
+    // decodes (or after CODECS_WAIT, in H.264): the codec decides which
+    // encoder it takes.
+    let wants_video = matches!(side, Side::Host { video: true, .. });
+    let mut source: Option<video::Source> = None;
+    let video_wait = tokio::time::sleep(CODECS_WAIT);
+    tokio::pin!(video_wait);
     // The host's input service; dropping it releases what it holds.
     #[cfg(windows)]
     let mut injector = match side {
@@ -1103,26 +1146,19 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         _ => None,
     };
     // The displays the controller may choose from, with the one shown.
-    let displays = if source.is_some() {
+    let displays = if wants_video {
         video::displays()
     } else {
         Vec::new()
     };
+    // A controller says which codecs it decodes before anything else.
     #[cfg(windows)]
-    if let Some(inj) = injector.as_mut() {
-        inj.set_area(source.as_ref().and_then(|s| s.display).map(area));
-    }
-    if let Some(s) = &source {
-        seal_json(
-            &mut noise,
-            &mut buf,
-            &mut wr,
-            &Message::VideoStart(s.start.clone()),
-        )
-        .await?;
-        if let Some(m) = shown(&displays, s) {
-            seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
-        }
+    if matches!(side, Side::Controller { .. }) {
+        let decode = tokio::task::spawn_blocking(crate::mf::decodable)
+            .await
+            .unwrap_or_default();
+        let decode = decode.iter().map(|c| c.name().to_string()).collect();
+        seal_json(&mut noise, &mut buf, &mut wr, &Message::Codecs { decode }).await?;
     }
     let (queue, control) = match &side {
         Side::Controller { queue, control } => (Some(queue.clone()), Some(control.clone())),
@@ -1151,11 +1187,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // RustDesk's QoS on the host: one probe a second, frames counted per
     // second, frame rate and bitrate applied to the source.
     let mut qos = rustdesk_qos::VideoQoS::default();
-    let base_kbps = source
-        .as_ref()
-        .map(|s| rustdesk_qos::base_bitrate(s.start.width, s.start.height))
-        .unwrap_or(0);
-    if source.is_some() {
+    let mut base_kbps = 0;
+    if wants_video {
         qos.on_connection_open(QOS_VIEWER);
         qos.new_display(QOS_DISPLAY.into());
     }
@@ -1197,6 +1230,17 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 if let Some(m) = msg {
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
                 }
+            }
+            _ = &mut video_wait, if wants_video && source.is_none() => {
+                // A controller that names no codecs gets H.264.
+                let s = video::Source::open(None, "h264");
+                announce(&mut noise, &mut buf, &mut wr, &s, &displays).await?;
+                base_kbps = rustdesk_qos::base_bitrate(s.start.width, s.start.height);
+                #[cfg(windows)]
+                if let Some(inj) = injector.as_mut() {
+                    inj.set_area(s.display.map(area));
+                }
+                source = Some(s);
             }
             _ = pointer_tick.tick(), if source.is_some() => {
                 let at = source.as_ref().and_then(|s| s.display).map(area);
@@ -1253,7 +1297,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 // Only messages a GUI may send pass on to the host.
-                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Input { .. } | Message::Quality { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. })) = serde_json::from_value::<Message>(msg) {
+                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Quality { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. })) = serde_json::from_value::<Message>(msg) {
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
                 }
             }
@@ -1373,15 +1417,34 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         if let (Some(s), Some(&d)) = (&source, displays.get(index))
                             && s.display != Some(d)
                         {
-                            let s = video::Source::open(Some(d));
+                            let codec = s.start.codec.clone();
+                            // The old capture lets go of its encoder first.
+                            source = None;
+                            let s = video::Source::open(Some(d), &codec);
                             #[cfg(windows)]
                             if let Some(inj) = injector.as_mut() {
                                 inj.set_area(s.display.map(area));
                             }
-                            seal_json(&mut noise, &mut buf, &mut wr, &Message::VideoStart(s.start.clone())).await?;
-                            if let Some(m) = shown(&displays, &s) {
-                                seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+                            announce(&mut noise, &mut buf, &mut wr, &s, &displays).await?;
+                            base_kbps = rustdesk_qos::base_bitrate(s.start.width, s.start.height);
+                            source = Some(s);
+                            pointer_sent = None;
+                        }
+                    }
+                    // The controller's codecs: the video starts in the best
+                    // of them this host can send.
+                    Message::Codecs { decode } => {
+                        let codec = choose(&decode);
+                        if wants_video && source.as_ref().is_none_or(|s| s.start.codec != codec) {
+                            let display = source.as_ref().and_then(|s| s.display);
+                            source = None;
+                            let s = video::Source::open(display, codec);
+                            #[cfg(windows)]
+                            if let Some(inj) = injector.as_mut() {
+                                inj.set_area(s.display.map(area));
                             }
+                            announce(&mut noise, &mut buf, &mut wr, &s, &displays).await?;
+                            base_kbps = rustdesk_qos::base_bitrate(s.start.width, s.start.height);
                             source = Some(s);
                             pointer_sent = None;
                         }
@@ -1737,7 +1800,7 @@ mod tests {
         assert!(stats > 0, "no QoS stats from the host");
         match v.codec.as_str() {
             "raw-rgba" => assert_eq!(frame.len(), 1 + 1 + 8 + 320 * 180 * 4),
-            "h264" => assert_eq!(
+            "h264" | "hevc" | "vp9" => assert_eq!(
                 frame[1] & media::KEY_FRAME,
                 media::KEY_FRAME,
                 "a stream starts with a key frame"
@@ -2209,5 +2272,15 @@ mod tests {
             "connected",
             "the session goes on"
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn hosts_send_h264_whenever_the_controller_decodes_it() {
+        let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(choose(&names(&["hevc", "h264", "vp9"])), "h264");
+        assert_eq!(choose(&names(&["vp9", "hevc"])), "hevc");
+        assert_eq!(choose(&names(&["vp9"])), "vp9");
+        assert_eq!(choose(&[]), "h264");
     }
 }

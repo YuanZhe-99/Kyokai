@@ -13,7 +13,7 @@ enum Decoder {
     /// The test pattern: frames are already RGBA.
     Raw { width: u32, height: u32 },
     #[cfg(windows)]
-    H264 {
+    Mf {
         dec: crate::mf::Decoder,
         width: u32,
         height: u32,
@@ -47,8 +47,12 @@ pub fn open(start: &[u8]) -> Result<u64, String> {
             height: s.height,
         },
         #[cfg(windows)]
-        "h264" => Decoder::H264 {
-            dec: crate::mf::Decoder::new()?,
+        name if crate::mf::Codec::from_name(name).is_some() => Decoder::Mf {
+            dec: crate::mf::Decoder::new(
+                crate::mf::Codec::from_name(name).expect("checked"),
+                s.width,
+                s.height,
+            )?,
             width: s.width,
             height: s.height,
             nv12: Vec::new(),
@@ -83,7 +87,7 @@ pub fn decode(id: u64, frame: &[u8], rgba: &mut Vec<u8>) -> Result<Option<(u32, 
             Ok(Some((*width, *height)))
         }
         #[cfg(windows)]
-        Decoder::H264 {
+        Decoder::Mf {
             dec,
             width,
             height,

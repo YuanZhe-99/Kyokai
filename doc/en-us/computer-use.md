@@ -12,7 +12,7 @@ control, Phase 4 AI tasks).
 | Encode | host engine | H.264 through Media Foundation: the GPU's encoder (an asynchronous transform, fed system-memory NV12 when it asks for input) if it produces output within its first 30 black frames — one per process, shut down when its stream ends; other streams use the software encoder — else Microsoft's synchronous software encoder; low latency (set before the media types; the first output follows the first frame), CBR 4 Mbit/s, no B-frames, a key frame every 4 seconds and on request; 30 fps |
 | Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); the producer waits while the session is busy, so capture runs at the speed the network takes |
 | Forward | controller engine | the session's media queue (newest 3 frames kept) → `session.media` on the local API |
-| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's H.264 decoder in low-latency mode, NV12 into RGBA, cropped to the stream's size |
+| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for the stream's codec in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9), NV12 into RGBA, cropped to the stream's size |
 | Show | GUI | the viewer window's bitmap, two pictures alternating |
 
 While a frame waits inside the encoder, the host repeats the last picture so it comes out even when
@@ -30,6 +30,13 @@ and moves input and the pointer there. AI tasks always use the primary display.
 Desktop duplication leaves the pointer out of the picture, so the host reports where its pointer
 is — at most 20 times a second, when it moves or hides — and the viewer marks it with a small ring
 that lets clicks through.
+
+The controller says which codecs it decodes as the session starts, and the host waits up to a
+second for that before it starts the video: H.264 whenever the controller decodes it, else HEVC,
+else VP9 (a controller without H.264, such as Windows N). The HEVC and VP9 encoders and decoders
+come from the GPU or the Store's video extensions. HEVC from this machine's GPU encoder did not
+decode at 720p and above with Microsoft's HEVC decoder (it did at 320×192, and the software HEVC
+encoder's stream decoded at 1080p), so H.264 stays first until that is understood.
 
 The viewer asks for a key frame when it opens; the host then describes the stream again and starts
 a new group of pictures.

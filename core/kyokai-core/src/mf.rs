@@ -1,9 +1,11 @@
-//! H.264 through Windows Media Foundation (doc/en-us/computer-use.md,
+//! Video codecs through Windows Media Foundation (doc/en-us/computer-use.md,
 //! "Video"): the system's encoder on the host and its decoder on the
-//! controller, so the OS vendor's codec licence covers H.264. The encoder is
-//! the GPU's hardware transform where there is one that works, else
-//! Microsoft's synchronous software transform, which every Windows edition
-//! with Media Foundation has; the decoder is Microsoft's.
+//! controller, so the OS vendor's codec licences cover them. H.264 is on
+//! every Windows edition with Media Foundation; HEVC and VP9 come with the
+//! GPU or the Store's video extensions. The encoder is the GPU's hardware
+//! transform where one works (one per process), else a synchronous software
+//! transform; the decoder is Microsoft's for H.264, the extensions' for the
+//! others.
 //!
 //! Every object here belongs to the thread that made it (COM, multithreaded
 //! apartment); pixels cross as NV12.
@@ -15,6 +17,56 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::System::Variant::{VARIANT, VT_BOOL, VT_UI4};
 use windows::core::{GUID, Interface};
+
+/// A codec the stream can be in: the ones Media Foundation offers on
+/// Windows (HEVC and VP9 through the GPU or the Store's video extensions).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Codec {
+    H264,
+    Hevc,
+    Vp9,
+}
+
+impl Codec {
+    /// Every codec, in the host's order of preference.
+    pub const ALL: [Codec; 3] = [Codec::H264, Codec::Hevc, Codec::Vp9];
+
+    /// The name the wire and the stream description use.
+    pub fn name(self) -> &'static str {
+        match self {
+            Codec::H264 => "h264",
+            Codec::Hevc => "hevc",
+            Codec::Vp9 => "vp9",
+        }
+    }
+
+    /// The codec a name stands for.
+    pub fn from_name(name: &str) -> Option<Codec> {
+        Codec::ALL.into_iter().find(|c| c.name() == name)
+    }
+
+    fn subtype(self) -> GUID {
+        match self {
+            Codec::H264 => MFVideoFormat_H264,
+            Codec::Hevc => MFVideoFormat_HEVC,
+            Codec::Vp9 => MFVideoFormat_VP90,
+        }
+    }
+}
+
+/// The codecs this computer decodes: those whose decoder opens (checked
+/// once per process).
+pub fn decodable() -> Vec<Codec> {
+    static FOUND: std::sync::OnceLock<Vec<Codec>> = std::sync::OnceLock::new();
+    FOUND
+        .get_or_init(|| {
+            Codec::ALL
+                .into_iter()
+                .filter(|&c| Decoder::new(c, 1280, 720).is_ok())
+                .collect()
+        })
+        .clone()
+}
 
 /// An encoded access unit and whether it is a key frame.
 pub type Unit = (Vec<u8>, bool);
@@ -180,7 +232,7 @@ fn output_once(t: &IMFTransform) -> windows::core::Result<Output> {
     }
 }
 
-/// The system's H.264 encoder, fed NV12 frames.
+/// The system's encoder for a codec, fed NV12 frames.
 pub struct Encoder {
     t: IMFTransform,
     width: u32,
@@ -209,23 +261,39 @@ const HARDWARE_TRIAL: usize = 30;
 impl Encoder {
     /// Opens an encoder for `width`×`height` (even) at `fps` and a target
     /// bitrate, tuned for low latency (no B-frames, frequent key frames).
-    /// Returns: an error when this system has no H.264 encoder (Windows N
-    /// and Server editions without Media Foundation).
-    pub fn new(width: u32, height: u32, fps: u32, bitrate: u32) -> Result<Self, String> {
+    /// Returns: an error when this system has no encoder for the codec
+    /// (Windows N and Server editions lack even H.264).
+    pub fn new(
+        codec: Codec,
+        width: u32,
+        height: u32,
+        fps: u32,
+        bitrate: u32,
+    ) -> Result<Self, String> {
         startup()?;
         // The GPU's encoder, if it opens and encodes a few frames; some need
         // a Direct3D device or reject system memory, so it is tried first.
         if !HARDWARE_IN_USE.swap(true, std::sync::atomic::Ordering::AcqRel) {
-            if let Some(t) = find_encoder(true)
-                && let Ok(mut e) = Encoder::open(t, width, height, fps, bitrate, true)
+            if let Some(t) = find_transform(
+                MFT_CATEGORY_VIDEO_ENCODER,
+                true,
+                MFVideoFormat_NV12,
+                codec.subtype(),
+            ) && let Ok(mut e) = Encoder::open(t, codec, width, height, fps, bitrate, true)
                 && e.works()
             {
                 return Ok(e);
             }
             HARDWARE_IN_USE.store(false, std::sync::atomic::Ordering::Release);
         }
-        let t = find_encoder(false).ok_or("this system has no H.264 encoder")?;
-        Encoder::open(t, width, height, fps, bitrate, false)
+        let t = find_transform(
+            MFT_CATEGORY_VIDEO_ENCODER,
+            false,
+            MFVideoFormat_NV12,
+            codec.subtype(),
+        )
+        .ok_or_else(|| format!("this system has no {} encoder", codec.name()))?;
+        Encoder::open(t, codec, width, height, fps, bitrate, false)
     }
 
     /// Encodes black frames until an output comes, as a trial.
@@ -237,12 +305,47 @@ impl Encoder {
                 (self.width * self.height / 2) as usize,
             ))
             .collect::<Vec<u8>>();
-        (0..HARDWARE_TRIAL).any(|i| self.encode(&black, i == 0).is_ok_and(|u| !u.is_empty()))
+        let works =
+            (0..HARDWARE_TRIAL).any(|i| self.encode(&black, i == 0).is_ok_and(|u| !u.is_empty()));
+        if works {
+            self.settle();
+        }
+        works
+    }
+
+    /// Lets a hardware transform finish the trial's frames, their outputs
+    /// dropped, so the stream's first output is its own key frame.
+    fn settle(&mut self) {
+        let Some(events) = self.events.clone() else {
+            return;
+        };
+        let until = std::time::Instant::now() + std::time::Duration::from_millis(250);
+        let mut heard = std::time::Instant::now();
+        while std::time::Instant::now() < until
+            && heard.elapsed() < std::time::Duration::from_millis(40)
+        {
+            // SAFETY: a non-blocking event query on the transform.
+            match unsafe { events.GetEvent(MF_EVENT_FLAG_NO_WAIT) } {
+                Ok(ev) => {
+                    heard = std::time::Instant::now();
+                    // SAFETY: reading the event's type.
+                    match unsafe { ev.GetType() } {
+                        Ok(k) if k == METransformNeedInput.0 as u32 => self.wanted += 1,
+                        Ok(k) if k == METransformHaveOutput.0 as u32 => {
+                            let _ = output_once(&self.t);
+                        }
+                        _ => {}
+                    }
+                }
+                Err(_) => std::thread::sleep(std::time::Duration::from_millis(1)),
+            }
+        }
     }
 
     /// Configures a transform as a low-latency H.264 encoder.
     fn open(
         t: IMFTransform,
+        codec: Codec,
         width: u32,
         height: u32,
         fps: u32,
@@ -272,11 +375,19 @@ impl Encoder {
                 }
             }
             codec_value(&t, &CODECAPI_AVLowLatencyMode, 1, true);
-            let out = video_type(&MFVideoFormat_H264, width, height, fps)?;
+            let out = video_type(&codec.subtype(), width, height, fps)?;
             // SAFETY: COM calls on the transform and the types made here.
             unsafe {
                 out.SetUINT32(&MF_MT_AVG_BITRATE, bitrate)?;
-                out.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Main.0 as u32)?;
+                match codec {
+                    Codec::H264 => {
+                        out.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Main.0 as u32)?
+                    }
+                    Codec::Hevc => {
+                        out.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH265VProfile_Main_420_8.0 as u32)?
+                    }
+                    Codec::Vp9 => {}
+                }
                 t.SetOutputType(0, &out, 0)?;
                 t.SetInputType(0, &video_type(&MFVideoFormat_NV12, width, height, fps)?, 0)?;
             }
@@ -297,7 +408,7 @@ impl Encoder {
             }
             Ok(events)
         };
-        let events = open().map_err(|e| format!("H.264 encoder: {e}"))?;
+        let events = open().map_err(|e| format!("{} encoder: {e}", codec.name()))?;
         Ok(Encoder {
             t,
             width,
@@ -369,6 +480,8 @@ impl Encoder {
                         self.wanted += 1;
                     } else if kind == METransformHaveOutput.0 as u32
                         && let Output::Unit(u) = output_once(&self.t)?
+                        // Some GPUs' encoders give empty outputs between frames.
+                        && !u.0.is_empty()
                     {
                         out.push(u);
                     }
@@ -405,16 +518,16 @@ impl Drop for Encoder {
     }
 }
 
-/// Finds the first H.264 encoder that takes NV12: the GPU's (asynchronous)
-/// when `hardware`, else a synchronous software one.
-fn find_encoder(hardware: bool) -> Option<IMFTransform> {
+/// Finds the first transform of a category from `from` to `to`: the GPU's
+/// (asynchronous) when `hardware`, else a synchronous software one.
+fn find_transform(category: GUID, hardware: bool, from: GUID, to: GUID) -> Option<IMFTransform> {
     let input = MFT_REGISTER_TYPE_INFO {
         guidMajorType: MFMediaType_Video,
-        guidSubtype: MFVideoFormat_NV12,
+        guidSubtype: from,
     };
     let output = MFT_REGISTER_TYPE_INFO {
         guidMajorType: MFMediaType_Video,
-        guidSubtype: MFVideoFormat_H264,
+        guidSubtype: to,
     };
     let mut list: *mut Option<IMFActivate> = std::ptr::null_mut();
     let mut count = 0u32;
@@ -422,7 +535,7 @@ fn find_encoder(hardware: bool) -> Option<IMFTransform> {
     // released (by taking them) and whose array is freed with CoTaskMemFree.
     unsafe {
         MFTEnumEx(
-            MFT_CATEGORY_VIDEO_ENCODER,
+            category,
             if hardware {
                 MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER
             } else {
@@ -444,7 +557,7 @@ fn find_encoder(hardware: bool) -> Option<IMFTransform> {
     }
 }
 
-/// The system's H.264 decoder, giving NV12 frames.
+/// The system's decoder for a codec, giving NV12 frames.
 pub struct Decoder {
     t: IMFTransform,
     /// The decoded picture's size and row stride, once known.
@@ -453,28 +566,43 @@ pub struct Decoder {
 }
 
 impl Decoder {
-    /// Opens the Microsoft H.264 decoder in low-latency mode.
-    pub fn new() -> Result<Self, String> {
+    /// Opens the system's (synchronous) decoder for a codec in low-latency
+    /// mode: Microsoft's for H.264, the video extensions' for HEVC and VP9.
+    /// Inputs: the stream's picture size, which the extensions' decoders need
+    /// up front.
+    pub fn new(codec: Codec, width: u32, height: u32) -> Result<Self, String> {
         startup()?;
         let open = || -> windows::core::Result<IMFTransform> {
-            // SAFETY: creating and configuring a transform this function owns.
+            let t = match codec {
+                // SAFETY: creating a transform this function owns.
+                Codec::H264 => unsafe {
+                    CoCreateInstance(&CLSID_MSH264DecoderMFT, None, CLSCTX_INPROC_SERVER)?
+                },
+                _ => find_transform(
+                    MFT_CATEGORY_VIDEO_DECODER,
+                    false,
+                    codec.subtype(),
+                    MFVideoFormat_NV12,
+                )
+                .ok_or_else(|| windows::core::Error::from(MF_E_TOPO_CODEC_NOT_FOUND))?,
+            };
+            // SAFETY: configuring the transform this function owns.
             unsafe {
-                let t: IMFTransform =
-                    CoCreateInstance(&CLSID_MSH264DecoderMFT, None, CLSCTX_INPROC_SERVER)?;
                 if let Ok(attrs) = t.GetAttributes() {
                     let _ = attrs.SetUINT32(&MF_LOW_LATENCY, 1);
                 }
-                t.SetInputType(0, &video_type(&MFVideoFormat_H264, 0, 0, 0)?, 0)?;
-                Ok(t)
+                t.SetInputType(0, &video_type(&codec.subtype(), width, height, 0)?, 0)?;
             }
+            Ok(t)
         };
-        let t = open().map_err(|e| format!("H.264 decoder: {e}"))?;
+        let t = open().map_err(|e| format!("{} decoder: {e}", codec.name()))?;
         let mut d = Decoder {
             t,
             format: None,
             n: 0,
         };
-        d.pick_output().map_err(|e| format!("H.264 decoder: {e}"))?;
+        d.pick_output()
+            .map_err(|e| format!("{} decoder: {e}", codec.name()))?;
         // SAFETY: streaming messages on the configured transform.
         unsafe {
             let _ = d.t.ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
@@ -504,7 +632,7 @@ impl Decoder {
         Ok(())
     }
 
-    /// Decodes one access unit (Annex B).
+    /// Decodes one access unit (Annex B for H.264 and HEVC, a frame for VP9).
     /// Returns: the pictures ready now, each as (width, height, stride,
     /// NV12 bytes); empty while the decoder needs more input.
     pub fn decode(&mut self, unit: &[u8]) -> Result<Vec<Picture>, String> {
@@ -527,7 +655,7 @@ impl Decoder {
             }
             Ok(pictures)
         };
-        let out = run().map_err(|e| format!("H.264 decoder: {e}"))?;
+        let out = run().map_err(|e| format!("decoder: {e}"))?;
         self.n += 1;
         Ok(out)
     }
@@ -538,15 +666,30 @@ mod tests {
     use super::*;
     use crate::video;
 
+    /// Every codec this machine both encodes and decodes carries a moving
+    /// picture through (H.264 wherever Media Foundation is; HEVC and VP9
+    /// with the GPU or the Store's video extensions).
     #[test]
     fn frames_survive_encoding_and_decoding() {
+        let mut tried = Vec::new();
+        for codec in Codec::ALL {
+            let (Ok(encoder), Ok(decoder)) = (
+                Encoder::new(codec, 320, 192, 30, 1_000_000),
+                Decoder::new(codec, 320, 192),
+            ) else {
+                // Windows N and Server images without Media Foundation; a
+                // codec without its extension.
+                eprintln!("skipped: {}", codec.name());
+                continue;
+            };
+            tried.push((codec.name(), encoder.events.is_some()));
+            round_trip(encoder, decoder);
+        }
+        eprintln!("round trips (codec, hardware): {tried:?}");
+    }
+
+    fn round_trip(mut encoder: Encoder, mut decoder: Decoder) {
         let (w, h) = (320u32, 192u32);
-        let mut encoder = match Encoder::new(w, h, 30, 1_000_000) {
-            Ok(e) => e,
-            // Windows N and Server images without Media Foundation.
-            Err(e) => return eprintln!("skipped: {e}"),
-        };
-        let mut decoder = Decoder::new().expect("the H.264 decoder ships with the encoder");
         let mut pictures = Vec::new();
         let mut nv12 = Vec::new();
         for n in 0..30usize {
@@ -605,7 +748,7 @@ mod latency {
     #[test]
     fn the_encoder_answers_within_two_frames() {
         let (w, h) = (640u32, 360u32);
-        let Ok(mut e) = Encoder::new(w, h, 30, 2_000_000) else {
+        let Ok(mut e) = Encoder::new(Codec::H264, w, h, 30, 2_000_000) else {
             return eprintln!("skipped: no encoder");
         };
         let mut n = 0;

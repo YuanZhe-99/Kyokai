@@ -160,8 +160,9 @@ pub struct Targets {
 
 impl Source {
     /// Starts the best source this host has: `display` (the primary when
-    /// None), or the test pattern.
-    pub fn open(display: Option<Display>) -> Source {
+    /// None) in `codec` (a name the controller decodes), or the test
+    /// pattern.
+    pub fn open(display: Option<Display>, codec: &str) -> Source {
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
         let targets = Arc::new(Targets {
@@ -171,8 +172,9 @@ impl Source {
         let (tx, frames) = mpsc::channel(2);
         #[cfg(windows)]
         if let Some(d) = display.or_else(|| displays().first().copied())
+            && let Some(c) = crate::mf::Codec::from_name(codec)
             && let Ok(start) =
-                screen::start(tx.clone(), key.clone(), stop.clone(), targets.clone(), d)
+                screen::start(tx.clone(), key.clone(), stop.clone(), targets.clone(), d, c)
         {
             return Source {
                 start,
@@ -183,7 +185,7 @@ impl Source {
                 targets,
             };
         }
-        let _ = display;
+        let _ = (display, codec);
         let start = test_pattern(tx, stop.clone());
         Source {
             start,
@@ -304,13 +306,14 @@ mod screen {
         stop: Arc<AtomicBool>,
         targets: Arc<Targets>,
         display: Display,
+        codec: mf::Codec,
     ) -> Result<VideoStart, String> {
         let (ready_tx, ready) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let opened = (|| {
                 let (capturer, dw, dh) = open(display)?;
                 let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
-                let encoder = mf::Encoder::new(w, h, FPS, BITRATE)?;
+                let encoder = mf::Encoder::new(codec, w, h, FPS, BITRATE)?;
                 Ok::<_, String>((capturer, encoder, w, h))
             })();
             let (capturer, mut encoder, w, h) = match opened {
@@ -321,7 +324,7 @@ mod screen {
                 }
             };
             let _ = ready_tx.send(Ok(VideoStart {
-                codec: "h264".into(),
+                codec: codec.name().into(),
                 width: w,
                 height: h,
             }));
@@ -430,6 +433,7 @@ mod screen_tests {
                 bitrate: AtomicU32::new(BITRATE),
             }),
             display,
+            crate::mf::Codec::H264,
         ) {
             Ok(s) => s,
             Err(e) => return eprintln!("skipped: {e}"),
