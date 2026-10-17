@@ -14,6 +14,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Whether anything but documentation changed: a docs-only push or pull
+  # request runs the checks (the docs mirror among them) but not the builds.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        shell: bash
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          code=true
+          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] && [ -n "$BEFORE" ] &&
+            git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            if ! git diff --name-only "$BEFORE" HEAD | grep -qvE '^doc/|\.md$'; then
+              code=false
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "code changed: $code"
+
   check:
     name: Checks
     runs-on: ubuntu-latest
@@ -62,6 +88,8 @@ jobs:
 
   test:
     name: Test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +103,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
+      # CI packages are for testing: no LTO and parallel code generation
+      # build the core minutes faster. Releases keep core/Cargo.toml's
+      # profile (release.yml).
+      CARGO_PROFILE_RELEASE_LTO: "off"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -84,9 +117,11 @@ jobs:
         with:
           toolchain: "1.99.1"
           components: clippy, rustfmt
+      # Only main saves the cache; other refs restore it.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # EasyTier compiles its protocol files at build time; the pinned,
       # checksum-verified protoc replaces its unverified download.
       - name: Pinned protoc
@@ -109,9 +144,14 @@ jobs:
         if: matrix.full
         run: cargo test --manifest-path core/Cargo.toml --workspace
 
+      # Built for the runner's own target triple, where scripts/build.sh
+      # looks too: the package reuses this build instead of a second one.
       - name: Core library
         shell: bash
-        run: cargo build --release --manifest-path core/Cargo.toml
+        run: |
+          rt=$(rustc -vV | sed -n 's/^host: //p')
+          cargo build --release --manifest-path core/Cargo.toml --target "$rt"
+          echo "CORE_RELEASE=core/target/$rt/release" >> "$GITHUB_ENV"
       # The core keeps its master key in the default keychain. A runner's
       # login keychain can block a write on an access prompt nobody answers,
       # so the macOS jobs use their own unlocked default keychain.
@@ -130,8 +170,8 @@ jobs:
       - name: Go tests with the real core (ABI smoke test)
         shell: bash
         run: |
-          lib=core/target/release/kyokai_core.dll
-          [ "$RUNNER_OS" = macOS ] && lib=core/target/release/libkyokai_core.dylib
+          lib=$CORE_RELEASE/kyokai_core.dll
+          [ "$RUNNER_OS" = macOS ] && lib=$CORE_RELEASE/libkyokai_core.dylib
           path="$PWD/$lib"
           [ "$RUNNER_OS" = Windows ] && path=$(cygpath -w "$path")
           KYOKAI_CORE_LIB="$path" go test -timeout 3m ./...

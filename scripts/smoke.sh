@@ -18,8 +18,10 @@ windows) lib=kyokai_core.dll ext=.exe ;;
 darwin) lib=libkyokai_core.dylib ext="" ;;
 *) echo "unsupported platform" >&2; exit 1 ;;
 esac
-PROTOC=${PROTOC:-$(scripts/protoc.sh)} cargo build --release --manifest-path core/Cargo.toml
-cp "core/target/release/$lib" "$work/"
+# For the host's own target triple, like scripts/build.sh: CI builds it once.
+rt=$(rustc -vV | sed -n 's/^host: //p')
+PROTOC=${PROTOC:-$(scripts/protoc.sh)} cargo build --release --manifest-path core/Cargo.toml --target "$rt"
+cp "core/target/$rt/release/$lib" "$work/"
 CGO_ENABLED=0 go build -o "$work/kyokai-svc$ext" ./cmd/kyokai-svc
 
 native() { if command -v cygpath >/dev/null; then cygpath -w "$1"; else echo "$1"; fi; }
