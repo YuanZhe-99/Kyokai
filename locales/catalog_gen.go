@@ -2102,6 +2102,18 @@ func (msgs Messages) RunModeNote() string {
 	return Catalog.Format(msgs.locale, "RunModeNote", nil)
 }
 
+// RunModeOutdated says "The helper is {helper}; this app is {app}."
+// in the language the app shows.
+func RunModeOutdated(helper string, app string) string {
+	return In(i18n.Locale()).RunModeOutdated(helper, app)
+}
+
+// RunModeOutdated says "The helper is {helper}; this app is {app}."
+// in the language of msgs.
+func (msgs Messages) RunModeOutdated(helper string, app string) string {
+	return Catalog.Format(msgs.locale, "RunModeOutdated", map[string]any{"helper": helper, "app": app})
+}
+
 // RunModeSwitching says "Switching…"
 // in the language the app shows.
 func RunModeSwitching() string { return In(i18n.Locale()).RunModeSwitching() }
@@ -2120,6 +2132,26 @@ func RunModeUnavailable() string { return In(i18n.Locale()).RunModeUnavailable()
 // in the language of msgs.
 func (msgs Messages) RunModeUnavailable() string {
 	return Catalog.Format(msgs.locale, "RunModeUnavailable", nil)
+}
+
+// RunModeUpdate says "Update the helper"
+// in the language the app shows.
+func RunModeUpdate() string { return In(i18n.Locale()).RunModeUpdate() }
+
+// RunModeUpdate says "Update the helper"
+// in the language of msgs.
+func (msgs Messages) RunModeUpdate() string {
+	return Catalog.Format(msgs.locale, "RunModeUpdate", nil)
+}
+
+// RunModeUpdated says "Helper updated."
+// in the language the app shows.
+func RunModeUpdated() string { return In(i18n.Locale()).RunModeUpdated() }
+
+// RunModeUpdated says "Helper updated."
+// in the language of msgs.
+func (msgs Messages) RunModeUpdated() string {
+	return Catalog.Format(msgs.locale, "RunModeUpdated", nil)
 }
 
 // RunModeUser says "No privileges"

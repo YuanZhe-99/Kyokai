@@ -51,6 +51,9 @@ type Options struct {
 	// socket is open to every local user and this authorizer decides who
 	// is served (the operator and the kyokai group).
 	Helper *localapi.Authorizer
+	// Update installs the signed bundle in a folder into the helper and
+	// restarts it (helper.update); nil outside the helper.
+	Update func(from string) error
 }
 
 // DefaultStateDir is %APPDATA%\Kyokai on Windows and
@@ -132,7 +135,7 @@ func Run(ctx context.Context, opts Options) error {
 		}()
 	}
 
-	h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}, runMode: runMode, stateDir: opts.StateDir}
+	h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}, runMode: runMode, stateDir: opts.StateDir, update: opts.Update}
 	if runMode == "helper" {
 		var m struct {
 			Background bool `json:"background"`
@@ -157,6 +160,8 @@ type handler struct {
 	background bool
 	// served is what the core was last told to serve.
 	served string
+	// update is Options.Update.
+	update func(from string) error
 
 	mu       sync.Mutex
 	sessions map[chan struct{}]bool // each is poked when the status changes
@@ -267,6 +272,14 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		return h.command("identity.import", req.Backup)
 	case localapi.RequestIdentityReset:
 		return h.command("identity.reset", nil)
+	case localapi.RequestHelperUpdate:
+		if h.update == nil || req.From == "" {
+			return localapi.Fail(localapi.CodeInvalid, "only the helper updates itself")
+		}
+		if err := h.update(req.From); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true}
 	case localapi.RequestStoreExport:
 		if req.Backup == nil {
 			return localapi.Fail(localapi.CodeInvalid, "passphrase missing")

@@ -85,7 +85,7 @@ func Install(o InstallOptions) error {
 		"*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-32-545:RX").CombinedOutput(); err != nil {
 		return fmt.Errorf("icacls: %v: %s", err, out)
 	}
-	if err := fsutil.WriteJSON(filepath.Join(StateDir, "helper.json"), Settings{OperatorSID: o.OperatorSID}); err != nil {
+	if err := fsutil.WriteJSON(filepath.Join(StateDir, "helper.json"), Settings{OperatorSID: o.OperatorSID, AppDir: o.From}); err != nil {
 		return err
 	}
 	m, err := mgr.Connect()
@@ -180,4 +180,63 @@ func Inspect() Status {
 		st.Version = strings.TrimSpace(string(out))
 	}
 	return st
+}
+
+// SelfUpdate replaces the helper's files with the signed bundle in from
+// (the app's bin folder), then exits so the service manager restarts it
+// with the new files.
+// Inputs: from, the user-writable app folder; running, this helper's
+// version.
+// Side effects: writes into BinDir; ends this process a second later.
+// Notes: installs the bytes that were verified, read once (installBundle).
+func SelfUpdate(from, running string) error {
+	b, err := verifiedBundle(from, running)
+	if err != nil {
+		return err
+	}
+	if err := installBundle(BinDir, b); err != nil {
+		return err
+	}
+	go func() {
+		time.Sleep(time.Second)
+		os.Exit(3) // the recovery action restarts the service
+	}()
+	return nil
+}
+
+// Retire removes the helper from inside its own service once the app is
+// gone: the service is marked for deletion, the state and socket are
+// deleted, and the running files go at the next restart of Windows.
+// Side effects: deletes the KyokaiHelper service and the helper's state;
+// the caller exits right after.
+func Retire() error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return err
+	}
+	if s, err := m.OpenService(ServiceName); err == nil {
+		_ = s.Delete()
+		s.Close()
+	}
+	m.Disconnect()
+	_ = os.Remove(SocketPath)
+	if err := removeWithParent(StateDir); err != nil {
+		return err
+	}
+	// A running executable cannot be deleted: Windows removes the files,
+	// then the folders, when it next starts.
+	entries, _ := os.ReadDir(BinDir)
+	paths := []string{}
+	for _, e := range entries {
+		paths = append(paths, filepath.Join(BinDir, e.Name()))
+	}
+	paths = append(paths, BinDir, filepath.Dir(BinDir))
+	for _, p := range paths {
+		name, err := windows.UTF16PtrFromString(p)
+		if err != nil {
+			continue
+		}
+		_ = windows.MoveFileEx(name, nil, windows.MOVEFILE_DELAY_UNTIL_REBOOT)
+	}
+	return nil
 }

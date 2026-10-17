@@ -69,6 +69,7 @@ const (
 	RequestStoreExport        RequestType = "store.export"           // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
 	RequestStoreImport        RequestType = "store.import"           // take over a store this device's other engine sealed (Request.Backup)
 	RequestStoreClear         RequestType = "store.clear"            // forget the moved store and stop: the other engine holds it now
+	RequestHelperUpdate       RequestType = "helper.update"          // the helper installs the signed bundle in Request.From and restarts
 	RequestMedia              RequestType = "session.media"          // a controller session's media (Request.ID); the connection then carries packets
 	RequestSessionAttach      RequestType = "session.attach"         // streaming; see package doc
 	RequestAISettingsGet      RequestType = "ai.settings.get"        // the AI settings and which keys are stored
@@ -114,6 +115,9 @@ type Request struct {
 	DeviceID string `json:"device_id,omitempty"`
 	// Name is the friendly name of RequestNameSet.
 	Name *string `json:"name,omitempty"`
+	// From is the app folder whose signed bundle RequestHelperUpdate
+	// installs.
+	From string `json:"from,omitempty"`
 	// Days is how long RequestUnattended lets the device in (0 stops it).
 	Days int `json:"days,omitempty"`
 	// Background chooses Background service (true) or Follow GUI

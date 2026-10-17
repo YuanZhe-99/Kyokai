@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/engine"
 	"github.com/YuanZhe-99/Kyokai/internal/helper"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	"github.com/YuanZhe-99/Kyokai/internal/version"
 )
 
 // helperCmd installs, removes or reports the privileged helper
@@ -66,5 +68,36 @@ func runHelper(ctx context.Context, opts engine.Options) error {
 		GroupSID:    helper.GroupSID(),
 	}
 	opts.Logf = engine.Logger(filepath.Join(opts.StateDir, "logs", "engine.log"))
+	opts.Update = func(from string) error { return helper.SelfUpdate(from, version.Version) }
+	go watchApp(ctx, opts.Logf)
 	return engine.Run(ctx, opts)
+}
+
+// watchApp removes the helper once the app it came from is gone: missing at
+// two checks a minute apart, so an app update replacing its files is not
+// taken for a removal (doc/en-us/run-modes.md, "Self-disable").
+// Side effects: deletes the service and the helper's state, then exits.
+func watchApp(ctx context.Context, logf func(string, ...any)) {
+	missing := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Minute):
+		}
+		s, err := helper.ReadSettings()
+		if err != nil || !s.AppGone() {
+			missing = 0
+			continue
+		}
+		if missing++; missing < 2 {
+			continue
+		}
+		logf("the app is gone from %s: removing the helper", s.AppDir)
+		if err := helper.Retire(); err != nil {
+			logf("removing the helper: %v", err)
+			return
+		}
+		os.Exit(0)
+	}
 }

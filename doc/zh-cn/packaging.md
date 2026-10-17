@@ -24,7 +24,8 @@ x64）；macOS 目标需要 Mac。`CORE_PREBUILT=1` 使用已放入 resources �
   hardened runtime，它会拒绝没有 Team ID 的核心库，所以 `packaging/macos/app.entitlements` 与
   `packaging/macos/engine.entitlements`（`bin/kyokai-svc` 的 `macos.helperEntitlements`）关闭库验证。没有证书时应用为
   ad-hoc 签名。
-- **Windows：** 没有代码签名；首次启动时 SmartScreen 会警告。
+- **Windows：** 没有代码签名；首次启动时 SmartScreen 会警告。设置 `KYOKAI_SIGNING_KEY` 时，`bin` 文件夹中还有 `bundle.json` 与 `bundle.sig`，
+  已安装的助手在更新自身之前会检查它们（[run-modes.md](run-modes.md) 的“更新”）。
 
 ## 许可证
 

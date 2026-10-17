@@ -13,7 +13,7 @@ returns, side effects and notes where non-trivial).
 | `internal/localapi` | Local API protocol, server, client, authorization | `ProtocolVersion`, `Request`, `Status`, `AISettings`, `AITask`, `NetworkSettings`, `NetworkStatus`, `SessionInfo`, `HostRequest`, `Client.Attach`, `Authorizer.Allows`, `MoveStore` |
 | `internal/core` | purego binding to the Rust core | `Load`, `Lib.Start`, `Lib.Call` |
 | `internal/version` | Product version | `Version`, `Older` |
-| `internal/helper` | Installs, removes and inspects the privileged helper (Windows service; macOS later) | `Install`, `Uninstall`, `Inspect`, `ReadSettings`, `GroupSID`, `SocketPath` |
+| `internal/helper` | Installs, removes and inspects the privileged helper (Windows service; macOS later) | `Install`, `Uninstall`, `Inspect`, `ReadSettings`, `GroupSID`, `SocketPath`, `SelfUpdate`, `Retire`, `Settings.AppGone` |
 | `internal/fsutil` | Atomic writes and JSON documents | `WriteFileAtomic`, `WriteJSON`, `ReadJSON` |
 | `core/kyokai-core` | Rust core: C ABI, secrets, identity, temporary password, EasyTier node | `kyokai_start`, `kyokai_call`, `store::open`, `Identity::load_or_create`, `device_id`, `net::Network`, `session::serve`, `session::connect`, `session::HostAi`, `about::Local`, `about::About::clean`, `agent::link`, `agent::serve`, `agent::start_helper`, `agent::run_agent`, `access::Access`, `auth::Slots`, `backup::export`, `backup::import`, `media::Reassembler`, `media::Queue`, `kyokai_media_read`, `video::Source`, `mf::Encoder`, `mf::Decoder`, `mf::Codec`, `mf::decodable`, `decode::open`, `input::Event`, `input::Injector`, `input::LocalWatch`, `clipboard::share`, `clipboard::Watch`, `ai::Ai`, `ai::action::validate`, `ai::desktop::plan` |
 | `core/third_party/rustdesk-dxgi` | RustDesk's Windows screen capture, vendored | `Displays`, `Capturer::frame` |
@@ -21,5 +21,6 @@ returns, side effects and notes where non-trivial).
 | `core/third_party/thunk-noop` | No-op stand-in for EasyTier's `thunk-rs` | `thunk` |
 | `tools/deps` | Upstream pins | `check`, `update` |
 | `tools/checkdocs` | Documentation mirror check | `main` |
-| `tools/sign` | Helper bundle signing key | `keygen` |
+| `tools/sign` | Helper bundle signing key and bundle signing | `keygen`, `bundle` |
+| `internal/bundlesig` | Signs and verifies the helper's files (read once) | `Sign`, `Read`, `PublicKey` |
 | `tools/icon` | Draws the app icon and the tray glyph | `app`, `tray`, `render` |

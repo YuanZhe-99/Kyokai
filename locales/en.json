@@ -379,8 +379,21 @@
   "RunModeHint": "Where this device runs: in Kyokai itself, or in a helper that can also show and operate sign-in and administrator prompts.",
   "RunModeNoHelper": "The helper did not start.",
   "RunModeNote": "Follow Kyokai and Background service install a helper once, after one administrator prompt; Background service also lets devices you allowed without asking in before anyone signs in. Your Device ID, trusted devices and settings move with it.",
+  "RunModeOutdated": "The helper is {helper}; this app is {app}.",
+  "@RunModeOutdated": {
+    "placeholders": {
+      "helper": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "RunModeSwitching": "Switching…",
   "RunModeUnavailable": "Only No privileges is available on this system yet.",
+  "RunModeUpdate": "Update the helper",
+  "RunModeUpdated": "Helper updated.",
   "RunModeUser": "No privileges",
   "SecretsMemoryOnly": "In memory only: this computer's credential store is not available, so the Device ID changes on the next start.",
   "SecretsOSStore": "Encrypted with this computer's credential store",

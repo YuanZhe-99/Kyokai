@@ -22,3 +22,9 @@ func Uninstall(bool) error { return ErrUnsupported }
 
 // Inspect reports nothing installed.
 func Inspect() Status { return Status{} }
+
+// SelfUpdate is not available yet.
+func SelfUpdate(string, string) error { return ErrUnsupported }
+
+// Retire is not available yet.
+func Retire() error { return ErrUnsupported }

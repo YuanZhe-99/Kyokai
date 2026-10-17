@@ -28,7 +28,9 @@ Built files under `resources/<goos>-<goarch>/` and `resources/licenses/` are not
   the Team-ID-less core library, so `packaging/macos/app.entitlements` and
   `packaging/macos/engine.entitlements` (`macos.helperEntitlements` for `bin/kyokai-svc`) disable
   library validation. Without the certificate the app is ad hoc signed.
-- **Windows:** not code signed; SmartScreen warns on first launch.
+- **Windows:** not code signed; SmartScreen warns on first launch. With `KYOKAI_SIGNING_KEY` the
+  `bin` folder also holds `bundle.json` and `bundle.sig`, which an installed helper checks before it
+  updates itself ([run-modes.md](run-modes.md), "Updates").
 
 ## Licenses
 

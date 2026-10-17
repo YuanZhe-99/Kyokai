@@ -68,6 +68,25 @@ the AI's screenshots cross. Both processes are privileged and never decode remot
 helper modes clipboard images from a controller are not taken. Without an agent, video falls back
 to the test pattern, input is refused, and an AI task reads it as the host user taking over.
 
+## Updates
+
+Release builds sign the helper's files: `scripts/build.sh` writes `bundle.json` (the version and the
+SHA-256 of `kyokai-svc.exe` and `kyokai_core.dll`) and `bundle.sig` (Ed25519, `KYOKAI_SIGNING_KEY`)
+next to them. When the helper is older than the app, Settings, Run mode, offers **Update the
+helper** (`helper.update`): the helper reads the bundle **once**, checks the signature against the
+key embedded in it (`internal/bundlesig/release.pub`), every hash, that it holds both files and is
+not older, writes exactly those verified bytes into its folder (renaming the running files aside)
+and exits; the service restarts it. It never reads the user-writable app folder again, so a file
+swapped there after the check is not installed. An unsigned build (development, or a release
+without the key) is installed with one administrator prompt instead.
+
+## Self-disable
+
+The installer records the app's folder (`app_dir` in `helper.json`). When the app's engine is
+missing there at two checks a minute apart (an app update replacing its files is not a removal),
+the helper deletes its service, its state and its socket, schedules its own files for deletion at
+the next restart of Windows and exits, so removing the app leaves no running helper.
+
 ## Current implementation
 
 The helper's install, uninstall and status commands, the service, its authorization and the
@@ -76,6 +95,7 @@ Windows; the link is tested in-process, the service and the agent not yet on a m
 helper (a root LaunchDaemon) comes with the Mac pass and reports "not available yet" until then.
 The run-mode choice and the store move are implemented and the move was run between two user
 engines; the switch with the real helper waits for an administrator install on a test machine.
-The helper's signed self-update and its self-disable follow (`PLAN.md`, Phase 6). A helper
+The signed self-update and the self-disable are implemented and their rules tested (a file
+swapped after the check is not installed); none of this has run as a service yet. A helper
 installed with `kyokai-svc helper install` alone runs an engine of its own with a separate Device ID
 until a store is moved into it.

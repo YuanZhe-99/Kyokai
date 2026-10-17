@@ -12,13 +12,16 @@ package helper
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
 
+	"github.com/YuanZhe-99/Kyokai/internal/bundlesig"
 	"github.com/YuanZhe-99/Kyokai/internal/core"
 	"github.com/YuanZhe-99/Kyokai/internal/fsutil"
+	"github.com/YuanZhe-99/Kyokai/internal/version"
 )
 
 // Group may use the helper in addition to the operator, when an
@@ -50,6 +53,15 @@ type InstallOptions struct {
 // the state directory, administrator-only).
 type Settings struct {
 	OperatorSID string `json:"operator_sid"`
+	// AppDir is the app's bin folder the helper was installed from; when
+	// the app is removed from it, the helper removes itself.
+	AppDir string `json:"app_dir,omitempty"`
+}
+
+// AppGone reports whether the app the helper was installed from is no
+// longer there (its engine is missing).
+func (s Settings) AppGone() bool {
+	return s.AppDir != "" && !fileExists(filepath.Join(s.AppDir, exeName("kyokai-svc")))
 }
 
 // binaries are the files the helper runs, copied from the app.
@@ -115,6 +127,50 @@ func removeWithParent(dir string) error {
 	}
 	if err := os.Remove(parent); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
+	}
+	return nil
+}
+
+// verifiedBundle reads the signed bundle in from (the app's bin folder)
+// and checks that it holds every file the helper runs and is not older
+// than the running helper.
+// Returns: the verified bundle, whose Data is what SelfUpdate installs.
+func verifiedBundle(from, running string) (bundlesig.Bundle, error) {
+	key, err := bundlesig.PublicKey()
+	if err != nil {
+		return bundlesig.Bundle{}, err
+	}
+	b, err := bundlesig.Read(from, key)
+	if err != nil {
+		return b, err
+	}
+	for _, name := range binaries() {
+		if _, ok := b.Data[name]; !ok {
+			return b, fmt.Errorf("the signed bundle lacks %s", name)
+		}
+	}
+	if version.Older(b.Version, running) {
+		return b, fmt.Errorf("bundle %s is older than the helper %s", b.Version, running)
+	}
+	return b, nil
+}
+
+// installBundle writes a verified bundle's files into dir.
+// Side effects: replaces files in dir. A running executable cannot be
+// overwritten on Windows, so each old file is renamed aside to <name>.old
+// first and put back when its write fails.
+// Notes: writes exactly b.Data, never re-reading the app folder, so a file
+// swapped there after verification is not installed.
+func installBundle(dir string, b bundlesig.Bundle) error {
+	for _, name := range b.Names() {
+		dst := filepath.Join(dir, name)
+		old := dst + ".old"
+		_ = os.Remove(old)
+		_ = os.Rename(dst, old)
+		if err := fsutil.WriteFileAtomic(dst, b.Data[name], 0o755); err != nil {
+			_ = os.Rename(old, dst)
+			return err
+		}
 	}
 	return nil
 }

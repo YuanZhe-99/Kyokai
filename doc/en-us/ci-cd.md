@@ -16,13 +16,14 @@ push there is checked only by the local gate.
 | Secret | Used by | Effect when unset |
 |---|---|---|
 | `MYGO_UPDATER_PRIVATE_KEY` | `release.yml`, `mygo build` | no signed updates are published; installed apps stay on their version |
+| `KYOKAI_SIGNING_KEY` | `release.yml` (Windows), `scripts/build.sh` | the helper's files are unsigned; an installed helper updates only with an administrator prompt |
 | `KYOKAI_MACOS_CERT_P12`, `KYOKAI_MACOS_CERT_PASSWORD` | `release.yml` (macOS) | the macOS build is ad hoc signed, so privacy grants do not survive updates; the release notes must say so |
 
 The private halves live only in these secrets and in the maintainer's offline copy; the public
 update key is `updates.publicKey` in `mygo.json`. Generate a MyGo key pair only with
 `go tool mygo keygen -o <new directory>`: the default directory is shared by every MyGo project, and
-`-force` would replace another app's key. The helper bundle key (`go run ./tools/sign keygen`) is
-used from the privileged helper's phase on.
+`-force` would replace another app's key. The helper bundle key (`go run ./tools/sign keygen`) signs the
+helper's files (`go run ./tools/sign bundle`); its public half is `internal/bundlesig/release.pub`.
 
 ## Upstream update procedure
 

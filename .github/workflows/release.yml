@@ -71,6 +71,9 @@ jobs:
           # Signs the app updates (archive, deltas and update-<target>.json);
           # unset, no updates are published.
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          # Signs the helper's files (bundle.json, bundle.sig); unset, an
+          # installed helper updates only with an administrator prompt.
+          KYOKAI_SIGNING_KEY: ${{ secrets.KYOKAI_SIGNING_KEY }}
         run: scripts/build.sh windows/amd64 windows/arm64
       - name: Collect the downloads
         run: |

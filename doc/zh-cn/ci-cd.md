@@ -15,11 +15,12 @@
 | Secret | 使用方 | 未设置时 |
 |---|---|---|
 | `MYGO_UPDATER_PRIVATE_KEY` | `release.yml`、`mygo build` | 不发布签名更新；已安装的应用停留在原版本 |
+| `KYOKAI_SIGNING_KEY` | `release.yml`（Windows）、`scripts/build.sh` | 助手的文件未签名；已安装的助手只能通过管理员提示更新 |
 | `KYOKAI_MACOS_CERT_P12`、`KYOKAI_MACOS_CERT_PASSWORD` | `release.yml`（macOS） | macOS 版本为 ad-hoc 签名，隐私授权无法跨更新保留；发布说明必须写明 |
 
 私钥只存在于这些 secrets 和维护者的离线副本中；更新公钥是 `mygo.json` 的 `updates.publicKey`。只用
 `go tool mygo keygen -o <新目录>` 生成 MyGo 密钥对：默认目录为所有 MyGo 项目共用，`-force` 会替换其他应用的密钥。
-特权助手的 bundle 密钥（`go run ./tools/sign keygen`）从特权助手阶段开始使用。
+特权助手的 bundle 密钥（`go run ./tools/sign keygen`）为助手的文件签名（`go run ./tools/sign bundle`）；其公钥是 `internal/bundlesig/release.pub`。
 
 ## 上游更新流程
 

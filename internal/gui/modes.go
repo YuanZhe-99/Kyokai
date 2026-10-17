@@ -14,6 +14,7 @@ import (
 
 	"github.com/YuanZhe-99/Kyokai/internal/helper"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	"github.com/YuanZhe-99/Kyokai/internal/version"
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
@@ -74,7 +75,51 @@ func (a *App) runModeCard(c *ui.Context) {
 			note = L.RunModeSwitching()
 		}
 		ui.Text(c, note).FontSize(sizeSmall).TextColor(t.TextMuted)
+		// A helper older than the app is updated on request: from a signed
+		// build without a prompt, from an unsigned one with one.
+		a.mu.Lock()
+		helperVersion := ""
+		if a.status != nil && a.status.RunMode == "helper" {
+			helperVersion = a.status.Version
+		}
+		a.mu.Unlock()
+		if helperVersion != "" && helperVersion != version.Version {
+			settingRow(c, "mode-update", L.RunModeOutdated(helperVersion, version.Version), "", func() {
+				if ui.Button(c.Key("mode-update-btn"), L.RunModeUpdate()).Disabled(busy).Clicked() {
+					a.updateHelper()
+				}
+			})
+		}
 	})
+}
+
+// updateHelper brings the helper to this app's version.
+// Side effects: the helper installs the app's signed files and restarts;
+// an unsigned build is installed with one administrator prompt instead.
+func (a *App) updateHelper() {
+	a.update(func() { a.busy["mode"] = true })
+	go func() {
+		err := func() error {
+			bin, err := engineBinary()
+			if err != nil {
+				return err
+			}
+			from := filepath.Dir(bin)
+			_, err = localapi.NewClient(helper.SocketPath).Do(a.ctx, localapi.Request{Type: localapi.RequestHelperUpdate, From: from})
+			if err == nil {
+				return nil
+			}
+			return runPrivileged("install", "--from", from, "--operator-sid", localapi.CurrentSID())
+		}()
+		a.update(func() {
+			delete(a.busy, "mode")
+			if err != nil {
+				a.setToast(err.Error(), true)
+			} else {
+				a.setToast(L.RunModeUpdated(), false)
+			}
+		})
+	}()
 }
 
 // switchMode moves this device between its user engine and the helper.
