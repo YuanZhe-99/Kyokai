@@ -24,12 +24,26 @@ the host's key; `approve-ai-action` lets it answer their approvals
 ([computer-use.md](computer-use.md)). Removing a trusted device revokes it at once: its live
 sessions with this host end and its resume tokens are dropped.
 
+## Admission
+
+| The controller | The host |
+|---|---|
+| gives a correct password and asks only for what a password grants | admits it at once with what it asked for |
+| gives a correct password and asks for more | asks its user |
+| gives a correct password with a new key claiming a Device ID trusted under another key | asks its user |
+| asks without a password | asks its user; a denial or no answer counts as a failed login |
+| has an unattended grant and gives the permanent password | admits it at once (see below) |
+
+What a password grants without asking is chosen in Settings, Access ("With a correct password"),
+one switch per permission, kept in the secrets store: by default `view-screen`, `control-input`,
+`clipboard` and `files`; the AI permissions always ask unless turned on there.
+
 ## Host confirmation
 
-After a correct password the host's user sees the controller's friendly name and Device ID, whether its key is known,
-and the permissions it asks for, and allows (choosing permissions) or denies within 60 seconds.
-Silence denies. At most one confirmation is open per controller key and 4 in total; further
-attempts are answered `busy`.
+The host's user sees the controller's friendly name and Device ID, whether its key is known, whether
+it gave no password, and the permissions it asks for, and allows (choosing permissions) or denies
+within 60 seconds. Silence denies. At most one confirmation is open per controller key and 4 in
+total; further attempts are answered `busy`.
 
 ## Pinned keys
 
@@ -68,19 +82,20 @@ The host's user can let a trusted device connect without confirmation for 30 day
 Access: "Connect without asking"; at most 365 days through the local API). Such a login needs the
 device's pinned key **and** the permanent password (the temporary one always asks), gets the
 permissions last granted to that device within what it asks for, and stops once the grant
-expires or is switched off. Off by default; nothing else skips the confirmation.
+expires or is switched off. Off by default. Without an unattended grant, only a password within the
+password grants skips the confirmation (see Admission).
 
 Whom the host serves depends on its run mode ([run-modes.md](run-modes.md)): everyone in No
 privileges and while a GUI is attached to the helper; without a GUI, a Background service helper
 serves only unattended grants and a Follow GUI helper no one (its host sessions end). A login that
 nobody can confirm is refused at once with `absent`, before the password check when no one is
-served.
+served; the password grants apply only while everyone is served.
 
 ## Rate limits
 
 | Limit | Value |
 |---|---|
-| Failed logins per source address | 5 in 10 minutes, then that address is refused for 10 minutes |
+| Failed logins per source address | 5 in 10 minutes, then that address is refused for 10 minutes; a denied or unanswered request without a password counts as one |
 | All failed logins | more than 20 in a minute makes every unpinned controller wait 30 seconds; pinned keys are exempt, so guessing cannot lock the real user out |
 | Incoming connections in their handshake or login | 16 at once; more are dropped |
 | Connected sessions on a host | 4 at once (each may hold a capture and an encoder); more are refused as busy |

@@ -74,6 +74,9 @@ type Status struct {
 	Network json.RawMessage `json:"network"`
 	// PermanentPassword says whether a permanent password is set.
 	PermanentPassword bool `json:"permanent_password"`
+	// PasswordGrants are the permissions a correct password grants without
+	// asking.
+	PasswordGrants []string `json:"password_grants"`
 	// Requests and Sessions are decoded by the host (localapi types).
 	Requests json.RawMessage `json:"requests"`
 	Sessions json.RawMessage `json:"sessions"`

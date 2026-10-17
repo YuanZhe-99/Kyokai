@@ -65,6 +65,7 @@ const (
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
 	RequestNameSet            RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
 	RequestUnattended         RequestType = "trusted.unattended"     // let a trusted device in without confirmation for Request.Days (0 stops it; Request.Key)
+	RequestPasswordGrants     RequestType = "access.password_grants" // what a correct password grants without asking (Request.Grants)
 	RequestBackground         RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
 	RequestStoreExport        RequestType = "store.export"           // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
 	RequestStoreImport        RequestType = "store.import"           // take over a store this device's other engine sealed (Request.Backup)
@@ -123,6 +124,8 @@ type Request struct {
 	From string `json:"from,omitempty"`
 	// Days is how long RequestUnattended lets the device in (0 stops it).
 	Days int `json:"days,omitempty"`
+	// Grants are the permissions of RequestPasswordGrants (empty: none).
+	Grants *[]string `json:"grants,omitempty"`
 	// Background chooses Background service (true) or Follow GUI
 	// (RequestBackground).
 	Background *bool `json:"background,omitempty"`
@@ -258,7 +261,9 @@ type PermanentPassword struct {
 
 // ConnectRequest asks the engine to start a session with a device.
 type ConnectRequest struct {
-	DeviceID string   `json:"device_id"`
+	DeviceID string `json:"device_id"`
+	// Password is the host's password; empty asks the host's user without
+	// one.
 	Password string   `json:"password"`
 	Want     []string `json:"want,omitempty"`
 }
@@ -338,11 +343,13 @@ type HostRequest struct {
 	DeviceID string `json:"device_id"`
 	// Known: the controller's key was accepted before. NewKey: its Device ID
 	// is known with another key.
-	Known  bool     `json:"known"`
-	NewKey bool     `json:"new_key"`
-	Want   []string `json:"want"`
-	// About is what the controller says about itself (after the password
-	// check).
+	Known  bool `json:"known"`
+	NewKey bool `json:"new_key"`
+	// Password: the controller proved a password and asks for more than
+	// a password grants; false: it asks without one.
+	Password bool     `json:"password"`
+	Want     []string `json:"want"`
+	// About is what the controller says about itself.
 	About About `json:"about"`
 }
 
@@ -427,9 +434,12 @@ type Status struct {
 	PasswordSerial uint64        `json:"password_serial"`
 	Network        NetworkStatus `json:"network"`
 	// PermanentPassword says whether a permanent password is set.
-	PermanentPassword bool          `json:"permanent_password"`
-	Requests          []HostRequest `json:"requests"`
-	Sessions          []SessionInfo `json:"sessions"`
+	PermanentPassword bool `json:"permanent_password"`
+	// PasswordGrants are the permissions a correct password grants without
+	// asking.
+	PasswordGrants []string      `json:"password_grants"`
+	Requests       []HostRequest `json:"requests"`
+	Sessions       []SessionInfo `json:"sessions"`
 	// Recent are the hosts this device connected to, newest first.
 	Recent []RecentDevice `json:"recent"`
 	// Name is the friendly name chosen here ("" follows the computer's

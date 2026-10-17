@@ -18,6 +18,7 @@ this file when the plan is complete.
 
 | Item | Scope | Done when |
 |---|---|---|
+| macOS crash and package | the Mac app crashed once when a connection request came in; the DMG reports itself damaged | cause found from the Mac's logs and fixed; the DMG verifies (`hdiutil verify`, `codesign --verify --deep --strict`) in CI |
 | macOS pass | ScreenCaptureKit capture (Kyokai's windows left out), privacy permissions, VideoToolbox H.264 / HEVC, input, the clipboard, the LaunchDaemon helper and LaunchAgent session agent, signing (S5: timestamping with the self-signed identity, TCC grants surviving an update), sleep notifications | the acceptance record's rows hold on macOS, both directions Mac ↔ Windows |
 | OpenAI live run | the Responses adapter against the real API (fixtures and fakes only so far) | a task on a real desktop, recorded in platform-notes |
 | Viewer controls (RustDesk parity) | original size and full screen; Custom quality (quality and frame rate); codec preference (Auto / each codec) and a hardware-codec switch, which also lets a session exercise libvpx and libaom between two machines; remote cursor shown or not; per-session clipboard on/off; lock after the session ends; direct-vs-relay shown in the viewer | each control in the viewer, carried by the protocol where the host decides |
@@ -25,6 +26,7 @@ this file when the plan is complete.
 
 ## Decided
 
+- A correct password admits without asking within the password grants chosen in Settings (default: view, control, clipboard, files); a controller may also ask without a password, which the host's user allows or denies, as RustDesk does (2026-10-17).
 - Hole punching makes Windows Firewall ask, so direct paths are off by default in No privileges
   and always on in the helper, whose installer adds a firewall rule (2026-10-17).
 - The helper and its session agent are Windows-only until the macOS pass; the services policy for

@@ -48,6 +48,9 @@ func (a *App) requestsView(c *ui.Context) {
 				deviceAvatar(c, r.About)
 				ui.Text(c, L.RequestTitle(deviceTitle(r.About, r.DeviceID))).FontSize(sizeHeading).Bold()
 			})
+			if !r.Password {
+				ui.Text(c, L.RequestNoPassword()).FontSize(sizeSmall).TextColor(t.Warning)
+			}
 			switch {
 			case r.NewKey:
 				ui.Text(c, L.RequestNewKey()).FontSize(sizeSmall).TextColor(t.Warning)
@@ -128,9 +131,14 @@ func (a *App) connectCard(c *ui.Context) {
 			})
 			ui.Column(c).Gap(4).Grow(1).Children(func() {
 				ui.Text(c, L.ConnectPassword()).FontSize(sizeSmall).TextColor(t.TextMuted)
-				edit(ui.TextInput(c.Key("conn-pw"), &f.password).Password().FillWidth().Disabled(busy))
+				edit(ui.TextInput(c.Key("conn-pw"), &f.password).Password().Placeholder(L.ConnectPasswordOptional()).FillWidth().Disabled(busy))
 			})
-			if ui.Button(c.Key("conn-go"), L.ActionConnect()).Disabled(busy || !online).Clicked() {
+			// Without a password the host's user is asked to allow it.
+			label := L.ActionConnect()
+			if f.password == "" {
+				label = L.ActionRequestAccess()
+			}
+			if ui.Button(c.Key("conn-go"), label).Disabled(busy || !online).Clicked() {
 				a.startSession(f)
 			}
 		})
@@ -333,6 +341,7 @@ func (a *App) accessSettings(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	f, busy, hasPermanent := a.access, a.busy["access"], a.status.PermanentPassword
+	grants := slices.Clone(a.status.PasswordGrants)
 	a.mu.Unlock()
 	if !f.loaded && !busy {
 		a.loadTrusted()
@@ -362,6 +371,8 @@ func (a *App) accessSettings(c *ui.Context) {
 				}
 			}
 		})
+		ui.Divider(c)
+		a.passwordGrants(c, grants, busy)
 		ui.Divider(c)
 		ui.Text(c, L.TrustedTitle())
 		ui.Text(c, L.TrustedHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
@@ -397,6 +408,34 @@ func (a *App) accessSettings(c *ui.Context) {
 			})
 		}
 	})
+}
+
+// allPermissions are the permissions in the order Settings lists them.
+var allPermissions = []string{
+	localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard,
+	localapi.PermFiles, localapi.PermRunAITask, localapi.PermApproveAIAction,
+}
+
+// passwordGrants is the Access card's choice of what a correct password
+// grants without asking.
+func (a *App) passwordGrants(c *ui.Context, grants []string, busy bool) {
+	t := c.Theme()
+	ui.Text(c, L.PasswordGrantsTitle())
+	ui.Text(c, L.PasswordGrantsHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+	for _, p := range allPermissions {
+		on := slices.Contains(grants, p)
+		ui.Row(c.Key("pwgrant-row-" + p)).Gap(8).AlignItems(ui.Center).Children(func() {
+			if ui.Switch(c.Key("pwgrant-"+p), &on).Label(permissionLabel(p)).Disabled(busy).Changed() {
+				// Never nil: an empty list (no grants) must not read as missing.
+				next := slices.DeleteFunc(append([]string{}, grants...), func(x string) bool { return x == p })
+				if on {
+					next = append(next, p)
+				}
+				a.accessCommand(localapi.Request{Type: localapi.RequestPasswordGrants, Grants: &next}, func() {})
+			}
+			ui.Text(c, permissionLabel(p))
+		})
+	}
 }
 
 func (a *App) loadTrusted() {

@@ -1122,6 +1122,16 @@ func (msgs Messages) ActionRemove() string {
 	return Catalog.Format(msgs.locale, "ActionRemove", nil)
 }
 
+// ActionRequestAccess says "Ask to connect"
+// in the language the app shows.
+func ActionRequestAccess() string { return In(i18n.Locale()).ActionRequestAccess() }
+
+// ActionRequestAccess says "Ask to connect"
+// in the language of msgs.
+func (msgs Messages) ActionRequestAccess() string {
+	return Catalog.Format(msgs.locale, "ActionRequestAccess", nil)
+}
+
 // ActionReset says "Reset…"
 // in the language the app shows.
 func ActionReset() string { return In(i18n.Locale()).ActionReset() }
@@ -1330,6 +1340,16 @@ func ConnectPassword() string { return In(i18n.Locale()).ConnectPassword() }
 // in the language of msgs.
 func (msgs Messages) ConnectPassword() string {
 	return Catalog.Format(msgs.locale, "ConnectPassword", nil)
+}
+
+// ConnectPasswordOptional says "Leave empty to ask"
+// in the language the app shows.
+func ConnectPasswordOptional() string { return In(i18n.Locale()).ConnectPasswordOptional() }
+
+// ConnectPasswordOptional says "Leave empty to ask"
+// in the language of msgs.
+func (msgs Messages) ConnectPasswordOptional() string {
+	return Catalog.Format(msgs.locale, "ConnectPasswordOptional", nil)
 }
 
 // ConnectRecent says "Recent:"
@@ -2002,6 +2022,26 @@ func (msgs Messages) NotifyStillRunningTitle() string {
 	return Catalog.Format(msgs.locale, "NotifyStillRunningTitle", nil)
 }
 
+// PasswordGrantsHint says "A device that enters your password gets these without asking you. Anything else it asks for waits for you to allow it."
+// in the language the app shows.
+func PasswordGrantsHint() string { return In(i18n.Locale()).PasswordGrantsHint() }
+
+// PasswordGrantsHint says "A device that enters your password gets these without asking you. Anything else it asks for waits for you to allow it."
+// in the language of msgs.
+func (msgs Messages) PasswordGrantsHint() string {
+	return Catalog.Format(msgs.locale, "PasswordGrantsHint", nil)
+}
+
+// PasswordGrantsTitle says "With a correct password"
+// in the language the app shows.
+func PasswordGrantsTitle() string { return In(i18n.Locale()).PasswordGrantsTitle() }
+
+// PasswordGrantsTitle says "With a correct password"
+// in the language of msgs.
+func (msgs Messages) PasswordGrantsTitle() string {
+	return Catalog.Format(msgs.locale, "PasswordGrantsTitle", nil)
+}
+
 // PathDirect says "Direct"
 // in the language the app shows.
 func PathDirect() string { return In(i18n.Locale()).PathDirect() }
@@ -2102,11 +2142,11 @@ func (msgs Messages) PermanentSaved() string {
 	return Catalog.Format(msgs.locale, "PermanentSaved", nil)
 }
 
-// PermanentSet says "Set. Other devices can also connect with it; a connection still needs your approval unless you let that device connec…"
+// PermanentSet says "Set. Other devices can also connect with it; what a password grants without asking is chosen below."
 // in the language the app shows.
 func PermanentSet() string { return In(i18n.Locale()).PermanentSet() }
 
-// PermanentSet says "Set. Other devices can also connect with it; a connection still needs your approval unless you let that device connec…"
+// PermanentSet says "Set. Other devices can also connect with it; what a password grants without asking is chosen below."
 // in the language of msgs.
 func (msgs Messages) PermanentSet() string {
 	return Catalog.Format(msgs.locale, "PermanentSet", nil)
@@ -2210,6 +2250,16 @@ func RequestNewKey() string { return In(i18n.Locale()).RequestNewKey() }
 // in the language of msgs.
 func (msgs Messages) RequestNewKey() string {
 	return Catalog.Format(msgs.locale, "RequestNewKey", nil)
+}
+
+// RequestNoPassword says "It asks without a password."
+// in the language the app shows.
+func RequestNoPassword() string { return In(i18n.Locale()).RequestNoPassword() }
+
+// RequestNoPassword says "It asks without a password."
+// in the language of msgs.
+func (msgs Messages) RequestNoPassword() string {
+	return Catalog.Format(msgs.locale, "RequestNoPassword", nil)
 }
 
 // RequestNotify says "Open Kyokai to allow or deny it."

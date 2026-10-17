@@ -57,8 +57,17 @@ pub enum Serve {
 
 const TRUSTED_NAME: &str = "trusted_devices";
 const KNOWN_HOSTS_NAME: &str = "known_hosts";
+const PASSWORD_GRANTS_NAME: &str = "password_grants";
+/// What a correct password grants without asking until the host's user
+/// changes it: the manual session; AI tasks always ask.
+const DEFAULT_PASSWORD_GRANTS: [Permission; 4] = [
+    Permission::ViewScreen,
+    Permission::ControlInput,
+    Permission::Clipboard,
+    Permission::Files,
+];
 /// Failed logins one source address may make in `FAIL_WINDOW`.
-const FAILS_PER_ADDRESS: usize = 5;
+pub(crate) const FAILS_PER_ADDRESS: usize = 5;
 const FAIL_WINDOW: Duration = Duration::from_secs(10 * 60);
 /// How long a source address that hit the limit is refused.
 const ADDRESS_BLOCK: Duration = Duration::from_secs(10 * 60);
@@ -123,6 +132,8 @@ struct Pending {
     device_id: String,
     known: bool,
     new_key: bool,
+    /// Whether the controller proved a password (false: it only asks).
+    password: bool,
     want: Vec<Permission>,
     about: About,
     reply: oneshot::Sender<Option<Vec<Permission>>>,
@@ -205,6 +216,37 @@ impl Access {
         self.store(TRUSTED_NAME, &all)
     }
 
+    /// The permissions a correct password grants without asking.
+    pub fn password_grants(&self) -> Vec<Permission> {
+        self.secrets
+            .get(PASSWORD_GRANTS_NAME)
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_else(|| DEFAULT_PASSWORD_GRANTS.to_vec())
+    }
+
+    /// Sets what a correct password grants without asking.
+    /// Side effects: rewrites the secrets store.
+    pub fn set_password_grants(&self, mut grants: Vec<Permission>) -> Result<(), String> {
+        grants.sort();
+        grants.dedup();
+        self.store(PASSWORD_GRANTS_NAME, &grants)
+    }
+
+    /// Whether a controller that proved a password is admitted without
+    /// asking: everything it wants is a password grant, and its key is not a
+    /// new one claiming a Device ID the host trusts under another key.
+    pub fn admits_by_password(&self, key: &str, device_id: &str, want: &[Permission]) -> bool {
+        let grants = self.password_grants();
+        want.iter().all(|p| grants.contains(p)) && !self.claims_other_key(key, device_id)
+    }
+
+    /// Whether `key` is new and its Device ID is trusted under another key
+    /// (the interface says "a new key claiming this ID").
+    fn claims_other_key(&self, key: &str, device_id: &str) -> bool {
+        let trusted = self.trusted();
+        !trusted.contains_key(key) && trusted.values().any(|t| t.device_id == device_id)
+    }
+
     /// Refuses an address that is blocked, and unpinned controllers while
     /// the global backoff runs.
     pub fn admit(&self, from: IpAddr, pinned: bool) -> Result<(), Refusal> {
@@ -249,6 +291,7 @@ impl Access {
     }
 
     /// Opens a confirmation for the host's user.
+    /// Inputs: `password` says whether the controller proved a password.
     /// Returns: the receiver of the decision (granted permissions, or None
     /// for a denial), or `Busy` when too many are open.
     pub fn ask(
@@ -257,10 +300,10 @@ impl Access {
         device_id: &str,
         want: Vec<Permission>,
         about: &About,
+        password: bool,
     ) -> Result<(u64, Decision), Refusal> {
-        let trusted = self.trusted();
-        let known = trusted.contains_key(key);
-        let new_key = !known && trusted.values().any(|t| t.device_id == device_id);
+        let known = self.trusted().contains_key(key);
+        let new_key = self.claims_other_key(key, device_id);
         let mut p = self.pending.lock().map_err(|_| Refusal::Busy)?;
         p.1.retain(|q| !q.reply.is_closed());
         if p.1.len() >= MAX_PENDING || p.1.iter().any(|q| q.key == key) {
@@ -275,6 +318,7 @@ impl Access {
             device_id: device_id.to_owned(),
             known,
             new_key,
+            password,
             want,
             about: about.clone(),
             reply,
@@ -302,6 +346,7 @@ impl Access {
                     "device_id": q.device_id,
                     "known": q.known,
                     "new_key": q.new_key,
+                    "password": q.password,
                     "want": q.want,
                     "about": q.about,
                 })
@@ -517,13 +562,16 @@ mod tests {
                 "100000002",
                 vec![Permission::ViewScreen, Permission::ControlInput],
                 &About::default(),
+                false,
             )
             .unwrap();
         let open = a.pending();
         assert_eq!(open[0]["new_key"], true);
         assert_eq!(open[0]["known"], false);
+        assert_eq!(open[0]["password"], false);
         assert_eq!(
-            a.ask("key-B", "100000002", vec![], &About::default()).err(),
+            a.ask("key-B", "100000002", vec![], &About::default(), true)
+                .err(),
             Some(Refusal::Busy)
         );
         a.decide(
@@ -533,6 +581,43 @@ mod tests {
         .unwrap();
         assert_eq!(rx.try_recv().unwrap(), Some(vec![Permission::ControlInput]));
         assert!(a.decide(id, None).is_err(), "answered once");
+    }
+
+    #[test]
+    fn a_password_admits_within_its_grants_and_never_a_key_claiming_a_trusted_id() {
+        use Permission::*;
+        let a = access();
+        type Case = (&'static str, &'static str, &'static [Permission], bool);
+        let cases: &[Case] = &[
+            (
+                "key-A",
+                "100000002",
+                &[ViewScreen, ControlInput, Clipboard, Files],
+                true,
+            ),
+            ("key-A", "100000002", &[ViewScreen, RunAiTask], false),
+            ("key-A", "100000002", &[], true),
+        ];
+        for (key, id, want, expected) in cases {
+            assert_eq!(a.admits_by_password(key, id, want), *expected, "{want:?}");
+        }
+        a.trust("key-A", "100000002", &[ViewScreen], &About::default())
+            .unwrap();
+        assert!(a.admits_by_password("key-A", "100000002", &[ViewScreen]));
+        assert!(
+            !a.admits_by_password("key-B", "100000002", &[ViewScreen]),
+            "a new key claiming a trusted Device ID always asks"
+        );
+        a.set_password_grants(vec![RunAiTask, ViewScreen, ViewScreen])
+            .unwrap();
+        assert_eq!(a.password_grants(), vec![ViewScreen, RunAiTask]);
+        assert!(!a.admits_by_password("key-A", "100000002", &[ControlInput]));
+        a.set_password_grants(Vec::new()).unwrap();
+        assert!(
+            a.admits_by_password("key-A", "100000002", &[]),
+            "an empty set still admits a login that asks for nothing"
+        );
+        assert!(!a.admits_by_password("key-A", "100000002", &[ViewScreen]));
     }
 
     #[test]

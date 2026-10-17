@@ -28,7 +28,8 @@ last connection) that fill in the Device ID; a
   clipboard and files by default. The connect form's switch "Also ask to run AI
   tasks there" asks for `run-ai-task` and `approve-ai-action` as well.
 - **Confirmations:** a controller waiting for this host's user shows at the top of every page with
-  its Device ID, whether it is known or a new key claiming a known ID, and a switch per requested
+  its Device ID, whether it is known or a new key claiming a known ID, a warning when it gave no
+  password, and a switch per requested
   permission, with Allow and Deny; a notification and the window coming forward announce it.
 - **AI:** the task card — a new task's instruction and Start (with a note when the provider has no
   key), or the task in progress: its state in words (working, waiting for approval, paused and
@@ -64,7 +65,8 @@ last connection) that fill in the Device ID; a
   screen capture — on by default, applied to the main window and every viewer at once, close
   button),
   Device identity (Device ID, fingerprint; back up and restore with a passphrase through a file
-  dialog; reset, after a warning), Access (permanent password: set, change or remove;
+  dialog; reset, after a warning), Access (permanent password: set, change or remove; "With a
+  correct password": a switch per permission a password grants without asking;
   trusted devices with their last connection and Remove), Storage (data folder with Open folder, how secrets are
   kept), Diagnostics (version and ABI, engine start time, run mode, logs folder), About (version,
   license, source code, app updates), Open source licenses (the shipped notices).

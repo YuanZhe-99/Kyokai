@@ -89,7 +89,7 @@ caller's token (its user and its enabled groups); an administrator outside them 
 | Asset | Threat | Mitigation |
 |---|---|---|
 | A session with a host | a network member or relay impersonating a device, reading or changing traffic | Noise XX end to end over EasyTier, each static key signed by the device key; host keys pinned on first use; a changed key is refused |
-| The host's passwords | guessing them online or offline | OPAQUE (nothing to guess offline from the wire), rate limits per address with a global backoff that spares pinned keys, the host's confirmation by default |
+| The host's passwords | guessing them online or offline | OPAQUE (nothing to guess offline from the wire), rate limits per address with a global backoff that spares pinned keys, the host's confirmation for anything beyond the password grants |
 | Permissions | a controller doing more than it was granted | each request checked against the session's permissions on the host; no permission implies another; network membership grants none |
 | Provider keys and secrets | leaking through logs, the status, sessions or files | only towards the engine on the local API, kept in the secrets store, never logged or returned |
 | The host's desktop under AI | a model (or text on the screen steering it) acting against the user | proposals are only input, validated and executed by the host; approvals; local input and take-over pause at once; late responses never act; Kyokai's windows are neither captured nor injected into |
@@ -111,8 +111,9 @@ unlocked desktop, and a compromised provider.
   persisted.
 - The temporary password can be shown and copied by anyone at the unlocked desktop; the tray never
   shows it.
-- A device that was never trusted but knows the password can still ask; only the host's
-  confirmation (or a password change) keeps it out.
+- A device that knows the password gets the password grants without anyone confirming; turning the
+  grants off in Settings, Access (or a password change) keeps it out. A device without the password
+  can still ask, and is held back by the confirmation and the rate limits.
 - An AI task sends the screen to the provider the host's user chose, including whatever other
   apps show; the approval policy and local input are defence in depth, not a classifier of every
   sensitive action.

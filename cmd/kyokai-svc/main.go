@@ -13,6 +13,7 @@
 //	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T] [--click X,Y] [--action A,A…] [--display N]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID | unattended --key K [--days N]
+//	kyokai-svc ctl password-grants --grant P,P…   (what a correct password grants without asking; empty: none)
 //	kyokai-svc ctl background [--on]     (the helper: Background service or Follow GUI)
 //	kyokai-svc ctl move --to SOCKET       (moves the whole store to another engine of this device, which stops this one)
 //	kyokai-svc ctl helper-update --from DIR (the helper installs the signed bundle in DIR)
@@ -163,7 +164,7 @@ func ctl(args []string) error {
 	name := fs.String("name", "", "network-set: the network name; name-set: this device's friendly name")
 	device := fs.String("device", "", "connect, forget: the Device ID")
 	want := fs.String("want", localapi.PermViewScreen+","+localapi.PermControlInput, "connect: the permissions to ask for")
-	grant := fs.String("grant", "", "allow: the permissions to grant (default: all asked for)")
+	grant := fs.String("grant", "", "allow: the permissions to grant (default: all asked for); password-grants: what a correct password grants without asking (empty: none)")
 	id := fs.Uint64("id", 0, "close, allow, deny: the session or request id")
 	key := fs.String("key", "", "untrust: the device key")
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
@@ -207,7 +208,7 @@ func ctl(args []string) error {
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
-		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "unattended": localapi.RequestUnattended, "background": localapi.RequestBackground, "helper-update": localapi.RequestHelperUpdate,
+		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "unattended": localapi.RequestUnattended, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "helper-update": localapi.RequestHelperUpdate,
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
@@ -230,6 +231,9 @@ func ctl(args []string) error {
 		req.Name = name
 	case "unattended":
 		req.Days = *days
+	case "password-grants":
+		g := append([]string{}, list(*grant)...) // never null: empty grants nothing
+		req.Grants = &g
 	case "background":
 		req.Background = on
 	case "helper-update":
@@ -256,7 +260,7 @@ func ctl(args []string) error {
 	case "connect":
 		p, ok := os.LookupEnv(passwordEnv)
 		if !ok {
-			return fmt.Errorf("set %s to the host's password", passwordEnv)
+			return fmt.Errorf("set %s to the host's password (empty asks without one)", passwordEnv)
 		}
 		req.Connect = &localapi.ConnectRequest{DeviceID: *device, Password: p, Want: list(*want)}
 	case "backup", "restore":
@@ -424,8 +428,8 @@ func list(s string) []string {
 
 // printStatus writes the engine's status for people and scripts.
 func printStatus(s *localapi.Status) {
-	fmt.Printf("version %s (ABI %d), run mode %s\ndevice ID %s\nfingerprint %s\nstate %s (secrets: %s)\npermanent password %v\n",
-		s.Version, s.ABI, s.RunMode, s.DeviceID, s.Fingerprint, s.StateDir, s.Persistence, s.PermanentPassword)
+	fmt.Printf("version %s (ABI %d), run mode %s\ndevice ID %s\nfingerprint %s\nstate %s (secrets: %s)\npermanent password %v\npassword grants %s\n",
+		s.Version, s.ABI, s.RunMode, s.DeviceID, s.Fingerprint, s.StateDir, s.Persistence, s.PermanentPassword, strings.Join(s.PasswordGrants, ","))
 	fmt.Printf("name %q (chosen %q), %s %s, %s\n", s.About.Name, s.Name, s.About.Maker, s.About.Model, s.About.OS)
 	n := s.Network
 	fmt.Printf("network %s", n.State)
@@ -440,8 +444,8 @@ func printStatus(s *localapi.Status) {
 		fmt.Printf("  device %s  %s  %d ms\n", d.DeviceID, d.Path, d.LatencyMS)
 	}
 	for _, r := range s.Requests {
-		fmt.Printf("request %d  from %s %q  wants %s  known %v  new key %v\n",
-			r.ID, r.DeviceID, r.About.Name, strings.Join(r.Want, ","), r.Known, r.NewKey)
+		fmt.Printf("request %d  from %s %q  wants %s  known %v  new key %v  password %v\n",
+			r.ID, r.DeviceID, r.About.Name, strings.Join(r.Want, ","), r.Known, r.NewKey, r.Password)
 	}
 	for _, r := range s.Recent {
 		fmt.Printf("recent %s %q  %s %s\n", r.DeviceID, r.About.Name, r.About.Maker, r.About.Model)

@@ -70,7 +70,7 @@
 `ai.models.list`（`{source}` → `{models}`，向来源查询）、
 `ai.task.start`（`{key, instruction}` → `{id}`；key 使其幂等）、`ai.task.reply`（`{id, text}`）、`ai.task.pause`、`ai.task.resume`、
 `ai.task.cancel`（`{id}`）、`ai.task.decide`（`{id, approve}`）、`ai.tasks`（最新的在前）、`ai.history.clear`、`ai.stop`（取消所有任务）。
-状态中还包含 `permanent_password`、`requests`（待处理的被控端确认）、`sessions`、`recent`（连接过的被控端，最新的在前）以及
+状态中还包含 `permanent_password`、`password_grants`（正确密码无需确认即可授予的权限；用 `access.password_grants` `{grants}` 设置）、`requests`（待处理的被控端确认，各带 `password`：控制端是否给出了密码）、`sessions`、`recent`（连接过的被控端，最新的在前）以及
 `ai`（进行中的任务及其状态与来源，或 null）。Go 绑定把传给核心的响应槽放在堆内存中，从不放在
 goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows 上以绝对路径、
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` 加载该库，并静态链接 C 运行时，

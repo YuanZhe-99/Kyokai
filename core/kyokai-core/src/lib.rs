@@ -659,6 +659,12 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 Ok(json!({}))
             })
         }
+        "access.password_grants" => {
+            let grants: Vec<access::Permission> =
+                serde_json::from_value(req.params["grants"].take())
+                    .map_err(|e| format!("bad permissions: {e}"))?;
+            try_core(|c| c.ctx.access.set_password_grants(grants).map(|()| json!({})))
+        }
         "trusted.unattended" => {
             let key = req.params["key"].as_str().ok_or("bad key")?.to_owned();
             let days = req.params["days"].as_u64().ok_or("bad days")?;
@@ -792,6 +798,7 @@ fn status() -> Value {
             "password_serial": c.password.serial(),
             "network": c.network.status(),
             "permanent_password": c.ctx.access.slots.lock().is_ok_and(|s| s.has_permanent()),
+            "password_grants": c.ctx.access.password_grants(),
             "ai": c.ctx.ai.active(),
             "requests": c.ctx.access.pending(),
             "sessions": c.ctx.sessions.list(),

@@ -37,8 +37,10 @@ networks allow it; Windows may then ask to let Kyokai through its firewall.
 
 Under **Control another device** on Home, enter the other device's Device ID and its password and
 choose **Connect**. By default you ask to see the screen, use the mouse and keyboard, share the
-clipboard and copy files; switch on **Also ask to run AI tasks there** to ask for the AI permissions as well. The
-other computer's user then sees your request and chooses what to allow:
+clipboard and copy files; switch on **Also ask to run AI tasks there** to ask for the AI permissions as well. With
+the right password you are in at once with what the other computer lets a password grant; for
+anything more its user is asked. Leave the password empty and choose **Ask to connect** to ask its
+user without one. The other computer's user chooses what to allow:
 
 | Permission | Lets you |
 |---|---|
@@ -65,9 +67,11 @@ drops reconnects by itself for a minute without asking again.
 
 ## Let someone control this device
 
-When someone connects, a request appears at the top of every page with their Device ID — and a
-warning if a known Device ID arrives with a new key — and a switch for each permission they asked
-for. Choose what to allow, then **Allow**, or **Deny**. Devices you allowed are listed in Settings,
+Someone with your password gets in at once with what Settings, Access, **With a correct password**
+allows (by default seeing the screen, the mouse and keyboard, the clipboard and files, but no AI
+tasks). Otherwise — they ask for more, ask without a password, or a known Device ID arrives with a
+new key — a request appears at the top of every page with their Device ID, a warning in the last
+two cases, and a switch for each permission they asked for. Choose what to allow, then **Allow**, or **Deny**. Devices you allowed are listed in Settings,
 Access; **Remove** revokes one at once and ends its sessions. **Connect without asking** lets that
 device in for 30 days with the permanent password alone, for a computer nobody sits at. Your own use
 of the keyboard and mouse always wins over theirs and over any AI.
@@ -117,8 +121,7 @@ them too, and sees a banner while your task works there, with **Stop** at hand.
 - A person at the controlling device who uses the mouse or keyboard in the viewer takes over: the
   AI task pauses first.
 - When the controlling device disconnects, its AI task pauses.
-- Network membership alone grants nothing; every session needs a password and, by default, your
-  confirmation.
+- Network membership alone grants nothing; every session needs your password or your confirmation.
 
 ## Back up your identity
 

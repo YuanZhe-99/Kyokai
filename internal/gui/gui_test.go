@@ -104,6 +104,7 @@ func TestViewsRender(t *testing.T) {
 		},
 		"settings-access": func(a *App) {
 			a.page, a.status.PermanentPassword = pageSettings, true
+			a.status.PasswordGrants = []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard, localapi.PermFiles}
 			until := int64(1799900000)
 			a.access = accessForm{loaded: true, trusted: []localapi.TrustedDevice{
 				{Key: "k", DeviceID: "213559601", Last: 1797400000, Granted: []string{localapi.PermViewScreen}, About: localapi.About{Name: "Office laptop", Maker: "LENOVO"}, UnattendedUntil: &until},

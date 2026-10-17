@@ -15,7 +15,7 @@ embedded EasyTier P2P network, and AI tasks run on the computer being operated. 
 | [security.md](security.md) | Secrets store, device identity, temporary password, logging, clipboard, AI tasks, threat model |
 | [networking.md](networking.md) | The embedded EasyTier node: settings, status, trust, build |
 | [protocol.md](protocol.md) | The session wire protocol: framing, Noise handshake, OPAQUE login, messages |
-| [identity-and-access.md](identity-and-access.md) | Passwords, permissions, host confirmation, pinned keys, rate limits |
+| [identity-and-access.md](identity-and-access.md) | Passwords, permissions, admission and host confirmation, pinned keys, rate limits |
 | [computer-use.md](computer-use.md) | Seeing and operating a host: video, quality, input, clipboard, AI tasks |
 | [gui.md](gui.md) | Interface structure, wording, tray, languages |
 | [upstream.md](upstream.md) | Verified upstream contracts and quirks: MyGo, EasyTier, RustDesk, OpenAI, Claude |

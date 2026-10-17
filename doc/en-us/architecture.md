@@ -83,7 +83,9 @@ mode), and for AI tasks ([computer-use.md](computer-use.md)):
 (`{key, instruction}` → `{id}`; the key makes it idempotent), `ai.task.reply` (`{id, text}`),
 `ai.task.pause`, `ai.task.resume`, `ai.task.cancel` (`{id}`), `ai.task.decide` (`{id, approve}`),
 `ai.tasks` (newest first), `ai.history.clear`, `ai.stop` (cancels every task). The status also
-carries `permanent_password`, `requests` (open host confirmations), `sessions`, `recent` (hosts
+carries `permanent_password`, `password_grants` (what a correct password grants without asking;
+set with `access.password_grants` `{grants}`), `requests` (open host confirmations, each with
+`password`: whether the controller gave one), `sessions`, `recent` (hosts
 connected to, newest first) and `ai` (the task in progress with its state and origin, or null). The Go binding keeps the response slots it passes to the core in heap memory,
 never on a goroutine stack, which may move between taking an address and the call. On Windows the
 library is loaded by absolute path with

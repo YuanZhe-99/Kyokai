@@ -213,6 +213,11 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "device key and days needed")
 		}
 		return h.command("trusted.unattended", map[string]any{"key": req.Key, "days": req.Days})
+	case localapi.RequestPasswordGrants:
+		if req.Grants == nil {
+			return localapi.Fail(localapi.CodeInvalid, "permissions missing")
+		}
+		return h.command("access.password_grants", map[string][]string{"grants": append([]string{}, *req.Grants...)})
 	case localapi.RequestBackground:
 		if h.runMode != "helper" || req.Background == nil {
 			return localapi.Fail(localapi.CodeInvalid, "only the helper has a background mode")
@@ -529,7 +534,8 @@ func (h *handler) status() (*localapi.Status, error) {
 		Version: st.Version, ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: h.runMode, Background: h.isBackground(), Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
-		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
+		PasswordGrants: st.PasswordGrants,
+		Requests:       requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
 		Name: st.Name, About: about,
 	}, nil
 }

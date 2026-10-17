@@ -60,6 +60,8 @@ and Latin words only where it helps readability.
 | relay | 中继 |
 | session | 会话 |
 | host confirmation | 被控端确认 |
+| admission | 准入 |
+| password grants | 密码授予的权限 |
 | pinned key | 固定的密钥 |
 | rate limit | 速率限制 |
 | Copy files (the `files` permission) | 复制文件 |

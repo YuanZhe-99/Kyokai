@@ -22,7 +22,7 @@ use tokio::sync::{Notify, mpsc};
 use crate::{media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
-pub const PROTOCOL: u32 = 4;
+pub const PROTOCOL: u32 = 5;
 const PATTERN: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
@@ -58,7 +58,13 @@ struct ClientHello {
     device_key: String,
     signature: String,
     want: Vec<Permission>,
-    requests: [String; 2],
+    /// One OPAQUE credential request per password slot; None asks the
+    /// host's user without a password.
+    requests: Option<[String; 2]>,
+    /// Without a password: the controller's description, for the host's
+    /// user to judge the request by.
+    #[serde(default)]
+    about: Option<About>,
     /// A resume token from an earlier session with this host.
     #[serde(default)]
     resume: Option<String>,
@@ -747,6 +753,9 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 /// The host's side of login and confirmation.
 /// Returns: the granted permissions and the controller's description,
 /// after telling the controller.
+/// Notes: a correct password admits at once within the host's password
+/// grants (or an unattended grant); anything more, and a controller that
+/// asks without a password, waits for the host's user.
 async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     ctx: &Ctx,
     ch: &mut Channel<S>,
@@ -799,38 +808,53 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             .unwrap_or_default();
         return Ok((granted, peer));
     }
-    let host_key = ctx.identity.public_key();
-    let (responses, half) = ctx
-        .access
-        .slots
-        .lock()
-        .map_err(|_| Failure::Broken)?
-        .respond(&client.requests, &host_key, context)
-        .map_err(|_| Failure::Broken)?;
-    step(ch.send(&Challenge { responses })).await?;
-    let login: Login = step(ch.recv()).await?;
-    let slot = login.slot;
-    let ok = match (login.slot, login.finalization) {
-        (Some(slot), Some(fin)) => half.finish(slot, &fin, &host_key, context),
-        _ => false,
+    // The slot the password opened, or None when the controller only asks.
+    let (slot, about) = match &client.requests {
+        Some(requests) => {
+            let host_key = ctx.identity.public_key();
+            let (responses, half) = ctx
+                .access
+                .slots
+                .lock()
+                .map_err(|_| Failure::Broken)?
+                .respond(requests, &host_key, context)
+                .map_err(|_| Failure::Broken)?;
+            step(ch.send(&Challenge { responses })).await?;
+            let login: Login = step(ch.recv()).await?;
+            let opened = match (login.slot, login.finalization) {
+                (Some(slot), Some(fin)) if half.finish(slot, &fin, &host_key, context) => {
+                    Some(slot)
+                }
+                _ => None,
+            };
+            let Some(slot) = opened else {
+                ctx.access.failed(from);
+                let _ = ch.send(&refuse(Refusal::Password)).await;
+                return Err(Failure::Refused(Refusal::Password));
+            };
+            (Some(slot), login.about)
+        }
+        None => (None, client.about.clone()),
     };
-    if !ok {
-        ctx.access.failed(from);
-        let _ = ch.send(&refuse(Refusal::Password)).await;
-        return Err(Failure::Refused(Refusal::Password));
-    }
-    let peer = login.about.unwrap_or_default().clean();
+    let peer = about.unwrap_or_default().clean();
     let device_id = identity::device_id(client_key);
+    let mut want = client.want.clone();
+    want.sort();
+    want.dedup();
     // An unattended grant: a pinned key and the permanent password, while
     // the grant lasts, need no confirmation.
     let unattended = (slot == Some(Slot::Permanent))
-        .then(|| ctx.access.unattended(&key_b64, &client.want))
+        .then(|| ctx.access.unattended(&key_b64, &want))
         .flatten();
     if unattended.is_none() && ctx.access.serve() != Serve::All {
         let _ = ch.send(&refuse(Refusal::Absent)).await;
         return Err(Failure::Refused(Refusal::Absent));
     }
-    if let Some(granted) = unattended {
+    // A correct password within what the host lets a password grant.
+    let by_password = (slot.is_some()
+        && ctx.access.admits_by_password(&key_b64, &device_id, &want))
+    .then(|| want.clone());
+    if let Some(granted) = unattended.or(by_password) {
         let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
         let resume = ctx.access.issue_resume(&key_b64, &granted);
         step(ch.send(&Verdict {
@@ -846,7 +870,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     ctx.sessions.update(id, |e| e.state = State::Confirming);
     let (ask_id, decision) = match ctx
         .access
-        .ask(&key_b64, &device_id, client.want.clone(), &peer)
+        .ask(&key_b64, &device_id, want, &peer, slot.is_some())
     {
         Ok(v) => v,
         Err(reason) => {
@@ -854,17 +878,22 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             return Err(Failure::Refused(reason));
         }
     };
-    let granted = match tokio::time::timeout(CONFIRM_TIMEOUT, decision).await {
-        Ok(Ok(Some(granted))) => granted,
-        Ok(Ok(None)) | Ok(Err(_)) => {
+    let answer = match tokio::time::timeout(CONFIRM_TIMEOUT, decision).await {
+        Ok(Ok(Some(granted))) => Ok(granted),
+        Ok(Ok(None)) | Ok(Err(_)) => Err(Refusal::Denied),
+        Err(_) => Err(Refusal::Timeout),
+    };
+    let granted = match answer {
+        Ok(granted) => granted,
+        Err(reason) => {
             ctx.access.withdraw(ask_id);
-            let _ = ch.send(&refuse(Refusal::Denied)).await;
-            return Err(Failure::Refused(Refusal::Denied));
-        }
-        Err(_) => {
-            ctx.access.withdraw(ask_id);
-            let _ = ch.send(&refuse(Refusal::Timeout)).await;
-            return Err(Failure::Refused(Refusal::Timeout));
+            // Asking without a password counts like a failed login, so
+            // requests cannot be repeated without end.
+            if slot.is_none() {
+                ctx.access.failed(from);
+            }
+            let _ = ch.send(&refuse(reason)).await;
+            return Err(Failure::Refused(reason));
         }
     };
     let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
@@ -893,7 +922,8 @@ pub enum Outcome {
 }
 
 /// Connects to a host as the controller, over a stream already open to it.
-/// Inputs: the Device ID that was dialed, the password the person typed, the
+/// Inputs: the Device ID that was dialed, the password the person typed (empty
+/// asks the host's user without one), the
 /// permissions to ask for, and a resume token when resuming.
 /// Side effects: pins the host key on success, then keeps the session alive
 /// until either side ends it; records how it ended unless it returns `Lost`.
@@ -936,14 +966,24 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             e.peer_version = host.version.clone();
             e.peer_source = host.source.clone();
         });
-        // 3: -> s, se + client_hello with both credential requests
-        let (half, requests) = auth::client_start(&password).map_err(|_| Failure::Broken)?;
+        // 3: -> s, se + client_hello with both credential requests, or
+        // none (and this device's description) to ask without a password
+        let half = if password.is_empty() {
+            None
+        } else {
+            Some(auth::client_start(&password).map_err(|_| Failure::Broken)?)
+        };
+        let (half, requests) = match half {
+            Some((half, requests)) => (Some(half), Some(requests)),
+            None => (None, None),
+        };
         let hello = ClientHello {
             protocol: PROTOCOL,
             version: ctx.version.clone(),
             device_key: STANDARD.encode(ctx.identity.public_key()),
             signature: sign_static(&ctx.identity, &my_static),
             want,
+            about: half.is_none().then(|| ctx.about()),
             requests,
             resume: resume.as_ref().map(|t| t.to_string()),
         };
@@ -956,11 +996,20 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             noise: hs.into_transport_mode()?,
             buf,
         };
-        // 4: challenge, or at once a verdict (a refusal, or a resumption).
-        let first: Value = step(ch.recv()).await?;
+        // 4: challenge, or at once a verdict (a refusal, or a resumption);
+        // without a password the verdict, after the host's user decided.
+        let first: Value = match &half {
+            Some(_) => step(ch.recv()).await?,
+            None => {
+                ctx.sessions.update(id, |e| e.state = State::Confirming);
+                tokio::time::timeout(CONFIRM_TIMEOUT + STEP_TIMEOUT, ch.recv())
+                    .await
+                    .unwrap_or(Err(Failure::Broken))?
+            }
+        };
         let verdict: Verdict = if first.get("accepted").is_some() {
             serde_json::from_value(first).map_err(|_| Failure::Broken)?
-        } else {
+        } else if let Some(half) = half {
             let challenge: Challenge =
                 serde_json::from_value(first).map_err(|_| Failure::Broken)?;
             // 5: login
@@ -982,6 +1031,8 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             tokio::time::timeout(CONFIRM_TIMEOUT + STEP_TIMEOUT, ch.recv())
                 .await
                 .unwrap_or(Err(Failure::Broken))?
+        } else {
+            return Err(Failure::Broken);
         };
         if !verdict.accepted {
             return Err(Failure::Refused(verdict.reason.unwrap_or(Refusal::Denied)));
@@ -1793,18 +1844,22 @@ mod tests {
         device_full(ai, Arc::default(), version)
     }
 
-    /// A device whose clipboard is `board`.
+    /// A device whose clipboard is `board`. A password grants nothing
+    /// without asking, so every login here is confirmed unless a test
+    /// sets the password grants.
     fn device_full(
         ai: Arc<crate::ai::Ai>,
         board: crate::clipboard::fake::Board,
         version: &str,
     ) -> Arc<Ctx> {
         let secrets = Arc::new(Secrets::memory());
+        let access = Access::load(secrets.clone()).unwrap();
+        access.set_password_grants(Vec::new()).unwrap();
         Arc::new(Ctx {
             clipboard: crate::clipboard::fake::opener(board),
             ai,
             identity: Arc::new(Identity::load_or_create(&secrets).unwrap()),
-            access: Arc::new(Access::load(secrets).unwrap()),
+            access: Arc::new(access),
             sessions: Arc::new(Sessions::default()),
             version: version.into(),
             about: Mutex::new(crate::about::Local::load(&test_dir())),
@@ -1894,6 +1949,74 @@ mod tests {
         host.access.set_serve(Serve::All);
         host.access.set_unattended(&key, 0).unwrap();
         assert!(host.access.unattended(&key, &view).is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_password_admits_within_its_grants_and_a_request_without_one_asks() {
+        use Permission::*;
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        host.access
+            .set_password_grants(vec![ViewScreen, ControlInput])
+            .unwrap();
+        let dialed = host.identity.device_id();
+        // Within the grants: in at once (an open confirmation would be
+        // denied here).
+        let id = attempt(&host, &controller, &dialed, "k7mq2xpa", None).await;
+        let s = session(&controller, id);
+        assert_eq!(s["state"], "connected", "{s}");
+        assert_eq!(s["granted"], json!(["view-screen", "control-input"]));
+        controller.sessions.close(id).unwrap();
+        // More than the grants: the host's user is asked and chooses.
+        let want = vec![ViewScreen, RunAiTask];
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            Some(vec![ViewScreen]),
+            want,
+        )
+        .await;
+        let s = session(&controller, id);
+        assert_eq!(s["granted"], json!(["view-screen"]), "{s}");
+        controller.sessions.close(id).unwrap();
+        // Without a password: asked, and allowed with what the user chose;
+        // the host learns who asks.
+        let id = attempt(&host, &controller, &dialed, "", Some(vec![ViewScreen])).await;
+        let s = session(&controller, id);
+        assert_eq!(s["state"], "connected", "{s}");
+        assert_eq!(s["granted"], json!(["view-screen"]));
+        let hosted = host
+            .sessions
+            .list()
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()
+            .clone();
+        assert_eq!(hosted["peer"], json!(controller.about()));
+        controller.sessions.close(id).unwrap();
+        // A denied request counts as a failed login: the fifth blocks the
+        // address.
+        for _ in 0..crate::access::FAILS_PER_ADDRESS {
+            let id = attempt(&host, &controller, &dialed, "", None).await;
+            assert_eq!(
+                session(&controller, id)["failure"],
+                json!({"refused": "denied"})
+            );
+        }
+        let id = attempt(&host, &controller, &dialed, "k7mq2xpa", None).await;
+        assert_eq!(
+            session(&controller, id)["failure"],
+            json!({"refused": "rate-limited"})
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2100,7 +2223,7 @@ mod tests {
                 host.access.decide(qid, decide.clone()).unwrap();
                 break;
             }
-            let s = state(controller);
+            let s = session(controller, id);
             if s["state"] != "connecting" && s["state"] != "confirming" {
                 break;
             }

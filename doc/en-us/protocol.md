@@ -2,7 +2,7 @@
 
 A controller reaches a host's engine over the EasyTier data plane: TCP to the host's virtual IPv4
 address, port 47310 ([networking.md](networking.md)). EasyTier is an untrusted pipe, so the session
-is authenticated and encrypted end to end on top of it. The protocol version is 4 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes and files on the clipboard).
+is authenticated and encrypted end to end on top of it. The protocol version is 5 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes and files on the clipboard, 5 asking without a password).
 
 ## Framing
 
@@ -22,7 +22,7 @@ static key per session and prove their device identity by signing it.
 |---|---|---|---|
 | 1 | controller → host | `e` | none |
 | 2 | host → controller | `e, ee, s, es` | `host_hello`: protocol, product version, source URL, device key, signature |
-| 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests, and a resume token when resuming |
+| 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests (or none, with the controller's description `about`, to ask without a password), and a resume token when resuming |
 
 The signature is Ed25519 by the device key over `kyokai/noise-static/v1` followed by the sender's
 Noise static public key. The controller refuses a host whose device key does not derive the Device
@@ -44,7 +44,9 @@ the controller sends one credential request per slot, both from the password the
 | 6 | host → controller | `verdict`: accepted with the granted permissions, a resume token and the host's description (`about`), or refused with a reason name (`password`, `denied`, `timeout`, `busy`, `rate-limited`, `absent`: nobody can confirm) |
 
 A failed `login` counts as one failure ([identity-and-access.md](identity-and-access.md)). After a
-correct password the host asks its user to confirm (up to 60 seconds) before the verdict.
+correct password the host answers at once when the request is within its password grants, and
+otherwise asks its user (up to 60 seconds) before the verdict. A `client_hello` without credential
+requests skips frames 4 and 5: the host asks its user and sends the verdict as frame 4.
 
 ## Resuming
 
