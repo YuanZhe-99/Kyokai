@@ -25,7 +25,8 @@ permanent password, network secret, AI keys, friendly name and AI settings under
 passphrase (`store.export`), the helper takes them over (`store.import`), and only once the helper
 reports the same Device ID does the user engine forget them and stop (`store.clear`), so one
 identity is never served twice and never lost. The GUI then uses the helper's socket (`gui.json`
-`helper`). Follow GUI and Background service switch with `helper.background`. Going back moves the
+`helper`, saved per profile, so a development profile that switched follows the helper too), also
+when it starts again. Follow GUI and Background service switch with `helper.background`. Going back moves the
 store the other way and removes the helper and its state (a second prompt). `ctl move --to SOCKET`
 does the same move from the command line. When the GUI quits, only its own engine stops; the
 helper keeps running.

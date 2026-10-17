@@ -97,11 +97,20 @@ func New(profile, stateDir, socket string) *App {
 		profile: profile, stateDir: stateDir, socket: socket, userSocket: socket, ctx: ctx, cancel: cancel,
 		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{}, viewers: map[uint64]*viewer{},
 	}
-	// In Follow GUI and Background service the helper holds this device.
-	if a.prefs.Helper && profile == "" && helper.Inspect().Installed {
-		a.socket = helper.SocketPath
-	}
+	a.socket = startSocket(a.prefs.Helper, helper.Inspect().Installed, socket)
 	return a
+}
+
+// startSocket chooses the engine the GUI attaches to as it starts: the
+// helper when this profile switched to Follow GUI or Background service
+// and the helper is installed, else its own engine on `own`.
+// Notes: a development profile follows its own choice too; ignoring it
+// started an empty engine beside the helper, which then held the identity.
+func startSocket(helperMode, installed bool, own string) string {
+	if helperMode && installed {
+		return helper.SocketPath
+	}
+	return own
 }
 
 // SetWindow hands the GUI its main window and keeps it out of capture
