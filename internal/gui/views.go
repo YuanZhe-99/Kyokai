@@ -40,6 +40,7 @@ func (a *App) sidebar(c *ui.Context) {
 		}
 		link("home", L.NavHome(), pageHome)
 		link("network", L.NavNetwork(), pageNetwork)
+		link("ai", L.NavAI(), pageAI)
 		link("settings", L.NavSettings(), pageSettings)
 	})
 }

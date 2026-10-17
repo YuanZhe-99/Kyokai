@@ -113,6 +113,12 @@ pub fn vk(name: &str) -> Option<u16> {
         "backslash" => 0xDC,
         "backquote" => 0xC0,
         "context-menu" => 0x5D,
+        "caps-lock" => 0x14,
+        "print-screen" => 0x2C,
+        "shift" => 0x10,
+        "ctrl" => 0x11,
+        "alt" => 0x12,
+        "meta" => 0x5B,
         _ => return None,
     })
 }
@@ -122,20 +128,26 @@ pub fn vk(name: &str) -> Option<u16> {
 pub const INJECTED_TAG: usize = 0x4B59_4F4B; // "KYOK"
 
 #[cfg(windows)]
-pub use windows_impl::Injector;
+pub use windows_impl::{Injector, LocalWatch};
 
 #[cfg(windows)]
 mod windows_impl {
     use super::*;
     use std::collections::BTreeSet;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant};
-    use windows::Win32::Foundation::{CloseHandle, HWND};
+    use windows::Win32::Foundation::{CloseHandle, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::System::Threading::{
-        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
         QueryFullProcessImageNameW,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
-    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
+        KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW,
+        SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_QUIT,
+    };
     use windows::core::PWSTR;
 
     /// A modifier's virtual key and whether `Mods` holds it.
@@ -308,6 +320,85 @@ mod windows_impl {
         fn drop(&mut self) {
             self.release_all();
         }
+    }
+
+    /// Set by the hooks when the keyboard or mouse is used by anything but
+    /// Kyokai's own injection.
+    static TOUCHED: AtomicBool = AtomicBool::new(false);
+
+    /// Watches for local input with low-level keyboard and mouse hooks on a
+    /// thread of its own, until dropped. One runs at a time (an AI task's).
+    pub struct LocalWatch {
+        thread: u32,
+    }
+
+    impl LocalWatch {
+        /// Installs the hooks.
+        /// Returns: the watch, or why the hooks could not be installed.
+        pub fn start() -> Result<LocalWatch, String> {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                // SAFETY: the hooks are installed and removed on this thread,
+                // which pumps messages for them until WM_QUIT.
+                unsafe {
+                    let module = GetModuleHandleW(None).ok().map(|m| HINSTANCE(m.0));
+                    let mouse = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook), module, 0);
+                    let keys = SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_hook), module, 0);
+                    let (Ok(mouse), Ok(keys)) = (mouse, keys) else {
+                        let _ = tx.send(Err("input hooks could not be installed".to_string()));
+                        return;
+                    };
+                    let _ = tx.send(Ok(GetCurrentThreadId()));
+                    let mut msg = MSG::default();
+                    while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+                    let _ = UnhookWindowsHookEx(mouse);
+                    let _ = UnhookWindowsHookEx(keys);
+                }
+            });
+            let thread = rx
+                .recv()
+                .map_err(|_| "input hooks could not be installed".to_string())??;
+            TOUCHED.store(false, Ordering::Relaxed);
+            Ok(LocalWatch { thread })
+        }
+
+        /// Whether local input arrived since the last call (clears it).
+        pub fn touched(&self) -> bool {
+            TOUCHED.swap(false, Ordering::Relaxed)
+        }
+    }
+
+    impl Drop for LocalWatch {
+        fn drop(&mut self) {
+            // SAFETY: posts WM_QUIT to the hook thread started above.
+            let _ = unsafe { PostThreadMessageW(self.thread, WM_QUIT, WPARAM(0), LPARAM(0)) };
+        }
+    }
+
+    /// Notes local mouse input: events not injected by Kyokai.
+    unsafe extern "system" fn mouse_hook(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
+        if code >= 0 {
+            // SAFETY: for HC_ACTION, `l` points to the event's MSLLHOOKSTRUCT.
+            let info = unsafe { &*(l.0 as *const MSLLHOOKSTRUCT) };
+            if info.flags & LLMHF_INJECTED == 0 || info.dwExtraInfo != INJECTED_TAG {
+                TOUCHED.store(true, Ordering::Relaxed);
+            }
+        }
+        // SAFETY: passes the event on unchanged.
+        unsafe { CallNextHookEx(None, code, w, l) }
+    }
+
+    /// Notes local keyboard input: events not injected by Kyokai.
+    unsafe extern "system" fn key_hook(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
+        if code >= 0 {
+            // SAFETY: for HC_ACTION, `l` points to the event's KBDLLHOOKSTRUCT.
+            let info = unsafe { &*(l.0 as *const KBDLLHOOKSTRUCT) };
+            if info.flags.0 & LLKHF_INJECTED.0 == 0 || info.dwExtraInfo != INJECTED_TAG {
+                TOUCHED.store(true, Ordering::Relaxed);
+            }
+        }
+        // SAFETY: passes the event on unchanged.
+        unsafe { CallNextHookEx(None, code, w, l) }
     }
 
     fn send(batch: &[INPUT]) {

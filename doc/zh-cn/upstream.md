@@ -166,6 +166,8 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
 - **实测（S4，`spikes/s4-providers`）。** 用 `claude-opus-5-5` 完成一次真实的两轮往返：第 1 轮针对合成的 1280×720 截图返回三个批量成员
   （`left_click`、`wait`、`screenshot`）；我们带第二张截图的 `tool_result` 被接受，第 2 轮以 `end_turn` 结束任务。两次请求都带上
   `fallbacks: "default"` 与两个 beta 头且无报错。
+- **实测（核心的运行时，2026-10-17）。** 经产品自己的客户端完成同样的往返，同时带上 `context_management`（`clear_tool_uses_20250919`）
+  与 `context-management-2025-06-27` beta；请求被接受，任务在三个操作后结束。
 
 ## 操作系统
 

@@ -10,11 +10,16 @@
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
+//	kyokai-svc ctl ai | ai-tasks | ai-clear | ai-stop
+//	kyokai-svc ctl ai-set [--provider P] [--openai-model M] [--claude-model M] [--approval A]
+//	kyokai-svc ctl ai-key --provider P [--remove]
+//	kyokai-svc ctl ai-start --text T | ai-reply --id N --text T
+//	kyokai-svc ctl ai-pause | ai-resume | ai-cancel | ai-approve | ai-decline --id N
 //
 // Secrets come from the environment, never the command line: network-set
 // reads KYOKAI_NETWORK_SECRET (unset keeps the stored one), permanent reads
 // KYOKAI_PERMANENT_PASSWORD, connect reads KYOKAI_PASSWORD, backup and restore read
-// KYOKAI_BACKUP_PASSPHRASE.
+// KYOKAI_BACKUP_PASSPHRASE, ai-key reads KYOKAI_AI_KEY.
 //
 // The GUI starts `run` as its child; `ctl` is for scripts and development.
 // KYOKAI_PROFILE selects a separate development instance.
@@ -32,6 +37,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -115,6 +121,7 @@ const (
 	permanentEnv  = "KYOKAI_PERMANENT_PASSWORD"
 	passwordEnv   = "KYOKAI_PASSWORD"
 	passphraseEnv = "KYOKAI_BACKUP_PASSPHRASE"
+	aiKeyEnv      = "KYOKAI_AI_KEY"
 )
 
 // ctl sends one request to a running engine and prints the answer.
@@ -139,6 +146,11 @@ func ctl(args []string) error {
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
 	fpsCap := fs.Int("fps", 0, "watch: ask for a frame-rate cap first")
+	provider := fs.String("provider", "", "ai-set, ai-key: claude or openai")
+	openaiModel := fs.String("openai-model", "", "ai-set: the OpenAI model")
+	claudeModel := fs.String("claude-model", "", "ai-set: the Claude model")
+	approval := fs.String("approval", "", "ai-set: flagged or every-action")
+	text := fs.String("text", "", "ai-start, ai-reply: what the AI should do")
 	// The command comes first, its flags after it.
 	if len(args) == 0 {
 		usage()
@@ -160,6 +172,11 @@ func ctl(args []string) error {
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
 		"forget": localapi.RequestHostForget, "backup": localapi.RequestIdentityExport,
 		"restore": localapi.RequestIdentityImport, "reset-identity": localapi.RequestIdentityReset,
+		"ai": localapi.RequestAISettingsGet, "ai-set": localapi.RequestAISettingsSet, "ai-key": localapi.RequestAIKeySet,
+		"ai-start": localapi.RequestAITaskStart, "ai-reply": localapi.RequestAITaskReply, "ai-tasks": localapi.RequestAITasks,
+		"ai-pause": localapi.RequestAITaskPause, "ai-resume": localapi.RequestAITaskResume, "ai-cancel": localapi.RequestAITaskCancel,
+		"ai-approve": localapi.RequestAITaskDecide, "ai-decline": localapi.RequestAITaskDecide,
+		"ai-clear": localapi.RequestAIHistoryClear, "ai-stop": localapi.RequestAIStop,
 	}[cmd], ID: *id, Key: *key, DeviceID: *device}
 	if req.Type == "" {
 		usage()
@@ -201,6 +218,23 @@ func ctl(args []string) error {
 			}
 			req.Backup.Document = string(doc)
 		}
+	case "ai-set":
+		req.AISettings = &localapi.AISettings{Provider: *provider, OpenAIModel: *openaiModel, ClaudeModel: *claudeModel, Approval: *approval}
+	case "ai-key":
+		req.AIKey = &localapi.AIKey{Provider: *provider}
+		if !*remove {
+			k, ok := os.LookupEnv(aiKeyEnv)
+			if !ok {
+				return fmt.Errorf("set %s (or pass --remove)", aiKeyEnv)
+			}
+			req.AIKey.Key = &k
+		}
+	case "ai-start":
+		req.AITask = &localapi.AITaskRequest{Key: strconv.FormatInt(time.Now().UnixNano(), 36), Instruction: *text}
+	case "ai-reply":
+		req.AITask = &localapi.AITaskRequest{Text: *text}
+	case "ai-approve", "ai-decline":
+		req.AITask = &localapi.AITaskRequest{Approve: cmd == "ai-approve"}
 	case "reset-identity":
 		if !*yes {
 			return errors.New("this gives the device a new Device ID; pass --yes")
@@ -242,8 +276,18 @@ func ctl(args []string) error {
 			return err
 		}
 		fmt.Println("backup written to", *file)
+	case resp.ID != 0 && cmd == "ai-start":
+		fmt.Println("task", resp.ID)
 	case resp.ID != 0:
 		fmt.Println("session", resp.ID)
+	case resp.AISettings != nil:
+		s := resp.AISettings
+		fmt.Printf("provider %s\nopenai model %s (key: %v)\nclaude model %s (key: %v)\napproval %s\n",
+			s.Provider, s.OpenAIModel, s.Keys != nil && s.Keys.OpenAI, s.ClaudeModel, s.Keys != nil && s.Keys.Claude, s.Approval)
+	case req.Type == localapi.RequestAITasks:
+		for _, t := range resp.AITasks {
+			printTask(t)
+		}
 	case req.Type == localapi.RequestTrustedList:
 		for _, t := range resp.Trusted {
 			fmt.Printf("%s  %s  %s\n", t.DeviceID, strings.Join(t.Granted, ","), t.Key)
@@ -252,6 +296,30 @@ func ctl(args []string) error {
 		fmt.Println("ok")
 	}
 	return nil
+}
+
+// printTask writes one AI task: its state, its actions and the model's text.
+func printTask(t localapi.AITask) {
+	fmt.Printf("task %d  %s  %s/%s  %q\n", t.ID, t.State, t.Provider, t.Model, t.Instruction)
+	if t.Paused != "" {
+		fmt.Println("  paused:", t.Paused)
+	}
+	if t.Error != "" {
+		fmt.Println("  error:", t.Error)
+	}
+	for _, s := range t.Steps {
+		fmt.Printf("  %s  %s", s.Outcome, s.Action)
+		if s.Detail != "" {
+			fmt.Printf("  (%s)", s.Detail)
+		}
+		fmt.Println()
+	}
+	if t.Approval != nil {
+		fmt.Printf("  waiting for approval: %s %v\n", t.Approval.Action, t.Approval.Flagged)
+	}
+	if t.Text != "" {
+		fmt.Println("  text:", t.Text)
+	}
 }
 
 // list splits a comma-separated flag value, dropping empty parts.

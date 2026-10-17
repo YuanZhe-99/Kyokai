@@ -36,7 +36,7 @@ Administrator rights are never requested when the GUI starts.
 | `internal/core` | purego binding to the Rust core |
 | `internal/fsutil` | Atomic writes and JSON documents |
 | `internal/version` | The single product version |
-| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`) |
+| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and H.264 (`video`, `mf`), the input service (`input`), AI tasks (`ai`: the providers, the task runtime, the desktop it drives) |
 | `core/third_party/rustdesk-dxgi` | RustDesk's DXGI and GDI screen capture, vendored ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-qos` | RustDesk's video QoS, vendored |
 | `core/third_party/thunk-noop` | Stands in for EasyTier's `thunk-rs` build step, so Windows builds keep the static C runtime |
@@ -68,8 +68,14 @@ the stored one), `password.set_permanent` (`{password}`, null removes it), `sess
 (`{device_id, password, want}`; returns the session id at once, progress shows in the status),
 `session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,
 `host.forget`, `identity.export` (`{passphrase}` → `{document}`), `identity.import`
-(`{document, passphrase}`), `identity.reset`. The status also carries `permanent_password`,
-`requests` (open host confirmations), `sessions` and `recent` (hosts connected to, newest first). The Go binding keeps the response slots it passes to the core in heap memory,
+(`{document, passphrase}`), `identity.reset`, and for AI tasks ([computer-use.md](computer-use.md)):
+`ai.settings.get`, `ai.settings.set` (`{provider?, openai_model?, claude_model?, approval?}`),
+`ai.key.set` (`{provider, key}`, null removes it; a key is never returned), `ai.task.start`
+(`{key, instruction}` → `{id}`; the key makes it idempotent), `ai.task.reply` (`{id, text}`),
+`ai.task.pause`, `ai.task.resume`, `ai.task.cancel` (`{id}`), `ai.task.decide` (`{id, approve}`),
+`ai.tasks` (newest first), `ai.history.clear`, `ai.stop` (cancels every task). The status also
+carries `permanent_password`, `requests` (open host confirmations), `sessions`, `recent` (hosts
+connected to, newest first) and `ai` (the task in progress, or null). The Go binding keeps the response slots it passes to the core in heap memory,
 never on a goroutine stack, which may move between taking an address and the call. On Windows the
 library is loaded by absolute path with
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` and links the C
@@ -86,11 +92,12 @@ runtime statically, so nothing is resolved through the search path.
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
   `password.set_permanent`, `session.connect`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
-  `session.attach`, `session.media`, `shutdown`. `session.media` (`{id}` of a live controller
+  `session.attach`, `session.media`, `shutdown`, and the AI requests named after the core's
+  methods (`ai.settings.get` … `ai.stop`). `session.media` (`{id}` of a live controller
   session) answers OK and then carries length-prefixed packets both ways: video from the engine,
   control messages from the GUI; the GUI asks for a key frame first. The status includes the open host
   confirmations and the sessions; secrets travel only towards the engine (the network secret, the
-  permanent password, a typed password). A session receives the status after every command that changes it
+  permanent password, a typed password, a provider's API key). A session receives the status after every command that changes it
   and whenever the network's status moves.
 - Authorization comes from the operating system's peer credentials (`LOCAL_PEERCRED` on macOS;
   `SIO_AF_UNIX_GETPEERPID` and the process token's SID on Windows), never from the request: only
@@ -104,6 +111,8 @@ runtime statically, so nothing is resolved through the search path.
 | `secrets.bin` | The secrets store, encrypted ([security.md](security.md)) |
 | `master.key` (Windows) | The store's key as a DPAPI blob; on macOS the key is in the login Keychain |
 | `gui.json` | GUI preferences |
+| `ai.json` | AI settings: provider, models, approval policy (no key) |
+| `ai-tasks.json` | Finished AI tasks, without screenshots |
 | `logs/engine.log` | Engine log, without secrets |
 
 ## Cross-cutting rules

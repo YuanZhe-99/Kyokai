@@ -213,6 +213,9 @@ Verified against Anthropic's computer use documentation and API reference on 202
   returned three batched members (`left_click`, `wait`, `screenshot`) for a synthetic 1280×720
   screenshot; our `tool_result`s with the second screenshot were accepted and turn 2 ended the task
   (`end_turn`). Both requests carried `fallbacks: "default"` and the two beta headers without error.
+- **Measured (the core's runtime, 2026-10-17).** The same exchange through the product's client
+  also carried `context_management` with `clear_tool_uses_20250919` and the
+  `context-management-2025-06-27` beta; it was accepted and the task finished in three actions.
 
 ## Operating systems
 

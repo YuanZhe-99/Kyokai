@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -71,6 +72,23 @@ func TestViewsRender(t *testing.T) {
 			a.page, a.status.PermanentPassword = pageSettings, true
 			a.access = accessForm{loaded: true, trusted: []localapi.TrustedDevice{{Key: "k", DeviceID: "213559601", Last: 1797400000, Granted: []string{localapi.PermViewScreen}}}}
 		},
+		"ai-new": func(a *App) {
+			a.page = pageAI
+			s := &localapi.AISettings{Provider: "claude", ClaudeModel: "claude-opus-5-5", OpenAIModel: "gpt-6.1-sol", Approval: "flagged", Keys: &localapi.AIKeys{}}
+			a.ai = aiState{loaded: true, settings: s, form: aiFormFrom(s)}
+		},
+		"ai-approval": func(a *App) {
+			a.page = pageAI
+			a.status.AI = &localapi.AIActive{ID: 2, State: "approval"}
+			s := &localapi.AISettings{Provider: "claude", ClaudeModel: "claude-opus-5-5", OpenAIModel: "gpt-6.1-sol", Approval: "flagged", Keys: &localapi.AIKeys{Claude: true}}
+			a.ai = aiState{loaded: true, settings: s, form: aiFormFrom(s), tasks: []localapi.AITask{
+				{ID: 2, Instruction: "Save the open document", Provider: "claude", Model: "claude-opus-5-5", State: "approval",
+					Text: "I will press Save.", Progress: []string{"Pressing Save."},
+					Steps:    []localapi.AIStep{{Action: []byte(`{"kind":"screenshot"}`), Outcome: "ok"}},
+					Approval: &localapi.AIApproval{Action: []byte(`{"kind":"key-combo","keys":["meta","r"],"repeat":1}`)}},
+				{ID: 1, Instruction: "Open the settings", Provider: "claude", Model: "claude-opus-5-5", State: "done", Created: 1797400000},
+			}}
+		},
 		"network-online": func(a *App) {
 			a.page = pageNetwork
 			a.status.Network = localapi.NetworkStatus{State: "online", Address: "10.126.126.236", NAT: "symmetric",
@@ -109,6 +127,34 @@ func TestViewsRender(t *testing.T) {
 		}
 	}
 	i18n.SetLocaleFunc(nil)
+}
+
+func TestDescribeAction(t *testing.T) {
+	i18n.SetLocaleFunc(func() string { return "en" })
+	defer i18n.SetLocaleFunc(nil)
+	meta := "Win"
+	if runtime.GOOS == "darwin" {
+		meta = "Command"
+	}
+	cases := []struct{ action, want string }{
+		{`{"kind":"click","at":{"x":640,"y":425},"button":"left","count":1,"modifiers":[]}`, "Click at 640, 425"},
+		{`{"kind":"click","at":{"x":1,"y":2},"button":"left","count":2,"modifiers":["shift"]}`, "Double-click at 1, 2, holding Shift"},
+		{`{"kind":"click","at":null,"button":"right","count":1,"modifiers":[]}`, "Click where the pointer is"},
+		{`{"kind":"drag","path":[{"x":1,"y":2},{"x":3,"y":4},{"x":5,"y":6}],"modifiers":[]}`, "Drag from 1, 2 to 5, 6"},
+		{`{"kind":"scroll","at":null,"dx":0,"dy":-240,"modifiers":[]}`, "Scroll up"},
+		{`{"kind":"type","text":"hello"}`, "Type “hello”"},
+		{`{"kind":"key-combo","keys":["ctrl","shift","t"],"repeat":1}`, "Press Ctrl+Shift+T"},
+		{`{"kind":"key-combo","keys":["meta","page-up"],"repeat":1}`, "Press " + meta + "+Page Up"},
+		{`{"kind":"hold-key","keys":["shift"],"duration_ms":1500}`, "Hold Shift for 1.5 s"},
+		{`{"kind":"wait","duration_ms":2000}`, "Wait 2 s"},
+		{`{"kind":"teleport"}`, "An action that could not be read"},
+		{`null`, "An action that could not be read"},
+	}
+	for _, c := range cases {
+		if got := describeAction([]byte(c.action)); got != c.want {
+			t.Errorf("%s → %q, want %q", c.action, got, c.want)
+		}
+	}
 }
 
 func TestServerLines(t *testing.T) {

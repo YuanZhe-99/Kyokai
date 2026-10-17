@@ -209,6 +209,53 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		return h.command("identity.reset", nil)
 	case localapi.RequestHostForget:
 		return h.command("host.forget", map[string]string{"device_id": req.DeviceID})
+	case localapi.RequestAISettingsGet:
+		return h.aiSettings("ai.settings.get", nil)
+	case localapi.RequestAISettingsSet:
+		if req.AISettings == nil {
+			return localapi.Fail(localapi.CodeInvalid, "AI settings missing")
+		}
+		change := *req.AISettings
+		change.Keys = nil
+		return h.aiSettings("ai.settings.set", change)
+	case localapi.RequestAIKeySet:
+		if req.AIKey == nil {
+			return localapi.Fail(localapi.CodeInvalid, "AI key missing")
+		}
+		return h.aiSettings("ai.key.set", req.AIKey)
+	case localapi.RequestAITaskStart:
+		if req.AITask == nil {
+			return localapi.Fail(localapi.CodeInvalid, "AI task missing")
+		}
+		var out struct{ ID uint64 }
+		params := map[string]string{"key": req.AITask.Key, "instruction": req.AITask.Instruction}
+		if err := h.lib.Call("ai.task.start", params, &out); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		h.changed()
+		return localapi.Response{OK: true, ID: out.ID}
+	case localapi.RequestAITaskReply:
+		if req.AITask == nil {
+			return localapi.Fail(localapi.CodeInvalid, "AI task missing")
+		}
+		return h.command("ai.task.reply", map[string]any{"id": req.ID, "text": req.AITask.Text})
+	case localapi.RequestAITaskPause, localapi.RequestAITaskResume, localapi.RequestAITaskCancel:
+		return h.command(string(req.Type), map[string]uint64{"id": req.ID})
+	case localapi.RequestAITaskDecide:
+		if req.AITask == nil {
+			return localapi.Fail(localapi.CodeInvalid, "decision missing")
+		}
+		return h.command("ai.task.decide", map[string]any{"id": req.ID, "approve": req.AITask.Approve})
+	case localapi.RequestAITasks:
+		var tasks []localapi.AITask
+		if err := h.lib.Call("ai.tasks", nil, &tasks); err != nil {
+			return localapi.Fail(localapi.CodeInternal, "%v", err)
+		}
+		return localapi.Response{OK: true, AITasks: tasks}
+	case localapi.RequestAIHistoryClear:
+		return h.command("ai.history.clear", nil)
+	case localapi.RequestAIStop:
+		return h.command("ai.stop", nil)
 	case localapi.RequestShutdown:
 		h.stop()
 		return localapi.Response{OK: true}
@@ -265,6 +312,15 @@ func (h *handler) Media(ctx context.Context, req localapi.Request, open func() i
 		}
 	}
 	return localapi.Response{OK: true}
+}
+
+// aiSettings runs a core method that answers the AI settings.
+func (h *handler) aiSettings(method string, params any) localapi.Response {
+	var s localapi.AISettings
+	if err := h.lib.Call(method, params, &s); err != nil {
+		return localapi.Fail(localapi.CodeInvalid, "%v", err)
+	}
+	return localapi.Response{OK: true, AISettings: &s}
 }
 
 // command runs a core method that changes state and answers ok or the
@@ -333,11 +389,12 @@ func (h *handler) status() (*localapi.Status, error) {
 	var requests []localapi.HostRequest
 	var sessions []localapi.SessionInfo
 	var recent []localapi.RecentDevice
+	var ai *localapi.AIActive
 	for _, part := range []struct {
 		name string
 		raw  json.RawMessage
 		dst  any
-	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}} {
+	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}} {
 		if err := json.Unmarshal(part.raw, part.dst); err != nil {
 			return nil, fmt.Errorf("%s status: %w", part.name, err)
 		}
@@ -346,7 +403,7 @@ func (h *handler) status() (*localapi.Status, error) {
 		Version: st.Version, ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: "user", Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
-		Requests: requests, Sessions: sessions, Recent: recent, Started: h.started,
+		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
 	}, nil
 }
 

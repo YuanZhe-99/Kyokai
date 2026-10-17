@@ -36,6 +36,672 @@ type Messages struct{ locale string }
 // source language.
 func In(locale string) Messages { return Messages{locale} }
 
+// AIActionPause says "Pause"
+// in the language the app shows.
+func AIActionPause() string { return In(i18n.Locale()).AIActionPause() }
+
+// AIActionPause says "Pause"
+// in the language of msgs.
+func (msgs Messages) AIActionPause() string {
+	return Catalog.Format(msgs.locale, "AIActionPause", nil)
+}
+
+// AIActionResume says "Resume"
+// in the language the app shows.
+func AIActionResume() string { return In(i18n.Locale()).AIActionResume() }
+
+// AIActionResume says "Resume"
+// in the language of msgs.
+func (msgs Messages) AIActionResume() string {
+	return Catalog.Format(msgs.locale, "AIActionResume", nil)
+}
+
+// AIActionSend says "Send"
+// in the language the app shows.
+func AIActionSend() string { return In(i18n.Locale()).AIActionSend() }
+
+// AIActionSend says "Send"
+// in the language of msgs.
+func (msgs Messages) AIActionSend() string {
+	return Catalog.Format(msgs.locale, "AIActionSend", nil)
+}
+
+// AIActionStart says "Start"
+// in the language the app shows.
+func AIActionStart() string { return In(i18n.Locale()).AIActionStart() }
+
+// AIActionStart says "Start"
+// in the language of msgs.
+func (msgs Messages) AIActionStart() string {
+	return Catalog.Format(msgs.locale, "AIActionStart", nil)
+}
+
+// AIActionStop says "Stop"
+// in the language the app shows.
+func AIActionStop() string { return In(i18n.Locale()).AIActionStop() }
+
+// AIActionStop says "Stop"
+// in the language of msgs.
+func (msgs Messages) AIActionStop() string {
+	return Catalog.Format(msgs.locale, "AIActionStop", nil)
+}
+
+// AIApproval says "Ask before acting"
+// in the language the app shows.
+func AIApproval() string { return In(i18n.Locale()).AIApproval() }
+
+// AIApproval says "Ask before acting"
+// in the language of msgs.
+func (msgs Messages) AIApproval() string {
+	return Catalog.Format(msgs.locale, "AIApproval", nil)
+}
+
+// AIApprovalBanner says "The AI task is waiting for your approval."
+// in the language the app shows.
+func AIApprovalBanner() string { return In(i18n.Locale()).AIApprovalBanner() }
+
+// AIApprovalBanner says "The AI task is waiting for your approval."
+// in the language of msgs.
+func (msgs Messages) AIApprovalBanner() string {
+	return Catalog.Format(msgs.locale, "AIApprovalBanner", nil)
+}
+
+// AIApprovalEveryOption says "Every action"
+// in the language the app shows.
+func AIApprovalEveryOption() string { return In(i18n.Locale()).AIApprovalEveryOption() }
+
+// AIApprovalEveryOption says "Every action"
+// in the language of msgs.
+func (msgs Messages) AIApprovalEveryOption() string {
+	return Catalog.Format(msgs.locale, "AIApprovalEveryOption", nil)
+}
+
+// AIApprovalFlagged says "The provider flagged this step:"
+// in the language the app shows.
+func AIApprovalFlagged() string { return In(i18n.Locale()).AIApprovalFlagged() }
+
+// AIApprovalFlagged says "The provider flagged this step:"
+// in the language of msgs.
+func (msgs Messages) AIApprovalFlagged() string {
+	return Catalog.Format(msgs.locale, "AIApprovalFlagged", nil)
+}
+
+// AIApprovalFlaggedOption says "Flagged steps and system shortcuts"
+// in the language the app shows.
+func AIApprovalFlaggedOption() string { return In(i18n.Locale()).AIApprovalFlaggedOption() }
+
+// AIApprovalFlaggedOption says "Flagged steps and system shortcuts"
+// in the language of msgs.
+func (msgs Messages) AIApprovalFlaggedOption() string {
+	return Catalog.Format(msgs.locale, "AIApprovalFlaggedOption", nil)
+}
+
+// AIApprovalTitle says "Allow this action?"
+// in the language the app shows.
+func AIApprovalTitle() string { return In(i18n.Locale()).AIApprovalTitle() }
+
+// AIApprovalTitle says "Allow this action?"
+// in the language of msgs.
+func (msgs Messages) AIApprovalTitle() string {
+	return Catalog.Format(msgs.locale, "AIApprovalTitle", nil)
+}
+
+// AIDoClick says "Click at {x}, {y}"
+// in the language the app shows.
+func AIDoClick(x int, y int) string { return In(i18n.Locale()).AIDoClick(x, y) }
+
+// AIDoClick says "Click at {x}, {y}"
+// in the language of msgs.
+func (msgs Messages) AIDoClick(x int, y int) string {
+	return Catalog.Format(msgs.locale, "AIDoClick", map[string]any{"x": x, "y": y})
+}
+
+// AIDoClickHere says "Click where the pointer is"
+// in the language the app shows.
+func AIDoClickHere() string { return In(i18n.Locale()).AIDoClickHere() }
+
+// AIDoClickHere says "Click where the pointer is"
+// in the language of msgs.
+func (msgs Messages) AIDoClickHere() string {
+	return Catalog.Format(msgs.locale, "AIDoClickHere", nil)
+}
+
+// AIDoCursor says "Check where the pointer is"
+// in the language the app shows.
+func AIDoCursor() string { return In(i18n.Locale()).AIDoCursor() }
+
+// AIDoCursor says "Check where the pointer is"
+// in the language of msgs.
+func (msgs Messages) AIDoCursor() string {
+	return Catalog.Format(msgs.locale, "AIDoCursor", nil)
+}
+
+// AIDoDoubleClick says "Double-click at {x}, {y}"
+// in the language the app shows.
+func AIDoDoubleClick(x int, y int) string { return In(i18n.Locale()).AIDoDoubleClick(x, y) }
+
+// AIDoDoubleClick says "Double-click at {x}, {y}"
+// in the language of msgs.
+func (msgs Messages) AIDoDoubleClick(x int, y int) string {
+	return Catalog.Format(msgs.locale, "AIDoDoubleClick", map[string]any{"x": x, "y": y})
+}
+
+// AIDoDrag says "Drag from {fromX}, {fromY} to {toX}, {toY}"
+// in the language the app shows.
+func AIDoDrag(fromX int, fromY int, toX int, toY int) string {
+	return In(i18n.Locale()).AIDoDrag(fromX, fromY, toX, toY)
+}
+
+// AIDoDrag says "Drag from {fromX}, {fromY} to {toX}, {toY}"
+// in the language of msgs.
+func (msgs Messages) AIDoDrag(fromX int, fromY int, toX int, toY int) string {
+	return Catalog.Format(msgs.locale, "AIDoDrag", map[string]any{"fromX": fromX, "fromY": fromY, "toX": toX, "toY": toY})
+}
+
+// AIDoHoldKey says "Hold {keys} for {seconds} s"
+// in the language the app shows.
+func AIDoHoldKey(keys string, seconds string) string {
+	return In(i18n.Locale()).AIDoHoldKey(keys, seconds)
+}
+
+// AIDoHoldKey says "Hold {keys} for {seconds} s"
+// in the language of msgs.
+func (msgs Messages) AIDoHoldKey(keys string, seconds string) string {
+	return Catalog.Format(msgs.locale, "AIDoHoldKey", map[string]any{"keys": keys, "seconds": seconds})
+}
+
+// AIDoKey says "Press {keys}"
+// in the language the app shows.
+func AIDoKey(keys string) string { return In(i18n.Locale()).AIDoKey(keys) }
+
+// AIDoKey says "Press {keys}"
+// in the language of msgs.
+func (msgs Messages) AIDoKey(keys string) string {
+	return Catalog.Format(msgs.locale, "AIDoKey", map[string]any{"keys": keys})
+}
+
+// AIDoMiddleClick says "Middle-click at {x}, {y}"
+// in the language the app shows.
+func AIDoMiddleClick(x int, y int) string { return In(i18n.Locale()).AIDoMiddleClick(x, y) }
+
+// AIDoMiddleClick says "Middle-click at {x}, {y}"
+// in the language of msgs.
+func (msgs Messages) AIDoMiddleClick(x int, y int) string {
+	return Catalog.Format(msgs.locale, "AIDoMiddleClick", map[string]any{"x": x, "y": y})
+}
+
+// AIDoMouseDown says "Press the mouse button"
+// in the language the app shows.
+func AIDoMouseDown() string { return In(i18n.Locale()).AIDoMouseDown() }
+
+// AIDoMouseDown says "Press the mouse button"
+// in the language of msgs.
+func (msgs Messages) AIDoMouseDown() string {
+	return Catalog.Format(msgs.locale, "AIDoMouseDown", nil)
+}
+
+// AIDoMouseUp says "Release the mouse button"
+// in the language the app shows.
+func AIDoMouseUp() string { return In(i18n.Locale()).AIDoMouseUp() }
+
+// AIDoMouseUp says "Release the mouse button"
+// in the language of msgs.
+func (msgs Messages) AIDoMouseUp() string {
+	return Catalog.Format(msgs.locale, "AIDoMouseUp", nil)
+}
+
+// AIDoMove says "Move the pointer to {x}, {y}"
+// in the language the app shows.
+func AIDoMove(x int, y int) string { return In(i18n.Locale()).AIDoMove(x, y) }
+
+// AIDoMove says "Move the pointer to {x}, {y}"
+// in the language of msgs.
+func (msgs Messages) AIDoMove(x int, y int) string {
+	return Catalog.Format(msgs.locale, "AIDoMove", map[string]any{"x": x, "y": y})
+}
+
+// AIDoRightClick says "Right-click at {x}, {y}"
+// in the language the app shows.
+func AIDoRightClick(x int, y int) string { return In(i18n.Locale()).AIDoRightClick(x, y) }
+
+// AIDoRightClick says "Right-click at {x}, {y}"
+// in the language of msgs.
+func (msgs Messages) AIDoRightClick(x int, y int) string {
+	return Catalog.Format(msgs.locale, "AIDoRightClick", map[string]any{"x": x, "y": y})
+}
+
+// AIDoScreenshot says "Take a screenshot"
+// in the language the app shows.
+func AIDoScreenshot() string { return In(i18n.Locale()).AIDoScreenshot() }
+
+// AIDoScreenshot says "Take a screenshot"
+// in the language of msgs.
+func (msgs Messages) AIDoScreenshot() string {
+	return Catalog.Format(msgs.locale, "AIDoScreenshot", nil)
+}
+
+// AIDoScrollDown says "Scroll down"
+// in the language the app shows.
+func AIDoScrollDown() string { return In(i18n.Locale()).AIDoScrollDown() }
+
+// AIDoScrollDown says "Scroll down"
+// in the language of msgs.
+func (msgs Messages) AIDoScrollDown() string {
+	return Catalog.Format(msgs.locale, "AIDoScrollDown", nil)
+}
+
+// AIDoScrollLeft says "Scroll left"
+// in the language the app shows.
+func AIDoScrollLeft() string { return In(i18n.Locale()).AIDoScrollLeft() }
+
+// AIDoScrollLeft says "Scroll left"
+// in the language of msgs.
+func (msgs Messages) AIDoScrollLeft() string {
+	return Catalog.Format(msgs.locale, "AIDoScrollLeft", nil)
+}
+
+// AIDoScrollRight says "Scroll right"
+// in the language the app shows.
+func AIDoScrollRight() string { return In(i18n.Locale()).AIDoScrollRight() }
+
+// AIDoScrollRight says "Scroll right"
+// in the language of msgs.
+func (msgs Messages) AIDoScrollRight() string {
+	return Catalog.Format(msgs.locale, "AIDoScrollRight", nil)
+}
+
+// AIDoScrollUp says "Scroll up"
+// in the language the app shows.
+func AIDoScrollUp() string { return In(i18n.Locale()).AIDoScrollUp() }
+
+// AIDoScrollUp says "Scroll up"
+// in the language of msgs.
+func (msgs Messages) AIDoScrollUp() string {
+	return Catalog.Format(msgs.locale, "AIDoScrollUp", nil)
+}
+
+// AIDoTripleClick says "Triple-click at {x}, {y}"
+// in the language the app shows.
+func AIDoTripleClick(x int, y int) string { return In(i18n.Locale()).AIDoTripleClick(x, y) }
+
+// AIDoTripleClick says "Triple-click at {x}, {y}"
+// in the language of msgs.
+func (msgs Messages) AIDoTripleClick(x int, y int) string {
+	return Catalog.Format(msgs.locale, "AIDoTripleClick", map[string]any{"x": x, "y": y})
+}
+
+// AIDoType says "Type “{text}”"
+// in the language the app shows.
+func AIDoType(text string) string { return In(i18n.Locale()).AIDoType(text) }
+
+// AIDoType says "Type “{text}”"
+// in the language of msgs.
+func (msgs Messages) AIDoType(text string) string {
+	return Catalog.Format(msgs.locale, "AIDoType", map[string]any{"text": text})
+}
+
+// AIDoUnknown says "An action that could not be read"
+// in the language the app shows.
+func AIDoUnknown() string { return In(i18n.Locale()).AIDoUnknown() }
+
+// AIDoUnknown says "An action that could not be read"
+// in the language of msgs.
+func (msgs Messages) AIDoUnknown() string {
+	return Catalog.Format(msgs.locale, "AIDoUnknown", nil)
+}
+
+// AIDoWait says "Wait {seconds} s"
+// in the language the app shows.
+func AIDoWait(seconds string) string { return In(i18n.Locale()).AIDoWait(seconds) }
+
+// AIDoWait says "Wait {seconds} s"
+// in the language of msgs.
+func (msgs Messages) AIDoWait(seconds string) string {
+	return Catalog.Format(msgs.locale, "AIDoWait", map[string]any{"seconds": seconds})
+}
+
+// AIDoWithKeys says "{action}, holding {keys}"
+// in the language the app shows.
+func AIDoWithKeys(action string, keys string) string {
+	return In(i18n.Locale()).AIDoWithKeys(action, keys)
+}
+
+// AIDoWithKeys says "{action}, holding {keys}"
+// in the language of msgs.
+func (msgs Messages) AIDoWithKeys(action string, keys string) string {
+	return Catalog.Format(msgs.locale, "AIDoWithKeys", map[string]any{"action": action, "keys": keys})
+}
+
+// AIDoZoom says "Look closer at part of the screen"
+// in the language the app shows.
+func AIDoZoom() string { return In(i18n.Locale()).AIDoZoom() }
+
+// AIDoZoom says "Look closer at part of the screen"
+// in the language of msgs.
+func (msgs Messages) AIDoZoom() string {
+	return Catalog.Format(msgs.locale, "AIDoZoom", nil)
+}
+
+// AIHistoryClear says "Clear history"
+// in the language the app shows.
+func AIHistoryClear() string { return In(i18n.Locale()).AIHistoryClear() }
+
+// AIHistoryClear says "Clear history"
+// in the language of msgs.
+func (msgs Messages) AIHistoryClear() string {
+	return Catalog.Format(msgs.locale, "AIHistoryClear", nil)
+}
+
+// AIHistoryEmpty says "No earlier tasks."
+// in the language the app shows.
+func AIHistoryEmpty() string { return In(i18n.Locale()).AIHistoryEmpty() }
+
+// AIHistoryEmpty says "No earlier tasks."
+// in the language of msgs.
+func (msgs Messages) AIHistoryEmpty() string {
+	return Catalog.Format(msgs.locale, "AIHistoryEmpty", nil)
+}
+
+// AIHistoryTitle says "Task history"
+// in the language the app shows.
+func AIHistoryTitle() string { return In(i18n.Locale()).AIHistoryTitle() }
+
+// AIHistoryTitle says "Task history"
+// in the language of msgs.
+func (msgs Messages) AIHistoryTitle() string {
+	return Catalog.Format(msgs.locale, "AIHistoryTitle", nil)
+}
+
+// AIKey says "API key"
+// in the language the app shows.
+func AIKey() string { return In(i18n.Locale()).AIKey() }
+
+// AIKey says "API key"
+// in the language of msgs.
+func (msgs Messages) AIKey() string {
+	return Catalog.Format(msgs.locale, "AIKey", nil)
+}
+
+// AIKeyMissing says "No key yet."
+// in the language the app shows.
+func AIKeyMissing() string { return In(i18n.Locale()).AIKeyMissing() }
+
+// AIKeyMissing says "No key yet."
+// in the language of msgs.
+func (msgs Messages) AIKeyMissing() string {
+	return Catalog.Format(msgs.locale, "AIKeyMissing", nil)
+}
+
+// AIKeyStored says "A key is stored. Leave this empty to keep it."
+// in the language the app shows.
+func AIKeyStored() string { return In(i18n.Locale()).AIKeyStored() }
+
+// AIKeyStored says "A key is stored. Leave this empty to keep it."
+// in the language of msgs.
+func (msgs Messages) AIKeyStored() string {
+	return Catalog.Format(msgs.locale, "AIKeyStored", nil)
+}
+
+// AIModel says "Model"
+// in the language the app shows.
+func AIModel() string { return In(i18n.Locale()).AIModel() }
+
+// AIModel says "Model"
+// in the language of msgs.
+func (msgs Messages) AIModel() string {
+	return Catalog.Format(msgs.locale, "AIModel", nil)
+}
+
+// AINeedKey says "Add an API key for {provider} below to start a task."
+// in the language the app shows.
+func AINeedKey(provider string) string { return In(i18n.Locale()).AINeedKey(provider) }
+
+// AINeedKey says "Add an API key for {provider} below to start a task."
+// in the language of msgs.
+func (msgs Messages) AINeedKey(provider string) string {
+	return Catalog.Format(msgs.locale, "AINeedKey", map[string]any{"provider": provider})
+}
+
+// AINewTask says "New task"
+// in the language the app shows.
+func AINewTask() string { return In(i18n.Locale()).AINewTask() }
+
+// AINewTask says "New task"
+// in the language of msgs.
+func (msgs Messages) AINewTask() string {
+	return Catalog.Format(msgs.locale, "AINewTask", nil)
+}
+
+// AINotifyApprovalBody says "Allow or deny its next action in Kyokai."
+// in the language the app shows.
+func AINotifyApprovalBody() string { return In(i18n.Locale()).AINotifyApprovalBody() }
+
+// AINotifyApprovalBody says "Allow or deny its next action in Kyokai."
+// in the language of msgs.
+func (msgs Messages) AINotifyApprovalBody() string {
+	return Catalog.Format(msgs.locale, "AINotifyApprovalBody", nil)
+}
+
+// AINotifyApprovalTitle says "The AI task is waiting"
+// in the language the app shows.
+func AINotifyApprovalTitle() string { return In(i18n.Locale()).AINotifyApprovalTitle() }
+
+// AINotifyApprovalTitle says "The AI task is waiting"
+// in the language of msgs.
+func (msgs Messages) AINotifyApprovalTitle() string {
+	return Catalog.Format(msgs.locale, "AINotifyApprovalTitle", nil)
+}
+
+// AIOutcomeDeclined says "declined"
+// in the language the app shows.
+func AIOutcomeDeclined() string { return In(i18n.Locale()).AIOutcomeDeclined() }
+
+// AIOutcomeDeclined says "declined"
+// in the language of msgs.
+func (msgs Messages) AIOutcomeDeclined() string {
+	return Catalog.Format(msgs.locale, "AIOutcomeDeclined", nil)
+}
+
+// AIOutcomeFailed says "failed"
+// in the language the app shows.
+func AIOutcomeFailed() string { return In(i18n.Locale()).AIOutcomeFailed() }
+
+// AIOutcomeFailed says "failed"
+// in the language of msgs.
+func (msgs Messages) AIOutcomeFailed() string {
+	return Catalog.Format(msgs.locale, "AIOutcomeFailed", nil)
+}
+
+// AIOutcomePaused says "not run (paused)"
+// in the language the app shows.
+func AIOutcomePaused() string { return In(i18n.Locale()).AIOutcomePaused() }
+
+// AIOutcomePaused says "not run (paused)"
+// in the language of msgs.
+func (msgs Messages) AIOutcomePaused() string {
+	return Catalog.Format(msgs.locale, "AIOutcomePaused", nil)
+}
+
+// AIOutcomeSkipped says "skipped"
+// in the language the app shows.
+func AIOutcomeSkipped() string { return In(i18n.Locale()).AIOutcomeSkipped() }
+
+// AIOutcomeSkipped says "skipped"
+// in the language of msgs.
+func (msgs Messages) AIOutcomeSkipped() string {
+	return Catalog.Format(msgs.locale, "AIOutcomeSkipped", nil)
+}
+
+// AIProvider says "Provider"
+// in the language the app shows.
+func AIProvider() string { return In(i18n.Locale()).AIProvider() }
+
+// AIProvider says "Provider"
+// in the language of msgs.
+func (msgs Messages) AIProvider() string {
+	return Catalog.Format(msgs.locale, "AIProvider", nil)
+}
+
+// AIRemoveKey says "Remove key"
+// in the language the app shows.
+func AIRemoveKey() string { return In(i18n.Locale()).AIRemoveKey() }
+
+// AIRemoveKey says "Remove key"
+// in the language of msgs.
+func (msgs Messages) AIRemoveKey() string {
+	return Catalog.Format(msgs.locale, "AIRemoveKey", nil)
+}
+
+// AIReplyHint says "Reply to continue this task"
+// in the language the app shows.
+func AIReplyHint() string { return In(i18n.Locale()).AIReplyHint() }
+
+// AIReplyHint says "Reply to continue this task"
+// in the language of msgs.
+func (msgs Messages) AIReplyHint() string {
+	return Catalog.Format(msgs.locale, "AIReplyHint", nil)
+}
+
+// AIReview says "Review"
+// in the language the app shows.
+func AIReview() string { return In(i18n.Locale()).AIReview() }
+
+// AIReview says "Review"
+// in the language of msgs.
+func (msgs Messages) AIReview() string {
+	return Catalog.Format(msgs.locale, "AIReview", nil)
+}
+
+// AISaved says "AI settings saved."
+// in the language the app shows.
+func AISaved() string { return In(i18n.Locale()).AISaved() }
+
+// AISaved says "AI settings saved."
+// in the language of msgs.
+func (msgs Messages) AISaved() string {
+	return Catalog.Format(msgs.locale, "AISaved", nil)
+}
+
+// AISettingsHint says "Tasks on this computer use this computer's key. It is kept in the secrets store here and never sent to other devices."
+// in the language the app shows.
+func AISettingsHint() string { return In(i18n.Locale()).AISettingsHint() }
+
+// AISettingsHint says "Tasks on this computer use this computer's key. It is kept in the secrets store here and never sent to other devices."
+// in the language of msgs.
+func (msgs Messages) AISettingsHint() string {
+	return Catalog.Format(msgs.locale, "AISettingsHint", nil)
+}
+
+// AISettingsTitle says "AI provider"
+// in the language the app shows.
+func AISettingsTitle() string { return In(i18n.Locale()).AISettingsTitle() }
+
+// AISettingsTitle says "AI provider"
+// in the language of msgs.
+func (msgs Messages) AISettingsTitle() string {
+	return Catalog.Format(msgs.locale, "AISettingsTitle", nil)
+}
+
+// AIStateApproval says "Waiting for your approval"
+// in the language the app shows.
+func AIStateApproval() string { return In(i18n.Locale()).AIStateApproval() }
+
+// AIStateApproval says "Waiting for your approval"
+// in the language of msgs.
+func (msgs Messages) AIStateApproval() string {
+	return Catalog.Format(msgs.locale, "AIStateApproval", nil)
+}
+
+// AIStateCancelled says "Stopped"
+// in the language the app shows.
+func AIStateCancelled() string { return In(i18n.Locale()).AIStateCancelled() }
+
+// AIStateCancelled says "Stopped"
+// in the language of msgs.
+func (msgs Messages) AIStateCancelled() string {
+	return Catalog.Format(msgs.locale, "AIStateCancelled", nil)
+}
+
+// AIStateDone says "Done"
+// in the language the app shows.
+func AIStateDone() string { return In(i18n.Locale()).AIStateDone() }
+
+// AIStateDone says "Done"
+// in the language of msgs.
+func (msgs Messages) AIStateDone() string {
+	return Catalog.Format(msgs.locale, "AIStateDone", nil)
+}
+
+// AIStateFailed says "Stopped by an error"
+// in the language the app shows.
+func AIStateFailed() string { return In(i18n.Locale()).AIStateFailed() }
+
+// AIStateFailed says "Stopped by an error"
+// in the language of msgs.
+func (msgs Messages) AIStateFailed() string {
+	return Catalog.Format(msgs.locale, "AIStateFailed", nil)
+}
+
+// AIStatePaused says "Paused"
+// in the language the app shows.
+func AIStatePaused() string { return In(i18n.Locale()).AIStatePaused() }
+
+// AIStatePaused says "Paused"
+// in the language of msgs.
+func (msgs Messages) AIStatePaused() string {
+	return Catalog.Format(msgs.locale, "AIStatePaused", nil)
+}
+
+// AIStatePausedLocal says "Paused because you used the keyboard or mouse"
+// in the language the app shows.
+func AIStatePausedLocal() string { return In(i18n.Locale()).AIStatePausedLocal() }
+
+// AIStatePausedLocal says "Paused because you used the keyboard or mouse"
+// in the language of msgs.
+func (msgs Messages) AIStatePausedLocal() string {
+	return Catalog.Format(msgs.locale, "AIStatePausedLocal", nil)
+}
+
+// AIStateRunning says "Working…"
+// in the language the app shows.
+func AIStateRunning() string { return In(i18n.Locale()).AIStateRunning() }
+
+// AIStateRunning says "Working…"
+// in the language of msgs.
+func (msgs Messages) AIStateRunning() string {
+	return Catalog.Format(msgs.locale, "AIStateRunning", nil)
+}
+
+// AIStepsTitle says "Actions"
+// in the language the app shows.
+func AIStepsTitle() string { return In(i18n.Locale()).AIStepsTitle() }
+
+// AIStepsTitle says "Actions"
+// in the language of msgs.
+func (msgs Messages) AIStepsTitle() string {
+	return Catalog.Format(msgs.locale, "AIStepsTitle", nil)
+}
+
+// AITaskHint says "The AI works on this computer's screen with this computer's API key. Using the keyboard or mouse pauses it at once."
+// in the language the app shows.
+func AITaskHint() string { return In(i18n.Locale()).AITaskHint() }
+
+// AITaskHint says "The AI works on this computer's screen with this computer's API key. Using the keyboard or mouse pauses it at once."
+// in the language of msgs.
+func (msgs Messages) AITaskHint() string {
+	return Catalog.Format(msgs.locale, "AITaskHint", nil)
+}
+
+// AITaskTitle says "AI task"
+// in the language the app shows.
+func AITaskTitle() string { return In(i18n.Locale()).AITaskTitle() }
+
+// AITaskTitle says "AI task"
+// in the language of msgs.
+func (msgs Messages) AITaskTitle() string {
+	return Catalog.Format(msgs.locale, "AITaskTitle", nil)
+}
+
 // AboutLicense says "AGPL-3.0-only. Includes MyGo (MIT)."
 // in the language the app shows.
 func AboutLicense() string { return In(i18n.Locale()).AboutLicense() }
@@ -764,6 +1430,16 @@ func NatUnknown() string { return In(i18n.Locale()).NatUnknown() }
 // in the language of msgs.
 func (msgs Messages) NatUnknown() string {
 	return Catalog.Format(msgs.locale, "NatUnknown", nil)
+}
+
+// NavAI says "AI"
+// in the language the app shows.
+func NavAI() string { return In(i18n.Locale()).NavAI() }
+
+// NavAI says "AI"
+// in the language of msgs.
+func (msgs Messages) NavAI() string {
+	return Catalog.Format(msgs.locale, "NavAI", nil)
 }
 
 // NavHome says "Home"
@@ -1626,6 +2302,16 @@ func TrayShow() string { return In(i18n.Locale()).TrayShow() }
 // in the language of msgs.
 func (msgs Messages) TrayShow() string {
 	return Catalog.Format(msgs.locale, "TrayShow", nil)
+}
+
+// TrayStopAI says "Stop AI task"
+// in the language the app shows.
+func TrayStopAI() string { return In(i18n.Locale()).TrayStopAI() }
+
+// TrayStopAI says "Stop AI task"
+// in the language of msgs.
+func (msgs Messages) TrayStopAI() string {
+	return Catalog.Format(msgs.locale, "TrayStopAI", nil)
 }
 
 // TrustedHint says "Devices you allowed before. A removed device shows as new the next time."

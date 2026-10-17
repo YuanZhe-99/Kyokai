@@ -1,0 +1,121 @@
+{
+  "model": "claude-opus-5-5",
+  "max_tokens": 16000,
+  "thinking": {
+    "type": "adaptive",
+    "display": "updates"
+  },
+  "output_config": {
+    "effort": "high"
+  },
+  "fallbacks": "default",
+  "system": "You operate a 1280x720 desktop through the computer tools. End each batch with a screenshot.",
+  "tools": [
+    {
+      "type": "computer_toolset_20260801"
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "<SCREENSHOT_1>"
+          }
+        },
+        {
+          "type": "text",
+          "text": "Click the SAVE button in the dialog, then confirm that the file was saved."
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "toolu_01UdSH7Gt1Qr6pBUgGmLoYGQ",
+          "name": "left_click",
+          "input": {
+            "coordinate": [
+              640,
+              425
+            ]
+          },
+          "toolset_name": "computer",
+          "caller": {
+            "type": "direct"
+          }
+        },
+        {
+          "type": "tool_use",
+          "id": "toolu_01GRqVkUUFM6Q6jA5MjmZd1d",
+          "name": "wait",
+          "input": {
+            "duration": 1
+          },
+          "toolset_name": "computer",
+          "caller": {
+            "type": "direct"
+          }
+        },
+        {
+          "type": "tool_use",
+          "id": "toolu_01Qe5mE9gr1w9FpqEEmDVvCc",
+          "name": "screenshot",
+          "input": {},
+          "toolset_name": "computer",
+          "caller": {
+            "type": "direct"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_01UdSH7Gt1Qr6pBUgGmLoYGQ",
+          "toolset_name": "computer",
+          "content": [
+            {
+              "type": "text",
+              "text": "OK"
+            }
+          ]
+        },
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_01GRqVkUUFM6Q6jA5MjmZd1d",
+          "toolset_name": "computer",
+          "content": [
+            {
+              "type": "text",
+              "text": "OK"
+            }
+          ]
+        },
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_01Qe5mE9gr1w9FpqEEmDVvCc",
+          "toolset_name": "computer",
+          "content": [
+            {
+              "type": "image",
+              "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": "<SCREENSHOT_2>"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

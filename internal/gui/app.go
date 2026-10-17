@@ -20,6 +20,7 @@ type page int
 const (
 	pageHome page = iota
 	pageNetwork
+	pageAI
 	pageSettings
 )
 
@@ -61,6 +62,8 @@ type App struct {
 	passphrase string
 	// Open viewer windows by session id (viewer.go).
 	viewers map[uint64]*viewer
+	// The AI page (ai.go).
+	ai aiState
 
 	// View state.
 	page         page
@@ -202,9 +205,12 @@ func (a *App) View(c *ui.Context) {
 			a.sidebar(c)
 			ui.Scroll(c).Grow(1).Fill().Padding(24).Gap(gap).Children(func() {
 				a.requestsView(c)
+				a.aiBanner(c)
 				switch pg {
 				case pageNetwork:
 					a.networkView(c)
+				case pageAI:
+					a.aiView(c)
 				case pageSettings:
 					a.settingsView(c)
 				default:

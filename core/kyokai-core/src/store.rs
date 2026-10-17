@@ -100,11 +100,16 @@ impl Secrets {
         let Some((path, key)) = &self.disk else {
             return Ok(());
         };
-        let data = encrypt(key, &map)?;
-        let tmp = path.with_extension("tmp");
-        std::fs::write(&tmp, &data).map_err(|e| format!("write secrets: {e}"))?;
-        std::fs::rename(&tmp, path).map_err(|e| format!("replace secrets: {e}"))
+        write_atomic(path, &encrypt(key, &map)?)
     }
+}
+
+/// Replaces a file through a temporary file next to it, so a crash leaves
+/// either the old or the new contents.
+pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), String> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, data).map_err(|e| format!("write {}: {e}", path.display()))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("replace {}: {e}", path.display()))
 }
 
 fn encrypt(key: &[u8; 32], map: &Map) -> Result<Vec<u8>, String> {

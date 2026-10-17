@@ -40,10 +40,13 @@ sha2 = "0.11.1"
 tokio = { version = "1.53", features = ["rt-multi-thread", "time", "io-util", "sync", "macros"] }
 uuid = { version = "1.26", features = ["v5"] }
 zeroize = "1.9.1"
+png = "0.18.1"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "json", "http2"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 
 [target."cfg(windows)".dependencies]
 rustdesk-dxgi = { path = "../third_party/rustdesk-dxgi" }
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media_MediaFoundation", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media_MediaFoundation", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

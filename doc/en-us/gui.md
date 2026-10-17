@@ -6,7 +6,7 @@ when `SCREENSHOT_DIR` is set.
 
 ## Structure
 
-- **Sidebar:** Home, Network, Settings.
+- **Sidebar:** Home, Network, AI, Settings.
 - **Home:** "This device" — the Device ID in groups of three with Copy; the temporary password,
   masked until Show, with Copy and New password; a note when secrets are not persisted. Below it,
   "Control another device" (Device ID, password, Connect; needs a network) and the sessions, newest
@@ -21,6 +21,15 @@ when `SCREENSHOT_DIR` is set.
 - **Confirmations:** a controller waiting for this host's user shows at the top of every page with
   its Device ID, whether it is known or a new key claiming a known ID, and a switch per requested
   permission, with Allow and Deny; a notification and the window coming forward announce it.
+- **AI:** the task card — a new task's instruction and Start (with a note when the provider has no
+  key), or the task in progress: its state in words (working, waiting for approval, paused and
+  why, done, stopped), the model's latest text and progress note, its latest actions in words
+  ("Click at 640, 425", "Press Ctrl+S") with what became of them, Pause or Resume and Stop; an
+  action waiting for approval shows in a framed box with Allow and Deny and the provider's notes.
+  A finished task can be continued with a reply. Below: the provider card (Claude or OpenAI, the
+  model, a write-only API key field, Remove key, the approval policy) and the task history with
+  Clear history. While the task waits for approval, every other page shows a banner with Review,
+  and a notification announces it.
 - **Network:** the node's live status (connected, connecting, or why it could not connect; the
   virtual address; the NAT type in plain words) and the Kyokai devices it routes to (Device ID,
   direct or relayed, latency), with a note that announced Device IDs are not proof; then the
@@ -57,7 +66,9 @@ when `SCREENSHOT_DIR` is set.
 
 ## Tray
 
-- Menu: the Device ID (disabled), Show Kyokai, Quit Kyokai. It never shows the password.
+- Menu: the Device ID (disabled), Stop AI task while one is in progress (the emergency stop), Show
+  Kyokai, Quit Kyokai. It never shows the password.
+- Kyokai's windows are excluded from screen capture, so neither a viewer nor an AI task sees them.
 - Closing the window hides it to the tray and says so the first time; without a tray, or with
   "Quit" chosen for the close button, closing quits.
 

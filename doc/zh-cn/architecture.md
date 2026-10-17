@@ -34,7 +34,7 @@
 | `internal/core` | 通过 purego 绑定 Rust 核心 |
 | `internal/fsutil` | 原子写入与 JSON 文档 |
 | `internal/version` | 唯一的产品版本 |
-| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`） |
+| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`）、屏幕采集与 H.264（`video`、`mf`）、输入服务（`input`）、AI 任务（`ai`：服务商、任务运行时及其驱动的桌面） |
 | `core/third_party/rustdesk-dxgi` | 复用的 RustDesk DXGI 与 GDI 屏幕采集（[computer-use.md](computer-use.md)） |
 | `core/third_party/rustdesk-qos` | 复用的 RustDesk 视频 QoS |
 | `core/third_party/thunk-noop` | 替代 EasyTier 的 `thunk-rs` 构建步骤，使 Windows 构建保持静态 C 运行时 |
@@ -62,8 +62,12 @@
 `network.set`（`{servers, name, secret?}`；缺少密钥时保留已存的密钥）、`password.set_permanent`（`{password}`，null 表示移除）、
 `session.connect`（`{device_id, password, want}`；立即返回会话 id，进度见状态）、`session.close`、`request.decide`
 （`{id, allow, permissions}`）、`trusted.list`、`trusted.remove`、`host.forget`、`identity.export`（`{passphrase}` → `{document}`）、`identity.import`
-（`{document, passphrase}`）、`identity.reset`。状态中还包含 `permanent_password`、`requests`（待处理的被控端确认）、`sessions`
-以及 `recent`（连接过的被控端，最新的在前）。Go 绑定把传给核心的响应槽放在堆内存中，从不放在
+（`{document, passphrase}`）、`identity.reset`，以及 AI 任务的方法（[computer-use.md](computer-use.md)）：`ai.settings.get`、
+`ai.settings.set`（`{provider?, openai_model?, claude_model?, approval?}`）、`ai.key.set`（`{provider, key}`，null 表示移除；密钥从不返回）、
+`ai.task.start`（`{key, instruction}` → `{id}`；key 使其幂等）、`ai.task.reply`（`{id, text}`）、`ai.task.pause`、`ai.task.resume`、
+`ai.task.cancel`（`{id}`）、`ai.task.decide`（`{id, approve}`）、`ai.tasks`（最新的在前）、`ai.history.clear`、`ai.stop`（取消所有任务）。
+状态中还包含 `permanent_password`、`requests`（待处理的被控端确认）、`sessions`、`recent`（连接过的被控端，最新的在前）以及
+`ai`（进行中的任务，或 null）。Go 绑定把传给核心的响应槽放在堆内存中，从不放在
 goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows 上以绝对路径、
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` 加载该库，并静态链接 C 运行时，
 因此不会经由搜索路径解析任何文件。
@@ -75,9 +79,9 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
   请求，`session.attach` 除外：它保持连接，状态变化时收到推送。
 - 请求：`status`（含网络状态）、`password.reveal`、`password.regenerate`、`network.get`、`network.set`（被拒绝的设置
   以 `invalid` 和原因答复）、`password.set_permanent`、`session.connect`、`session.close`、`request.decide`、`trusted.list`、
-  `trusted.remove`、`host.forget`、`identity.export`、`identity.import`、`identity.reset`、`session.attach`、`session.media`、`shutdown`。`session.media`（某个进行中的控制端会话的 `{id}`）先答复 OK，
+  `trusted.remove`、`host.forget`、`identity.export`、`identity.import`、`identity.reset`、`session.attach`、`session.media`、`shutdown`，以及与核心方法同名的 AI 请求（`ai.settings.get` … `ai.stop`）。`session.media`（某个进行中的控制端会话的 `{id}`）先答复 OK，
   之后双向传输带长度前缀的包：引擎发出视频，界面发出控制消息；界面首先请求关键帧。状态包含待处理的被控端确认与会话；机密只朝引擎方向传递
-  （网络密钥、固定密码、用户输入的密码）。会话在每个改变状态的命令之后、以及网络状态变化时收到状态。
+  （网络密钥、固定密码、用户输入的密码、服务商的 API 密钥）。会话在每个改变状态的命令之后、以及网络状态变化时收到状态。
 - 授权来自操作系统的对端凭据（macOS 为 `LOCAL_PEERCRED`；Windows 为 `SIO_AF_UNIX_GETPEERPID` 与进程令牌的 SID），
   从不取自请求内容：只服务引擎自己的用户；读不出身份的连接一律拒绝。
 
@@ -89,6 +93,8 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
 | `secrets.bin` | 加密的机密存储（[security.md](security.md)） |
 | `master.key`（Windows） | 存储密钥的 DPAPI 数据块；macOS 上密钥在登录钥匙串中 |
 | `gui.json` | 界面偏好设置 |
+| `ai.json` | AI 设置：服务商、模型、批准方式（不含密钥） |
+| `ai-tasks.json` | 已结束的 AI 任务，不含截图 |
 | `logs/engine.log` | 引擎日志，不含机密 |
 
 ## 通用规则

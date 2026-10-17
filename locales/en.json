@@ -1,5 +1,195 @@
 {
   "@@locale": "en",
+  "AIActionPause": "Pause",
+  "AIActionResume": "Resume",
+  "AIActionSend": "Send",
+  "AIActionStart": "Start",
+  "AIActionStop": "Stop",
+  "AIApproval": "Ask before acting",
+  "AIApprovalBanner": "The AI task is waiting for your approval.",
+  "AIApprovalEveryOption": "Every action",
+  "AIApprovalFlagged": "The provider flagged this step:",
+  "AIApprovalFlaggedOption": "Flagged steps and system shortcuts",
+  "AIApprovalTitle": "Allow this action?",
+  "AIDoClick": "Click at {x}, {y}",
+  "@AIDoClick": {
+    "placeholders": {
+      "x": {
+        "type": "int"
+      },
+      "y": {
+        "type": "int"
+      }
+    }
+  },
+  "AIDoClickHere": "Click where the pointer is",
+  "AIDoCursor": "Check where the pointer is",
+  "AIDoDoubleClick": "Double-click at {x}, {y}",
+  "@AIDoDoubleClick": {
+    "placeholders": {
+      "x": {
+        "type": "int"
+      },
+      "y": {
+        "type": "int"
+      }
+    }
+  },
+  "AIDoDrag": "Drag from {fromX}, {fromY} to {toX}, {toY}",
+  "@AIDoDrag": {
+    "placeholders": {
+      "fromX": {
+        "type": "int"
+      },
+      "fromY": {
+        "type": "int"
+      },
+      "toX": {
+        "type": "int"
+      },
+      "toY": {
+        "type": "int"
+      }
+    }
+  },
+  "AIDoHoldKey": "Hold {keys} for {seconds} s",
+  "@AIDoHoldKey": {
+    "placeholders": {
+      "keys": {
+        "type": "String"
+      },
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
+  "AIDoKey": "Press {keys}",
+  "@AIDoKey": {
+    "placeholders": {
+      "keys": {
+        "type": "String"
+      }
+    }
+  },
+  "AIDoMiddleClick": "Middle-click at {x}, {y}",
+  "@AIDoMiddleClick": {
+    "placeholders": {
+      "x": {
+        "type": "int"
+      },
+      "y": {
+        "type": "int"
+      }
+    }
+  },
+  "AIDoMouseDown": "Press the mouse button",
+  "AIDoMouseUp": "Release the mouse button",
+  "AIDoMove": "Move the pointer to {x}, {y}",
+  "@AIDoMove": {
+    "placeholders": {
+      "x": {
+        "type": "int"
+      },
+      "y": {
+        "type": "int"
+      }
+    }
+  },
+  "AIDoRightClick": "Right-click at {x}, {y}",
+  "@AIDoRightClick": {
+    "placeholders": {
+      "x": {
+        "type": "int"
+      },
+      "y": {
+        "type": "int"
+      }
+    }
+  },
+  "AIDoScreenshot": "Take a screenshot",
+  "AIDoScrollDown": "Scroll down",
+  "AIDoScrollLeft": "Scroll left",
+  "AIDoScrollRight": "Scroll right",
+  "AIDoScrollUp": "Scroll up",
+  "AIDoTripleClick": "Triple-click at {x}, {y}",
+  "@AIDoTripleClick": {
+    "placeholders": {
+      "x": {
+        "type": "int"
+      },
+      "y": {
+        "type": "int"
+      }
+    }
+  },
+  "AIDoType": "Type “{text}”",
+  "@AIDoType": {
+    "placeholders": {
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "AIDoUnknown": "An action that could not be read",
+  "AIDoWait": "Wait {seconds} s",
+  "@AIDoWait": {
+    "placeholders": {
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
+  "AIDoWithKeys": "{action}, holding {keys}",
+  "@AIDoWithKeys": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "keys": {
+        "type": "String"
+      }
+    }
+  },
+  "AIDoZoom": "Look closer at part of the screen",
+  "AIHistoryClear": "Clear history",
+  "AIHistoryEmpty": "No earlier tasks.",
+  "AIHistoryTitle": "Task history",
+  "AIKey": "API key",
+  "AIKeyMissing": "No key yet.",
+  "AIKeyStored": "A key is stored. Leave this empty to keep it.",
+  "AIModel": "Model",
+  "AINeedKey": "Add an API key for {provider} below to start a task.",
+  "@AINeedKey": {
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "AINewTask": "New task",
+  "AINotifyApprovalBody": "Allow or deny its next action in Kyokai.",
+  "AINotifyApprovalTitle": "The AI task is waiting",
+  "AIOutcomeDeclined": "declined",
+  "AIOutcomeFailed": "failed",
+  "AIOutcomePaused": "not run (paused)",
+  "AIOutcomeSkipped": "skipped",
+  "AIProvider": "Provider",
+  "AIRemoveKey": "Remove key",
+  "AIReplyHint": "Reply to continue this task",
+  "AIReview": "Review",
+  "AISaved": "AI settings saved.",
+  "AISettingsHint": "Tasks on this computer use this computer's key. It is kept in the secrets store here and never sent to other devices.",
+  "AISettingsTitle": "AI provider",
+  "AIStateApproval": "Waiting for your approval",
+  "AIStateCancelled": "Stopped",
+  "AIStateDone": "Done",
+  "AIStateFailed": "Stopped by an error",
+  "AIStatePaused": "Paused",
+  "AIStatePausedLocal": "Paused because you used the keyboard or mouse",
+  "AIStateRunning": "Working…",
+  "AIStepsTitle": "Actions",
+  "AITaskHint": "The AI works on this computer's screen with this computer's API key. Using the keyboard or mouse pauses it at once.",
+  "AITaskTitle": "AI task",
   "AboutLicense": "AGPL-3.0-only. Includes MyGo (MIT).",
   "AboutSource": "Source code",
   "AboutTagline": "AI Computer Use Across Devices",
@@ -101,6 +291,7 @@
   "NatOpen": "Open internet",
   "NatSymmetric": "Symmetric (direct connections are hard)",
   "NatUnknown": "Not detected yet",
+  "NavAI": "AI",
   "NavHome": "Home",
   "NavNetwork": "Network",
   "NavSettings": "Settings",
@@ -222,6 +413,7 @@
   },
   "TrayQuit": "Quit Kyokai",
   "TrayShow": "Show Kyokai",
+  "TrayStopAI": "Stop AI task",
   "TrustedHint": "Devices you allowed before. A removed device shows as new the next time.",
   "TrustedLast": "Last connected {time}",
   "@TrustedLast": {

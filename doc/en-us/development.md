@@ -74,3 +74,8 @@ Tests protect product contracts and error-prone logic, preferably table-driven; 
 gets a regression test. No tests for wording, internal state details or evidence collection.
 Tests that need the network, an official EasyTier core or a provider key run only when their
 environment variables are set. `go test ./...` stays under a minute.
+
+The AI runtime's tests drive a fake desktop and a local stand-in for the provider. With
+`KYOKAI_LIVE_CLAUDE=1` and `ANTHROPIC_API_KEY` set, `cargo test ... live_claude` runs a real Claude
+task on synthetic screens; `cargo test ... real_screen -- --ignored` checks the real capture and the
+input hooks on a machine with a desktop (it reads the screen into memory only and injects nothing).

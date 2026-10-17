@@ -74,6 +74,8 @@ type Status struct {
 	Requests json.RawMessage `json:"requests"`
 	Sessions json.RawMessage `json:"sessions"`
 	Recent   json.RawMessage `json:"recent"`
+	// AI is the task in progress or null.
+	AI json.RawMessage `json:"ai"`
 }
 
 // Load opens the library at path (absolute) and checks its ABI version.

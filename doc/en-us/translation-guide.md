@@ -36,6 +36,7 @@ and Latin words only where it helps readability.
 | approval | 批准 |
 | take over | 接管 |
 | emergency stop | 紧急停止 |
+| input lease | 输入租约 |
 | AI task | AI 任务 |
 | provider | 服务商 |
 | unattended access | 无人值守访问 |

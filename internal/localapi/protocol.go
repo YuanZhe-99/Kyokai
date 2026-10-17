@@ -65,6 +65,18 @@ const (
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
 	RequestMedia              RequestType = "session.media"          // a controller session's media (Request.ID); the connection then carries packets
 	RequestSessionAttach      RequestType = "session.attach"         // streaming; see package doc
+	RequestAISettingsGet      RequestType = "ai.settings.get"        // the AI settings and which keys are stored
+	RequestAISettingsSet      RequestType = "ai.settings.set"        // change the AI settings (Request.AISettings)
+	RequestAIKeySet           RequestType = "ai.key.set"             // store or remove a provider key (Request.AIKey)
+	RequestAITaskStart        RequestType = "ai.task.start"          // start an AI task (Request.AITask)
+	RequestAITaskReply        RequestType = "ai.task.reply"          // continue a finished task (Request.ID, Request.AITask.Text)
+	RequestAITaskPause        RequestType = "ai.task.pause"          // pause a task (Request.ID)
+	RequestAITaskResume       RequestType = "ai.task.resume"         // resume a paused task (Request.ID)
+	RequestAITaskCancel       RequestType = "ai.task.cancel"         // cancel a task (Request.ID)
+	RequestAITaskDecide       RequestType = "ai.task.decide"         // answer an approval (Request.ID, Request.AITask.Approve)
+	RequestAITasks            RequestType = "ai.tasks"               // every task, newest first
+	RequestAIHistoryClear     RequestType = "ai.history.clear"       // forget the finished tasks
+	RequestAIStop             RequestType = "ai.stop"                // the emergency stop: cancel every task
 	RequestShutdown           RequestType = "shutdown"
 )
 
@@ -96,6 +108,92 @@ type Request struct {
 	DeviceID string `json:"device_id,omitempty"`
 	// Backup carries the passphrase (and for an import the document).
 	Backup *IdentityBackup `json:"backup,omitempty"`
+	// AISettings carries the fields RequestAISettingsSet changes.
+	AISettings *AISettings    `json:"ai_settings,omitempty"`
+	AIKey      *AIKey         `json:"ai_key,omitempty"`
+	AITask     *AITaskRequest `json:"ai_task,omitempty"`
+}
+
+// AISettings are the host's AI settings. In a request, empty fields stay
+// as they are; Keys is only in a response.
+type AISettings struct {
+	// Provider is "claude" or "openai".
+	Provider    string `json:"provider,omitempty"`
+	OpenAIModel string `json:"openai_model,omitempty"`
+	ClaudeModel string `json:"claude_model,omitempty"`
+	// Approval is "flagged" or "every-action".
+	Approval string  `json:"approval,omitempty"`
+	Keys     *AIKeys `json:"keys,omitempty"`
+}
+
+// AIKeys says which providers have a stored key; the keys never leave the
+// engine.
+type AIKeys struct {
+	OpenAI bool `json:"openai"`
+	Claude bool `json:"claude"`
+}
+
+// AIKey stores (Key set) or removes (Key nil) a provider's API key.
+type AIKey struct {
+	Provider string  `json:"provider"`
+	Key      *string `json:"key"`
+}
+
+// AITaskRequest starts a task (Key, Instruction), continues one (Text) or
+// answers its approval (Approve).
+type AITaskRequest struct {
+	// Key makes the start idempotent: a second start with it returns the
+	// first task.
+	Key         string `json:"key,omitempty"`
+	Instruction string `json:"instruction,omitempty"`
+	Text        string `json:"text,omitempty"`
+	Approve     bool   `json:"approve,omitempty"`
+}
+
+// AITask is one AI task on this host.
+type AITask struct {
+	ID          uint64 `json:"id"`
+	Instruction string `json:"instruction"`
+	Provider    string `json:"provider"`
+	Model       string `json:"model"`
+	// State is "running", "approval", "paused", "done", "failed" or
+	// "cancelled".
+	State string `json:"state"`
+	// Paused says why: "host-user" or "local-input".
+	Paused string `json:"paused,omitempty"`
+	// Error says why the task failed; safe to show.
+	Error    string      `json:"error,omitempty"`
+	Text     string      `json:"text"`
+	Progress []string    `json:"progress"`
+	Steps    []AIStep    `json:"steps"`
+	Approval *AIApproval `json:"approval,omitempty"`
+	Created  int64       `json:"created"` // Unix seconds
+	Updated  int64       `json:"updated"`
+}
+
+// AIStep is one action of a task and what became of it.
+type AIStep struct {
+	At int64 `json:"at"`
+	// Action is the action ({"kind": "click", …}; doc/en-us/computer-use.md),
+	// null when the model's proposal could not be read.
+	Action json.RawMessage `json:"action"`
+	// Outcome is "ok", "failed", "declined", "not-executed" or "paused".
+	Outcome string `json:"outcome"`
+	Detail  string `json:"detail,omitempty"`
+}
+
+// AIApproval is an action waiting for the host user.
+type AIApproval struct {
+	Action json.RawMessage `json:"action"`
+	// Flagged are the provider's safety notes for the turn, if any.
+	Flagged []string `json:"flagged"`
+}
+
+// AIActive is the task in progress, as the status shows it.
+type AIActive struct {
+	ID     uint64 `json:"id"`
+	State  string `json:"state"`
+	Paused string `json:"paused,omitempty"`
 }
 
 // IdentityBackup is an identity backup document and its passphrase.
@@ -152,6 +250,10 @@ type Response struct {
 	Trusted []TrustedDevice `json:"trusted,omitempty"`
 	// Document answers RequestIdentityExport: the encrypted backup.
 	Document string `json:"document,omitempty"`
+	// AISettings answers the AI settings and key requests.
+	AISettings *AISettings `json:"ai_settings,omitempty"`
+	// AITasks answers RequestAITasks.
+	AITasks []AITask `json:"ai_tasks,omitempty"`
 }
 
 // TrustedDevice is a controller this host accepted before.
@@ -249,8 +351,10 @@ type Status struct {
 	Requests          []HostRequest `json:"requests"`
 	Sessions          []SessionInfo `json:"sessions"`
 	// Recent are the hosts this device connected to, newest first.
-	Recent  []RecentDevice `json:"recent"`
-	Started time.Time      `json:"started"`
+	Recent []RecentDevice `json:"recent"`
+	// AI is the AI task in progress, nil when there is none.
+	AI      *AIActive `json:"ai,omitempty"`
+	Started time.Time `json:"started"`
 }
 
 // ErrNotRunning reports that no engine listens on the socket.

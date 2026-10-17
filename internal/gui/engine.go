@@ -169,6 +169,7 @@ func (a *App) connectLoop() {
 						a.notify("request", L.RequestTitle(groupDigits(fresh[0].DeviceID)), L.RequestNotify())
 						go a.Focus()
 					}
+					a.aiStatusChanged(a.status, st)
 					a.status, a.connected, a.engineErr = st, true, ""
 				})
 				return nil

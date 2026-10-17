@@ -7,6 +7,7 @@
 //! buffer the core allocates, which the caller hands back to `kyokai_free`.
 
 mod access;
+mod ai;
 mod auth;
 mod backup;
 mod decode;
@@ -41,6 +42,8 @@ struct Core {
     ctx: Arc<session::Ctx>,
     password: password::Temporary,
     network: net::Network,
+    /// The host's AI tasks.
+    ai: ai::Ai,
 }
 
 impl Core {
@@ -381,6 +384,7 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
         version: cfg.version.clone(),
     });
     let network = net::Network::start(&secrets, ctx.clone())?;
+    let ai = ai::Ai::new(&cfg.state_dir, secrets.clone())?;
     let mut core = Core {
         state_dir: cfg.state_dir.clone(),
         cfg,
@@ -388,6 +392,7 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
         ctx,
         password: password::Temporary::generate(),
         network,
+        ai,
     };
     core.new_password()?;
     Ok(core)
@@ -530,6 +535,52 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 .to_owned();
             try_core(|c| c.ctx.access.forget_host(&id).map(|()| json!({})))
         }
+        "ai.settings.get" => with_core(|c| c.ai.settings()),
+        "ai.settings.set" => try_core(|c| c.ai.set_settings(&req.params)),
+        "ai.key.set" => {
+            // {"provider": "claude", "key": "…"} stores it, {"key": null} removes it.
+            let provider: ai::Provider = serde_json::from_value(req.params["provider"].take())
+                .map_err(|e| format!("bad provider: {e}"))?;
+            let key: Option<zeroize::Zeroizing<String>> =
+                serde_json::from_value(req.params["key"].take())
+                    .map_err(|e| format!("bad key: {e}"))?;
+            try_core(|c| {
+                c.ai.set_key(provider, key.as_deref().map(String::as_str))?;
+                Ok(c.ai.settings())
+            })
+        }
+        "ai.task.start" => {
+            let key = req.params["key"].as_str().unwrap_or("").to_owned();
+            let instruction = req.params["instruction"]
+                .as_str()
+                .ok_or("bad instruction")?
+                .to_owned();
+            try_core(|c| Ok(json!({"id": c.ai.start(&key, &instruction)?})))
+        }
+        "ai.task.reply" => {
+            let id = req.params["id"].as_u64().ok_or("bad task id")?;
+            let text = req.params["text"].as_str().ok_or("bad text")?.to_owned();
+            try_core(|c| c.ai.reply(id, &text).map(|()| json!({})))
+        }
+        "ai.task.pause" | "ai.task.resume" | "ai.task.cancel" | "ai.task.decide" => {
+            let id = req.params["id"].as_u64().ok_or("bad task id")?;
+            let approve = req.params["approve"].as_bool();
+            try_core(|c| {
+                match req.method.as_str() {
+                    "ai.task.pause" => c.ai.pause(id),
+                    "ai.task.resume" => c.ai.resume(id),
+                    "ai.task.cancel" => c.ai.cancel(id),
+                    _ => c.ai.decide(id, approve.ok_or("bad decision")?),
+                }
+                .map(|()| json!({}))
+            })
+        }
+        "ai.tasks" => with_core(|c| c.ai.tasks()),
+        "ai.history.clear" => try_core(|c| c.ai.clear().map(|()| json!({}))),
+        "ai.stop" => with_core(|c| {
+            c.ai.stop_all();
+            json!({})
+        }),
         other => Err(format!("unknown method {other:?}")),
     }
 }
@@ -560,6 +611,7 @@ fn status() -> Value {
             "password_serial": c.password.serial(),
             "network": c.network.status(),
             "permanent_password": c.ctx.access.slots.lock().is_ok_and(|s| s.has_permanent()),
+            "ai": c.ai.active(),
             "requests": c.ctx.access.pending(),
             "sessions": c.ctx.sessions.list(),
             "recent": c

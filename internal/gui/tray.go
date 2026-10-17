@@ -2,6 +2,7 @@ package gui
 
 import (
 	_ "embed"
+	"strconv"
 
 	"github.com/egoist/mygo"
 
@@ -11,8 +12,8 @@ import (
 //go:embed assets/tray.png
 var trayGlyph []byte
 
-// Tray owns the status icon: the Device ID, Show and Quit. It never shows a
-// password.
+// Tray owns the status icon: the Device ID, Stop AI task while one runs, Show
+// and Quit. It never shows a password.
 type Tray struct {
 	app  *App
 	tray *mygo.Tray
@@ -39,25 +40,29 @@ func (t *Tray) Refresh() {
 	}
 	a := t.app
 	a.mu.Lock()
-	id := ""
+	id, aiActive := "", false
 	if a.status != nil && a.connected {
-		id = a.status.DeviceID
+		id, aiActive = a.status.DeviceID, a.status.AI != nil
 	}
 	a.mu.Unlock()
 	status := L.EngineStarting()
 	if id != "" {
 		status = L.TrayDeviceID(groupDigits(id))
 	}
-	key := status + L.TrayShow()
+	key := status + L.TrayShow() + strconv.FormatBool(aiActive)
 	if key == t.last {
 		return
 	}
 	t.last = key
 	t.tray.SetToolTip("Kyokai — " + status)
-	t.tray.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
-		{Label: status, Disabled: true},
-		mygo.Separator(),
-		{Label: L.TrayShow(), Click: func(*mygo.MenuItem, *mygo.Window) { a.Focus() }},
-		{Label: L.TrayQuit(), Click: func(*mygo.MenuItem, *mygo.Window) { a.Quit() }},
-	}))
+	items := []*mygo.MenuItem{{Label: status, Disabled: true}, mygo.Separator()}
+	if aiActive {
+		// The emergency stop, one click from anywhere.
+		items = append(items, &mygo.MenuItem{Label: L.TrayStopAI(), Click: func(*mygo.MenuItem, *mygo.Window) { a.stopAI() }})
+	}
+	items = append(items,
+		&mygo.MenuItem{Label: L.TrayShow(), Click: func(*mygo.MenuItem, *mygo.Window) { a.Focus() }},
+		&mygo.MenuItem{Label: L.TrayQuit(), Click: func(*mygo.MenuItem, *mygo.Window) { a.Quit() }},
+	)
+	t.tray.SetMenu(mygo.NewMenu(items))
 }

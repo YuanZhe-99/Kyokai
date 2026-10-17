@@ -1,0 +1,42 @@
+{
+  "_source": "Hand-written from openai-python types (response_computer_tool_call.py, computer_action.py @ f348ec87b9) and the computer-use guide example; not a live capture.",
+  "id": "resp_doc_batch",
+  "object": "response",
+  "status": "completed",
+  "model": "gpt-6.1-sol",
+  "incomplete_details": null,
+  "error": null,
+  "output": [
+    {"type": "reasoning", "id": "rs_doc_1", "summary": [], "encrypted_content": "<ENCRYPTED_CONTENT>"},
+    {
+      "type": "computer_call",
+      "id": "cu_doc_1",
+      "call_id": "call_002",
+      "status": "completed",
+      "pending_safety_checks": [],
+      "actions": [
+        {"type": "click", "button": "left", "x": 405, "y": 157},
+        {"type": "type", "text": "penguin"},
+        {"type": "click", "button": "wheel", "x": 10, "y": 20, "keys": ["CTRL", "SHIFT"]},
+        {"type": "double_click", "x": 30, "y": 40, "keys": null},
+        {"type": "move", "x": 50, "y": 60, "keys": ["ALT"]},
+        {"type": "drag", "path": [{"x": 100, "y": 200}, {"x": 150, "y": 250}, {"x": 200, "y": 300}], "keys": ["SHIFT"]},
+        {"type": "scroll", "x": 640, "y": 360, "scroll_x": 0, "scroll_y": 300},
+        {"type": "scroll", "x": 640, "y": 360, "scroll_x": -50, "scroll_y": -100},
+        {"type": "keypress", "keys": ["A", "CTRL"]},
+        {"type": "keypress", "keys": ["ENTER"]},
+        {"type": "keypress", "keys": ["ArrowLeft"]},
+        {"type": "keypress", "keys": ["CMD", "SPACE"]},
+        {"type": "wait"},
+        {"type": "screenshot"}
+      ]
+    },
+    {
+      "type": "message",
+      "id": "msg_doc_1",
+      "role": "assistant",
+      "status": "completed",
+      "content": [{"type": "output_text", "text": "Typing the search term.", "annotations": []}]
+    }
+  ]
+}

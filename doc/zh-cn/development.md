@@ -62,3 +62,7 @@ KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
 
 测试保护产品契约和容易出错的逻辑，优先使用表驱动；每个修复的缺陷都要有回归测试。不为措辞、内部状态细节或收集证据写测试。
 需要网络、官方 EasyTier 内核或服务商密钥的测试只在设置了相应环境变量时运行。`go test ./...` 保持在一分钟以内。
+
+AI 运行时的测试驱动一个模拟桌面和一个本地的服务商替身。设置 `KYOKAI_LIVE_CLAUDE=1` 与 `ANTHROPIC_API_KEY` 后，
+`cargo test ... live_claude` 会在合成屏幕上运行一次真实的 Claude 任务；`cargo test ... real_screen -- --ignored` 在有桌面的电脑上检查真实采集与输入钩子
+（只把屏幕读入内存，不注入任何输入）。

@@ -1,7 +1,7 @@
 # Computer use
 
-How a controller sees and operates a host. This page grows with Phase 3 (manual control) and
-Phase 4 (AI).
+How a controller sees and operates a host, and how the host's AI operates it (Phase 3 manual
+control, Phase 4 AI tasks).
 
 ## Video
 
@@ -55,7 +55,93 @@ Kyokai's (`dwExtraInfo`) so local input can be told apart. Nothing is injected w
 window has the focus (checked at most every 200 ms), and whatever a session holds is released
 when it ends. Malformed events are dropped without ending the session.
 
+## AI tasks
+
+A task runs on the host, with the host's provider key, on the host's primary display. The host's
+user starts it on the AI page (or with `kyokai-svc ctl ai-start`); tasks from a controller come in
+Phase 5. One task holds the desktop at a time, and starting twice with one idempotency key starts
+one task.
+
+### Providers
+
+| | Claude | OpenAI |
+|---|---|---|
+| Request | Messages API with `computer_toolset_20260801`, adaptive thinking with progress notes, effort `high`, server-side fallbacks, old tool results cleared by the server after 100,000 input tokens (the newest 5 stay) | Responses API with the `computer` tool, `previous_response_id`, `truncation: "auto"`, the instructions on every request |
+| Answer | one `tool_result` per action; the history is append-only | one `computer_call_output` per call with the screen after its batch, and a note naming the actions that failed or did not run; safety checks acknowledged only after the host user approved them |
+| Default model | `claude-opus-5-5` | `gpt-6.1-sol` |
+
+Requests go over HTTPS (rustls with the ring provider and the system's roots), five minutes at
+most each, retried three times on overload and server errors. Errors shown to the user never
+contain the key.
+
+### Screenshots and actions
+
+The host captures its primary display with RustDesk's GDI capturer at the display's pixel size
+(the capturing thread is per-monitor DPI aware), scales it to fit 1366×768 by averaging, and sends
+it as PNG. A zoom crops a fresh capture and is never scaled up. Coordinates refer to the latest full
+screenshot; the host maps them onto the display and injects through the input service above, with
+the same Kyokai-window guard and tag.
+
+| Action (`kind`) | Fields | Runs as |
+|---|---|---|
+| `screenshot`, `zoom` | `region` for a zoom | a capture, returned to the model |
+| `cursor-position` | — | the pointer in screenshot pixels, as text |
+| `move` | `to`, `held` keys | modifiers pressed, the pointer moved |
+| `click` | `at` (or the pointer), `button`, `count`, `modifiers` | moves, then presses and releases (40 ms apart when repeated) |
+| `mouse-down`, `mouse-up` | `button` | a press or release where the pointer is |
+| `drag` | `path` of points, `modifiers` | press, eight moves per segment 10 ms apart, release |
+| `scroll` | `at`, `dx`, `dy` (120 per notch), `modifiers` | wheel notches |
+| `type` | `text` | Unicode text; each line break presses Enter |
+| `key-combo` | `keys`, `repeat` | the keys pressed with the combination's modifiers |
+| `hold-key` | `keys`, `duration_ms` | pressed, held, released |
+| `wait` | `duration_ms` | a pause |
+
+Before each action the host checks that it parsed, that its points lie inside the latest
+screenshot, its limits (text up to 16 KiB, up to 100 repeats, waits and holds up to 300 s, up to
+100 notches, up to 256 drag points), that the screen still has the size it had in that screenshot
+(otherwise the action is stale and rejected), and whether the host user must approve it. The first
+failure stops the turn: the actions after it are answered "not executed". Every action ends by
+releasing whatever it holds.
+
+The approval policy is Flagged (the default) or Every action. Flagged asks when the provider raised
+a safety check for the turn (once, before its first action) and for shortcuts with the Windows /
+Command key. A declined action fails with "The host user declined this action", and the model
+continues from there.
+
+### States
+
+| Event | From | To |
+|---|---|---|
+| pause (the host user, or local input) | running, approval | paused |
+| resume | paused | running |
+| cancel (also the emergency stop) | running, approval, paused | cancelled |
+| an action needs approval | running | approval |
+| the host user decides | approval | running |
+| the model finishes | running, paused | done |
+| an error | running, approval, paused | failed |
+| the host user replies | done | running |
+
+### The host user always wins
+
+While a task runs, low-level keyboard and mouse hooks watch for local input: any event that Kyokai
+did not inject. Local input pauses the task at once, whether the model is thinking or an action is
+running; a held key or button is released. Every pause and cancel moves the task's lease on: a
+model response that arrives afterwards is recorded but none of its actions run, and its answer
+goes out only after a resume, telling the model that nothing ran and that it should take a new
+screenshot. A cancel also drops the request in flight. The tray's Stop AI task item (and `ai.stop`)
+cancels every task, and so does stopping the engine.
+
+### History and settings
+
+`ai.json` in the state directory holds the provider, the two models and the approval policy; the
+keys live in the secrets store (`ai.openai.key`, `ai.claude.key`) and are never shown again or
+sent anywhere but to their provider. `ai-tasks.json` keeps the finished tasks — the instruction,
+the model's text and progress notes, the actions and what became of them, never a screenshot — up
+to 100; the AI page clears it. A finished task's conversation stays in memory, so a reply
+continues it until the engine stops.
+
 ## Not yet
 
 The remote cursor, other monitors, hardware encoders and the other codecs are Phase 3 steps that
-follow (PLAN.md).
+follow; AI tasks from a controller, the AI workspace and an emergency-stop hotkey are Phase 5; AI
+tasks on macOS come with the Mac pass (PLAN.md).

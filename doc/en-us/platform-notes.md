@@ -32,6 +32,8 @@ Studio 2026 without its Clang component):
 | Screen video (2026-10-17) | this machine's 1920×1080 screen through DXGI, Media Foundation H.264 (software encoder; first output after the first frame), two engines and the public relay, decoded by the viewer's decoder: 15.5 fps on a mostly still screen at about 1 Mbit/s, the picture correct |
 | QoS (2026-10-17) | over the public relay the host started at 15 fps, rose to 30 as the probes came back, and chose the Balanced bitrate (1.39 Mbit/s at 1080p); probe delays of 100–280 ms (relay path plus the video queue); the Faster preset with a 15 fps cap brought the bitrate to 1.04 Mbit/s and held 15 fps |
 | Listener rebinding (2026-10-17) | a host whose DHCP address changed after its listener bound stopped accepting sessions; the listener now binds again when the node's address changes |
+| AI runtime (2026-10-17) | a live Claude task (`claude-opus-5-5`) through the core's HTTPS client on the synthetic screens (a fake desktop, nothing injected): it clicked SAVE, waited, took a screenshot, confirmed the result and finished; the toolset, tool-result clearing and the three beta headers were accepted. On this machine the GDI capture returned the 1920×1080 primary display (sent as 1365×768) and the input hooks installed; no task has run on a real desktop yet |
+| AI on the local API (2026-10-17) | a real engine stored and reported the AI settings, refused an unknown policy and a task without a key, and kept the provider key out of every file but the secrets store |
 | `cargo deny` | passes (advisories, bans, licenses, sources) once VS's clang is on `PATH` |
 
 ## macOS

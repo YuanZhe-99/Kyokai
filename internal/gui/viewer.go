@@ -110,6 +110,7 @@ func (a *App) openViewer(s localapi.SessionInfo) {
 		Title: L.ViewerTitle(groupDigits(s.DeviceID)), Width: 1280, Height: 760, MinWidth: 480, MinHeight: 320,
 		Content: ui.View(v.view),
 	})
+	v.win.SetContentProtection(true)
 	v.win.OnClosed(func() {
 		a.mu.Lock()
 		delete(a.viewers, s.ID)

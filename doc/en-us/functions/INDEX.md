@@ -8,13 +8,13 @@ returns, side effects and notes where non-trivial).
 |---|---|---|
 | `cmd/kyokai` | GUI entry point | `main` |
 | `cmd/kyokai-svc` | Engine entry point | `run`, `ctl` |
-| `internal/gui` | GUI state, views (Home, Network, sessions and confirmations, Settings), the viewer window, tray, updates, the engine child | `App`, `App.View`, `App.connectLoop`, `engineChild.ensure` |
+| `internal/gui` | GUI state, views (Home, Network, AI, sessions and confirmations, Settings), the viewer window, tray, updates, the engine child | `App`, `App.View`, `App.connectLoop`, `engineChild.ensure`, `App.aiView`, `describeAction` |
 | `internal/engine` | Engine host | `Run`, `Options`, `DefaultStateDir` |
-| `internal/localapi` | Local API protocol, server, client, authorization | `ProtocolVersion`, `Request`, `Status`, `NetworkSettings`, `NetworkStatus`, `SessionInfo`, `HostRequest`, `Client.Attach`, `Authorizer.Allows` |
+| `internal/localapi` | Local API protocol, server, client, authorization | `ProtocolVersion`, `Request`, `Status`, `AISettings`, `AITask`, `NetworkSettings`, `NetworkStatus`, `SessionInfo`, `HostRequest`, `Client.Attach`, `Authorizer.Allows` |
 | `internal/core` | purego binding to the Rust core | `Load`, `Lib.Start`, `Lib.Call` |
 | `internal/version` | Product version | `Version`, `Older` |
 | `internal/fsutil` | Atomic writes and JSON documents | `WriteFileAtomic`, `WriteJSON`, `ReadJSON` |
-| `core/kyokai-core` | Rust core: C ABI, secrets, identity, temporary password, EasyTier node | `kyokai_start`, `kyokai_call`, `store::open`, `Identity::load_or_create`, `device_id`, `net::Network`, `session::serve`, `session::connect`, `access::Access`, `auth::Slots`, `backup::export`, `backup::import`, `media::Reassembler`, `media::Queue`, `kyokai_media_read`, `video::Source`, `mf::Encoder`, `mf::Decoder`, `decode::open`, `input::Event`, `input::Injector` |
+| `core/kyokai-core` | Rust core: C ABI, secrets, identity, temporary password, EasyTier node | `kyokai_start`, `kyokai_call`, `store::open`, `Identity::load_or_create`, `device_id`, `net::Network`, `session::serve`, `session::connect`, `access::Access`, `auth::Slots`, `backup::export`, `backup::import`, `media::Reassembler`, `media::Queue`, `kyokai_media_read`, `video::Source`, `mf::Encoder`, `mf::Decoder`, `decode::open`, `input::Event`, `input::Injector`, `input::LocalWatch`, `ai::Ai`, `ai::action::validate`, `ai::desktop::plan` |
 | `core/third_party/rustdesk-dxgi` | RustDesk's Windows screen capture, vendored | `Displays`, `Capturer::frame` |
 | `core/third_party/rustdesk-qos` | RustDesk's video QoS, vendored | `VideoQoS`, `base_bitrate` |
 | `core/third_party/thunk-noop` | No-op stand-in for EasyTier's `thunk-rs` | `thunk` |

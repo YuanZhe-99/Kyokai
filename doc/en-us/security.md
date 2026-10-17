@@ -13,10 +13,26 @@
 - Secrets are zeroized when dropped; `kyokai_stop` drops them all.
 - The store holds the device key, the network settings with the network secret
   ([networking.md](networking.md)), the OPAQUE server key and the permanent password's record, the
-  trusted devices and the known hosts ([identity-and-access.md](identity-and-access.md)). The local API carries the network secret only from the GUI (or
+  trusted devices, the known hosts ([identity-and-access.md](identity-and-access.md)) and the AI
+  providers' API keys. The local API carries the network secret only from the GUI (or
   `ctl`) to the engine, never back; `ctl` reads it from the environment, not the command line. The same
   holds for the permanent password and the password typed to connect (`KYOKAI_PERMANENT_PASSWORD`,
   `KYOKAI_PASSWORD`); the core keeps a typed password in memory only until that session ends and then zeroizes it.
+  A provider key travels the same way (`KYOKAI_AI_KEY` for `ctl ai-key`) and is never returned.
+
+## AI tasks
+
+- The model runs on the host's provider account: the key goes only to that provider, over HTTPS,
+  and never into a log, an error, the status, the history or another device.
+- Screenshots exist in memory for the task's conversation and go only to the chosen provider; the
+  history (`ai-tasks.json`) keeps instructions, the model's text and the actions, never a picture.
+  Kyokai's own windows are excluded from capture (`SetContentProtection`), so the AI page and
+  approvals never reach the model.
+- The model's proposals are only input: every action is parsed, bounds-checked against the latest
+  screenshot and executed by the host's own executor; nothing runs commands or code, and nothing
+  is injected while a Kyokai window has the focus.
+- Local input, pause, cancel and the emergency stop revoke the task's input lease at once; a
+  response that arrives afterwards never acts ([computer-use.md](computer-use.md)).
 
 ## Device identity
 
@@ -48,3 +64,6 @@ Only the engine's own user is served (peer credentials, never the request body);
   persisted.
 - The temporary password can be shown and copied by anyone at the unlocked desktop; the tray never
   shows it.
+- An AI task sends the screen to the provider the host's user chose, including whatever other
+  apps show; the approval policy and local input are defence in depth, not a classifier of every
+  sensitive action.
