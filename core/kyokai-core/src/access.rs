@@ -283,6 +283,10 @@ impl Access {
     pub fn untrust(&self, key: &str) -> Result<(), String> {
         let mut all = self.trusted();
         all.remove(key).ok_or("not a trusted device")?;
+        // A revoked device cannot slip back in through a resume.
+        if let Ok(mut r) = self.resumes.lock() {
+            r.retain(|_, v| v.key != key);
+        }
         self.store(TRUSTED_NAME, &all)
     }
 

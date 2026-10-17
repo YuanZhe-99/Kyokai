@@ -523,7 +523,7 @@ fn call(input: &[u8]) -> Result<Value, String> {
         }),
         "trusted.remove" => {
             let key = req.params["key"].as_str().ok_or("bad key")?.to_owned();
-            try_core(|c| c.ctx.access.untrust(&key).map(|()| json!({})))
+            try_core(|c| session::untrust(&c.ctx, &key).map(|()| json!({})))
         }
         "host.forget" => {
             let id = req.params["device_id"]

@@ -54,12 +54,30 @@ without revealing it.
 ## Logging
 
 Logs record versions, the Device ID and how secrets are kept — never a password, key or secret.
-The engine writes `logs/engine.log` in the state directory.
+The engine writes `logs/engine.log` in the state directory. Audited on 2026-10-17: the engine logs
+its start (version, Device ID, how secrets are kept) and why it stops (lifeline or parent gone);
+the core writes no log; a provider's error carries its status and message, never the key.
 
 ## Local API
 
 Only the engine's own user is served (peer credentials, never the request body); see
 [architecture.md](architecture.md).
+
+## Threat model
+
+| Asset | Threat | Mitigation |
+|---|---|---|
+| A session with a host | a network member or relay impersonating a device, reading or changing traffic | Noise XX end to end over EasyTier, each static key signed by the device key; host keys pinned on first use; a changed key is refused |
+| The host's passwords | guessing them online or offline | OPAQUE (nothing to guess offline from the wire), rate limits per address with a global backoff that spares pinned keys, the host's confirmation by default |
+| Permissions | a controller doing more than it was granted | each request checked against the session's permissions on the host; no permission implies another; network membership grants none |
+| Provider keys and secrets | leaking through logs, the status, sessions or files | only towards the engine on the local API, kept in the secrets store, never logged or returned |
+| The host's desktop under AI | a model (or text on the screen steering it) acting against the user | proposals are only input, validated and executed by the host; approvals; local input and take-over pause at once; late responses never act; Kyokai's windows are neither captured nor injected into |
+| Old messages | replaying input, commands or logins | Noise nonces; resume tokens single-use, bound to the controller's key and valid 2 minutes; commands never re-sent after a reconnect; idempotent task start |
+| A revoked device | coming back | revoking ends its live sessions and drops its resume tokens; its task pauses when its session ends |
+| The local API | another local user driving the engine | peer credentials, the engine's own user only |
+
+Out of scope: malware running as the same user (it can drive the desktop anyway), someone at the
+unlocked desktop, and a compromised provider.
 
 ## Known limitations
 
@@ -67,6 +85,8 @@ Only the engine's own user is served (peer credentials, never the request body);
   persisted.
 - The temporary password can be shown and copied by anyone at the unlocked desktop; the tray never
   shows it.
+- A device that was never trusted but knows the password can still ask; only the host's
+  confirmation (or a password change) keeps it out.
 - An AI task sends the screen to the provider the host's user chose, including whatever other
   apps show; the approval policy and local input are defence in depth, not a classifier of every
   sensitive action.

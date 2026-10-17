@@ -63,6 +63,7 @@
   "AIStateFailed": "因錯誤而停止",
   "AIStatePaused": "已暫停",
   "AIStatePausedController": "已由控制端暫停",
+  "AIStatePausedDisconnected": "已暫停：控制端已中斷連線",
   "AIStatePausedLocal": "因你使用了鍵盤或滑鼠而暫停",
   "AIStatePausedTakeOver": "已暫停：有人接管了操作",
   "AIStateRunning": "正在操作…",

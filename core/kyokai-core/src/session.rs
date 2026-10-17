@@ -311,6 +311,19 @@ impl Sessions {
         })
     }
 
+    /// Asks every live host session with a device to end.
+    fn close_host_sessions(&self, device_id: &str) {
+        if let Ok(s) = self.inner.lock() {
+            for e in s.1.iter().filter(|e| {
+                e.role == Role::Host
+                    && e.device_id == device_id
+                    && !matches!(e.state, State::Closed | State::Failed)
+            }) {
+                e.stop.notify_one();
+            }
+        }
+    }
+
     /// Asks a live session to end.
     pub fn close(&self, id: u64) -> Result<(), String> {
         let s = self.inner.lock().map_err(|_| "sessions lock poisoned")?;
@@ -512,6 +525,8 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 e.granted = granted;
             });
             let failure = run(ch, &stop, Side::Host { video, input, ai }).await.err();
+            // The controller's AI task does not go on without it.
+            ctx.ai.controller_left(&device_id);
             ctx.sessions.end(id, failure);
         }
         Err(f) => ctx.sessions.end(id, Some(f)),
@@ -746,6 +761,20 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             Outcome::Done
         }
     }
+}
+
+/// Revokes a trusted device: forgets it, drops its resume tokens and ends
+/// its live sessions with this host.
+pub fn untrust(ctx: &Ctx, key: &str) -> Result<(), String> {
+    let device_id = ctx
+        .access
+        .trusted()
+        .get(key)
+        .map(|t| t.device_id.clone())
+        .ok_or("not a trusted device")?;
+    ctx.access.untrust(key)?;
+    ctx.sessions.close_host_sessions(&device_id);
+    Ok(())
 }
 
 /// Marks an outgoing session as resuming, between dial attempts.
@@ -1631,5 +1660,81 @@ mod tests {
             .unwrap();
         let id = attempt(&host, &controller, &dialed, "x", None).await;
         assert_eq!(session(&controller, id)["failure"], "key-changed");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn revoking_a_device_ends_its_sessions_and_its_resumes() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let want = vec![Permission::Clipboard];
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            Some(want.clone()),
+            want,
+        )
+        .await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        let key = STANDARD.encode(controller.identity.public_key());
+        assert!(host.access.trusted().contains_key(&key));
+        untrust(&host, &key).unwrap();
+        assert!(!host.access.trusted().contains_key(&key));
+        // The host's side ends at once; the controller cannot resume it.
+        for _ in 0..100 {
+            if state(&host)["state"] == "closed" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(state(&host)["state"], "closed");
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let s = session(&controller, id);
+        assert_ne!(s["state"], "connected", "{s}");
+        assert!(untrust(&host, &key).is_err(), "already revoked");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_controllers_task_pauses_when_its_session_ends() {
+        let server = fake::server(vec![(3000, fake::claude_end("late"))]);
+        let rig = fake::rig("session-left", "claude", &server.url);
+        let host = device_with(rig.ai.clone(), "1.0.0");
+        let controller = device("1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let want = vec![Permission::RunAiTask];
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            Some(want.clone()),
+            want,
+        )
+        .await;
+        let (queue, control) = controller.sessions.media(id).unwrap();
+        control
+            .try_send(json!({"type": "ai-start", "key": "k", "instruction": "Save the file"}))
+            .unwrap();
+        let task = ai_packet(&queue, "running", |_, t| t["state"] == "running");
+        server.wait_for(1);
+        controller.sessions.close(id).unwrap();
+        let t = rig.until(task["id"].as_u64().unwrap(), "paused", |t| {
+            t["state"] == "paused"
+        });
+        assert_eq!(t["paused"], "disconnected");
     }
 }

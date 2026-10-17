@@ -113,6 +113,8 @@ pub enum Pause {
     Controller,
     /// A person at a controller took over with their own input.
     TakeOver,
+    /// The controller that started the task disconnected.
+    Disconnected,
 }
 
 /// One action of a task, as the history keeps it.
@@ -414,6 +416,24 @@ impl Ai {
         };
         if let Some(id) = id {
             let _ = self.pause(id, Pause::TakeOver);
+        }
+    }
+
+    /// Pauses the task a controller started when its session ends: an AI
+    /// task never works on for a controller that is gone.
+    pub fn controller_left(&self, device_id: &str) {
+        let id = {
+            let tasks = self.shared.tasks.lock().expect("tasks");
+            tasks
+                .iter()
+                .find(|t| {
+                    t.origin.as_deref() == Some(device_id)
+                        && matches!(t.state, State::Running | State::Approval)
+                })
+                .map(|t| t.id)
+        };
+        if let Some(id) = id {
+            let _ = self.pause(id, Pause::Disconnected);
         }
     }
 

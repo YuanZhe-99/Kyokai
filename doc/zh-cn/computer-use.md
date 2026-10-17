@@ -15,7 +15,8 @@
 | 显示 | 界面 | 查看窗口的位图，两幅画面交替使用 |
 
 有帧滞留在编码器中时，被控端会重复上一幅画面，使其在屏幕静止时也能输出。无法采集的被控端（没有交互式桌面，例如服务或
-SSH 会话）或没有 H.264 编码器的被控端（Windows N、未安装 Media Foundation 的 Server 版）会改为发送 320×180 的测试图案（`raw-rgba`）。
+SSH 会话）或没有 H.264 编码器的被控端（Windows N、未安装 Media Foundation 的 Server 版）会改为发送 320×180 的测试图案（`raw-rgba`）。显示器丢失时（显示模式变化、锁屏或 UAC 提示），被控端会释放它，并每半秒重新打开主显示器；
+视频流保持原尺寸，新的显示模式被缩放进去（宽高比变化时，画面会被拉伸，直到下一个会话）。
 
 查看窗口打开时会请求关键帧；被控端随即重新描述视频流并开始新的图像组。
 
@@ -93,7 +94,7 @@ Windows / Command 键的快捷键询问。被拒绝的操作以“The host user 
 
 | 事件 | 起始状态 | 结束状态 |
 |---|---|---|
-| 暂停（被控端用户、本地输入、控制端或接管） | running、approval | paused |
+| 暂停（被控端用户、本地输入、控制端、接管，或控制端的会话结束） | running、approval | paused |
 | 继续 | paused | running |
 | 取消（包括紧急停止） | running、approval、paused | cancelled |
 | 操作需要批准 | running | approval |

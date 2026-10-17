@@ -1183,3 +1183,110 @@ fn the_stop_shortcut_cancels_and_a_take_over_pauses() {
     rig.state(id, "cancelled");
     assert_eq!(rig.clicks(), 0);
 }
+
+/// Provider answers are untrusted input: random documents, and real
+/// fixtures with random parts replaced, never panic a parser or a
+/// conversation.
+#[test]
+fn garbage_answers_never_panic() {
+    let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+    let mut next = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed
+    };
+    fn random(next: &mut impl FnMut() -> u64, depth: u32) -> Value {
+        let words = [
+            "type",
+            "tool_use",
+            "computer",
+            "computer_call",
+            "actions",
+            "click",
+            "key",
+            "text",
+            "coordinate",
+            "region",
+            "x",
+            "y",
+            "id",
+            "content",
+            "output",
+            "name",
+            "input",
+            "keys",
+            "scroll",
+        ];
+        match next() % if depth > 3 { 5 } else { 7 } {
+            0 => Value::Null,
+            1 => json!(next().is_multiple_of(2)),
+            2 => json!((next() as i64) >> (next() % 64)),
+            3 => json!(
+                f64::from_bits(next())
+                    .is_finite()
+                    .then(|| (next() % 10_000) as f64 / 3.0)
+            ),
+            4 => json!(words[(next() % words.len() as u64) as usize]),
+            5 => Value::Array((0..next() % 5).map(|_| random(next, depth + 1)).collect()),
+            _ => Value::Object(
+                (0..next() % 6)
+                    .map(|_| {
+                        (
+                            words[(next() % words.len() as u64) as usize].to_string(),
+                            random(next, depth + 1),
+                        )
+                    })
+                    .collect(),
+            ),
+        }
+    }
+    let fixtures = [
+        load("docs/claude_response_batch.json"),
+        load("docs/openai_response_batch.json"),
+        load("docs/openai_response_legacy.json"),
+    ];
+    for i in 0..3000usize {
+        let doc = if i.is_multiple_of(2) {
+            random(&mut next, 0)
+        } else {
+            // A real answer with one part replaced.
+            let mut v = fixtures[i % fixtures.len()].clone();
+            let list = if v.get("content").is_some() {
+                "content"
+            } else {
+                "output"
+            };
+            if let Some(items) = v[list].as_array_mut() {
+                let n = items.len();
+                if n > 0 {
+                    let j = (next() % n as u64) as usize;
+                    let field = ["input", "actions", "action", "name", "type", "call_id"]
+                        [(next() % 6) as usize];
+                    items[j][field] = random(&mut next, 1);
+                }
+            }
+            v
+        };
+        let _ = claude::parse_response(&doc);
+        let _ = openai::parse_response(&doc);
+        let mut c = claude::Conversation::new("m", "s", "t", &shot("A"));
+        if let Ok(turn) = c.accept(&doc) {
+            // As the runtime does: only a valid action is planned.
+            for a in turn.actions.iter().flatten() {
+                if validate(a, 1280, 720).is_ok() {
+                    let _ = desktop::plan(a, (1280, 720), Some((0.5, 0.5)));
+                }
+            }
+            c.answer(&vec![Outcome::Ok; turn.actions.len()]);
+        }
+        let mut o = openai::Conversation::new("m", "s", "t", &shot("A"));
+        if let Ok(turn) = o.accept(&doc) {
+            o.answer(
+                &vec![Outcome::NotExecuted; turn.actions.len()],
+                &shot("B"),
+                true,
+            );
+        }
+    }
+}

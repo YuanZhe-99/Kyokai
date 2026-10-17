@@ -20,7 +20,8 @@ slots are set.
 for a set; the host's user grants a subset; none implies another. Network membership grants none of
 them. `run-ai-task` lets a controller start and steer its own AI tasks on the host, which run with
 the host's key; `approve-ai-action` lets it answer their approvals
-([computer-use.md](computer-use.md)).
+([computer-use.md](computer-use.md)). Removing a trusted device revokes it at once: its live
+sessions with this host end and its resume tokens are dropped.
 
 ## Host confirmation
 

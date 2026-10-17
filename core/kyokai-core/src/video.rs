@@ -210,6 +210,32 @@ mod screen {
     use crate::mf;
     use rustdesk_dxgi::{Capturer, Displays, Frame};
 
+    /// How long the capture thread waits before opening the display again
+    /// after it was lost.
+    const REOPEN_AFTER: Duration = Duration::from_millis(500);
+
+    /// Opens the primary display (the one at the desktop's origin, which
+    /// input maps onto).
+    /// Returns: its capturer and size in pixels.
+    fn primary() -> Result<(Capturer, u32, u32), String> {
+        let display = Displays::new()
+            .map_err(|e| format!("displays: {e}"))?
+            .find(|d| d.origin() == (0, 0))
+            .ok_or("no primary display")?;
+        let (dw, dh) = (display.width() as u32, display.height() as u32);
+        let capturer = Capturer::new(display).map_err(|e| format!("capturer: {e}"))?;
+        Ok((capturer, dw, dh))
+    }
+
+    /// What one capture attempt gave.
+    enum Got {
+        Picture,
+        Nothing,
+        /// The display was lost: a mode change, the lock screen or a UAC
+        /// prompt took the desktop.
+        Lost,
+    }
+
     /// Starts capturing and encoding.
     /// Returns: the stream description once the capturer and the encoder
     /// work, or why not (no interactive desktop, no encoder).
@@ -222,17 +248,12 @@ mod screen {
         let (ready_tx, ready) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let opened = (|| {
-                let display = Displays::new()
-                    .map_err(|e| format!("displays: {e}"))?
-                    .next()
-                    .ok_or("no display")?;
-                let (dw, dh) = (display.width() as u32, display.height() as u32);
-                let capturer = Capturer::new(display).map_err(|e| format!("capturer: {e}"))?;
+                let (capturer, dw, dh) = primary()?;
                 let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
                 let encoder = mf::Encoder::new(w, h, FPS, BITRATE)?;
                 Ok::<_, String>((capturer, encoder, w, h))
             })();
-            let (mut capturer, mut encoder, w, h) = match opened {
+            let (capturer, mut encoder, w, h) = match opened {
                 Ok(v) => v,
                 Err(e) => {
                     let _ = ready_tx.send(Err(e));
@@ -251,7 +272,16 @@ mod screen {
             // few before its first output, so a still screen repeats the last
             // picture until they come out.
             let mut held = 0u32;
+            // None while the display is lost: the old duplication is released
+            // before a new one is made. The stream keeps its size; a new
+            // display mode is scaled into it.
+            let mut capturer = Some(capturer);
             while !stop.load(Ordering::Relaxed) {
+                let Some(cap) = capturer.as_mut() else {
+                    std::thread::sleep(REOPEN_AFTER);
+                    capturer = primary().ok().map(|(c, _, _)| c);
+                    continue;
+                };
                 let begun = Instant::now();
                 let period = Duration::from_secs(1) / targets.fps.load(Ordering::Relaxed).max(1);
                 let wanted_rate = targets.bitrate.load(Ordering::Relaxed);
@@ -262,15 +292,28 @@ mod screen {
                 let wanted = key.swap(false, Ordering::Relaxed);
                 // Unchanged screens time out: nothing is encoded or sent,
                 // unless a key frame was asked for.
-                match capturer.frame(period.as_millis() as u32) {
+                let got = match cap.frame(period.as_millis() as u32) {
                     Ok(Frame::PixelBuffer(pb)) => {
                         bgra_to_nv12(
                             pb.data, pb.width, pb.height, pb.stride, w as usize, h as usize,
                             &mut nv12,
                         );
+                        Got::Picture
                     }
-                    _ if (wanted || held > 0) && !nv12.is_empty() => {}
-                    _ => {
+                    Err(e) if e.kind() != std::io::ErrorKind::WouldBlock => Got::Lost,
+                    _ => Got::Nothing,
+                };
+                match got {
+                    Got::Picture => {}
+                    Got::Nothing if (wanted || held > 0) && !nv12.is_empty() => {}
+                    Got::Lost => {
+                        if wanted {
+                            key.store(true, Ordering::Relaxed);
+                        }
+                        capturer = None;
+                        continue;
+                    }
+                    Got::Nothing => {
                         if wanted {
                             key.store(true, Ordering::Relaxed);
                         }

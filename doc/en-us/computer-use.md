@@ -18,7 +18,10 @@ control, Phase 4 AI tasks).
 While a frame waits inside the encoder, the host repeats the last picture so it comes out even when
 the screen stays still. A host that cannot capture (no interactive desktop, such as a service or an
 SSH session) or has no H.264 encoder (Windows N, Server editions without Media Foundation) sends the
-320×180 test pattern instead (`raw-rgba`).
+320×180 test pattern instead (`raw-rgba`). When the display is lost — a mode change, the lock
+screen or a UAC prompt — the host releases it and opens the primary display again every half
+second; the stream keeps its size and a new mode is scaled into it (a changed aspect ratio shows
+stretched until the next session).
 
 The viewer asks for a key frame when it opens; the host then describes the stream again and starts
 a new group of pictures.
@@ -114,7 +117,7 @@ continues from there.
 
 | Event | From | To |
 |---|---|---|
-| pause (the host user, local input, the controller, a take-over) | running, approval | paused |
+| pause (the host user, local input, the controller, a take-over, the controller's session ending) | running, approval | paused |
 | resume | paused | running |
 | cancel (also the emergency stop) | running, approval, paused | cancelled |
 | an action needs approval | running | approval |

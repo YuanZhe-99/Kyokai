@@ -194,6 +194,7 @@
   "AIStateFailed": "Stopped by an error",
   "AIStatePaused": "Paused",
   "AIStatePausedController": "Paused from the controlling device",
+  "AIStatePausedDisconnected": "Paused: the controlling device disconnected",
   "AIStatePausedLocal": "Paused because you used the keyboard or mouse",
   "AIStatePausedTakeOver": "Paused: a person took over",
   "AIStateRunning": "Working…",

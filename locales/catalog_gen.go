@@ -672,6 +672,16 @@ func (msgs Messages) AIStatePausedController() string {
 	return Catalog.Format(msgs.locale, "AIStatePausedController", nil)
 }
 
+// AIStatePausedDisconnected says "Paused: the controlling device disconnected"
+// in the language the app shows.
+func AIStatePausedDisconnected() string { return In(i18n.Locale()).AIStatePausedDisconnected() }
+
+// AIStatePausedDisconnected says "Paused: the controlling device disconnected"
+// in the language of msgs.
+func (msgs Messages) AIStatePausedDisconnected() string {
+	return Catalog.Format(msgs.locale, "AIStatePausedDisconnected", nil)
+}
+
 // AIStatePausedLocal says "Paused because you used the keyboard or mouse"
 // in the language the app shows.
 func AIStatePausedLocal() string { return In(i18n.Locale()).AIStatePausedLocal() }

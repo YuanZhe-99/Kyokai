@@ -162,8 +162,8 @@ type AITask struct {
 	// State is "running", "approval", "paused", "done", "failed" or
 	// "cancelled".
 	State string `json:"state"`
-	// Paused says why: "host-user", "local-input", "controller" or
-	// "take-over".
+	// Paused says why: "host-user", "local-input", "controller",
+	// "take-over" or "disconnected".
 	Paused string `json:"paused,omitempty"`
 	// Error says why the task failed; safe to show.
 	Error    string      `json:"error,omitempty"`
