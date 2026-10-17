@@ -106,6 +106,16 @@ func (msgs Messages) ActionInstallUpdate() string {
 	return Catalog.Format(msgs.locale, "ActionInstallUpdate", nil)
 }
 
+// ActionLeaveNetwork says "Leave network"
+// in the language the app shows.
+func ActionLeaveNetwork() string { return In(i18n.Locale()).ActionLeaveNetwork() }
+
+// ActionLeaveNetwork says "Leave network"
+// in the language of msgs.
+func (msgs Messages) ActionLeaveNetwork() string {
+	return Catalog.Format(msgs.locale, "ActionLeaveNetwork", nil)
+}
+
 // ActionNewPassword says "New password"
 // in the language the app shows.
 func ActionNewPassword() string { return In(i18n.Locale()).ActionNewPassword() }
@@ -134,6 +144,16 @@ func ActionRetry() string { return In(i18n.Locale()).ActionRetry() }
 // in the language of msgs.
 func (msgs Messages) ActionRetry() string {
 	return Catalog.Format(msgs.locale, "ActionRetry", nil)
+}
+
+// ActionSave says "Save"
+// in the language the app shows.
+func ActionSave() string { return In(i18n.Locale()).ActionSave() }
+
+// ActionSave says "Save"
+// in the language of msgs.
+func (msgs Messages) ActionSave() string {
+	return Catalog.Format(msgs.locale, "ActionSave", nil)
 }
 
 // ActionShow says "Show"
@@ -386,6 +406,16 @@ func (msgs Messages) LanguageSystem() string {
 	return Catalog.Format(msgs.locale, "LanguageSystem", nil)
 }
 
+// LatencyMS says "{ms} ms"
+// in the language the app shows.
+func LatencyMS(ms int) string { return In(i18n.Locale()).LatencyMS(ms) }
+
+// LatencyMS says "{ms} ms"
+// in the language of msgs.
+func (msgs Messages) LatencyMS(ms int) string {
+	return Catalog.Format(msgs.locale, "LatencyMS", map[string]any{"ms": ms})
+}
+
 // LicensesHint says "Kyokai and the components it includes."
 // in the language the app shows.
 func LicensesHint() string { return In(i18n.Locale()).LicensesHint() }
@@ -394,6 +424,46 @@ func LicensesHint() string { return In(i18n.Locale()).LicensesHint() }
 // in the language of msgs.
 func (msgs Messages) LicensesHint() string {
 	return Catalog.Format(msgs.locale, "LicensesHint", nil)
+}
+
+// NatCone says "Cone (easy to connect directly)"
+// in the language the app shows.
+func NatCone() string { return In(i18n.Locale()).NatCone() }
+
+// NatCone says "Cone (easy to connect directly)"
+// in the language of msgs.
+func (msgs Messages) NatCone() string {
+	return Catalog.Format(msgs.locale, "NatCone", nil)
+}
+
+// NatOpen says "Open internet"
+// in the language the app shows.
+func NatOpen() string { return In(i18n.Locale()).NatOpen() }
+
+// NatOpen says "Open internet"
+// in the language of msgs.
+func (msgs Messages) NatOpen() string {
+	return Catalog.Format(msgs.locale, "NatOpen", nil)
+}
+
+// NatSymmetric says "Symmetric (direct connections are hard)"
+// in the language the app shows.
+func NatSymmetric() string { return In(i18n.Locale()).NatSymmetric() }
+
+// NatSymmetric says "Symmetric (direct connections are hard)"
+// in the language of msgs.
+func (msgs Messages) NatSymmetric() string {
+	return Catalog.Format(msgs.locale, "NatSymmetric", nil)
+}
+
+// NatUnknown says "Not detected yet"
+// in the language the app shows.
+func NatUnknown() string { return In(i18n.Locale()).NatUnknown() }
+
+// NatUnknown says "Not detected yet"
+// in the language of msgs.
+func (msgs Messages) NatUnknown() string {
+	return Catalog.Format(msgs.locale, "NatUnknown", nil)
 }
 
 // NavHome says "Home"
@@ -406,6 +476,16 @@ func (msgs Messages) NavHome() string {
 	return Catalog.Format(msgs.locale, "NavHome", nil)
 }
 
+// NavNetwork says "Network"
+// in the language the app shows.
+func NavNetwork() string { return In(i18n.Locale()).NavNetwork() }
+
+// NavNetwork says "Network"
+// in the language of msgs.
+func (msgs Messages) NavNetwork() string {
+	return Catalog.Format(msgs.locale, "NavNetwork", nil)
+}
+
 // NavSettings says "Settings"
 // in the language the app shows.
 func NavSettings() string { return In(i18n.Locale()).NavSettings() }
@@ -414,6 +494,206 @@ func NavSettings() string { return In(i18n.Locale()).NavSettings() }
 // in the language of msgs.
 func (msgs Messages) NavSettings() string {
 	return Catalog.Format(msgs.locale, "NavSettings", nil)
+}
+
+// NetworkAddress says "Virtual address"
+// in the language the app shows.
+func NetworkAddress() string { return In(i18n.Locale()).NetworkAddress() }
+
+// NetworkAddress says "Virtual address"
+// in the language of msgs.
+func (msgs Messages) NetworkAddress() string {
+	return Catalog.Format(msgs.locale, "NetworkAddress", nil)
+}
+
+// NetworkConnecting says "Connecting…"
+// in the language the app shows.
+func NetworkConnecting() string { return In(i18n.Locale()).NetworkConnecting() }
+
+// NetworkConnecting says "Connecting…"
+// in the language of msgs.
+func (msgs Messages) NetworkConnecting() string {
+	return Catalog.Format(msgs.locale, "NetworkConnecting", nil)
+}
+
+// NetworkDevices says "Kyokai devices in this network"
+// in the language the app shows.
+func NetworkDevices() string { return In(i18n.Locale()).NetworkDevices() }
+
+// NetworkDevices says "Kyokai devices in this network"
+// in the language of msgs.
+func (msgs Messages) NetworkDevices() string {
+	return Catalog.Format(msgs.locale, "NetworkDevices", nil)
+}
+
+// NetworkDevicesHint says "A Device ID here is what a device announces. Kyokai checks who a device really is when it connects."
+// in the language the app shows.
+func NetworkDevicesHint() string { return In(i18n.Locale()).NetworkDevicesHint() }
+
+// NetworkDevicesHint says "A Device ID here is what a device announces. Kyokai checks who a device really is when it connects."
+// in the language of msgs.
+func (msgs Messages) NetworkDevicesHint() string {
+	return Catalog.Format(msgs.locale, "NetworkDevicesHint", nil)
+}
+
+// NetworkError says "Could not connect"
+// in the language the app shows.
+func NetworkError() string { return In(i18n.Locale()).NetworkError() }
+
+// NetworkError says "Could not connect"
+// in the language of msgs.
+func (msgs Messages) NetworkError() string {
+	return Catalog.Format(msgs.locale, "NetworkError", nil)
+}
+
+// NetworkLeft says "Left the network."
+// in the language the app shows.
+func NetworkLeft() string { return In(i18n.Locale()).NetworkLeft() }
+
+// NetworkLeft says "Left the network."
+// in the language of msgs.
+func (msgs Messages) NetworkLeft() string {
+	return Catalog.Format(msgs.locale, "NetworkLeft", nil)
+}
+
+// NetworkNAT says "NAT type"
+// in the language the app shows.
+func NetworkNAT() string { return In(i18n.Locale()).NetworkNAT() }
+
+// NetworkNAT says "NAT type"
+// in the language of msgs.
+func (msgs Messages) NetworkNAT() string {
+	return Catalog.Format(msgs.locale, "NetworkNAT", nil)
+}
+
+// NetworkName says "Network name"
+// in the language the app shows.
+func NetworkName() string { return In(i18n.Locale()).NetworkName() }
+
+// NetworkName says "Network name"
+// in the language of msgs.
+func (msgs Messages) NetworkName() string {
+	return Catalog.Format(msgs.locale, "NetworkName", nil)
+}
+
+// NetworkNoDevices says "No other Kyokai device is online in this network."
+// in the language the app shows.
+func NetworkNoDevices() string { return In(i18n.Locale()).NetworkNoDevices() }
+
+// NetworkNoDevices says "No other Kyokai device is online in this network."
+// in the language of msgs.
+func (msgs Messages) NetworkNoDevices() string {
+	return Catalog.Format(msgs.locale, "NetworkNoDevices", nil)
+}
+
+// NetworkOff says "Not connected to a network."
+// in the language the app shows.
+func NetworkOff() string { return In(i18n.Locale()).NetworkOff() }
+
+// NetworkOff says "Not connected to a network."
+// in the language of msgs.
+func (msgs Messages) NetworkOff() string {
+	return Catalog.Format(msgs.locale, "NetworkOff", nil)
+}
+
+// NetworkOnline says "Connected"
+// in the language the app shows.
+func NetworkOnline() string { return In(i18n.Locale()).NetworkOnline() }
+
+// NetworkOnline says "Connected"
+// in the language of msgs.
+func (msgs Messages) NetworkOnline() string {
+	return Catalog.Format(msgs.locale, "NetworkOnline", nil)
+}
+
+// NetworkSaved says "Network settings saved."
+// in the language the app shows.
+func NetworkSaved() string { return In(i18n.Locale()).NetworkSaved() }
+
+// NetworkSaved says "Network settings saved."
+// in the language of msgs.
+func (msgs Messages) NetworkSaved() string {
+	return Catalog.Format(msgs.locale, "NetworkSaved", nil)
+}
+
+// NetworkSecret says "Network secret"
+// in the language the app shows.
+func NetworkSecret() string { return In(i18n.Locale()).NetworkSecret() }
+
+// NetworkSecret says "Network secret"
+// in the language of msgs.
+func (msgs Messages) NetworkSecret() string {
+	return Catalog.Format(msgs.locale, "NetworkSecret", nil)
+}
+
+// NetworkSecretKeep says "Leave empty to keep the current secret"
+// in the language the app shows.
+func NetworkSecretKeep() string { return In(i18n.Locale()).NetworkSecretKeep() }
+
+// NetworkSecretKeep says "Leave empty to keep the current secret"
+// in the language of msgs.
+func (msgs Messages) NetworkSecretKeep() string {
+	return Catalog.Format(msgs.locale, "NetworkSecretKeep", nil)
+}
+
+// NetworkSecretWeak says "This network secret is short. Anyone who guesses it can join the network, though joining alone grants no access to th…"
+// in the language the app shows.
+func NetworkSecretWeak() string { return In(i18n.Locale()).NetworkSecretWeak() }
+
+// NetworkSecretWeak says "This network secret is short. Anyone who guesses it can join the network, though joining alone grants no access to th…"
+// in the language of msgs.
+func (msgs Messages) NetworkSecretWeak() string {
+	return Catalog.Format(msgs.locale, "NetworkSecretWeak", nil)
+}
+
+// NetworkServers says "Servers"
+// in the language the app shows.
+func NetworkServers() string { return In(i18n.Locale()).NetworkServers() }
+
+// NetworkServers says "Servers"
+// in the language of msgs.
+func (msgs Messages) NetworkServers() string {
+	return Catalog.Format(msgs.locale, "NetworkServers", nil)
+}
+
+// NetworkServersHint says "One address per line, for example tcp://example.org:11010"
+// in the language the app shows.
+func NetworkServersHint() string { return In(i18n.Locale()).NetworkServersHint() }
+
+// NetworkServersHint says "One address per line, for example tcp://example.org:11010"
+// in the language of msgs.
+func (msgs Messages) NetworkServersHint() string {
+	return Catalog.Format(msgs.locale, "NetworkServersHint", nil)
+}
+
+// NetworkSettings says "Network settings"
+// in the language the app shows.
+func NetworkSettings() string { return In(i18n.Locale()).NetworkSettings() }
+
+// NetworkSettings says "Network settings"
+// in the language of msgs.
+func (msgs Messages) NetworkSettings() string {
+	return Catalog.Format(msgs.locale, "NetworkSettings", nil)
+}
+
+// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server. Every device you want to reach joins the same network."
+// in the language the app shows.
+func NetworkSettingsHint() string { return In(i18n.Locale()).NetworkSettingsHint() }
+
+// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server. Every device you want to reach joins the same network."
+// in the language of msgs.
+func (msgs Messages) NetworkSettingsHint() string {
+	return Catalog.Format(msgs.locale, "NetworkSettingsHint", nil)
+}
+
+// NetworkTitle says "Network"
+// in the language the app shows.
+func NetworkTitle() string { return In(i18n.Locale()).NetworkTitle() }
+
+// NetworkTitle says "Network"
+// in the language of msgs.
+func (msgs Messages) NetworkTitle() string {
+	return Catalog.Format(msgs.locale, "NetworkTitle", nil)
 }
 
 // NotifyAppUpdateTitle says "Kyokai update"
@@ -444,6 +724,26 @@ func NotifyStillRunningTitle() string { return In(i18n.Locale()).NotifyStillRunn
 // in the language of msgs.
 func (msgs Messages) NotifyStillRunningTitle() string {
 	return Catalog.Format(msgs.locale, "NotifyStillRunningTitle", nil)
+}
+
+// PathDirect says "Direct"
+// in the language the app shows.
+func PathDirect() string { return In(i18n.Locale()).PathDirect() }
+
+// PathDirect says "Direct"
+// in the language of msgs.
+func (msgs Messages) PathDirect() string {
+	return Catalog.Format(msgs.locale, "PathDirect", nil)
+}
+
+// PathRelay says "Relayed"
+// in the language the app shows.
+func PathRelay() string { return In(i18n.Locale()).PathRelay() }
+
+// PathRelay says "Relayed"
+// in the language of msgs.
+func (msgs Messages) PathRelay() string {
+	return Catalog.Format(msgs.locale, "PathRelay", nil)
 }
 
 // RunModeUser says "No privileges"

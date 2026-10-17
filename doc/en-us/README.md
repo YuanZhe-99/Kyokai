@@ -12,6 +12,7 @@ embedded EasyTier P2P network, and AI tasks run on the computer being operated. 
 |---|---|
 | [architecture.md](architecture.md) | Processes, run modes, packages and crates, the FFI, the local API, state |
 | [security.md](security.md) | Secrets store, device identity, temporary password, logging |
+| [networking.md](networking.md) | The embedded EasyTier node: settings, status, trust, build |
 | [gui.md](gui.md) | Interface structure, wording, tray, languages |
 | [upstream.md](upstream.md) | Verified upstream contracts and quirks: MyGo, EasyTier, RustDesk, OpenAI, Claude |
 | [third-party.md](third-party.md) | Reused code and dependencies, licenses and obligations |
@@ -30,5 +31,5 @@ embedded EasyTier P2P network, and AI tasks run on the computer being operated. 
 | Go | 1.27.2 | `go.mod` |
 | MyGo | v0.5.5 | `go.mod` |
 | Rust | 1.99.1 | `rust-toolchain.toml` |
-| EasyTier (to be embedded) | v2.7.0, prerelease, commit `8b7f1f0` | `third_party/upstream.json` |
+| EasyTier (embedded) | v2.7.0, prerelease, commit `8b7f1f0` | `third_party/upstream.json` |
 | RustDesk (source of vendored code) | 1.5.0, commit `fada664` | `third_party/upstream.json` |

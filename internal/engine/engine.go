@@ -6,17 +6,23 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 )
+
+// statusPoll is how often a session's status is re-read for network
+// changes, which the core does not announce.
+const statusPoll = 2 * time.Second
 
 // Options configure Run.
 type Options struct {
@@ -137,6 +143,22 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		}
 		h.changed()
 		return localapi.Response{OK: true}
+	case localapi.RequestNetworkGet:
+		var ns localapi.NetworkSettings
+		if err := h.lib.Call("network.get", nil, &ns); err != nil {
+			return localapi.Fail(localapi.CodeInternal, "%v", err)
+		}
+		return localapi.Response{OK: true, Network: &ns}
+	case localapi.RequestNetworkSet:
+		if req.Network == nil {
+			return localapi.Fail(localapi.CodeInvalid, "network settings missing")
+		}
+		var ns localapi.NetworkSettings
+		if err := h.lib.Call("network.set", req.Network, &ns); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		h.changed()
+		return localapi.Response{OK: true, Network: &ns}
 	case localapi.RequestShutdown:
 		h.stop()
 		return localapi.Response{OK: true}
@@ -144,8 +166,9 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 	return localapi.Fail(localapi.CodeUnknown, "unknown request %q", req.Type)
 }
 
-// Stream pushes the status now and after every change until the client
-// leaves.
+// Stream pushes the status now, after every command that changes it, and
+// whenever the network's state moves (re-read every statusPoll), until the
+// client leaves.
 func (h *handler) Stream(ctx context.Context, _ localapi.Request, send func(localapi.Response) error) {
 	poke := make(chan struct{}, 1)
 	h.mu.Lock()
@@ -156,15 +179,25 @@ func (h *handler) Stream(ctx context.Context, _ localapi.Request, send func(loca
 		delete(h.sessions, poke)
 		h.mu.Unlock()
 	}()
+	tick := time.NewTicker(statusPoll)
+	defer tick.Stop()
+	var last *localapi.Status
 	for {
 		st, err := h.status()
-		if err != nil || send(localapi.Response{OK: true, Status: st}) != nil {
+		if err != nil {
 			return
+		}
+		if last == nil || !reflect.DeepEqual(*st, *last) {
+			if send(localapi.Response{OK: true, Status: st}) != nil {
+				return
+			}
+			last = st
 		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-poke:
+		case <-tick.C:
 		}
 	}
 }
@@ -185,10 +218,14 @@ func (h *handler) status() (*localapi.Status, error) {
 	if err := h.lib.Call("status", nil, &st); err != nil {
 		return nil, err
 	}
+	var network localapi.NetworkStatus
+	if err := json.Unmarshal(st.Network, &network); err != nil {
+		return nil, fmt.Errorf("network status: %w", err)
+	}
 	return &localapi.Status{
 		Version: st.Version, ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: "user", Persistence: st.Persistence,
-		PasswordSerial: st.PasswordSerial, Started: h.started,
+		PasswordSerial: st.PasswordSerial, Network: network, Started: h.started,
 	}, nil
 }
 

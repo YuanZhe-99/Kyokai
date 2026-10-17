@@ -6,9 +6,15 @@ when `SCREENSHOT_DIR` is set.
 
 ## Structure
 
-- **Sidebar:** Home, Settings.
+- **Sidebar:** Home, Network, Settings.
 - **Home:** "This device" — the Device ID in groups of three with Copy; the temporary password,
   masked until Show, with Copy and New password; a note when secrets are not persisted.
+- **Network:** the node's live status (connected, connecting, or why it could not connect; the
+  virtual address; the NAT type in plain words) and the Kyokai devices it routes to (Device ID,
+  direct or relayed, latency), with a note that announced Device IDs are not proof; then the
+  settings form: servers (one URL per line), network name, and a write-only secret field (empty
+  keeps the stored secret; a weak secret is flagged), Save and Leave network. Refused settings show
+  the engine's reason.
 - **Settings:** General (language, appearance, open at login — off by default, close button),
   Device identity (Device ID, fingerprint), Storage (data folder with Open folder, how secrets are
   kept), Diagnostics (version and ABI, engine start time, run mode, logs folder), About (version,
@@ -30,7 +36,10 @@ when `SCREENSHOT_DIR` is set.
 - MyGo light/dark themes plus the desktop accent; layout numbers are named constants in
   `style.go`.
 - Body text 14, titles 20–24, nothing below 12; the Device ID is 34 with tabular digits.
-- The app icon is original artwork: two screens mirrored across a boundary line (鏡界).
+- The app icon is original artwork: a ring split by a boundary line (鏡界), solid on one side and
+  an outline on the other, with a pointer reaching across. The tray shows the same mark as a
+  one-colour template glyph. `go run ./tools/icon resources/icon.png internal/gui/assets/tray.png`
+  draws both from their geometry.
 
 ## Tray
 

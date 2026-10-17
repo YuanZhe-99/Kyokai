@@ -33,7 +33,11 @@ rust_target() {
 }
 
 mkdir -p resources/licenses
-cp LICENSE THIRD_PARTY_NOTICES.md resources/licenses/
+cp LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/GPL-3.0.txt resources/licenses/
+# Every Rust crate in the core with its license text (EasyTier's LGPL-3.0
+# among them; LGPL-3.0 also asks for the GPL-3.0 text, copied above).
+command -v cargo-about >/dev/null || { echo "cargo-about is missing: cargo install cargo-about --locked" >&2; exit 1; }
+cargo about generate --manifest-path core/Cargo.toml -c core/about.toml -o resources/licenses/RUST_LICENSES.txt core/about.hbs
 
 for t in "${targets[@]}"; do
 	goos=${t%/*}
@@ -50,7 +54,7 @@ for t in "${targets[@]}"; do
 		if [ "$goos" = darwin ]; then
 			export MACOSX_DEPLOYMENT_TARGET=14.0
 		fi
-		cargo build --release --manifest-path core/Cargo.toml --target "$rt"
+		PROTOC=${PROTOC:-$(scripts/protoc.sh)} cargo build --release --manifest-path core/Cargo.toml --target "$rt"
 		cp "core/target/$rt/release/$lib" "$bin/$lib"
 	fi
 	test -f "$bin/$lib" || { echo "missing $bin/$lib" >&2; exit 1; }

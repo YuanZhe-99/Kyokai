@@ -44,6 +44,10 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | operator | 操作者（operator） |
 | network name / network secret | 网络名称 / 网络密钥 |
 | server address | 服务器地址 |
+| EasyTier node | EasyTier 节点 |
+| data plane | 数据面 |
+| hole punching | 打洞 |
+| relay | 中继 |
 | local API | 本地 API |
 | lifeline | 生命线 |
 | state directory | 状态目录 |

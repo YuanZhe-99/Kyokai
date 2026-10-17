@@ -25,6 +25,16 @@ jobs:
         with:
           toolchain: "1.99.1"
           targets: ${{ matrix.target }}
+      - name: Pinned protoc
+        shell: bash
+        run: echo "PROTOC=$(scripts/protoc.sh)" >> "$GITHUB_ENV"
+      # ring (EasyTier's QUIC and WireGuard) needs clang on Windows ARM64.
+      - name: Clang (Windows ARM64)
+        if: matrix.os == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files\LLVM\bin\clang.exe")) { choco install llvm --no-progress -y }
+          "C:\Program Files\LLVM\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
       - run: cargo build --release --manifest-path core/Cargo.toml --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v7
         with:
@@ -43,6 +53,10 @@ jobs:
           go-version-file: go.mod
       - name: Install NSIS, for the installers
         run: sudo apt-get update && sudo apt-get install -y nsis zip
+      # Packages ship every Rust crate's license text (scripts/build.sh).
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
       - uses: actions/download-artifact@v8
         with:
           name: core-windows-amd64
@@ -86,6 +100,9 @@ jobs:
         with:
           toolchain: "1.99.1"
           targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
       # The self-signed "Kyokai Code Signing" identity keeps privacy grants
       # across updates (doc/en-us/packaging.md). Without the secrets the
       # build is ad hoc signed, and the release notes must say so.

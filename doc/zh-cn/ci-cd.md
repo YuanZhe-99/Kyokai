@@ -5,7 +5,7 @@
 | 工作流 | 触发 | 作用 |
 |---|---|---|
 | `ci.yml` → checks | 推送到 `main`、拉取请求、手动 | gofmt、Windows 与 macOS 的 `go vet`、界面目录、文档镜像、`cargo fmt`、`cargo deny`、机密扫描（gitleaks）、上游版本（仅提示） |
-| `ci.yml` → test | 同上 | `windows-11-arm` 与 `macos-latest`：clippy、Rust 测试、使用真实核心的 Go 测试（ABI 冒烟测试）、`mygo vet`、`scripts/smoke.sh user`、未签名安装包作为产物；`windows-latest` 与 `macos-15-intel`：构建核心与 Go 测试 |
+| `ci.yml` → test | 同上 | `windows-11-arm` 与 `macos-latest`：clippy、Rust 测试、使用真实核心的 Go 测试（ABI 冒烟测试）、`mygo vet`、`scripts/smoke.sh user`、未签名安装包作为产物；`windows-latest` 与 `macos-15-intel`：构建核心与 Go 测试。所有任务都使用固定版本的 `protoc`（`scripts/protoc.sh`）；`windows-11-arm` 把 LLVM 的 clang 加入 `PATH` 供 `ring` 使用；macOS 任务使用各自已解锁的默认钥匙串 |
 | `release.yml` | 标签 `v*`、手动 | Windows 核心在 `windows-latest`（x64）与 `windows-11-arm` 上构建，在 Ubuntu 上用 NSIS 打包；macOS 在 `macos-latest` 上构建打包；标签会在核对与 `internal/version` 一致后附带 `SHA256SUMS.txt` 发布 |
 | `upstream.yml` | 每周、手动 | `go run ./tools/deps check -strict`；MyGo、EasyTier、RustDesk 或 Rust 有更新时开 issue |
 | `dependabot.yml` | 每周 | Actions、Go 模块（不含 MyGo）与 Cargo |
@@ -26,8 +26,9 @@
 每次变更都从 `go run ./tools/deps check` 开始。上游有更新时：
 
 1. MyGo：`go run ./tools/deps update`，然后 `go tool mygo migrate-ui .`（预览）、`-write`，并手工检查标识与绑定值的变化。
-2. EasyTier：一起更新 `third_party/upstream.json`（标签与提交）和 Cargo 固定版本，再运行 EasyTier 集成测试（引擎内嵌
-   EasyTier 之后）。
+2. EasyTier：一起更新 `third_party/upstream.json`（标签与提交）和 `core/kyokai-core/Cargo.toml` 中的两个 Cargo 固定版本；
+   检查 `thunk-noop` 是否仍覆盖 EasyTier 所需的 `thunk-rs` 特性；删除更新后不再需要的 `core/deny.toml` 安全公告忽略项；
+   然后让两个引擎经标准服务器运行（`ctl network-set`，`ctl status` 显示两者都在线并互相可见）。
 3. RustDesk：移动固定版本之前，审阅每个复用文件的上游差异。
 4. Rust：修改 `rust-toolchain.toml` 与工作流中的工具链。
 5. 运行完整检查，并在 [version-history.md](version-history.md) 记录“MyGo vX / EasyTier vY / RustDesk Z / Rust W

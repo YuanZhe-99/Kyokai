@@ -3,7 +3,7 @@
 | Platform | Status |
 |---|---|
 | Windows (x64, ARM64) | 0.1.0 foundation implemented and verified on Windows 11 ARM64, x64 under emulation (below). |
-| macOS (Apple silicon, Intel) | Implemented, cross-checked (`go vet`, `cargo check`); not built or run on a Mac yet — CI and a real machine come with the first push. |
+| macOS (Apple silicon, Intel) | Built and tested on GitHub's macOS runners (Apple silicon: full gate including `scripts/smoke.sh user` and the unsigned package; Intel: build and Go tests); not run on a real Mac yet. |
 | Linux | Not supported yet. |
 
 ## Windows
@@ -15,7 +15,7 @@ Studio 2026 without its Clang component):
 |---|---|
 | Local gate | gofmt, `go vet` (Windows and macOS), `go test` (also `CGO_ENABLED=0`), `mygo vet`, `mygo i18n check`, `checkdocs`, `cargo fmt`, `cargo clippy -D warnings`, `cargo test` pass |
 | ABI smoke test | `internal/core` loads the release `kyokai_core.dll`, starts it, calls and stops it |
-| Core library | imports only system DLLs (`KERNEL32`, `ntdll`, `api-ms-win-core-synch`): the C runtime is static |
+| Core library | imports only system DLLs (`KERNEL32`, `ntdll`, `api-ms-win-core-synch`, and with EasyTier `ws2_32`, `iphlpapi`, `bcrypt`, `crypt32` and the like): the C runtime is static on ARM64 and x64 — no `msvcrt.dll` |
 | Secrets | DPAPI-protected master key; the Device ID is the same after restarts of the engine and of the app |
 | Engine | `scripts/smoke.sh user` passes: status, password, regenerate, a second engine refused, shutdown, restart |
 | App (ARM64 package) | starts its engine as a child without any prompt; the temporary password differs on every start; killing the GUI ends the engine; nothing registered under `Run` |
@@ -24,7 +24,15 @@ Studio 2026 without its Clang component):
 | S2 viewer spike | 1920×1080 RGBA frames from Rust shown through `ui.Bitmap` next to a 500-row list at 59–60 fps; the viewer costs about 21–25 % of one core |
 | S3-lite capture spike | RustDesk's DXGI capturer, vendored and decoupled from `hbb_common`, captures the 4K display at about 60 fps; converting to RGBA and scaling to 1080p costs about 15 % of one core |
 | S1 EasyTier spike | v2.7.0 embedded in-process, no TUN, no admin: data plane both ways through a stock server, whitelist holds, clean restarts; hole punching untested (symmetric NAT) |
+| EasyTier in the engine (2026-10-17) | through a standard public server: online with a DHCP address within 10 s; the NAT type is found through STUN (symmetric on this network); two engines with their own profiles list each other's Device ID, relayed, about 36 ms |
 | `cargo deny` | passes (advisories, bans, licenses, sources) once VS's clang is on `PATH` |
+
+## macOS
+
+| Check | Result |
+|---|---|
+| CI (`macos-latest`, `macos-15-intel`) | gate, ABI smoke test, engine smoke test and unsigned package pass |
+| Keychain | a test binary that reads a Keychain item another (differently signed) binary created raises an access prompt, which hangs a headless run; tests therefore use a fresh profile per run, and the shipped app is always signed with the same certificate |
 
 ## Known limitations
 

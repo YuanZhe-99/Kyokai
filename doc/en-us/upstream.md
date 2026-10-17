@@ -113,7 +113,12 @@ when they run; anything not listed here is not assumed.
   is symmetric NAT on both sides).
   Also verified through a real public server running stable v2.6.4 (the network carried as a foreign
   network; connect in 45 ms). The minimal feature set cannot resolve STUN servers (no TXT DNS
-  resolution), which NAT detection and hole punching need.
+  resolution), which NAT detection and hole punching need; the `dns-resolver` feature (hickory,
+  without the magic-DNS server) brings it back. `create_native_instance` must run inside a Tokio
+  runtime (`Runtime::enter`). EasyTier enables `thunk-rs`'s `win7` feature unconditionally, so it
+  can only be replaced, not configured: Kyokai patches in a no-op crate. EasyTier's crates carry no
+  license field (the repository is LGPL-3.0), and its pins keep hickory-proto at 0.25 and zip at 8,
+  whose advisories `core/deny.toml` records with the reason each does not apply.
 
 ## RustDesk 1.5.0
 

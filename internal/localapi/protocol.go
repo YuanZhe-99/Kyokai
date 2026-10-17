@@ -49,6 +49,8 @@ const (
 	RequestStatus             RequestType = "status"              // identity summary, never a secret
 	RequestPasswordReveal     RequestType = "password.reveal"     // the temporary password, for the host's own GUI
 	RequestPasswordRegenerate RequestType = "password.regenerate" // a new temporary password
+	RequestNetworkGet         RequestType = "network.get"         // network settings without the secret
+	RequestNetworkSet         RequestType = "network.set"         // new network settings (Request.Network)
 	RequestSessionAttach      RequestType = "session.attach"      // streaming; see package doc
 	RequestShutdown           RequestType = "shutdown"
 )
@@ -59,12 +61,15 @@ type ErrorCode string
 const (
 	CodeUnknown  ErrorCode = "unknown-request"
 	CodeInternal ErrorCode = "internal"
+	CodeInvalid  ErrorCode = "invalid" // the request's parameters were refused; Error says why
 )
 
 // Request is one line from a client.
 type Request struct {
 	Version int         `json:"version"`
 	Type    RequestType `json:"type"`
+	// Network carries the settings of RequestNetworkSet.
+	Network *NetworkSettings `json:"network,omitempty"`
 }
 
 // Response is one line from the engine: an answer, or a pushed frame of a
@@ -76,6 +81,41 @@ type Response struct {
 	Error    string    `json:"error,omitempty"`
 	Status   *Status   `json:"status,omitempty"`
 	Password string    `json:"password,omitempty"`
+	// Network answers RequestNetworkGet and RequestNetworkSet.
+	Network *NetworkSettings `json:"network,omitempty"`
+}
+
+// NetworkSettings are the EasyTier network the engine joins.
+type NetworkSettings struct {
+	// Servers are standard EasyTier server URLs, tried in order.
+	Servers []string `json:"servers"`
+	Name    string   `json:"name"`
+	// Secret is set only in a request; nil keeps the stored secret.
+	Secret *string `json:"secret,omitempty"`
+	// HasSecret and WeakSecret describe the stored secret in a response.
+	HasSecret  bool `json:"has_secret,omitempty"`
+	WeakSecret bool `json:"weak_secret,omitempty"`
+}
+
+// NetworkStatus is the engine's EasyTier node as it is now.
+type NetworkStatus struct {
+	// State is "off", "connecting", "online" or "error".
+	State string `json:"state"`
+	// Error says why the node stopped (State "error").
+	Error string `json:"error,omitempty"`
+	// Address is the node's virtual IPv4 address once assigned.
+	Address string `json:"address,omitempty"`
+	// NAT is the detected NAT type ("unknown" until STUN answers).
+	NAT     string          `json:"nat,omitempty"`
+	Devices []NetworkDevice `json:"devices,omitempty"`
+}
+
+// NetworkDevice is another Kyokai device the network routes to. Its
+// DeviceID is what the device announces: a hint, never proof of identity.
+type NetworkDevice struct {
+	DeviceID  string `json:"device_id"`
+	Path      string `json:"path"` // "direct" or "relay"
+	LatencyMS int    `json:"latency_ms"`
 }
 
 // Status is the engine's state: product and ABI version, the device
@@ -91,8 +131,9 @@ type Status struct {
 	// Persistence is "os-store", "memory-only" or "unreadable".
 	Persistence string `json:"persistence"`
 	// PasswordSerial changes whenever the temporary password does.
-	PasswordSerial uint64    `json:"password_serial"`
-	Started        time.Time `json:"started"`
+	PasswordSerial uint64        `json:"password_serial"`
+	Network        NetworkStatus `json:"network"`
+	Started        time.Time     `json:"started"`
 }
 
 // ErrNotRunning reports that no engine listens on the socket.

@@ -83,7 +83,11 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   v2.7.0 中不可用的加密算法会报错，不会静默退化为 XOR。构建：`ring` 需要 PATH 中有 clang；未设 `PROTOC` 时会未经校验地自动下载 `protoc`；
   x64 上 `thunk-rs` 会下载 VC-LTL 并把程序改为链接 `msvcrt.dll`。此处未证实：UDP 打洞（本网络两端都是对称型 NAT）。
   也已经过一台运行稳定版 v2.6.4 的真实公共服务器验证（网络以外部网络方式承载；45 毫秒建立连接）。最小功能集无法解析 STUN 服务器
-  （没有 TXT DNS 解析），而 NAT 探测与打洞需要它。
+  （没有 TXT DNS 解析），而 NAT 探测与打洞需要它；`dns-resolver` 特性（hickory，不含 magic DNS 服务器）可恢复
+  这一能力。`create_native_instance` 必须在 Tokio 运行时内调用（`Runtime::enter`）。EasyTier 无条件启用 `thunk-rs`
+  的 `win7` 特性，所以只能替换、无法配置：Kyokai 用一个空操作 crate 替代它。EasyTier 的 crate 没有 license 字段（仓库
+  为 LGPL-3.0），其固定版本让 hickory-proto 停在 0.25、zip 停在 8，这些安全公告记录在 `core/deny.toml` 中，并写明
+  每条为何不适用。
 
 ## RustDesk 1.5.0
 

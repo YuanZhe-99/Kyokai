@@ -18,7 +18,7 @@ windows) lib=kyokai_core.dll ext=.exe ;;
 darwin) lib=libkyokai_core.dylib ext="" ;;
 *) echo "unsupported platform" >&2; exit 1 ;;
 esac
-cargo build --release --manifest-path core/Cargo.toml
+PROTOC=${PROTOC:-$(scripts/protoc.sh)} cargo build --release --manifest-path core/Cargo.toml
 cp "core/target/release/$lib" "$work/"
 CGO_ENABLED=0 go build -o "$work/kyokai-svc$ext" ./cmd/kyokai-svc
 

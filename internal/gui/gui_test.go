@@ -4,6 +4,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -54,6 +55,13 @@ func TestViewsRender(t *testing.T) {
 		"engine-down":   func(a *App) { a.connected, a.status, a.engineErr = false, nil, "kyokai-svc not found" },
 		"settings":      func(a *App) { a.page = pageSettings },
 		"licenses":      func(a *App) { a.page, a.showLicenses = pageSettings, true },
+		"network-off":   func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
+		"network-online": func(a *App) {
+			a.page = pageNetwork
+			a.status.Network = localapi.NetworkStatus{State: "online", Address: "10.126.126.236", NAT: "symmetric",
+				Devices: []localapi.NetworkDevice{{DeviceID: "213559601", Path: "relay", LatencyMS: 36}, {DeviceID: "647222040", Path: "direct", LatencyMS: 4}}}
+			a.net = netForm{loaded: true, servers: "tcp://example.org:11010", name: "kyokai", hasSecret: true, weakSecret: true}
+		},
 	}
 	for _, lang := range []string{"en", "zh-Hans", "zh-Hant", "ja"} {
 		i18n.SetLocaleFunc(func() string { return lang })
@@ -86,4 +94,20 @@ func TestViewsRender(t *testing.T) {
 		}
 	}
 	i18n.SetLocaleFunc(nil)
+}
+
+func TestServerLines(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"", nil},
+		{"tcp://a:1", []string{"tcp://a:1"}},
+		{" tcp://a:1 \r\n\n  wss://b/et\n", []string{"tcp://a:1", "wss://b/et"}},
+	}
+	for _, c := range cases {
+		if got := serverLines(c.in); !slices.Equal(got, c.want) {
+			t.Errorf("%q → %q, want %q", c.in, got, c.want)
+		}
+	}
 }

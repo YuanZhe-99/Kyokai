@@ -7,6 +7,7 @@
 //! buffer the core allocates, which the caller hands back to `kyokai_free`.
 
 mod identity;
+mod net;
 mod password;
 mod store;
 
@@ -26,7 +27,9 @@ struct Core {
     state_dir: PathBuf,
     identity: identity::Identity,
     persistence: store::Persistence,
+    secrets: store::Secrets,
     password: password::Temporary,
+    network: net::Network,
 }
 
 static CORE: Mutex<Option<Core>> = Mutex::new(None);
@@ -168,19 +171,21 @@ fn start(input: &[u8]) -> Result<(), String> {
     std::fs::create_dir_all(&cfg.state_dir).map_err(|e| format!("state directory: {e}"))?;
     let (secrets, persistence) = store::open(&cfg.state_dir, &cfg.profile);
     let identity = identity::Identity::load_or_create(&secrets)?;
+    let network = net::Network::start(&secrets, &identity.device_id())?;
     *guard = Some(Core {
         version: cfg.version,
         state_dir: cfg.state_dir,
         identity,
         persistence,
+        secrets,
         password: password::Temporary::generate(),
+        network,
     });
     Ok(())
 }
 
 fn call(input: &[u8]) -> Result<Value, String> {
     let req: Call = serde_json::from_slice(input).map_err(|e| format!("bad call: {e}"))?;
-    let _ = req.params;
     match req.method.as_str() {
         "status" => Ok(status()),
         "password.reveal" => with_core(|c| json!({"temporary": c.password.reveal()})),
@@ -188,6 +193,15 @@ fn call(input: &[u8]) -> Result<Value, String> {
             c.password = password::Temporary::generate();
             json!({"serial": c.password.serial()})
         }),
+        "network.get" => with_core(|c| c.network.settings()),
+        "network.set" => {
+            let update: net::Update = serde_json::from_value(req.params)
+                .map_err(|e| format!("bad network settings: {e}"))?;
+            let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
+            let c = guard.as_mut().ok_or("the core is not started")?;
+            c.network.update(&c.secrets, update)?;
+            Ok(c.network.settings())
+        }
         other => Err(format!("unknown method {other:?}")),
     }
 }
@@ -209,6 +223,7 @@ fn status() -> Value {
             "state_dir": c.state_dir,
             "persistence": c.persistence,
             "password_serial": c.password.serial(),
+            "network": c.network.status(),
         })
     })
     .unwrap_or_else(|e| json!({"error": e}))
@@ -243,7 +258,10 @@ mod tests {
         let before = roundtrip(kyokai_call, r#"{"method":"status"}"#);
         assert_eq!(before["result"]["error"], "the core is not started");
         let dir = std::env::temp_dir().join(format!("kyokai-core-test-{}", std::process::id()));
-        let cfg = json!({"version": "0.0.0", "state_dir": dir, "profile": "test"}).to_string();
+        // A fresh profile per run: a Keychain item made by another test binary
+        // would raise an access prompt that nobody answers on CI.
+        let profile = format!("test-{}", std::process::id());
+        let cfg = json!({"version": "0.0.0", "state_dir": dir, "profile": profile}).to_string();
         let started = roundtrip(kyokai_start, &cfg);
         assert_eq!(started["ok"], true, "{started}");
         let id = started["result"]["device_id"].as_str().unwrap().to_owned();

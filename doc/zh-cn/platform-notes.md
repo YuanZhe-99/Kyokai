@@ -3,7 +3,7 @@
 | 平台 | 状态 |
 |---|---|
 | Windows（x64、ARM64） | 0.1.0 基础已实现，并在 Windows 11 ARM64 上验证，x64 在模拟下验证（见下）。 |
-| macOS（Apple 芯片、Intel） | 已实现并交叉检查（`go vet`、`cargo check`）；尚未在 Mac 上构建或运行——首次推送后由 CI 与真机验证。 |
+| macOS（Apple 芯片、Intel） | 已在 GitHub 的 macOS 运行器上构建与测试（Apple 芯片：完整检查，包括 `scripts/smoke.sh user` 与未签名安装包；Intel：构建与 Go 测试）；尚未在真实 Mac 上运行。 |
 | Linux | 暂不支持。 |
 
 ## Windows
@@ -15,7 +15,7 @@ Studio 2026）：
 |---|---|
 | 本地检查 | gofmt、`go vet`（Windows 与 macOS）、`go test`（含 `CGO_ENABLED=0`）、`mygo vet`、`mygo i18n check`、`checkdocs`、`cargo fmt`、`cargo clippy -D warnings`、`cargo test` 通过 |
 | ABI 冒烟测试 | `internal/core` 加载 release 版 `kyokai_core.dll`，启动、调用并停止它 |
-| 核心库 | 只引用系统 DLL（`KERNEL32`、`ntdll`、`api-ms-win-core-synch`）：C 运行时为静态链接 |
+| 核心库 | 只引用系统 DLL（`KERNEL32`、`ntdll`、`api-ms-win-core-synch`，内嵌 EasyTier 后还有 `ws2_32`、`iphlpapi`、`bcrypt`、`crypt32` 等）：ARM64 与 x64 的 C 运行时均为静态链接——没有 `msvcrt.dll` |
 | 机密 | 主密钥受 DPAPI 保护；引擎与应用重启后设备 ID 不变 |
 | 引擎 | `scripts/smoke.sh user` 通过：状态、密码、换密码、拒绝第二个引擎、关闭、重启 |
 | 应用（ARM64 安装包） | 不弹任何提示就以子进程启动引擎；每次启动临时密码都不同；强制结束界面后引擎随之结束；`Run` 下没有注册任何项 |
@@ -24,7 +24,15 @@ Studio 2026）：
 | S2 画面可行性验证 | 来自 Rust 的 1920×1080 RGBA 帧经 `ui.Bitmap` 显示在 500 行列表旁，59–60 fps；画面显示约占一个核心的 21–25 % |
 | S3-lite 采集可行性验证 | 复用并解除 `hbb_common` 耦合的 RustDesk DXGI 采集器以约 60 fps 采集 4K 显示器；转换为 RGBA 并缩放到 1080p 约占一个核心的 15 % |
 | S1 EasyTier 可行性验证 | v2.7.0 进程内内嵌、无 TUN、无需管理员：经原版服务器双向数据面可用，白名单有效，可干净重启；UDP 打洞未测（对称型 NAT） |
+| 引擎内的 EasyTier（2026-10-17） | 经标准公共服务器：10 秒内上线并获得 DHCP 地址；通过 STUN 得到 NAT 类型（此网络为对称型）；使用各自配置的两个引擎互相列出对方的设备 ID，经中继，约 36 ms |
 | `cargo deny` | 把 VS 的 clang 加入 `PATH` 后通过（advisories、bans、licenses、sources） |
+
+## macOS
+
+| 检查 | 结果 |
+|---|---|
+| CI（`macos-latest`、`macos-15-intel`） | 检查、ABI 冒烟测试、引擎冒烟测试与未签名安装包均通过 |
+| 钥匙串 | 测试程序读取另一个（签名不同的）程序创建的钥匙串项目时会弹出访问提示，无人值守运行会因此卡住；因此测试每次使用新的配置，而发布的应用始终使用同一证书签名 |
 
 ## 已知限制
 

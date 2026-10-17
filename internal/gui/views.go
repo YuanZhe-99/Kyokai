@@ -39,6 +39,7 @@ func (a *App) sidebar(c *ui.Context) {
 			}
 		}
 		link("home", L.NavHome(), pageHome)
+		link("network", L.NavNetwork(), pageNetwork)
 		link("settings", L.NavSettings(), pageSettings)
 	})
 }

@@ -9,10 +9,16 @@
   (ARM64 and/or x64), the Windows SDK, and the component "C++ Clang Compiler for Windows" — `ring`
   needs clang on `aarch64-pc-windows-msvc`; put the installation's `VC\Tools\Llvm\ARM64\bin` on
   `PATH` (the component does not). Git for Windows provides bash and OpenSSL.
-- macOS: the Xcode command line tools; Go and rustup (Homebrew works); `protoc` (Homebrew
-  `protobuf`) once EasyTier is embedded.
+- macOS: the Xcode command line tools; Go and rustup (Homebrew works).
+- `protoc` for EasyTier's protocol files: `scripts/protoc.sh` downloads the pinned release
+  (36.2) into `build/tools` once, checks its SHA-256 and prints its path. `scripts/build.sh` and
+  `scripts/smoke.sh` use it on their own; for plain cargo commands run
+  `export PROTOC=$(scripts/protoc.sh)` first. Without `PROTOC`, EasyTier's build would download
+  an unverified release candidate on Windows.
 - `cargo-deny` (`cargo install cargo-deny --locked`) for the dependency check; on Windows ARM64 it
   builds only once clang is installed.
+- `cargo-about` (`cargo install cargo-about --locked --features cli`) for the license file that
+  `scripts/build.sh` puts into every package.
 
 ## Commands
 
@@ -40,6 +46,7 @@ the current directory, not from `--manifest-path`.
 scripts/build.sh windows/arm64           # or no target: this machine's platform
 KYOKAI_PROFILE=dev build/windows-arm64/Kyokai.exe
 KYOKAI_PROFILE=dev build/windows-arm64/bin/kyokai-svc.exe ctl status
+KYOKAI_NETWORK_SECRET=… kyokai-svc ctl network-set --server tcp://host:11010 --name net
 scripts/smoke.sh user                    # the engine end to end with the real core
 SCREENSHOT_DIR=$PWD/.dev/shots go test ./internal/gui/
 KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
@@ -48,7 +55,9 @@ KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
 `KYOKAI_PROFILE` keeps a development instance apart from an installed Kyokai: its own app name,
 single-instance lock, socket and state directory (`Kyokai-<profile>`). `KYOKAI_SVC` points the GUI at
 another engine binary, `KYOKAI_SOCKET` at another socket. The ABI smoke test needs an absolute
-library path.
+library path. `ctl network-set` takes the network secret from `KYOKAI_NETWORK_SECRET`, never from
+the command line; `ctl network` shows the settings without it. Two engines with different profiles,
+state directories and sockets on one machine see each other through the same network.
 
 ## Spikes
 

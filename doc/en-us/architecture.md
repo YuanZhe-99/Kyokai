@@ -5,7 +5,7 @@
 | Process | Binary | Runs as | Role |
 |---|---|---|---|
 | GUI | `Kyokai` (MyGo) | the user, never elevated | Window, tray, settings. Holds no identity; shows what the engine pushes. |
-| Engine | `kyokai-svc run --host user` | the user, a child of the GUI | Loads the Rust core, which owns the device identity and the temporary password; serves the local API. |
+| Engine | `kyokai-svc run --host user` | the user, a child of the GUI | Loads the Rust core, which owns the device identity, the temporary password and the embedded EasyTier node ([networking.md](networking.md)); serves the local API. |
 | Control CLI | `kyokai-svc ctl …` | the user | Scriptable client of the local API (development, smoke tests). |
 
 The engine lives exactly as long as the GUI: on macOS it stops when the lifeline pipe the GUI holds
@@ -36,7 +36,8 @@ Administrator rights are never requested when the GUI starts.
 | `internal/core` | purego binding to the Rust core |
 | `internal/fsutil` | Atomic writes and JSON documents |
 | `internal/version` | The single product version |
-| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, temporary password |
+| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, temporary password, EasyTier node |
+| `core/third_party/thunk-noop` | Stands in for EasyTier's `thunk-rs` build step, so Windows builds keep the static C runtime |
 
 ## FFI
 
@@ -54,9 +55,13 @@ integers and pointers only:
 
 Responses are `{"ok": true, "result": …}` or `{"ok": false, "error": "…"}` in a buffer the core
 allocates; panics are caught at the boundary and reported as errors. Methods: `status` (never a
-secret), `password.reveal`, `password.regenerate`. On Windows the library is loaded by absolute path
-with `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` and links the
-C runtime statically, so nothing is resolved through the search path.
+secret; includes the network status), `password.reveal`, `password.regenerate`, `network.get`
+(settings without the secret), `network.set` (`{servers, name, secret?}`; a missing secret keeps
+the stored one). The Go binding keeps the response slots it passes to the core in heap memory,
+never on a goroutine stack, which may move between taking an address and the call. On Windows the
+library is loaded by absolute path with
+`LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` and links the C
+runtime statically, so nothing is resolved through the search path.
 
 ## Local API
 
@@ -65,7 +70,10 @@ C runtime statically, so nothing is resolved through the search path.
   overrides); newline-delimited JSON with a `version` field (1). One request per connection,
   except `session.attach`, which keeps its connection and receives the status whenever it
   changes.
-- Requests: `status`, `password.reveal`, `password.regenerate`, `session.attach`, `shutdown`.
+- Requests: `status` (with the network status), `password.reveal`, `password.regenerate`,
+  `network.get`, `network.set` (refused settings answer `invalid` with the reason),
+  `session.attach`, `shutdown`. A session receives the status after every command that changes it
+  and whenever the network's status moves.
 - Authorization comes from the operating system's peer credentials (`LOCAL_PEERCRED` on macOS;
   `SIO_AF_UNIX_GETPEERPID` and the process token's SID on Windows), never from the request: only
   the engine's own user is served; an unreadable identity is refused.

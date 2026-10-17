@@ -183,7 +183,12 @@ func (a *App) connectLoop() {
 
 // request sends one request to the engine.
 func (a *App) request(t localapi.RequestType) (*localapi.Response, error) {
-	return localapi.NewClient(a.socket).Do(a.ctx, localapi.Request{Type: t})
+	return a.requestWith(localapi.Request{Type: t})
+}
+
+// requestWith sends one request with parameters to the engine.
+func (a *App) requestWith(req localapi.Request) (*localapi.Response, error) {
+	return localapi.NewClient(a.socket).Do(a.ctx, req)
 }
 
 // revealPassword fetches the temporary password for the Home page or the

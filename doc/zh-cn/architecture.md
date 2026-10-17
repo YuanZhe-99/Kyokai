@@ -5,7 +5,7 @@
 | 进程 | 可执行文件 | 运行身份 | 职责 |
 |---|---|---|---|
 | 界面 | `Kyokai`（MyGo） | 当前用户，从不提权 | 窗口、托盘、设置。自身不持有身份，只显示引擎推送的内容。 |
-| 引擎 | `kyokai-svc run --host user` | 当前用户，界面的子进程 | 加载 Rust 核心（由它持有设备身份和临时密码）；提供本地 API。 |
+| 引擎 | `kyokai-svc run --host user` | 当前用户，界面的子进程 | 加载 Rust 核心（由它持有设备身份、临时密码和内嵌的 EasyTier 节点，见 [networking.md](networking.md)）；提供本地 API。 |
 | 控制命令行 | `kyokai-svc ctl …` | 当前用户 | 本地 API 的脚本客户端（开发、冒烟测试）。 |
 
 引擎与界面同生同灭：macOS 上界面持有的生命线管道关闭时引擎停止，Windows 上界面进程消失时引擎停止（`--parent-pid`）；
@@ -34,7 +34,8 @@
 | `internal/core` | 通过 purego 绑定 Rust 核心 |
 | `internal/fsutil` | 原子写入与 JSON 文档 |
 | `internal/version` | 唯一的产品版本 |
-| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、临时密码 |
+| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、临时密码、EasyTier 节点 |
+| `core/third_party/thunk-noop` | 替代 EasyTier 的 `thunk-rs` 构建步骤，使 Windows 构建保持静态 C 运行时 |
 
 ## FFI
 
@@ -50,7 +51,9 @@
 | `kyokai_stop()` | 丢弃核心的状态，包括内存中的机密 |
 
 响应是核心分配的缓冲区中的 `{"ok": true, "result": …}` 或 `{"ok": false, "error": "…"}`；panic 在边界处捕获并作为错误返回。
-方法：`status`（从不含机密）、`password.reveal`、`password.regenerate`。Windows 上以绝对路径、
+方法：`status`（从不含机密；包含网络状态）、`password.reveal`、`password.regenerate`、`network.get`（不含密钥的设置）、
+`network.set`（`{servers, name, secret?}`；缺少密钥时保留已存的密钥）。Go 绑定把传给核心的响应槽放在堆内存中，从不放在
+goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows 上以绝对路径、
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` 加载该库，并静态链接 C 运行时，
 因此不会经由搜索路径解析任何文件。
 
@@ -59,7 +62,8 @@
 - 传输：AF_UNIX 套接字（Windows 上也是），位于 `%TEMP%\kyokai\engine.sock` 或 `$TMPDIR/kyokai-<uid>/engine.sock`
   （开发配置为 `engine-<profile>.sock`；`KYOKAI_SOCKET` 可覆盖）；以换行分隔的 JSON，带 `version` 字段（1）。每个连接一个
   请求，`session.attach` 除外：它保持连接，状态变化时收到推送。
-- 请求：`status`、`password.reveal`、`password.regenerate`、`session.attach`、`shutdown`。
+- 请求：`status`（含网络状态）、`password.reveal`、`password.regenerate`、`network.get`、`network.set`（被拒绝的设置
+  以 `invalid` 和原因答复）、`session.attach`、`shutdown`。会话在每个改变状态的命令之后、以及网络状态变化时收到状态。
 - 授权来自操作系统的对端凭据（macOS 为 `LOCAL_PEERCRED`；Windows 为 `SIO_AF_UNIX_GETPEERPID` 与进程令牌的 SID），
   从不取自请求内容：只服务引擎自己的用户；读不出身份的连接一律拒绝。
 

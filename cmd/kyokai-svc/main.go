@@ -2,7 +2,11 @@
 //
 //	kyokai-svc run --host user [--socket P] [--state-dir D] [--core LIB]
 //	               [--parent-pid N | --lifeline-fd N]
-//	kyokai-svc ctl status | password | regenerate | shutdown [--socket P]
+//	kyokai-svc ctl status | password | regenerate | shutdown | network [--socket P]
+//	kyokai-svc ctl network-set --server URL [--server URL…] --name N
+//
+// network-set takes the network secret from KYOKAI_NETWORK_SECRET (unset
+// keeps the stored one).| password | regenerate | shutdown [--socket P]
 //
 // The GUI starts `run` as its child; `ctl` is for scripts and development.
 // KYOKAI_PROFILE selects a separate development instance.
@@ -16,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
@@ -23,6 +28,9 @@ import (
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	"github.com/YuanZhe-99/Kyokai/internal/version"
 )
+
+// networkSecretEnv carries the network secret to `ctl network-set`.
+const networkSecretEnv = "KYOKAI_NETWORK_SECRET"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -46,7 +54,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: kyokai-svc run --host user [flags] | ctl status|password|regenerate|shutdown | version")
+	fmt.Fprintln(os.Stderr, "usage: kyokai-svc run --host user [flags] | ctl status|password|regenerate|shutdown|network|network-set | version")
 	os.Exit(2)
 }
 
@@ -93,18 +101,37 @@ func run(args []string) error {
 func ctl(args []string) error {
 	fs := flag.NewFlagSet("ctl", flag.ExitOnError)
 	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "local API socket path")
-	fs.Parse(args)
-	if fs.NArg() != 1 {
+	var servers []string
+	fs.Func("server", "network-set: an EasyTier server URL (repeatable)", func(s string) error {
+		servers = append(servers, s)
+		return nil
+	})
+	name := fs.String("name", "", "network-set: the network name")
+	// The command comes first, its flags after it.
+	if len(args) == 0 {
 		usage()
 	}
-	req := map[string]localapi.RequestType{
+	fs.Parse(args[1:])
+	if fs.NArg() != 0 {
+		usage()
+	}
+	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
-	}[fs.Arg(0)]
-	if req == "" {
+		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet,
+	}[args[0]]}
+	if req.Type == "" {
 		usage()
 	}
-	resp, err := localapi.NewClient(*socket).Do(context.Background(), localapi.Request{Type: req})
+	if req.Type == localapi.RequestNetworkSet {
+		// The secret comes from the environment, never from the command line,
+		// where other processes could read it.
+		req.Network = &localapi.NetworkSettings{Servers: servers, Name: *name}
+		if s, ok := os.LookupEnv(networkSecretEnv); ok {
+			req.Network.Secret = &s
+		}
+	}
+	resp, err := localapi.NewClient(*socket).Do(context.Background(), req)
 	if errors.Is(err, localapi.ErrNotRunning) {
 		return errors.New("the engine is not running")
 	}
@@ -116,6 +143,22 @@ func ctl(args []string) error {
 		s := resp.Status
 		fmt.Printf("version %s (ABI %d), run mode %s\ndevice ID %s\nfingerprint %s\nstate %s (secrets: %s)\n",
 			s.Version, s.ABI, s.RunMode, s.DeviceID, s.Fingerprint, s.StateDir, s.Persistence)
+		n := s.Network
+		fmt.Printf("network %s", n.State)
+		if n.Error != "" {
+			fmt.Printf(": %s", n.Error)
+		}
+		if n.Address != "" {
+			fmt.Printf(", address %s, NAT %s", n.Address, n.NAT)
+		}
+		fmt.Println()
+		for _, d := range n.Devices {
+			fmt.Printf("  device %s  %s  %d ms\n", d.DeviceID, d.Path, d.LatencyMS)
+		}
+	case resp.Network != nil:
+		n := resp.Network
+		fmt.Printf("servers %s\nname %q\nsecret set: %v (weak: %v)\n",
+			strings.Join(n.Servers, ", "), n.Name, n.HasSecret, n.WeakSecret)
 	case resp.Password != "":
 		fmt.Println(resp.Password)
 	default:

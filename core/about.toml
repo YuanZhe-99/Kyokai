@@ -1,0 +1,52 @@
+# cargo about generate --manifest-path core/Cargo.toml core/about.hbs
+# The Rust crates in the shipped core library, with their license texts
+# (resources/licenses/RUST_LICENSES.txt, written by scripts/build.sh).
+# Keep `accepted` in step with core/deny.toml.
+accepted = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "CC0-1.0",
+  "Unicode-3.0",
+  "MPL-2.0",
+  "LGPL-3.0-only",
+  "LGPL-3.0-or-later",
+  "AGPL-3.0-only",
+  "0BSD",
+  "bzip2-1.0.6",
+  "CDLA-Permissive-2.0",
+]
+targets = [
+  "aarch64-pc-windows-msvc",
+  "x86_64-pc-windows-msvc",
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+# The workspace's own crates are Kyokai (LICENSE).
+private = { ignore = true }
+
+# EasyTier's crates carry no license field; the repository's LICENSE is LGPL-3.0.
+[easytier.clarify]
+license = "LGPL-3.0-only"
+[[easytier.clarify.git]]
+path = "LICENSE"
+checksum = "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"
+
+[easytier-core.clarify]
+license = "LGPL-3.0-only"
+[[easytier-core.clarify.git]]
+path = "LICENSE"
+checksum = "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"
+
+[easytier-proto.clarify]
+license = "LGPL-3.0-only"
+[[easytier-proto.clarify.git]]
+path = "LICENSE"
+checksum = "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"

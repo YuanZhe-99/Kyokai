@@ -18,3 +18,8 @@ undocumented_unsafe_blocks = "deny"
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+# EasyTier's build script calls thunk-rs on x86/x64 Windows to target
+# Windows 7; Kyokai replaces it with a no-op (core/third_party/thunk-noop).
+[patch."https://github.com/EasyTier/thunk.git"]
+thunk-rs = { path = "third_party/thunk-noop" }

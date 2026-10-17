@@ -16,6 +16,13 @@ crate-type = ["cdylib", "rlib"]
 workspace = true
 
 [dependencies]
+anyhow = "1"
+# EasyTier, pinned by commit (third_party/upstream.json), minimal feature set:
+# data plane, AES-GCM, DHCP, the standard server connectors and a DNS
+# resolver for STUN (doc/en-us/networking.md). No TUN, SOCKS5, KCP, faketcp,
+# magic DNS, CLI or web.
+easytier = { version = "2.7.0", git = "https://github.com/EasyTier/EasyTier", rev = "8b7f1f0196edb5b580829ed5f135050fb5853478", default-features = false, features = ["smoltcp", "aes-gcm", "dhcp-ipv4", "dns-resolver", "websocket", "quic", "wireguard"] }
+easytier-core = { version = "2.7.0", git = "https://github.com/EasyTier/EasyTier", rev = "8b7f1f0196edb5b580829ed5f135050fb5853478", default-features = false }
 base64 = "0.23.1"
 chacha20poly1305 = "0.11.0"
 ed25519-dalek = "3.0.0"
@@ -23,6 +30,8 @@ getrandom = "0.4.3"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
+tokio = { version = "1.53", features = ["rt-multi-thread", "time"] }
+uuid = { version = "1.26", features = ["v5"] }
 zeroize = "1.9.1"
 
 [target."cfg(windows)".dependencies]

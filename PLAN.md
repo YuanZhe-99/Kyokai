@@ -147,20 +147,12 @@ RustDesk. Done when each encoder follows the QoS on two machines.
 
 ## Decided (2026-10-16)
 
-- STUN: enable EasyTier's `dns-resolver` feature (hickory, no magic-DNS server); done when the log
-  shows a NAT type found through STUN — before Phase 2.
 - No EasyTier listeners by default (outbound + hole punching, no firewall or Local Network
   prompt); a listener option only if the two-machine test shows LAN paths need it — Phase 2.
 - Hole punching through real NATs is tested with the two machines on different networks — Phase 2.
 - Privilege separation of the network-facing host role in helper modes — decided in Phase 6.
 - macOS timestamping with the self-signed identity — tested in S5; if Apple's service refuses,
   MyGo gains an option to skip the timestamp.
-- The `easytier-go` spike is dropped.
-
-- Windows 7 is not supported: EasyTier's `thunk-rs` step (unverified VC-LTL / YY-Thunks
-  downloads, `7z`, relink against `msvcrt.dll`) is turned off, so x64 uses the static CRT like
-  ARM64 — before Phase 2.
-- `protoc`: a pinned stable release with its SHA-256 in the repo, verified and passed as `PROTOC`,
-  never EasyTier's unverified download — before Phase 2.
+- The `easytier-go` spike is dropped; Windows 7 is not supported.
 - Video inside the EasyTier tunnel: `data_plane_tcp` (smoltcp, no congestion control) first; if
   real-link latency is poor, `data_plane_udp` with KCP like RustDesk's direct path — Phase 2.

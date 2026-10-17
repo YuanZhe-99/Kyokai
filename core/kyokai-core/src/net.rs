@@ -1,0 +1,360 @@
+//! The embedded EasyTier node: joins the network the user configured through a
+//! standard EasyTier server, without TUN (doc/en-us/networking.md).
+//!
+//! EasyTier is an untrusted pipe: its routes, instance ids and hostnames are
+//! hints for finding a device, never proof of who it is.
+
+use crate::store::Secrets;
+use easytier::instance::factory::{NativeCoreInstance, create_native_instance};
+use easytier::proto::common::NatType;
+use easytier_core::config::toml::TomlConfig;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use uuid::Uuid;
+
+/// Name of the settings entry in the secrets store (the network secret is in
+/// it, so the whole entry is kept there).
+const SECRET_NAME: &str = "network";
+/// The only port Kyokai uses inside the virtual network; the data plane's
+/// whitelists drop everything else.
+pub const KYOKAI_PORT: u16 = 47_310;
+/// Namespace of instance ids: `instance_id = UUIDv5(KYOKAI_NS, device id)`.
+const KYOKAI_NS: Uuid = Uuid::from_u128(0x6b796f6b_6169_4e00_8000_000000005331);
+/// Server URL schemes the minimal EasyTier build connects with.
+const SCHEMES: &[&str] = &["tcp", "udp", "ws", "wss", "quic", "wg"];
+/// Most servers one configuration may list.
+const MAX_SERVERS: usize = 8;
+/// Network secrets shorter than this are reported as weak.
+const STRONG_SECRET_LEN: usize = 16;
+/// How long stopping the node may take before the runtime is dropped.
+const STOP_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// The user's network settings, as stored (secret included).
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct Settings {
+    /// Standard EasyTier server URLs, tried in order.
+    pub servers: Vec<String>,
+    /// The EasyTier network name.
+    pub name: String,
+    /// The EasyTier network secret.
+    pub secret: String,
+}
+
+/// A `network.set` request: a missing secret keeps the stored one.
+#[derive(Deserialize)]
+pub struct Update {
+    servers: Vec<String>,
+    name: String,
+    secret: Option<String>,
+}
+
+/// Where the node is in its life.
+#[derive(Clone)]
+enum Phase {
+    /// No network configured.
+    Off,
+    /// The node is starting or has not reached a server yet.
+    Connecting,
+    /// The node's start failed; the reason is safe to show.
+    Failed(String),
+}
+
+/// The running node and its runtime.
+pub struct Network {
+    rt: tokio::runtime::Runtime,
+    device_id: String,
+    settings: Settings,
+    node: Option<Arc<NativeCoreInstance>>,
+    phase: Arc<Mutex<Phase>>,
+}
+
+impl Network {
+    /// Starts the node with the stored settings, if there are any.
+    /// Side effects: starts a tokio runtime; connects to the configured servers.
+    pub fn start(secrets: &Secrets, device_id: &str) -> Result<Self, String> {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("kyokai-net")
+            .enable_all()
+            .build()
+            .map_err(|e| format!("network runtime: {e}"))?;
+        let settings = secrets
+            .get(SECRET_NAME)
+            .and_then(|s| serde_json::from_str::<Settings>(&s).ok())
+            .unwrap_or_default();
+        let mut net = Network {
+            rt,
+            device_id: device_id.to_owned(),
+            settings,
+            node: None,
+            phase: Arc::new(Mutex::new(Phase::Off)),
+        };
+        net.restart();
+        Ok(net)
+    }
+
+    /// Returns the settings without the secret.
+    pub fn settings(&self) -> Value {
+        json!({
+            "servers": self.settings.servers,
+            "name": self.settings.name,
+            "has_secret": !self.settings.secret.is_empty(),
+            "weak_secret": is_weak(&self.settings.secret),
+        })
+    }
+
+    /// Validates and stores new settings, then restarts the node with them.
+    /// Side effects: rewrites the secrets store; reconnects.
+    pub fn update(&mut self, secrets: &Secrets, update: Update) -> Result<(), String> {
+        let settings = Settings {
+            secret: update
+                .secret
+                .unwrap_or_else(|| self.settings.secret.clone()),
+            servers: update.servers.iter().map(|s| s.trim().to_owned()).collect(),
+            name: update.name.trim().to_owned(),
+        };
+        validate(&settings)?;
+        let text =
+            zeroize::Zeroizing::new(serde_json::to_string(&settings).map_err(|e| e.to_string())?);
+        secrets.set(SECRET_NAME, &text)?;
+        self.settings = settings;
+        self.restart();
+        Ok(())
+    }
+
+    /// The node's status: never a secret, never stale (read when asked).
+    pub fn status(&self) -> Value {
+        let phase = self.phase.lock().map(|p| p.clone()).unwrap_or(Phase::Off);
+        if let Phase::Failed(error) = phase {
+            return json!({"state": "error", "error": error});
+        }
+        let Some(node) = &self.node else {
+            return json!({"state": "off"});
+        };
+        let (me, peers, routes) = self.rt.block_on(async {
+            (
+                node.node_snapshot().await,
+                node.peer_snapshots().await,
+                node.route_snapshots().await,
+            )
+        });
+        let my_peer = node.peer_id();
+        let reached_server = peers.iter().any(|p| p.conns.iter().any(|c| !c.is_closed));
+        let devices: Vec<Value> = routes
+            .iter()
+            .filter(|r| r.peer_id != my_peer)
+            .filter_map(|r| {
+                let id = r.hostname.strip_prefix("Kyokai-")?;
+                let direct = peers
+                    .iter()
+                    .any(|p| p.peer_id == r.peer_id && !p.directly_connected_conns.is_empty());
+                Some(json!({
+                    "device_id": id,
+                    "path": if direct { "direct" } else { "relay" },
+                    "latency_ms": r.path_latency.max(0),
+                }))
+            })
+            .collect();
+        json!({
+            "state": if reached_server { "online" } else { "connecting" },
+            "address": me.ipv4_addr.map(|a| a.address().to_string()),
+            "nat": nat_name(me.stun_info.udp_nat_type),
+            "devices": devices,
+        })
+    }
+
+    /// Stops the current node and starts one for the current settings.
+    fn restart(&mut self) {
+        self.stop_node();
+        if self.settings.servers.is_empty() || self.settings.name.is_empty() {
+            self.set_phase(Phase::Off);
+            return;
+        }
+        // EasyTier builds its peer manager on the current Tokio runtime.
+        let _rt = self.rt.enter();
+        let node = match config(&self.settings, &self.device_id).and_then(create_native_instance) {
+            Ok(node) => node,
+            Err(e) => {
+                self.set_phase(Phase::Failed(format!("network settings: {e}")));
+                return;
+            }
+        };
+        self.set_phase(Phase::Connecting);
+        let phase = self.phase.clone();
+        let starting = node.clone();
+        self.rt.spawn(async move {
+            if let Err(e) = starting.start().await
+                && let Ok(mut p) = phase.lock()
+            {
+                *p = Phase::Failed(format!("{e:#}"));
+            }
+        });
+        self.node = Some(node);
+    }
+
+    fn stop_node(&mut self) {
+        if let Some(node) = self.node.take() {
+            let _ = self
+                .rt
+                .block_on(async { tokio::time::timeout(STOP_TIMEOUT, node.stop()).await });
+        }
+    }
+
+    fn set_phase(&self, phase: Phase) {
+        if let Ok(mut p) = self.phase.lock() {
+            *p = phase;
+        }
+    }
+}
+
+impl Drop for Network {
+    fn drop(&mut self) {
+        self.stop_node();
+    }
+}
+
+/// The instance id other devices compute for a Device ID.
+pub fn instance_id(device_id: &str) -> Uuid {
+    Uuid::new_v5(&KYOKAI_NS, device_id.as_bytes())
+}
+
+/// Builds the node's configuration: no TUN, DHCP, no listeners, and data
+/// plane whitelists that admit only Kyokai's port.
+fn config(s: &Settings, device_id: &str) -> anyhow::Result<TomlConfig> {
+    // JSON string literals are valid TOML basic strings, which keeps user
+    // input from changing the document's structure.
+    let q = |v: &str| serde_json::to_string(v).unwrap_or_default();
+    let peers: String = s
+        .servers
+        .iter()
+        .map(|p| format!("[[peer]]\nuri = {}\n", q(p)))
+        .collect();
+    let toml = format!(
+        r#"
+instance_name = "kyokai"
+instance_id = "{id}"
+hostname = "Kyokai-{device_id}"
+dhcp = true
+listeners = []
+tcp_whitelist = ["{KYOKAI_PORT}"]
+udp_whitelist = ["{KYOKAI_PORT}"]
+
+[network_identity]
+network_name = {name}
+network_secret = {secret}
+
+{peers}
+[flags]
+no_tun = true
+"#,
+        id = instance_id(device_id),
+        name = q(&s.name),
+        secret = q(&s.secret),
+    );
+    TomlConfig::new_from_str(&toml)
+}
+
+/// Checks settings at the local API boundary.
+fn validate(s: &Settings) -> Result<(), String> {
+    if s.servers.is_empty() != s.name.is_empty() {
+        return Err("a network needs both a server and a network name".into());
+    }
+    if s.servers.len() > MAX_SERVERS {
+        return Err(format!("at most {MAX_SERVERS} servers"));
+    }
+    if s.name.chars().count() > 64 || s.name.chars().any(char::is_control) {
+        return Err("the network name is too long or has control characters".into());
+    }
+    if s.secret.chars().any(char::is_control) {
+        return Err("the network secret has control characters".into());
+    }
+    for server in &s.servers {
+        let (scheme, rest) = server
+            .split_once("://")
+            .ok_or_else(|| format!("{server:?} is not a server URL"))?;
+        if !SCHEMES.contains(&scheme) {
+            return Err(format!(
+                "{scheme:?} servers are not supported (use {})",
+                SCHEMES.join(", ")
+            ));
+        }
+        if rest.is_empty() || server.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return Err(format!("{server:?} is not a server URL"));
+        }
+    }
+    Ok(())
+}
+
+fn is_weak(secret: &str) -> bool {
+    !secret.is_empty() && secret.chars().count() < STRONG_SECRET_LEN
+}
+
+/// The NAT type as a stable name (enums cross boundaries as names).
+fn nat_name(n: i32) -> &'static str {
+    match NatType::try_from(n).unwrap_or(NatType::Unknown) {
+        NatType::Unknown => "unknown",
+        NatType::OpenInternet => "open",
+        NatType::NoPat => "no-pat",
+        NatType::FullCone => "full-cone",
+        NatType::Restricted => "restricted",
+        NatType::PortRestricted => "port-restricted",
+        NatType::Symmetric => "symmetric",
+        NatType::SymUdpFirewall => "symmetric-firewall",
+        NatType::SymmetricEasyInc | NatType::SymmetricEasyDec => "symmetric-easy",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settings(servers: &[&str], name: &str, secret: &str) -> Settings {
+        Settings {
+            servers: servers.iter().map(|s| s.to_string()).collect(),
+            name: name.into(),
+            secret: secret.into(),
+        }
+    }
+
+    #[test]
+    fn validation() {
+        let cases = [
+            (settings(&[], "", ""), true),
+            (settings(&["tcp://example.org:11010"], "kyokai", "s"), true),
+            (settings(&["wss://example.org/et"], "kyokai", ""), true),
+            (settings(&["tcp://example.org:11010"], "", ""), false),
+            (settings(&[], "kyokai", ""), false),
+            (settings(&["faketcp://example.org:1"], "n", ""), false),
+            (settings(&["example.org:11010"], "n", ""), false),
+            (settings(&["tcp://"], "n", ""), false),
+            (settings(&["tcp://a b"], "n", ""), false),
+            (settings(&["tcp://a"], "n\n", ""), false),
+            (settings(&["tcp://a"; 9], "n", ""), false),
+        ];
+        for (s, ok) in cases {
+            assert_eq!(validate(&s).is_ok(), ok, "{:?} {:?}", s.servers, s.name);
+        }
+    }
+
+    #[test]
+    fn config_quotes_user_input() {
+        use easytier_core::config::toml::ConfigLoader;
+        let name = "n\"\nnetwork_secret = \"x";
+        let s = settings(&["tcp://a:1"], name, "p\"w\\");
+        let cfg = config(&s, "100000002").unwrap();
+        let identity = cfg.get_network_identity();
+        assert_eq!(identity.network_name, name);
+        assert_eq!(identity.network_secret.as_deref(), Some("p\"w\\"));
+        assert_eq!(cfg.get_hostname(), "Kyokai-100000002");
+    }
+
+    #[test]
+    fn instance_id_is_stable() {
+        assert_eq!(
+            instance_id("100000002").to_string(),
+            "d409b924-1be1-5f9e-b719-f4bdaa8608b1"
+        );
+    }
+}

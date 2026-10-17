@@ -11,7 +11,24 @@ targets = [
 
 [advisories]
 version = 2
-ignore = []
+# Each comes in through EasyTier, whose pins exclude the fixed releases;
+# revisited on every EasyTier update (doc/en-us/ci-cd.md).
+ignore = [
+  # hickory-proto 0.25: NSEC3 validation loop. Only DNSSEC validation, which
+  # Kyokai does not enable (the resolver answers STUN server lookups).
+  { id = "RUSTSEC-2026-0118", reason = "DNSSEC validation is not enabled" },
+  # hickory-proto 0.25: O(n^2) name compression when encoding. Kyokai only
+  # encodes its own small STUN lookups.
+  { id = "RUSTSEC-2026-0119", reason = "only small, self-made queries are encoded" },
+  # zip 8: extraction flaws. A build dependency of easytier-proto for its
+  # protoc download, which never runs: the build sets PROTOC.
+  { id = "RUSTSEC-2026-0367", reason = "build-time only; PROTOC is set" },
+  { id = "RUSTSEC-2026-0368", reason = "build-time only; PROTOC is set" },
+  { id = "RUSTSEC-2026-0369", reason = "build-time only; PROTOC is set" },
+  # Unmaintained, no known vulnerability.
+  { id = "RUSTSEC-2021-0153", reason = "encoding: unmaintained, used by EasyTier" },
+  { id = "RUSTSEC-2024-0436", reason = "paste: unmaintained proc macro" },
+]
 
 [licenses]
 version = 2
@@ -33,7 +50,28 @@ allow = [
   "LGPL-3.0-only",
   "LGPL-3.0-or-later",
   "AGPL-3.0-only",
+  # Permissive licenses in EasyTier's graph: smoltcp and managed (0BSD),
+  # libbz2-rs-sys (bzip2), webpki-roots (CDLA-Permissive-2.0).
+  "0BSD",
+  "bzip2-1.0.6",
+  "CDLA-Permissive-2.0",
 ]
+
+# EasyTier's crates carry no license field; the repository is LGPL-3.0.
+[[licenses.clarify]]
+crate = "easytier"
+expression = "LGPL-3.0-only"
+license-files = []
+
+[[licenses.clarify]]
+crate = "easytier-core"
+expression = "LGPL-3.0-only"
+license-files = []
+
+[[licenses.clarify]]
+crate = "easytier-proto"
+expression = "LGPL-3.0-only"
+license-files = []
 
 [licenses.private]
 # The workspace's own crates (publish = false).
@@ -47,4 +85,10 @@ wildcards = "deny"
 unknown-registry = "deny"
 unknown-git = "deny"
 # EasyTier is a git dependency pinned by commit (third_party/upstream.json).
-allow-git = ["https://github.com/EasyTier/EasyTier"]
+allow-git = [
+  "https://github.com/EasyTier/EasyTier",
+  # EasyTier's forks, pinned through Cargo.lock.
+  "https://github.com/EasyTier/service-manager-rs.git",
+  "https://github.com/EasyTier/tokio-websockets",
+  "https://github.com/EasyTier/windivert-rust.git",
+]

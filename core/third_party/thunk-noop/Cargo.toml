@@ -1,0 +1,30 @@
+# Stands in for EasyTier's `thunk-rs` build dependency (core/Cargo.toml [patch]).
+# The real crate downloads VC-LTL and YY-Thunks unverified and relinks x86/x64
+# Windows binaries against msvcrt.dll for Windows 7; Kyokai supports neither,
+# so the build keeps the static C runtime on every architecture.
+[package]
+name = "thunk-rs"
+version = "0.3.5"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+name = "thunk"
+path = "src/lib.rs"
+
+# The real crate's features, accepted and ignored.
+[features]
+default = []
+xp = []
+vista = []
+win7 = []
+win8 = []
+win10_10240 = []
+win10_19041 = []
+vc_ltl_only = []
+lib = []
+subsystem_windows = []
+windows_xp = ["xp"]
+windows_vista = ["vista"]
+win10 = ["win10_10240"]

@@ -19,6 +19,7 @@ type page int
 
 const (
 	pageHome page = iota
+	pageNetwork
 	pageSettings
 )
 
@@ -48,6 +49,9 @@ type App struct {
 	password     string
 	passwordFor  uint64 // the serial the fetched password belongs to
 	showPassword bool
+
+	// Network page: the settings form (network.go).
+	net netForm
 
 	// View state.
 	page         page
@@ -189,6 +193,8 @@ func (a *App) View(c *ui.Context) {
 			a.sidebar(c)
 			ui.Scroll(c).Grow(1).Fill().Padding(24).Gap(gap).Children(func() {
 				switch pg {
+				case pageNetwork:
+					a.networkView(c)
 				case pageSettings:
 					a.settingsView(c)
 				default:
