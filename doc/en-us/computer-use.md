@@ -99,6 +99,32 @@ twice with one idempotency key starts one task.
 
 ### Providers
 
+The host's user sets up **sources** (Settings of the AI page; `ai.json`): each has an id, a name,
+the template it came from, a protocol, a base URL and the models used from it, and the task uses one
+chosen model of one source. A new host has two: Claude (`https://api.anthropic.com/v1`) and OpenAI
+(`https://api.openai.com/v1`). Templates add OpenRouter, Google Gemini, Groq, Together, Fireworks,
+Deep Infra, Mistral, xAI, Moonshot, Z.ai / BigModel, Alibaba Cloud Model Studio, SiliconFlow,
+Volcengine Ark, MiniMax, StepFun, Baidu Qianfan, Tencent Hunyuan, NVIDIA NIM, Hugging Face,
+GitHub Models, Ollama, LM Studio and llama.cpp server (MyApps-AI's catalog, keeping the APIs that
+take images and tool calls; sites with several endpoints offer them by name); Custom takes any
+address and protocol. A base URL is HTTPS, or plain HTTP only to this computer (`localhost`,
+`127.0.0.0/8`, `::1`), because screenshots go there; such a local chat server needs no key. Each
+source's key is `ai.<id>.key` in the secrets store, and removing a source removes its key.
+**List models** asks a source for its models (`GET <base>/models`; OpenAI-style, Ollama's and
+OpenRouter's lists, without embedding, speech, image and moderation models) only when the user
+asks; nothing is fetched by itself.
+
+| Protocol | Used by | Request |
+|---|---|---|
+| `anthropic` | Claude | Messages API with the computer toolset (below) |
+| `openai-responses` | OpenAI | Responses API with the `computer` tool (below) |
+| `openai-chat` | every other template, Custom | chat completions with Kyokai's actions as function tools named and shaped like the computer toolset's members (`left_click` with `coordinate`, `key` with `text`, `scroll` with `scroll_direction` and `scroll_amount`, …), so one parser checks all three; the screen goes in user messages as an image, each call is answered with a `tool` message and the screen after the batch follows; only the newest 3 screenshots stay in the history. The model must accept images and call tools |
+
+Models are shown as OpenRouter writes them, `Vendor: Model` (`Anthropic: Claude Opus 5.5`,
+`Qwen: Qwen2.5 VL 72B Instruct`), with the source after a model reached through another one; the
+name comes from the provider's own list or, by rule, from the id (MyApps-AI's naming rules, ported
+in `internal/gui/modelname.go`).
+
 | | Claude | OpenAI |
 |---|---|---|
 | Request | Messages API with `computer_toolset_20260801`, adaptive thinking with progress notes, effort `high`, server-side fallbacks, old tool results cleared by the server after 100,000 input tokens (the newest 5 stay) | Responses API with the `computer` tool, `previous_response_id`, `truncation: "auto"`, the instructions on every request |
@@ -174,9 +200,10 @@ Ctrl+Alt+Shift+Esc (the emergency stop, while a task runs), the tray's Stop AI t
 
 ### History and settings
 
-`ai.json` in the state directory holds the provider, the two models and the approval policy; the
-keys live in the secrets store (`ai.openai.key`, `ai.claude.key`) and are never shown again or
-sent anywhere but to their provider. `ai-tasks.json` keeps the finished tasks — the instruction,
+`ai.json` in the state directory holds the sources, the chosen model and the approval policy (a
+file from the first versions, with one provider and a model each for Claude and OpenAI, is read
+into the two default sources); the keys live in the secrets store (`ai.<source>.key`) and are never
+shown again or sent anywhere but to their source. `ai-tasks.json` keeps the finished tasks — the instruction,
 the model's text and progress notes, the actions and what became of them, never a screenshot — up
 to 100; the AI page clears it. A finished task's conversation stays in memory, so a reply
 continues it until the engine stops.

@@ -63,7 +63,8 @@
 `session.connect`（`{device_id, password, want}`；立即返回会话 id，进度见状态）、`session.close`、`request.decide`
 （`{id, allow, permissions}`）、`trusted.list`、`trusted.remove`、`host.forget`、`identity.export`（`{passphrase}` → `{document}`）、`identity.import`
 （`{document, passphrase}`）、`identity.reset`、`device.set_name`（`{name}`；"" 表示使用电脑的名称；状态中带有 `name` 与本机的 `about`）、`trusted.unattended`（`{key, days}`；0 表示停止）、`store.export`（`{passphrase}` → `{document}`）、`store.import`（`{document, passphrase}`）、`store.clear`（切换运行方式时使用，[run-modes.md](run-modes.md)）、`host.serve`（`{serve}`：`all`、`unattended` 或 `none`，由引擎依据运行方式设定），以及 AI 任务的方法（[computer-use.md](computer-use.md)）：`ai.settings.get`、
-`ai.settings.set`（`{provider?, openai_model?, claude_model?, approval?}`）、`ai.key.set`（`{provider, key}`，null 表示移除；密钥从不返回）、
+`ai.settings.set`（`{sources?, model?: {source, id}, approval?}`；答复按来源附上 `keys`）、`ai.key.set`（`{source, key}`，null 表示移除；密钥从不返回）、
+`ai.models.list`（`{source}` → `{models}`，向来源查询）、
 `ai.task.start`（`{key, instruction}` → `{id}`；key 使其幂等）、`ai.task.reply`（`{id, text}`）、`ai.task.pause`、`ai.task.resume`、
 `ai.task.cancel`（`{id}`）、`ai.task.decide`（`{id, approve}`）、`ai.tasks`（最新的在前）、`ai.history.clear`、`ai.stop`（取消所有任务）。
 状态中还包含 `permanent_password`、`requests`（待处理的被控端确认）、`sessions`、`recent`（连接过的被控端，最新的在前）以及

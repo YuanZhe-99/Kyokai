@@ -625,18 +625,39 @@ fn call(input: &[u8]) -> Result<Value, String> {
         "ai.settings.get" => with_core(|c| c.ctx.ai.settings()),
         "ai.settings.set" => try_core(|c| c.ctx.ai.set_settings(&req.params)),
         "ai.key.set" => {
-            // {"provider": "claude", "key": "…"} stores it, {"key": null} removes it.
-            let provider: ai::Provider = serde_json::from_value(req.params["provider"].take())
-                .map_err(|e| format!("bad provider: {e}"))?;
+            // {"source": "claude", "key": "…"} stores it, {"key": null} removes
+            // it (`provider` is the first versions' name of the field).
+            let source = req.params["source"]
+                .as_str()
+                .or(req.params["provider"].as_str())
+                .ok_or("bad source")?
+                .to_owned();
             let key: Option<zeroize::Zeroizing<String>> =
                 serde_json::from_value(req.params["key"].take())
                     .map_err(|e| format!("bad key: {e}"))?;
             try_core(|c| {
                 c.ctx
                     .ai
-                    .set_key(provider, key.as_deref().map(String::as_str))?;
+                    .set_key(&source, key.as_deref().map(String::as_str))?;
                 Ok(c.ctx.ai.settings())
             })
+        }
+        "ai.models.list" => {
+            // Asks the source for its models, only when the user asks.
+            let source = req.params["source"]
+                .as_str()
+                .ok_or("bad source")?
+                .to_owned();
+            let ai = {
+                let guard = CORE.lock().map_err(|_| "core state poisoned")?;
+                guard
+                    .as_ref()
+                    .ok_or("the core is not started")?
+                    .ctx
+                    .ai
+                    .clone()
+            };
+            ai.list_models(&source).map(|m| json!({"models": m}))
         }
         "ai.task.start" => {
             let key = req.params["key"].as_str().unwrap_or("").to_owned();

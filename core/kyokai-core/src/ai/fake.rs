@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::desktop::{Desktop, Frame};
-use super::{Ai, Provider, screens, task::testing};
+use super::{Ai, screens, task::testing};
 use crate::input::{Event, LocalInput, PointerAction};
 use crate::store::Secrets;
 
@@ -185,10 +185,23 @@ pub fn rig(name: &str, provider_kind: &str, url: &str) -> Rig {
         Arc::new(move || Ok(Box::new(Fake(shared.clone())) as Box<dyn Desktop>)),
         url.into(),
     );
-    ai.set_settings(&json!({"provider": provider_kind}))
+    // `claude` and `openai` are the default sources; `chat` adds an
+    // OpenAI-compatible one.
+    let mut sources = ai.settings()["sources"].clone();
+    if provider_kind == "chat" {
+        sources.as_array_mut().unwrap().push(json!({"id": "chat", "name": "Chat", "template": "custom",
+            "protocol": "openai-chat", "url": "https://chat.example", "models": [{"id": "vision-model"}]}));
+    }
+    let model = sources
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == provider_kind)
+        .unwrap()["models"][0]["id"]
+        .clone();
+    ai.set_settings(&json!({"sources": sources, "model": {"source": provider_kind, "id": model}}))
         .unwrap();
-    let kind: Provider = serde_json::from_value(json!(provider_kind)).unwrap();
-    ai.set_key(kind, Some(TEST_KEY)).unwrap();
+    ai.set_key(provider_kind, Some(TEST_KEY)).unwrap();
     Rig {
         ai: Arc::new(ai),
         log,

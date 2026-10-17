@@ -16,7 +16,9 @@ use zeroize::Zeroizing;
 
 use super::action::{self, Action, Key};
 use super::desktop::{self, Desktop, Frame, Step};
-use super::{Client, Conversation, End, Endpoint, Outcome, Provider, Shot};
+use super::{
+    Client, Conversation, End, Endpoint, Outcome, Protocol, Shot, Source, default_sources, key_name,
+};
 use crate::store::Secrets;
 
 /// When a task asks the host user before acting.
@@ -34,21 +36,157 @@ pub enum Approval {
 /// in the secrets store).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
-    pub provider: Provider,
-    pub openai_model: String,
-    pub claude_model: String,
+    /// The providers set up here.
+    pub sources: Vec<Source>,
+    /// The model tasks use.
+    pub model: ModelRef,
     pub approval: Approval,
+}
+
+/// One model of one source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelRef {
+    pub source: String,
+    pub id: String,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            provider: Provider::Claude,
-            openai_model: Provider::Openai.default_model().into(),
-            claude_model: Provider::Claude.default_model().into(),
+            sources: default_sources(),
+            model: ModelRef {
+                source: "claude".into(),
+                id: super::claude::DEFAULT_MODEL.into(),
+            },
             approval: Approval::Flagged,
         }
     }
+}
+
+/// Longest source name, model id and URL accepted.
+const MAX_NAME: usize = 64;
+const MAX_MODEL: usize = 128;
+const MAX_URL: usize = 256;
+
+impl Settings {
+    /// Reads `ai.json`, also as the first versions wrote it (one provider
+    /// and a model for each of Claude and OpenAI).
+    fn load(path: &Path) -> Settings {
+        let Some(v) = read_json::<Value>(path) else {
+            return Settings::default();
+        };
+        if v.get("sources").is_some() {
+            return serde_json::from_value(v).unwrap_or_default();
+        }
+        let mut s = Settings::default();
+        for (source, field) in [("claude", "claude_model"), ("openai", "openai_model")] {
+            if let (Some(id), Some(src)) = (
+                v[field].as_str().filter(|m| !m.trim().is_empty()),
+                s.sources.iter_mut().find(|x| x.id == source),
+            ) {
+                src.models[0].id = id.to_string();
+            }
+        }
+        if let Some(p) = v["provider"]
+            .as_str()
+            .filter(|p| *p == "openai" || *p == "claude")
+        {
+            let src = s
+                .sources
+                .iter()
+                .find(|x| x.id == p)
+                .expect("default source");
+            s.model = ModelRef {
+                source: p.into(),
+                id: src.models[0].id.clone(),
+            };
+        }
+        if let Ok(a) = serde_json::from_value(v["approval"].clone()) {
+            s.approval = a;
+        }
+        s
+    }
+
+    /// Checks settings at the local API boundary.
+    fn validate(&self) -> Result<(), String> {
+        let mut ids = std::collections::HashSet::new();
+        for s in &self.sources {
+            let id_ok = !s.id.is_empty()
+                && s.id.len() <= 32
+                && s.id
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+            if !id_ok || !ids.insert(s.id.as_str()) {
+                return Err(format!("bad or repeated source id {:?}", s.id));
+            }
+            if s.name.trim().is_empty()
+                || s.name.chars().count() > MAX_NAME
+                || s.name.chars().any(char::is_control)
+            {
+                return Err(format!("the source {:?} needs a short name", s.id));
+            }
+            check_url(&s.url)?;
+            if s.models.is_empty() {
+                return Err(format!("{} has no model", s.name));
+            }
+            let mut models = std::collections::HashSet::new();
+            for m in &s.models {
+                let ok = !m.id.is_empty()
+                    && m.id.len() <= MAX_MODEL
+                    && !m.id.chars().any(|c| c.is_whitespace() || c.is_control())
+                    && m.name.chars().count() <= MAX_MODEL
+                    && !m.name.chars().any(char::is_control);
+                if !ok || !models.insert(m.id.as_str()) {
+                    return Err(format!("bad or repeated model {:?} in {}", m.id, s.name));
+                }
+            }
+        }
+        if self
+            .source(&self.model.source)
+            .is_none_or(|s| !s.models.iter().any(|m| m.id == self.model.id))
+        {
+            return Err("choose one of the sources' models".into());
+        }
+        Ok(())
+    }
+
+    fn source(&self, id: &str) -> Option<&Source> {
+        self.sources.iter().find(|s| s.id == id)
+    }
+}
+
+/// Checks a source's base URL: HTTPS, or HTTP only to this computer (a
+/// local server such as Ollama or LM Studio), since screenshots go there.
+fn check_url(url: &str) -> Result<(), String> {
+    let bad = || format!("{url:?} is not a usable address");
+    if url.len() > MAX_URL {
+        return Err(bad());
+    }
+    let u = reqwest::Url::parse(url).map_err(|_| bad())?;
+    match u.scheme() {
+        "https" if u.host().is_some() => Ok(()),
+        "http" if is_loopback(&u) => Ok(()),
+        "http" => Err("plain HTTP only reaches this computer; use HTTPS".into()),
+        _ => Err(bad()),
+    }
+}
+
+/// Whether a URL names this computer.
+fn is_loopback(u: &reqwest::Url) -> bool {
+    match u.host_str() {
+        Some(h) if h.eq_ignore_ascii_case("localhost") => true,
+        Some(h) => h
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|a| a.is_loopback()),
+        None => false,
+    }
+}
+
+/// Whether a source may go without a key: a chat server on this computer.
+fn keyless(s: &Source) -> bool {
+    s.protocol == Protocol::OpenaiChat && reqwest::Url::parse(&s.url).is_ok_and(|u| is_loopback(&u))
 }
 
 /// A task's state (doc/en-us/computer-use.md has the diagram).
@@ -150,7 +288,10 @@ pub struct Task {
     /// host's own user.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
-    pub provider: Provider,
+    /// The source the task uses (`provider` in the first versions, whose
+    /// values are the default sources' ids).
+    #[serde(alias = "provider")]
+    pub source: String,
     pub model: String,
     pub state: State,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -237,7 +378,7 @@ impl Ai {
             .enable_all()
             .build()
             .map_err(|e| format!("AI runtime: {e}"))?;
-        let settings = read_json(&dir.join(SETTINGS)).unwrap_or_default();
+        let settings = Settings::load(&dir.join(SETTINGS));
         let tasks: Vec<Task> = read_json(&dir.join(HISTORY)).unwrap_or_default();
         Ok(Ai {
             shared: Arc::new(Shared {
@@ -254,16 +395,24 @@ impl Ai {
         })
     }
 
-    /// The settings and which providers have a key (never the key).
+    /// The settings and which sources have a key (never the key).
     pub fn settings(&self) -> Value {
         let s = self.shared.settings.lock().expect("settings").clone();
-        let has = |p: Provider| self.shared.secrets.get(p.key_name()).is_some();
+        let keys: serde_json::Map<String, Value> = s
+            .sources
+            .iter()
+            .map(|x| {
+                (
+                    x.id.clone(),
+                    json!(self.shared.secrets.get(&key_name(&x.id)).is_some()),
+                )
+            })
+            .collect();
         json!({
-            "provider": s.provider,
-            "openai_model": s.openai_model,
-            "claude_model": s.claude_model,
+            "sources": s.sources,
+            "model": s.model,
             "approval": s.approval,
-            "keys": {"openai": has(Provider::Openai), "claude": has(Provider::Claude)},
+            "keys": keys,
         })
     }
 
@@ -281,21 +430,65 @@ impl Ai {
             }
             let new: Settings =
                 serde_json::from_value(doc).map_err(|e| format!("bad AI settings: {e}"))?;
-            if new.openai_model.trim().is_empty() || new.claude_model.trim().is_empty() {
-                return Err("a model name is needed".into());
-            }
+            new.validate()?;
             write_json(&self.shared.dir.join(SETTINGS), &new)?;
+            // A removed source takes its key with it.
+            for old in &s.sources {
+                if new.source(&old.id).is_none() {
+                    let _ = self.shared.secrets.remove(&key_name(&old.id));
+                }
+            }
             *s = new;
         }
         Ok(self.settings())
     }
 
-    /// Stores a provider's API key, or removes it (`None`).
+    /// The models a source lists (`GET <base>/models`), for the user to
+    /// pick from; nothing is saved.
+    /// Returns: the models, or why they could not be listed.
+    pub fn list_models(&self, source: &str) -> Result<Vec<super::Model>, String> {
+        let s = self
+            .shared
+            .settings
+            .lock()
+            .expect("settings")
+            .source(source)
+            .cloned()
+            .ok_or("no such source")?;
+        let key = self.shared.secrets.get(&key_name(&s.id));
+        if key.is_none() && !keyless(&s) {
+            return Err("add an API key for the provider first".into());
+        }
+        let url = format!("{}/models", s.url.trim_end_matches('/'));
+        let client = self.client.clone();
+        let doc = self.rt.as_ref().expect("runtime").block_on(async move {
+            client
+                .get(
+                    &url,
+                    s.protocol,
+                    key.as_deref().map(String::as_str).unwrap_or(""),
+                )
+                .await
+        })?;
+        Ok(super::parse_models(&doc))
+    }
+
+    /// Stores a source's API key, or removes it (`None`).
     /// Side effects: writes the secrets store; never logs the key.
-    pub fn set_key(&self, provider: Provider, key: Option<&str>) -> Result<(), String> {
+    pub fn set_key(&self, source: &str, key: Option<&str>) -> Result<(), String> {
+        if self
+            .shared
+            .settings
+            .lock()
+            .expect("settings")
+            .source(source)
+            .is_none()
+        {
+            return Err("no such source".into());
+        }
         match key.map(str::trim) {
-            Some("") | None => self.shared.secrets.remove(provider.key_name()),
-            Some(k) => self.shared.secrets.set(provider.key_name(), k),
+            Some("") | None => self.shared.secrets.remove(&key_name(source)),
+            Some(k) => self.shared.secrets.set(&key_name(source), k),
         }
     }
 
@@ -310,8 +503,10 @@ impl Ai {
             return Err("describe the task in a few sentences".into());
         }
         let settings = self.shared.settings.lock().expect("settings").clone();
-        let provider = settings.provider;
-        if self.shared.secrets.get(provider.key_name()).is_none() {
+        let source = settings
+            .source(&settings.model.source)
+            .ok_or("choose a model first")?;
+        if !keyless(source) && self.shared.secrets.get(&key_name(&source.id)).is_none() {
             return Err("add an API key for the provider first".into());
         }
         let id = {
@@ -332,11 +527,8 @@ impl Ai {
                 key: key.into(),
                 instruction: instruction.into(),
                 origin: origin.map(str::to_string),
-                provider,
-                model: match provider {
-                    Provider::Openai => settings.openai_model,
-                    Provider::Claude => settings.claude_model,
-                },
+                source: settings.model.source.clone(),
+                model: settings.model.id.clone(),
                 state: State::Running,
                 paused: None,
                 error: None,
@@ -776,10 +968,10 @@ pub fn open_screen() -> Result<Box<dyn Desktop>, String> {
 /// Returns: the conversation when the model finished (so the task can
 /// continue later).
 async fn run(shared: &Arc<Shared>, client: &Client, id: u64) -> Result<Conversation, Stop> {
-    let (provider, model, instruction, reply, conversation) = shared
+    let (source, model, instruction, reply, conversation) = shared
         .edit(id, |t| {
             (
-                t.provider,
+                t.source.clone(),
                 t.model.clone(),
                 t.instruction.clone(),
                 t.reply.take(),
@@ -787,13 +979,27 @@ async fn run(shared: &Arc<Shared>, client: &Client, id: u64) -> Result<Conversat
             )
         })
         .ok_or(Stop::Cancelled)?;
-    let key: Zeroizing<String> = shared
-        .secrets
-        .get(provider.key_name())
-        .ok_or_else(|| "the provider's API key is missing".to_string())?;
+    let source = shared
+        .settings
+        .lock()
+        .expect("settings")
+        .source(&source)
+        .cloned()
+        .ok_or_else(|| "the task's provider was removed".to_string())?;
+    let key: Zeroizing<String> = match shared.secrets.get(&key_name(&source.id)) {
+        Some(k) => k,
+        None if keyless(&source) => Zeroizing::new(String::new()),
+        None => return Err("the provider's API key is missing".to_string().into()),
+    };
     let endpoint = Endpoint {
-        provider,
-        url: shared.url.clone().unwrap_or_else(|| provider.url().into()),
+        protocol: source.protocol,
+        url: shared.url.clone().unwrap_or_else(|| {
+            format!(
+                "{}{}",
+                source.url.trim_end_matches('/'),
+                source.protocol.path()
+            )
+        }),
     };
     let desk: Desk = Arc::new(Mutex::new((shared.open_desktop)()?));
     let watcher = tokio::spawn(watch(shared.clone(), id, desk.clone()));
@@ -858,7 +1064,7 @@ async fn drive(
             c
         }
         _ => Conversation::new(
-            endpoint.provider,
+            endpoint.protocol,
             &start.model,
             &system_prompt(seen.shot.width, seen.shot.height),
             &start.instruction,

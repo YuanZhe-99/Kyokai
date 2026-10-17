@@ -25,7 +25,7 @@ import (
 )
 
 // ProtocolVersion is bumped when a request or response changes meaning.
-const ProtocolVersion = 1
+const ProtocolVersion = 2
 
 // SocketEnv overrides the socket path (tests, development).
 const SocketEnv = "KYOKAI_SOCKET"
@@ -70,6 +70,7 @@ const (
 	RequestStoreImport        RequestType = "store.import"           // take over a store this device's other engine sealed (Request.Backup)
 	RequestStoreClear         RequestType = "store.clear"            // forget the moved store and stop: the other engine holds it now
 	RequestHelperUpdate       RequestType = "helper.update"          // the helper installs the signed bundle in Request.From and restarts
+	RequestAIModels           RequestType = "ai.models.list"         // the models a source lists (Request.Source → Response.AIModels), only when asked
 	RequestMedia              RequestType = "session.media"          // a controller session's media (Request.ID); the connection then carries packets
 	RequestSessionAttach      RequestType = "session.attach"         // streaming; see package doc
 	RequestAISettingsGet      RequestType = "ai.settings.get"        // the AI settings and which keys are stored
@@ -115,6 +116,8 @@ type Request struct {
 	DeviceID string `json:"device_id,omitempty"`
 	// Name is the friendly name of RequestNameSet.
 	Name *string `json:"name,omitempty"`
+	// Source names an AI source (RequestAIModels).
+	Source string `json:"source,omitempty"`
 	// From is the app folder whose signed bundle RequestHelperUpdate
 	// installs.
 	From string `json:"from,omitempty"`
@@ -134,26 +137,47 @@ type Request struct {
 // AISettings are the host's AI settings. In a request, empty fields stay
 // as they are; Keys is only in a response.
 type AISettings struct {
-	// Provider is "claude" or "openai".
-	Provider    string `json:"provider,omitempty"`
-	OpenAIModel string `json:"openai_model,omitempty"`
-	ClaudeModel string `json:"claude_model,omitempty"`
+	// Sources are the providers set up on this host.
+	Sources []AISource `json:"sources,omitempty"`
+	// Model is the one tasks use.
+	Model *AIModelRef `json:"model,omitempty"`
 	// Approval is "flagged" or "every-action".
-	Approval string  `json:"approval,omitempty"`
-	Keys     *AIKeys `json:"keys,omitempty"`
+	Approval string `json:"approval,omitempty"`
+	// Keys says which sources have a stored key (a response only); the
+	// keys never leave the engine.
+	Keys map[string]bool `json:"keys,omitempty"`
 }
 
-// AIKeys says which providers have a stored key; the keys never leave the
-// engine.
-type AIKeys struct {
-	OpenAI bool `json:"openai"`
-	Claude bool `json:"claude"`
+// AISource is a model provider: a template's endpoint or the user's own,
+// and the models used from it (doc/en-us/computer-use.md, "Providers").
+type AISource struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Template string `json:"template"`
+	// Protocol is "anthropic", "openai-responses" or "openai-chat".
+	Protocol string `json:"protocol"`
+	// URL is the base URL (`https://api.anthropic.com/v1`).
+	URL    string    `json:"url"`
+	Models []AIModel `json:"models"`
 }
 
-// AIKey stores (Key set) or removes (Key nil) a provider's API key.
+// AIModel is a model of a source: the id it expects and the name it lists,
+// if any.
+type AIModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+}
+
+// AIModelRef names one model of one source.
+type AIModelRef struct {
+	Source string `json:"source"`
+	ID     string `json:"id"`
+}
+
+// AIKey stores (Key set) or removes (Key nil) a source's API key.
 type AIKey struct {
-	Provider string  `json:"provider"`
-	Key      *string `json:"key"`
+	Source string  `json:"source"`
+	Key    *string `json:"key"`
 }
 
 // AITaskRequest starts a task (Key, Instruction), continues one (Text) or
@@ -173,9 +197,10 @@ type AITask struct {
 	Instruction string `json:"instruction"`
 	// Origin is the Device ID of the controller that started the task,
 	// empty for this computer's own user.
-	Origin   string `json:"origin,omitempty"`
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
+	Origin string `json:"origin,omitempty"`
+	// Source is the AI source the task uses.
+	Source string `json:"source"`
+	Model  string `json:"model"`
 	// State is "running", "approval", "paused", "done", "failed" or
 	// "cancelled".
 	State string `json:"state"`
@@ -278,6 +303,8 @@ type Response struct {
 	AISettings *AISettings `json:"ai_settings,omitempty"`
 	// AITasks answers RequestAITasks.
 	AITasks []AITask `json:"ai_tasks,omitempty"`
+	// AIModels are the models a source listed (RequestAIModels).
+	AIModels []AIModel `json:"ai_models,omitempty"`
 }
 
 // TrustedDevice is a controller this host accepted before.

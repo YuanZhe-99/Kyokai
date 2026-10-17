@@ -5,12 +5,16 @@
   "AIActionSend": "Send",
   "AIActionStart": "Start",
   "AIActionStop": "Stop",
+  "AIAddModel": "Add model",
+  "AIAddSource": "Add provider",
   "AIApproval": "Ask before acting",
   "AIApprovalBanner": "The AI task is waiting for your approval.",
   "AIApprovalEveryOption": "Every action",
   "AIApprovalFlagged": "The provider flagged this step:",
   "AIApprovalFlaggedOption": "Flagged steps and system shortcuts",
   "AIApprovalTitle": "Allow this action?",
+  "AIChatNote": "Needs a model that accepts images and calls tools; Kyokai offers its actions as tools.",
+  "AICustom": "Custom",
   "AIDoClick": "Click at {x}, {y}",
   "@AIDoClick": {
     "placeholders": {
@@ -151,13 +155,26 @@
     }
   },
   "AIDoZoom": "Look closer at part of the screen",
+  "AIEditSource": "Edit",
   "AIHistoryClear": "Clear history",
   "AIHistoryEmpty": "No earlier tasks.",
   "AIHistoryTitle": "Task history",
   "AIKey": "API key",
   "AIKeyMissing": "No key yet.",
+  "AIKeyShort": "key stored",
   "AIKeyStored": "A key is stored. Leave this empty to keep it.",
+  "AIListModels": "List models",
   "AIModel": "Model",
+  "AIModelCount": "Models: {count}",
+  "@AIModelCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "AIModelID": "model id, as the provider names it",
+  "AIModels": "Models",
   "AINeedKey": "Add an API key for {provider} below to start a task.",
   "@AINeedKey": {
     "placeholders": {
@@ -167,13 +184,18 @@
     }
   },
   "AINewTask": "New task",
+  "AINoKeyNeeded": "no key needed",
+  "AINoKeyShort": "no key",
+  "AINoModelsListed": "The provider listed no models that can operate a desktop.",
   "AINotifyApprovalBody": "Allow or deny its next action in Kyokai.",
   "AINotifyApprovalTitle": "The AI task is waiting",
   "AIOutcomeDeclined": "declined",
   "AIOutcomeFailed": "failed",
   "AIOutcomePaused": "not run (paused)",
   "AIOutcomeSkipped": "skipped",
-  "AIProvider": "Provider",
+  "AIProtocolAnthropic": "Anthropic",
+  "AIProtocolChat": "OpenAI-compatible",
+  "AIProtocolResponses": "OpenAI Responses",
   "AIRemoteBanner": "An AI task from {device} is working on this computer.",
   "@AIRemoteBanner": {
     "placeholders": {
@@ -182,12 +204,15 @@
       }
     }
   },
-  "AIRemoveKey": "Remove key",
   "AIReplyHint": "Reply to continue this task",
   "AIReview": "Review",
   "AISaved": "AI settings saved.",
   "AISettingsHint": "Tasks on this computer use this computer's key. It is kept in the secrets store here and never sent to other devices.",
-  "AISettingsTitle": "AI provider",
+  "AISettingsTitle": "AI providers",
+  "AISourceAddress": "Address",
+  "AISourceFormat": "Format",
+  "AISourceName": "Name",
+  "AISources": "Providers",
   "AIStateApproval": "Waiting for your approval",
   "AIStateCancelled": "Stopped",
   "AIStateDone": "Done",

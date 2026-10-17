@@ -18,8 +18,8 @@
 //	kyokai-svc ctl helper-update --from DIR (the helper installs the signed bundle in DIR)
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
 //	kyokai-svc ctl ai | ai-tasks | ai-clear | ai-stop
-//	kyokai-svc ctl ai-set [--provider P] [--openai-model M] [--claude-model M] [--approval A]
-//	kyokai-svc ctl ai-key --provider P [--remove]
+//	kyokai-svc ctl ai-set [--model SOURCE:MODEL] [--approval A] [--sources-file F.json]
+//	kyokai-svc ctl ai-key --source S [--remove] | ai-models --source S
 //	kyokai-svc ctl ai-start --text T | ai-reply --id N --text T
 //	kyokai-svc ctl ai-pause | ai-resume | ai-cancel | ai-approve | ai-decline --id N
 //
@@ -178,9 +178,9 @@ func ctl(args []string) error {
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
 	fpsCap := fs.Int("fps", 0, "watch: ask for a frame-rate cap first")
 	click := fs.String("click", "", "watch: click at X,Y (fractions of the picture) after 2 s")
-	provider := fs.String("provider", "", "ai-set, ai-key: claude or openai")
-	openaiModel := fs.String("openai-model", "", "ai-set: the OpenAI model")
-	claudeModel := fs.String("claude-model", "", "ai-set: the Claude model")
+	source := fs.String("source", "", "ai-key, ai-models: the AI source's id")
+	model := fs.String("model", "", "ai-set: the model tasks use, as SOURCE:MODEL")
+	sourcesFile := fs.String("sources-file", "", "ai-set: a JSON list of AI sources replacing the current ones")
 	approval := fs.String("approval", "", "ai-set: flagged or every-action")
 	text := fs.String("text", "", "ai-start, ai-reply, watch: what the AI should do (watch: on the host)")
 	// The command comes first, its flags after it.
@@ -211,7 +211,7 @@ func ctl(args []string) error {
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
 		"forget": localapi.RequestHostForget, "backup": localapi.RequestIdentityExport,
 		"restore": localapi.RequestIdentityImport, "reset-identity": localapi.RequestIdentityReset,
-		"ai": localapi.RequestAISettingsGet, "ai-set": localapi.RequestAISettingsSet, "ai-key": localapi.RequestAIKeySet,
+		"ai": localapi.RequestAISettingsGet, "ai-set": localapi.RequestAISettingsSet, "ai-key": localapi.RequestAIKeySet, "ai-models": localapi.RequestAIModels,
 		"ai-start": localapi.RequestAITaskStart, "ai-reply": localapi.RequestAITaskReply, "ai-tasks": localapi.RequestAITasks,
 		"ai-pause": localapi.RequestAITaskPause, "ai-resume": localapi.RequestAITaskResume, "ai-cancel": localapi.RequestAITaskCancel,
 		"ai-approve": localapi.RequestAITaskDecide, "ai-decline": localapi.RequestAITaskDecide,
@@ -271,9 +271,27 @@ func ctl(args []string) error {
 			req.Backup.Document = string(doc)
 		}
 	case "ai-set":
-		req.AISettings = &localapi.AISettings{Provider: *provider, OpenAIModel: *openaiModel, ClaudeModel: *claudeModel, Approval: *approval}
+		req.AISettings = &localapi.AISettings{Approval: *approval}
+		if *model != "" {
+			s, id, ok := strings.Cut(*model, ":")
+			if !ok {
+				return errors.New("--model wants SOURCE:MODEL")
+			}
+			req.AISettings.Model = &localapi.AIModelRef{Source: s, ID: id}
+		}
+		if *sourcesFile != "" {
+			data, err := os.ReadFile(*sourcesFile)
+			if err != nil {
+				return err
+			}
+			if err := json.Unmarshal(data, &req.AISettings.Sources); err != nil {
+				return fmt.Errorf("%s: %w", *sourcesFile, err)
+			}
+		}
+	case "ai-models":
+		req.Source = *source
 	case "ai-key":
-		req.AIKey = &localapi.AIKey{Provider: *provider}
+		req.AIKey = &localapi.AIKey{Source: *source}
 		if !*remove {
 			k, ok := os.LookupEnv(aiKeyEnv)
 			if !ok {
@@ -334,8 +352,21 @@ func ctl(args []string) error {
 		fmt.Println("session", resp.ID)
 	case resp.AISettings != nil:
 		s := resp.AISettings
-		fmt.Printf("provider %s\nopenai model %s (key: %v)\nclaude model %s (key: %v)\napproval %s\n",
-			s.Provider, s.OpenAIModel, s.Keys != nil && s.Keys.OpenAI, s.ClaudeModel, s.Keys != nil && s.Keys.Claude, s.Approval)
+		if s.Model != nil {
+			fmt.Printf("model %s:%s\n", s.Model.Source, s.Model.ID)
+		}
+		fmt.Printf("approval %s\n", s.Approval)
+		for _, src := range s.Sources {
+			ids := make([]string, len(src.Models))
+			for i, m := range src.Models {
+				ids[i] = m.ID
+			}
+			fmt.Printf("source %s %q  %s  %s  key %v  models %s\n", src.ID, src.Name, src.Protocol, src.URL, s.Keys[src.ID], strings.Join(ids, ","))
+		}
+	case req.Type == localapi.RequestAIModels:
+		for _, m := range resp.AIModels {
+			fmt.Printf("%s  %s\n", m.ID, m.Name)
+		}
 	case req.Type == localapi.RequestAITasks:
 		for _, t := range resp.AITasks {
 			printTask(t)
@@ -356,7 +387,7 @@ func ctl(args []string) error {
 
 // printTask writes one AI task: its state, its actions and the model's text.
 func printTask(t localapi.AITask) {
-	fmt.Printf("task %d  %s  %s/%s  %q\n", t.ID, t.State, t.Provider, t.Model, t.Instruction)
+	fmt.Printf("task %d  %s  %s:%s  %q\n", t.ID, t.State, t.Source, t.Model, t.Instruction)
 	if t.Paused != "" {
 		fmt.Println("  paused:", t.Paused)
 	}

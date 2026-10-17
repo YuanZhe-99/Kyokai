@@ -3,6 +3,7 @@
 //! proposals are checked and executed here, one at a time.
 
 pub mod action;
+mod chat;
 mod claude;
 pub mod desktop;
 #[cfg(test)]
@@ -22,36 +23,88 @@ use std::time::Duration;
 
 use action::{Action, ParseError};
 
-/// A model provider.
+/// How a source is spoken to (doc/en-us/computer-use.md, "Providers").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum Provider {
-    Openai,
-    Claude,
+pub enum Protocol {
+    /// Anthropic's Messages API with the computer toolset (Claude).
+    Anthropic,
+    /// OpenAI's Responses API with the computer tool.
+    OpenaiResponses,
+    /// OpenAI-compatible chat completions with Kyokai's actions as function
+    /// tools: any model that accepts images and calls tools.
+    OpenaiChat,
 }
 
-impl Provider {
-    /// The secrets-store entry holding this provider's API key.
-    fn key_name(self) -> &'static str {
+impl Protocol {
+    /// The request's path below a source's base URL.
+    fn path(self) -> &'static str {
         match self {
-            Provider::Openai => "ai.openai.key",
-            Provider::Claude => "ai.claude.key",
+            Protocol::Anthropic => "/messages",
+            Protocol::OpenaiResponses => "/responses",
+            Protocol::OpenaiChat => "/chat/completions",
         }
     }
+}
 
-    fn url(self) -> &'static str {
-        match self {
-            Provider::Openai => openai::URL,
-            Provider::Claude => claude::URL,
-        }
-    }
+/// A model provider the host's user set up: a template's endpoint or their
+/// own, and the models they use from it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Source {
+    /// Stable id, also the name of its key's entry (`ai.<id>.key`).
+    pub id: String,
+    /// The name people see ("Claude", "OpenRouter").
+    pub name: String,
+    /// The template it came from ("anthropic", "openrouter", "custom").
+    #[serde(default)]
+    pub template: String,
+    pub protocol: Protocol,
+    /// The base URL, such as `https://api.anthropic.com/v1`.
+    pub url: String,
+    pub models: Vec<Model>,
+}
 
-    fn default_model(self) -> &'static str {
-        match self {
-            Provider::Openai => openai::DEFAULT_MODEL,
-            Provider::Claude => claude::DEFAULT_MODEL,
-        }
-    }
+/// A model of a source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Model {
+    /// The id the provider expects (`claude-opus-5-5`, `openai/gpt-5`).
+    pub id: String,
+    /// The name the provider lists, when it lists one.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+}
+
+/// The secrets-store entry holding a source's API key.
+pub fn key_name(source: &str) -> String {
+    format!("ai.{source}.key")
+}
+
+/// The two sources every host starts with.
+fn default_sources() -> Vec<Source> {
+    vec![
+        Source {
+            id: "claude".into(),
+            name: "Claude".into(),
+            template: "anthropic".into(),
+            protocol: Protocol::Anthropic,
+            url: claude::BASE_URL.into(),
+            models: vec![Model {
+                id: claude::DEFAULT_MODEL.into(),
+                name: String::new(),
+            }],
+        },
+        Source {
+            id: "openai".into(),
+            name: "OpenAI".into(),
+            template: "openai".into(),
+            protocol: Protocol::OpenaiResponses,
+            url: openai::BASE_URL.into(),
+            models: vec![Model {
+                id: openai::DEFAULT_MODEL.into(),
+                name: String::new(),
+            }],
+        },
+    ]
 }
 
 /// A screenshot as the model sees it: a base64 PNG and its size.
@@ -109,16 +162,20 @@ pub enum Outcome {
 enum Conversation {
     Openai(openai::Conversation),
     Claude(claude::Conversation),
+    Chat(chat::Conversation),
 }
 
 impl Conversation {
-    fn new(provider: Provider, model: &str, system: &str, task: &str, shot: &Shot) -> Self {
-        match provider {
-            Provider::Openai => {
+    fn new(protocol: Protocol, model: &str, system: &str, task: &str, shot: &Shot) -> Self {
+        match protocol {
+            Protocol::OpenaiResponses => {
                 Conversation::Openai(openai::Conversation::new(model, system, task, shot))
             }
-            Provider::Claude => {
+            Protocol::Anthropic => {
                 Conversation::Claude(claude::Conversation::new(model, system, task, shot))
+            }
+            Protocol::OpenaiChat => {
+                Conversation::Chat(chat::Conversation::new(model, system, task, shot))
             }
         }
     }
@@ -127,6 +184,7 @@ impl Conversation {
         match self {
             Conversation::Openai(c) => c.body(),
             Conversation::Claude(c) => c.body().clone(),
+            Conversation::Chat(c) => c.body(),
         }
     }
 
@@ -134,13 +192,14 @@ impl Conversation {
         match self {
             Conversation::Openai(c) => c.accept(response),
             Conversation::Claude(c) => c.accept(response),
+            Conversation::Chat(c) => c.accept(response),
         }
     }
 
-    /// Whether answering needs the screen after the batch (OpenAI answers
-    /// every call with one; Claude asks for screenshots itself).
+    /// Whether answering needs the screen after the batch (OpenAI and chat
+    /// answer every batch with one; Claude asks for screenshots itself).
     fn wants_final_shot(&self) -> bool {
-        matches!(self, Conversation::Openai(_))
+        matches!(self, Conversation::Openai(_) | Conversation::Chat(_))
     }
 
     fn answer(&mut self, outcomes: &[Outcome], shot: Option<&Shot>, acknowledged: bool) {
@@ -151,6 +210,9 @@ impl Conversation {
                 acknowledged,
             ),
             Conversation::Claude(c) => c.answer(outcomes),
+            Conversation::Chat(c) => {
+                c.answer(outcomes, shot.expect("chat answers with a screenshot"))
+            }
         }
     }
 
@@ -158,14 +220,15 @@ impl Conversation {
         match self {
             Conversation::Openai(c) => c.follow_up(text, shot),
             Conversation::Claude(c) => c.follow_up(text, shot),
+            Conversation::Chat(c) => c.follow_up(text, shot),
         }
     }
 }
 
-/// Where a provider's requests go: its API, or a local test server.
+/// Where a source's requests go: its API, or a local test server.
 #[derive(Debug, Clone)]
 struct Endpoint {
-    provider: Provider,
+    protocol: Protocol,
     url: String,
 }
 
@@ -199,9 +262,12 @@ impl Client {
         let mut attempt = 0;
         loop {
             let req = self.http.post(&to.url).json(body);
-            let req = match to.provider {
-                Provider::Openai => req.bearer_auth(key),
-                Provider::Claude => req
+            let req = match to.protocol {
+                Protocol::OpenaiResponses => req.bearer_auth(key),
+                // A local server (Ollama, LM Studio) needs no key.
+                Protocol::OpenaiChat if key.is_empty() => req,
+                Protocol::OpenaiChat => req.bearer_auth(key),
+                Protocol::Anthropic => req
                     .header("x-api-key", key)
                     .header("anthropic-version", claude::VERSION)
                     .header("anthropic-beta", claude::BETAS),
@@ -238,6 +304,81 @@ impl Client {
             }
         }
     }
+}
+
+impl Client {
+    /// Sends one GET (a model list) with the protocol's credentials.
+    /// Returns: the response document, or an error that is safe to show.
+    async fn get(&self, url: &str, protocol: Protocol, key: &str) -> Result<Value, String> {
+        let req = self.http.get(url);
+        let req = match protocol {
+            Protocol::Anthropic => req
+                .header("x-api-key", key)
+                .header("anthropic-version", claude::VERSION),
+            _ if key.is_empty() => req,
+            _ => req.bearer_auth(key),
+        };
+        let resp = req
+            .send()
+            .await
+            .map_err(|_| "the provider could not be reached".to_string())?;
+        let status = resp.status().as_u16();
+        let doc: Value = resp.json().await.unwrap_or(Value::Null);
+        match status {
+            200..=299 => Ok(doc),
+            401 | 403 => Err("the provider did not accept the API key".into()),
+            _ => Err(format!(
+                "the provider answered {status}: {}",
+                doc["error"]["message"].as_str().unwrap_or("")
+            )),
+        }
+    }
+}
+
+/// Reads a model list: OpenAI-style `{data: [{id, name?}]}` (OpenRouter
+/// names its models, Anthropic has `display_name`), Ollama's `{models:
+/// [{name}]}` or a bare list; embedding, speech, image and moderation models
+/// are left out (they cannot operate a desktop).
+fn parse_models(doc: &Value) -> Vec<Model> {
+    let list = doc["data"]
+        .as_array()
+        .or(doc["models"].as_array())
+        .or(doc.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let not_chat = [
+        "embed",
+        "whisper",
+        "tts",
+        "dall-e",
+        "moderation",
+        "rerank",
+        "image",
+    ];
+    let mut out: Vec<Model> = list
+        .iter()
+        .filter_map(|m| {
+            let id = m["id"]
+                .as_str()
+                .or(m["model"].as_str())
+                .or(m["name"].as_str())?;
+            let lower = id.to_ascii_lowercase();
+            if not_chat.iter().any(|w| lower.contains(w)) || id.len() > 128 {
+                return None;
+            }
+            let name = m["display_name"]
+                .as_str()
+                .or(m["name"].as_str().filter(|n| *n != id))
+                .unwrap_or("");
+            Some(Model {
+                id: id.to_string(),
+                name: name.chars().take(128).collect(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out.dedup_by(|a, b| a.id == b.id);
+    out
 }
 
 /// The wait before retry `attempt`: the provider's `retry-after` (at most

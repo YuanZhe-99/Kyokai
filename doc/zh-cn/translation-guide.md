@@ -37,6 +37,8 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | emergency stop | 紧急停止 |
 | input lease | 输入租约 |
 | AI task | AI 任务 |
+| (AI) source | 来源 |
+| OpenAI-compatible | OpenAI 兼容 |
 | provider | 服务商 |
 | unattended access | 无人值守访问 |
 | engine | 引擎 |

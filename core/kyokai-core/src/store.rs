@@ -70,6 +70,14 @@ impl Secrets {
         self.map.lock().ok()?.get(name).cloned()
     }
 
+    /// The names of the stored secrets.
+    pub fn names(&self) -> Vec<String> {
+        self.map
+            .lock()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
     /// A store that lives in memory only (tests, and runs without an OS
     /// credential store).
     pub fn memory() -> Self {

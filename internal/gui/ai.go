@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,39 +22,19 @@ const aiPoll = 700 * time.Millisecond
 // aiStepsShown is how many of a task's latest actions the page lists.
 const aiStepsShown = 8
 
-// aiProviders are the providers in the order the page offers them.
-var aiProviders = []string{"claude", "openai"}
-
 // aiState is the AI page's state.
 type aiState struct {
-	// settings is nil until loaded; form is its editable copy.
+	// settings is nil until loaded.
 	settings *localapi.AISettings
-	form     aiForm
+	// edit is the source being added or changed (aisources.go); template
+	// is the one picked to add.
+	edit     *aiEdit
+	template string
 	draft    string // the next task's instruction
 	reply    string // a reply to the latest finished task
 	tasks    []localapi.AITask
 	loaded   bool
 	polling  bool
-}
-
-// aiForm is the provider card. The key field is write-only: it starts
-// empty and is never filled from the engine.
-type aiForm struct {
-	provider int
-	model    [2]string // per provider, in aiProviders order
-	key      string
-	approval int // 0 flagged, 1 every action
-}
-
-func aiFormFrom(s *localapi.AISettings) aiForm {
-	f := aiForm{model: [2]string{s.ClaudeModel, s.OpenAIModel}}
-	if s.Provider == "openai" {
-		f.provider = 1
-	}
-	if s.Approval == "every-action" {
-		f.approval = 1
-	}
-	return f
 }
 
 // aiView is the AI page: the task in progress (or a new one), the provider
@@ -116,9 +95,9 @@ func (a *App) aiTaskCard(c *ui.Context) {
 			a.ai.draft = draft
 			a.mu.Unlock()
 		}
-		ready := s != nil && aiHasKey(s, s.Provider)
-		if s != nil && !ready {
-			ui.Text(c, L.AINeedKey(aiProviderName(s.Provider))).FontSize(sizeSmall).TextColor(t.Warning)
+		ready := aiReady(s)
+		if s != nil && !ready && s.Model != nil && aiSource(s, s.Model.Source) != nil {
+			ui.Text(c, L.AINeedKey(aiSource(s, s.Model.Source).Name)).FontSize(sizeSmall).TextColor(t.Warning)
 		}
 		ui.Row(c).Children(func() {
 			if ui.Button(c.Key("ai-start"), L.AIActionStart()).Disabled(busy || !ready || strings.TrimSpace(draft) == "").Clicked() {
@@ -151,7 +130,10 @@ func (a *App) aiTaskDetail(c *ui.Context, task *localapi.AITask) {
 				col = t.Warning
 			}
 			ui.Text(c, aiStateLabel(task)).TextColor(col)
-			ui.Text(c, aiProviderName(task.Provider)+" · "+task.Model).FontSize(sizeSmall).TextColor(t.TextMuted)
+			a.mu.Lock()
+			s := a.ai.settings
+			a.mu.Unlock()
+			ui.Text(c, aiTaskModel(s, task)).FontSize(sizeSmall).TextColor(t.TextMuted)
 		})
 		if task.Origin != "" {
 			ui.Text(c, L.AITaskFrom(groupDigits(task.Origin))).FontSize(sizeSmall).TextColor(t.TextMuted)
@@ -220,66 +202,6 @@ func (a *App) aiApproval(c *ui.Context, task *localapi.AITask) {
 			}
 			if ui.Button(c.Key(key+"-deny"), L.ActionDeny()).Clicked() {
 				a.aiDecide(task.ID, false)
-			}
-		})
-	})
-}
-
-// aiProviderCard is the provider, model, key and approval policy.
-func (a *App) aiProviderCard(c *ui.Context) {
-	t := c.Theme()
-	a.mu.Lock()
-	s, f, busy := a.ai.settings, a.ai.form, a.busy["ai"]
-	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.AISettingsTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.AISettingsHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		if s == nil {
-			ui.Spinner(c)
-			return
-		}
-		edit := func(e ui.Element) {
-			if e.Changed() {
-				a.mu.Lock()
-				a.ai.form = f
-				a.mu.Unlock()
-			}
-		}
-		settingRow(c, "ai-provider", L.AIProvider(), "", func() {
-			edit(ui.Segmented(c.Key("ai-provider-seg"), &f.provider, aiProviderName("claude"), aiProviderName("openai")))
-		})
-		provider := aiProviders[f.provider]
-		ui.Column(c.Key("ai-model")).Gap(4).FillWidth().Children(func() {
-			ui.Text(c, L.AIModel())
-			edit(ui.TextInput(c.Key("ai-model-"+provider), &f.model[f.provider]).FillWidth().Disabled(busy))
-		})
-		ui.Column(c.Key("ai-key")).Gap(4).FillWidth().Children(func() {
-			ui.Text(c, L.AIKey())
-			edit(ui.TextInput(c.Key("ai-key-"+provider), &f.key).Password().FillWidth().Disabled(busy))
-			hint := L.AIKeyMissing()
-			if aiHasKey(s, provider) {
-				hint = L.AIKeyStored()
-			}
-			ui.Text(c, hint).FontSize(sizeSmall).TextColor(t.TextMuted)
-		})
-		policies := []string{L.AIApprovalFlaggedOption(), L.AIApprovalEveryOption()}
-		policy := policies[f.approval]
-		settingRow(c, "ai-policy", L.AIApproval(), "", func() {
-			if ui.Select(c.Key("ai-policy-sel"), &policy, policies).Width(280).Changed() {
-				f.approval = max(0, slices.Index(policies, policy))
-				a.mu.Lock()
-				a.ai.form = f
-				a.mu.Unlock()
-			}
-		})
-		ui.Row(c).Gap(gap).Children(func() {
-			if ui.Button(c.Key("ai-save"), L.ActionSave()).Disabled(busy).Clicked() {
-				a.saveAI(f, false)
-			}
-			if aiHasKey(s, provider) {
-				if ui.Button(c.Key("ai-remove-key"), L.AIRemoveKey()).Disabled(busy).Clicked() {
-					a.saveAI(f, true)
-				}
 			}
 		})
 	})
@@ -411,46 +333,9 @@ func (a *App) loadAI() {
 				a.setToast(L.EngineDown(), true)
 				return
 			}
-			a.ai.settings, a.ai.form = resp.AISettings, aiFormFrom(resp.AISettings)
+			a.ai.settings = resp.AISettings
 		})
 		a.refreshAITasks()
-	}()
-}
-
-// saveAI sends the provider card to the engine: the settings, then the key
-// when one was typed (or its removal).
-// Side effects: the engine stores the key in its secrets store.
-func (a *App) saveAI(f aiForm, removeKey bool) {
-	provider := aiProviders[f.provider]
-	change := &localapi.AISettings{
-		Provider: provider, ClaudeModel: strings.TrimSpace(f.model[0]), OpenAIModel: strings.TrimSpace(f.model[1]),
-		Approval: []string{"flagged", "every-action"}[f.approval],
-	}
-	a.mu.Lock()
-	a.busy["ai"] = true
-	a.mu.Unlock()
-	go func() {
-		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestAISettingsSet, AISettings: change})
-		if err == nil && (removeKey || f.key != "") {
-			k := &localapi.AIKey{Provider: provider}
-			if !removeKey {
-				k.Key = &f.key
-			}
-			resp, err = a.requestWith(localapi.Request{Type: localapi.RequestAIKeySet, AIKey: k})
-		}
-		a.update(func() {
-			delete(a.busy, "ai")
-			var refused *localapi.RequestError
-			switch {
-			case errors.As(err, &refused):
-				a.setToast(refused.Message, true)
-			case err != nil || resp.AISettings == nil:
-				a.setToast(L.EngineDown(), true)
-			default:
-				a.ai.settings, a.ai.form = resp.AISettings, aiFormFrom(resp.AISettings)
-				a.setToast(L.AISaved(), false)
-			}
-		})
 	}()
 }
 
@@ -537,23 +422,6 @@ func (a *App) stopAI() {
 
 func aiFinished(state string) bool {
 	return state == "done" || state == "failed" || state == "cancelled"
-}
-
-func aiHasKey(s *localapi.AISettings, provider string) bool {
-	if s.Keys == nil {
-		return false
-	}
-	if provider == "openai" {
-		return s.Keys.OpenAI
-	}
-	return s.Keys.Claude
-}
-
-func aiProviderName(p string) string {
-	if p == "openai" {
-		return "OpenAI"
-	}
-	return "Claude"
 }
 
 func aiStateLabel(t *localapi.AITask) string {

@@ -92,8 +92,27 @@ pub fn import(secrets: &Secrets, document: &str, passphrase: &str) -> Result<(),
 }
 
 /// What a move between run modes carries besides the identity: the network
-/// secret, the AI keys, and the state files that belong to the device.
-const MOVE_SECRETS: &[&str] = &["network", "ai.openai.key", "ai.claude.key"];
+/// settings, every AI source's key (`ai.<source>.key`), and the state files
+/// that belong to the device.
+const MOVE_SECRETS: &[&str] = &["network"];
+
+/// Whether a secret's name is an AI source's key.
+fn is_ai_key(name: &str) -> bool {
+    name.starts_with("ai.") && name.ends_with(".key")
+}
+
+/// The secrets a move carries from `secrets`.
+fn moved(secrets: &Secrets) -> Vec<String> {
+    secrets
+        .names()
+        .into_iter()
+        .filter(|n| {
+            IDENTITY_SECRETS.contains(&n.as_str())
+                || MOVE_SECRETS.contains(&n.as_str())
+                || is_ai_key(n)
+        })
+        .collect()
+}
 const MOVE_FILES: &[&str] = &["device.json", "ai.json"];
 const MOVE_FORMAT: &str = "kyokai-move";
 const MOVE_AAD: &[u8] = b"kyokai/store-move/v1";
@@ -107,10 +126,9 @@ pub fn export_store(
     state_dir: &Path,
     passphrase: &str,
 ) -> Result<String, String> {
-    let mut entries: BTreeMap<String, Zeroizing<String>> = IDENTITY_SECRETS
-        .iter()
-        .chain(MOVE_SECRETS)
-        .filter_map(|name| secrets.get(name).map(|v| (name.to_string(), v)))
+    let mut entries: BTreeMap<String, Zeroizing<String>> = moved(secrets)
+        .into_iter()
+        .filter_map(|name| secrets.get(&name).map(|v| (name, v)))
         .collect();
     if !entries.contains_key("device_key") {
         return Err("there is no identity to move".into());
@@ -137,13 +155,22 @@ pub fn import_store(
     check_identity(&entries, |k| {
         IDENTITY_SECRETS.contains(&k)
             || MOVE_SECRETS.contains(&k)
+            || is_ai_key(k)
             || k.strip_prefix("file:")
                 .is_some_and(|f| MOVE_FILES.contains(&f))
     })?;
+    // What this engine held and the document does not is removed.
+    for name in moved(secrets) {
+        if !entries.contains_key(&name) {
+            secrets.remove(&name)?;
+        }
+    }
+    for (name, v) in entries.iter().filter(|(k, _)| !k.starts_with("file:")) {
+        secrets.set(name, v)?;
+    }
     for name in IDENTITY_SECRETS.iter().chain(MOVE_SECRETS) {
-        match entries.get(*name) {
-            Some(v) => secrets.set(name, v)?,
-            None => secrets.remove(name)?,
+        if !entries.contains_key(*name) {
+            secrets.remove(name)?;
         }
     }
     for f in MOVE_FILES {
@@ -162,8 +189,8 @@ pub fn import_store(
 /// one identity is never served by two engines.
 /// Side effects: removes the secrets and files; the caller stops the engine.
 pub fn clear_store(secrets: &Secrets, state_dir: &Path) -> Result<(), String> {
-    for name in IDENTITY_SECRETS.iter().chain(MOVE_SECRETS) {
-        secrets.remove(name)?;
+    for name in moved(secrets) {
+        secrets.remove(&name)?;
     }
     for f in MOVE_FILES {
         let _ = std::fs::remove_file(state_dir.join(f));
@@ -329,6 +356,7 @@ mod tests {
         let id = Identity::load_or_create(&from).unwrap().device_id();
         from.set("network", "{\"name\":\"n\"}").unwrap();
         from.set("ai.claude.key", "sk-test").unwrap();
+        from.set("ai.openrouter.key", "sk-or").unwrap();
         std::fs::write(from_dir.join("device.json"), "{\"name\":\"Office\"}").unwrap();
         let doc = export_store(&from, &from_dir, "one-time passphrase").unwrap();
         assert!(!doc.contains("sk-test"), "never in the clear");
@@ -351,6 +379,10 @@ mod tests {
             "absent entries are removed"
         );
         assert!(to.get("network").is_some());
+        assert!(
+            to.get("ai.openrouter.key").is_some(),
+            "every source's key moves"
+        );
         assert_eq!(
             std::fs::read_to_string(to_dir.join("device.json")).unwrap(),
             "{\"name\":\"Office\"}"

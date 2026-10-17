@@ -317,6 +317,14 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "AI key missing")
 		}
 		return h.aiSettings("ai.key.set", req.AIKey)
+	case localapi.RequestAIModels:
+		var out struct {
+			Models []localapi.AIModel `json:"models"`
+		}
+		if err := h.lib.Call("ai.models.list", map[string]string{"source": req.Source}, &out); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true, AIModels: out.Models}
 	case localapi.RequestAITaskStart:
 		if req.AITask == nil {
 			return localapi.Fail(localapi.CodeInvalid, "AI task missing")

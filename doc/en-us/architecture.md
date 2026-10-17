@@ -74,8 +74,9 @@ name; the status carries `name` and this device's `about`), `trusted.unattended`
 stops it), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
 passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
 mode), and for AI tasks ([computer-use.md](computer-use.md)):
-`ai.settings.get`, `ai.settings.set` (`{provider?, openai_model?, claude_model?, approval?}`),
-`ai.key.set` (`{provider, key}`, null removes it; a key is never returned), `ai.task.start`
+`ai.settings.get`, `ai.settings.set` (`{sources?, model?: {source, id}, approval?}`; the answer adds
+`keys` per source), `ai.key.set` (`{source, key}`, null removes it; a key is never returned),
+`ai.models.list` (`{source}` → `{models}`, asks the source), `ai.task.start`
 (`{key, instruction}` → `{id}`; the key makes it idempotent), `ai.task.reply` (`{id, text}`),
 `ai.task.pause`, `ai.task.resume`, `ai.task.cancel` (`{id}`), `ai.task.decide` (`{id, approve}`),
 `ai.tasks` (newest first), `ai.history.clear`, `ai.stop` (cancels every task). The status also

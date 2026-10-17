@@ -34,8 +34,11 @@ last connection) that fill in the Device ID; a
   why, done, stopped), the model's latest text and progress note, its latest actions in words
   ("Click at 640, 425", "Press Ctrl+S") with what became of them, Pause or Resume and Stop; an
   action waiting for approval shows in a framed box with Allow and Deny and the provider's notes.
-  A finished task can be continued with a reply. Below: the provider card (Claude or OpenAI, the
-  model, a write-only API key field, Remove key, the approval policy) and the task history with
+  A finished task can be continued with a reply. Below: the providers card — the model tasks use (every model of every
+  source by its `Vendor: Model` name), the approval policy, the sources with their template, model
+  count and key state (Edit, Remove), and Add provider from a template; the editor has the name,
+  the address (a template's sites by name), the format for Custom, a write-only key, the models
+  with Remove, an id to add and List models (a saved source) and the task history with
   Clear history. While the task waits for approval, every other page shows a banner with Review,
   and a notification announces it. A controller's task shows "Started from" its Device ID, and
   while it works every other page shows a banner with Review and Stop.

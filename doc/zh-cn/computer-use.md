@@ -72,6 +72,24 @@ Kyokai 那个看不见的窗口在前台时，查看窗口与模型能看到的�
 
 ### 服务商
 
+被控端用户设置**来源**（AI 页面的设置；`ai.json`）：每个来源有 id、名称、所用的模板、协议、基础 URL 以及从中使用的模型，任务使用某个来源中
+选定的一个模型。新的被控端有两个来源：Claude（`https://api.anthropic.com/v1`）与 OpenAI（`https://api.openai.com/v1`）。模板还可添加 OpenRouter、
+Google Gemini、Groq、Together、Fireworks、Deep Infra、Mistral、xAI、Moonshot、Z.ai / BigModel、阿里云百炼、SiliconFlow、火山方舟、MiniMax、
+阶跃星辰、百度千帆、腾讯混元、NVIDIA NIM、Hugging Face、GitHub Models、Ollama、LM Studio 与 llama.cpp server（取自 MyApps-AI 的目录，
+保留能接收图片和工具调用的 API；有多个站点的服务商按名称提供各站点）；自定义可以使用任意地址与协议。基础 URL 必须是 HTTPS，或只指向本机的明文 HTTP
+（`localhost`、`127.0.0.0/8`、`::1`），因为截图会发往那里；这样的本机聊天服务器不需要密钥。每个来源的密钥是机密存储中的 `ai.<id>.key`，
+移除来源时其密钥一并删除。**列出模型**只在用户要求时向来源查询模型（`GET <base>/models`；支持 OpenAI 风格、Ollama 与 OpenRouter 的列表，
+不含嵌入、语音、图像与审核模型）；不会自行获取任何内容。
+
+| 协议 | 使用者 | 请求 |
+|---|---|---|
+| `anthropic` | Claude | 带 computer 工具集的 Messages API（见下） |
+| `openai-responses` | OpenAI | 带 `computer` 工具的 Responses API（见下） |
+| `openai-chat` | 其他所有模板与自定义 | chat completions，把 Kyokai 的操作作为函数工具提供，名称与形式同 computer 工具集的成员（`left_click` 带 `coordinate`、`key` 带 `text`、`scroll` 带 `scroll_direction` 与 `scroll_amount` 等），因此三种协议共用一个解析器；屏幕以图片放在用户消息中，每个调用以一条 `tool` 消息答复，随后附上该批操作之后的屏幕；历史中只保留最新的 3 张截图。模型必须能接收图片并调用工具 |
+
+模型按 OpenRouter 的写法显示为 `厂商: 模型`（`Anthropic: Claude Opus 5.5`、`Qwen: Qwen2.5 VL 72B Instruct`），经由其他来源访问的模型后面附上来源；
+名称来自服务商自己的列表，或按规则由 id 得出（MyApps-AI 的命名规则，移植在 `internal/gui/modelname.go` 中）。
+
 | | Claude | OpenAI |
 |---|---|---|
 | 请求 | Messages API 加 `computer_toolset_20260801`，自适应思考并返回进度说明，effort 为 `high`，服务端回退，输入超过 100,000 token 后由服务端清除旧的工具结果（保留最新 5 个） | Responses API 加 `computer` 工具，`previous_response_id`，`truncation: "auto"`，每次请求都带上指令 |
@@ -131,8 +149,8 @@ Ctrl+Alt+Shift+Esc（紧急停止，任务运行期间有效）、托盘中的�
 
 ### 历史与设置
 
-状态目录中的 `ai.json` 保存服务商、两个模型与批准方式；密钥保存在机密存储中（`ai.openai.key`、`ai.claude.key`），不会再显示，
-除了发给各自的服务商之外不发往任何地方。`ai-tasks.json` 保存已结束的任务——指令、模型的文字与进度说明、各个操作及其结果，绝不包含截图——最多
+状态目录中的 `ai.json` 保存各来源、选定的模型与批准方式（最初版本的文件——一个服务商以及 Claude 与 OpenAI 各一个模型——会读成两个默认来源）；
+密钥保存在机密存储中（`ai.<source>.key`），不会再显示，除了发给各自的来源之外不发往任何地方。`ai-tasks.json` 保存已结束的任务——指令、模型的文字与进度说明、各个操作及其结果，绝不包含截图——最多
 100 个；AI 页面可以清除它。已结束任务的对话保留在内存中，因此在引擎停止之前，回复可以让它继续。
 
 ## 尚未完成

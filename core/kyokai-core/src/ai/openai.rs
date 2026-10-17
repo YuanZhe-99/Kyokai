@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use super::action::{Action, Button, Key, ParseError, Point, WHEEL_DELTA, normalize_key};
 use super::{End, Outcome, Shot, Turn};
 
-pub const URL: &str = "https://api.openai.com/v1/responses";
+pub const BASE_URL: &str = "https://api.openai.com/v1";
 pub const DEFAULT_MODEL: &str = "gpt-6.1-sol";
 /// OpenAI's `scroll_x` / `scroll_y` are pixel distances (the reference
 /// drivers pass them to `window.scrollBy` / `mouse.wheel`); Kyokai maps

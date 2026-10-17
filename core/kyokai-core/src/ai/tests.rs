@@ -1045,13 +1045,72 @@ fn settings_and_keys_never_expose_the_key() {
     assert_eq!(s["keys"], json!({"openai": false, "claude": true}));
     assert!(!s.to_string().contains(TEST_KEY));
     assert!(rig.ai.set_settings(&json!({"nope": 1})).is_err());
-    assert!(rig.ai.set_settings(&json!({"claude_model": " "})).is_err());
+    let mut sources = s["sources"].clone();
+    // Refused: a model the sources do not have, plain HTTP to another
+    // computer, a repeated id, a source without models.
+    assert!(
+        rig.ai
+            .set_settings(&json!({"model": {"source": "claude", "id": "nope"}}))
+            .is_err()
+    );
+    let custom = |id: &str, url: &str, models: Value| json!({"id": id, "name": "Mine", "template": "custom", "protocol": "openai-chat", "url": url, "models": models});
+    for (bad, why) in [
+        (
+            custom("mine", "http://192.168.1.5:1234/v1", json!([{"id": "m"}])),
+            "http to another computer",
+        ),
+        (
+            custom("claude", "https://x.example/v1", json!([{"id": "m"}])),
+            "repeated id",
+        ),
+        (
+            custom("mine", "https://x.example/v1", json!([])),
+            "no models",
+        ),
+        (
+            custom("Mine!", "https://x.example/v1", json!([{"id": "m"}])),
+            "bad id",
+        ),
+    ] {
+        let mut s2 = sources.clone();
+        s2.as_array_mut().unwrap().push(bad);
+        assert!(
+            rig.ai.set_settings(&json!({"sources": s2})).is_err(),
+            "{why}"
+        );
+    }
+    // A local server (Ollama) over plain HTTP, and a new model chosen.
+    sources.as_array_mut().unwrap().push(custom(
+        "ollama",
+        "http://localhost:11434/v1",
+        json!([{"id": "qwen2.5vl:7b"}]),
+    ));
     rig.ai
-        .set_settings(&json!({"claude_model": "claude-sonnet-5-5"}))
+        .set_settings(
+            &json!({"sources": sources, "model": {"source": "ollama", "id": "qwen2.5vl:7b"}}),
+        )
         .unwrap();
     let saved = std::fs::read_to_string(rig.dir.join("ai.json")).unwrap();
-    assert!(saved.contains("claude-sonnet-5-5") && !saved.contains(TEST_KEY));
-    rig.ai.set_key(super::Provider::Claude, None).unwrap();
+    assert!(saved.contains("qwen2.5vl:7b") && !saved.contains(TEST_KEY));
+    // A local chat server needs no key; Claude does.
+    assert!(rig.ai.start("local", "Save", None).is_ok());
+    let id = rig.ai.tasks()[0]["id"].as_u64().unwrap();
+    let _ = rig.ai.cancel(id);
+    rig.state(id, "cancelled");
+    rig.ai
+        .set_settings(&json!({"model": {"source": "claude", "id": "claude-opus-5-5"}}))
+        .unwrap();
+    // Removing a source removes its key.
+    rig.ai.set_key("ollama", Some("k")).unwrap();
+    let only_defaults: Vec<Value> = sources.as_array().unwrap()[..2].to_vec();
+    rig.ai
+        .set_settings(&json!({"sources": only_defaults}))
+        .unwrap();
+    assert!(
+        rig.ai.set_key("ollama", Some("k")).is_err(),
+        "no such source"
+    );
+    rig.ai.set_key("claude", None).unwrap();
     assert!(rig.ai.start("k", "Save", None).is_err(), "no key, no task");
 }
 
@@ -1066,8 +1125,8 @@ fn live_claude_task_on_synthetic_screens() {
         eprintln!("skipped: set KYOKAI_LIVE_CLAUDE=1 and ANTHROPIC_API_KEY");
         return;
     };
-    let rig = rig("live", "claude", claude::URL);
-    rig.ai.set_key(super::Provider::Claude, Some(&key)).unwrap();
+    let rig = rig("live", "claude", &format!("{}/messages", claude::BASE_URL));
+    rig.ai.set_key("claude", Some(&key)).unwrap();
     let id = rig
         .ai
         .start(
@@ -1300,4 +1359,52 @@ fn garbage_answers_never_panic() {
             );
         }
     }
+}
+
+#[test]
+fn chat_task_clicks_and_finishes() {
+    let call = |id: &str, name: &str, args: &str| json!({"id": id, "type": "function", "function": {"name": name, "arguments": args}});
+    let server = server(vec![
+        (
+            0,
+            json!({"choices": [{"finish_reason": "tool_calls", "message": {"role": "assistant",
+            "content": "Pressing Save.", "tool_calls": [call("c1", "left_click", "{\"coordinate\": [640, 425]}")]}}]}),
+        ),
+        (
+            0,
+            json!({"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "Saved the file."}}]}),
+        ),
+    ]);
+    let rig = rig("chat", "chat", &server.url);
+    let id = rig.ai.start("k1", "Save the file", None).unwrap();
+    let t = rig.state(id, "done");
+    assert_eq!(t["text"], "Saved the file.");
+    assert_eq!(t["steps"][0]["action"]["kind"], "click");
+    assert!(
+        rig.log.lock().unwrap().pressed,
+        "the click landed on the button"
+    );
+    let requests = server.requests.lock().unwrap();
+    let (headers, first) = &requests[0];
+    assert!(
+        headers.iter().any(|h| h.to_ascii_lowercase()
+            == format!("authorization: bearer {}", TEST_KEY.to_ascii_lowercase())),
+        "chat sources use a bearer key"
+    );
+    assert_eq!(first["model"], "vision-model");
+    assert!(
+        first["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t["function"]["name"] == "left_click")
+    );
+    // The answer: the call's result, then the screen after it.
+    let answer = requests[1].1["messages"].as_array().unwrap();
+    assert!(
+        answer
+            .iter()
+            .any(|m| m["role"] == "tool" && m["tool_call_id"] == "c1")
+    );
+    assert_eq!(answer.last().unwrap()["content"][1]["type"], "image_url");
 }

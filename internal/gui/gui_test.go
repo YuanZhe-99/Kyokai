@@ -113,19 +113,19 @@ func TestViewsRender(t *testing.T) {
 		},
 		"ai-new": func(a *App) {
 			a.page = pageAI
-			s := &localapi.AISettings{Provider: "claude", ClaudeModel: "claude-opus-5-5", OpenAIModel: "gpt-6.1-sol", Approval: "flagged", Keys: &localapi.AIKeys{}}
-			a.ai = aiState{loaded: true, settings: s, form: aiFormFrom(s)}
+			s := demoAISettings(false)
+			a.ai = aiState{loaded: true, settings: s, edit: &aiEdit{src: s.Sources[2], fetched: []localapi.AIModel{{ID: "qwen/qwen2.5-vl-72b-instruct"}}}}
 		},
 		"ai-approval": func(a *App) {
 			a.page = pageAI
 			a.status.AI = &localapi.AIActive{ID: 2, State: "approval"}
-			s := &localapi.AISettings{Provider: "claude", ClaudeModel: "claude-opus-5-5", OpenAIModel: "gpt-6.1-sol", Approval: "flagged", Keys: &localapi.AIKeys{Claude: true}}
-			a.ai = aiState{loaded: true, settings: s, form: aiFormFrom(s), tasks: []localapi.AITask{
-				{ID: 2, Instruction: "Save the open document", Provider: "claude", Model: "claude-opus-5-5", State: "approval",
+			s := demoAISettings(true)
+			a.ai = aiState{loaded: true, settings: s, tasks: []localapi.AITask{
+				{ID: 2, Instruction: "Save the open document", Source: "claude", Model: "claude-opus-5-5", State: "approval",
 					Text: "I will press Save.", Progress: []string{"Pressing Save."},
 					Steps:    []localapi.AIStep{{Action: []byte(`{"kind":"screenshot"}`), Outcome: "ok"}},
 					Approval: &localapi.AIApproval{Action: []byte(`{"kind":"key-combo","keys":["meta","r"],"repeat":1}`)}},
-				{ID: 1, Instruction: "Open the settings", Provider: "claude", Model: "claude-opus-5-5", State: "done", Created: 1797400000},
+				{ID: 1, Instruction: "Open the settings", Source: "claude", Model: "claude-opus-5-5", State: "done", Created: 1797400000},
 			}}
 		},
 		"network-online": func(a *App) {
@@ -145,7 +145,7 @@ func TestViewsRender(t *testing.T) {
 				a := demoApp(t)
 				setup(a)
 				height := 900
-				if name == "settings-access" {
+				if name == "settings-access" || name == "ai-new" {
 					height = 1500 // the trusted devices sit below the fold
 				}
 				tt := ui.NewTester(a.View, 1000, height)
@@ -382,5 +382,21 @@ func TestWindowsArg(t *testing.T) {
 		if got := windowsArg(tc.in); got != tc.want {
 			t.Errorf("windowsArg(%q) = %s, want %s", tc.in, got, tc.want)
 		}
+	}
+}
+
+// demoAISettings are the AI settings the screenshots show: the two default
+// sources and an OpenRouter one.
+func demoAISettings(keys bool) *localapi.AISettings {
+	return &localapi.AISettings{
+		Sources: []localapi.AISource{
+			{ID: "claude", Name: "Claude", Template: "anthropic", Protocol: "anthropic", URL: "https://api.anthropic.com/v1", Models: []localapi.AIModel{{ID: "claude-opus-5-5"}}},
+			{ID: "openai", Name: "OpenAI", Template: "openai", Protocol: "openai-responses", URL: "https://api.openai.com/v1", Models: []localapi.AIModel{{ID: "gpt-6.1-sol"}}},
+			{ID: "openrouter", Name: "OpenRouter", Template: "openrouter", Protocol: "openai-chat", URL: "https://openrouter.ai/api/v1",
+				Models: []localapi.AIModel{{ID: "anthropic/claude-opus-5-5", Name: "Anthropic: Claude Opus 5.5"}, {ID: "google/gemini-3-pro"}}},
+		},
+		Model:    &localapi.AIModelRef{Source: "claude", ID: "claude-opus-5-5"},
+		Approval: "flagged",
+		Keys:     map[string]bool{"claude": keys, "openrouter": keys},
 	}
 }

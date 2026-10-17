@@ -27,7 +27,8 @@ never offers text that Kyokai itself copied ([computer-use.md](computer-use.md))
 
 ## AI tasks
 
-- The model runs on the host's provider account: the key goes only to that provider, over HTTPS,
+- The model runs on the host's provider account: each source's key goes only to that source, over
+  HTTPS (plain HTTP is allowed only to a server on this computer, which needs no key),
   and never into a log, an error, the status, the history or another device.
 - Screenshots exist in memory for the task's conversation and go only to the chosen provider; the
   history (`ai-tasks.json`) keeps instructions, the model's text and the actions, never a picture.

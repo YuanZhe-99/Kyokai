@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use super::action::{Action, Button, Key, ParseError, Point, WHEEL_DELTA, parse_combo};
 use super::{End, Outcome, Shot, Turn};
 
-pub const URL: &str = "https://api.anthropic.com/v1/messages";
+pub const BASE_URL: &str = "https://api.anthropic.com/v1";
 pub const VERSION: &str = "2023-06-01";
 pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
 /// Progress notes, server-side fallbacks and tool-result clearing.
