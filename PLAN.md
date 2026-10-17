@@ -118,7 +118,7 @@ certificates are needed, and privileged processes (Phase 6) relay encoded bytes 
 | 3.3 First codec (software H.264 done; hardware encoders and the VM measurement left) | Media Foundation H.264: a hardware encoder when present, Microsoft's software MFT otherwise; decode in the GUI | 1080p60 over the VM path; latency and bitrate shown |
 | 3.4 Viewer | its own window, fit / original size / full screen, stats, Disconnect | §26 viewing items on Windows |
 | 3.5 Input (done; the real run on the VM's desktop is left) | mouse and keyboard to the host only with `control-input`, virtual-desktop coordinates, nothing into Kyokai's own windows, held keys released | typing and clicking into apps on the VM |
-| 3.6 QoS | RustDesk's `video_qos.rs`, delay probes, bitrate / frame-rate adaptation, presets | adapts on the VM path; unchanged frames skipped |
+| 3.6 QoS (adaptation done; presets in the viewer left) | RustDesk's `video_qos.rs`, delay probes, bitrate / frame-rate adaptation, presets | adapts on the VM path; unchanged frames skipped |
 | 3.7 Codecs | VP8 / VP9 (libvpx), AV1 (libaom), HEVC through Media Foundation, negotiation, 4:4:4 | every codec the plan lists, chosen by capability |
 | 3.8 Manual control | RustDesk keyboard modes with rdev, clipboard (arboard), multi-monitor and DPI | §26 Manual Computer Use on Windows |
 

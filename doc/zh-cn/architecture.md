@@ -36,6 +36,7 @@
 | `internal/version` | 唯一的产品版本 |
 | `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`） |
 | `core/third_party/rustdesk-dxgi` | 复用的 RustDesk DXGI 与 GDI 屏幕采集（[computer-use.md](computer-use.md)） |
+| `core/third_party/rustdesk-qos` | 复用的 RustDesk 视频 QoS |
 | `core/third_party/thunk-noop` | 替代 EasyTier 的 `thunk-rs` 构建步骤，使 Windows 构建保持静态 C 运行时 |
 
 ## FFI

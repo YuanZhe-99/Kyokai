@@ -220,6 +220,11 @@ impl Encoder {
         })
     }
 
+    /// Changes the target bitrate while running (RustDesk's QoS drives it).
+    pub fn set_bitrate(&self, bitrate: u32) {
+        codec_value(&self.t, &CODECAPI_AVEncCommonMeanBitRate, bitrate, false);
+    }
+
     /// Encodes one NV12 frame; `key` forces a key frame.
     /// Returns: the encoded access units ready now (Annex B), each with
     /// whether it is a key frame.

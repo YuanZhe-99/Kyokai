@@ -2666,6 +2666,7 @@ dependencies = [
  "opaque-ke",
  "rand_core 0.6.4",
  "rustdesk-dxgi",
+ "rustdesk-qos",
  "security-framework",
  "serde",
  "serde_json",
@@ -3775,6 +3776,13 @@ version = "0.0.0"
 dependencies = [
  "log",
  "winapi",
+]
+
+[[package]]
+name = "rustdesk-qos"
+version = "0.0.0"
+dependencies = [
+ "log",
 ]
 
 [[package]]

@@ -221,18 +221,41 @@ impl Network {
             if let Err(e) = starting.start().await {
                 return fail(format!("{e:#}"));
             }
-            // The data plane binds only once the node has its virtual address.
-            let mut listener = loop {
-                match starting
+            // The data plane binds only once the node has its virtual address,
+            // and a listener stays on the address it bound: when DHCP gives
+            // the node another one, bind again.
+            loop {
+                let address = starting.node_snapshot().await.ipv4_addr;
+                let Some(address) = address else {
+                    tokio::time::sleep(BIND_RETRY).await;
+                    continue;
+                };
+                let mut listener = match starting
                     .data_plane_tcp_bind(KYOKAI_PORT, DIAL_TIMEOUT)
                     .await
                 {
-                    Ok(l) => break l,
-                    Err(_) => tokio::time::sleep(BIND_RETRY).await,
+                    Ok(l) => l,
+                    Err(_) => {
+                        tokio::time::sleep(BIND_RETRY).await;
+                        continue;
+                    }
+                };
+                let mut check = tokio::time::interval(BIND_RETRY);
+                loop {
+                    tokio::select! {
+                        accepted = listener.accept() => match accepted {
+                            Ok((stream, from)) => {
+                                tokio::spawn(session::serve(ctx.clone(), stream, from.ip()));
+                            }
+                            Err(_) => break,
+                        },
+                        _ = check.tick() => {
+                            if starting.node_snapshot().await.ipv4_addr != Some(address) {
+                                break;
+                            }
+                        }
+                    }
                 }
-            };
-            while let Ok((stream, from)) = listener.accept().await {
-                tokio::spawn(session::serve(ctx.clone(), stream, from.ip()));
             }
         }));
         self.node = Some(node);

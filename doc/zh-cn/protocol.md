@@ -54,7 +54,8 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 以字节 `0x01` 开头的明文是媒体分片，而不是 JSON：帧号（u32）、分片序号与分片数（各 u16）、标志（第 0 位：关键帧）以及以微秒计的
 显示时间（u64），均为大端，之后是帧的一部分。一帧按需拆成若干分片，在另一端重新拼合；较新帧的分片会丢弃尚未拼完的旧帧
 （最新帧优先），超过 64 MiB 的帧会被丢弃。被控端在第一帧之前发送 `{"type": "video-start", codec, width, height}`；控制端可以发送
-`{"type": "key-frame"}`（被控端随后重新描述视频流并发送关键帧），在拥有 `control-input` 时还可发送 `{"type": "input", event}`。
+`{"type": "key-frame"}`（被控端随后重新描述视频流并发送关键帧），在拥有 `control-input` 时还可发送 `{"type": "input", event}`。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
+回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate}`（[computer-use.md](computer-use.md)）。
 只有在控制端可以查看屏幕时，被控端才发送视频。目前视频流是 15 fps 的 320×180 测试图案，以原始 RGBA 传输（编解码器
 `raw-rgba`）；采集并编码的视频在 Phase 3 中到来。
 

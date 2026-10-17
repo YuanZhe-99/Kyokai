@@ -33,6 +33,10 @@ const MAX_PLAINTEXT: usize = MAX_FRAME - 16;
 const STEP_TIMEOUT: Duration = Duration::from_secs(15);
 const PING_EVERY: Duration = Duration::from_secs(5);
 const IDLE_LIMIT: Duration = Duration::from_secs(15);
+/// The QoS viewer id and display name of a session (one viewer, the primary
+/// display).
+const QOS_VIEWER: i32 = 1;
+const QOS_DISPLAY: &str = "primary";
 /// Finished sessions kept for the interface.
 const KEEP_CLOSED: usize = 8;
 
@@ -96,6 +100,18 @@ enum Message {
     /// controller → host: one input event (Phase 3 step 3.5).
     Input {
         event: Value,
+    },
+    /// host → controller: a delay probe in the video stream; the controller
+    /// echoes it with `reply` set (RustDesk's TestDelay).
+    TestDelay {
+        #[serde(default)]
+        reply: bool,
+    },
+    /// host → controller: what QoS measured and chose, for the viewer.
+    Stats {
+        delay_ms: u32,
+        fps: u32,
+        bitrate: u32,
     },
 }
 
@@ -789,6 +805,21 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut reassembler = media::Reassembler::default();
     let mut frame_no: u32 = 0;
     let mut ping = tokio::time::interval(PING_EVERY);
+    // RustDesk's QoS on the host: one probe a second, frames counted per
+    // second, frame rate and bitrate applied to the source.
+    let mut qos = rustdesk_qos::VideoQoS::default();
+    let base_kbps = source
+        .as_ref()
+        .map(|s| rustdesk_qos::base_bitrate(s.start.width, s.start.height))
+        .unwrap_or(0);
+    if source.is_some() {
+        qos.on_connection_open(QOS_VIEWER);
+        qos.new_display(QOS_DISPLAY.into());
+    }
+    let mut probe = tokio::time::interval(Duration::from_secs(1));
+    let mut probe_sent: Option<Instant> = None;
+    let mut last_delay = 0u32;
+    let mut sent_this_second = 0usize;
     let mut heard = Instant::now();
     let mut plain = vec![0u8; MAX_FRAME];
     let outcome: Result<(), Failure> = async { loop {
@@ -803,6 +834,25 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
                 seal_json(&mut noise, &mut buf, &mut wr, &Message::Ping).await?;
             }
+            _ = probe.tick(), if source.is_some() => {
+                match probe_sent {
+                    None => {
+                        probe_sent = Some(Instant::now());
+                        seal_json(&mut noise, &mut buf, &mut wr, &Message::TestDelay { reply: false }).await?;
+                    }
+                    Some(t) => qos.user_delay_response_elapsed(QOS_VIEWER, t.elapsed().as_millis()),
+                }
+                qos.update_display_data(QOS_DISPLAY, sent_this_second);
+                sent_this_second = 0;
+                let fps = qos.fps();
+                let kbps = (base_kbps as f32 * qos.ratio()) as u32;
+                qos.store_bitrate(kbps);
+                if let Some(s) = &source {
+                    s.set_targets(fps, kbps.saturating_mul(1000));
+                }
+                let stats = Message::Stats { delay_ms: last_delay, fps, bitrate: kbps.saturating_mul(1000) };
+                seal_json(&mut noise, &mut buf, &mut wr, &stats).await?;
+            }
             Some((flags, pts, data)) = async {
                 match source.as_mut() {
                     Some(s) => s.frames.recv().await,
@@ -810,6 +860,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 frame_no = frame_no.wrapping_add(1);
+                sent_this_second += 1;
                 for chunk in media::chunks(frame_no, flags, pts, &data, MAX_PLAINTEXT) {
                     seal(&mut noise, &mut buf, &mut wr, &chunk).await?;
                 }
@@ -844,6 +895,23 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 match serde_json::from_slice::<Message>(plain).map_err(|_| Failure::Broken)? {
                     Message::Ping => seal_json(&mut noise, &mut buf, &mut wr, &Message::Pong).await?,
                     Message::Pong => {}
+                    // The controller echoes probes at once; the host measures them.
+                    Message::TestDelay { reply: false } => {
+                        seal_json(&mut noise, &mut buf, &mut wr, &Message::TestDelay { reply: true }).await?;
+                    }
+                    Message::TestDelay { reply: true } => {
+                        if let Some(t) = probe_sent.take() {
+                            last_delay = t.elapsed().as_millis() as u32;
+                            qos.user_network_delay(QOS_VIEWER, last_delay);
+                        }
+                    }
+                    Message::Stats { delay_ms, fps, bitrate } => {
+                        if let Some(q) = &queue {
+                            let mut packet = vec![media::packet::STATS];
+                            packet.extend(serde_json::to_vec(&json!({"delay_ms": delay_ms, "fps": fps, "bitrate": bitrate})).map_err(|_| Failure::Broken)?);
+                            q.push(packet);
+                        }
+                    }
                     Message::Bye => return Ok(()),
                     Message::VideoStart(v) => {
                         if let Some(q) = &queue {
@@ -1012,8 +1080,25 @@ mod tests {
         let start = queue.pop(Duration::from_secs(5)).unwrap();
         assert_eq!(start[0], media::packet::VIDEO_START);
         let v: media::VideoStart = serde_json::from_slice(&start[1..]).unwrap();
-        let frame = queue.pop(Duration::from_secs(5)).unwrap();
+        // The host's QoS stats arrive between frames; the test wants frames.
+        let mut stats = 0;
+        let frame = loop {
+            let p = queue.pop(Duration::from_secs(5)).unwrap();
+            if p[0] == media::packet::STATS {
+                stats += 1;
+                continue;
+            }
+            break p;
+        };
         assert_eq!(frame[0], media::packet::FRAME);
+        // Within two seconds a stats report (delay, frame rate, bitrate) arrives.
+        let until = Instant::now() + Duration::from_secs(3);
+        while stats == 0 && Instant::now() < until {
+            if let Ok(p) = queue.pop(Duration::from_millis(200)) {
+                stats += (p[0] == media::packet::STATS) as usize;
+            }
+        }
+        assert!(stats > 0, "no QoS stats from the host");
         match v.codec.as_str() {
             "raw-rgba" => assert_eq!(frame.len(), 1 + 1 + 8 + 320 * 180 * 4),
             "h264" => assert_eq!(

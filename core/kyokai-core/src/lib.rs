@@ -63,6 +63,7 @@ impl Core {
 struct Connect {
     device_id: String,
     password: zeroize::Zeroizing<String>,
+    #[serde(default)]
     want: Vec<access::Permission>,
 }
 

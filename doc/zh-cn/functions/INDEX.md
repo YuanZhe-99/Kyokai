@@ -15,6 +15,7 @@
 | `internal/fsutil` | 原子写入与 JSON 文档 | `WriteFileAtomic`、`WriteJSON`、`ReadJSON` |
 | `core/kyokai-core` | Rust 核心：C ABI、机密、身份、临时密码、EasyTier 节点 | `kyokai_start`、`kyokai_call`、`store::open`、`Identity::load_or_create`、`device_id`、`net::Network`、`session::serve`、`session::connect`、`access::Access`、`auth::Slots`、`backup::export`、`backup::import`、`media::Reassembler`、`media::Queue`、`kyokai_media_read`、`video::Source`、`mf::Encoder`、`mf::Decoder`、`decode::open`、`input::Event`、`input::Injector` |
 | `core/third_party/rustdesk-dxgi` | 复用的 RustDesk Windows 屏幕采集 | `Displays`、`Capturer::frame` |
+| `core/third_party/rustdesk-qos` | 复用的 RustDesk 视频 QoS | `VideoQoS`、`base_bitrate` |
 | `core/third_party/thunk-noop` | EasyTier `thunk-rs` 的空操作替代 | `thunk` |
 | `tools/deps` | 上游版本固定 | `check`、`update` |
 | `tools/checkdocs` | 文档镜像检查 | `main` |

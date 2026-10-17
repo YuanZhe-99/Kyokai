@@ -28,6 +28,8 @@ pub mod packet {
     pub const FRAME: u8 = 2;
     /// GUI → engine: a JSON control message for the host (input, key frame).
     pub const CONTROL: u8 = 3;
+    /// engine → GUI: the host's `{delay_ms, fps, bitrate}` JSON, every second.
+    pub const STATS: u8 = 4;
 }
 
 /// What a video stream carries, sent before its first frame.

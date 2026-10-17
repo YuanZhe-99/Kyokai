@@ -113,14 +113,14 @@ type PermanentPassword struct {
 type ConnectRequest struct {
 	DeviceID string   `json:"device_id"`
 	Password string   `json:"password"`
-	Want     []string `json:"want"`
+	Want     []string `json:"want,omitempty"`
 }
 
 // Decision answers a host confirmation; Permissions are the granted ones.
 type Decision struct {
 	ID          uint64   `json:"id"`
 	Allow       bool     `json:"allow"`
-	Permissions []string `json:"permissions"`
+	Permissions []string `json:"permissions,omitempty"`
 }
 
 // Permission names, as the wire and the core spell them.

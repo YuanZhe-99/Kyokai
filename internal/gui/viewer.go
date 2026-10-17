@@ -27,7 +27,15 @@ const (
 	packetVideoStart byte = 1
 	packetFrame      byte = 2
 	packetControl    byte = 3
+	packetStats      byte = 4
 )
+
+// hostStats is what the host's QoS measured and chose (media STATS).
+type hostStats struct {
+	DelayMS int `json:"delay_ms"`
+	FPS     int `json:"fps"`
+	Bitrate int `json:"bitrate"`
+}
 
 // videoStart describes the stream that follows (media::VideoStart).
 type videoStart struct {
@@ -75,6 +83,7 @@ type viewer struct {
 	frames  int
 	bytes   int
 	counted time.Time
+	host    hostStats
 	// Input: the picture element's box, whether this session may control
 	// input, and the keys sent down.
 	box     ui.Rect
@@ -187,6 +196,13 @@ func (v *viewer) pump() {
 			}
 			dec = d
 			v.begin(s)
+		case packetStats:
+			var s hostStats
+			if json.Unmarshal(p[1:], &s) == nil {
+				v.mu.Lock()
+				v.host = s
+				v.mu.Unlock()
+			}
 		case packetFrame:
 			if len(p) < 10 {
 				continue
@@ -262,7 +278,7 @@ func (v *viewer) setState(s string) {
 func (v *viewer) view(c *ui.Context) {
 	t := c.Theme()
 	v.mu.Lock()
-	bm, state, start, fps, kbps := v.bm, v.state, v.start, v.fps, v.kbps
+	bm, state, start, fps, kbps, host := v.bm, v.state, v.start, v.fps, v.kbps, v.host
 	v.mu.Unlock()
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
 		ui.Column(c).Grow(1).FillWidth().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
@@ -285,7 +301,7 @@ func (v *viewer) view(c *ui.Context) {
 		ui.Row(c).FillWidth().Padding(6, 12).Gap(16).Background(t.Surface).Children(func() {
 			ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).Grow(1)
 			if start.Width > 0 {
-				ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s", start.Width, start.Height, start.Codec, fps, kbps)).
+				ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s · %d ms", start.Width, start.Height, start.Codec, fps, kbps, host.DelayMS)).
 					FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
 			}
 		})

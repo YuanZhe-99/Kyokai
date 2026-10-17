@@ -67,7 +67,9 @@ as it needs and put back together on the other side; a chunk of a newer frame dr
 older one (latest frame wins), and frames over 64 MiB are dropped. Before its first frame the host
 sends `{"type": "video-start", codec, width, height}`; the controller may send `{"type":
 "key-frame"}` (the host then describes the stream again and sends a key frame) and, with
-`control-input`, `{"type": "input", event}`. The host sends video only while the controller may
+`control-input`, `{"type": "input", event}`. While it sends video the host sends `{"type":
+"test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":
+"stats", delay_ms, fps, bitrate}` ([computer-use.md](computer-use.md)). The host sends video only while the controller may
 view the screen. For now the stream is a 320×180 test pattern at 15 fps as raw RGBA (codec
 `raw-rgba`); captured, encoded video follows in Phase 3.
 

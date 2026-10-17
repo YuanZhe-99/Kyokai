@@ -23,6 +23,16 @@ SSH session) or has no H.264 encoder (Windows N, Server editions without Media F
 The viewer asks for a key frame when it opens; the host then describes the stream again and starts
 a new group of pictures.
 
+## Quality and bandwidth
+
+The host runs RustDesk's video QoS (`core/third_party/rustdesk-qos`, its upstream tests included):
+once a second it sends a delay probe in the video stream, which the controller echoes at once, so
+the probe measures the queue in front of the video, not just the path. The replies, any probe still
+outstanding and the frames sent per second drive the frame rate (from 15 up to 30) and the quality
+ratio; the encoder's bitrate is RustDesk's base bitrate for the picture size times that ratio
+(Balanced: 0.67, about 1.4 Mbit/s at 1080p), changed while it runs. Once a second the host also
+reports the delay, frame rate and bitrate it chose; the viewer shows the delay.
+
 ## Input
 
 The viewer sends input only for a session granted `control-input`; the host checks it again.
@@ -43,5 +53,5 @@ when it ends. Malformed events are dropped without ending the session.
 
 ## Not yet
 
-The remote cursor, other monitors, quality and bandwidth adaptation (RustDesk's QoS),
-hardware encoders and the other codecs are Phase 3 steps that follow (PLAN.md).
+The remote cursor, other monitors, the quality presets in the viewer, hardware encoders and the
+other codecs are Phase 3 steps that follow (PLAN.md).

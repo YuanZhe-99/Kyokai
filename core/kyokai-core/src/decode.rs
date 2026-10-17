@@ -2,6 +2,7 @@
 //! (doc/en-us/architecture.md, "FFI"): encoded frames in, RGBA out. They
 //! need no started core; each lives under a handle until closed.
 
+#[cfg(windows)]
 use crate::video;
 use std::collections::HashMap;
 use std::sync::Mutex;

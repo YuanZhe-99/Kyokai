@@ -38,6 +38,7 @@ Administrator rights are never requested when the GUI starts.
 | `internal/version` | The single product version |
 | `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`) |
 | `core/third_party/rustdesk-dxgi` | RustDesk's DXGI and GDI screen capture, vendored ([computer-use.md](computer-use.md)) |
+| `core/third_party/rustdesk-qos` | RustDesk's video QoS, vendored |
 | `core/third_party/thunk-noop` | Stands in for EasyTier's `thunk-rs` build step, so Windows builds keep the static C runtime |
 
 ## FFI

@@ -1,0 +1,13 @@
+# RustDesk's video QoS, vendored from rustdesk/rustdesk src/server/video_qos.rs
+# (commit in third_party/upstream.json); the file keeps its notice and says
+# what Kyokai changed (doc/en-us/third-party.md). Not under the workspace
+# lints: vendored code stays close to upstream.
+[package]
+name = "rustdesk-qos"
+version = "0.0.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+
+[dependencies]
+log = "0.4"

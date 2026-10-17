@@ -2,6 +2,9 @@
 //! from a controller allowed to control input, injected into the host's
 //! desktop. Nothing reaches Kyokai's own windows; whatever is held is
 //! released when the session ends.
+//!
+//! Injection exists on Windows only so far (macOS comes with the Mac pass).
+#![cfg_attr(not(windows), allow(dead_code))]
 
 use serde::Deserialize;
 

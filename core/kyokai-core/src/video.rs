@@ -1,6 +1,10 @@
 //! Pixel formats between capture, the codec and the viewer: captured BGRA
 //! scaled into NV12 for the encoder, decoded NV12 into RGBA for the viewer
 //! (BT.601, limited range, as the H.264 transforms expect by default).
+//!
+//! The conversions and the screen source run on Windows only so far; macOS
+//! capture (ScreenCaptureKit) and its codec come with the Mac pass.
+#![cfg_attr(not(windows), allow(dead_code))]
 
 /// The encoded size for a captured screen: the screen scaled down to fit
 /// `max_w`×`max_h`, keeping its aspect, with even sides (4:2:0 needs them).
@@ -129,7 +133,7 @@ mod tests {
 
 use crate::media::{self, VideoStart};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -151,6 +155,14 @@ pub struct Source {
     pub frames: mpsc::Receiver<Encoded>,
     key: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
+    targets: Arc<Targets>,
+}
+
+/// What QoS asks of the producer, read on every frame.
+pub struct Targets {
+    pub fps: AtomicU32,
+    /// Bits per second.
+    pub bitrate: AtomicU32,
 }
 
 impl Source {
@@ -158,14 +170,19 @@ impl Source {
     pub fn open() -> Source {
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
+        let targets = Arc::new(Targets {
+            fps: AtomicU32::new(FPS),
+            bitrate: AtomicU32::new(BITRATE),
+        });
         let (tx, frames) = mpsc::channel(2);
         #[cfg(windows)]
-        if let Ok(start) = screen::start(tx.clone(), key.clone(), stop.clone()) {
+        if let Ok(start) = screen::start(tx.clone(), key.clone(), stop.clone(), targets.clone()) {
             return Source {
                 start,
                 frames,
                 key,
                 stop,
+                targets,
             };
         }
         let start = test_pattern(tx, stop.clone());
@@ -174,7 +191,17 @@ impl Source {
             frames,
             key,
             stop,
+            targets,
         }
+    }
+
+    /// Sets the frame rate and bitrate QoS chose (the test pattern keeps its
+    /// own).
+    pub fn set_targets(&self, fps: u32, bitrate: u32) {
+        self.targets.fps.store(fps.clamp(1, 60), Ordering::Relaxed);
+        self.targets
+            .bitrate
+            .store(bitrate.clamp(100_000, 50_000_000), Ordering::Relaxed);
     }
 
     /// Asks for a key frame next (a viewer opened or lost a frame).
@@ -227,6 +254,7 @@ mod screen {
         tx: mpsc::Sender<Encoded>,
         key: Arc<AtomicBool>,
         stop: Arc<AtomicBool>,
+        targets: Arc<Targets>,
     ) -> Result<VideoStart, String> {
         let (ready_tx, ready) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
@@ -255,13 +283,19 @@ mod screen {
             }));
             let t0 = Instant::now();
             let mut nv12 = Vec::new();
-            let period = Duration::from_secs(1) / FPS;
+            let mut bitrate = BITRATE;
             // Frames the encoder took without giving output yet: it holds a
             // few before its first output, so a still screen repeats the last
             // picture until they come out.
             let mut held = 0u32;
             while !stop.load(Ordering::Relaxed) {
                 let begun = Instant::now();
+                let period = Duration::from_secs(1) / targets.fps.load(Ordering::Relaxed).max(1);
+                let wanted_rate = targets.bitrate.load(Ordering::Relaxed);
+                if wanted_rate != bitrate {
+                    bitrate = wanted_rate;
+                    encoder.set_bitrate(bitrate);
+                }
                 let wanted = key.swap(false, Ordering::Relaxed);
                 // Unchanged screens time out: nothing is encoded or sent,
                 // unless a key frame was asked for.
@@ -318,7 +352,15 @@ mod screen_tests {
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
         let (tx, mut rx) = mpsc::channel(2);
-        let start = match screen::start(tx, key, stop.clone()) {
+        let start = match screen::start(
+            tx,
+            key,
+            stop.clone(),
+            Arc::new(Targets {
+                fps: AtomicU32::new(FPS),
+                bitrate: AtomicU32::new(BITRATE),
+            }),
+        ) {
             Ok(s) => s,
             Err(e) => return eprintln!("skipped: {e}"),
         };

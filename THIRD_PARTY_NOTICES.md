@@ -34,6 +34,7 @@ The core's direct dependencies; `RUST_LICENSES.txt` lists all of them, transitiv
 | zeroize | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
 | windows-sys (Windows) | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | security-framework (macOS) | MIT OR Apache-2.0 | https://github.com/kornelski/rust-security-framework |
+| RustDesk's video QoS (`rustdesk-qos`, vendored from 1.5.0 at commit `fada664`, with its tests) | AGPL-3.0 | https://github.com/rustdesk/rustdesk |
 | RustDesk's DXGI and GDI screen capture (`rustdesk-dxgi`, vendored from 1.5.0 at commit `fada664`; Windows) | AGPL-3.0 (the original scrap code by Ram is MIT) | https://github.com/rustdesk/rustdesk |
 | windows, winapi (Windows: Media Foundation, DXGI) | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs, https://github.com/retep998/winapi-rs |
 | snow, opaque-ke | Apache-2.0 OR MIT; MIT | https://github.com/mcginty/snow, https://github.com/facebook/opaque-ke |
@@ -44,4 +45,4 @@ The core's direct dependencies; `RUST_LICENSES.txt` lists all of them, transitiv
 
 | Component | License | Used for |
 |---|---|---|
-| RustDesk (more vendored modules, 1.5.0) | AGPL-3.0 | input logic, QoS, privileged helper |
+| RustDesk (more vendored modules, 1.5.0) | AGPL-3.0 | input logic, privileged helper |

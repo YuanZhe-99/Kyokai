@@ -354,6 +354,8 @@ func watch(socket string, id uint64, d time.Duration, snapshot string) error {
 					pic = image.NewRGBA(image.Rect(0, 0, s.Width, s.Height))
 				}
 			}
+		case len(p) > 0 && p[0] == 4:
+			fmt.Println("host", string(p[1:]))
 		case len(p) >= 10 && p[0] == 2:
 			frames++
 			bytes += len(p) - 10
