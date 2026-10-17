@@ -496,6 +496,36 @@ fn call(input: &[u8]) -> Result<Value, String> {
             replace_identity(|s| backup::import(s, &document, &passphrase))
         }
         "identity.reset" => replace_identity(backup::reset),
+        // A run-mode change moves the whole store between this device's
+        // engines (doc/en-us/run-modes.md).
+        "store.export" => {
+            let passphrase: zeroize::Zeroizing<String> =
+                serde_json::from_value(req.params["passphrase"].take())
+                    .map_err(|e| format!("bad passphrase: {e}"))?;
+            try_core(|c| {
+                let doc = backup::export_store(c.ctx.access.secrets(), &c.state_dir, &passphrase)?;
+                Ok(json!({"document": doc}))
+            })
+        }
+        "store.import" => {
+            let document = req.params["document"]
+                .as_str()
+                .ok_or("bad document")?
+                .to_owned();
+            let passphrase: zeroize::Zeroizing<String> =
+                serde_json::from_value(req.params["passphrase"].take())
+                    .map_err(|e| format!("bad passphrase: {e}"))?;
+            let dir = try_core(|c| Ok(json!(c.state_dir)))?;
+            let dir = PathBuf::from(dir.as_str().unwrap_or_default());
+            replace_identity(|s| backup::import_store(s, &dir, &document, &passphrase))
+        }
+        "store.clear" => try_core(|c| {
+            // The caller stops this engine next: it must not serve the
+            // identity the other engine now holds.
+            c.ctx.access.set_serve(access::Serve::None);
+            c.ctx.sessions.close_hosts();
+            backup::clear_store(c.ctx.access.secrets(), &c.state_dir).map(|()| json!({}))
+        }),
         "device.set_name" => {
             let name = req.params["name"].as_str().ok_or("bad name")?.to_owned();
             if name.chars().count() > about::MAX_NAME {

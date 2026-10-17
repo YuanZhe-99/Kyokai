@@ -154,12 +154,22 @@ func (e *engineChild) stop(socket string) {
 // connectLoop keeps a session attached to the engine, starting the engine
 // when needed, until the GUI stops.
 func (a *App) connectLoop() {
-	client := localapi.NewClient(a.socket)
 	for a.ctx.Err() == nil {
-		if err := a.engine.ensure(a.ctx, a.socket); err != nil {
+		socket := a.sock()
+		client := localapi.NewClient(socket)
+		// The helper is a service: only the GUI's own engine is started.
+		var err error
+		if !a.usesHelper() {
+			err = a.engine.ensure(a.ctx, socket)
+		}
+		if err != nil {
 			a.update(func() { a.connected, a.engineErr = false, err.Error() })
 		} else {
-			err := client.Attach(a.ctx, func(st *localapi.Status) error {
+			attach, stop := context.WithCancel(a.ctx)
+			a.mu.Lock()
+			a.reattach = stop
+			a.mu.Unlock()
+			err := client.Attach(attach, func(st *localapi.Status) error {
 				a.update(func() {
 					if a.status == nil || a.status.PasswordSerial != st.PasswordSerial {
 						a.password, a.showPassword = "", false
@@ -174,8 +184,12 @@ func (a *App) connectLoop() {
 				})
 				return nil
 			})
+			stop()
 			if a.ctx.Err() != nil {
 				return
+			}
+			if attach.Err() != nil {
+				continue // switched to another engine
 			}
 			a.update(func() { a.connected, a.engineErr = false, fmt.Sprint(err) })
 		}
@@ -194,7 +208,7 @@ func (a *App) request(t localapi.RequestType) (*localapi.Response, error) {
 
 // requestWith sends one request with parameters to the engine.
 func (a *App) requestWith(req localapi.Request) (*localapi.Response, error) {
-	return localapi.NewClient(a.socket).Do(a.ctx, req)
+	return localapi.NewClient(a.sock()).Do(a.ctx, req)
 }
 
 // revealPassword fetches the temporary password for the Home page or the

@@ -16,6 +16,20 @@ open status stream) it serves everyone; without one, Background service serves o
 grants and Follow GUI no one, ending its host sessions ([identity-and-access.md](identity-and-access.md),
 "Unattended access").
 
+## Switching
+
+Settings, Run mode, switches between the three. Leaving No privileges installs the helper when it
+is missing (the one administrator prompt), waits for it, and **moves the store**
+(`localapi.MoveStore`): the user engine seals its identity, trusted devices, known hosts,
+permanent password, network secret, AI keys, friendly name and AI settings under a one-time
+passphrase (`store.export`), the helper takes them over (`store.import`), and only once the helper
+reports the same Device ID does the user engine forget them and stop (`store.clear`), so one
+identity is never served twice and never lost. The GUI then uses the helper's socket (`gui.json`
+`helper`). Follow GUI and Background service switch with `helper.background`. Going back moves the
+store the other way and removes the helper and its state (a second prompt). `ctl move --to SOCKET`
+does the same move from the command line. When the GUI quits, only its own engine stops; the
+helper keeps running.
+
 ## The helper (Windows)
 
 `kyokai-svc helper install` (administrator) copies the app's `kyokai-svc.exe` and core library into
@@ -60,6 +74,8 @@ The helper's install, uninstall and status commands, the service, its authorizat
 session agent (its link, start in the console session and desktop following) are implemented on
 Windows; the link is tested in-process, the service and the agent not yet on a machine. The macOS
 helper (a root LaunchDaemon) comes with the Mac pass and reports "not available yet" until then.
-The run-mode choice in Settings, moving the identity into the helper, its signed self-update and
-its self-disable follow (`PLAN.md`, Phase 6). Until then an installed helper runs an engine of its
-own with a separate Device ID, which is for development only.
+The run-mode choice and the store move are implemented and the move was run between two user
+engines; the switch with the real helper waits for an administrator install on a test machine.
+The helper's signed self-update and its self-disable follow (`PLAN.md`, Phase 6). A helper
+installed with `kyokai-svc helper install` alone runs an engine of its own with a separate Device ID
+until a store is moved into it.

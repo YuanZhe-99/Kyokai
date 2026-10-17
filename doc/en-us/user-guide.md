@@ -61,6 +61,15 @@ Access; **Remove** revokes one at once and ends its sessions. **Connect without 
 device in for 30 days with the permanent password alone, for a computer nobody sits at. Your own use
 of the keyboard and mouse always wins over theirs and over any AI.
 
+## Run Kyokai as a helper
+
+Settings, **Run mode**, chooses where this device runs. **No privileges** (the default) needs
+nothing. **Follow Kyokai** and **Background service** install a helper once, after one
+administrator prompt, so the other side can also see and use sign-in screens and administrator
+prompts on this computer; Background service also lets devices you allowed to connect without
+asking in before anyone signs in. Your Device ID, trusted devices and settings move along.
+Choosing No privileges again removes the helper.
+
 ## AI on this computer
 
 On the **AI** page, choose the provider (Claude or OpenAI), the model and your API key under **AI

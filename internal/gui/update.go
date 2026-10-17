@@ -89,7 +89,7 @@ func (a *App) installApp() {
 	go func() {
 		ctx, cancel := context.WithTimeout(a.ctx, 30*time.Minute)
 		defer cancel()
-		a.engine.stop(a.socket)
+		a.engine.stop(a.userSocket)
 		err := up.Install(ctx, func(done, total int64) {
 			if total > 0 {
 				a.update(func() { a.updateProgress = float64(done) / float64(total) })

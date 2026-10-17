@@ -19,6 +19,9 @@ type Prefs struct {
 	// tools, Kyokai's own video and the AI's screenshots see Kyokai's
 	// windows. Off (the zero value) keeps them out of every capture.
 	ShowInCapture bool `json:"show_in_capture,omitempty"`
+	// Helper: this device lives in the privileged helper (Follow GUI or
+	// Background service), so the GUI uses the helper's socket.
+	Helper bool `json:"helper,omitempty"`
 	// TrayHintShown records that the hide-to-tray notice was shown once.
 	TrayHintShown bool `json:"tray_hint_shown,omitempty"`
 	// CheckAppUpdates checks GitHub for a newer signed app once a day;

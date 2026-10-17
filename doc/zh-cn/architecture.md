@@ -62,7 +62,7 @@
 `network.set`（`{servers, name, secret?}`；缺少密钥时保留已存的密钥）、`password.set_permanent`（`{password}`，null 表示移除）、
 `session.connect`（`{device_id, password, want}`；立即返回会话 id，进度见状态）、`session.close`、`request.decide`
 （`{id, allow, permissions}`）、`trusted.list`、`trusted.remove`、`host.forget`、`identity.export`（`{passphrase}` → `{document}`）、`identity.import`
-（`{document, passphrase}`）、`identity.reset`、`device.set_name`（`{name}`；"" 表示使用电脑的名称；状态中带有 `name` 与本机的 `about`）、`trusted.unattended`（`{key, days}`；0 表示停止）、`host.serve`（`{serve}`：`all`、`unattended` 或 `none`，由引擎依据运行方式设定），以及 AI 任务的方法（[computer-use.md](computer-use.md)）：`ai.settings.get`、
+（`{document, passphrase}`）、`identity.reset`、`device.set_name`（`{name}`；"" 表示使用电脑的名称；状态中带有 `name` 与本机的 `about`）、`trusted.unattended`（`{key, days}`；0 表示停止）、`store.export`（`{passphrase}` → `{document}`）、`store.import`（`{document, passphrase}`）、`store.clear`（切换运行方式时使用，[run-modes.md](run-modes.md)）、`host.serve`（`{serve}`：`all`、`unattended` 或 `none`，由引擎依据运行方式设定），以及 AI 任务的方法（[computer-use.md](computer-use.md)）：`ai.settings.get`、
 `ai.settings.set`（`{provider?, openai_model?, claude_model?, approval?}`）、`ai.key.set`（`{provider, key}`，null 表示移除；密钥从不返回）、
 `ai.task.start`（`{key, instruction}` → `{id}`；key 使其幂等）、`ai.task.reply`（`{id, text}`）、`ai.task.pause`、`ai.task.resume`、
 `ai.task.cancel`（`{id}`）、`ai.task.decide`（`{id, approve}`）、`ai.tasks`（最新的在前）、`ai.history.clear`、`ai.stop`（取消所有任务）。
@@ -79,7 +79,7 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
   请求，`session.attach` 除外：它保持连接，状态变化时收到推送。
 - 请求：`status`（含网络状态）、`password.reveal`、`password.regenerate`、`network.get`、`network.set`（被拒绝的设置
   以 `invalid` 和原因答复）、`password.set_permanent`、`session.connect`、`session.close`、`request.decide`、`trusted.list`、
-  `trusted.remove`、`host.forget`、`identity.export`、`identity.import`、`identity.reset`、`device.set_name`、`trusted.unattended`、`helper.background`（仅助手）、`session.attach`、`session.media`、`shutdown`，以及与核心方法同名的 AI 请求（`ai.settings.get` … `ai.stop`）。`session.media`（某个进行中的控制端会话的 `{id}`）先答复 OK，
+  `trusted.remove`、`host.forget`、`identity.export`、`identity.import`、`identity.reset`、`device.set_name`、`trusted.unattended`、`helper.background`（仅助手）、`store.export`、`store.import`、`store.clear`（之后停止引擎）、`session.attach`、`session.media`、`shutdown`，以及与核心方法同名的 AI 请求（`ai.settings.get` … `ai.stop`）。`session.media`（某个进行中的控制端会话的 `{id}`）先答复 OK，
   之后双向传输带长度前缀的包：引擎发出视频、统计与被控端的 AI 任务，界面发出控制与 AI 消息；界面首先请求关键帧。状态包含待处理的被控端确认与会话；机密只朝引擎方向传递
   （网络密钥、固定密码、用户输入的密码、服务商的 API 密钥）。会话在每个改变状态的命令之后、以及网络状态变化时收到状态。
 - 授权来自操作系统的对端凭据（macOS 为 `LOCAL_PEERCRED`；Windows 为 `SIO_AF_UNIX_GETPEERPID` 与进程令牌的 SID），

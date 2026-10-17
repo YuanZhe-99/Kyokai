@@ -8,9 +8,9 @@ returns, side effects and notes where non-trivial).
 |---|---|---|
 | `cmd/kyokai` | GUI entry point | `main` |
 | `cmd/kyokai-svc` | Engine entry point | `run`, `ctl`, `helperCmd`, `runHelper`, `asService`, `agentCmd` |
-| `internal/gui` | GUI state, views (Home, Network, AI, sessions and confirmations, Settings), the viewer window, tray, updates, the engine child | `App`, `App.View`, `App.connectLoop`, `engineChild.ensure`, `App.aiView`, `describeAction`, `viewer.aiPanel`, `deviceAvatar`, `deviceLogoName` |
+| `internal/gui` | GUI state, views (Home, Network, AI, sessions and confirmations, Settings), the viewer window, tray, updates, the engine child | `App`, `App.View`, `App.connectLoop`, `engineChild.ensure`, `App.aiView`, `describeAction`, `viewer.aiPanel`, `deviceAvatar`, `deviceLogoName`, `App.runModeCard`, `App.switchMode`, `runPrivileged` |
 | `internal/engine` | Engine host | `Run`, `Options`, `DefaultStateDir` |
-| `internal/localapi` | Local API protocol, server, client, authorization | `ProtocolVersion`, `Request`, `Status`, `AISettings`, `AITask`, `NetworkSettings`, `NetworkStatus`, `SessionInfo`, `HostRequest`, `Client.Attach`, `Authorizer.Allows` |
+| `internal/localapi` | Local API protocol, server, client, authorization | `ProtocolVersion`, `Request`, `Status`, `AISettings`, `AITask`, `NetworkSettings`, `NetworkStatus`, `SessionInfo`, `HostRequest`, `Client.Attach`, `Authorizer.Allows`, `MoveStore` |
 | `internal/core` | purego binding to the Rust core | `Load`, `Lib.Start`, `Lib.Call` |
 | `internal/version` | Product version | `Version`, `Older` |
 | `internal/helper` | Installs, removes and inspects the privileged helper (Windows service; macOS later) | `Install`, `Uninstall`, `Inspect`, `ReadSettings`, `GroupSID`, `SocketPath` |

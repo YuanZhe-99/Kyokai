@@ -10,6 +10,7 @@ use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use opaque_ke::argon2::{Algorithm, Argon2, Params, Version};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::path::Path;
 use zeroize::Zeroizing;
 
 /// The secrets that make up a device's identity: its key and what is bound
@@ -64,18 +65,140 @@ pub fn export(secrets: &Secrets, passphrase: &str) -> Result<String, String> {
             "the passphrase needs at least {MIN_PASSPHRASE} characters"
         ));
     }
-    let entries: BTreeMap<&str, Zeroizing<String>> = IDENTITY_SECRETS
+    let entries: BTreeMap<String, Zeroizing<String>> = IDENTITY_SECRETS
         .iter()
-        .filter_map(|name| secrets.get(name).map(|v| (*name, v)))
+        .filter_map(|name| secrets.get(name).map(|v| (name.to_string(), v)))
         .collect();
     if !entries.contains_key("device_key") {
         return Err("there is no identity to back up".into());
     }
+    seal(&entries, passphrase, FORMAT, AAD)
+}
+
+/// Replaces this device's identity with the one in a backup document.
+/// Side effects: rewrites the identity's secrets (absent ones are removed);
+/// the caller restarts the core so the new identity takes effect.
+/// Notes: the document is checked completely before anything is written.
+pub fn import(secrets: &Secrets, document: &str, passphrase: &str) -> Result<(), String> {
+    let entries = open(document, passphrase, FORMAT, AAD)?;
+    check_identity(&entries, |k| IDENTITY_SECRETS.contains(&k))?;
+    for name in IDENTITY_SECRETS {
+        match entries.get(*name) {
+            Some(v) => secrets.set(name, v)?,
+            None => secrets.remove(name)?,
+        }
+    }
+    Ok(())
+}
+
+/// What a move between run modes carries besides the identity: the network
+/// secret, the AI keys, and the state files that belong to the device.
+const MOVE_SECRETS: &[&str] = &["network", "ai.openai.key", "ai.claude.key"];
+const MOVE_FILES: &[&str] = &["device.json", "ai.json"];
+const MOVE_FORMAT: &str = "kyokai-move";
+const MOVE_AAD: &[u8] = b"kyokai/store-move/v1";
+
+/// Seals this engine's whole store for another engine of the same device
+/// (a run-mode change, doc/en-us/run-modes.md): the identity, the network
+/// secret, the AI keys, the friendly name and the AI settings.
+/// Returns: the document; `passphrase` is a one-time secret of the caller.
+pub fn export_store(
+    secrets: &Secrets,
+    state_dir: &Path,
+    passphrase: &str,
+) -> Result<String, String> {
+    let mut entries: BTreeMap<String, Zeroizing<String>> = IDENTITY_SECRETS
+        .iter()
+        .chain(MOVE_SECRETS)
+        .filter_map(|name| secrets.get(name).map(|v| (name.to_string(), v)))
+        .collect();
+    if !entries.contains_key("device_key") {
+        return Err("there is no identity to move".into());
+    }
+    for f in MOVE_FILES {
+        if let Ok(text) = std::fs::read_to_string(state_dir.join(f)) {
+            entries.insert(format!("file:{f}"), Zeroizing::new(text));
+        }
+    }
+    seal(&entries, passphrase, MOVE_FORMAT, MOVE_AAD)
+}
+
+/// Takes over a store another engine of this device sealed.
+/// Side effects: replaces every moved secret and file (absent ones are
+/// removed); the caller restarts the core.
+/// Notes: the document is checked completely before anything is written.
+pub fn import_store(
+    secrets: &Secrets,
+    state_dir: &Path,
+    document: &str,
+    passphrase: &str,
+) -> Result<(), String> {
+    let entries = open(document, passphrase, MOVE_FORMAT, MOVE_AAD)?;
+    check_identity(&entries, |k| {
+        IDENTITY_SECRETS.contains(&k)
+            || MOVE_SECRETS.contains(&k)
+            || k.strip_prefix("file:")
+                .is_some_and(|f| MOVE_FILES.contains(&f))
+    })?;
+    for name in IDENTITY_SECRETS.iter().chain(MOVE_SECRETS) {
+        match entries.get(*name) {
+            Some(v) => secrets.set(name, v)?,
+            None => secrets.remove(name)?,
+        }
+    }
+    for f in MOVE_FILES {
+        let path = state_dir.join(f);
+        match entries.get(&format!("file:{f}")) {
+            Some(text) => crate::store::write_atomic(&path, text.as_bytes())?,
+            None => {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Forgets everything a move carried, once the other engine holds it, so
+/// one identity is never served by two engines.
+/// Side effects: removes the secrets and files; the caller stops the engine.
+pub fn clear_store(secrets: &Secrets, state_dir: &Path) -> Result<(), String> {
+    for name in IDENTITY_SECRETS.iter().chain(MOVE_SECRETS) {
+        secrets.remove(name)?;
+    }
+    for f in MOVE_FILES {
+        let _ = std::fs::remove_file(state_dir.join(f));
+    }
+    Ok(())
+}
+
+/// Checks that a document holds a well-formed device key and only names
+/// `allowed` accepts.
+fn check_identity(
+    entries: &BTreeMap<String, Zeroizing<String>>,
+    allowed: impl Fn(&str) -> bool,
+) -> Result<(), String> {
+    let bad = || "this is not a Kyokai identity backup".to_string();
+    let device_key = entries.get("device_key").ok_or_else(bad)?;
+    let seed = Zeroizing::new(STANDARD.decode(device_key.as_bytes()).map_err(|_| bad())?);
+    if seed.len() != 32 || entries.keys().any(|k| !allowed(k)) {
+        return Err(bad());
+    }
+    Ok(())
+}
+
+/// Encrypts `entries` under a key derived from `passphrase`.
+/// Returns: the document (JSON text).
+fn seal(
+    entries: &BTreeMap<String, Zeroizing<String>>,
+    passphrase: &str,
+    format: &str,
+    aad: &[u8],
+) -> Result<String, String> {
     let plain = Zeroizing::new(
         serde_json::to_vec(
             &entries
                 .iter()
-                .map(|(k, v)| (*k, v.as_str()))
+                .map(|(k, v)| (k.as_str(), v.as_str()))
                 .collect::<BTreeMap<_, _>>(),
         )
         .map_err(|e| e.to_string())?,
@@ -87,16 +210,10 @@ pub fn export(secrets: &Secrets, passphrase: &str) -> Result<String, String> {
     let key = derive(passphrase, &salt, KDF_M, KDF_T, 1)?;
     let cipher = XChaCha20Poly1305::new_from_slice(key.as_ref()).map_err(|_| "bad key")?;
     let sealed = cipher
-        .encrypt(
-            &XNonce::from(nonce),
-            Payload {
-                msg: &plain,
-                aad: AAD,
-            },
-        )
+        .encrypt(&XNonce::from(nonce), Payload { msg: &plain, aad })
         .map_err(|_| "encryption failed")?;
     let file = File {
-        format: FORMAT.into(),
+        format: format.into(),
         version: VERSION,
         kdf: Kdf {
             alg: "argon2id".into(),
@@ -111,14 +228,17 @@ pub fn export(secrets: &Secrets, passphrase: &str) -> Result<String, String> {
     serde_json::to_string_pretty(&file).map_err(|e| e.to_string())
 }
 
-/// Replaces this device's identity with the one in a backup document.
-/// Side effects: rewrites the identity's secrets (absent ones are removed);
-/// the caller restarts the core so the new identity takes effect.
-/// Notes: the document is checked completely before anything is written.
-pub fn import(secrets: &Secrets, document: &str, passphrase: &str) -> Result<(), String> {
+/// Decrypts a document of `format` with `passphrase`.
+/// Returns: its entries.
+fn open(
+    document: &str,
+    passphrase: &str,
+    format: &str,
+    aad: &[u8],
+) -> Result<BTreeMap<String, Zeroizing<String>>, String> {
     let file: File =
         serde_json::from_str(document).map_err(|_| "this is not a Kyokai identity backup")?;
-    if file.format != FORMAT || file.version != VERSION || file.kdf.alg != "argon2id" {
+    if file.format != format || file.version != VERSION || file.kdf.alg != "argon2id" {
         return Err("this backup comes from an unsupported version".into());
     }
     // Bounded so a crafted file cannot make the KDF exhaust memory or time.
@@ -137,33 +257,10 @@ pub fn import(secrets: &Secrets, document: &str, passphrase: &str) -> Result<(),
     let cipher = XChaCha20Poly1305::new_from_slice(key.as_ref()).map_err(|_| "bad key")?;
     let plain = Zeroizing::new(
         cipher
-            .decrypt(
-                &XNonce::from(nonce),
-                Payload {
-                    msg: &sealed,
-                    aad: AAD,
-                },
-            )
+            .decrypt(&XNonce::from(nonce), Payload { msg: &sealed, aad })
             .map_err(|_| "wrong passphrase, or the backup is damaged")?,
     );
-    let entries: BTreeMap<String, Zeroizing<String>> =
-        serde_json::from_slice(&plain).map_err(|_| bad())?;
-    let device_key = entries.get("device_key").ok_or_else(bad)?;
-    let seed = Zeroizing::new(STANDARD.decode(device_key.as_bytes()).map_err(|_| bad())?);
-    if seed.len() != 32
-        || entries
-            .keys()
-            .any(|k| !IDENTITY_SECRETS.contains(&k.as_str()))
-    {
-        return Err(bad());
-    }
-    for name in IDENTITY_SECRETS {
-        match entries.get(*name) {
-            Some(v) => secrets.set(name, v)?,
-            None => secrets.remove(name)?,
-        }
-    }
-    Ok(())
+    serde_json::from_slice(&plain).map_err(|_| bad())
 }
 
 /// Forgets this device's identity; the next start creates a new one (a new
@@ -217,6 +314,55 @@ mod tests {
         assert_eq!(Identity::load_or_create(&b).unwrap().device_id(), id);
         assert!(b.get("known_hosts").is_none(), "absent entries are removed");
         assert!(b.get("trusted_devices").is_some());
+    }
+
+    #[test]
+    fn a_move_carries_the_whole_store_once_and_is_no_identity_backup() {
+        let dir = |n: &str| {
+            let d = std::env::temp_dir().join(format!("kyokai-move-{n}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&d);
+            std::fs::create_dir_all(&d).unwrap();
+            d
+        };
+        let (from_dir, to_dir) = (dir("from"), dir("to"));
+        let from = Secrets::memory();
+        let id = Identity::load_or_create(&from).unwrap().device_id();
+        from.set("network", "{\"name\":\"n\"}").unwrap();
+        from.set("ai.claude.key", "sk-test").unwrap();
+        std::fs::write(from_dir.join("device.json"), "{\"name\":\"Office\"}").unwrap();
+        let doc = export_store(&from, &from_dir, "one-time passphrase").unwrap();
+        assert!(!doc.contains("sk-test"), "never in the clear");
+        // An identity backup and a move are not interchangeable.
+        assert!(import(&Secrets::memory(), &doc, "one-time passphrase").is_err());
+        let backup = export(&from, "one-time passphrase").unwrap();
+        assert!(import_store(&Secrets::memory(), &to_dir, &backup, "one-time passphrase").is_err());
+
+        let to = Secrets::memory();
+        Identity::load_or_create(&to).unwrap();
+        to.set("ai.openai.key", "left over").unwrap();
+        import_store(&to, &to_dir, &doc, "one-time passphrase").unwrap();
+        assert_eq!(Identity::load_or_create(&to).unwrap().device_id(), id);
+        assert_eq!(
+            to.get("ai.claude.key").as_deref().map(String::as_str),
+            Some("sk-test")
+        );
+        assert!(
+            to.get("ai.openai.key").is_none(),
+            "absent entries are removed"
+        );
+        assert!(to.get("network").is_some());
+        assert_eq!(
+            std::fs::read_to_string(to_dir.join("device.json")).unwrap(),
+            "{\"name\":\"Office\"}"
+        );
+        // The source lets go, so one identity has one engine.
+        clear_store(&from, &from_dir).unwrap();
+        assert!(from.get("device_key").is_none() && from.get("ai.claude.key").is_none());
+        assert!(!from_dir.join("device.json").exists());
+        let _ = (
+            std::fs::remove_dir_all(&from_dir),
+            std::fs::remove_dir_all(&to_dir),
+        );
     }
 
     #[test]

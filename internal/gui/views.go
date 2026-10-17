@@ -143,6 +143,7 @@ func secretsNote(p string) string {
 func (a *App) settingsView(c *ui.Context) {
 	a.generalSettings(c)
 	if a.engineState(c) {
+		a.runModeCard(c)
 		a.identitySettings(c)
 		a.accessSettings(c)
 		a.storageSettings(c)
@@ -267,7 +268,9 @@ func (a *App) diagnostics(c *ui.Context) {
 		settingRow(c, "eng", L.DiagEngine(), "", func() {
 			ui.Text(c, L.DiagEngineRunning(st.Started.Local().Format(time.DateTime)))
 		})
-		settingRow(c, "mode", L.DiagRunMode(), "", func() { ui.Text(c, L.RunModeUser()) })
+		settingRow(c, "mode", L.DiagRunMode(), "", func() {
+			ui.Text(c, []string{L.RunModeUser(), L.RunModeFollow(), L.RunModeBackground()}[a.currentMode()])
+		})
 		logs := filepath.Join(st.StateDir, "logs")
 		settingRow(c, "logs", L.DiagLogs(), logs, func() {
 			if ui.Button(c.Key("open-logs"), L.ActionOpenFolder()).Clicked() {

@@ -14,6 +14,7 @@
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID | unattended --key K [--days N]
 //	kyokai-svc ctl background [--on]     (the helper: Background service or Follow GUI)
+//	kyokai-svc ctl move --to SOCKET       (moves the whole store to another engine of this device, which stops this one)
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
 //	kyokai-svc ctl ai | ai-tasks | ai-clear | ai-stop
 //	kyokai-svc ctl ai-set [--provider P] [--openai-model M] [--claude-model M] [--approval A]
@@ -166,6 +167,7 @@ func ctl(args []string) error {
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
 	file := fs.String("file", "", "backup, restore: the backup file")
 	yes := fs.Bool("yes", false, "reset-identity: confirm a new Device ID")
+	to := fs.String("to", "", "move: the socket of the engine that takes over this device's store")
 	days := fs.Int("days", 30, "unattended: how long the device may connect without confirmation (0 stops it)")
 	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached)")
 	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
@@ -186,6 +188,13 @@ func ctl(args []string) error {
 		usage()
 	}
 	cmd := args[0]
+	if cmd == "move" {
+		id, err := localapi.MoveStore(context.Background(), localapi.NewClient(*socket), localapi.NewClient(*to))
+		if err == nil {
+			fmt.Println("moved: device", id, "is now served by", *to)
+		}
+		return err
+	}
 	if cmd == "watch" {
 		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *text)
 	}

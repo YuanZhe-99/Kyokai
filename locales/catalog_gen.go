@@ -2032,6 +2032,96 @@ func (msgs Messages) RestoreConfirm() string {
 	return Catalog.Format(msgs.locale, "RestoreConfirm", nil)
 }
 
+// RunModeBackground says "Background service"
+// in the language the app shows.
+func RunModeBackground() string { return In(i18n.Locale()).RunModeBackground() }
+
+// RunModeBackground says "Background service"
+// in the language of msgs.
+func (msgs Messages) RunModeBackground() string {
+	return Catalog.Format(msgs.locale, "RunModeBackground", nil)
+}
+
+// RunModeCancelled says "The administrator prompt was cancelled."
+// in the language the app shows.
+func RunModeCancelled() string { return In(i18n.Locale()).RunModeCancelled() }
+
+// RunModeCancelled says "The administrator prompt was cancelled."
+// in the language of msgs.
+func (msgs Messages) RunModeCancelled() string {
+	return Catalog.Format(msgs.locale, "RunModeCancelled", nil)
+}
+
+// RunModeChanged says "Run mode changed."
+// in the language the app shows.
+func RunModeChanged() string { return In(i18n.Locale()).RunModeChanged() }
+
+// RunModeChanged says "Run mode changed."
+// in the language of msgs.
+func (msgs Messages) RunModeChanged() string {
+	return Catalog.Format(msgs.locale, "RunModeChanged", nil)
+}
+
+// RunModeFollow says "Follow Kyokai"
+// in the language the app shows.
+func RunModeFollow() string { return In(i18n.Locale()).RunModeFollow() }
+
+// RunModeFollow says "Follow Kyokai"
+// in the language of msgs.
+func (msgs Messages) RunModeFollow() string {
+	return Catalog.Format(msgs.locale, "RunModeFollow", nil)
+}
+
+// RunModeHint says "Where this device runs: in Kyokai itself, or in a helper that can also show and operate sign-in and administrator pro…"
+// in the language the app shows.
+func RunModeHint() string { return In(i18n.Locale()).RunModeHint() }
+
+// RunModeHint says "Where this device runs: in Kyokai itself, or in a helper that can also show and operate sign-in and administrator pro…"
+// in the language of msgs.
+func (msgs Messages) RunModeHint() string {
+	return Catalog.Format(msgs.locale, "RunModeHint", nil)
+}
+
+// RunModeNoHelper says "The helper did not start."
+// in the language the app shows.
+func RunModeNoHelper() string { return In(i18n.Locale()).RunModeNoHelper() }
+
+// RunModeNoHelper says "The helper did not start."
+// in the language of msgs.
+func (msgs Messages) RunModeNoHelper() string {
+	return Catalog.Format(msgs.locale, "RunModeNoHelper", nil)
+}
+
+// RunModeNote says "Follow Kyokai and Background service install a helper once, after one administrator prompt; Background service also l…"
+// in the language the app shows.
+func RunModeNote() string { return In(i18n.Locale()).RunModeNote() }
+
+// RunModeNote says "Follow Kyokai and Background service install a helper once, after one administrator prompt; Background service also l…"
+// in the language of msgs.
+func (msgs Messages) RunModeNote() string {
+	return Catalog.Format(msgs.locale, "RunModeNote", nil)
+}
+
+// RunModeSwitching says "Switching…"
+// in the language the app shows.
+func RunModeSwitching() string { return In(i18n.Locale()).RunModeSwitching() }
+
+// RunModeSwitching says "Switching…"
+// in the language of msgs.
+func (msgs Messages) RunModeSwitching() string {
+	return Catalog.Format(msgs.locale, "RunModeSwitching", nil)
+}
+
+// RunModeUnavailable says "Only No privileges is available on this system yet."
+// in the language the app shows.
+func RunModeUnavailable() string { return In(i18n.Locale()).RunModeUnavailable() }
+
+// RunModeUnavailable says "Only No privileges is available on this system yet."
+// in the language of msgs.
+func (msgs Messages) RunModeUnavailable() string {
+	return Catalog.Format(msgs.locale, "RunModeUnavailable", nil)
+}
+
 // RunModeUser says "No privileges"
 // in the language the app shows.
 func RunModeUser() string { return In(i18n.Locale()).RunModeUser() }
@@ -2322,6 +2412,16 @@ func SettingsOpenAtLoginHint() string { return In(i18n.Locale()).SettingsOpenAtL
 // in the language of msgs.
 func (msgs Messages) SettingsOpenAtLoginHint() string {
 	return Catalog.Format(msgs.locale, "SettingsOpenAtLoginHint", nil)
+}
+
+// SettingsRunMode says "Run mode"
+// in the language the app shows.
+func SettingsRunMode() string { return In(i18n.Locale()).SettingsRunMode() }
+
+// SettingsRunMode says "Run mode"
+// in the language of msgs.
+func (msgs Messages) SettingsRunMode() string {
+	return Catalog.Format(msgs.locale, "SettingsRunMode", nil)
 }
 
 // SettingsStorage says "Storage"

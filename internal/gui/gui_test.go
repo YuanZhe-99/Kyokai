@@ -366,3 +366,21 @@ func TestDeviceTitle(t *testing.T) {
 		t.Errorf("unnamed: %q", got)
 	}
 }
+
+// TestWindowsArg guards the helper install on Windows: the app's folder
+// can contain spaces, and an unquoted space split it in two.
+func TestWindowsArg(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{`install`, `install`},
+		{`S-1-5-21-1-2-3-1001`, `S-1-5-21-1-2-3-1001`},
+		{`C:\Users\a b\AppData\Local\Programs\Kyokai\bin`, `"C:\Users\a b\AppData\Local\Programs\Kyokai\bin"`},
+		{`C:\dir with space\`, `"C:\dir with space\\"`},
+		{`say "hi"`, `"say \"hi\""`},
+		{`a\"b`, `"a\\\"b"`},
+		{``, `""`},
+	} {
+		if got := windowsArg(tc.in); got != tc.want {
+			t.Errorf("windowsArg(%q) = %s, want %s", tc.in, got, tc.want)
+		}
+	}
+}

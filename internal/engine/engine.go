@@ -267,6 +267,27 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		return h.command("identity.import", req.Backup)
 	case localapi.RequestIdentityReset:
 		return h.command("identity.reset", nil)
+	case localapi.RequestStoreExport:
+		if req.Backup == nil {
+			return localapi.Fail(localapi.CodeInvalid, "passphrase missing")
+		}
+		var out struct{ Document string }
+		if err := h.lib.Call("store.export", map[string]string{"passphrase": req.Backup.Passphrase}, &out); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true, Document: out.Document}
+	case localapi.RequestStoreImport:
+		if req.Backup == nil {
+			return localapi.Fail(localapi.CodeInvalid, "store missing")
+		}
+		return h.command("store.import", req.Backup)
+	case localapi.RequestStoreClear:
+		if err := h.lib.Call("store.clear", nil, nil); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		// This engine no longer holds the identity: it stops.
+		h.stop()
+		return localapi.Response{OK: true}
 	case localapi.RequestHostForget:
 		return h.command("host.forget", map[string]string{"device_id": req.DeviceID})
 	case localapi.RequestAISettingsGet:

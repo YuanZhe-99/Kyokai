@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/YuanZhe-99/Kyokai/internal/helper"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
@@ -29,10 +30,14 @@ const (
 type App struct {
 	profile  string
 	stateDir string
-	socket   string
-	ctx      context.Context
-	cancel   context.CancelFunc
-	engine   engineChild
+	// socket is the engine the GUI uses now: userSocket (its child) or the
+	// helper's; reattach makes the connection loop switch to it.
+	socket     string
+	userSocket string
+	reattach   func()
+	ctx        context.Context
+	cancel     context.CancelFunc
+	engine     engineChild
 
 	mu       sync.Mutex
 	window   *mygo.Window
@@ -85,10 +90,15 @@ type App struct {
 // New creates the GUI for a profile ("" outside development).
 func New(profile, stateDir, socket string) *App {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &App{
-		profile: profile, stateDir: stateDir, socket: socket, ctx: ctx, cancel: cancel,
+	a := &App{
+		profile: profile, stateDir: stateDir, socket: socket, userSocket: socket, ctx: ctx, cancel: cancel,
 		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{}, viewers: map[uint64]*viewer{},
 	}
+	// In Follow GUI and Background service the helper holds this device.
+	if a.prefs.Helper && profile == "" && helper.Inspect().Installed {
+		a.socket = helper.SocketPath
+	}
+	return a
 }
 
 // SetWindow hands the GUI its main window and keeps it out of capture
@@ -148,7 +158,8 @@ func (a *App) Start() {
 // Stop ends the session and the engine.
 func (a *App) Stop() {
 	a.cancel()
-	a.engine.stop(a.socket)
+	// Only the GUI's own engine stops; the helper keeps running.
+	a.engine.stop(a.userSocket)
 }
 
 // Focus shows and raises the window.

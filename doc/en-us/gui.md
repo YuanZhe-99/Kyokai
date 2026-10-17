@@ -52,6 +52,9 @@ last connection) that fill in the Device ID; a
   names a known maker or system (`deviceLogoName`), else the name's first letter. Vendor logos are
   trademarks of their owners, used only to identify a device's maker; their sources are listed in
   `internal/gui/assets/logos/SOURCES.md` (see [packaging.md](packaging.md), "Vendor logos").
+- **Run mode** (Settings): No privileges / Follow Kyokai / Background service, a note on the one
+  administrator prompt and what moves along; switching runs in the background with a toast
+  ([run-modes.md](run-modes.md)). Diagnostics shows the mode in use.
 - **Settings:** General (language, appearance, open at login — off by default, hide Kyokai from
   screen capture — on by default, applied to the main window and every viewer at once, close
   button),

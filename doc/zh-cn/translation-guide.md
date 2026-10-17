@@ -29,6 +29,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | permanent password | 固定密码 |
 | trusted device | 受信任设备 |
 | friendly name | 别名 |
+| No privileges / Follow Kyokai / Background service (run modes) | 免授权 / 随界面 / 后台服务 |
 | vendor logo | 厂商标志 |
 | permission | 权限 |
 | approval | 批准 |
