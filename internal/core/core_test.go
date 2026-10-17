@@ -40,6 +40,19 @@ func TestRealLibrary(t *testing.T) {
 	if err := l.Call("no.such.method", nil, nil); err == nil {
 		t.Fatal("an unknown method must fail")
 	}
+	// The viewer's decoder: raw test-pattern frames pass through.
+	dec, err := l.OpenDecoder([]byte(`{"codec":"raw-rgba","width":2,"height":1}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pic := make([]byte, 8)
+	if w, h, ok, err := dec.Decode([]byte{1, 2, 3, 4, 5, 6, 7, 8}, pic); !ok || err != nil || w != 2 || h != 1 || pic[7] != 8 {
+		t.Fatalf("decode: %d×%d %v %v %v", w, h, ok, err, pic)
+	}
+	dec.Close()
+	if _, err := l.OpenDecoder([]byte(`{"codec":"none","width":2,"height":1}`)); err == nil {
+		t.Fatal("an unknown codec must be refused")
+	}
 	// Regression: the response slots once lived on the goroutine stack, and
 	// a stack that grew on the way into the C call left the response behind
 	// at the old address. Calling at many depths makes the stack grow at

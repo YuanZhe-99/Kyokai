@@ -37,6 +37,7 @@ Administrator rights are never requested when the GUI starts.
 | `internal/fsutil` | Atomic writes and JSON documents |
 | `internal/version` | The single product version |
 | `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`) |
+| `core/third_party/rustdesk-dxgi` | RustDesk's DXGI and GDI screen capture, vendored ([computer-use.md](computer-use.md)) |
 | `core/third_party/thunk-noop` | Stands in for EasyTier's `thunk-rs` build step, so Windows builds keep the static C runtime |
 
 ## FFI
@@ -54,6 +55,9 @@ integers and pointers only:
 | `kyokai_stop()` | Drops the core's state, including its in-memory secrets |
 | `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | Waits for a controller session's next media packet and copies it into the caller's buffer; -1 timeout, -2 ended, -3 too large |
 | `kyokai_media_write(session, ptr, len) -> i32` | Passes a control packet from the GUI (input, key-frame request) to the session |
+| `kyokai_decoder_open(json, len) -> u64` | Opens a viewer decoder for a stream (`{codec, width, height}`); 0 when the codec is not available. Needs no started core |
+| `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | Decodes one frame into the caller's RGBA buffer: 1 picture, 0 needs more input, -1 error, -3 too large |
+| `kyokai_decoder_close(id)` | Releases a decoder |
 
 Responses are `{"ok": true, "result": …}` or `{"ok": false, "error": "…"}` in a buffer the core
 allocates; panics are caught at the boundary and reported as errors. Methods: `status` (never a

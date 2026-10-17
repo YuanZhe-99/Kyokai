@@ -1,0 +1,24 @@
+# RustDesk's DXGI desktop duplication and GDI capturer, vendored from
+# rustdesk/rustdesk libs/scrap (commit in third_party/upstream.json) and
+# decoupled from hbb_common; each file keeps its notice and says what
+# Kyokai changed (doc/en-us/third-party.md). Not under the workspace lints:
+# vendored code stays close to upstream.
+[package]
+name = "rustdesk-dxgi"
+version = "0.0.0"
+edition = "2018"
+license = "AGPL-3.0-only"
+publish = false
+
+[target.'cfg(windows)'.dependencies]
+log = "0.4"
+winapi = { version = "0.3", features = ["dxgi", "dxgi1_2", "dxgi1_5", "dxgi1_6", "d3d11", "winuser", "winerror", "errhandlingapi", "libloaderapi", "wingdi", "d3dcommon"] }
+
+# RustDesk's own features its code checks; Kyokai builds without them.
+[features]
+vram = []
+
+# Upstream's tests need RustDesk's dev-dependencies; Kyokai's capture
+# module tests this crate through its API instead.
+[lib]
+test = false

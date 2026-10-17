@@ -1648,6 +1648,16 @@ func (msgs Messages) ViewerEnded() string {
 	return Catalog.Format(msgs.locale, "ViewerEnded", nil)
 }
 
+// ViewerNoDecoder says "The picture can't be shown: Kyokai's core library is missing."
+// in the language the app shows.
+func ViewerNoDecoder() string { return In(i18n.Locale()).ViewerNoDecoder() }
+
+// ViewerNoDecoder says "The picture can't be shown: Kyokai's core library is missing."
+// in the language of msgs.
+func (msgs Messages) ViewerNoDecoder() string {
+	return Catalog.Format(msgs.locale, "ViewerNoDecoder", nil)
+}
+
 // ViewerTitle says "{device} — Kyokai"
 // in the language the app shows.
 func ViewerTitle(device string) string { return In(i18n.Locale()).ViewerTitle(device) }

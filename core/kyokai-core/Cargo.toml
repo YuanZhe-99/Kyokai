@@ -41,6 +41,8 @@ uuid = { version = "1.26", features = ["v5"] }
 zeroize = "1.9.1"
 
 [target."cfg(windows)".dependencies]
+rustdesk-dxgi = { path = "../third_party/rustdesk-dxgi" }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media_MediaFoundation", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

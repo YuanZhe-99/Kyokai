@@ -161,6 +161,7 @@
   "TrustedNone": "尚無。",
   "TrustedTitle": "受信任裝置",
   "ViewerEnded": "工作階段已結束。",
+  "ViewerNoDecoder": "無法顯示畫面：缺少 Kyokai 的核心程式庫。",
   "ViewerTitle": "{device} — Kyokai",
   "ViewerUnsupported": "這個畫面使用 {codec}，目前版本還無法顯示。",
   "ViewerWaiting": "正在等待畫面…"

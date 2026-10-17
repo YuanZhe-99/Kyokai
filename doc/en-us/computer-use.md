@@ -1,0 +1,29 @@
+# Computer use
+
+How a controller sees and operates a host. This page grows with Phase 3 (manual control) and
+Phase 4 (AI).
+
+## Video
+
+| Stage | Where | What |
+|---|---|---|
+| Capture | host engine | the primary display through RustDesk's DXGI desktop duplication (`core/third_party/rustdesk-dxgi`); a still screen yields no frame |
+| Scale and convert | host engine | BGRA into NV12 (BT.601, limited range), scaled down to fit 1920×1080, sides even |
+| Encode | host engine | H.264 through Media Foundation's synchronous Microsoft encoder: low latency (set before the media types; the first output follows the first frame), CBR 4 Mbit/s, no B-frames, a key frame every 4 seconds and on request; 30 fps |
+| Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); the producer waits while the session is busy, so capture runs at the speed the network takes |
+| Forward | controller engine | the session's media queue (newest 3 frames kept) → `session.media` on the local API |
+| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's H.264 decoder in low-latency mode, NV12 into RGBA, cropped to the stream's size |
+| Show | GUI | the viewer window's bitmap, two pictures alternating |
+
+While a frame waits inside the encoder, the host repeats the last picture so it comes out even when
+the screen stays still. A host that cannot capture (no interactive desktop, such as a service or an
+SSH session) or has no H.264 encoder (Windows N, Server editions without Media Foundation) sends the
+320×180 test pattern instead (`raw-rgba`).
+
+The viewer asks for a key frame when it opens; the host then describes the stream again and starts
+a new group of pictures.
+
+## Not yet
+
+Input, the remote cursor, other monitors, quality and bandwidth adaptation (RustDesk's QoS),
+hardware encoders and the other codecs are Phase 3 steps that follow (PLAN.md).

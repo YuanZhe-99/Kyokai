@@ -231,6 +231,7 @@
   "TrustedNone": "None yet.",
   "TrustedTitle": "Trusted devices",
   "ViewerEnded": "The session ended.",
+  "ViewerNoDecoder": "The picture can't be shown: Kyokai's core library is missing.",
   "ViewerTitle": "{device} — Kyokai",
   "@ViewerTitle": {
     "placeholders": {

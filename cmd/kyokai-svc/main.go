@@ -6,7 +6,7 @@
 //	kyokai-svc ctl network-set --server URL [--server URL…] --name N
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--want P,P…]
-//	kyokai-svc ctl close --id N | watch --id N [--seconds S]
+//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
@@ -22,12 +22,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"image"
+	"image/png"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -132,6 +136,7 @@ func ctl(args []string) error {
 	file := fs.String("file", "", "backup, restore: the backup file")
 	yes := fs.Bool("yes", false, "reset-identity: confirm a new Device ID")
 	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
+	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
 	// The command comes first, its flags after it.
 	if len(args) == 0 {
 		usage()
@@ -142,7 +147,7 @@ func ctl(args []string) error {
 	}
 	cmd := args[0]
 	if cmd == "watch" {
-		return watch(*socket, *id, time.Duration(*seconds)*time.Second)
+		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot)
 	}
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
@@ -294,8 +299,10 @@ func printStatus(s *localapi.Status) {
 }
 
 // watch reads a controller session's media like the GUI's viewer does and
-// prints what arrives: the stream, frames per second and bitrate.
-func watch(socket string, id uint64, d time.Duration) error {
+// prints what arrives: the stream, frames per second and bitrate. With a
+// snapshot path it also decodes the frames (the viewer's decoder) and saves
+// the last picture.
+func watch(socket string, id uint64, d time.Duration, snapshot string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), d+10*time.Second)
 	defer cancel()
 	conn, err := localapi.NewClient(socket).Media(ctx, id)
@@ -303,13 +310,28 @@ func watch(socket string, id uint64, d time.Duration) error {
 		return err
 	}
 	defer conn.Close()
+	var lib *core.Lib
+	if snapshot != "" {
+		// The decoder is tied to this thread.
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		exe, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		if lib, err = core.Load(filepath.Join(filepath.Dir(exe), core.LibraryName())); err != nil {
+			return err
+		}
+	}
 	// Like the viewer: ask for a key frame (and the stream description) first.
 	if err := localapi.WritePacket(conn, append([]byte{3}, `{"type":"key-frame"}`...)); err != nil {
 		return err
 	}
 	_ = conn.SetReadDeadline(time.Now().Add(d))
 	var buf []byte
-	frames, bytes := 0, 0
+	var dec *core.Decoder
+	var pic *image.RGBA
+	frames, bytes, pictures := 0, 0, 0
 	start := time.Now()
 	for {
 		p, err := localapi.ReadPacket(conn, buf)
@@ -320,12 +342,41 @@ func watch(socket string, id uint64, d time.Duration) error {
 		switch {
 		case len(p) > 0 && p[0] == 1:
 			fmt.Printf("stream %s\n", p[1:])
+			if lib != nil {
+				var s struct{ Width, Height int }
+				if json.Unmarshal(p[1:], &s) == nil && s.Width > 0 && s.Height > 0 {
+					if dec != nil {
+						dec.Close()
+					}
+					if dec, err = lib.OpenDecoder(p[1:]); err != nil {
+						return err
+					}
+					pic = image.NewRGBA(image.Rect(0, 0, s.Width, s.Height))
+				}
+			}
 		case len(p) >= 10 && p[0] == 2:
 			frames++
 			bytes += len(p) - 10
+			if dec != nil {
+				if _, _, ok, err := dec.Decode(p[10:], pic.Pix); err == nil && ok {
+					pictures++
+				}
+			}
 		}
 	}
 	el := time.Since(start).Seconds()
 	fmt.Printf("%d frames in %.1f s: %.1f fps, %.0f kbit/s\n", frames, el, float64(frames)/el, float64(bytes)*8/1000/el)
+	if dec != nil {
+		dec.Close()
+		fmt.Printf("%d pictures decoded\n", pictures)
+		if pictures > 0 {
+			f, err := os.Create(snapshot)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			return png.Encode(f, pic)
+		}
+	}
 	return nil
 }

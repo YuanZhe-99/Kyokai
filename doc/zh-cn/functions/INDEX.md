@@ -13,7 +13,8 @@
 | `internal/core` | 通过 purego 绑定 Rust 核心 | `Load`、`Lib.Start`、`Lib.Call` |
 | `internal/version` | 产品版本 | `Version`、`Older` |
 | `internal/fsutil` | 原子写入与 JSON 文档 | `WriteFileAtomic`、`WriteJSON`、`ReadJSON` |
-| `core/kyokai-core` | Rust 核心：C ABI、机密、身份、临时密码、EasyTier 节点 | `kyokai_start`、`kyokai_call`、`store::open`、`Identity::load_or_create`、`device_id`、`net::Network`、`session::serve`、`session::connect`、`access::Access`、`auth::Slots`、`backup::export`、`backup::import`、`media::Reassembler`、`media::Queue`、`kyokai_media_read` |
+| `core/kyokai-core` | Rust 核心：C ABI、机密、身份、临时密码、EasyTier 节点 | `kyokai_start`、`kyokai_call`、`store::open`、`Identity::load_or_create`、`device_id`、`net::Network`、`session::serve`、`session::connect`、`access::Access`、`auth::Slots`、`backup::export`、`backup::import`、`media::Reassembler`、`media::Queue`、`kyokai_media_read`、`video::Source`、`mf::Encoder`、`mf::Decoder`、`decode::open` |
+| `core/third_party/rustdesk-dxgi` | 复用的 RustDesk Windows 屏幕采集 | `Displays`、`Capturer::frame` |
 | `core/third_party/thunk-noop` | EasyTier `thunk-rs` 的空操作替代 | `thunk` |
 | `tools/deps` | 上游版本固定 | `check`、`update` |
 | `tools/checkdocs` | 文档镜像检查 | `main` |

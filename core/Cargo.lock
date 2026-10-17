@@ -2665,6 +2665,7 @@ dependencies = [
  "getrandom 0.4.3",
  "opaque-ke",
  "rand_core 0.6.4",
+ "rustdesk-dxgi",
  "security-framework",
  "serde",
  "serde_json",
@@ -2673,6 +2674,7 @@ dependencies = [
  "snow",
  "tokio",
  "uuid",
+ "windows 0.62.2",
  "windows-sys 0.61.2",
  "zeroize",
 ]
@@ -3765,6 +3767,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
+]
+
+[[package]]
+name = "rustdesk-dxgi"
+version = "0.0.0"
+dependencies = [
+ "log",
+ "winapi",
 ]
 
 [[package]]

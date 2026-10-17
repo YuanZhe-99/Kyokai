@@ -80,6 +80,8 @@ ignore = true
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# The workspace's own path crates (vendored code, the thunk-rs stand-in).
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"

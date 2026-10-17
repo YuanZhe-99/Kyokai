@@ -9,12 +9,16 @@
 mod access;
 mod auth;
 mod backup;
+mod decode;
 mod identity;
 mod media;
+#[cfg(windows)]
+mod mf;
 mod net;
 mod password;
 mod session;
 mod store;
+mod video;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -226,6 +230,81 @@ pub unsafe extern "C" fn kyokai_media_write(session: u64, ptr: *const u8, len: u
         }
     })
     .unwrap_or(-2)
+}
+
+/// Opens a viewer decoder for a stream described by `media::VideoStart`
+/// JSON (`start`/`len`, borrowed). Needs no started core.
+/// Returns: the decoder's handle, or 0 when the codec is not available.
+///
+/// # Safety
+/// `start` points to `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kyokai_decoder_open(start: *const u8, len: usize) -> u64 {
+    if start.is_null() {
+        return 0;
+    }
+    // SAFETY: the caller guarantees `len` readable bytes at `start`.
+    let start = unsafe { std::slice::from_raw_parts(start, len) };
+    catch_unwind(|| decode::open(start).unwrap_or(0)).unwrap_or(0)
+}
+
+thread_local! {
+    /// The calling thread's picture buffer, reused between frames.
+    static PICTURE: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Decodes one frame; a finished picture is written as RGBA into `out`.
+/// Inputs: `frame`/`len` — the encoded frame, borrowed; `out`/`cap` —
+/// memory the caller owns.
+/// Returns: 1 with the picture's size in `*width`/`*height`; 0 when the
+/// decoder needs more input; -1 on an error; -3 when the picture does not
+/// fit `cap`.
+///
+/// # Safety
+/// `frame` points to `len` readable bytes; `out` is valid for `cap` bytes
+/// of writes; `width` and `height` are valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kyokai_decoder_decode(
+    id: u64,
+    frame: *const u8,
+    len: usize,
+    out: *mut u8,
+    cap: usize,
+    width: *mut u32,
+    height: *mut u32,
+) -> i32 {
+    if frame.is_null() || out.is_null() || width.is_null() || height.is_null() {
+        return -1;
+    }
+    // SAFETY: the caller guarantees `len` readable bytes at `frame`.
+    let frame = unsafe { std::slice::from_raw_parts(frame, len) };
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        PICTURE.with_borrow_mut(|pic| match decode::decode(id, frame, pic) {
+            Ok(Some((w, h))) if pic.len() > cap => {
+                let _ = (w, h);
+                -3
+            }
+            Ok(Some((w, h))) => {
+                // SAFETY: `out` has `cap >= pic.len()` writable bytes; the
+                // size pointers are valid, per the contract.
+                unsafe {
+                    std::ptr::copy_nonoverlapping(pic.as_ptr(), out, pic.len());
+                    *width = w;
+                    *height = h;
+                }
+                1
+            }
+            Ok(None) => 0,
+            Err(_) => -1,
+        })
+    }));
+    result.unwrap_or(-1)
+}
+
+/// Closes a viewer decoder; an unknown handle is ignored.
+#[unsafe(no_mangle)]
+pub extern "C" fn kyokai_decoder_close(id: u64) {
+    let _ = catch_unwind(|| decode::close(id));
 }
 
 /// Frees a response buffer from `kyokai_start` or `kyokai_call`.

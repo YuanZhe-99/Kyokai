@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{Notify, mpsc};
 
-use crate::media;
+use crate::{media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
 pub const PROTOCOL: u32 = 1;
@@ -756,33 +756,19 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             }
         }
     }));
-    // The host's video: a producer that drops frames the channel cannot take.
-    let (video_tx, mut video) = mpsc::channel::<(u64, Vec<u8>)>(1);
-    let mut _producer = None;
-    let mut stream_start = None;
-    if let Side::Host { video: true } = side {
-        let mut pattern = media::TestPattern::new();
-        stream_start = Some(pattern.start());
+    // The host's video: the screen through H.264, or the test pattern.
+    let mut source = match side {
+        Side::Host { video: true } => Some(video::Source::open()),
+        _ => None,
+    };
+    if let Some(s) = &source {
         seal_json(
             &mut noise,
             &mut buf,
             &mut wr,
-            &Message::VideoStart(pattern.start()),
+            &Message::VideoStart(s.start.clone()),
         )
         .await?;
-        let started = Instant::now();
-        _producer = Some(AbortOnDrop(tokio::spawn(async move {
-            let mut tick = tokio::time::interval(Duration::from_secs(1) / media::TestPattern::FPS);
-            loop {
-                tick.tick().await;
-                let frame = pattern.next_frame();
-                let pts = started.elapsed().as_micros() as u64;
-                if video_tx.is_closed() {
-                    break;
-                }
-                let _ = video_tx.try_send((pts, frame));
-            }
-        })));
     }
     let (queue, control) = match &side {
         Side::Controller { queue, control } => (Some(queue.clone()), Some(control.clone())),
@@ -809,9 +795,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
                 seal_json(&mut noise, &mut buf, &mut wr, &Message::Ping).await?;
             }
-            Some((pts, data)) = video.recv() => {
+            Some((flags, pts, data)) = async {
+                match source.as_mut() {
+                    Some(s) => s.frames.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
                 frame_no = frame_no.wrapping_add(1);
-                for chunk in media::chunks(frame_no, media::KEY_FRAME, pts, &data, MAX_PLAINTEXT) {
+                for chunk in media::chunks(frame_no, flags, pts, &data, MAX_PLAINTEXT) {
                     seal(&mut noise, &mut buf, &mut wr, &chunk).await?;
                 }
             }
@@ -854,10 +845,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         }
                     }
                     // A viewer that (re)opens asks for a key frame: describe the
-                    // stream again (every test-pattern frame is a key frame).
+                    // stream again and start a new group of pictures.
                     Message::KeyFrame => {
-                        if let Some(start) = &stream_start {
-                            seal_json(&mut noise, &mut buf, &mut wr, &Message::VideoStart(start.clone())).await?;
+                        if let Some(s) = &source {
+                            s.key_frame();
+                            seal_json(&mut noise, &mut buf, &mut wr, &Message::VideoStart(s.start.clone())).await?;
                         }
                     }
                     // Input reaches the host's input service (Phase 3 step 3.5).
@@ -971,7 +963,9 @@ mod tests {
             .clone()
     }
 
-    #[tokio::test]
+    // Multithreaded: the test waits for media with a blocking pop, which
+    // must not stop the session tasks.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn the_right_password_and_a_confirmation_connect() {
         let host = device("1.0.0");
         let controller = device("1.0.1");
@@ -996,18 +990,23 @@ mod tests {
         assert_eq!(s["peer_version"], "1.0.0");
         assert_eq!(s["peer_source"], SOURCE_URL);
         assert_eq!(state(&host)["state"], "connected");
-        // Video flows: the stream description, then whole test-pattern frames.
+        // Video flows: the stream description, then whole frames: the screen
+        // through H.264 where this machine can capture, else the test pattern.
         let (queue, _) = controller.sessions.media(id).unwrap();
         let start = queue.pop(Duration::from_secs(5)).unwrap();
         assert_eq!(start[0], media::packet::VIDEO_START);
         let v: media::VideoStart = serde_json::from_slice(&start[1..]).unwrap();
-        assert_eq!(
-            (v.codec.as_str(), v.width, v.height),
-            ("raw-rgba", 320, 180)
-        );
         let frame = queue.pop(Duration::from_secs(5)).unwrap();
         assert_eq!(frame[0], media::packet::FRAME);
-        assert_eq!(frame.len(), 1 + 1 + 8 + 320 * 180 * 4);
+        match v.codec.as_str() {
+            "raw-rgba" => assert_eq!(frame.len(), 1 + 1 + 8 + 320 * 180 * 4),
+            "h264" => assert_eq!(
+                frame[1] & media::KEY_FRAME,
+                media::KEY_FRAME,
+                "a stream starts with a key frame"
+            ),
+            other => panic!("unexpected codec {other}"),
+        }
         // The host now trusts the controller; the controller pinned the host.
         assert_eq!(host.access.trusted().len(), 1);
         assert!(controller.access.known_host(&dialed).is_some());

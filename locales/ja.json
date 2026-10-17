@@ -161,6 +161,7 @@
   "TrustedNone": "まだありません。",
   "TrustedTitle": "信頼済みデバイス",
   "ViewerEnded": "セッションが終了しました。",
+  "ViewerNoDecoder": "画面を表示できません。Kyokai のコアライブラリが見つかりません。",
   "ViewerTitle": "{device} — Kyokai",
   "ViewerUnsupported": "この画面は {codec} を使っており、このバージョンではまだ表示できません。",
   "ViewerWaiting": "画面を待っています…"

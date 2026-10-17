@@ -34,6 +34,7 @@ func LibraryName() string {
 type Lib struct {
 	abiVersion, start, call, stop, free uintptr
 	mediaRead, mediaWrite               uintptr
+	decOpen, decDecode, decClose        uintptr
 	mu                                  sync.Mutex // the core is one process-wide instance
 	// out receives a response's buffer. It lives in the Lib (on the heap,
 	// which never moves) rather than on a goroutine stack, which may move
@@ -93,6 +94,7 @@ func Load(path string) (*Lib, error) {
 		"kyokai_abi_version": &l.abiVersion, "kyokai_start": &l.start, "kyokai_call": &l.call,
 		"kyokai_stop": &l.stop, "kyokai_free": &l.free,
 		"kyokai_media_read": &l.mediaRead, "kyokai_media_write": &l.mediaWrite,
+		"kyokai_decoder_open": &l.decOpen, "kyokai_decoder_decode": &l.decDecode, "kyokai_decoder_close": &l.decClose,
 	} {
 		if *dst, err = symbol(h, name); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
@@ -209,4 +211,58 @@ func (l *Lib) MediaWrite(session uint64, packet []byte) error {
 		return errors.New("malformed media packet")
 	}
 	return ErrMediaEnded
+}
+
+// Decoder is a viewer decoder in the core. It is tied to the thread that
+// opened it: use it from one goroutine with runtime.LockOSThread.
+type Decoder struct {
+	l  *Lib
+	id uint64
+	// size receives the picture's width and height. It lives in the Decoder
+	// (a heap object, which never moves) rather than on a goroutine stack.
+	size [2]uint32
+}
+
+// OpenDecoder opens a viewer decoder for a stream (the media VideoStart
+// JSON). It needs no started core: the GUI loads the library only for this.
+func (l *Lib) OpenDecoder(start []byte) (*Decoder, error) {
+	if len(start) == 0 {
+		return nil, errors.New("empty stream description")
+	}
+	id := uint64(syscallN(l.decOpen, uintptr(unsafe.Pointer(unsafe.SliceData(start))), uintptr(len(start))))
+	runtime.KeepAlive(start)
+	if id == 0 {
+		return nil, errors.New("no decoder for this stream")
+	}
+	return &Decoder{l: l, id: id}, nil
+}
+
+// Decode decodes one frame into out (RGBA, at least width×height×4 bytes).
+// Returns: the picture's size and true when one is ready; false while the
+// decoder needs more input.
+func (d *Decoder) Decode(frame, out []byte) (int, int, bool, error) {
+	if len(frame) == 0 || len(out) == 0 {
+		return 0, 0, false, errors.New("empty frame or picture buffer")
+	}
+	rc := int32(syscallN(d.l.decDecode, uintptr(d.id),
+		uintptr(unsafe.Pointer(unsafe.SliceData(frame))), uintptr(len(frame)),
+		uintptr(unsafe.Pointer(unsafe.SliceData(out))), uintptr(len(out)),
+		uintptr(unsafe.Pointer(&d.size[0])), uintptr(unsafe.Pointer(&d.size[1]))))
+	runtime.KeepAlive(frame)
+	runtime.KeepAlive(out)
+	runtime.KeepAlive(d)
+	switch rc {
+	case 1:
+		return int(d.size[0]), int(d.size[1]), true, nil
+	case 0:
+		return 0, 0, false, nil
+	case -3:
+		return 0, 0, false, errors.New("picture larger than the buffer")
+	}
+	return 0, 0, false, errors.New("the frame could not be decoded")
+}
+
+// Close releases the decoder.
+func (d *Decoder) Close() {
+	syscallN(d.l.decClose, uintptr(d.id))
 }

@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"image"
 	"net"
+	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/YuanZhe-99/Kyokai/internal/core"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
@@ -30,6 +34,23 @@ type videoStart struct {
 	Width  int    `json:"width"`
 	Height int    `json:"height"`
 }
+
+// coreLib loads the core library into the GUI once, for the viewers'
+// decoders: next to kyokai-svc, or KYOKAI_CORE_LIB in development.
+var coreLib = sync.OnceValues(func() (*core.Lib, error) {
+	if p := os.Getenv("KYOKAI_CORE_LIB"); p != "" {
+		return core.Load(p)
+	}
+	svc, err := engineBinary()
+	if err != nil {
+		return nil, err
+	}
+	abs, err := filepath.Abs(filepath.Join(filepath.Dir(svc), core.LibraryName()))
+	if err != nil {
+		return nil, err
+	}
+	return core.Load(abs)
+})
 
 // viewer shows one controller session's screen in its own window. Fields
 // after mu are guarded by it; the bitmap changes only on the main thread.
@@ -84,10 +105,25 @@ func (a *App) openViewer(s localapi.SessionInfo) {
 	go v.pump()
 }
 
-// pump reads the session's media until the stream or the window ends.
+// pump reads the session's media until the stream or the window ends,
+// decoding each frame with a decoder of the GUI's core.
 // Side effects: asks the host for a key frame first, so a (re)opened viewer
 // starts with a complete picture.
+// Notes: runs on one locked OS thread, which the decoder is tied to.
 func (v *viewer) pump() {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	lib, err := coreLib()
+	if err != nil {
+		v.setState(L.ViewerNoDecoder())
+		return
+	}
+	var dec *core.Decoder
+	defer func() {
+		if dec != nil {
+			dec.Close()
+		}
+	}()
 	conn, err := localapi.NewClient(v.app.socket).Media(v.app.ctx, v.id)
 	if err != nil {
 		v.setState(L.ViewerEnded())
@@ -115,12 +151,24 @@ func (v *viewer) pump() {
 			if json.Unmarshal(p[1:], &s) != nil || s.Width <= 0 || s.Height <= 0 || s.Width > 16384 || s.Height > 16384 {
 				continue
 			}
+			if dec != nil {
+				dec.Close()
+				dec = nil
+			}
+			d, err := lib.OpenDecoder(p[1:])
+			if err != nil {
+				v.setState(L.ViewerUnsupported(s.Codec))
+				continue
+			}
+			dec = d
 			v.begin(s)
 		case packetFrame:
 			if len(p) < 10 {
 				continue
 			}
-			v.show(p[10:], binary.BigEndian.Uint64(p[2:10]))
+			if dec != nil {
+				v.show(dec, p[10:], binary.BigEndian.Uint64(p[2:10]))
+			}
 		}
 	}
 }
@@ -132,10 +180,6 @@ func (v *viewer) begin(s videoStart) {
 		defer v.mu.Unlock()
 		v.start = s
 		v.state = ""
-		if s.Codec != "raw-rgba" {
-			v.state = L.ViewerUnsupported(s.Codec)
-			return
-		}
 		r := image.Rect(0, 0, s.Width, s.Height)
 		v.imgs = [2]*image.RGBA{image.NewRGBA(r), image.NewRGBA(r)}
 		v.bm = ui.NewBitmap(v.imgs[0])
@@ -143,18 +187,23 @@ func (v *viewer) begin(s videoStart) {
 	})
 }
 
-// show puts one frame on screen: it fills the hidden picture, then swaps
-// it in on the main thread.
-func (v *viewer) show(data []byte, _ uint64) {
+// show decodes one frame into the hidden picture, then swaps it in on the
+// main thread. Frames the decoder holds (or cannot decode) show nothing.
+func (v *viewer) show(dec *core.Decoder, data []byte, _ uint64) {
 	v.mu.Lock()
-	if v.bm == nil || v.start.Codec != "raw-rgba" || len(data) != v.start.Width*v.start.Height*4 {
+	if v.bm == nil {
 		v.mu.Unlock()
 		return
 	}
 	back := v.imgs[1-v.front]
-	copy(back.Pix, data)
-	v.frames++
 	v.bytes += len(data)
+	v.mu.Unlock()
+	w, h, ok, err := dec.Decode(data, back.Pix)
+	if err != nil || !ok || w != back.Rect.Dx() || h != back.Rect.Dy() {
+		return
+	}
+	v.mu.Lock()
+	v.frames++
 	if el := time.Since(v.counted); el >= time.Second {
 		v.fps = float64(v.frames) / el.Seconds()
 		v.kbps = float64(v.bytes) * 8 / 1000 / el.Seconds()

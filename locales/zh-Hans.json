@@ -161,6 +161,7 @@
   "TrustedNone": "暂无。",
   "TrustedTitle": "受信任设备",
   "ViewerEnded": "会话已结束。",
+  "ViewerNoDecoder": "无法显示画面：缺少 Kyokai 的核心库。",
   "ViewerTitle": "{device} — Kyokai",
   "ViewerUnsupported": "这个画面使用 {codec}，当前版本还无法显示。",
   "ViewerWaiting": "正在等待画面…"

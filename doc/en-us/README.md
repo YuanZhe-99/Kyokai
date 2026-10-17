@@ -15,6 +15,7 @@ embedded EasyTier P2P network, and AI tasks run on the computer being operated. 
 | [networking.md](networking.md) | The embedded EasyTier node: settings, status, trust, build |
 | [protocol.md](protocol.md) | The session wire protocol: framing, Noise handshake, OPAQUE login, messages |
 | [identity-and-access.md](identity-and-access.md) | Passwords, permissions, host confirmation, pinned keys, rate limits |
+| [computer-use.md](computer-use.md) | Seeing and operating a host: the video pipeline |
 | [gui.md](gui.md) | Interface structure, wording, tray, languages |
 | [upstream.md](upstream.md) | Verified upstream contracts and quirks: MyGo, EasyTier, RustDesk, OpenAI, Claude |
 | [third-party.md](third-party.md) | Reused code and dependencies, licenses and obligations |
