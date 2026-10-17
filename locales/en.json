@@ -411,6 +411,8 @@
   "SettingsCloseButton": "Close button",
   "SettingsDiagnostics": "Diagnostics",
   "SettingsGeneral": "General",
+  "SettingsHideFromCapture": "Hide Kyokai from screen capture",
+  "SettingsHideFromCaptureHint": "On: Kyokai's windows stay out of screenshots, screen sharing, remote-desktop tools, Kyokai's own video and the AI's screenshots. Turn it off to see and change Kyokai through another remote-desktop tool, for example on an unattended computer; anyone viewing this screen then also sees the AI page and approvals.",
   "SettingsIdentity": "Device identity",
   "SettingsLanguage": "Language",
   "SettingsLicenses": "Open source licenses",

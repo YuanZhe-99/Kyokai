@@ -65,9 +65,8 @@ func main() {
 			Hidden:    hidden,
 			Content:   ui.View(a.View),
 		})
-		// Kyokai's windows stay out of every capture: the viewer's video and
-		// the AI's screenshots.
-		w.SetContentProtection(true)
+		// Kyokai's windows stay out of every capture (the viewer's video and
+		// the AI's screenshots) unless Settings says otherwise.
 		a.SetWindow(w)
 		a.SetVisible(!hidden)
 		tray := a.NewTray()

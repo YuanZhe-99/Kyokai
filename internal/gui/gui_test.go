@@ -17,6 +17,30 @@ import (
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 )
 
+// TestCaptureDefault protects the default posture: without a choice saved
+// (no file, or one from before the setting existed) Kyokai's windows stay
+// out of capture, and a saved choice survives a restart.
+func TestCaptureDefault(t *testing.T) {
+	dir := t.TempDir()
+	if loadPrefs(dir).ShowInCapture {
+		t.Fatal("no preferences file: windows shown to capture")
+	}
+	if err := os.WriteFile(prefsPath(dir), []byte(`{"theme":"dark","close_quits":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if loadPrefs(dir).ShowInCapture {
+		t.Fatal("older preferences file: windows shown to capture")
+	}
+	p := loadPrefs(dir)
+	p.ShowInCapture = true
+	if err := savePrefs(dir, p); err != nil {
+		t.Fatal(err)
+	}
+	if !loadPrefs(dir).ShowInCapture {
+		t.Fatal("saved choice lost")
+	}
+}
+
 func TestGrouping(t *testing.T) {
 	cases := []struct {
 		f        func(string) string

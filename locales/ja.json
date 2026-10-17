@@ -217,6 +217,8 @@
   "SettingsCloseButton": "閉じるボタン",
   "SettingsDiagnostics": "診断",
   "SettingsGeneral": "一般",
+  "SettingsHideFromCapture": "画面キャプチャから Kyokai を隠す",
+  "SettingsHideFromCaptureHint": "オンのとき、Kyokai のウィンドウはスクリーンショット、画面共有、リモートデスクトップツール、Kyokai 自身の映像、AI のスクリーンショットに写りません。オフにすると、無人のコンピューターなどで別のリモートデスクトップツールから Kyokai を確認・変更できます。その場合、この画面を見ている人には AI ページと承認の確認も見えます。",
   "SettingsIdentity": "デバイスの識別情報",
   "SettingsLanguage": "言語",
   "SettingsLicenses": "オープンソースライセンス",

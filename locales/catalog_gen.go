@@ -2214,6 +2214,26 @@ func (msgs Messages) SettingsGeneral() string {
 	return Catalog.Format(msgs.locale, "SettingsGeneral", nil)
 }
 
+// SettingsHideFromCapture says "Hide Kyokai from screen capture"
+// in the language the app shows.
+func SettingsHideFromCapture() string { return In(i18n.Locale()).SettingsHideFromCapture() }
+
+// SettingsHideFromCapture says "Hide Kyokai from screen capture"
+// in the language of msgs.
+func (msgs Messages) SettingsHideFromCapture() string {
+	return Catalog.Format(msgs.locale, "SettingsHideFromCapture", nil)
+}
+
+// SettingsHideFromCaptureHint says "On: Kyokai's windows stay out of screenshots, screen sharing, remote-desktop tools, Kyokai's own video and the AI's s…"
+// in the language the app shows.
+func SettingsHideFromCaptureHint() string { return In(i18n.Locale()).SettingsHideFromCaptureHint() }
+
+// SettingsHideFromCaptureHint says "On: Kyokai's windows stay out of screenshots, screen sharing, remote-desktop tools, Kyokai's own video and the AI's s…"
+// in the language of msgs.
+func (msgs Messages) SettingsHideFromCaptureHint() string {
+	return Catalog.Format(msgs.locale, "SettingsHideFromCaptureHint", nil)
+}
+
 // SettingsIdentity says "Device identity"
 // in the language the app shows.
 func SettingsIdentity() string { return In(i18n.Locale()).SettingsIdentity() }

@@ -217,6 +217,8 @@
   "SettingsCloseButton": "關閉按鈕",
   "SettingsDiagnostics": "診斷",
   "SettingsGeneral": "一般",
+  "SettingsHideFromCapture": "在螢幕擷取中隱藏 Kyokai",
+  "SettingsHideFromCaptureHint": "開啟時，Kyokai 的視窗不會出現在截圖、螢幕分享、遠端桌面工具、Kyokai 自己的影像以及 AI 的截圖中。關閉後可以透過其他遠端桌面工具查看和變更 Kyokai（例如在無人值守的電腦上）；此時任何查看這個螢幕的人也能看到 AI 頁面與核准提示。",
   "SettingsIdentity": "裝置身分",
   "SettingsLanguage": "語言",
   "SettingsLicenses": "開放原始碼授權",

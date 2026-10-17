@@ -32,7 +32,10 @@ never offers text that Kyokai itself copied ([computer-use.md](computer-use.md))
 - Screenshots exist in memory for the task's conversation and go only to the chosen provider; the
   history (`ai-tasks.json`) keeps instructions, the model's text and the actions, never a picture.
   Kyokai's own windows are excluded from capture (`SetContentProtection`), so the AI page and
-  approvals never reach the model.
+  approvals never reach the model. The host user can turn this off in Settings (General, "Hide
+  Kyokai from screen capture", on by default) to see and change Kyokai through another
+  remote-desktop tool on an unattended computer; the windows then appear in every capture,
+  including Kyokai's own video and the AI's screenshots. Input still never reaches them.
 - The model's proposals are only input: every action is parsed, bounds-checked against the latest
   screenshot and executed by the host's own executor; nothing runs commands or code, and nothing
   is injected into a Kyokai window (pointer input by the window under it, keys by the focused

@@ -44,7 +44,9 @@ when `SCREENSHOT_DIR` is set.
   settings form: servers (one URL per line), network name, and a write-only secret field (empty
   keeps the stored secret; a weak secret is flagged), Save and Leave network. Refused settings show
   the engine's reason.
-- **Settings:** General (language, appearance, open at login — off by default, close button),
+- **Settings:** General (language, appearance, open at login — off by default, hide Kyokai from
+  screen capture — on by default, applied to the main window and every viewer at once, close
+  button),
   Device identity (Device ID, fingerprint; back up and restore with a passphrase through a file
   dialog; reset, after a warning), Access (permanent password: set, change or remove;
   trusted devices with their last connection and Remove), Storage (data folder with Open folder, how secrets are

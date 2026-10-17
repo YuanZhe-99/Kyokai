@@ -72,7 +72,9 @@ you can reply to continue it. **Task history** keeps finished tasks (never scree
 clear it.
 
 The AI sends screenshots of this computer's screen to the provider you chose. Kyokai's own windows
-are left out of them.
+are left out of them, and out of screen sharing and other remote-desktop tools too. To see and
+change Kyokai through another remote-desktop tool, for example on a computer nobody sits at, turn
+off **Hide Kyokai from screen capture** in Settings; the AI then sees Kyokai's windows as well.
 
 ## AI on another computer
 

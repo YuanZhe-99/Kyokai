@@ -148,7 +148,7 @@ Do not change these without the user explicitly deciding to:
 - **The host user always wins.** Local input, take-over and emergency stop revoke the AI input
   lease at once; a model response that arrives after a pause or cancel never acts.
 - **Remote input never reaches Kyokai's own windows**, and Kyokai's windows are excluded from
-  capture.
+  capture unless the host user turns that off in Settings (on by default).
 - **No replay.** Input events and AI actions are never re-sent after a reconnect; task creation is
   idempotent; stale observations are rejected.
 - **Default posture.** No autostart, no service, no elevation, no TUN, no unattended access, no AI

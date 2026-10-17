@@ -89,11 +89,34 @@ func New(profile, stateDir, socket string) *App {
 	}
 }
 
-// SetWindow hands the GUI its main window.
+// SetWindow hands the GUI its main window and keeps it out of capture
+// unless the person chose otherwise.
 func (a *App) SetWindow(w *mygo.Window) {
 	a.mu.Lock()
 	a.window = w
+	show := a.prefs.ShowInCapture
 	a.mu.Unlock()
+	w.SetContentProtection(!show)
+}
+
+// setShowInCapture saves whether capture may see Kyokai's windows and
+// applies it to the main window and every open viewer at once.
+// Side effects: writes the preferences; changes the windows' display
+// affinity. Call it on the main thread.
+func (a *App) setShowInCapture(p Prefs, show bool) {
+	p.ShowInCapture = show
+	a.setPrefs(p)
+	a.mu.Lock()
+	wins := []*mygo.Window{a.window}
+	for _, v := range a.viewers {
+		wins = append(wins, v.win)
+	}
+	a.mu.Unlock()
+	for _, w := range wins {
+		if w != nil {
+			w.SetContentProtection(!show)
+		}
+	}
 }
 
 // SetTray hands the GUI its status icon (nil when the desktop has none).

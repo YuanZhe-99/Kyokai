@@ -197,6 +197,12 @@ func (a *App) generalSettings(c *ui.Context) {
 				a.mu.Unlock()
 			}
 		})
+		hide := !p.ShowInCapture
+		settingRow(c, "capture", L.SettingsHideFromCapture(), L.SettingsHideFromCaptureHint(), func() {
+			if ui.Switch(c.Key("capture-sw"), &hide).Label(L.SettingsHideFromCapture()).Changed() {
+				a.setShowInCapture(p, !hide)
+			}
+		})
 		closeIdx := 0
 		if p.CloseQuits {
 			closeIdx = 1
