@@ -434,11 +434,12 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     match host_login(&ctx, &mut ch, &client, &client_key, &context, from, id).await {
         Ok(granted) => {
             let video = granted.contains(&Permission::ViewScreen);
+            let input = granted.contains(&Permission::ControlInput);
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
                 e.granted = granted;
             });
-            let failure = run(ch, &stop, Side::Host { video }).await.err();
+            let failure = run(ch, &stop, Side::Host { video, input }).await.err();
             ctx.sessions.end(id, failure);
         }
         Err(f) => ctx.sessions.end(id, Some(f)),
@@ -693,8 +694,9 @@ pub fn give_up(ctx: &Ctx, id: u64, failure: Failure) {
 
 /// What one end of an established session does besides the heartbeat.
 pub enum Side {
-    /// The host: sends video while the controller may view the screen.
-    Host { video: bool },
+    /// The host: sends video while the controller may view the screen, and
+    /// injects its input while it may control input.
+    Host { video: bool, input: bool },
     /// The controller: puts media into the queue its GUI drains, and sends
     /// the GUI's control messages (input, key-frame requests) to the host.
     Controller {
@@ -758,7 +760,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     }));
     // The host's video: the screen through H.264, or the test pattern.
     let mut source = match side {
-        Side::Host { video: true } => Some(video::Source::open()),
+        Side::Host { video: true, .. } => Some(video::Source::open()),
+        _ => None,
+    };
+    // The host's input service; dropping it releases what it holds.
+    #[cfg(windows)]
+    let mut injector = match side {
+        Side::Host { input: true, .. } => Some(crate::input::Injector::default()),
         _ => None,
     };
     if let Some(s) = &source {
@@ -852,7 +860,15 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             seal_json(&mut noise, &mut buf, &mut wr, &Message::VideoStart(s.start.clone())).await?;
                         }
                     }
-                    // Input reaches the host's input service (Phase 3 step 3.5).
+                    // Input reaches the host only with control-input; a
+                    // malformed event is dropped, not fatal.
+                    #[cfg(windows)]
+                    Message::Input { event } => {
+                        if let (Some(inj), Ok(e)) = (injector.as_mut(), serde_json::from_value::<crate::input::Event>(event)) {
+                            inj.inject(&e);
+                        }
+                    }
+                    #[cfg(not(windows))]
                     Message::Input { .. } => {}
                 }
             }

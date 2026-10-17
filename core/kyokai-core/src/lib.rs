@@ -11,6 +11,7 @@ mod auth;
 mod backup;
 mod decode;
 mod identity;
+mod input;
 mod media;
 #[cfg(windows)]
 mod mf;

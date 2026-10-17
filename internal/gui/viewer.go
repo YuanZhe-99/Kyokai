@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -60,6 +61,8 @@ type viewer struct {
 	device string
 	win    *mygo.Window
 	conn   net.Conn
+	// out queues control packets (input) for the media connection's writer.
+	out chan []byte
 
 	mu      sync.Mutex
 	start   videoStart
@@ -72,6 +75,11 @@ type viewer struct {
 	frames  int
 	bytes   int
 	counted time.Time
+	// Input: the picture element's box, whether this session may control
+	// input, and the keys sent down.
+	box     ui.Rect
+	control bool
+	held    map[ui.Key]bool
 }
 
 // openViewer shows the viewer of a session, opening it the first time.
@@ -83,7 +91,8 @@ func (a *App) openViewer(s localapi.SessionInfo) {
 		v.win.Focus()
 		return
 	}
-	v = &viewer{app: a, id: s.ID, device: s.DeviceID, counted: time.Now()}
+	v = &viewer{app: a, id: s.ID, device: s.DeviceID, counted: time.Now(), out: make(chan []byte, 256),
+		control: slices.Contains(s.Granted, localapi.PermControlInput)}
 	v.win = mygo.NewWindow(mygo.WindowOptions{
 		Title: L.ViewerTitle(groupDigits(s.DeviceID)), Width: 1280, Height: 760, MinWidth: 480, MinHeight: 320,
 		Content: ui.View(v.view),
@@ -134,6 +143,22 @@ func (v *viewer) pump() {
 	v.mu.Unlock()
 	defer conn.Close()
 	_ = localapi.WritePacket(conn, append([]byte{packetControl}, `{"type":"key-frame"}`...))
+	// The writer stops with the pump; v.out stays open, so a late input
+	// event never sends on a closed channel.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		for {
+			select {
+			case p := <-v.out:
+				if localapi.WritePacket(conn, p) != nil {
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
 	var buf []byte
 	for {
 		p, err := localapi.ReadPacket(conn, buf)
@@ -250,7 +275,11 @@ func (v *viewer) view(c *ui.Context) {
 					ui.Text(c, L.ViewerWaiting()).TextColor(ui.Hex("#ffffff"))
 				})
 			default:
-				ui.Image(c, bm).Fit(ui.Contain).Grow(1).FillWidth()
+				img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().HandleInput(v.sendInput)
+				box := img.LayoutBounds()
+				v.mu.Lock()
+				v.box = box
+				v.mu.Unlock()
 			}
 		})
 		ui.Row(c).FillWidth().Padding(6, 12).Gap(16).Background(t.Surface).Children(func() {

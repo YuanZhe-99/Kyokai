@@ -5,6 +5,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -157,5 +158,43 @@ func TestViewerRenders(t *testing.T) {
 			t.Fatal(err)
 		}
 		f.Close()
+	}
+}
+
+func TestViewerInputMapping(t *testing.T) {
+	// A 1600×900 picture in an 800×600 box: 800×450, 75 px bars above and below.
+	box := ui.Rect{W: 800, H: 600}
+	if ox, oy, w, h := pictureBox(box, 1600, 900); ox != 0 || oy != 75 || w != 800 || h != 450 {
+		t.Fatalf("box %v %v %v %v", ox, oy, w, h)
+	}
+	held := map[ui.Key]bool{}
+	cases := []struct {
+		name string
+		ev   ui.InputEvent
+		want *inputEvent
+	}{
+		{"click centre", ui.InputEvent{Kind: ui.InputPointerDown, X: 400, Y: 300}, &inputEvent{Kind: "pointer", Action: "down", X: 0.5, Y: 0.5}},
+		{"press on the bar", ui.InputEvent{Kind: ui.InputPointerDown, X: 400, Y: 20}, nil},
+		{"release on the bar still goes", ui.InputEvent{Kind: ui.InputPointerUp, X: 400, Y: 20}, &inputEvent{Kind: "pointer", Action: "up", X: 0.5, Y: 0}},
+		{"right button", ui.InputEvent{Kind: ui.InputPointerDown, Button: 1, X: 0, Y: 75}, &inputEvent{Kind: "pointer", Action: "down", Button: 1, X: 0, Y: 0}},
+		{"letter types as text", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyA}, nil},
+		{"text", ui.InputEvent{Kind: ui.InputText, Text: "é"}, &inputEvent{Kind: "text", Text: "é"}},
+		{"shortcut goes as a key", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyC, Mods: ui.Ctrl},
+			&inputEvent{Kind: "key", Key: "c", Down: true, Mods: &inputMods{Ctrl: true}}},
+		{"its release follows", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyC},
+			&inputEvent{Kind: "key", Key: "c", Down: false, Mods: &inputMods{}}},
+		{"a release never pressed is dropped", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyC}, nil},
+		{"enter", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyEnter}, &inputEvent{Kind: "key", Key: "enter", Down: true, Mods: &inputMods{}}},
+		{"touchpad scroll in pixels", ui.InputEvent{Kind: ui.InputScroll, DY: 80, Precise: true}, &inputEvent{Kind: "scroll", DY: 2}},
+	}
+	for _, c := range cases {
+		got, ok := toEvent(c.ev, box, 1600, 900, held)
+		if (c.want == nil) != !ok {
+			t.Errorf("%s: sent=%v, want sent=%v", c.name, ok, c.want != nil)
+			continue
+		}
+		if c.want != nil && !reflect.DeepEqual(got, *c.want) {
+			t.Errorf("%s: %+v, want %+v", c.name, got, *c.want)
+		}
 	}
 }

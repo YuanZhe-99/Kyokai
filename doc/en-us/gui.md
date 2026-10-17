@@ -15,7 +15,8 @@ when `SCREENSHOT_DIR` is set.
   dropped session shows "reconnecting" while it resumes. A connected session that may view the
   screen has View, which opens the viewer: its own window with the picture scaled to fit on black,
   and a status line (Device ID, size, codec, frame rate, bitrate); closing it stops the stream, not
-  the session.
+  the session. With `control-input`, the mouse, the wheel and the keyboard on the picture go to the
+  host ([computer-use.md](computer-use.md)).
 - **Confirmations:** a controller waiting for this host's user shows at the top of every page with
   its Device ID, whether it is known or a new key claiming a known ID, and a switch per requested
   permission, with Allow and Deny; a notification and the window coming forward announce it.

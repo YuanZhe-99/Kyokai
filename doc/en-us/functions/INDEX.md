@@ -14,7 +14,7 @@ returns, side effects and notes where non-trivial).
 | `internal/core` | purego binding to the Rust core | `Load`, `Lib.Start`, `Lib.Call` |
 | `internal/version` | Product version | `Version`, `Older` |
 | `internal/fsutil` | Atomic writes and JSON documents | `WriteFileAtomic`, `WriteJSON`, `ReadJSON` |
-| `core/kyokai-core` | Rust core: C ABI, secrets, identity, temporary password, EasyTier node | `kyokai_start`, `kyokai_call`, `store::open`, `Identity::load_or_create`, `device_id`, `net::Network`, `session::serve`, `session::connect`, `access::Access`, `auth::Slots`, `backup::export`, `backup::import`, `media::Reassembler`, `media::Queue`, `kyokai_media_read`, `video::Source`, `mf::Encoder`, `mf::Decoder`, `decode::open` |
+| `core/kyokai-core` | Rust core: C ABI, secrets, identity, temporary password, EasyTier node | `kyokai_start`, `kyokai_call`, `store::open`, `Identity::load_or_create`, `device_id`, `net::Network`, `session::serve`, `session::connect`, `access::Access`, `auth::Slots`, `backup::export`, `backup::import`, `media::Reassembler`, `media::Queue`, `kyokai_media_read`, `video::Source`, `mf::Encoder`, `mf::Decoder`, `decode::open`, `input::Event`, `input::Injector` |
 | `core/third_party/rustdesk-dxgi` | RustDesk's Windows screen capture, vendored | `Displays`, `Capturer::frame` |
 | `core/third_party/thunk-noop` | No-op stand-in for EasyTier's `thunk-rs` | `thunk` |
 | `tools/deps` | Upstream pins | `check`, `update` |

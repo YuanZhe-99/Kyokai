@@ -23,7 +23,25 @@ SSH session) or has no H.264 encoder (Windows N, Server editions without Media F
 The viewer asks for a key frame when it opens; the host then describes the stream again and starts
 a new group of pictures.
 
+## Input
+
+The viewer sends input only for a session granted `control-input`; the host checks it again.
+
+| Event | Sent as |
+|---|---|
+| pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses on the bars around it are dropped, releases always sent |
+| scroll | `{kind: "scroll", dx, dy}` in lines (touchpad pixels ÷ 40); positive `dy` moves the content down |
+| a key without Ctrl, Alt or Win that types | nothing: its text follows |
+| text | `{kind: "text", text}`: typed as Unicode characters, so the controller's layout and dead keys decide |
+| other keys and shortcuts | `{kind: "key", key, down, mods}` by name (`enter`, `f5`, `page-down`, `c` with Ctrl, …); a release only when its press was sent |
+
+The host injects with `SendInput`: absolute moves over the captured display, extended-key flags
+for the navigation keys, modifiers pressed and released to match each key, every event tagged as
+Kyokai's (`dwExtraInfo`) so local input can be told apart. Nothing is injected while a Kyokai
+window has the focus (checked at most every 200 ms), and whatever a session holds is released
+when it ends. Malformed events are dropped without ending the session.
+
 ## Not yet
 
-Input, the remote cursor, other monitors, quality and bandwidth adaptation (RustDesk's QoS),
+The remote cursor, other monitors, quality and bandwidth adaptation (RustDesk's QoS),
 hardware encoders and the other codecs are Phase 3 steps that follow (PLAN.md).
