@@ -1,9 +1,10 @@
 package core
 
 import (
+	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestRealLibrary is the ABI smoke test: it loads a built core library
@@ -19,7 +20,11 @@ func TestRealLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	st, err := l.Start(Config{Version: "0.0.0-test", StateDir: dir, Profile: "test-" + filepath.Base(dir)})
+	// A fresh profile per run: t.TempDir always ends in "001", and a
+	// Keychain item made by another test binary raises an access prompt that
+	// nobody answers on CI.
+	profile := fmt.Sprintf("test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	st, err := l.Start(Config{Version: "0.0.0-test", StateDir: dir, Profile: profile})
 	if err != nil {
 		t.Fatal(err)
 	}

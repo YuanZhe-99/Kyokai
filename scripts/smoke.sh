@@ -23,7 +23,8 @@ cp "core/target/release/$lib" "$work/"
 CGO_ENABLED=0 go build -o "$work/kyokai-svc$ext" ./cmd/kyokai-svc
 
 native() { if command -v cygpath >/dev/null; then cygpath -w "$1"; else echo "$1"; fi; }
-export KYOKAI_SOCKET
+# Its own profile, so the OS credential store entry is never the real one.
+export KYOKAI_PROFILE="smoke-$$" KYOKAI_SOCKET
 KYOKAI_SOCKET=$(native "$work/e.sock")
 state=$(native "$work/state")
 svc="$work/kyokai-svc$ext"

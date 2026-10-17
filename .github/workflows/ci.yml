@@ -112,28 +112,6 @@ jobs:
           security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
           security default-keychain -d user -s "$kc"
 
-      # Diagnostic: kyokai_start hangs on macOS only inside `go test ./...`,
-      # and only for a later test binary; alone it returns at once. Run the
-      # real commands and sample any core.test still alive after 60 s.
-      - name: Core start diagnostic (macOS)
-        if: runner.os == 'macOS'
-        continue-on-error: true
-        shell: bash
-        run: |
-          export KYOKAI_CORE_LIB="$PWD/core/target/release/libkyokai_core.dylib"
-          (go test -count=1 -timeout 2m ./...; CGO_ENABLED=0 go test -count=1 -timeout 2m ./...) > diag.log 2>&1 &
-          for i in $(seq 1 150); do
-            sleep 1
-            pid=$(pgrep -f 'core.test' | head -1)
-            if [ -n "$pid" ] && [ "$(ps -o etime= -p "$pid" | tr -d ' :' )" -ge 100 ] 2>/dev/null; then
-              echo "core.test $pid alive for over 60 s; sampling"
-              sample "$pid" 5 -file sample.txt > /dev/null 2>&1 || true
-              sed -n '/^Call graph:/,/^Total number in stack/p' sample.txt | cut -c1-220 | head -300
-              break
-            fi
-          done
-          wait || true
-          grep -E "^(ok|FAIL|---)" diag.log || true
       - name: Go tests with the real core (ABI smoke test)
         shell: bash
         run: |
