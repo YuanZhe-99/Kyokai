@@ -36,7 +36,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          title="Upstream update available (MyGo, EasyTier, RustDesk, Rust)"
+          title="Upstream update available (MyGo, EasyTier, RustDesk, vcpkg, Rust)"
           if gh issue list --state open --search "$title in:title" --json number --jq '.[0].number' | grep -q .; then
             echo "An issue is already open."
             exit 0

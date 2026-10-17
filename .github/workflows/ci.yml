@@ -99,6 +99,8 @@ jobs:
         run: |
           if (-not (Test-Path "C:\Program Files\LLVM\bin\clang.exe")) { choco install llvm --no-progress -y }
           "C:\Program Files\LLVM\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      # libvpx and libaom, linked statically into the core.
+      - uses: ./.github/actions/codecs
 
       - name: Clippy
         if: matrix.full

@@ -18,3 +18,4 @@ mygo_windows_*.syso
 *.key
 *.pem
 /resources/licenses/
+/core/vcpkg_installed/

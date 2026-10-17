@@ -19,11 +19,42 @@
   builds only once clang is installed.
 - `cargo-about` (`cargo install cargo-about --locked --features cli`) for the license file that
   `scripts/build.sh` puts into every package.
+- libvpx 1.16.0 and libaom 3.13.3, linked statically into the core: `scripts/codecs.sh` builds
+  them with vcpkg in manifest mode (`core/vcpkg.json`, the registry pinned in
+  `core/vcpkg-configuration.json`, overlay triplets in `core/vcpkg-triplets`) into
+  `core/vcpkg_installed/<triplet>` (not committed); run it once per target before cargo, and
+  again when the vcpkg pin moves. It uses `VCPKG_ROOT` when set, else the vcpkg that ships with
+  Visual Studio 2026 (the "vcpkg package manager" component, read-only in its installation folder)
+  on Windows, else `vcpkg` from `PATH`. vcpkg keeps its tools (CMake, a portable MSYS2 and Perl for
+  libvpx's configure, NASM for x64), downloads and binary cache in its shared default places
+  (`%LOCALAPPDATA%\vcpkg` on Windows); nothing is installed system-wide and `PATH` is not changed.
+  macOS needs `brew install nasm` for the x64 slice. `KYOKAI_CODECS_DIR` points the core's build
+  at another install tree.
+- The libvpx and libaom bindings (`core/third_party/rustdesk-codec/generated`) are generated ahead
+  of time, so builds need neither bindgen nor libclang. After moving the vcpkg pin, regenerate them
+  with `bindgen-cli` (`cargo install bindgen-cli --locked`) and clang's `libclang` (Visual Studio's
+  `VC\Tools\Llvm\ARM64\bin` as `LIBCLANG_PATH` on Windows):
+
+  ```bash
+  inc=core/vcpkg_installed/arm64-windows-static/arm64-windows-static/include
+  out=core/third_party/rustdesk-codec
+  bindgen $out/src/bindings/vpx_ffi.h -o $out/generated/vpx_ffi.rs --allowlist-type '^[vV].*' \
+    --allowlist-var '^[vV].*' --allowlist-function '^[vV].*' --rustified-enum '^[vV].*' \
+    --distrust-clang-mangling --no-layout-tests --no-doc-comments -- -I$inc
+  bindgen $out/src/bindings/aom_ffi.h -o $out/generated/aom_ffi.rs \
+    --allowlist-type '^(aom|AOM|OBU|AV1).*' --allowlist-var '^(aom|AOM|OBU|AV1).*' \
+    --allowlist-function '^(aom|AOM|OBU|AV1).*' --rustified-enum '^(aom|AOM|OBU|AV1).*' \
+    --distrust-clang-mangling --no-layout-tests --no-doc-comments -- -I$inc
+  ```
+
+  These are RustDesk's settings (`libs/scrap/build.rs`). The declarations are the same on every
+  64-bit target Kyokai builds: C `long` stays `c_long`.
 
 ## Commands
 
 ```bash
-go run ./tools/deps check          # pinned vs latest MyGo, EasyTier, RustDesk, Rust
+go run ./tools/deps check          # pinned vs latest MyGo, EasyTier, RustDesk, vcpkg, Rust
+scripts/codecs.sh                  # libvpx and libaom for this platform (once, before cargo)
 gofmt -l cmd internal tools
 go vet ./...
 go test ./...

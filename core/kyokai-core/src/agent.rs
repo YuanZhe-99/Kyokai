@@ -19,7 +19,7 @@
 use crate::ai::desktop::Frame;
 use crate::input::{Area, Event, LocalInput};
 use crate::media::VideoStart;
-use crate::video::{Display, Encoded, Targets};
+use crate::video::{Choice, Display, Encoded, Targets};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -223,14 +223,14 @@ impl Link {
     }
 
     /// Starts a video stream in the agent: `display` (the primary when
-    /// None) in `codec`; its frames go to `tx`, and `key`, `targets` and
-    /// `stop` are followed until `stop` is set.
+    /// None) in the first of `choices` that opens; its frames go to `tx`,
+    /// and `key`, `targets` and `stop` are followed until `stop` is set.
     /// Returns: the stream's start and the display shown, or None when the
     /// agent cannot start it (the caller shows the test pattern).
     pub fn open_video(
         self: &Arc<Self>,
         display: Option<Display>,
-        codec: &str,
+        choices: &[Choice],
         tx: mpsc::Sender<Encoded>,
         key: Arc<AtomicBool>,
         targets: Arc<Targets>,
@@ -248,7 +248,7 @@ impl Link {
         }
         let opened: Opened = match self.call(
             "video.open",
-            json!({"stream": stream, "display": display, "codec": codec}),
+            json!({"stream": stream, "display": display, "choices": choices}),
         ) {
             Ok(o) => o,
             Err(_) => {
@@ -574,8 +574,18 @@ impl Agent {
             "video.open" => {
                 let display: Option<Display> =
                     serde_json::from_value(req["display"].clone()).unwrap_or(None);
-                let mut source =
-                    crate::video::Source::open(display, req["codec"].as_str().unwrap_or("h264"));
+                #[derive(Deserialize)]
+                struct Wanted {
+                    codec: String,
+                    i444: bool,
+                }
+                let wanted: Vec<Wanted> =
+                    serde_json::from_value(req["choices"].clone()).unwrap_or_default();
+                let choices: Vec<_> = wanted
+                    .iter()
+                    .filter_map(|w| crate::video::Choice::parse(&w.codec, w.i444))
+                    .collect();
+                let mut source = crate::video::Source::open(display, &choices);
                 let reply = json!({"start": source.start, "display": source.display});
                 let (_, empty) = mpsc::channel(1);
                 let mut frames = std::mem::replace(&mut source.frames, empty);
@@ -1229,10 +1239,18 @@ mod tests {
         });
         // A machine without a display shows the test pattern; with one, the
         // screen. Either way frames arrive through the agent.
+        // The choice crosses to the agent: software VP9 in full colour.
+        let choices = [Choice {
+            codec: "vp9-sw",
+            i444: true,
+        }];
         let (start, _) = link
-            .open_video(None, "h264", tx, key, targets, stop.clone())
+            .open_video(None, &choices, tx, key, targets, stop.clone())
             .expect("the agent opens a stream");
         assert!(start.width > 0 && start.height > 0);
+        if start.codec != "raw-rgba" {
+            assert_eq!((start.codec.as_str(), start.i444), ("vp9-sw", true));
+        }
         let frame = rx.blocking_recv().expect("a frame through the agent");
         assert!(!frame.2.is_empty());
         stop.store(true, Ordering::Relaxed);

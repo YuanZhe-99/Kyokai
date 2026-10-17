@@ -10,3 +10,5 @@
 - Phase 0：S1 EasyTier、S2 画面与 S3-lite 采集可行性验证在 Windows ARM64 上通过。
 - MyGo v0.5.5 / Rust 1.99.1；为后续阶段固定 EasyTier v2.7.0（预发布版，提交 `8b7f1f0`）与 RustDesk 1.5.0
   （提交 `fada664`）（2026-10-16 检查）。
+- 为软件编解码器固定 vcpkg 2026.07.29（提交 `9e593bb`：libvpx 1.16.0、aom 3.13.3）；MyGo v0.5.5、EasyTier v2.7.0、
+  RustDesk 1.5.0 与 Rust 1.99.1 未变（2026-10-17 检查）。

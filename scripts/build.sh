@@ -4,10 +4,10 @@
 #   scripts/build.sh                     this machine's platform
 #   scripts/build.sh windows/amd64 windows/arm64 ...
 #
-# For each target it builds the Rust core (cargo, --release) and the
-# engine (kyokai-svc, CGO_ENABLED=0) into resources/<goos>-<goarch>/bin,
-# which `mygo build` ships with the app, and copies the license texts into
-# resources/licenses. macOS targets need a macOS host; Windows targets need
+# For each target it builds the native codec libraries (scripts/codecs.sh),
+# the Rust core (cargo, --release) and the engine (kyokai-svc,
+# CGO_ENABLED=0) into resources/<goos>-<goarch>/bin, which `mygo build`
+# ships with the app, and copies the license texts into resources/licenses. macOS targets need a macOS host; Windows targets need
 # Windows (the core links with MSVC).
 #
 # CORE_PREBUILT=1 skips cargo and uses the core libraries already present in
@@ -33,7 +33,9 @@ rust_target() {
 }
 
 mkdir -p resources/licenses
-cp LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/GPL-3.0.txt resources/licenses/
+# The GPL-3.0 text (for EasyTier's LGPL-3.0) and the native codec
+# libraries' licenses and patent grants (libvpx, libaom).
+cp LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/*.txt resources/licenses/
 # Every Rust crate in the core with its license text (EasyTier's LGPL-3.0
 # among them; LGPL-3.0 also asks for the GPL-3.0 text, copied above).
 command -v cargo-about >/dev/null || { echo "cargo-about is missing: cargo install cargo-about --locked" >&2; exit 1; }
@@ -54,6 +56,8 @@ for t in "${targets[@]}"; do
 		if [ "$goos" = darwin ]; then
 			export MACOSX_DEPLOYMENT_TARGET=14.0
 		fi
+		# libvpx and libaom, linked statically into the core.
+		scripts/codecs.sh "$t"
 		PROTOC=${PROTOC:-$(scripts/protoc.sh)} cargo build --release --manifest-path core/Cargo.toml --target "$rt"
 		cp "core/target/$rt/release/$lib" "$bin/$lib"
 	fi

@@ -34,7 +34,8 @@
 | `internal/core` | 通过 purego 绑定 Rust 核心 |
 | `internal/fsutil` | 原子写入与 JSON 文档 |
 | `internal/version` | 唯一的产品版本 |
-| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`）、屏幕采集与 H.264（`video`、`mf`）、输入服务（`input`）、AI 任务（`ai`：服务商、任务运行时及其驱动的桌面） |
+| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`）、屏幕采集与编解码器（`video`；Media Foundation 为 `mf`，libvpx 与 libaom 为 `soft`）、输入服务（`input`）、AI 任务（`ai`：服务商、任务运行时及其驱动的桌面） |
+| `core/third_party/rustdesk-codec` | 复用的 RustDesk libvpx 与 libaom 编解码器，以及 vcpkg 构建的静态库（[computer-use.md](computer-use.md)） |
 | `core/third_party/rustdesk-dxgi` | 复用的 RustDesk DXGI 与 GDI 屏幕采集（[computer-use.md](computer-use.md)） |
 | `core/third_party/rustdesk-qos` | 复用的 RustDesk 视频 QoS |
 | `core/third_party/thunk-noop` | 替代 EasyTier 的 `thunk-rs` 构建步骤，使 Windows 构建保持静态 C 运行时 |

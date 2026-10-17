@@ -1,0 +1,41 @@
+name: Codec libraries
+description: >
+  Builds libvpx and libaom for the core (scripts/codecs.sh) with vcpkg at the
+  commit core/vcpkg-configuration.json pins, keeping vcpkg's binary cache
+  between runs (doc/en-us/ci-cd.md).
+inputs:
+  targets:
+    description: goos/goarch targets, space-separated; empty for the runner's own
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: vcpkg at the pinned commit
+      shell: bash
+      run: |
+        commit=$(sed -n 's/.*"baseline": "\([0-9a-f]*\)".*/\1/p' core/vcpkg-configuration.json)
+        root="$RUNNER_TEMP/vcpkg"
+        git init -q "$root"
+        git -C "$root" fetch -q --depth 1 https://github.com/microsoft/vcpkg "$commit"
+        git -C "$root" checkout -q FETCH_HEAD
+        if [ "$RUNNER_OS" = Windows ]; then
+          cmd //c "$(cygpath -w "$root/bootstrap-vcpkg.bat")" -disableMetrics
+        else
+          "$root/bootstrap-vcpkg.sh" -disableMetrics
+        fi
+        mkdir -p "$RUNNER_TEMP/vcpkg-cache"
+        echo "VCPKG_ROOT=$root" >> "$GITHUB_ENV"
+        echo "VCPKG_DEFAULT_BINARY_CACHE=$RUNNER_TEMP/vcpkg-cache" >> "$GITHUB_ENV"
+    # The x64 macOS slice assembles with NASM; Windows x64 gets it from vcpkg.
+    - name: NASM (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install nasm
+    - uses: actions/cache@v5
+      with:
+        path: ${{ runner.temp }}/vcpkg-cache
+        key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ inputs.targets }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}
+    - name: Build libvpx and libaom
+      shell: bash
+      run: scripts/codecs.sh ${{ inputs.targets }}

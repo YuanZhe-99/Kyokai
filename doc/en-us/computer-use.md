@@ -8,17 +8,18 @@ control, Phase 4 AI tasks).
 | Stage | Where | What |
 |---|---|---|
 | Capture | host engine | one display — the primary unless the viewer chose another — through RustDesk's DXGI desktop duplication (`core/third_party/rustdesk-dxgi`), or its GDI capturer where duplication cannot open the display or DXGI lists none (no GPU output, some virtual machines and remote sessions); a still screen yields no frame (GDI compares each picture with the last) |
-| Scale and convert | host engine | BGRA into NV12 (BT.601, limited range), scaled down to fit 1920×1080, sides even |
+| Scale and convert | host engine | BGRA into NV12 for Media Foundation, or planar I420 (I444 in full colour) for libvpx and libaom — BT.601, limited range — scaled down to fit 1920×1080, sides even |
 | Encode | host engine | H.264 through Media Foundation: the GPU's encoder (an asynchronous transform, fed system-memory NV12 when it asks for input) if it produces output within its first 30 black frames — one per process, shut down when its stream ends; other streams use the software encoder — else Microsoft's synchronous software encoder; low latency (set before the media types; the first output follows the first frame), CBR 4 Mbit/s, no B-frames, a key frame every 4 seconds and on request; 30 fps |
+| Encode (software) | host engine | VP9 (`vp9-sw`) and VP8 through libvpx, AV1 through libaom — RustDesk's wrappers (`core/third_party/rustdesk-codec`) and settings: real-time, CBR at RustDesk's quality ratio of the base bitrate, a key frame every 4 seconds and on request; VP9 profile 1 and AV1 profile 1 carry 4:4:4 |
 | Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); the producer waits while the session is busy, so capture runs at the speed the network takes |
 | Forward | controller engine | the session's media queue (newest 3 frames kept) → `session.media` on the local API |
-| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for the stream's codec in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9), NV12 into RGBA, cropped to the stream's size |
+| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for `h264`, `hevc` and `vp9` in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9), NV12 into RGBA, cropped to the stream's size; libvpx or libaom for `vp9-sw`, `vp8` and `av1`, I420 or I444 into RGBA |
 | Show | GUI | the viewer window's bitmap, two pictures alternating |
 
 While a frame waits inside the encoder, the host repeats the last picture so it comes out even when
 the screen stays still. A host that cannot capture (no interactive desktop, such as a service or an
-SSH session) or has no H.264 encoder (Windows N, Server editions without Media Foundation) sends the
-320×180 test pattern instead (`raw-rgba`). When the display is lost — a mode change, the lock
+SSH session) sends the 320×180 test pattern instead (`raw-rgba`); a host without Media
+Foundation's encoders (Windows N, Server editions without Media Foundation) sends in software. When the display is lost — a mode change, the lock
 screen or a UAC prompt — the host releases it and opens the primary display again every half
 second; the stream keeps its size and a new mode is scaled into it (a changed aspect ratio shows
 stretched until the next session).
@@ -31,12 +32,23 @@ Desktop duplication leaves the pointer out of the picture, so the host reports w
 is — at most 20 times a second, when it moves or hides — and the viewer marks it with a small ring
 that lets clicks through.
 
-The controller says which codecs it decodes as the session starts, and the host waits up to a
-second for that before it starts the video: H.264 whenever the controller decodes it, else HEVC,
-else VP9 (a controller without H.264, such as Windows N). The HEVC and VP9 encoders and decoders
-come from the GPU or the Store's video extensions. HEVC from this machine's GPU encoder did not
-decode at 720p and above with Microsoft's HEVC decoder (it did at 320×192, and the software HEVC
-encoder's stream decoded at 1080p), so H.264 stays first until that is understood.
+The controller says which codecs it decodes, and which of them in full colour, as the session
+starts; the host waits up to a second for that before it starts the video. It tries, in order,
+H.264, HEVC and VP9 through Media Foundation (Windows hosts), then VP9, AV1 and VP8 in software,
+and sends in the first one the controller decodes whose encoder opens — so a host or controller
+without Media Foundation's codecs (Windows N) falls back to software VP9. The HEVC and VP9
+encoders and decoders of Media Foundation come from the GPU or the Store's video extensions. HEVC
+from this machine's GPU encoder did not decode at 720p and above with Microsoft's HEVC decoder (it
+did at 320×192, and the software HEVC encoder's stream decoded at 1080p), so H.264 stays first
+until that is understood. A controller that names no codecs (an older build) gets H.264.
+
+**Full colour (4:4:4).** The viewer's status bar has a Full colour switch. When it is on and the
+controller decodes software VP9 or AV1 in 4:4:4 (every current build does), the host puts those
+first in full colour (I444: chroma at every pixel, so one-pixel coloured text and lines stay sharp)
+and restarts the video; switching it off goes back to the normal order. Full colour costs more
+bandwidth and encoder time than 4:2:0, and the stream description says when it is on (the status
+bar shows "4:4:4"). libaom on Windows ARM64 is built without its SIMD code (vcpkg's port), so AV1
+is slow there; VP9 comes first.
 
 The viewer asks for a key frame when it opens; the host then describes the stream again and starts
 a new group of pictures.
@@ -52,8 +64,9 @@ ratio; the encoder's bitrate is RustDesk's base bitrate for the picture size tim
 reports the delay, frame rate and bitrate it chose; the viewer shows the delay.
 
 The viewer's status bar offers RustDesk's presets — Faster (ratio 0.5), Balanced (0.67) and
-Sharper (1.5) — and a frame-rate cap of 15, 30 or 60; they reach the host as `{"type":
-"quality", preset, fps}` and set that viewer's image quality and custom frame rate in the QoS.
+Sharper (1.5) — a frame-rate cap of 15, 30 or 60, and the Full colour switch; they reach the host as
+`{"type": "quality", preset, fps, i444}` and set that viewer's image quality and custom frame
+rate in the QoS, and whether it gets full colour (above).
 
 ## Input
 
@@ -233,5 +246,6 @@ continues it until the engine stops.
 
 ## Not yet
 
-Keyboard modes, files on the clipboard, the libvpx and libaom codecs and full-colour 4:4:4 are
-Phase 3 steps that follow; AI tasks on macOS come with the Mac pass (PLAN.md).
+Keyboard modes and files on the clipboard are Phase 3 steps that follow. macOS capture,
+VideoToolbox (H.264 and HEVC) and AI tasks on macOS come with the Mac pass (PLAN.md); the software
+codecs are part of the macOS build too.

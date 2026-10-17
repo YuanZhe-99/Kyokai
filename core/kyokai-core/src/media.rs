@@ -50,6 +50,9 @@ pub struct VideoStart {
     pub codec: String,
     pub width: u32,
     pub height: u32,
+    /// Full colour (4:4:4); left out when false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub i444: bool,
 }
 
 /// Splits one frame into chunks that each fit one Noise message.
@@ -258,6 +261,7 @@ impl TestPattern {
             codec: "raw-rgba".into(),
             width: self.width,
             height: self.height,
+            i444: false,
         }
     }
 

@@ -12,6 +12,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 enum Decoder {
     /// The test pattern: frames are already RGBA.
     Raw { width: u32, height: u32 },
+    /// libvpx or libaom, which give the picture in full.
+    Soft(crate::soft::Decoder),
     #[cfg(windows)]
     Mf {
         dec: crate::mf::Decoder,
@@ -25,7 +27,8 @@ enum Decoder {
 struct Kept(Decoder);
 
 // SAFETY: the Media Foundation decoder is created in the multithreaded
-// apartment, whose objects may be called from any of its threads; the GUI
+// apartment, whose objects may be called from any of its threads; libvpx
+// and libaom decoders keep no thread affinity; the GUI
 // drives each decoder from one goroutine at a time (locked to an OS thread
 // it initialized), and the map's lock serializes every call.
 unsafe impl Send for Kept {}
@@ -46,6 +49,9 @@ pub fn open(start: &[u8]) -> Result<u64, String> {
             width: s.width,
             height: s.height,
         },
+        name if crate::soft::Codec::from_name(name).is_some() => Decoder::Soft(
+            crate::soft::Decoder::new(crate::soft::Codec::from_name(name).expect("checked"))?,
+        ),
         #[cfg(windows)]
         name if crate::mf::Codec::from_name(name).is_some() => Decoder::Mf {
             dec: crate::mf::Decoder::new(
@@ -86,6 +92,7 @@ pub fn decode(id: u64, frame: &[u8], rgba: &mut Vec<u8>) -> Result<Option<(u32, 
             rgba.extend_from_slice(frame);
             Ok(Some((*width, *height)))
         }
+        Decoder::Soft(dec) => dec.decode(frame, rgba),
         #[cfg(windows)]
         Decoder::Mf {
             dec,
@@ -138,5 +145,14 @@ mod tests {
         close(id);
         assert!(decode(id, &[0; 8], &mut rgba).is_err());
         assert!(open(br#"{"codec":"av9","width":2,"height":1}"#).is_err());
+    }
+
+    #[test]
+    fn software_streams_open_on_every_platform() {
+        for codec in ["vp9-sw", "av1", "vp8"] {
+            let start = format!(r#"{{"codec":"{codec}","width":320,"height":192,"i444":true}}"#);
+            let id = open(start.as_bytes()).unwrap_or_else(|e| panic!("{codec}: {e}"));
+            close(id);
+        }
     }
 }
