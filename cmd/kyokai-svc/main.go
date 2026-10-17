@@ -4,6 +4,7 @@
 //	               [--parent-pid N | --lifeline-fd N]
 //	kyokai-svc run --host helper      (the KyokaiHelper service; doc/en-us/run-modes.md)
 //	kyokai-svc helper install [--from DIR] [--operator-sid SID] | uninstall [--purge] | status
+//	kyokai-svc agent --down PIPE --up PIPE --helper-pid N   (started by the helper)
 //	kyokai-svc ctl status | password | regenerate | shutdown | network | trusted [--socket P]
 //	kyokai-svc ctl network-set --server URL [--server URL…] --name N
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
@@ -66,6 +67,8 @@ func main() {
 		err = ctl(os.Args[2:])
 	case "helper":
 		err = helperCmd(os.Args[2:])
+	case "agent":
+		err = agentCmd(os.Args[2:])
 	case "version":
 		fmt.Println(version.Version)
 	default:

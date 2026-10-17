@@ -1266,6 +1266,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     crate::clipboard::Item::Image(img) => {
                         crate::clipboard::to_png(&img).map(|png| Message::ClipboardImage { png })
                     }
+                    crate::clipboard::Item::Png(png) => Some(Message::ClipboardImage { png }),
                 };
                 if let Some(m) = msg {
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
@@ -1417,7 +1418,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         }
                     }
                     Message::ClipboardImage { png } => {
+                        // The helper is privileged and never decodes remote
+                        // media: images from a controller are not taken there.
                         if let Some(c) = &clip
+                            && crate::agent::link().is_none()
                             && let Some(img) = crate::clipboard::from_png(&png)
                         {
                             let _ = c.writes.send(crate::clipboard::Item::Image(img));

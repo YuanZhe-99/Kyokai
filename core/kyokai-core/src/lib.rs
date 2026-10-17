@@ -8,6 +8,7 @@
 
 mod about;
 mod access;
+mod agent;
 mod ai;
 mod auth;
 mod backup;
@@ -92,6 +93,10 @@ struct StartConfig {
     /// entry so a second instance on one machine stays apart.
     #[serde(default)]
     profile: String,
+    /// When the engine is the privileged helper: the kyokai-svc it starts
+    /// as the session agent in the console session.
+    #[serde(default)]
+    agent: Option<PathBuf>,
 }
 
 /// A request to `kyokai_call`.
@@ -386,6 +391,10 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
         version: cfg.version.clone(),
         about: std::sync::Mutex::new(about::Local::load(&cfg.state_dir)),
     });
+    #[cfg(windows)]
+    if let Some(exe) = &cfg.agent {
+        agent::start_helper(exe.clone());
+    }
     let network = net::Network::start(&secrets, ctx.clone())?;
     let mut core = Core {
         state_dir: cfg.state_dir.clone(),
@@ -420,6 +429,19 @@ fn call(input: &[u8]) -> Result<Value, String> {
     let mut req: Call = serde_json::from_slice(input).map_err(|e| format!("bad call: {e}"))?;
     match req.method.as_str() {
         "status" => Ok(status()),
+        // The session agent's whole life: serves the helper until it goes.
+        #[cfg(windows)]
+        "agent.serve" => {
+            let p = &req.params;
+            let (down, up) = (p["down"].as_str(), p["up"].as_str());
+            let helper = p["helper_pid"].as_u64();
+            match (down, up, helper) {
+                (Some(down), Some(up), Some(pid)) => {
+                    agent::run_agent(down, up, pid as u32).map(|()| json!({}))
+                }
+                _ => Err("bad agent request".into()),
+            }
+        }
         "password.reveal" => with_core(|c| json!({"temporary": c.password.reveal()})),
         "password.regenerate" => try_core(|c| {
             c.new_password()?;

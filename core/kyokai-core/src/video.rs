@@ -123,6 +123,9 @@ pub struct Display {
 /// The host's displays: the primary first, the others left to right (empty
 /// where it cannot capture).
 pub fn displays() -> Vec<Display> {
+    if let Some(link) = crate::agent::link() {
+        return link.displays();
+    }
     #[cfg(windows)]
     {
         screen::displays()
@@ -170,8 +173,30 @@ impl Source {
             bitrate: AtomicU32::new(BITRATE),
         });
         let (tx, frames) = mpsc::channel(2);
+        // In the helper modes the session agent captures and encodes.
+        let link = crate::agent::link();
+        if let Some(link) = link
+            && let Some((start, shown)) = link.open_video(
+                display,
+                codec,
+                tx.clone(),
+                key.clone(),
+                targets.clone(),
+                stop.clone(),
+            )
+        {
+            return Source {
+                start,
+                display: shown,
+                frames,
+                key,
+                stop,
+                targets,
+            };
+        }
         #[cfg(windows)]
-        if let Some(d) = display.or_else(|| displays().first().copied())
+        if link.is_none()
+            && let Some(d) = display.or_else(|| displays().first().copied())
             && let Some(c) = crate::mf::Codec::from_name(codec)
             && let Ok(start) =
                 screen::start(tx.clone(), key.clone(), stop.clone(), targets.clone(), d, c)
@@ -310,6 +335,7 @@ mod screen {
     ) -> Result<VideoStart, String> {
         let (ready_tx, ready) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
+            crate::agent::follow_input_desktop();
             let opened = (|| {
                 let (capturer, dw, dh) = open(display)?;
                 let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
@@ -342,6 +368,9 @@ mod screen {
             while !stop.load(Ordering::Relaxed) {
                 let Some(cap) = capturer.as_mut() else {
                     std::thread::sleep(REOPEN_AFTER);
+                    // The display is lost when the input desktop changes
+                    // (a UAC prompt, the lock screen): the agent follows it.
+                    crate::agent::follow_input_desktop();
                     capturer = open(display).ok().map(|(c, _, _)| c);
                     continue;
                 };

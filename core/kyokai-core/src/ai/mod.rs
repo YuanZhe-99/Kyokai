@@ -4,7 +4,7 @@
 
 pub mod action;
 mod claude;
-mod desktop;
+pub mod desktop;
 #[cfg(test)]
 pub(crate) mod fake;
 mod openai;
@@ -14,7 +14,7 @@ mod task;
 #[cfg(test)]
 mod tests;
 
-pub use task::{Ai, Pause};
+pub use task::{Ai, Pause, open_screen};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

@@ -88,6 +88,7 @@ caller's token (its user and its enabled groups); an administrator outside them 
 | A revoked device | coming back | revoking ends its live sessions and drops its resume tokens; its task pauses when its session ends |
 | The local API | another local user driving the engine | peer credentials, the engine's own user only |
 | The helper | a local user driving the SYSTEM service, or swapping what it runs | peer credentials, the operator and the `kyokai` group only; its files are administrator-owned copies; the state folder is SYSTEM and Administrators only |
+| The session agent | a local process posing as the helper or the agent to inject as SYSTEM, or feeding them media to decode | random pipe names created as the first instance, SYSTEM-only DACLs, each side checks the other's process id; neither decodes remote media |
 
 Out of scope: malware running as the same user (it can drive the desktop anyway), someone at the
 unlocked desktop, and a compromised provider.

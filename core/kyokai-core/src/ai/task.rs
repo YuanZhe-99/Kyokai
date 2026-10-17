@@ -756,8 +756,12 @@ fn system_prompt(width: u32, height: u32) -> String {
     )
 }
 
-/// Opens the real desktop.
-fn open_screen() -> Result<Box<dyn Desktop>, String> {
+/// Opens the real desktop: this process's, or in the helper modes the
+/// session agent's.
+pub fn open_screen() -> Result<Box<dyn Desktop>, String> {
+    if let Some(link) = crate::agent::link() {
+        return Ok(Box::new(link.desktop()?));
+    }
     #[cfg(windows)]
     {
         Ok(Box::new(desktop::Screen::open()?))

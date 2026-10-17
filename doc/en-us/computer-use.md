@@ -85,7 +85,8 @@ began to the other side, which puts it on its own clipboard; what arrived this w
 back. What was on a clipboard before the session is not offered,
 nor is text that Kyokai itself copied (the Device ID, a password: on Windows the clipboard's owner
 is a Kyokai process). Text up to 1 MiB, or an image up to 3840×2160 sent as PNG (at most 3 MiB; text wins when both are
-there); files come later.
+there); files come later. In the helper modes images from a controller are not taken, because the
+helper and its agent are privileged and never decode remote media ([run-modes.md](run-modes.md)).
 
 ## AI tasks
 

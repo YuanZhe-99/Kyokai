@@ -6,12 +6,12 @@
 //! Injection exists on Windows only so far (macOS comes with the Mac pass).
 #![cfg_attr(not(windows), allow(dead_code))]
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 /// One input event from the controller (`{"type": "input", "event": …}`).
 /// Pointer positions are fractions of the shared picture (0–1).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Event {
     Pointer {
@@ -71,7 +71,7 @@ impl Event {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PointerAction {
     Move,
@@ -80,7 +80,7 @@ pub enum PointerAction {
 }
 
 /// Modifier keys held with a key.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Mods {
     #[serde(default)]
     pub shift: bool,
@@ -165,7 +165,7 @@ pub fn vk(name: &str) -> Option<u16> {
 pub const INJECTED_TAG: usize = 0x4B59_4F4B; // "KYOK"
 
 /// A rectangle of the virtual desktop, in pixels.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Area {
     pub x: i32,
     pub y: i32,
@@ -276,6 +276,8 @@ mod windows_impl {
         /// The last process asked about: its id, whether it is Kyokai's,
         /// and when that was checked.
         owner: (u32, bool, Instant),
+        /// The agent's injector that does the work in the helper modes.
+        remote: Option<u64>,
         /// The display pointer positions are fractions of; None for the
         /// primary.
         area: Option<Area>,
@@ -287,6 +289,7 @@ mod windows_impl {
                 keys: BTreeSet::new(),
                 buttons: BTreeSet::new(),
                 owner: (0, false, Instant::now() - OWNER_TTL),
+                remote: crate::agent::link().map(|l| l.injector()),
                 area: None,
             }
         }
@@ -302,6 +305,9 @@ mod windows_impl {
         /// `Guard`).
         /// Returns: whether it was injected.
         pub fn inject(&mut self, e: &Event) -> bool {
+            if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
+                return e.valid() && link.inject(id, e, self.area);
+            }
             if !e.valid() || self.blocked(e.guard()) {
                 return false;
             }
@@ -388,6 +394,10 @@ mod windows_impl {
 
         /// Releases every key and button this session holds.
         pub fn release_all(&mut self) {
+            if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
+                link.release(id);
+                return;
+            }
             let mut batch: Vec<INPUT> = self.keys.iter().map(|k| keyboard(*k, true)).collect();
             for b in &self.buttons {
                 batch.push(mouse(
@@ -490,6 +500,9 @@ mod windows_impl {
     /// Where the pointer is, as fractions of the primary display (outside
     /// 0–1 on another display), and whether it is shown.
     pub fn pointer() -> Option<(f32, f32, bool)> {
+        if let Some(link) = crate::agent::link() {
+            return link.pointer(None);
+        }
         let (_, primary) = physical(desktop_areas);
         pointer_in(primary)
     }
@@ -497,6 +510,9 @@ mod windows_impl {
     /// Where the pointer is, as fractions of `area` (outside 0–1 elsewhere),
     /// and whether it is shown.
     pub fn pointer_in(area: Area) -> Option<(f32, f32, bool)> {
+        if let Some(link) = crate::agent::link() {
+            return link.pointer(Some(area));
+        }
         physical(|| {
             let mut info = CURSORINFO {
                 cbSize: std::mem::size_of::<CURSORINFO>() as u32,
@@ -537,7 +553,10 @@ mod windows_impl {
 
     impl Drop for Injector {
         fn drop(&mut self) {
-            self.release_all();
+            match (self.remote, crate::agent::link()) {
+                (Some(id), Some(link)) => link.drop_injector(id),
+                _ => self.release_all(),
+            }
         }
     }
 

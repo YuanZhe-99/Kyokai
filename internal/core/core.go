@@ -54,6 +54,9 @@ type Config struct {
 	StateDir string `json:"state_dir"`
 	// Profile keys the OS credential store entry of a development instance.
 	Profile string `json:"profile,omitempty"`
+	// Agent, set when the engine is the privileged helper, is the kyokai-svc
+	// the core starts as the session agent in the console session.
+	Agent string `json:"agent,omitempty"`
 }
 
 // Status is the core's state as hosts show it; it never holds a secret.

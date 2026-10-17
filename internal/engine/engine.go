@@ -94,7 +94,17 @@ func Run(ctx context.Context, opts Options) error {
 		ln.Close()
 		return err
 	}
-	st, err := lib.Start(core.Config{Version: opts.Version, StateDir: opts.StateDir, Profile: opts.Profile})
+	cfg := core.Config{Version: opts.Version, StateDir: opts.StateDir, Profile: opts.Profile}
+	if opts.Helper != nil {
+		// The helper starts its own copy of kyokai-svc as the session agent.
+		exe, err := os.Executable()
+		if err != nil {
+			ln.Close()
+			return err
+		}
+		cfg.Agent = exe
+	}
+	st, err := lib.Start(cfg)
 	if err != nil {
 		ln.Close()
 		return fmt.Errorf("start core: %w", err)

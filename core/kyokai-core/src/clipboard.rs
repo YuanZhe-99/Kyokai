@@ -32,6 +32,9 @@ pub struct Image {
 pub enum Item {
     Text(String),
     Image(Image),
+    /// An image as base64 PNG, as the session agent hands this computer's
+    /// clipboard to the helper: forwarded, never decoded there.
+    Png(String),
 }
 
 /// A clipboard: the system's, or a test double.
@@ -52,6 +55,9 @@ pub type Open = Arc<dyn Fn() -> Option<Box<dyn Clipboard>> + Send + Sync>;
 
 /// Opens this computer's clipboard.
 pub fn system() -> Option<Box<dyn Clipboard>> {
+    if let Some(link) = crate::agent::link() {
+        return Some(link.clipboard());
+    }
     let c = arboard::Clipboard::new().ok()?;
     Some(Box::new(System(c)))
 }
@@ -93,6 +99,7 @@ impl Clipboard for System {
     fn set(&mut self, item: &Item) -> bool {
         match item {
             Item::Text(t) => self.0.set_text(t).is_ok(),
+            Item::Png(_) => false,
             Item::Image(i) => self
                 .0
                 .set_image(arboard::ImageData {
@@ -132,6 +139,7 @@ fn owned_by_kyokai() -> bool {
 fn fits(item: &Item) -> bool {
     match item {
         Item::Text(t) => !t.is_empty() && t.len() <= MAX_TEXT,
+        Item::Png(p) => !p.is_empty() && p.len() <= MAX_PNG * 4 / 3 + 4,
         Item::Image(i) => {
             let pixels = i.width as u64 * i.height as u64;
             pixels > 0 && pixels <= MAX_PIXELS && i.rgba.len() as u64 == pixels * 4
@@ -182,6 +190,7 @@ impl Hash for Item {
         match self {
             Item::Text(t) => (0u8, t).hash(h),
             Item::Image(i) => (1u8, i.width, i.height, &i.rgba).hash(h),
+            Item::Png(p) => (2u8, p).hash(h),
         }
     }
 }
