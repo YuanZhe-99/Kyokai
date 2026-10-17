@@ -57,6 +57,8 @@ type App struct {
 	connect connectForm
 	grants  map[uint64][]string
 	access  accessForm
+	// Identity backup passphrase (identity.go), write-only.
+	passphrase string
 
 	// View state.
 	page         page

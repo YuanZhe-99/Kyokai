@@ -222,6 +222,7 @@ func (a *App) identitySettings(c *ui.Context) {
 		ui.Text(c, L.IdentityFingerprint())
 		ui.Text(c, groupHex(st.Fingerprint)).FontSize(sizeSmall).FontFeatures("tnum").Selectable()
 		ui.Text(c, L.IdentityFingerprintHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+		a.identityBackup(c)
 	})
 }
 

@@ -51,6 +51,9 @@ struct ClientHello {
     signature: String,
     want: Vec<Permission>,
     requests: [String; 2],
+    /// A resume token from an earlier session with this host.
+    #[serde(default)]
+    resume: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -71,6 +74,10 @@ struct Verdict {
     granted: Vec<Permission>,
     #[serde(default)]
     reason: Option<Refusal>,
+    /// With an acceptance: a single-use token for resuming after a dropped
+    /// connection.
+    #[serde(default)]
+    resume: Option<String>,
 }
 
 /// Messages of an established session.
@@ -119,6 +126,8 @@ pub enum State {
     Connecting,
     Confirming,
     Connected,
+    /// The connection dropped; the controller is resuming it.
+    Reconnecting,
     Closed,
     Failed,
 }
@@ -411,10 +420,25 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         accepted: false,
         granted: Vec::new(),
         reason: Some(reason),
+        resume: None,
     };
     if let Err(reason) = ctx.access.admit(from, pinned) {
         let _ = ch.send(&refuse(reason)).await;
         return Err(Failure::Refused(reason));
+    }
+    // Resuming a dropped session: same key, same permissions, no new login.
+    if let Some(token) = &client.resume
+        && let Some(granted) = ctx.access.take_resume(token, &key_b64)
+    {
+        let resume = ctx.access.issue_resume(&key_b64, &granted);
+        step(ch.send(&Verdict {
+            accepted: true,
+            granted: granted.clone(),
+            reason: None,
+            resume: Some(resume),
+        }))
+        .await?;
+        return Ok(granted);
     }
     let host_key = ctx.identity.public_key();
     let (responses, half) = ctx
@@ -458,22 +482,35 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         }
     };
     let _ = ctx.access.trust(&key_b64, &device_id, &granted);
+    let resume = ctx.access.issue_resume(&key_b64, &granted);
     step(ch.send(&Verdict {
         accepted: true,
         granted: granted.clone(),
         reason: None,
+        resume: Some(resume),
     }))
     .await?;
     Ok(granted)
 }
 
+/// How a controller's attempt over one connection ended.
+pub enum Outcome {
+    /// The device on this route has another key than the dialed Device ID
+    /// derives (a squatter): try the next route.
+    WrongDevice,
+    /// Finished; the session's entry records how.
+    Done,
+    /// The connection dropped (or a resume attempt could not get through):
+    /// dial again and resume with this token.
+    Lost(zeroize::Zeroizing<String>),
+}
+
 /// Connects to a host as the controller, over a stream already open to it.
-/// Inputs: the Device ID that was dialed, the password the person typed and
-/// the permissions to ask for.
-/// Returns: false when the device on this route has another key than the
-/// dialed Device ID derives (a squatter): the caller tries the next route.
+/// Inputs: the Device ID that was dialed, the password the person typed, the
+/// permissions to ask for, and a resume token when resuming.
 /// Side effects: pins the host key on success, then keeps the session alive
-/// until either side ends it; records how it ended.
+/// until either side ends it; records how it ended unless it returns `Lost`.
+#[allow(clippy::too_many_arguments)]
 pub async fn connect<S: AsyncRead + AsyncWrite + Unpin>(
     ctx: Arc<Ctx>,
     id: u64,
@@ -482,7 +519,8 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin>(
     device_id: String,
     password: zeroize::Zeroizing<String>,
     want: Vec<Permission>,
-) -> bool {
+    resume: Option<zeroize::Zeroizing<String>>,
+) -> Outcome {
     let result = async {
         let (mut hs, my_static) = noise(true)?;
         let mut buf = vec![0u8; MAX_FRAME];
@@ -520,6 +558,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin>(
             signature: sign_static(&ctx.identity, &my_static),
             want,
             requests,
+            resume: resume.as_ref().map(|t| t.to_string()),
         };
         let payload = serde_json::to_vec(&hello).map_err(|_| Failure::Broken)?;
         let n = hs.write_message(&payload, &mut buf)?;
@@ -530,53 +569,68 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin>(
             noise: hs.into_transport_mode()?,
             buf,
         };
-        // 4: challenge, or an early refusal (rate limits).
+        // 4: challenge, or at once a verdict (a refusal, or a resumption).
         let first: Value = step(ch.recv()).await?;
-        if first.get("accepted").is_some() {
-            let v: Verdict = serde_json::from_value(first).map_err(|_| Failure::Broken)?;
-            return Err(Failure::Refused(v.reason.unwrap_or(Refusal::Denied)));
-        }
-        let challenge: Challenge = serde_json::from_value(first).map_err(|_| Failure::Broken)?;
-        // 5: login
-        let opened = half.finish(&password, &challenge.responses, &host_key, &context);
-        let login = match opened {
-            Some((slot, fin)) => Login {
-                slot: Some(slot),
-                finalization: Some(fin),
-            },
-            None => Login {
-                slot: None,
-                finalization: None,
-            },
+        let verdict: Verdict = if first.get("accepted").is_some() {
+            serde_json::from_value(first).map_err(|_| Failure::Broken)?
+        } else {
+            let challenge: Challenge =
+                serde_json::from_value(first).map_err(|_| Failure::Broken)?;
+            // 5: login
+            let login = match half.finish(&password, &challenge.responses, &host_key, &context) {
+                Some((slot, fin)) => Login {
+                    slot: Some(slot),
+                    finalization: Some(fin),
+                },
+                None => Login {
+                    slot: None,
+                    finalization: None,
+                },
+            };
+            step(ch.send(&login)).await?;
+            ctx.sessions.update(id, |e| e.state = State::Confirming);
+            // 6: verdict, after the host's user decided.
+            tokio::time::timeout(CONFIRM_TIMEOUT + STEP_TIMEOUT, ch.recv())
+                .await
+                .unwrap_or(Err(Failure::Broken))?
         };
-        step(ch.send(&login)).await?;
-        ctx.sessions.update(id, |e| e.state = State::Confirming);
-        // 6: verdict, after the host's user decided.
-        let verdict: Verdict = tokio::time::timeout(CONFIRM_TIMEOUT + STEP_TIMEOUT, ch.recv())
-            .await
-            .unwrap_or(Err(Failure::Broken))?;
         if !verdict.accepted {
             return Err(Failure::Refused(verdict.reason.unwrap_or(Refusal::Denied)));
         }
-        if ctx.access.known_host(&device_id).is_none() {
-            let _ = ctx.access.pin_host(&device_id, &host.device_key);
-        }
-        Ok((ch, verdict.granted))
+        let _ = ctx.access.pin_host(&device_id, &host.device_key);
+        Ok((ch, verdict.granted, verdict.resume))
     }
     .await;
     match result {
-        Ok((mut ch, granted)) => {
+        Ok((mut ch, granted, token)) => {
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
                 e.granted = granted;
             });
-            let failure = run(&mut ch, &stop).await.err();
-            ctx.sessions.end(id, failure);
+            match (run(&mut ch, &stop).await, token) {
+                (Err(Failure::Broken), Some(token)) => {
+                    ctx.sessions.update(id, |e| e.state = State::Reconnecting);
+                    Outcome::Lost(zeroize::Zeroizing::new(token))
+                }
+                (result, _) => {
+                    ctx.sessions.end(id, result.err());
+                    Outcome::Done
+                }
+            }
         }
-        Err(Failure::WrongDevice) => return false,
-        Err(f) => ctx.sessions.end(id, Some(f)),
+        Err(Failure::WrongDevice) => Outcome::WrongDevice,
+        // A resume that could not get through keeps its (unused) token.
+        Err(Failure::Broken) if resume.is_some() => Outcome::Lost(resume.expect("checked")),
+        Err(f) => {
+            ctx.sessions.end(id, Some(f));
+            Outcome::Done
+        }
     }
-    true
+}
+
+/// Marks an outgoing session as resuming, between dial attempts.
+pub fn reconnecting(ctx: &Ctx, id: u64) {
+    ctx.sessions.update(id, |e| e.state = State::Reconnecting);
 }
 
 /// Registers an outgoing session before its connection is opened, so the
@@ -662,7 +716,9 @@ mod tests {
         );
         tokio::spawn(async move {
             // As the dialer does: a wrong device key ends the attempt here.
-            if !connect(c.clone(), id, stop, a, dialed_owned, password, want).await {
+            if let Outcome::WrongDevice =
+                connect(c.clone(), id, stop, a, dialed_owned, password, want, None).await
+            {
                 give_up(&c, id, Failure::WrongDevice);
             }
         });
@@ -765,6 +821,85 @@ mod tests {
         );
         let id = attempt(&host, &controller, "100000002", "k7mq2xpa", None).await;
         assert_eq!(session(&controller, id)["failure"], "wrong-device");
+    }
+
+    #[tokio::test]
+    async fn a_dropped_session_resumes_without_a_new_login() {
+        let host = device("1.0.0");
+        let controller = device("1.0.0");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let from: IpAddr = "10.126.126.2".parse().unwrap();
+        let (a, b) = tokio::io::duplex(1 << 16);
+        let host_side = tokio::spawn(serve(host.clone(), b, from));
+        let (id, stop) = begin(&controller, &dialed);
+        let first = tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop.clone(),
+            a,
+            dialed.clone(),
+            zeroize::Zeroizing::new("k7mq2xpa".into()),
+            vec![Permission::ViewScreen],
+            None,
+        ));
+        let until = |want: &'static str| {
+            let controller = controller.clone();
+            async move {
+                for _ in 0..200 {
+                    if session(&controller, id)["state"] == want {
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                panic!("never {want}: {}", session(&controller, id));
+            }
+        };
+        for _ in 0..200 {
+            if let Some(q) = host
+                .access
+                .pending()
+                .as_array()
+                .and_then(|a| a.first().cloned())
+            {
+                host.access
+                    .decide(
+                        q["id"].as_u64().unwrap(),
+                        Some(vec![Permission::ViewScreen]),
+                    )
+                    .unwrap();
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        until("connected").await;
+        // The connection drops (the host side goes away).
+        host_side.abort();
+        let Outcome::Lost(token) = first.await.unwrap() else {
+            panic!("a dropped session should be resumable");
+        };
+        assert_eq!(session(&controller, id)["state"], "reconnecting");
+        // A new connection resumes: no password check, no confirmation.
+        let (a, b) = tokio::io::duplex(1 << 16);
+        tokio::spawn(serve(host.clone(), b, from));
+        tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop,
+            a,
+            dialed,
+            zeroize::Zeroizing::new("not the password".into()),
+            vec![Permission::ViewScreen],
+            Some(token),
+        ));
+        until("connected").await;
+        assert_eq!(session(&controller, id)["granted"], json!(["view-screen"]));
+        assert_eq!(host.access.pending(), json!([]));
     }
 
     #[tokio::test]

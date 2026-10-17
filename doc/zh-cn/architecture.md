@@ -54,8 +54,9 @@
 方法：`status`（从不含机密；包含网络状态）、`password.reveal`、`password.regenerate`、`network.get`（不含密钥的设置）、
 `network.set`（`{servers, name, secret?}`；缺少密钥时保留已存的密钥）、`password.set_permanent`（`{password}`，null 表示移除）、
 `session.connect`（`{device_id, password, want}`；立即返回会话 id，进度见状态）、`session.close`、`request.decide`
-（`{id, allow, permissions}`）、`trusted.list`、`trusted.remove`、`host.forget`。状态中还包含 `permanent_password`、`requests`
-（待处理的被控端确认）和 `sessions`。Go 绑定把传给核心的响应槽放在堆内存中，从不放在
+（`{id, allow, permissions}`）、`trusted.list`、`trusted.remove`、`host.forget`、`identity.export`（`{passphrase}` → `{document}`）、`identity.import`
+（`{document, passphrase}`）、`identity.reset`。状态中还包含 `permanent_password`、`requests`（待处理的被控端确认）、`sessions`
+以及 `recent`（连接过的被控端，最新的在前）。Go 绑定把传给核心的响应槽放在堆内存中，从不放在
 goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows 上以绝对路径、
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` 加载该库，并静态链接 C 运行时，
 因此不会经由搜索路径解析任何文件。
@@ -67,7 +68,7 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
   请求，`session.attach` 除外：它保持连接，状态变化时收到推送。
 - 请求：`status`（含网络状态）、`password.reveal`、`password.regenerate`、`network.get`、`network.set`（被拒绝的设置
   以 `invalid` 和原因答复）、`password.set_permanent`、`session.connect`、`session.close`、`request.decide`、`trusted.list`、
-  `trusted.remove`、`host.forget`、`session.attach`、`shutdown`。状态包含待处理的被控端确认与会话；机密只朝引擎方向传递
+  `trusted.remove`、`host.forget`、`identity.export`、`identity.import`、`identity.reset`、`session.attach`、`shutdown`。状态包含待处理的被控端确认与会话；机密只朝引擎方向传递
   （网络密钥、固定密码、用户输入的密码）。会话在每个改变状态的命令之后、以及网络状态变化时收到状态。
 - 授权来自操作系统的对端凭据（macOS 为 `LOCAL_PEERCRED`；Windows 为 `SIO_AF_UNIX_GETPEERPID` 与进程令牌的 SID），
   从不取自请求内容：只服务引擎自己的用户；读不出身份的连接一律拒绝。

@@ -102,6 +102,7 @@ func (a *App) connectCard(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	f, busy, online := a.connect, a.busy["connect"], a.status.Network.State == "online"
+	recent := a.status.Recent
 	a.mu.Unlock()
 	card(c).Children(func() {
 		ui.Text(c, L.ConnectTitle()).FontSize(sizeHeading).Bold()
@@ -128,6 +129,18 @@ func (a *App) connectCard(c *ui.Context) {
 				a.startSession(f)
 			}
 		})
+		if len(recent) > 0 {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+				ui.Text(c, L.ConnectRecent()).FontSize(sizeSmall).TextColor(t.TextMuted)
+				for _, r := range recent {
+					if ui.Button(c.Key("recent-"+r.DeviceID), groupDigits(r.DeviceID)).Clicked() {
+						a.mu.Lock()
+						a.connect.deviceID = groupDigits(r.DeviceID)
+						a.mu.Unlock()
+					}
+				}
+			})
+		}
 	})
 }
 
@@ -189,7 +202,7 @@ func (a *App) sessionsCard(c *ui.Context) {
 						go func() { _, _ = a.requestWith(localapi.Request{Type: localapi.RequestHostForget, DeviceID: device}) }()
 					}
 				}
-				if s.State == "connected" || s.State == "connecting" || s.State == "confirming" {
+				if s.State == "connected" || s.State == "connecting" || s.State == "confirming" || s.State == "reconnecting" {
 					if ui.Button(c.Key("sess-close-"+itoa(s.ID)), L.ActionDisconnect()).Clicked() {
 						id := s.ID
 						go func() { _, _ = a.requestWith(localapi.Request{Type: localapi.RequestClose, ID: id}) }()
@@ -210,6 +223,8 @@ func sessionState(s localapi.SessionInfo) string {
 			return L.SessionConfirmingHere()
 		}
 		return L.SessionConfirmingThere()
+	case "reconnecting":
+		return L.SessionReconnecting()
 	case "connected":
 		names := make([]string, len(s.Granted))
 		for i, p := range s.Granted {

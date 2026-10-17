@@ -4,6 +4,8 @@
   "AboutSource": "Source code",
   "AboutTagline": "AI Computer Use Across Devices",
   "ActionAllow": "Allow",
+  "ActionBackUp": "Back up…",
+  "ActionCancel": "Cancel",
   "ActionCheckAppUpdate": "Check for updates",
   "ActionConnect": "Connect",
   "ActionCopy": "Copy",
@@ -16,6 +18,8 @@
   "ActionNewPassword": "New password",
   "ActionOpenFolder": "Open folder",
   "ActionRemove": "Remove",
+  "ActionReset": "Reset…",
+  "ActionRestore": "Restore…",
   "ActionRetry": "Retry",
   "ActionSave": "Save",
   "ActionShow": "Show",
@@ -39,10 +43,16 @@
     }
   },
   "AppUpdateUnavailable": "This copy of Kyokai cannot update itself.",
+  "BackupFileKind": "Kyokai identity backup",
+  "BackupHint": "A backup keeps this Device ID, the permanent password, trusted devices and known devices, encrypted with a passphrase of at least 10 characters. Without the passphrase it can't be opened.",
+  "BackupPassphrase": "Backup passphrase",
+  "BackupSaved": "Backup saved.",
+  "BackupTitle": "Back up or restore",
   "CloseHide": "Keep running in the tray",
   "CloseQuit": "Quit",
   "ConnectNeedsNetwork": "Join a network on the Network page first.",
   "ConnectPassword": "Password",
+  "ConnectRecent": "Recent:",
   "ConnectTitle": "Control another device",
   "Copied": "Copied",
   "DiagEngine": "Engine",
@@ -75,6 +85,7 @@
   "HomeThisDevice": "This device",
   "IdentityFingerprint": "Fingerprint",
   "IdentityFingerprintHint": "The full identity behind the Device ID. Compare it when another computer asks you to confirm this device.",
+  "IdentityReplaced": "Identity replaced.",
   "LanguageSystem": "System",
   "LatencyMS": "{ms} ms",
   "@LatencyMS": {
@@ -140,6 +151,10 @@
       }
     }
   },
+  "ResetConfirm": "This device gets a new Device ID. Other devices will see it as a new device, and its permanent password, trusted devices and known devices are forgotten. This can't be undone without a backup.",
+  "ResetHint": "Gives this device a new Device ID and forgets its permanent password, trusted devices and known devices.",
+  "ResetTitle": "Reset identity",
+  "RestoreConfirm": "This device takes on the identity in the backup, including its Device ID. Every session ends and the network reconnects.",
   "RunModeUser": "No privileges",
   "SecretsMemoryOnly": "In memory only: this computer's credential store is not available, so the Device ID changes on the next start.",
   "SecretsOSStore": "Encrypted with this computer's credential store",
@@ -172,6 +187,7 @@
       }
     }
   },
+  "SessionReconnecting": "Connection lost — reconnecting…",
   "SessionsTitle": "Sessions",
   "SettingsAbout": "About",
   "SettingsAccess": "Access",

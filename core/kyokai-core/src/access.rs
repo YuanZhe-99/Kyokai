@@ -49,6 +49,12 @@ const GLOBAL_WAIT: Duration = Duration::from_secs(30);
 pub const CONFIRM_TIMEOUT: Duration = Duration::from_secs(60);
 /// Open confirmations in total.
 const MAX_PENDING: usize = 4;
+/// How long a resume token stays valid after it was issued.
+const RESUME_WINDOW: Duration = Duration::from_secs(120);
+/// Resume tokens kept at most; the oldest go first.
+const MAX_RESUMES: usize = 64;
+/// Recent devices listed at most.
+const MAX_RECENT: usize = 8;
 
 /// A controller key the host has accepted before.
 #[derive(Clone, Serialize, Deserialize)]
@@ -63,6 +69,22 @@ pub struct Trusted {
 /// The host user's answer to a confirmation: the granted permissions, or
 /// None for a denial.
 pub type Decision = oneshot::Receiver<Option<Vec<Permission>>>;
+
+/// A host this device connected to (controller side): its pinned key and
+/// when the last session with it was accepted.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct KnownHost {
+    pub key: String,
+    /// Unix seconds.
+    pub last: u64,
+}
+
+/// A resume token's grant: who may resume, with what, until when.
+struct Resume {
+    key: String,
+    granted: Vec<Permission>,
+    until: Instant,
+}
 
 /// A confirmation waiting for the host's user.
 struct Pending {
@@ -89,6 +111,8 @@ pub struct Access {
     pub slots: Mutex<Slots>,
     limits: Mutex<Limits>,
     pending: Mutex<(u64, Vec<Pending>)>,
+    /// Resume tokens issued to accepted controllers, in memory only.
+    resumes: Mutex<HashMap<String, Resume>>,
 }
 
 impl Access {
@@ -100,6 +124,7 @@ impl Access {
             slots: Mutex::new(slots),
             limits: Mutex::default(),
             pending: Mutex::new((0, Vec::new())),
+            resumes: Mutex::default(),
         })
     }
 
@@ -261,16 +286,72 @@ impl Access {
         self.store(TRUSTED_NAME, &all)
     }
 
-    /// The host key pinned for a Device ID, if any (controller side).
-    pub fn known_host(&self, device_id: &str) -> Option<String> {
-        self.known_hosts().remove(device_id)
+    /// Issues a single-use token that lets this controller key resume a
+    /// dropped session with the same permissions (host side).
+    pub fn issue_resume(&self, key: &str, granted: &[Permission]) -> String {
+        let mut bytes = [0u8; 32];
+        let _ = getrandom::fill(&mut bytes);
+        let token = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
+        if let Ok(mut r) = self.resumes.lock() {
+            let now = Instant::now();
+            r.retain(|_, v| v.until > now);
+            if r.len() >= MAX_RESUMES
+                && let Some(oldest) = r
+                    .iter()
+                    .min_by_key(|(_, v)| v.until)
+                    .map(|(k, _)| k.clone())
+            {
+                r.remove(&oldest);
+            }
+            r.insert(
+                token.clone(),
+                Resume {
+                    key: key.to_owned(),
+                    granted: granted.to_vec(),
+                    until: now + RESUME_WINDOW,
+                },
+            );
+        }
+        token
     }
 
-    /// Pins a host key for its Device ID (controller side).
+    /// Redeems a resume token for the controller key that holds it.
+    /// Returns: the permissions to grant again; None for an unknown, used,
+    /// expired or foreign token.
+    pub fn take_resume(&self, token: &str, key: &str) -> Option<Vec<Permission>> {
+        let r = self.resumes.lock().ok()?.remove(token)?;
+        (r.key == key && r.until > Instant::now()).then_some(r.granted)
+    }
+
+    /// The host key pinned for a Device ID, if any (controller side).
+    pub fn known_host(&self, device_id: &str) -> Option<String> {
+        self.known_hosts().remove(device_id).map(|h| h.key)
+    }
+
+    /// Pins a host key for its Device ID, or refreshes its last connection
+    /// (controller side).
     pub fn pin_host(&self, device_id: &str, key: &str) -> Result<(), String> {
         let mut all = self.known_hosts();
-        all.insert(device_id.to_owned(), key.to_owned());
+        all.insert(
+            device_id.to_owned(),
+            KnownHost {
+                key: key.to_owned(),
+                last: unix_now(),
+            },
+        );
         self.store(KNOWN_HOSTS_NAME, &all)
+    }
+
+    /// The hosts connected to most recently, newest first (controller side).
+    pub fn recent(&self) -> Vec<(String, u64)> {
+        let mut all: Vec<_> = self
+            .known_hosts()
+            .into_iter()
+            .map(|(id, h)| (id, h.last))
+            .collect();
+        all.sort_by_key(|h| std::cmp::Reverse(h.1));
+        all.truncate(MAX_RECENT);
+        all
     }
 
     /// Forgets a pinned host key, so the next session pins anew.
@@ -280,7 +361,7 @@ impl Access {
         self.store(KNOWN_HOSTS_NAME, &all)
     }
 
-    fn known_hosts(&self) -> BTreeMap<String, String> {
+    fn known_hosts(&self) -> BTreeMap<String, KnownHost> {
         self.secrets
             .get(KNOWN_HOSTS_NAME)
             .and_then(|t| serde_json::from_str(&t).ok())
@@ -361,6 +442,19 @@ mod tests {
         .unwrap();
         assert_eq!(rx.try_recv().unwrap(), Some(vec![Permission::ControlInput]));
         assert!(a.decide(id, None).is_err(), "answered once");
+    }
+
+    #[test]
+    fn resume_tokens_are_single_use_and_bound_to_their_key() {
+        let a = access();
+        let t = a.issue_resume("key-A", &[Permission::ViewScreen]);
+        assert_eq!(a.take_resume(&t, "key-B"), None, "another key");
+        let t = a.issue_resume("key-A", &[Permission::ViewScreen]);
+        assert_eq!(
+            a.take_resume(&t, "key-A"),
+            Some(vec![Permission::ViewScreen])
+        );
+        assert_eq!(a.take_resume(&t, "key-A"), None, "used once");
     }
 
     #[test]

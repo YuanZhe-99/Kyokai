@@ -60,8 +60,9 @@ secret; includes the network status), `password.reveal`, `password.regenerate`, 
 the stored one), `password.set_permanent` (`{password}`, null removes it), `session.connect`
 (`{device_id, password, want}`; returns the session id at once, progress shows in the status),
 `session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,
-`host.forget`. The status also carries `permanent_password`, `requests` (open host confirmations)
-and `sessions`. The Go binding keeps the response slots it passes to the core in heap memory,
+`host.forget`, `identity.export` (`{passphrase}` → `{document}`), `identity.import`
+(`{document, passphrase}`), `identity.reset`. The status also carries `permanent_password`,
+`requests` (open host confirmations), `sessions` and `recent` (hosts connected to, newest first). The Go binding keeps the response slots it passes to the core in heap memory,
 never on a goroutine stack, which may move between taking an address and the call. On Windows the
 library is loaded by absolute path with
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` and links the C
@@ -77,7 +78,8 @@ runtime statically, so nothing is resolved through the search path.
 - Requests: `status` (with the network status), `password.reveal`, `password.regenerate`,
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
   `password.set_permanent`, `session.connect`, `session.close`, `request.decide`, `trusted.list`,
-  `trusted.remove`, `host.forget`, `session.attach`, `shutdown`. The status includes the open host
+  `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
+  `session.attach`, `shutdown`. The status includes the open host
   confirmations and the sessions; secrets travel only towards the engine (the network secret, the
   permanent password, a typed password). A session receives the status after every command that changes it
   and whenever the network's status moves.

@@ -9,10 +9,12 @@
 //	kyokai-svc ctl close --id N
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID
+//	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
 //
 // Secrets come from the environment, never the command line: network-set
 // reads KYOKAI_NETWORK_SECRET (unset keeps the stored one), permanent reads
-// KYOKAI_PERMANENT_PASSWORD, connect reads KYOKAI_PASSWORD.
+// KYOKAI_PERMANENT_PASSWORD, connect reads KYOKAI_PASSWORD, backup and restore read
+// KYOKAI_BACKUP_PASSPHRASE.
 //
 // The GUI starts `run` as its child; `ctl` is for scripts and development.
 // KYOKAI_PROFILE selects a separate development instance.
@@ -105,8 +107,9 @@ func run(args []string) error {
 
 // Environment variables that carry secrets to `ctl`.
 const (
-	permanentEnv = "KYOKAI_PERMANENT_PASSWORD"
-	passwordEnv  = "KYOKAI_PASSWORD"
+	permanentEnv  = "KYOKAI_PERMANENT_PASSWORD"
+	passwordEnv   = "KYOKAI_PASSWORD"
+	passphraseEnv = "KYOKAI_BACKUP_PASSPHRASE"
 )
 
 // ctl sends one request to a running engine and prints the answer.
@@ -125,6 +128,8 @@ func ctl(args []string) error {
 	id := fs.Uint64("id", 0, "close, allow, deny: the session or request id")
 	key := fs.String("key", "", "untrust: the device key")
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
+	file := fs.String("file", "", "backup, restore: the backup file")
+	yes := fs.Bool("yes", false, "reset-identity: confirm a new Device ID")
 	// The command comes first, its flags after it.
 	if len(args) == 0 {
 		usage()
@@ -141,7 +146,8 @@ func ctl(args []string) error {
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
-		"forget": localapi.RequestHostForget,
+		"forget": localapi.RequestHostForget, "backup": localapi.RequestIdentityExport,
+		"restore": localapi.RequestIdentityImport, "reset-identity": localapi.RequestIdentityReset,
 	}[cmd], ID: *id, Key: *key, DeviceID: *device}
 	if req.Type == "" {
 		usage()
@@ -170,6 +176,23 @@ func ctl(args []string) error {
 			return fmt.Errorf("set %s to the host's password", passwordEnv)
 		}
 		req.Connect = &localapi.ConnectRequest{DeviceID: *device, Password: p, Want: list(*want)}
+	case "backup", "restore":
+		p, ok := os.LookupEnv(passphraseEnv)
+		if !ok || *file == "" {
+			return fmt.Errorf("set %s and pass --file", passphraseEnv)
+		}
+		req.Backup = &localapi.IdentityBackup{Passphrase: p}
+		if cmd == "restore" {
+			doc, err := os.ReadFile(*file)
+			if err != nil {
+				return err
+			}
+			req.Backup.Document = string(doc)
+		}
+	case "reset-identity":
+		if !*yes {
+			return errors.New("this gives the device a new Device ID; pass --yes")
+		}
 	case "allow", "deny":
 		req.Decide = &localapi.Decision{ID: *id, Allow: cmd == "allow", Permissions: list(*grant)}
 		if cmd == "allow" && *grant == "" {
@@ -201,6 +224,12 @@ func ctl(args []string) error {
 			strings.Join(n.Servers, ", "), n.Name, n.HasSecret, n.WeakSecret)
 	case resp.Password != "":
 		fmt.Println(resp.Password)
+	case resp.Document != "":
+		// Owner-only: the file is encrypted, but it is still the identity.
+		if err := os.WriteFile(*file, []byte(resp.Document), 0o600); err != nil {
+			return err
+		}
+		fmt.Println("backup written to", *file)
 	case resp.ID != 0:
 		fmt.Println("session", resp.ID)
 	case req.Type == localapi.RequestTrustedList:
@@ -243,6 +272,9 @@ func printStatus(s *localapi.Status) {
 	for _, r := range s.Requests {
 		fmt.Printf("request %d  from %s  wants %s  known %v  new key %v\n",
 			r.ID, r.DeviceID, strings.Join(r.Want, ","), r.Known, r.NewKey)
+	}
+	for _, r := range s.Recent {
+		fmt.Println("recent", r.DeviceID)
 	}
 	for _, x := range s.Sessions {
 		fmt.Printf("session %d  %s  %s  %s", x.ID, x.Role, x.DeviceID, x.State)

@@ -58,6 +58,9 @@ const (
 	RequestTrustedList        RequestType = "trusted.list"           // the trusted devices
 	RequestTrustedRemove      RequestType = "trusted.remove"         // forget a trusted device (Request.Key)
 	RequestHostForget         RequestType = "host.forget"            // forget a pinned host key (Request.DeviceID)
+	RequestIdentityExport     RequestType = "identity.export"        // an encrypted identity backup (Request.Backup.Passphrase)
+	RequestIdentityImport     RequestType = "identity.import"        // restore an identity backup (Request.Backup)
+	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
 	RequestSessionAttach      RequestType = "session.attach"         // streaming; see package doc
 	RequestShutdown           RequestType = "shutdown"
 )
@@ -88,6 +91,14 @@ type Request struct {
 	Key string `json:"key,omitempty"`
 	// DeviceID names a host whose pinned key to forget (RequestHostForget).
 	DeviceID string `json:"device_id,omitempty"`
+	// Backup carries the passphrase (and for an import the document).
+	Backup *IdentityBackup `json:"backup,omitempty"`
+}
+
+// IdentityBackup is an identity backup document and its passphrase.
+type IdentityBackup struct {
+	Document   string `json:"document,omitempty"`
+	Passphrase string `json:"passphrase"`
 }
 
 // PermanentPassword is the request body of RequestPermanentSet.
@@ -136,6 +147,8 @@ type Response struct {
 	ID uint64 `json:"id,omitempty"`
 	// Trusted answers RequestTrustedList.
 	Trusted []TrustedDevice `json:"trusted,omitempty"`
+	// Document answers RequestIdentityExport: the encrypted backup.
+	Document string `json:"document,omitempty"`
 }
 
 // TrustedDevice is a controller this host accepted before.
@@ -158,13 +171,20 @@ type HostRequest struct {
 	Want   []string `json:"want"`
 }
 
+// RecentDevice is a host this device connected to.
+type RecentDevice struct {
+	DeviceID string `json:"device_id"`
+	Last     int64  `json:"last"` // Unix seconds
+}
+
 // SessionInfo is one session of this device, live or recently finished.
 type SessionInfo struct {
 	ID   uint64 `json:"id"`
 	Role string `json:"role"` // "host" or "controller"
 	// DeviceID is the other device.
 	DeviceID string `json:"device_id"`
-	// State is "connecting", "confirming", "connected", "closed" or "failed".
+	// State is "connecting", "confirming", "connected", "reconnecting",
+	// "closed" or "failed".
 	State string `json:"state"`
 	// Failure says why a session failed: a name, or {"refused": reason}.
 	Failure     json.RawMessage `json:"failure,omitempty"`
@@ -225,7 +245,9 @@ type Status struct {
 	PermanentPassword bool          `json:"permanent_password"`
 	Requests          []HostRequest `json:"requests"`
 	Sessions          []SessionInfo `json:"sessions"`
-	Started           time.Time     `json:"started"`
+	// Recent are the hosts this device connected to, newest first.
+	Recent  []RecentDevice `json:"recent"`
+	Started time.Time      `json:"started"`
 }
 
 // ErrNotRunning reports that no engine listens on the socket.

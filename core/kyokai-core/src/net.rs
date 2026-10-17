@@ -36,6 +36,10 @@ const STRONG_SECRET_LEN: usize = 16;
 const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
 /// How often to retry binding the listener until the address is assigned.
 const BIND_RETRY: Duration = Duration::from_secs(2);
+/// How long a dropped session keeps trying to resume.
+const RESUME_FOR: Duration = Duration::from_secs(60);
+/// The pause between resume attempts.
+const RESUME_RETRY: Duration = Duration::from_secs(3);
 /// Most route entries tried for one Device ID (anyone can announce one).
 const MAX_CANDIDATES: usize = 3;
 /// How long stopping the node may take before the runtime is dropped.
@@ -55,8 +59,11 @@ pub struct Settings {
 /// A `network.set` request: a missing secret keeps the stored one.
 #[derive(Deserialize)]
 pub struct Update {
-    servers: Vec<String>,
-    name: String,
+    // Missing or null lists and names mean none (leaving the network).
+    #[serde(default)]
+    servers: Option<Vec<String>>,
+    #[serde(default)]
+    name: Option<String>,
     secret: Option<String>,
 }
 
@@ -127,8 +134,13 @@ impl Network {
             secret: update
                 .secret
                 .unwrap_or_else(|| self.settings.secret.clone()),
-            servers: update.servers.iter().map(|s| s.trim().to_owned()).collect(),
-            name: update.name.trim().to_owned(),
+            servers: update
+                .servers
+                .unwrap_or_default()
+                .iter()
+                .map(|s| s.trim().to_owned())
+                .collect(),
+            name: update.name.unwrap_or_default().trim().to_owned(),
         };
         validate(&settings)?;
         let text =
@@ -241,39 +253,35 @@ impl Network {
         let ctx = self.ctx.clone();
         let device_id = device_id.to_owned();
         self.rt.spawn(async move {
-            let hostname = format!("Kyokai-{device_id}");
-            let candidates: Vec<Ipv4Addr> = node
-                .route_snapshots()
-                .await
-                .into_iter()
-                .filter(|r| r.hostname == hostname)
-                .filter_map(|r| r.ipv4_addr.and_then(|a| a.address).map(Ipv4Addr::from))
-                .take(MAX_CANDIDATES)
-                .collect();
-            let mut failure = session::Failure::Unreachable;
-            for ip in candidates {
-                let addr = SocketAddr::new(ip.into(), KYOKAI_PORT);
-                let Ok(stream) = node.data_plane_tcp_connect(addr, DIAL_TIMEOUT).await else {
-                    continue;
-                };
-                // A squatter with another key fails the handshake: try the next.
-                let (stop, password, want) = (stop.clone(), password.clone(), want.clone());
-                if session::connect(
-                    ctx.clone(),
-                    id,
-                    stop,
-                    stream,
-                    device_id.clone(),
-                    password,
-                    want,
-                )
-                .await
-                {
-                    return;
+            let mut resume: Option<zeroize::Zeroizing<String>> = None;
+            let mut lost_at = None;
+            loop {
+                if resume.is_some() {
+                    session::reconnecting(&ctx, id);
+                    // Between attempts a local stop ends the session at once.
+                    tokio::select! {
+                        _ = stop.notified() => return session::give_up(&ctx, id, session::Failure::Broken),
+                        _ = tokio::time::sleep(RESUME_RETRY) => {}
+                    }
                 }
-                failure = session::Failure::WrongDevice;
+                let failure = match dial(&node, &ctx, id, &stop, &device_id, &password, &want, resume.take()).await {
+                    Dialed::Outcome(session::Outcome::Done) => return,
+                    Dialed::Outcome(session::Outcome::Lost(token)) => {
+                        lost_at.get_or_insert_with(std::time::Instant::now);
+                        resume = Some(token);
+                        session::Failure::Broken
+                    }
+                    Dialed::Outcome(session::Outcome::WrongDevice) => session::Failure::WrongDevice,
+                    Dialed::Nothing(f, token) => {
+                        resume = token;
+                        f
+                    }
+                };
+                // Keep resuming only while a token is held and the window lasts.
+                if resume.is_none() || lost_at.is_some_and(|t: std::time::Instant| t.elapsed() > RESUME_FOR) {
+                    return session::give_up(&ctx, id, failure);
+                }
             }
-            session::give_up(&ctx, id, failure);
         });
         Ok(id)
     }
@@ -300,6 +308,63 @@ impl Drop for Network {
     fn drop(&mut self) {
         self.stop_node();
     }
+}
+
+/// What one round of dialing a Device ID came to.
+enum Dialed {
+    /// A handshake ran on some route.
+    Outcome(session::Outcome),
+    /// No route answered, or every one was a squatter; the resume token, if
+    /// any, is handed back unused.
+    Nothing(session::Failure, Option<zeroize::Zeroizing<String>>),
+}
+
+/// Tries the routes that announce `device_id` (at most MAX_CANDIDATES) and
+/// runs the session on the first that proves to be the device.
+#[allow(clippy::too_many_arguments)]
+async fn dial(
+    node: &NativeCoreInstance,
+    ctx: &Arc<Ctx>,
+    id: u64,
+    stop: &Arc<tokio::sync::Notify>,
+    device_id: &str,
+    password: &zeroize::Zeroizing<String>,
+    want: &[Permission],
+    resume: Option<zeroize::Zeroizing<String>>,
+) -> Dialed {
+    let hostname = format!("Kyokai-{device_id}");
+    let candidates: Vec<Ipv4Addr> = node
+        .route_snapshots()
+        .await
+        .into_iter()
+        .filter(|r| r.hostname == hostname)
+        .filter_map(|r| r.ipv4_addr.and_then(|a| a.address).map(Ipv4Addr::from))
+        .take(MAX_CANDIDATES)
+        .collect();
+    let mut failure = session::Failure::Unreachable;
+    for ip in candidates {
+        let addr = SocketAddr::new(ip.into(), KYOKAI_PORT);
+        let Ok(stream) = node.data_plane_tcp_connect(addr, DIAL_TIMEOUT).await else {
+            continue;
+        };
+        let outcome = session::connect(
+            ctx.clone(),
+            id,
+            stop.clone(),
+            stream,
+            device_id.to_owned(),
+            password.clone(),
+            want.to_vec(),
+            resume.clone(),
+        )
+        .await;
+        match outcome {
+            // A squatter with another key fails the handshake: try the next.
+            session::Outcome::WrongDevice => failure = session::Failure::WrongDevice,
+            other => return Dialed::Outcome(other),
+        }
+    }
+    Dialed::Nothing(failure, resume)
 }
 
 /// The instance id other devices compute for a Device ID.
@@ -435,6 +500,14 @@ mod tests {
         assert_eq!(identity.network_name, name);
         assert_eq!(identity.network_secret.as_deref(), Some("p\"w\\"));
         assert_eq!(cfg.get_hostname(), "Kyokai-100000002");
+    }
+
+    #[test]
+    fn leaving_accepts_null_lists() {
+        let u: Update = serde_json::from_str(r#"{"servers": null, "name": ""}"#).unwrap();
+        assert!(u.servers.is_none());
+        let u: Update = serde_json::from_str("{}").unwrap();
+        assert!(u.name.is_none());
     }
 
     #[test]

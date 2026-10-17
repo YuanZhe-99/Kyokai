@@ -8,6 +8,7 @@
 
 mod access;
 mod auth;
+mod backup;
 mod identity;
 mod net;
 mod password;
@@ -26,6 +27,8 @@ pub const ABI_VERSION: u32 = 1;
 
 /// The running core: what `kyokai_start` set up, until `kyokai_stop`.
 struct Core {
+    /// What the core started with, to rebuild it after a restore or reset.
+    cfg: StartConfig,
     state_dir: PathBuf,
     persistence: store::Persistence,
     /// Identity, access state and sessions, shared with the session tasks.
@@ -69,7 +72,7 @@ struct Decide {
 static CORE: Mutex<Option<Core>> = Mutex::new(None);
 
 /// What the host passes to `kyokai_start`.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct StartConfig {
     /// Product version of the host binary (internal/version).
     version: String,
@@ -202,6 +205,13 @@ fn start(input: &[u8]) -> Result<(), String> {
     if guard.is_some() {
         return Err("the core is already started".into());
     }
+    *guard = Some(build(cfg)?);
+    Ok(())
+}
+
+/// Opens the secrets store, loads the identity and access state, starts the
+/// network and generates a temporary password.
+fn build(cfg: StartConfig) -> Result<Core, String> {
     std::fs::create_dir_all(&cfg.state_dir).map_err(|e| format!("state directory: {e}"))?;
     let (secrets, persistence) = store::open(&cfg.state_dir, &cfg.profile);
     let secrets = Arc::new(secrets);
@@ -210,19 +220,36 @@ fn start(input: &[u8]) -> Result<(), String> {
         identity,
         access: Arc::new(access::Access::load(secrets.clone())?),
         sessions: Arc::default(),
-        version: cfg.version,
+        version: cfg.version.clone(),
     });
     let network = net::Network::start(&secrets, ctx.clone())?;
     let mut core = Core {
-        state_dir: cfg.state_dir,
+        state_dir: cfg.state_dir.clone(),
+        cfg,
         persistence,
         ctx,
         password: password::Temporary::generate(),
         network,
     };
     core.new_password()?;
+    Ok(core)
+}
+
+/// Changes the identity's secrets, then rebuilds the core so every part
+/// uses the new identity.
+/// Side effects: ends every session and reconnects the network.
+fn replace_identity(
+    change: impl FnOnce(&store::Secrets) -> Result<(), String>,
+) -> Result<Value, String> {
+    let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
+    let core = guard.as_ref().ok_or("the core is not started")?;
+    change(core.ctx.access.secrets())?;
+    let cfg = core.cfg.clone();
+    *guard = None; // stops the network and drops the old identity
+    let core = build(cfg)?;
+    let id = core.ctx.identity.device_id();
     *guard = Some(core);
-    Ok(())
+    Ok(json!({"device_id": id}))
 }
 
 fn call(input: &[u8]) -> Result<Value, String> {
@@ -263,6 +290,26 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 Ok(json!({"permanent_password": slots.has_permanent()}))
             })
         }
+        "identity.export" => {
+            let passphrase: zeroize::Zeroizing<String> =
+                serde_json::from_value(req.params["passphrase"].take())
+                    .map_err(|e| format!("bad passphrase: {e}"))?;
+            try_core(|c| {
+                let doc = backup::export(c.ctx.access.secrets(), &passphrase)?;
+                Ok(json!({"document": doc}))
+            })
+        }
+        "identity.import" => {
+            let document = req.params["document"]
+                .as_str()
+                .ok_or("bad backup")?
+                .to_owned();
+            let passphrase: zeroize::Zeroizing<String> =
+                serde_json::from_value(req.params["passphrase"].take())
+                    .map_err(|e| format!("bad passphrase: {e}"))?;
+            replace_identity(|s| backup::import(s, &document, &passphrase))
+        }
+        "identity.reset" => replace_identity(backup::reset),
         "network.get" => with_core(|c| c.network.settings()),
         "network.set" => {
             let update: net::Update = serde_json::from_value(req.params)
@@ -357,6 +404,13 @@ fn status() -> Value {
             "permanent_password": c.ctx.access.slots.lock().is_ok_and(|s| s.has_permanent()),
             "requests": c.ctx.access.pending(),
             "sessions": c.ctx.sessions.list(),
+            "recent": c
+                .ctx
+                .access
+                .recent()
+                .into_iter()
+                .map(|(id, last)| json!({"device_id": id, "last": last}))
+                .collect::<Value>(),
         })
     })
     .unwrap_or_else(|e| json!({"error": e}))

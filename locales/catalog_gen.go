@@ -76,6 +76,26 @@ func (msgs Messages) ActionAllow() string {
 	return Catalog.Format(msgs.locale, "ActionAllow", nil)
 }
 
+// ActionBackUp says "Back up…"
+// in the language the app shows.
+func ActionBackUp() string { return In(i18n.Locale()).ActionBackUp() }
+
+// ActionBackUp says "Back up…"
+// in the language of msgs.
+func (msgs Messages) ActionBackUp() string {
+	return Catalog.Format(msgs.locale, "ActionBackUp", nil)
+}
+
+// ActionCancel says "Cancel"
+// in the language the app shows.
+func ActionCancel() string { return In(i18n.Locale()).ActionCancel() }
+
+// ActionCancel says "Cancel"
+// in the language of msgs.
+func (msgs Messages) ActionCancel() string {
+	return Catalog.Format(msgs.locale, "ActionCancel", nil)
+}
+
 // ActionCheckAppUpdate says "Check for updates"
 // in the language the app shows.
 func ActionCheckAppUpdate() string { return In(i18n.Locale()).ActionCheckAppUpdate() }
@@ -196,6 +216,26 @@ func (msgs Messages) ActionRemove() string {
 	return Catalog.Format(msgs.locale, "ActionRemove", nil)
 }
 
+// ActionReset says "Reset…"
+// in the language the app shows.
+func ActionReset() string { return In(i18n.Locale()).ActionReset() }
+
+// ActionReset says "Reset…"
+// in the language of msgs.
+func (msgs Messages) ActionReset() string {
+	return Catalog.Format(msgs.locale, "ActionReset", nil)
+}
+
+// ActionRestore says "Restore…"
+// in the language the app shows.
+func ActionRestore() string { return In(i18n.Locale()).ActionRestore() }
+
+// ActionRestore says "Restore…"
+// in the language of msgs.
+func (msgs Messages) ActionRestore() string {
+	return Catalog.Format(msgs.locale, "ActionRestore", nil)
+}
+
 // ActionRetry says "Retry"
 // in the language the app shows.
 func ActionRetry() string { return In(i18n.Locale()).ActionRetry() }
@@ -286,6 +326,56 @@ func (msgs Messages) AppUpdateUnavailable() string {
 	return Catalog.Format(msgs.locale, "AppUpdateUnavailable", nil)
 }
 
+// BackupFileKind says "Kyokai identity backup"
+// in the language the app shows.
+func BackupFileKind() string { return In(i18n.Locale()).BackupFileKind() }
+
+// BackupFileKind says "Kyokai identity backup"
+// in the language of msgs.
+func (msgs Messages) BackupFileKind() string {
+	return Catalog.Format(msgs.locale, "BackupFileKind", nil)
+}
+
+// BackupHint says "A backup keeps this Device ID, the permanent password, trusted devices and known devices, encrypted with a passphrase…"
+// in the language the app shows.
+func BackupHint() string { return In(i18n.Locale()).BackupHint() }
+
+// BackupHint says "A backup keeps this Device ID, the permanent password, trusted devices and known devices, encrypted with a passphrase…"
+// in the language of msgs.
+func (msgs Messages) BackupHint() string {
+	return Catalog.Format(msgs.locale, "BackupHint", nil)
+}
+
+// BackupPassphrase says "Backup passphrase"
+// in the language the app shows.
+func BackupPassphrase() string { return In(i18n.Locale()).BackupPassphrase() }
+
+// BackupPassphrase says "Backup passphrase"
+// in the language of msgs.
+func (msgs Messages) BackupPassphrase() string {
+	return Catalog.Format(msgs.locale, "BackupPassphrase", nil)
+}
+
+// BackupSaved says "Backup saved."
+// in the language the app shows.
+func BackupSaved() string { return In(i18n.Locale()).BackupSaved() }
+
+// BackupSaved says "Backup saved."
+// in the language of msgs.
+func (msgs Messages) BackupSaved() string {
+	return Catalog.Format(msgs.locale, "BackupSaved", nil)
+}
+
+// BackupTitle says "Back up or restore"
+// in the language the app shows.
+func BackupTitle() string { return In(i18n.Locale()).BackupTitle() }
+
+// BackupTitle says "Back up or restore"
+// in the language of msgs.
+func (msgs Messages) BackupTitle() string {
+	return Catalog.Format(msgs.locale, "BackupTitle", nil)
+}
+
 // CloseHide says "Keep running in the tray"
 // in the language the app shows.
 func CloseHide() string { return In(i18n.Locale()).CloseHide() }
@@ -324,6 +414,16 @@ func ConnectPassword() string { return In(i18n.Locale()).ConnectPassword() }
 // in the language of msgs.
 func (msgs Messages) ConnectPassword() string {
 	return Catalog.Format(msgs.locale, "ConnectPassword", nil)
+}
+
+// ConnectRecent says "Recent:"
+// in the language the app shows.
+func ConnectRecent() string { return In(i18n.Locale()).ConnectRecent() }
+
+// ConnectRecent says "Recent:"
+// in the language of msgs.
+func (msgs Messages) ConnectRecent() string {
+	return Catalog.Format(msgs.locale, "ConnectRecent", nil)
 }
 
 // ConnectTitle says "Control another device"
@@ -574,6 +674,16 @@ func IdentityFingerprintHint() string { return In(i18n.Locale()).IdentityFingerp
 // in the language of msgs.
 func (msgs Messages) IdentityFingerprintHint() string {
 	return Catalog.Format(msgs.locale, "IdentityFingerprintHint", nil)
+}
+
+// IdentityReplaced says "Identity replaced."
+// in the language the app shows.
+func IdentityReplaced() string { return In(i18n.Locale()).IdentityReplaced() }
+
+// IdentityReplaced says "Identity replaced."
+// in the language of msgs.
+func (msgs Messages) IdentityReplaced() string {
+	return Catalog.Format(msgs.locale, "IdentityReplaced", nil)
 }
 
 // LanguageSystem says "System"
@@ -1086,6 +1196,46 @@ func (msgs Messages) RequestTitle(device string) string {
 	return Catalog.Format(msgs.locale, "RequestTitle", map[string]any{"device": device})
 }
 
+// ResetConfirm says "This device gets a new Device ID. Other devices will see it as a new device, and its permanent password, trusted devi…"
+// in the language the app shows.
+func ResetConfirm() string { return In(i18n.Locale()).ResetConfirm() }
+
+// ResetConfirm says "This device gets a new Device ID. Other devices will see it as a new device, and its permanent password, trusted devi…"
+// in the language of msgs.
+func (msgs Messages) ResetConfirm() string {
+	return Catalog.Format(msgs.locale, "ResetConfirm", nil)
+}
+
+// ResetHint says "Gives this device a new Device ID and forgets its permanent password, trusted devices and known devices."
+// in the language the app shows.
+func ResetHint() string { return In(i18n.Locale()).ResetHint() }
+
+// ResetHint says "Gives this device a new Device ID and forgets its permanent password, trusted devices and known devices."
+// in the language of msgs.
+func (msgs Messages) ResetHint() string {
+	return Catalog.Format(msgs.locale, "ResetHint", nil)
+}
+
+// ResetTitle says "Reset identity"
+// in the language the app shows.
+func ResetTitle() string { return In(i18n.Locale()).ResetTitle() }
+
+// ResetTitle says "Reset identity"
+// in the language of msgs.
+func (msgs Messages) ResetTitle() string {
+	return Catalog.Format(msgs.locale, "ResetTitle", nil)
+}
+
+// RestoreConfirm says "This device takes on the identity in the backup, including its Device ID. Every session ends and the network reconnects."
+// in the language the app shows.
+func RestoreConfirm() string { return In(i18n.Locale()).RestoreConfirm() }
+
+// RestoreConfirm says "This device takes on the identity in the backup, including its Device ID. Every session ends and the network reconnects."
+// in the language of msgs.
+func (msgs Messages) RestoreConfirm() string {
+	return Catalog.Format(msgs.locale, "RestoreConfirm", nil)
+}
+
 // RunModeUser says "No privileges"
 // in the language the app shows.
 func RunModeUser() string { return In(i18n.Locale()).RunModeUser() }
@@ -1196,6 +1346,16 @@ func SessionControlling(device string) string { return In(i18n.Locale()).Session
 // in the language of msgs.
 func (msgs Messages) SessionControlling(device string) string {
 	return Catalog.Format(msgs.locale, "SessionControlling", map[string]any{"device": device})
+}
+
+// SessionReconnecting says "Connection lost — reconnecting…"
+// in the language the app shows.
+func SessionReconnecting() string { return In(i18n.Locale()).SessionReconnecting() }
+
+// SessionReconnecting says "Connection lost — reconnecting…"
+// in the language of msgs.
+func (msgs Messages) SessionReconnecting() string {
+	return Catalog.Format(msgs.locale, "SessionReconnecting", nil)
 }
 
 // SessionsTitle says "Sessions"

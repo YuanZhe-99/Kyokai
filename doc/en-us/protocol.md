@@ -19,7 +19,7 @@ static key per session and prove their device identity by signing it.
 |---|---|---|---|
 | 1 | controller → host | `e` | none |
 | 2 | host → controller | `e, ee, s, es` | `host_hello`: protocol, product version, source URL, device key, signature |
-| 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests |
+| 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests, and a resume token when resuming |
 
 The signature is Ed25519 by the device key over `kyokai/noise-static/v1` followed by the sender's
 Noise static public key. The controller refuses a host whose device key does not derive the Device
@@ -38,10 +38,19 @@ the controller sends one credential request per slot, both from the password the
 |---|---|---|
 | 4 | host → controller | `challenge`: one credential response per slot; an unset slot answers with a fake record, so a controller cannot tell which slots exist |
 | 5 | controller → host | `login`: the slot whose response the password opened and its credential finalization, or no slot when neither opened |
-| 6 | host → controller | `verdict`: accepted with the granted permissions, or refused with a reason name (`password`, `denied`, `timeout`, `busy`, `rate-limited`) |
+| 6 | host → controller | `verdict`: accepted with the granted permissions and a resume token, or refused with a reason name (`password`, `denied`, `timeout`, `busy`, `rate-limited`) |
 
 A failed `login` counts as one failure ([identity-and-access.md](identity-and-access.md)). After a
 correct password the host asks its user to confirm (up to 60 seconds) before the verdict.
+
+## Resuming
+
+A dropped connection (not a `bye`) can be resumed for 60 seconds: the controller dials again
+every 3 seconds and sends the token from the last verdict. A token is single-use, bound to the
+controller's device key, kept in the host's memory only and valid for 2 minutes; a valid one
+answers frame 3 with an accepting verdict at once (same permissions, no password, no
+confirmation, a new token); anything else falls back to the login. Nothing that was in flight is
+sent again.
 
 ## Session messages
 

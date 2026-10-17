@@ -189,6 +189,22 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		return localapi.Response{OK: true, Trusted: list}
 	case localapi.RequestTrustedRemove:
 		return h.command("trusted.remove", map[string]string{"key": req.Key})
+	case localapi.RequestIdentityExport:
+		if req.Backup == nil {
+			return localapi.Fail(localapi.CodeInvalid, "passphrase missing")
+		}
+		var out struct{ Document string }
+		if err := h.lib.Call("identity.export", map[string]string{"passphrase": req.Backup.Passphrase}, &out); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true, Document: out.Document}
+	case localapi.RequestIdentityImport:
+		if req.Backup == nil {
+			return localapi.Fail(localapi.CodeInvalid, "backup missing")
+		}
+		return h.command("identity.import", req.Backup)
+	case localapi.RequestIdentityReset:
+		return h.command("identity.reset", nil)
 	case localapi.RequestHostForget:
 		return h.command("host.forget", map[string]string{"device_id": req.DeviceID})
 	case localapi.RequestShutdown:
@@ -263,11 +279,12 @@ func (h *handler) status() (*localapi.Status, error) {
 	var network localapi.NetworkStatus
 	var requests []localapi.HostRequest
 	var sessions []localapi.SessionInfo
+	var recent []localapi.RecentDevice
 	for _, part := range []struct {
 		name string
 		raw  json.RawMessage
 		dst  any
-	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}} {
+	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}} {
 		if err := json.Unmarshal(part.raw, part.dst); err != nil {
 			return nil, fmt.Errorf("%s status: %w", part.name, err)
 		}
@@ -276,7 +293,7 @@ func (h *handler) status() (*localapi.Status, error) {
 		Version: st.Version, ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: "user", Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
-		Requests: requests, Sessions: sessions, Started: h.started,
+		Requests: requests, Sessions: sessions, Recent: recent, Started: h.started,
 	}, nil
 }
 

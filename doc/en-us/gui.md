@@ -11,7 +11,8 @@ when `SCREENSHOT_DIR` is set.
   masked until Show, with Copy and New password; a note when secrets are not persisted. Below it,
   "Control another device" (Device ID, password, Connect; needs a network) and the sessions, newest
   first (to or from which device, state or why it failed, Disconnect; "Forget old identity" when a
-  host's key changed).
+  host's key changed). Recent devices sit under the form as buttons that fill in the Device ID; a
+  dropped session shows "reconnecting" while it resumes.
 - **Confirmations:** a controller waiting for this host's user shows at the top of every page with
   its Device ID, whether it is known or a new key claiming a known ID, and a switch per requested
   permission, with Allow and Deny; a notification and the window coming forward announce it.
@@ -22,7 +23,8 @@ when `SCREENSHOT_DIR` is set.
   keeps the stored secret; a weak secret is flagged), Save and Leave network. Refused settings show
   the engine's reason.
 - **Settings:** General (language, appearance, open at login — off by default, close button),
-  Device identity (Device ID, fingerprint), Access (permanent password: set, change or remove;
+  Device identity (Device ID, fingerprint; back up and restore with a passphrase through a file
+  dialog; reset, after a warning), Access (permanent password: set, change or remove;
   trusted devices with their last connection and Remove), Storage (data folder with Open folder, how secrets are
   kept), Diagnostics (version and ABI, engine start time, run mode, logs folder), About (version,
   license, source code, app updates), Open source licenses (the shipped notices).

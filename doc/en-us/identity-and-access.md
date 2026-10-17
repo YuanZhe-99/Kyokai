@@ -33,7 +33,16 @@ attempts are answered `busy`.
   ID, the first and last connection time and the permissions last granted. A controller whose
   Device ID is known with another key is shown as "a new key claiming this ID".
 - **Controller side (known hosts):** the first accepted session pins the host's device key for its
-  Device ID; later sessions with another key are refused until the user forgets the host.
+  Device ID; later sessions with another key are refused until the user forgets the host. Each
+  accepted session also records when, and the newest 8 are offered as recent devices.
+
+## Identity backup, restore and reset
+
+A backup holds the device key, the OPAQUE server key and permanent password record, the trusted
+devices and the known hosts, as JSON encrypted with XChaCha20-Poly1305 under a key from Argon2id
+(64 MiB, 3 passes) over a passphrase of at least 10 characters. Restoring checks the whole file
+before writing; reset forgets all of these, giving a new Device ID. Both rebuild the core at once:
+sessions end and the network reconnects. Network settings are not part of the identity.
 
 ## Rate limits
 
