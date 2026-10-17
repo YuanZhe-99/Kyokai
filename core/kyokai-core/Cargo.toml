@@ -53,3 +53,15 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Secur
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.7.0"
+# ScreenCaptureKit capture, Core Graphics displays and input, and the
+# privacy checks (doc/en-us/computer-use.md).
+objc2 = "0.6.5"
+block2 = "0.6.2"
+dispatch2 = "0.3.1"
+objc2-foundation = "0.3.2"
+objc2-core-foundation = "0.3.2"
+objc2-core-graphics = "0.3.2"
+objc2-core-media = "0.3.2"
+objc2-core-video = "0.3.2"
+objc2-screen-capture-kit = "0.3.2"
+objc2-application-services = "0.3.2"

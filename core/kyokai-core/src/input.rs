@@ -3,7 +3,7 @@
 //! desktop. Nothing reaches Kyokai's own windows; whatever is held is
 //! released when the session ends.
 //!
-//! Injection exists on Windows only so far (macOS comes with the Mac pass).
+//! Injection exists on Windows and macOS (crate::mac).
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use serde::{Deserialize, Serialize};
@@ -85,8 +85,8 @@ pub fn lock_for(code: u32, caps: bool, num: bool) -> Option<(u32, bool)> {
 /// alone would refuse clicks on windows the viewer does see while Kyokai's
 /// (unseen) window is in front.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(not(windows), allow(dead_code))]
-enum Guard {
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+pub(crate) enum Guard {
     /// Releases: they end what was pressed elsewhere and start nothing.
     None,
     /// Pointer presses and moves: the window under this point (fractions
@@ -100,8 +100,8 @@ enum Guard {
 
 impl Event {
     /// Which window this event is checked against.
-    #[cfg_attr(not(windows), allow(dead_code))]
-    fn guard(&self) -> Guard {
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+    pub(crate) fn guard(&self) -> Guard {
         match self {
             Event::Pointer {
                 action: PointerAction::Up,
@@ -262,17 +262,20 @@ pub use windows_impl::{
     Injector, LocalWatch, emergency_stop, kyokai_process, physical, pointer, pointer_in,
 };
 
+#[cfg(target_os = "macos")]
+pub use crate::mac::{Injector, pointer, pointer_in};
+
 /// Where the pointer is, as fractions of the primary display (outside 0–1
-/// on another display), and whether it is shown. Not available yet off
-/// Windows.
-#[cfg(not(windows))]
+/// on another display), and whether it is shown. Not available off Windows
+/// and macOS.
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn pointer() -> Option<(f32, f32, bool)> {
     None
 }
 
 /// Where the pointer is, as fractions of `area`, and whether it is shown.
-/// Not available yet off Windows.
-#[cfg(not(windows))]
+/// Not available off Windows and macOS.
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn pointer_in(_area: Area) -> Option<(f32, f32, bool)> {
     None
 }

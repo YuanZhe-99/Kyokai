@@ -961,11 +961,11 @@ pub fn open_screen() -> Result<Box<dyn Desktop>, String> {
     if let Some(link) = crate::agent::link() {
         return Ok(Box::new(link.desktop()?));
     }
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     {
         Ok(Box::new(desktop::Screen::open()?))
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         Err("AI tasks are not available on this system yet".into())
     }

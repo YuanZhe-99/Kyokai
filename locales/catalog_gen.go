@@ -982,6 +982,16 @@ func (msgs Messages) ActionAllow() string {
 	return Catalog.Format(msgs.locale, "ActionAllow", nil)
 }
 
+// ActionAllowPermission says "Allow…"
+// in the language the app shows.
+func ActionAllowPermission() string { return In(i18n.Locale()).ActionAllowPermission() }
+
+// ActionAllowPermission says "Allow…"
+// in the language of msgs.
+func (msgs Messages) ActionAllowPermission() string {
+	return Catalog.Format(msgs.locale, "ActionAllowPermission", nil)
+}
+
 // ActionBackUp says "Back up…"
 // in the language the app shows.
 func ActionBackUp() string { return In(i18n.Locale()).ActionBackUp() }
@@ -2160,6 +2170,76 @@ func PermanentTitle() string { return In(i18n.Locale()).PermanentTitle() }
 // in the language of msgs.
 func (msgs Messages) PermanentTitle() string {
 	return Catalog.Format(msgs.locale, "PermanentTitle", nil)
+}
+
+// PermissionAccessibility says "Accessibility"
+// in the language the app shows.
+func PermissionAccessibility() string { return In(i18n.Locale()).PermissionAccessibility() }
+
+// PermissionAccessibility says "Accessibility"
+// in the language of msgs.
+func (msgs Messages) PermissionAccessibility() string {
+	return Catalog.Format(msgs.locale, "PermissionAccessibility", nil)
+}
+
+// PermissionAccessibilityHint says "Lets other devices and AI tasks use the mouse and keyboard here."
+// in the language the app shows.
+func PermissionAccessibilityHint() string { return In(i18n.Locale()).PermissionAccessibilityHint() }
+
+// PermissionAccessibilityHint says "Lets other devices and AI tasks use the mouse and keyboard here."
+// in the language of msgs.
+func (msgs Messages) PermissionAccessibilityHint() string {
+	return Catalog.Format(msgs.locale, "PermissionAccessibilityHint", nil)
+}
+
+// PermissionGranted says "Allowed"
+// in the language the app shows.
+func PermissionGranted() string { return In(i18n.Locale()).PermissionGranted() }
+
+// PermissionGranted says "Allowed"
+// in the language of msgs.
+func (msgs Messages) PermissionGranted() string {
+	return Catalog.Format(msgs.locale, "PermissionGranted", nil)
+}
+
+// PermissionScreen says "Screen Recording"
+// in the language the app shows.
+func PermissionScreen() string { return In(i18n.Locale()).PermissionScreen() }
+
+// PermissionScreen says "Screen Recording"
+// in the language of msgs.
+func (msgs Messages) PermissionScreen() string {
+	return Catalog.Format(msgs.locale, "PermissionScreen", nil)
+}
+
+// PermissionScreenHint says "Lets other devices and AI tasks see this screen. After allowing it, quit and reopen Kyokai."
+// in the language the app shows.
+func PermissionScreenHint() string { return In(i18n.Locale()).PermissionScreenHint() }
+
+// PermissionScreenHint says "Lets other devices and AI tasks see this screen. After allowing it, quit and reopen Kyokai."
+// in the language of msgs.
+func (msgs Messages) PermissionScreenHint() string {
+	return Catalog.Format(msgs.locale, "PermissionScreenHint", nil)
+}
+
+// PermissionsHint says "macOS asks you before an app may record the screen or control the computer. Without these, other devices see a placeh…"
+// in the language the app shows.
+func PermissionsHint() string { return In(i18n.Locale()).PermissionsHint() }
+
+// PermissionsHint says "macOS asks you before an app may record the screen or control the computer. Without these, other devices see a placeh…"
+// in the language of msgs.
+func (msgs Messages) PermissionsHint() string {
+	return Catalog.Format(msgs.locale, "PermissionsHint", nil)
+}
+
+// PermissionsTitle says "Privacy permissions"
+// in the language the app shows.
+func PermissionsTitle() string { return In(i18n.Locale()).PermissionsTitle() }
+
+// PermissionsTitle says "Privacy permissions"
+// in the language of msgs.
+func (msgs Messages) PermissionsTitle() string {
+	return Catalog.Format(msgs.locale, "PermissionsTitle", nil)
 }
 
 // QualityBalanced says "Balanced"

@@ -34,6 +34,7 @@ The core's direct dependencies; `RUST_LICENSES.txt` lists all of them, transitiv
 | zeroize | Apache-2.0 OR MIT | https://github.com/RustCrypto/utils |
 | windows-sys (Windows) | MIT OR Apache-2.0 | https://github.com/microsoft/windows-rs |
 | security-framework (macOS) | MIT OR Apache-2.0 | https://github.com/kornelski/rust-security-framework |
+| objc2, block2, dispatch2 and the framework bindings `objc2-*` (macOS: ScreenCaptureKit, Core Graphics, Core Media, Core Video, Application Services) | MIT; some bindings and dispatch2 Zlib OR Apache-2.0 OR MIT | https://github.com/madsmtm/objc2 |
 | RustDesk's video QoS (`rustdesk-qos`, vendored from 1.5.0 at commit `fada664`, with its tests) | AGPL-3.0 | https://github.com/rustdesk/rustdesk |
 | RustDesk's DXGI and GDI screen capture (`rustdesk-dxgi`, vendored from 1.5.0 at commit `fada664`; Windows) | AGPL-3.0 (the original scrap code by Ram is MIT) | https://github.com/rustdesk/rustdesk |
 | RustDesk's libvpx and libaom wrappers (`rustdesk-codec`, vendored from 1.5.0 at commit `fada664`) | AGPL-3.0 | https://github.com/rustdesk/rustdesk |

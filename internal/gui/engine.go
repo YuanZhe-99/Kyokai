@@ -180,6 +180,7 @@ func (a *App) connectLoop() {
 						go a.Focus()
 					}
 					a.aiStatusChanged(a.status, st)
+					a.permissionsChanged(st)
 					a.status, a.connected, a.engineErr = st, true, ""
 				})
 				return nil

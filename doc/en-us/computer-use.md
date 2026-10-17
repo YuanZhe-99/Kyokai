@@ -299,8 +299,19 @@ the model's text and progress notes, the actions and what became of them, never 
 to 100; the AI page clears it. A finished task's conversation stays in memory, so a reply
 continues it until the engine stops.
 
+## macOS
+
+| Part | How |
+|---|---|
+| Permissions | Screen Recording for capture, Accessibility for input and the local-input watch; the engine reports both (`permissions` in the status) and asks for them (`permission.request`), the GUI on its first start per version and through Allow on its permissions card, which also opens the pane in System Settings. A Screen Recording grant counts once Kyokai restarts |
+| Displays | Core Graphics' active displays in points, the unit of its global coordinates (a Retina display is half its pixels); the main display is the primary |
+| Capture | a ScreenCaptureKit stream of the display at its pixel size scaled to fit 1920×1080, BGRA, without the pointer (the viewer draws it from the pointer messages) and without the windows of Kyokai's processes and app (always, whatever the capture setting says); an unchanged screen sends no picture; without the permission the host sends the test pattern |
+| Encode | the software codecs (`vp9-sw`, `av1`, `vp8`) until VideoToolbox lands |
+| Input | Core Graphics events posted at the HID level and tagged as Kyokai's: pointer events in points with click counts for double and triple clicks, wheel notches as lines, named keys and modifiers (`ctrl` → Control, `alt` → Option, `meta` → Command) with the held modifiers' flags, text as Unicode, scan codes through a table to Mac key codes (Caps Lock follows the controller's; a Mac has no NumLock). The guard looks up the owner of the window under the point (or the frontmost normal window for keys) and drops events for this engine or the app that started it |
+| Local input | a listen-only event tap (Accessibility) notes the host user's presses and moves, skips Kyokai's tagged events and watches for Ctrl+Option+Shift+Esc |
+| AI tasks | the main display at full resolution through a short ScreenCaptureKit stream per screenshot, the same input and watch |
+
 ## Not yet
 
-macOS capture,
-VideoToolbox (H.264 and HEVC) and AI tasks on macOS come with the Mac pass (PLAN.md); the software
-codecs are part of the macOS build too.
+VideoToolbox (H.264 and HEVC), the session actions and the privileged helper on macOS come with the
+Mac pass (PLAN.md).

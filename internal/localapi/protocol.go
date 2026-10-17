@@ -65,6 +65,7 @@ const (
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
 	RequestNameSet            RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
 	RequestUnattended         RequestType = "trusted.unattended"     // let a trusted device in without confirmation for Request.Days (0 stops it; Request.Key)
+	RequestPermission         RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen" or "accessibility"; macOS)
 	RequestPasswordGrants     RequestType = "access.password_grants" // what a correct password grants without asking (Request.Grants)
 	RequestBackground         RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
 	RequestStoreExport        RequestType = "store.export"           // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
@@ -124,6 +125,8 @@ type Request struct {
 	From string `json:"from,omitempty"`
 	// Days is how long RequestUnattended lets the device in (0 stops it).
 	Days int `json:"days,omitempty"`
+	// Permission names what RequestPermission asks the system for.
+	Permission string `json:"permission,omitempty"`
 	// Grants are the permissions of RequestPasswordGrants (empty: none).
 	Grants *[]string `json:"grants,omitempty"`
 	// Background chooses Background service (true) or Follow GUI
@@ -437,6 +440,9 @@ type Status struct {
 	PermanentPassword bool `json:"permanent_password"`
 	// PasswordGrants are the permissions a correct password grants without
 	// asking.
+	// Permissions are the system's privacy permissions where it has them
+	// (macOS), nil elsewhere.
+	Permissions    *Permissions  `json:"permissions,omitempty"`
 	PasswordGrants []string      `json:"password_grants"`
 	Requests       []HostRequest `json:"requests"`
 	Sessions       []SessionInfo `json:"sessions"`
@@ -449,6 +455,16 @@ type Status struct {
 	// AI is the AI task in progress, nil when there is none.
 	AI      *AIActive `json:"ai,omitempty"`
 	Started time.Time `json:"started"`
+}
+
+// Permissions are the macOS privacy permissions the engine needs, as
+// granted now.
+type Permissions struct {
+	// Screen is Screen Recording (capture); a grant counts after Kyokai
+	// restarts.
+	Screen bool `json:"screen"`
+	// Accessibility lets the engine inject input.
+	Accessibility bool `json:"accessibility"`
 }
 
 // ErrNotRunning reports that no engine listens on the socket.

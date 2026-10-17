@@ -66,6 +66,7 @@ Studio 2026 without its Clang component):
 | Check | Result |
 |---|---|
 | CI (`macos-latest`, `macos-15-intel`) | gate, ABI smoke test, engine smoke test and unsigned package pass |
+| Capture, input, permissions (2026-10-17) | ScreenCaptureKit capture, Core Graphics input, the event-tap watch, the AI desktop and the permission requests are written and type-check for `aarch64-apple-darwin`; not run on a Mac yet |
 | Keychain | a test binary that reads a Keychain item another (differently signed) binary created raises an access prompt, which hangs a headless run; tests therefore use a fresh profile per run, and the shipped app is always signed with the same certificate |
 
 ## Known limitations

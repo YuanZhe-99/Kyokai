@@ -77,6 +77,9 @@ type Status struct {
 	// PasswordGrants are the permissions a correct password grants without
 	// asking.
 	PasswordGrants []string `json:"password_grants"`
+	// Permissions are the system's privacy permissions (macOS), or null;
+	// decoded by the host.
+	Permissions json.RawMessage `json:"permissions"`
 	// Requests and Sessions are decoded by the host (localapi types).
 	Requests json.RawMessage `json:"requests"`
 	Sessions json.RawMessage `json:"sessions"`

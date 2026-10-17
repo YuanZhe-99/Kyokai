@@ -124,6 +124,7 @@ func (a *App) homeView(c *ui.Context) {
 			ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Warning)
 		}
 	})
+	a.permissionsCard(c, false)
 	a.connectCard(c)
 	a.sessionsCard(c)
 }
@@ -143,6 +144,7 @@ func secretsNote(p string) string {
 func (a *App) settingsView(c *ui.Context) {
 	a.generalSettings(c)
 	if a.engineState(c) {
+		a.permissionsCard(c, true)
 		a.runModeCard(c)
 		a.identitySettings(c)
 		a.accessSettings(c)

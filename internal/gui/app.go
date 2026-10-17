@@ -55,6 +55,9 @@ type App struct {
 	password     string
 	passwordFor  uint64 // the serial the fetched password belongs to
 	showPassword bool
+	// permissionsAsked: this run already looked at the privacy
+	// permissions (permissions.go).
+	permissionsAsked bool
 
 	// Network page: the settings form (network.go).
 	net netForm

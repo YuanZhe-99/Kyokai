@@ -18,6 +18,8 @@ mod files;
 mod identity;
 mod input;
 mod keyboard;
+#[cfg(target_os = "macos")]
+mod mac;
 mod media;
 #[cfg(windows)]
 mod mf;
@@ -659,6 +661,10 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 Ok(json!({}))
             })
         }
+        "permission.request" => {
+            let name = req.params["name"].as_str().ok_or("bad permission")?;
+            request_permission(name).map(|granted| json!({"granted": granted}))
+        }
         "access.password_grants" => {
             let grants: Vec<access::Permission> =
                 serde_json::from_value(req.params["grants"].take())
@@ -799,6 +805,7 @@ fn status() -> Value {
             "network": c.network.status(),
             "permanent_password": c.ctx.access.slots.lock().is_ok_and(|s| s.has_permanent()),
             "password_grants": c.ctx.access.password_grants(),
+            "permissions": permissions(),
             "ai": c.ctx.ai.active(),
             "requests": c.ctx.access.pending(),
             "sessions": c.ctx.sessions.list(),
@@ -815,6 +822,34 @@ fn status() -> Value {
         })
     })
     .unwrap_or_else(|e| json!({"error": e}))
+}
+
+/// The privacy permissions this system asks for and whether they are
+/// granted (macOS), or null where it asks for none.
+fn permissions() -> Value {
+    #[cfg(target_os = "macos")]
+    {
+        json!(mac::permissions())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Value::Null
+    }
+}
+
+/// Asks the system for a permission (macOS: `screen`, `accessibility`).
+/// Returns: whether it is granted now.
+/// Side effects: macOS may show its prompt.
+fn request_permission(name: &str) -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        mac::request(name)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = name;
+        Err("this system asks for no permissions".into())
+    }
 }
 
 #[cfg(test)]

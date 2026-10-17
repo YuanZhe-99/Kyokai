@@ -1324,7 +1324,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let video_wait = tokio::time::sleep(CODECS_WAIT);
     tokio::pin!(video_wait);
     // The host's input service; dropping it releases what it holds.
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     let mut injector = match side {
         Side::Host { input: true, .. } => Some(crate::input::Injector::default()),
         _ => None,
@@ -1418,7 +1418,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             let display = $display;
             source = None;
             let s = video::Source::open(display, &chosen);
-            #[cfg(windows)]
+            #[cfg(any(windows, target_os = "macos"))]
             if let Some(inj) = injector.as_mut() {
                 inj.set_area(s.display.map(area));
             }
@@ -1755,7 +1755,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // it pauses before the event is injected. Pointer moves
                     // alone (a hand resting on the viewer) neither take over
                     // nor reach the desktop while the AI acts.
-                    #[cfg(windows)]
+                    #[cfg(any(windows, target_os = "macos"))]
                     Message::Input { event } => {
                         if let (Some(inj), Ok(e), Side::Host { ai, .. }) = (injector.as_mut(), serde_json::from_value::<crate::input::Event>(event), &side) {
                             let hover = matches!(e, crate::input::Event::Pointer { action: crate::input::PointerAction::Move, .. });
@@ -1765,7 +1765,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             }
                         }
                     }
-                    #[cfg(not(windows))]
+                    #[cfg(not(any(windows, target_os = "macos")))]
                     Message::Input { .. } => {}
                     // Session actions need control-input, like input; a
                     // person acting takes over from the host's AI task.

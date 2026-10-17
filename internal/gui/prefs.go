@@ -32,6 +32,9 @@ type Prefs struct {
 	// KeyboardMode is the viewers' keyboard mode: "map" (also when empty),
 	// "translate" or "legacy".
 	KeyboardMode string `json:"keyboard_mode,omitempty"`
+	// AskedPermissions is the app version that last asked macOS for the
+	// privacy permissions on its own.
+	AskedPermissions string `json:"asked_permissions,omitempty"`
 }
 
 func defaultPrefs() Prefs { return Prefs{Theme: "system", CheckAppUpdates: true} }

@@ -200,7 +200,7 @@ pub const FPS: u32 = 30;
 /// Highest frame-rate cap a viewer may choose.
 pub const MAX_FPS: u32 = 60;
 /// Largest picture sent; bigger screens are scaled down.
-const MAX_SIZE: (u32, u32) = (1920, 1080);
+pub(crate) const MAX_SIZE: (u32, u32) = (1920, 1080);
 /// Starting target bitrate (RustDesk's QoS adapts it later).
 const BITRATE: u32 = 4_000_000;
 
@@ -337,7 +337,11 @@ pub fn displays() -> Vec<Display> {
     {
         screen::displays()
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        crate::mac::displays()
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         Vec::new()
     }
@@ -402,10 +406,22 @@ impl Source {
             };
         }
         #[cfg(windows)]
+        type Platform = screen::Dxgi;
+        #[cfg(target_os = "macos")]
+        type Platform = crate::mac::Capture;
+        #[cfg(any(windows, target_os = "macos"))]
         if link.is_none()
             && let Some(d) = display.or_else(|| displays().first().copied())
             && let Some(start) = choices.iter().find_map(|&c| {
-                screen::start(tx.clone(), key.clone(), stop.clone(), targets.clone(), d, c).ok()
+                capture::start::<Platform>(
+                    tx.clone(),
+                    key.clone(),
+                    stop.clone(),
+                    targets.clone(),
+                    d,
+                    c,
+                )
+                .ok()
             })
         {
             return Source {
@@ -474,71 +490,49 @@ fn test_pattern(tx: mpsc::Sender<Encoded>, stop: Arc<AtomicBool>) -> VideoStart 
     start
 }
 
-#[cfg(windows)]
-mod screen {
-    //! A display through RustDesk's DXGI capturer and the stream's encoder
-    //! (Media Foundation's, or libvpx or libaom), on one thread (the capturer
-    //! and Media Foundation are tied to the thread that made them).
-    //! Where desktop duplication cannot open a display (no GPU output, some
-    //! virtual machines and remote sessions), the capturer reads it through
-    //! GDI instead and reports an unchanged screen the same way.
+/// What one capture attempt gave.
+#[cfg(any(windows, target_os = "macos"))]
+pub(crate) enum Got {
+    Picture,
+    Nothing,
+    /// The display was lost: a mode change, the lock screen or a UAC
+    /// prompt took the desktop, or the display went away.
+    Lost,
+}
+
+/// Receives a captured picture: top-down BGRA, width, height, bytes per row.
+#[cfg(any(windows, target_os = "macos"))]
+pub(crate) type Take<'a> = dyn FnMut(&[u8], usize, usize, usize) + 'a;
+
+/// A display capturer the encode loop reads: DXGI (or GDI) on Windows,
+/// ScreenCaptureKit on macOS.
+#[cfg(any(windows, target_os = "macos"))]
+pub(crate) trait Grab: Sized {
+    /// Opens a display.
+    /// Returns: the capturer and its pictures' size in pixels.
+    fn open(display: Display) -> Result<(Self, u32, u32), String>;
+
+    /// Waits up to `timeout` for a picture newer than the last one and hands
+    /// it to `take` (top-down BGRA, width, height, bytes per row).
+    fn frame(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got;
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+mod capture {
+    //! The capture-and-encode loop shared by the platforms, on one thread
+    //! (DXGI and Media Foundation are tied to the thread that made them).
     use super::*;
-    use crate::mf;
-    use rustdesk_dxgi::{Capturer, Displays, Frame};
 
     /// How long the capture thread waits before opening the display again
     /// after it was lost.
     const REOPEN_AFTER: Duration = Duration::from_millis(500);
 
-    /// Lists the displays attached to the desktop: DXGI's outputs, or GDI's
-    /// display devices when DXGI has none.
-    fn attached() -> Vec<rustdesk_dxgi::Display> {
-        let dxgi: Vec<_> = Displays::new()
-            .map(|all| all.filter(|d| d.attached_to_desktop()).collect())
-            .unwrap_or_default();
-        if dxgi.is_empty() {
-            Displays::get_from_gdi()
-        } else {
-            dxgi
-        }
-    }
-
-    /// The displays attached to the desktop, in the viewer's order.
-    pub fn displays() -> Vec<Display> {
-        let mut list: Vec<Display> = attached()
-            .iter()
-            .map(|d| {
-                let (x, y) = d.origin();
-                Display {
-                    x,
-                    y,
-                    width: d.width() as u32,
-                    height: d.height() as u32,
-                    primary: (x, y) == (0, 0),
-                }
-            })
-            .collect();
-        order(&mut list);
-        list
-    }
-
-    /// Opens a display by its place on the virtual desktop.
-    /// Returns: its capturer and size in pixels.
-    fn open(want: Display) -> Result<(Capturer, u32, u32), String> {
-        let display = attached()
-            .into_iter()
-            .find(|d| d.origin() == (want.x, want.y))
-            .ok_or("the display is gone")?;
-        let (dw, dh) = (display.width() as u32, display.height() as u32);
-        let capturer = Capturer::new(display).map_err(|e| format!("capturer: {e}"))?;
-        Ok((capturer, dw, dh))
-    }
-
     /// The stream's encoder with the picture it encodes next.
     enum Encoder {
         /// Media Foundation, fed NV12 of the stream's size.
+        #[cfg(windows)]
         Mf {
-            enc: mf::Encoder,
+            enc: crate::mf::Encoder,
             nv12: Vec<u8>,
             width: usize,
             height: usize,
@@ -554,13 +548,18 @@ mod screen {
                 return crate::soft::Encoder::new(c, width, height, FPS, BITRATE, choice.i444)
                     .map(Encoder::Soft);
             }
-            let c = mf::Codec::from_name(choice.codec).ok_or("unknown codec")?;
-            Ok(Encoder::Mf {
-                enc: mf::Encoder::new(c, width, height, FPS, BITRATE)?,
-                nv12: Vec::new(),
-                width: width as usize,
-                height: height as usize,
-            })
+            #[cfg(windows)]
+            {
+                let c = crate::mf::Codec::from_name(choice.codec).ok_or("unknown codec")?;
+                Ok(Encoder::Mf {
+                    enc: crate::mf::Encoder::new(c, width, height, FPS, BITRATE)?,
+                    nv12: Vec::new(),
+                    width: width as usize,
+                    height: height as usize,
+                })
+            }
+            #[cfg(not(windows))]
+            Err("unknown codec".into())
         }
 
         /// Whether the stream is in full colour.
@@ -571,6 +570,7 @@ mod screen {
         /// Takes a captured BGRA picture as the next one to encode.
         fn picture(&mut self, bgra: &[u8], width: usize, height: usize, stride: usize) {
             match self {
+                #[cfg(windows)]
                 Encoder::Mf {
                     nv12,
                     width: w,
@@ -584,6 +584,7 @@ mod screen {
         /// Whether a picture was taken yet.
         fn has_picture(&self) -> bool {
             match self {
+                #[cfg(windows)]
                 Encoder::Mf { nv12, .. } => !nv12.is_empty(),
                 Encoder::Soft(e) => e.has_picture(),
             }
@@ -592,6 +593,7 @@ mod screen {
         /// Encodes the last picture; `key` asks for a key frame.
         fn encode(&mut self, key: bool) -> Result<Vec<(Vec<u8>, bool)>, String> {
             match self {
+                #[cfg(windows)]
                 Encoder::Mf { enc, nv12, .. } => enc.encode(nv12, key),
                 Encoder::Soft(e) => e.encode(key),
             }
@@ -600,25 +602,17 @@ mod screen {
         /// Sets the target bitrate in bit/s.
         fn set_bitrate(&mut self, bitrate: u32) {
             match self {
+                #[cfg(windows)]
                 Encoder::Mf { enc, .. } => enc.set_bitrate(bitrate),
                 Encoder::Soft(e) => e.set_bitrate(bitrate),
             }
         }
     }
 
-    /// What one capture attempt gave.
-    enum Got {
-        Picture,
-        Nothing,
-        /// The display was lost: a mode change, the lock screen or a UAC
-        /// prompt took the desktop.
-        Lost,
-    }
-
-    /// Starts capturing and encoding.
+    /// Starts capturing `display` with `G` and encoding it.
     /// Returns: the stream description once the capturer and the encoder
-    /// work, or why not (no interactive desktop, no encoder).
-    pub fn start(
+    /// work, or why not (no interactive desktop, no permission, no encoder).
+    pub fn start<G: Grab>(
         tx: mpsc::Sender<Encoded>,
         key: Arc<AtomicBool>,
         stop: Arc<AtomicBool>,
@@ -628,9 +622,8 @@ mod screen {
     ) -> Result<VideoStart, String> {
         let (ready_tx, ready) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            crate::agent::follow_input_desktop();
             let opened = (|| {
-                let (capturer, dw, dh) = open(display)?;
+                let (capturer, dw, dh) = G::open(display)?;
                 let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
                 let encoder = Encoder::open(choice, w, h)?;
                 Ok::<_, String>((capturer, encoder, w, h))
@@ -654,17 +647,14 @@ mod screen {
             // few before its first output, so a still screen repeats the last
             // picture until they come out.
             let mut held = 0u32;
-            // None while the display is lost: the old duplication is released
+            // None while the display is lost: the old capturer is released
             // before a new one is made. The stream keeps its size; a new
             // display mode is scaled into it.
             let mut capturer = Some(capturer);
             while !stop.load(Ordering::Relaxed) {
                 let Some(cap) = capturer.as_mut() else {
                     std::thread::sleep(REOPEN_AFTER);
-                    // The display is lost when the input desktop changes
-                    // (a UAC prompt, the lock screen): the agent follows it.
-                    crate::agent::follow_input_desktop();
-                    capturer = open(display).ok().map(|(c, _, _)| c);
+                    capturer = G::open(display).ok().map(|(c, _, _)| c);
                     continue;
                 };
                 let begun = Instant::now();
@@ -677,14 +667,9 @@ mod screen {
                 let wanted = key.swap(false, Ordering::Relaxed);
                 // Unchanged screens time out: nothing is encoded or sent,
                 // unless a key frame was asked for.
-                let got = match cap.frame(period.as_millis() as u32) {
-                    Ok(Frame::PixelBuffer(pb)) => {
-                        encoder.picture(pb.data, pb.width, pb.height, pb.stride);
-                        Got::Picture
-                    }
-                    Err(e) if e.kind() != std::io::ErrorKind::WouldBlock => Got::Lost,
-                    _ => Got::Nothing,
-                };
+                let got = cap.frame(period, &mut |bgra, width, height, stride| {
+                    encoder.picture(bgra, width, height, stride)
+                });
                 match got {
                     Got::Picture => {}
                     Got::Nothing if (wanted || held > 0) && encoder.has_picture() => {}
@@ -731,6 +716,78 @@ mod screen {
         ready
             .recv()
             .unwrap_or_else(|_| Err("the capture thread ended".into()))
+    }
+}
+
+#[cfg(windows)]
+mod screen {
+    //! A display through RustDesk's DXGI capturer. Where desktop
+    //! duplication cannot open a display (no GPU output, some virtual
+    //! machines and remote sessions), the capturer reads it through GDI
+    //! instead and reports an unchanged screen the same way.
+    use super::*;
+    use rustdesk_dxgi::{Capturer, Displays, Frame};
+
+    /// Lists the displays attached to the desktop: DXGI's outputs, or GDI's
+    /// display devices when DXGI has none.
+    fn attached() -> Vec<rustdesk_dxgi::Display> {
+        let dxgi: Vec<_> = Displays::new()
+            .map(|all| all.filter(|d| d.attached_to_desktop()).collect())
+            .unwrap_or_default();
+        if dxgi.is_empty() {
+            Displays::get_from_gdi()
+        } else {
+            dxgi
+        }
+    }
+
+    /// The displays attached to the desktop, in the viewer's order.
+    pub fn displays() -> Vec<Display> {
+        let mut list: Vec<Display> = attached()
+            .iter()
+            .map(|d| {
+                let (x, y) = d.origin();
+                Display {
+                    x,
+                    y,
+                    width: d.width() as u32,
+                    height: d.height() as u32,
+                    primary: (x, y) == (0, 0),
+                }
+            })
+            .collect();
+        order(&mut list);
+        list
+    }
+
+    /// A display through desktop duplication (or GDI).
+    pub struct Dxgi(Capturer);
+
+    impl Grab for Dxgi {
+        /// Opens a display by its place on the virtual desktop, on the
+        /// input desktop (the agent follows it to a UAC prompt or the lock
+        /// screen).
+        fn open(want: Display) -> Result<(Self, u32, u32), String> {
+            crate::agent::follow_input_desktop();
+            let display = attached()
+                .into_iter()
+                .find(|d| d.origin() == (want.x, want.y))
+                .ok_or("the display is gone")?;
+            let (dw, dh) = (display.width() as u32, display.height() as u32);
+            let capturer = Capturer::new(display).map_err(|e| format!("capturer: {e}"))?;
+            Ok((Dxgi(capturer), dw, dh))
+        }
+
+        fn frame(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got {
+            match self.0.frame(timeout.as_millis() as u32) {
+                Ok(Frame::PixelBuffer(pb)) => {
+                    take(pb.data, pb.width, pb.height, pb.stride);
+                    Got::Picture
+                }
+                Err(e) if e.kind() != std::io::ErrorKind::WouldBlock => Got::Lost,
+                _ => Got::Nothing,
+            }
+        }
     }
 }
 
@@ -786,7 +843,7 @@ mod screen_tests {
             let key = Arc::new(AtomicBool::new(true));
             let stop = Arc::new(AtomicBool::new(false));
             let (tx, mut rx) = mpsc::channel(2);
-            let start = match screen::start(
+            let start = match capture::start::<screen::Dxgi>(
                 tx,
                 key,
                 stop.clone(),

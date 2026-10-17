@@ -213,6 +213,11 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "device key and days needed")
 		}
 		return h.command("trusted.unattended", map[string]any{"key": req.Key, "days": req.Days})
+	case localapi.RequestPermission:
+		if req.Permission == "" {
+			return localapi.Fail(localapi.CodeInvalid, "permission missing")
+		}
+		return h.command("permission.request", map[string]string{"name": req.Permission})
 	case localapi.RequestPasswordGrants:
 		if req.Grants == nil {
 			return localapi.Fail(localapi.CodeInvalid, "permissions missing")
@@ -521,11 +526,12 @@ func (h *handler) status() (*localapi.Status, error) {
 	var recent []localapi.RecentDevice
 	var ai *localapi.AIActive
 	var about localapi.About
+	var permissions *localapi.Permissions
 	for _, part := range []struct {
 		name string
 		raw  json.RawMessage
 		dst  any
-	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}, {"about", st.About, &about}} {
+	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}, {"about", st.About, &about}, {"permissions", st.Permissions, &permissions}} {
 		if err := json.Unmarshal(part.raw, part.dst); err != nil {
 			return nil, fmt.Errorf("%s status: %w", part.name, err)
 		}
@@ -534,8 +540,8 @@ func (h *handler) status() (*localapi.Status, error) {
 		Version: st.Version, ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: h.runMode, Background: h.isBackground(), Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
-		PasswordGrants: st.PasswordGrants,
-		Requests:       requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
+		PasswordGrants: st.PasswordGrants, Permissions: permissions,
+		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
 		Name: st.Name, About: about,
 	}, nil
 }
