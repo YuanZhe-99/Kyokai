@@ -53,6 +53,9 @@ sessions end and the network reconnects. Network settings are not part of the id
 |---|---|
 | Failed logins per source address | 5 in 10 minutes, then that address is refused for 10 minutes |
 | All failed logins | more than 20 in a minute makes every unpinned controller wait 30 seconds; pinned keys are exempt, so guessing cannot lock the real user out |
+| Incoming connections in their handshake or login | 16 at once; more are dropped |
+| Connected sessions on a host | 4 at once (each may hold a capture and an encoder); more are refused as busy |
+| Host confirmations waiting | 4; more are refused as busy |
 
 Limits are counted per source virtual address, since keys cost nothing to create before they are
 pinned.

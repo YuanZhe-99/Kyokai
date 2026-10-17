@@ -12,6 +12,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::net::IpAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -250,6 +251,30 @@ struct Entry {
 #[derive(Default)]
 pub struct Sessions {
     inner: Mutex<(u64, Vec<Entry>)>,
+    /// Incoming connections not yet finished with their handshake and login.
+    incoming: AtomicUsize,
+}
+
+/// Most incoming connections handled at once; more are dropped.
+const MAX_INCOMING: usize = 16;
+/// Most connected host sessions at once (each may hold a capture and an
+/// encoder); more are refused as busy.
+const MAX_HOST_SESSIONS: usize = 4;
+
+/// An incoming connection being handled; counted until dropped.
+struct Incoming(Arc<Ctx>);
+
+impl Drop for Incoming {
+    fn drop(&mut self) {
+        self.0.sessions.incoming.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+/// Counts an incoming connection, unless too many are being handled.
+fn enter(ctx: &Arc<Ctx>) -> Option<Incoming> {
+    let n = ctx.sessions.incoming.fetch_add(1, Ordering::Relaxed);
+    let guard = Incoming(ctx.clone());
+    (n < MAX_INCOMING).then_some(guard)
 }
 
 impl Sessions {
@@ -322,6 +347,15 @@ impl Sessions {
         Some(Side::Controller {
             queue: e.media.clone(),
             control: e.control_rx.clone(),
+        })
+    }
+
+    /// How many host sessions are connected.
+    fn connected_hosts(&self) -> usize {
+        self.inner.lock().map_or(MAX_HOST_SESSIONS, |s| {
+            s.1.iter()
+                .filter(|e| e.role == Role::Host && e.state == State::Connected)
+                .count()
         })
     }
 
@@ -476,6 +510,10 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     mut stream: S,
     from: IpAddr,
 ) {
+    // Counted until the login ends; a flood of connections is dropped.
+    let Some(incoming) = enter(&ctx) else {
+        return;
+    };
     let (hs, my_static) = match noise(false) {
         Ok(v) => v,
         Err(_) => return,
@@ -526,7 +564,9 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     ctx.sessions.update(id, |e| {
         e.peer_version = client.version.clone();
     });
-    match host_login(&ctx, &mut ch, &client, &client_key, &context, from, id).await {
+    let login = host_login(&ctx, &mut ch, &client, &client_key, &context, from, id).await;
+    drop(incoming);
+    match login {
         Ok(granted) => {
             let video = granted.contains(&Permission::ViewScreen);
             let input = granted.contains(&Permission::ControlInput);
@@ -577,6 +617,10 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     if let Err(reason) = ctx.access.admit(from, pinned) {
         let _ = ch.send(&refuse(reason)).await;
         return Err(Failure::Refused(reason));
+    }
+    if ctx.sessions.connected_hosts() >= MAX_HOST_SESSIONS {
+        let _ = ch.send(&refuse(Refusal::Busy)).await;
+        return Err(Failure::Refused(Refusal::Busy));
     }
     // Resuming a dropped session: same key, same permissions, no new login.
     if let Some(token) = &client.resume
@@ -1874,5 +1918,36 @@ mod tests {
         assert_eq!(session(&other, id)["state"], "connected");
         *other_board.lock().unwrap() = Some("private".into());
         assert!(!board_holds(&host_board, "private").await);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_host_serves_a_few_sessions_at_once_and_refuses_more_as_busy() {
+        let host = device("1.0.0");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let want = vec![Permission::Clipboard];
+        let mut controllers = Vec::new();
+        for _ in 0..MAX_HOST_SESSIONS {
+            let c = device("1.0.1");
+            let id = attempt_with(
+                &host,
+                &c,
+                &dialed,
+                "k7mq2xpa",
+                Some(want.clone()),
+                want.clone(),
+            )
+            .await;
+            assert_eq!(session(&c, id)["state"], "connected");
+            controllers.push(c);
+        }
+        let extra = device("1.0.1");
+        let id = attempt_with(&host, &extra, &dialed, "k7mq2xpa", Some(want.clone()), want).await;
+        assert_eq!(session(&extra, id)["failure"], json!({"refused": "busy"}));
     }
 }
