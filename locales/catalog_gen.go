@@ -2202,6 +2202,26 @@ func (msgs Messages) PermissionGranted() string {
 	return Catalog.Format(msgs.locale, "PermissionGranted", nil)
 }
 
+// PermissionKeychain says "Keychain"
+// in the language the app shows.
+func PermissionKeychain() string { return In(i18n.Locale()).PermissionKeychain() }
+
+// PermissionKeychain says "Keychain"
+// in the language of msgs.
+func (msgs Messages) PermissionKeychain() string {
+	return Catalog.Format(msgs.locale, "PermissionKeychain", nil)
+}
+
+// PermissionKeychainHint says "Keeps this device's identity, passwords and network settings between starts. Without it, Kyokai keeps them only until…"
+// in the language the app shows.
+func PermissionKeychainHint() string { return In(i18n.Locale()).PermissionKeychainHint() }
+
+// PermissionKeychainHint says "Keeps this device's identity, passwords and network settings between starts. Without it, Kyokai keeps them only until…"
+// in the language of msgs.
+func (msgs Messages) PermissionKeychainHint() string {
+	return Catalog.Format(msgs.locale, "PermissionKeychainHint", nil)
+}
+
 // PermissionScreen says "Screen Recording"
 // in the language the app shows.
 func PermissionScreen() string { return In(i18n.Locale()).PermissionScreen() }
@@ -2532,6 +2552,16 @@ func RunModeUser() string { return In(i18n.Locale()).RunModeUser() }
 // in the language of msgs.
 func (msgs Messages) RunModeUser() string {
 	return Catalog.Format(msgs.locale, "RunModeUser", nil)
+}
+
+// SecretsDenied says "Access to the Keychain was denied: secrets are kept only until Kyokai quits. Allow it under Privacy permissions."
+// in the language the app shows.
+func SecretsDenied() string { return In(i18n.Locale()).SecretsDenied() }
+
+// SecretsDenied says "Access to the Keychain was denied: secrets are kept only until Kyokai quits. Allow it under Privacy permissions."
+// in the language of msgs.
+func (msgs Messages) SecretsDenied() string {
+	return Catalog.Format(msgs.locale, "SecretsDenied", nil)
 }
 
 // SecretsMemoryOnly says "In memory only: this computer's credential store is not available, so the Device ID changes on the next start."

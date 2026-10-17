@@ -9,7 +9,10 @@
   `com.yuanzhe.kyokai`, account `master-key` or `master-key.<profile>`).
 - Without a working OS store nothing is persisted: secrets live in memory for that run and the
   interface says the Device ID will change. A store that exists but cannot be decrypted is never
-  overwritten; that run uses a temporary identity and says so.
+  overwritten; that run uses a temporary identity and says so. On macOS a new Keychain item is
+  created only when there is none: when the user denies access to the existing one, nothing is
+  replaced, the run keeps secrets in memory (persistence `denied`), and Allow on the Keychain row of
+  the permissions card opens the store again — macOS asks again — and rebuilds the core on it.
 - Secrets are zeroized when dropped; `kyokai_stop` drops them all.
 - The store holds the device key, the network settings with the network secret
   ([networking.md](networking.md)), the OPAQUE server key and the permanent password's record, the

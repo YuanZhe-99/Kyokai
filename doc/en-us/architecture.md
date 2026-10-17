@@ -74,7 +74,7 @@ the stored one), `password.set_permanent` (`{password}`, null removes it), `sess
 `host.forget`, `identity.export` (`{passphrase}` → `{document}`), `identity.import`
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
 name; the status carries `name` and this device's `about`), `trusted.unattended` (`{key, days}`; 0
-stops it), `permission.request` (`{name}`: `screen` or `accessibility` on macOS → `{granted}`), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
+stops it), `permission.request` (`{name}`: `screen`, `accessibility` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
 passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
 mode), and for AI tasks ([computer-use.md](computer-use.md)):
 `ai.settings.get`, `ai.settings.set` (`{sources?, model?: {source, id}, approval?}`; the answer adds
@@ -83,7 +83,7 @@ mode), and for AI tasks ([computer-use.md](computer-use.md)):
 (`{key, instruction}` → `{id}`; the key makes it idempotent), `ai.task.reply` (`{id, text}`),
 `ai.task.pause`, `ai.task.resume`, `ai.task.cancel` (`{id}`), `ai.task.decide` (`{id, approve}`),
 `ai.tasks` (newest first), `ai.history.clear`, `ai.stop` (cancels every task). The status also
-carries `permanent_password`, `permissions` (macOS: `{screen, accessibility}`, null elsewhere),
+carries `permanent_password`, `permissions` (macOS: `{screen, accessibility, keychain}`, null elsewhere),
 `password_grants` (what a correct password grants without asking;
 set with `access.password_grants` `{grants}`), `requests` (open host confirmations, each with
 `password`: whether the controller gave one), `sessions`, `recent` (hosts

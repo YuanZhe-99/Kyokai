@@ -17,7 +17,8 @@ by Apple, so macOS may call the downloaded app damaged: run
 Kyokai asks on its first start for **Screen Recording** (so others can see this screen)
 and **Accessibility** (so they can use the mouse and keyboard). Allow both in System Settings,
 Privacy & Security, then quit and reopen Kyokai; **Privacy permissions** on Home and in Settings
-shows what is still missing and opens the right pane with **Allow…**.
+shows what is still missing and opens the right pane with **Allow…**. Allow Kyokai to use its
+Keychain item too (**Always Allow**); if you denied it, **Allow…** on the Keychain row asks again.
 
 Kyokai keeps its secrets — this device's identity, passwords, keys — encrypted with your Windows
 account. If that is not possible, Home says so: the Device ID then changes on every start.

@@ -27,7 +27,7 @@ func (a *App) permissionsCard(c *ui.Context, always bool) {
 		p = a.status.Permissions
 	}
 	a.mu.Unlock()
-	if p == nil || !always && p.Screen && p.Accessibility {
+	if p == nil || !always && p.Screen && p.Accessibility && p.Keychain {
 		return
 	}
 	card(c.Key("perms")).Children(func() {
@@ -39,6 +39,7 @@ func (a *App) permissionsCard(c *ui.Context, always bool) {
 		}{
 			{"screen", L.PermissionScreen(), L.PermissionScreenHint(), p.Screen},
 			{"accessibility", L.PermissionAccessibility(), L.PermissionAccessibilityHint(), p.Accessibility},
+			{"keychain", L.PermissionKeychain(), L.PermissionKeychainHint(), p.Keychain},
 		} {
 			settingRow(c, "perm-"+row.name, row.title, row.hint, func() {
 				if row.granted {
@@ -54,13 +55,16 @@ func (a *App) permissionsCard(c *ui.Context, always bool) {
 }
 
 // askPermission asks the system for a permission through the engine, whose
-// capture and input need it; with open it also shows its pane in System
-// Settings, where a permission asked for before is granted.
+// capture and input need it (for the Keychain, the engine opens its store
+// again and macOS asks); with open it also shows a privacy permission's
+// pane in System Settings, where a permission asked for before is granted.
 func (a *App) askPermission(name string, open bool) {
 	go func() {
 		_, _ = a.requestWith(localapi.Request{Type: localapi.RequestPermission, Permission: name})
 		if open {
-			_ = mygo.Shell.OpenExternal(permissionPanes[name])
+			if pane, ok := permissionPanes[name]; ok {
+				_ = mygo.Shell.OpenExternal(pane)
+			}
 		}
 	}()
 }

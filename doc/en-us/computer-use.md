@@ -303,7 +303,7 @@ continues it until the engine stops.
 
 | Part | How |
 |---|---|
-| Permissions | Screen Recording for capture, Accessibility for input and the local-input watch; the engine reports both (`permissions` in the status) and asks for them (`permission.request`), the GUI on its first start per version and through Allow on its permissions card, which also opens the pane in System Settings. A Screen Recording grant counts once Kyokai restarts |
+| Permissions | Screen Recording for capture, Accessibility for input and the local-input watch, and the Keychain item of the secrets store ([security.md](security.md)); the engine reports both (`permissions` in the status) and asks for them (`permission.request`), the GUI on its first start per version and through Allow on its permissions card, which also opens the pane in System Settings. A Screen Recording grant counts once Kyokai restarts |
 | Displays | Core Graphics' active displays in points, the unit of its global coordinates (a Retina display is half its pixels); the main display is the primary |
 | Capture | a ScreenCaptureKit stream of the display at its pixel size scaled to fit 1920×1080, BGRA, without the pointer (the viewer draws it from the pointer messages) and without the windows of Kyokai's processes and app (always, whatever the capture setting says); an unchanged screen sends no picture; without the permission the host sends the test pattern |
 | Encode | the software codecs (`vp9-sw`, `av1`, `vp8`) until VideoToolbox lands |

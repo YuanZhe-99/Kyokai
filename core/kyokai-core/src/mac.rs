@@ -62,12 +62,16 @@ pub struct Permissions {
     pub screen: bool,
     /// Accessibility: injecting input.
     pub accessibility: bool,
+    /// The Keychain item that keeps the secrets' key was not refused.
+    pub keychain: bool,
 }
 
-/// What this process may do now.
+/// What this process may do now; `keychain` says whether the secrets
+/// store opened without a refusal.
 /// Notes: a Screen Recording grant counts only after the app restarts.
-pub fn permissions() -> Permissions {
+pub fn permissions(keychain: bool) -> Permissions {
     Permissions {
+        keychain,
         screen: CGPreflightScreenCaptureAccess(),
         // SAFETY: a plain query.
         accessibility: unsafe { AXIsProcessTrusted() },

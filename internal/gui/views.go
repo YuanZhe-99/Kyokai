@@ -137,6 +137,8 @@ func secretsNote(p string) string {
 		return L.SecretsMemoryOnly()
 	case "unreadable":
 		return L.SecretsUnreadable()
+	case "denied":
+		return L.SecretsDenied()
 	}
 	return p
 }

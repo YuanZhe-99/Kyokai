@@ -65,12 +65,12 @@
 `network.set`（`{servers, name, secret?}`；缺少密钥时保留已存的密钥）、`password.set_permanent`（`{password}`，null 表示移除）、
 `session.connect`（`{device_id, password, want}`；立即返回会话 id，进度见状态）、`session.close`、`request.decide`
 （`{id, allow, permissions}`）、`trusted.list`、`trusted.remove`、`host.forget`、`identity.export`（`{passphrase}` → `{document}`）、`identity.import`
-（`{document, passphrase}`）、`identity.reset`、`device.set_name`（`{name}`；"" 表示使用电脑的名称；状态中带有 `name` 与本机的 `about`）、`trusted.unattended`（`{key, days}`；0 表示停止）、`permission.request`（`{name}`：macOS 上的 `screen` 或 `accessibility` → `{granted}`）、`store.export`（`{passphrase}` → `{document}`）、`store.import`（`{document, passphrase}`）、`store.clear`（切换运行方式时使用，[run-modes.md](run-modes.md)）、`host.serve`（`{serve}`：`all`、`unattended` 或 `none`，由引擎依据运行方式设定），以及 AI 任务的方法（[computer-use.md](computer-use.md)）：`ai.settings.get`、
+（`{document, passphrase}`）、`identity.reset`、`device.set_name`（`{name}`；"" 表示使用电脑的名称；状态中带有 `name` 与本机的 `about`）、`trusted.unattended`（`{key, days}`；0 表示停止）、`permission.request`（`{name}`：macOS 上的 `screen`、`accessibility` 或 `keychain` → `{granted}`；`keychain` 会重新打开存储，打开后重建核心）、`store.export`（`{passphrase}` → `{document}`）、`store.import`（`{document, passphrase}`）、`store.clear`（切换运行方式时使用，[run-modes.md](run-modes.md)）、`host.serve`（`{serve}`：`all`、`unattended` 或 `none`，由引擎依据运行方式设定），以及 AI 任务的方法（[computer-use.md](computer-use.md)）：`ai.settings.get`、
 `ai.settings.set`（`{sources?, model?: {source, id}, approval?}`；答复按来源附上 `keys`）、`ai.key.set`（`{source, key}`，null 表示移除；密钥从不返回）、
 `ai.models.list`（`{source}` → `{models}`，向来源查询）、
 `ai.task.start`（`{key, instruction}` → `{id}`；key 使其幂等）、`ai.task.reply`（`{id, text}`）、`ai.task.pause`、`ai.task.resume`、
 `ai.task.cancel`（`{id}`）、`ai.task.decide`（`{id, approve}`）、`ai.tasks`（最新的在前）、`ai.history.clear`、`ai.stop`（取消所有任务）。
-状态中还包含 `permanent_password`、`permissions`（macOS 上为 `{screen, accessibility}`，其他系统为 null）、`password_grants`（正确密码无需确认即可授予的权限；用 `access.password_grants` `{grants}` 设置）、`requests`（待处理的被控端确认，各带 `password`：控制端是否给出了密码）、`sessions`、`recent`（连接过的被控端，最新的在前）以及
+状态中还包含 `permanent_password`、`permissions`（macOS 上为 `{screen, accessibility, keychain}`，其他系统为 null）、`password_grants`（正确密码无需确认即可授予的权限；用 `access.password_grants` `{grants}` 设置）、`requests`（待处理的被控端确认，各带 `password`：控制端是否给出了密码）、`sessions`、`recent`（连接过的被控端，最新的在前）以及
 `ai`（进行中的任务及其状态与来源，或 null）。Go 绑定把传给核心的响应槽放在堆内存中，从不放在
 goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows 上以绝对路径、
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` 加载该库，并静态链接 C 运行时，

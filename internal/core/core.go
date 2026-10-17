@@ -67,7 +67,8 @@ type Status struct {
 	DeviceID    string `json:"device_id"`
 	Fingerprint string `json:"fingerprint"`
 	StateDir    string `json:"state_dir"`
-	// Persistence is "os-store", "memory-only" or "unreadable".
+	// Persistence is "os-store", "memory-only", "unreadable" or "denied"
+	// (macOS: the Keychain refused the key).
 	Persistence    string `json:"persistence"`
 	PasswordSerial uint64 `json:"password_serial"`
 	// Network is the EasyTier node's status, decoded by the host.

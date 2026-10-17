@@ -29,6 +29,11 @@ pub enum Persistence {
     /// A store exists but cannot be decrypted (its key is gone); it is left
     /// untouched and this run keeps secrets in memory.
     Unreadable,
+    /// The OS store refused its key (macOS: access to the Keychain item was
+    /// denied); the stored secrets are left untouched, this run keeps
+    /// secrets in memory, and opening again asks again.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    Denied,
 }
 
 type Map = BTreeMap<String, Zeroizing<String>>;
@@ -44,8 +49,9 @@ pub struct Secrets {
 pub fn open(state_dir: &Path, profile: &str) -> (Secrets, Persistence) {
     let path = state_dir.join(FILE);
     let memory = |p| (Secrets::memory(), p);
-    let Some(key) = os::master_key(state_dir, profile) else {
-        return memory(Persistence::MemoryOnly);
+    let key = match os::master_key(state_dir, profile) {
+        Ok(key) => key,
+        Err(p) => return memory(p),
     };
     let map = match std::fs::read(&path) {
         Ok(data) => match decrypt(&key, &data) {
@@ -176,7 +182,7 @@ fn new_key() -> Option<Zeroizing<[u8; 32]>> {
 #[cfg(windows)]
 mod os {
     //! The master key as a DPAPI blob (user scope) next to the store.
-    use super::new_key;
+    use super::{Persistence, new_key};
     use std::path::Path;
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{
@@ -187,7 +193,15 @@ mod os {
     const FILE: &str = "master.key";
 
     /// Reads the master key, or creates and protects a new one.
-    pub fn master_key(state_dir: &Path, _profile: &str) -> Option<Zeroizing<[u8; 32]>> {
+    /// Returns: the key, or `MemoryOnly` when DPAPI cannot keep one.
+    pub fn master_key(
+        state_dir: &Path,
+        _profile: &str,
+    ) -> Result<Zeroizing<[u8; 32]>, Persistence> {
+        stored(state_dir).ok_or(Persistence::MemoryOnly)
+    }
+
+    fn stored(state_dir: &Path) -> Option<Zeroizing<[u8; 32]>> {
         let path = state_dir.join(FILE);
         if let Ok(blob) = std::fs::read(&path) {
             let plain = Zeroizing::new(dpapi(&blob, false)?);
@@ -249,7 +263,7 @@ mod os {
 #[cfg(target_os = "macos")]
 mod os {
     //! The master key as a generic password in the login Keychain.
-    use super::new_key;
+    use super::{Persistence, new_key};
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD;
     use security_framework::passwords::{get_generic_password, set_generic_password};
@@ -258,32 +272,60 @@ mod os {
 
     const SERVICE: &str = "com.yuanzhe.kyokai";
 
-    /// Reads the master key, or creates and stores a new one.
-    pub fn master_key(_state_dir: &Path, profile: &str) -> Option<Zeroizing<[u8; 32]>> {
+    /// The Keychain's answer for an item that does not exist.
+    const NOT_FOUND: i32 = -25300; // errSecItemNotFound
+
+    /// Reads the master key, or creates and stores a new one when there is
+    /// none.
+    /// Returns: the key; `Denied` when the Keychain refused the existing item
+    /// (the user denied access; asking again opens it), `MemoryOnly` when it
+    /// cannot keep one. An existing item is never replaced.
+    /// Side effects: macOS may ask the user to allow access.
+    pub fn master_key(
+        _state_dir: &Path,
+        profile: &str,
+    ) -> Result<Zeroizing<[u8; 32]>, Persistence> {
         let account = if profile.is_empty() {
             "master-key".to_owned()
         } else {
             format!("master-key.{profile}")
         };
-        if let Ok(text) = get_generic_password(SERVICE, &account) {
-            let raw = Zeroizing::new(STANDARD.decode(&text).ok()?);
-            return Some(Zeroizing::new(raw.as_slice().try_into().ok()?));
+        match get_generic_password(SERVICE, &account) {
+            Ok(text) => {
+                let raw = Zeroizing::new(
+                    STANDARD
+                        .decode(&text)
+                        .map_err(|_| Persistence::Unreadable)?,
+                );
+                return Ok(Zeroizing::new(
+                    raw.as_slice()
+                        .try_into()
+                        .map_err(|_| Persistence::Unreadable)?,
+                ));
+            }
+            Err(e) if e.code() != NOT_FOUND => return Err(Persistence::Denied),
+            Err(_) => {}
         }
-        let key = new_key()?;
+        let key = new_key().ok_or(Persistence::MemoryOnly)?;
         let text = Zeroizing::new(STANDARD.encode(key.as_ref()));
-        set_generic_password(SERVICE, &account, text.as_bytes()).ok()?;
-        Some(key)
+        set_generic_password(SERVICE, &account, text.as_bytes())
+            .map_err(|_| Persistence::MemoryOnly)?;
+        Ok(key)
     }
 }
 
 #[cfg(not(any(windows, target_os = "macos")))]
 mod os {
     //! No supported OS credential store.
+    use super::Persistence;
     use std::path::Path;
     use zeroize::Zeroizing;
 
-    pub fn master_key(_state_dir: &Path, _profile: &str) -> Option<Zeroizing<[u8; 32]>> {
-        None
+    pub fn master_key(
+        _state_dir: &Path,
+        _profile: &str,
+    ) -> Result<Zeroizing<[u8; 32]>, Persistence> {
+        Err(Persistence::MemoryOnly)
     }
 }
 

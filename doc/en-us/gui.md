@@ -9,7 +9,7 @@ when `SCREENSHOT_DIR` is set.
 - **Sidebar:** Home, Network, AI, Settings.
 - **Home:** "This device" — the Device ID in groups of three with Copy; the temporary password,
   masked until Show, with Copy and New password; a note when secrets are not persisted. On macOS,
-  while Screen Recording or Accessibility is missing, "Privacy permissions" with Allow for each
+  while Screen Recording, Accessibility or the Keychain is missing, "Privacy permissions" with Allow for each
   (Settings always shows it there). Below it,
   "Control another device" (Device ID, password, Connect; needs a network) and the sessions, newest
   first (to or from which device, state or why it failed, Disconnect; "Forget old identity" when a

@@ -7,7 +7,8 @@
 - 32 字节主密钥来自操作系统：Windows 上为当前用户的 DPAPI 数据块（`master.key`），macOS 上为登录钥匙串中的通用密码
   （服务 `com.yuanzhe.kyokai`，账户 `master-key` 或 `master-key.<profile>`）。
 - 系统凭据存储不可用时不持久化任何内容：机密只在本次运行的内存中，界面会说明设备 ID 将改变。已存在但无法解密的存储
-  从不被覆盖；本次运行使用临时身份并说明这一点。
+  从不被覆盖；本次运行使用临时身份并说明这一点。在 macOS 上只在钥匙串项目不存在时才新建：用户拒绝访问已有项目时不替换任何内容，
+  本次运行把机密保存在内存中（持久化状态 `denied`），权限卡片上钥匙串一行的“允许”会再次打开存储——macOS 会再次询问——并在其上重建核心。
 - 机密在释放时清零；`kyokai_stop` 会全部丢弃。
 - 存储中保存设备密钥、含网络密钥的网络设置（[networking.md](networking.md)）、OPAQUE 服务器密钥与固定密码的记录、受信任设备、
   已知被控端（[identity-and-access.md](identity-and-access.md)）以及 AI 服务商的 API 密钥。本地 API 只把网络密钥从界面（或

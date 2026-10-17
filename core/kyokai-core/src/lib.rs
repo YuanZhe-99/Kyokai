@@ -451,6 +451,15 @@ fn start(input: &[u8]) -> Result<(), String> {
 fn build(cfg: StartConfig) -> Result<Core, String> {
     std::fs::create_dir_all(&cfg.state_dir).map_err(|e| format!("state directory: {e}"))?;
     let (secrets, persistence) = store::open(&cfg.state_dir, &cfg.profile);
+    build_on(cfg, secrets, persistence)
+}
+
+/// `build` on a store already opened.
+fn build_on(
+    cfg: StartConfig,
+    secrets: store::Secrets,
+    persistence: store::Persistence,
+) -> Result<Core, String> {
     let secrets = Arc::new(secrets);
     let identity = Arc::new(identity::Identity::load_or_create(&secrets)?);
     let ctx = Arc::new(session::Ctx {
@@ -500,6 +509,32 @@ fn replace_identity(
     let id = core.ctx.identity.device_id();
     *guard = Some(core);
     Ok(json!({"device_id": id}))
+}
+
+/// Opens the secrets store again after the OS store refused it, and
+/// rebuilds the core on it when it opens: the stored identity, passwords
+/// and settings come back, and what this run kept in memory is dropped.
+/// Returns: whether the store is open now.
+/// Side effects: ends every session and reconnects the network when the
+/// store opened.
+fn reopen_store() -> Result<bool, String> {
+    let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
+    let core = guard.as_ref().ok_or("the core is not started")?;
+    if !matches!(core.persistence, store::Persistence::Denied) {
+        return Ok(true);
+    }
+    let cfg = core.cfg.clone();
+    // Refused again: this run goes on with what it keeps in memory.
+    let (secrets, persistence) = store::open(&cfg.state_dir, &cfg.profile);
+    if matches!(persistence, store::Persistence::Denied) {
+        return Ok(false);
+    }
+    let serve = core.ctx.access.serve();
+    *guard = None; // stops the network and drops the in-memory identity
+    let core = build_on(cfg, secrets, persistence)?;
+    core.ctx.access.set_serve(serve);
+    *guard = Some(core);
+    Ok(true)
 }
 
 fn call(input: &[u8]) -> Result<Value, String> {
@@ -805,7 +840,7 @@ fn status() -> Value {
             "network": c.network.status(),
             "permanent_password": c.ctx.access.slots.lock().is_ok_and(|s| s.has_permanent()),
             "password_grants": c.ctx.access.password_grants(),
-            "permissions": permissions(),
+            "permissions": permissions(c.persistence),
             "ai": c.ctx.ai.active(),
             "requests": c.ctx.access.pending(),
             "sessions": c.ctx.sessions.list(),
@@ -825,22 +860,32 @@ fn status() -> Value {
 }
 
 /// The privacy permissions this system asks for and whether they are
-/// granted (macOS), or null where it asks for none.
-fn permissions() -> Value {
+/// granted (macOS, with whether the Keychain was refused), or null where it
+/// asks for none.
+fn permissions(persistence: store::Persistence) -> Value {
     #[cfg(target_os = "macos")]
     {
-        json!(mac::permissions())
+        json!(mac::permissions(!matches!(
+            persistence,
+            store::Persistence::Denied
+        )))
     }
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = persistence;
         Value::Null
     }
 }
 
-/// Asks the system for a permission (macOS: `screen`, `accessibility`).
+/// Asks the system for a permission (macOS: `screen`, `accessibility`,
+/// `keychain`).
 /// Returns: whether it is granted now.
-/// Side effects: macOS may show its prompt.
+/// Side effects: macOS may show its prompt; `keychain` opens the secrets
+/// store again and, when it opens, rebuilds the core on it.
 fn request_permission(name: &str) -> Result<bool, String> {
+    if name == "keychain" {
+        return reopen_store();
+    }
     #[cfg(target_os = "macos")]
     {
         mac::request(name)

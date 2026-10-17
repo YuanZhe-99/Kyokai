@@ -65,7 +65,7 @@ const (
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
 	RequestNameSet            RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
 	RequestUnattended         RequestType = "trusted.unattended"     // let a trusted device in without confirmation for Request.Days (0 stops it; Request.Key)
-	RequestPermission         RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen" or "accessibility"; macOS)
+	RequestPermission         RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen", "accessibility" or "keychain"; macOS)
 	RequestPasswordGrants     RequestType = "access.password_grants" // what a correct password grants without asking (Request.Grants)
 	RequestBackground         RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
 	RequestStoreExport        RequestType = "store.export"           // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
@@ -431,7 +431,8 @@ type Status struct {
 	// service) or only while a GUI is attached (Follow GUI).
 	RunMode    string `json:"run_mode"`
 	Background bool   `json:"background,omitempty"`
-	// Persistence is "os-store", "memory-only" or "unreadable".
+	// Persistence is "os-store", "memory-only", "unreadable" or "denied"
+	// (macOS: the Keychain refused the key).
 	Persistence string `json:"persistence"`
 	// PasswordSerial changes whenever the temporary password does.
 	PasswordSerial uint64        `json:"password_serial"`
@@ -465,6 +466,9 @@ type Permissions struct {
 	Screen bool `json:"screen"`
 	// Accessibility lets the engine inject input.
 	Accessibility bool `json:"accessibility"`
+	// Keychain: the Keychain did not refuse the secrets' key; asking for
+	// "keychain" opens the store again.
+	Keychain bool `json:"keychain"`
 }
 
 // ErrNotRunning reports that no engine listens on the socket.
