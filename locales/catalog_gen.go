@@ -1502,6 +1502,16 @@ func (msgs Messages) NavAI() string {
 	return Catalog.Format(msgs.locale, "NavAI", nil)
 }
 
+// NameSaved says "Name saved."
+// in the language the app shows.
+func NameSaved() string { return In(i18n.Locale()).NameSaved() }
+
+// NameSaved says "Name saved."
+// in the language of msgs.
+func (msgs Messages) NameSaved() string {
+	return Catalog.Format(msgs.locale, "NameSaved", nil)
+}
+
 // NavHome says "Home"
 // in the language the app shows.
 func NavHome() string { return In(i18n.Locale()).NavHome() }
@@ -2262,6 +2272,26 @@ func SettingsLicenses() string { return In(i18n.Locale()).SettingsLicenses() }
 // in the language of msgs.
 func (msgs Messages) SettingsLicenses() string {
 	return Catalog.Format(msgs.locale, "SettingsLicenses", nil)
+}
+
+// SettingsName says "Friendly name"
+// in the language the app shows.
+func SettingsName() string { return In(i18n.Locale()).SettingsName() }
+
+// SettingsName says "Friendly name"
+// in the language of msgs.
+func (msgs Messages) SettingsName() string {
+	return Catalog.Format(msgs.locale, "SettingsName", nil)
+}
+
+// SettingsNameHint says "What other devices see beside this Device ID once their login succeeded. Leave it empty to use this computer's name."
+// in the language the app shows.
+func SettingsNameHint() string { return In(i18n.Locale()).SettingsNameHint() }
+
+// SettingsNameHint says "What other devices see beside this Device ID once their login succeeded. Leave it empty to use this computer's name."
+// in the language of msgs.
+func (msgs Messages) SettingsNameHint() string {
+	return Catalog.Format(msgs.locale, "SettingsNameHint", nil)
 }
 
 // SettingsOpenAtLogin says "Open at login"

@@ -63,6 +63,7 @@ const (
 	RequestIdentityExport     RequestType = "identity.export"        // an encrypted identity backup (Request.Backup.Passphrase)
 	RequestIdentityImport     RequestType = "identity.import"        // restore an identity backup (Request.Backup)
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
+	RequestNameSet            RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
 	RequestMedia              RequestType = "session.media"          // a controller session's media (Request.ID); the connection then carries packets
 	RequestSessionAttach      RequestType = "session.attach"         // streaming; see package doc
 	RequestAISettingsGet      RequestType = "ai.settings.get"        // the AI settings and which keys are stored
@@ -106,6 +107,8 @@ type Request struct {
 	Key string `json:"key,omitempty"`
 	// DeviceID names a host whose pinned key to forget (RequestHostForget).
 	DeviceID string `json:"device_id,omitempty"`
+	// Name is the friendly name of RequestNameSet.
+	Name *string `json:"name,omitempty"`
 	// Backup carries the passphrase (and for an import the document).
 	Backup *IdentityBackup `json:"backup,omitempty"`
 	// AISettings carries the fields RequestAISettingsSet changes.
@@ -270,6 +273,18 @@ type TrustedDevice struct {
 	First    int64    `json:"first"` // Unix seconds
 	Last     int64    `json:"last"`
 	Granted  []string `json:"granted"`
+	// About is what the controller last said about itself.
+	About About `json:"about"`
+}
+
+// About is what a device says about itself after a login: a friendly
+// name, its maker and model, and its system ("windows", "macos"). It is a
+// claim of the other device, shown beside its Device ID, never proof.
+type About struct {
+	Name  string `json:"name"`
+	Maker string `json:"maker"`
+	Model string `json:"model"`
+	OS    string `json:"os"`
 }
 
 // HostRequest is a controller waiting for this host's user to confirm.
@@ -281,12 +296,17 @@ type HostRequest struct {
 	Known  bool     `json:"known"`
 	NewKey bool     `json:"new_key"`
 	Want   []string `json:"want"`
+	// About is what the controller says about itself (after the password
+	// check).
+	About About `json:"about"`
 }
 
 // RecentDevice is a host this device connected to.
 type RecentDevice struct {
 	DeviceID string `json:"device_id"`
 	Last     int64  `json:"last"` // Unix seconds
+	// About is what the host said about itself in the last session.
+	About About `json:"about"`
 }
 
 // SessionInfo is one session of this device, live or recently finished.
@@ -303,6 +323,8 @@ type SessionInfo struct {
 	Granted     []string        `json:"granted"`
 	PeerVersion string          `json:"peer_version"`
 	PeerSource  string          `json:"peer_source"`
+	// Peer is what the other device said about itself after the login.
+	Peer About `json:"peer"`
 }
 
 // NetworkSettings are the EasyTier network the engine joins.
@@ -359,6 +381,10 @@ type Status struct {
 	Sessions          []SessionInfo `json:"sessions"`
 	// Recent are the hosts this device connected to, newest first.
 	Recent []RecentDevice `json:"recent"`
+	// Name is the friendly name chosen here ("" follows the computer's
+	// name); About is what this device tells its peers.
+	Name  string `json:"name"`
+	About About  `json:"about"`
 	// AI is the AI task in progress, nil when there is none.
 	AI      *AIActive `json:"ai,omitempty"`
 	Started time.Time `json:"started"`

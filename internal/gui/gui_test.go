@@ -3,11 +3,13 @@ package gui
 import (
 	"image"
 	"image/png"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,16 +82,22 @@ func TestViewsRender(t *testing.T) {
 		"home-memory":   func(a *App) { a.status.Persistence = "memory-only" },
 		"starting":      func(a *App) { a.connected, a.status = false, nil },
 		"engine-down":   func(a *App) { a.connected, a.status, a.engineErr = false, nil, "kyokai-svc not found" },
-		"settings":      func(a *App) { a.page = pageSettings },
+		"settings":      func(a *App) { a.page, a.status.About = pageSettings, localapi.About{Name: "WINDOWS-KVM"} },
 		"licenses":      func(a *App) { a.page, a.showLicenses = pageSettings, true },
 		"network-off":   func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
 		"home-sessions": func(a *App) {
 			a.status.Network.State = "online"
-			a.status.Requests = []localapi.HostRequest{{ID: 3, DeviceID: "213559601", NewKey: true, Want: []string{localapi.PermViewScreen, localapi.PermControlInput}}}
+			a.status.Requests = []localapi.HostRequest{{ID: 3, DeviceID: "213559601", NewKey: true, Want: []string{localapi.PermViewScreen, localapi.PermControlInput},
+				About: localapi.About{Name: "Office laptop", Maker: "LENOVO", Model: "ThinkPad X1 Carbon", OS: "windows"}}}
+			a.status.Recent = []localapi.RecentDevice{
+				{DeviceID: "657365333", Last: 1797400000, About: localapi.About{Name: "Studio Mac", Maker: "Apple", Model: "Mac14,13", OS: "macos"}},
+				{DeviceID: "647222040", Last: 1797300000},
+			}
 			a.status.Sessions = []localapi.SessionInfo{
 				{ID: 1, Role: "controller", DeviceID: "647222040", State: "failed", Failure: []byte(`{"refused":"password"}`)},
 				{ID: 2, Role: "controller", DeviceID: "647222040", State: "failed", Failure: []byte(`"key-changed"`)},
-				{ID: 4, Role: "host", DeviceID: "100000002", State: "connected", Granted: []string{localapi.PermViewScreen}},
+				{ID: 4, Role: "host", DeviceID: "100000002", State: "connected", Granted: []string{localapi.PermViewScreen},
+					Peer: localapi.About{Name: "Living room PC", Maker: "Dell Inc.", OS: "windows"}},
 			}
 		},
 		"settings-access": func(a *App) {
@@ -288,5 +296,65 @@ func TestViewerInputMapping(t *testing.T) {
 		if c.want != nil && !reflect.DeepEqual(got, *c.want) {
 			t.Errorf("%s: %+v, want %+v", c.name, got, *c.want)
 		}
+	}
+}
+
+// TestDeviceLogoName: the maker decides first, then the model, the
+// friendly name and the system; only whole words match.
+func TestDeviceLogoName(t *testing.T) {
+	for _, tc := range []struct {
+		about localapi.About
+		want  string
+	}{
+		{localapi.About{Maker: "LENOVO", Model: "20XW0055US", OS: "windows"}, "lenovo"},
+		{localapi.About{Maker: "Dell Inc.", Model: "XPS 13 9310", OS: "windows"}, "dell"},
+		{localapi.About{Maker: "ASUSTeK COMPUTER INC.", OS: "windows"}, "asus"},
+		{localapi.About{Maker: "Hewlett-Packard", OS: "windows"}, "hp"},
+		{localapi.About{Maker: "Apple", Model: "MacBookPro18,3", OS: "macos"}, "apple"},
+		{localapi.About{Maker: "innotek GmbH", Model: "VirtualBox", OS: "windows"}, "oracle"},
+		// No maker the table knows: the name, then the system.
+		{localapi.About{Maker: "QEMU", Name: "My ThinkPad", OS: "windows"}, "lenovo"},
+		{localapi.About{Maker: "QEMU", Model: "Standard PC (Q35 + ICH9, 2009)", OS: "windows"}, "windows"},
+		{localapi.About{Maker: "Micro-Star International", Name: "php-dev", OS: ""}, ""},
+		{localapi.About{}, ""},
+	} {
+		if got := deviceLogoName(tc.about); got != tc.want {
+			t.Errorf("deviceLogoName(%+v) = %q, want %q", tc.about, got, tc.want)
+		}
+	}
+}
+
+// TestVendorLogosParse: every bundled logo parses, and every logo the
+// keyword table names is bundled, so no match draws nothing.
+func TestVendorLogosParse(t *testing.T) {
+	files, err := fs.Glob(logoFS, "assets/logos/*.svg")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no logos embedded: %v", err)
+	}
+	for _, f := range files {
+		b, _ := logoFS.ReadFile(f)
+		if _, err := ui.ParseSVG(b); err != nil {
+			t.Errorf("%s: %v", f, err)
+		}
+	}
+	for _, k := range vendorKeywords {
+		if loadLogo(k.logo) == nil {
+			t.Errorf("keyword logo %q is missing or unparsable", k.logo)
+		}
+		for _, w := range k.words {
+			if w != strings.ToLower(w) {
+				t.Errorf("keyword %q must be lower-case", w)
+			}
+		}
+	}
+}
+
+// TestDeviceTitle: a name goes beside the Device ID, never instead of it.
+func TestDeviceTitle(t *testing.T) {
+	if got := deviceTitle(localapi.About{Name: "Living room"}, "482916735"); got != "Living room · 482 916 735" {
+		t.Errorf("named: %q", got)
+	}
+	if got := deviceTitle(localapi.About{}, "482916735"); got != "482 916 735" {
+		t.Errorf("unnamed: %q", got)
 	}
 }

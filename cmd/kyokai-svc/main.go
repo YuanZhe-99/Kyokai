@@ -4,6 +4,7 @@
 //	               [--parent-pid N | --lifeline-fd N]
 //	kyokai-svc ctl status | password | regenerate | shutdown | network | trusted [--socket P]
 //	kyokai-svc ctl network-set --server URL [--server URL…] --name N
+//	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--want P,P…]
 //	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T]
@@ -133,7 +134,7 @@ func ctl(args []string) error {
 		servers = append(servers, s)
 		return nil
 	})
-	name := fs.String("name", "", "network-set: the network name")
+	name := fs.String("name", "", "network-set: the network name; name-set: this device's friendly name")
 	device := fs.String("device", "", "connect, forget: the Device ID")
 	want := fs.String("want", localapi.PermViewScreen+","+localapi.PermControlInput, "connect: the permissions to ask for")
 	grant := fs.String("grant", "", "allow: the permissions to grant (default: all asked for)")
@@ -166,7 +167,7 @@ func ctl(args []string) error {
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
-		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet,
+		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet,
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
@@ -185,6 +186,8 @@ func ctl(args []string) error {
 	// The secrets come from the environment, never from the command line,
 	// where other processes could read them.
 	switch cmd {
+	case "name-set":
+		req.Name = name
 	case "network-set":
 		req.Network = &localapi.NetworkSettings{Servers: servers, Name: *name}
 		if s, ok := os.LookupEnv(networkSecretEnv); ok {
@@ -337,6 +340,7 @@ func list(s string) []string {
 func printStatus(s *localapi.Status) {
 	fmt.Printf("version %s (ABI %d), run mode %s\ndevice ID %s\nfingerprint %s\nstate %s (secrets: %s)\npermanent password %v\n",
 		s.Version, s.ABI, s.RunMode, s.DeviceID, s.Fingerprint, s.StateDir, s.Persistence, s.PermanentPassword)
+	fmt.Printf("name %q (chosen %q), %s %s, %s\n", s.About.Name, s.Name, s.About.Maker, s.About.Model, s.About.OS)
 	n := s.Network
 	fmt.Printf("network %s", n.State)
 	if n.Error != "" {
@@ -350,14 +354,14 @@ func printStatus(s *localapi.Status) {
 		fmt.Printf("  device %s  %s  %d ms\n", d.DeviceID, d.Path, d.LatencyMS)
 	}
 	for _, r := range s.Requests {
-		fmt.Printf("request %d  from %s  wants %s  known %v  new key %v\n",
-			r.ID, r.DeviceID, strings.Join(r.Want, ","), r.Known, r.NewKey)
+		fmt.Printf("request %d  from %s %q  wants %s  known %v  new key %v\n",
+			r.ID, r.DeviceID, r.About.Name, strings.Join(r.Want, ","), r.Known, r.NewKey)
 	}
 	for _, r := range s.Recent {
-		fmt.Println("recent", r.DeviceID)
+		fmt.Printf("recent %s %q  %s %s\n", r.DeviceID, r.About.Name, r.About.Maker, r.About.Model)
 	}
 	for _, x := range s.Sessions {
-		fmt.Printf("session %d  %s  %s  %s", x.ID, x.Role, x.DeviceID, x.State)
+		fmt.Printf("session %d  %s  %s %q  %s", x.ID, x.Role, x.DeviceID, x.Peer.Name, x.State)
 		if len(x.Failure) > 0 && string(x.Failure) != "null" {
 			fmt.Printf("  %s", x.Failure)
 		}

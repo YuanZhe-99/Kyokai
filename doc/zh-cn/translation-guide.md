@@ -28,6 +28,8 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | temporary password | 临时密码 |
 | permanent password | 固定密码 |
 | trusted device | 受信任设备 |
+| friendly name | 别名 |
+| vendor logo | 厂商标志 |
 | permission | 权限 |
 | approval | 批准 |
 | take over | 接管 |

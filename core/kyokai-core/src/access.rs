@@ -3,6 +3,7 @@
 //! host user's confirmations, trusted devices (pinned controller keys) and
 //! known hosts (pinned host keys on the controller side).
 
+use crate::about::About;
 use crate::auth::Slots;
 use crate::store::Secrets;
 use serde::{Deserialize, Serialize};
@@ -64,6 +65,9 @@ pub struct Trusted {
     pub first: u64,
     pub last: u64,
     pub granted: Vec<Permission>,
+    /// What the controller last said about itself.
+    #[serde(default)]
+    pub about: About,
 }
 
 /// The host user's answer to a confirmation: the granted permissions, or
@@ -77,6 +81,9 @@ pub struct KnownHost {
     pub key: String,
     /// Unix seconds.
     pub last: u64,
+    /// What the host last said about itself.
+    #[serde(default)]
+    pub about: About,
 }
 
 /// A resume token's grant: who may resume, with what, until when.
@@ -94,6 +101,7 @@ struct Pending {
     known: bool,
     new_key: bool,
     want: Vec<Permission>,
+    about: About,
     reply: oneshot::Sender<Option<Vec<Permission>>>,
 }
 
@@ -184,6 +192,7 @@ impl Access {
         key: &str,
         device_id: &str,
         want: Vec<Permission>,
+        about: &About,
     ) -> Result<(u64, Decision), Refusal> {
         let trusted = self.trusted();
         let known = trusted.contains_key(key);
@@ -203,6 +212,7 @@ impl Access {
             known,
             new_key,
             want,
+            about: about.clone(),
             reply,
         });
         Ok((id, rx))
@@ -229,6 +239,7 @@ impl Access {
                     "known": q.known,
                     "new_key": q.new_key,
                     "want": q.want,
+                    "about": q.about,
                 })
             })
             .collect()
@@ -264,7 +275,13 @@ impl Access {
 
     /// Records an accepted controller.
     /// Side effects: rewrites the secrets store.
-    pub fn trust(&self, key: &str, device_id: &str, granted: &[Permission]) -> Result<(), String> {
+    pub fn trust(
+        &self,
+        key: &str,
+        device_id: &str,
+        granted: &[Permission],
+        about: &About,
+    ) -> Result<(), String> {
         let now = unix_now();
         let mut all = self.trusted();
         let entry = all.entry(key.to_owned()).or_insert(Trusted {
@@ -272,7 +289,9 @@ impl Access {
             first: now,
             last: now,
             granted: Vec::new(),
+            about: About::default(),
         });
+        entry.about = about.clone();
         entry.last = now;
         entry.device_id = device_id.to_owned();
         entry.granted = granted.to_vec();
@@ -334,26 +353,23 @@ impl Access {
 
     /// Pins a host key for its Device ID, or refreshes its last connection
     /// (controller side).
-    pub fn pin_host(&self, device_id: &str, key: &str) -> Result<(), String> {
+    pub fn pin_host(&self, device_id: &str, key: &str, about: &About) -> Result<(), String> {
         let mut all = self.known_hosts();
         all.insert(
             device_id.to_owned(),
             KnownHost {
                 key: key.to_owned(),
                 last: unix_now(),
+                about: about.clone(),
             },
         );
         self.store(KNOWN_HOSTS_NAME, &all)
     }
 
     /// The hosts connected to most recently, newest first (controller side).
-    pub fn recent(&self) -> Vec<(String, u64)> {
-        let mut all: Vec<_> = self
-            .known_hosts()
-            .into_iter()
-            .map(|(id, h)| (id, h.last))
-            .collect();
-        all.sort_by_key(|h| std::cmp::Reverse(h.1));
+    pub fn recent(&self) -> Vec<(String, KnownHost)> {
+        let mut all: Vec<_> = self.known_hosts().into_iter().collect();
+        all.sort_by_key(|(_, h)| std::cmp::Reverse(h.last));
         all.truncate(MAX_RECENT);
         all
     }
@@ -423,20 +439,26 @@ mod tests {
     #[test]
     fn confirmations_grant_only_what_was_asked_and_flag_new_keys() {
         let a = access();
-        a.trust("key-A", "100000002", &[Permission::ViewScreen])
-            .unwrap();
+        a.trust(
+            "key-A",
+            "100000002",
+            &[Permission::ViewScreen],
+            &About::default(),
+        )
+        .unwrap();
         let (id, mut rx) = a
             .ask(
                 "key-B",
                 "100000002",
                 vec![Permission::ViewScreen, Permission::ControlInput],
+                &About::default(),
             )
             .unwrap();
         let open = a.pending();
         assert_eq!(open[0]["new_key"], true);
         assert_eq!(open[0]["known"], false);
         assert_eq!(
-            a.ask("key-B", "100000002", vec![]).err(),
+            a.ask("key-B", "100000002", vec![], &About::default()).err(),
             Some(Refusal::Busy)
         );
         a.decide(
@@ -465,7 +487,7 @@ mod tests {
     fn pinned_hosts_persist_and_can_be_forgotten() {
         let a = access();
         assert_eq!(a.known_host("100000002"), None);
-        a.pin_host("100000002", "key-H").unwrap();
+        a.pin_host("100000002", "key-H", &About::default()).unwrap();
         assert_eq!(a.known_host("100000002").as_deref(), Some("key-H"));
         a.forget_host("100000002").unwrap();
         assert_eq!(a.known_host("100000002"), None);

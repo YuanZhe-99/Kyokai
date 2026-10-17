@@ -20,6 +20,8 @@ Home shows **This device**: the Device ID, nine digits that others use to reach 
 the **Temporary password**, hidden until you choose Show. The temporary password changes every
 time Kyokai starts and whenever you choose **New password**; give it only to someone you want to let
 in. Settings, Access, can also set a permanent password, for devices you trust over time.
+Settings, Device identity, sets this computer's **Friendly name**, which others see beside the
+Device ID once they have logged in; left empty, it is the computer's name.
 
 ## Join a network
 

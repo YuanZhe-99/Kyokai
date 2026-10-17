@@ -3,6 +3,7 @@
 //! the handshake, the host user's confirmation, then a heartbeat until
 //! either side leaves. Generic over the stream, so tests run it in memory.
 
+use crate::about::About;
 use crate::access::{Access, CONFIRM_TIMEOUT, Permission, Refusal};
 use crate::auth::{self, Slot};
 use crate::identity::{self, Identity};
@@ -72,6 +73,9 @@ struct Challenge {
 struct Login {
     slot: Option<Slot>,
     finalization: Option<String>,
+    /// The controller's description, used only once the login holds.
+    #[serde(default)]
+    about: Option<About>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -85,6 +89,9 @@ struct Verdict {
     /// connection.
     #[serde(default)]
     resume: Option<String>,
+    /// With an acceptance: the host's description.
+    #[serde(default)]
+    about: Option<About>,
 }
 
 /// Messages of an established session.
@@ -319,6 +326,8 @@ struct Entry {
     granted: Vec<Permission>,
     peer_version: String,
     peer_source: String,
+    /// What the other device said about itself after the login.
+    peer: About,
     stop: Arc<Notify>,
     /// Controller side: media for the GUI, and the GUI's control messages.
     media: Arc<media::Queue>,
@@ -372,6 +381,7 @@ impl Sessions {
             granted: Vec::new(),
             peer_version: String::new(),
             peer_source: String::new(),
+            peer: About::default(),
             stop: stop.clone(),
             media: Arc::default(),
             control_tx,
@@ -473,6 +483,7 @@ impl Sessions {
                     "granted": e.granted,
                     "peer_version": e.peer_version,
                     "peer_source": e.peer_source,
+                    "peer": e.peer,
                 })
             })
             .collect()
@@ -489,6 +500,15 @@ pub struct Ctx {
     pub access: Arc<Access>,
     pub sessions: Arc<Sessions>,
     pub version: String,
+    /// This device's friendly name, maker and system.
+    pub about: Mutex<crate::about::Local>,
+}
+
+impl Ctx {
+    /// What this device tells a peer after the login.
+    pub fn about(&self) -> About {
+        self.about.lock().map(|l| l.about()).unwrap_or_default()
+    }
 }
 
 /// A Noise channel over a stream, after the handshake.
@@ -646,7 +666,8 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let login = host_login(&ctx, &mut ch, &client, &client_key, &context, from, id).await;
     drop(incoming);
     match login {
-        Ok(granted) => {
+        Ok((granted, peer)) => {
+            ctx.sessions.update(id, |e| e.peer = peer);
             let video = granted.contains(&Permission::ViewScreen);
             let input = granted.contains(&Permission::ControlInput);
             let clipboard = granted
@@ -675,7 +696,8 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 }
 
 /// The host's side of login and confirmation.
-/// Returns: the granted permissions, after telling the controller.
+/// Returns: the granted permissions and the controller's description,
+/// after telling the controller.
 async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     ctx: &Ctx,
     ch: &mut Channel<S>,
@@ -684,7 +706,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     context: &[u8],
     from: IpAddr,
     id: u64,
-) -> Result<Vec<Permission>, Failure> {
+) -> Result<(Vec<Permission>, About), Failure> {
     let key_b64 = STANDARD.encode(client_key);
     let pinned = ctx.access.trusted().contains_key(&key_b64);
     let refuse = |reason| Verdict {
@@ -692,6 +714,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         granted: Vec::new(),
         reason: Some(reason),
         resume: None,
+        about: None,
     };
     if let Err(reason) = ctx.access.admit(from, pinned) {
         let _ = ch.send(&refuse(reason)).await;
@@ -711,9 +734,17 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             granted: granted.clone(),
             reason: None,
             resume: Some(resume),
+            about: Some(ctx.about()),
         }))
         .await?;
-        return Ok(granted);
+        // A resumed controller sent no description: the last one stands.
+        let peer = ctx
+            .access
+            .trusted()
+            .remove(&key_b64)
+            .map(|t| t.about)
+            .unwrap_or_default();
+        return Ok((granted, peer));
     }
     let host_key = ctx.identity.public_key();
     let (responses, half) = ctx
@@ -735,8 +766,12 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         return Err(Failure::Refused(Refusal::Password));
     }
     ctx.sessions.update(id, |e| e.state = State::Confirming);
+    let peer = login.about.unwrap_or_default().clean();
     let device_id = identity::device_id(client_key);
-    let (ask_id, decision) = match ctx.access.ask(&key_b64, &device_id, client.want.clone()) {
+    let (ask_id, decision) = match ctx
+        .access
+        .ask(&key_b64, &device_id, client.want.clone(), &peer)
+    {
         Ok(v) => v,
         Err(reason) => {
             let _ = ch.send(&refuse(reason)).await;
@@ -756,16 +791,17 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             return Err(Failure::Refused(Refusal::Timeout));
         }
     };
-    let _ = ctx.access.trust(&key_b64, &device_id, &granted);
+    let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
     let resume = ctx.access.issue_resume(&key_b64, &granted);
     step(ch.send(&Verdict {
         accepted: true,
         granted: granted.clone(),
         reason: None,
         resume: Some(resume),
+        about: Some(ctx.about()),
     }))
     .await?;
-    Ok(granted)
+    Ok((granted, peer))
 }
 
 /// How a controller's attempt over one connection ended.
@@ -856,10 +892,12 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 Some((slot, fin)) => Login {
                     slot: Some(slot),
                     finalization: Some(fin),
+                    about: Some(ctx.about()),
                 },
                 None => Login {
                     slot: None,
                     finalization: None,
+                    about: None,
                 },
             };
             step(ch.send(&login)).await?;
@@ -872,7 +910,9 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         if !verdict.accepted {
             return Err(Failure::Refused(verdict.reason.unwrap_or(Refusal::Denied)));
         }
-        let _ = ctx.access.pin_host(&device_id, &host.device_key);
+        let peer = verdict.about.unwrap_or_default().clean();
+        let _ = ctx.access.pin_host(&device_id, &host.device_key, &peer);
+        ctx.sessions.update(id, |e| e.peer = peer);
         Ok((ch, verdict.granted, verdict.resume))
     }
     .await;
@@ -1537,7 +1577,65 @@ mod tests {
             access: Arc::new(Access::load(secrets).unwrap()),
             sessions: Arc::new(Sessions::default()),
             version: version.into(),
+            about: Mutex::new(crate::about::Local::load(&test_dir())),
         })
+    }
+
+    /// An empty state folder of its own for a test device.
+    fn test_dir() -> std::path::PathBuf {
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "kyokai-session-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn names_cross_only_after_the_login() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.about.lock().unwrap().set_name("Living room").unwrap();
+        controller.about.lock().unwrap().set_name("Laptop").unwrap();
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        // A wrong password learns nothing, and tells nothing.
+        let stranger = device("1.0.2");
+        stranger.about.lock().unwrap().set_name("Stranger").unwrap();
+        let id = attempt(&host, &stranger, &dialed, "wrong-one", None).await;
+        assert_eq!(session(&stranger, id)["peer"]["name"], "");
+        let hosts = host.sessions.list();
+        assert!(
+            hosts
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|e| e["peer"]["name"] == ""),
+            "the host kept a name from a failed login"
+        );
+        let view = vec![Permission::ViewScreen];
+        let id = attempt(&host, &controller, &dialed, "k7mq2xpa", Some(view)).await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        assert_eq!(session(&controller, id)["peer"]["name"], "Living room");
+        assert_eq!(controller.access.recent()[0].1.about.name, "Living room");
+        let trusted = host.access.trusted();
+        assert_eq!(trusted.values().next().unwrap().about.name, "Laptop");
+        let hosts = host.sessions.list();
+        assert!(
+            hosts
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["state"] == "connected" && e["peer"]["name"] == "Laptop")
+        );
     }
 
     fn state(ctx: &Ctx) -> Value {
@@ -2018,7 +2116,7 @@ mod tests {
         let dialed = host.identity.device_id();
         controller
             .access
-            .pin_host(&dialed, "c29tZW9uZSBlbHNl")
+            .pin_host(&dialed, "c29tZW9uZSBlbHNl", &About::default())
             .unwrap();
         let id = attempt(&host, &controller, &dialed, "x", None).await;
         assert_eq!(session(&controller, id)["failure"], "key-changed");

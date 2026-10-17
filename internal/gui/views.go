@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -226,6 +227,7 @@ func (a *App) identitySettings(c *ui.Context) {
 		settingRow(c, "id", L.HomeDeviceID(), "", func() {
 			ui.Text(c, groupDigits(st.DeviceID)).FontFeatures("tnum").Selectable()
 		})
+		a.nameSetting(c, st)
 		ui.Text(c, L.IdentityFingerprint())
 		ui.Text(c, groupHex(st.Fingerprint)).FontSize(sizeSmall).FontFeatures("tnum").Selectable()
 		ui.Text(c, L.IdentityFingerprintHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
@@ -354,4 +356,60 @@ func ApplyTheme(theme string) {
 	default:
 		mygo.Theme.SetSource(mygo.ThemeSystem)
 	}
+}
+
+// nameForm is the friendly-name field while it is edited.
+type nameForm struct {
+	text    string
+	editing bool
+}
+
+// nameSetting is the identity card's friendly-name row: the name other
+// devices see beside this Device ID once their login succeeded.
+func (a *App) nameSetting(c *ui.Context, st localapi.Status) {
+	a.mu.Lock()
+	f, busy := a.name, a.busy["name"]
+	a.mu.Unlock()
+	if !f.editing {
+		f.text = st.Name
+	}
+	// Empty follows the computer's name, which the field then suggests.
+	placeholder := ""
+	if st.Name == "" {
+		placeholder = st.About.Name
+	}
+	settingRow(c, "name", L.SettingsName(), L.SettingsNameHint(), func() {
+		if ui.TextInput(c.Key("name-in"), &f.text).Placeholder(placeholder).Width(220).Disabled(busy).Changed() {
+			a.mu.Lock()
+			a.name = nameForm{text: f.text, editing: true}
+			a.mu.Unlock()
+		}
+		if ui.Button(c.Key("name-save"), L.ActionSave()).Disabled(busy || !f.editing).Clicked() {
+			a.saveName(f.text)
+		}
+	})
+}
+
+// saveName stores the friendly name ("" follows the computer's name).
+// Side effects: asks the engine; the status push shows the new name.
+func (a *App) saveName(name string) {
+	a.mu.Lock()
+	a.busy["name"] = true
+	a.mu.Unlock()
+	go func() {
+		_, err := a.requestWith(localapi.Request{Type: localapi.RequestNameSet, Name: &name})
+		a.update(func() {
+			delete(a.busy, "name")
+			var refused *localapi.RequestError
+			switch {
+			case errors.As(err, &refused):
+				a.setToast(refused.Message, true)
+			case err != nil:
+				a.setToast(L.EngineDown(), true)
+			default:
+				a.name = nameForm{}
+				a.setToast(L.NameSaved(), false)
+			}
+		})
+	}()
 }

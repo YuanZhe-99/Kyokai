@@ -62,7 +62,7 @@ All of Phases 2–9 are finished and tested on Windows first, then macOS gets on
 
 | Spike | Done when | Fallback |
 |---|---|---|
-| S4 providers | Claude: done (live two-turn round trip, fixtures saved). OpenAI: offline tests pass, live run waits for a key | adapter fixes before Phase 4 |
+| S4 providers | Claude: done (live two-turn round trip, fixtures saved). OpenAI: offline tests pass; the live run is deferred until the user has a key (decided 2026-10-17) | adapter fixes before Phase 4 |
 | S5 macOS | self-signed signing through `mygo build` (hardened runtime, timestamp), dylib loads, privacy grant survives an update, engine child attributed to Kyokai, Windows update with the DLL loaded | timestamp shim, upstream MyGo option, or ad hoc |
 
 ### Phase 1 — Foundation (0.1.0)
@@ -77,7 +77,7 @@ the input-event mapping check of S2 with real keys.
 |---|---|---|
 | 2 Identity & networking | Done (2026-10-17): EasyTier in the engine, Network page, resolver, Noise + OPAQUE, host confirmation, trusted devices, permanent password, rate limits, hello with the source URL, sessions with heartbeat and close. Also done: identity backup / restore / reset, recent devices, session resume, decoder fuzz tests, a session to the remote x64 VM across networks. Left: the controller role in the GUI process and throughput (both with Phase 3's video channel); hole punching needs a non-symmetric NAT on one side (this machine and the VM are both symmetric, so traffic is relayed) | §26 Authentication, EasyTier Networking and Device Identity pass between this machine and the remote x64 VM through a standard server; throughput measured; the Mac pass later |
 | 3 Manual Computer Use | codec decision, capture, video channel, viewer, input with focused capture, DPI / multi-monitor, clipboard, macOS permission guidance | §26 Manual Computer Use on two machines |
-| 4 Host AI runtime | Done on Windows (2026-10-17): OpenAI and Claude adapters, HTTPS client, task runtime and state machine, screenshots and coordinates, executor over the input service, input lease with local-input pause, approval policy, task history, AI page, tray stop, Kyokai windows excluded from capture; a live Claude task on synthetic screens passed. Left: a task on a real desktop (the VM's interactive session), the OpenAI live run (needs a key), macOS (Mac pass) | §26 AI Computer Use and the host side of Authorization and Safety |
+| 4 Host AI runtime | Done on Windows (2026-10-17): OpenAI and Claude adapters, HTTPS client, task runtime and state machine, screenshots and coordinates, executor over the input service, input lease with local-input pause, approval policy, task history, AI page, tray stop, Kyokai windows excluded from capture; a live Claude task on synthetic screens passed. Done on the VM's real desktop (2026-10-17). Left: the OpenAI live run (deferred: no key yet), macOS (Mac pass) | §26 AI Computer Use and the host side of Authorization and Safety |
 | 5 AI workspace | Done in code (2026-10-17): the viewer's AI panel, tasks a controller starts and steers (protocol 2), progress pushed to the controller, pause / resume / cancel / reply, take-over by remote input, controller approvals, the host's banner with Stop, emergency stop (tray, Ctrl+Alt+Shift+Esc), no replay after a reconnect; session tests pass. Left: the run between this machine and the VM's interactive desktop | spec §27 steps 4–5 on two machines |
 | 6 Run modes & helper | helper install / uninstall / status, session agents, Follow GUI, Background service, store migration, verified self-update, self-disable when the app is removed | UAC and lock screen operable in Follow GUI; Background admits only unattended grants; uninstall leaves nothing |
 | 7 Security & reliability | Done so far (2026-10-17): threat model (security.md), provider-answer fuzzing, revocation (ends live sessions and resume tokens), lease cleanup (a controller's task pauses when its session ends), log audit, bounded queues, caps on incoming connections (16) and connected host sessions (4). Capture reopens the display after a mode change, the lock screen or a UAC prompt (not yet seen happen). Left: verifying that on the VM, sleep, privacy masking, helper and agents in the threat model (Phase 6) | §26 Authorization and Safety complete |
@@ -182,12 +182,42 @@ VideoToolbox (`AverageBitRate`, `ForceKeyFrame`, `RealTime`) provide these; an e
 a live bitrate change is recreated. Full-colour 4:4:4 stays a software VP9 / AV1 option, as in
 RustDesk. Done when each encoder follows the QoS on two machines.
 
-## Phase 6 breakdown (proposed 2026-10-17, to decide with the user)
+## Phase 6 breakdown (approved by the user 2026-10-17)
 
 The helper comes from Easytier-MyGo's `internal/helper` and `internal/bundlesig` (install,
 uninstall, status, protected copies, read-once verified self-update); the session agents from
 RustDesk's Windows service and portable service (SYSTEM token in the console session) and its
 macOS LaunchDaemon / LaunchAgent scripts.
+
+Implementation design (Windows now; macOS in the Mac pass, where the helper returns "not available
+yet" until then):
+
+- **Helper (6.1):** `internal/helper` from Easytier-MyGo. `kyokai-svc helper install` runs elevated
+  (the GUI starts it with a UAC prompt), copies `kyokai-svc.exe` and `kyokai_core.dll` into
+  `%ProgramFiles%\Kyokai\helper` (administrator-owned), creates `%ProgramData%\Kyokai\state`
+  (SYSTEM and Administrators only, Users may read the folder holding the socket), records the
+  operator SID and registers the automatic service `KyokaiHelper` running
+  `kyokai-svc run --host helper`. `uninstall` stops and deletes it and its files; `status` needs no
+  rights. The helper's socket admits the operator and members of a local `kyokai` group (when an
+  administrator created it); everyone else is refused. Its secrets use DPAPI as SYSTEM.
+- **Session agent (6.2):** the helper starts `kyokai-svc agent` in the active console session with a
+  copy of its SYSTEM token (`WTSGetActiveConsoleSessionId`, `DuplicateTokenEx`,
+  `SetTokenInformation(TokenSessionId)`, `CreateProcessAsUserW` on `winsta0\default`), restarts it on
+  session changes, and talks to it over a socket only SYSTEM may open. The agent follows the input
+  desktop (`OpenInputDesktop`/`SetThreadDesktop`, so the UAC secure desktop and the lock screen),
+  captures and encodes, injects input, reads the clipboard and the pointer, and answers the AI's
+  desktop calls; only encoded video, input events and screenshots for the AI cross. The core's host
+  side gets one desktop interface with two implementations: in-process (No privileges) and the
+  agent (helper modes).
+- **Run modes (6.3):** Settings, Run mode: No privileges / Follow GUI / Background service. The GUI
+  connects to the helper's socket in helper modes and to its child engine otherwise; Follow GUI
+  serves sessions only while a GUI is attached, Background always (unattended grants only before
+  login). Switching moves the secrets store with one operator-only call and deletes the source after
+  the destination confirms; only one engine holds an identity at a time.
+- **Updates and self-disable (6.4, 6.5):** release bundles carry `bundle.json` and `bundle.sig`
+  (`internal/bundlesig`, Ed25519, `release.pub`); the helper reads each file once, verifies and writes
+  those bytes; unsigned builds ask for administrator rights. The helper stops and removes its service
+  when `%LOCALAPPDATA%\Programs\Kyokai` no longer holds the app.
 
 | Step | Scope | Done when |
 |---|---|---|

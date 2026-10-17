@@ -6,6 +6,7 @@
 //! response `{"ok": true, "result": …}` or `{"ok": false, "error": "…"}` into a
 //! buffer the core allocates, which the caller hands back to `kyokai_free`.
 
+mod about;
 mod access;
 mod ai;
 mod auth;
@@ -383,6 +384,7 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
         access: Arc::new(access::Access::load(secrets.clone())?),
         sessions: Arc::default(),
         version: cfg.version.clone(),
+        about: std::sync::Mutex::new(about::Local::load(&cfg.state_dir)),
     });
     let network = net::Network::start(&secrets, ctx.clone())?;
     let mut core = Core {
@@ -472,6 +474,17 @@ fn call(input: &[u8]) -> Result<Value, String> {
             replace_identity(|s| backup::import(s, &document, &passphrase))
         }
         "identity.reset" => replace_identity(backup::reset),
+        "device.set_name" => {
+            let name = req.params["name"].as_str().ok_or("bad name")?.to_owned();
+            if name.chars().count() > about::MAX_NAME {
+                return Err(format!("a name has at most {} characters", about::MAX_NAME));
+            }
+            try_core(|c| {
+                let mut l = c.ctx.about.lock().map_err(|_| "core state poisoned")?;
+                l.set_name(&name)?;
+                Ok(json!({"name": l.chosen(), "about": l.about()}))
+            })
+        }
         "network.get" => with_core(|c| c.network.settings()),
         "network.set" => {
             let update: net::Update = serde_json::from_value(req.params)
@@ -519,6 +532,7 @@ fn call(input: &[u8]) -> Result<Value, String> {
                         "first": t.first,
                         "last": t.last,
                         "granted": t.granted,
+                        "about": t.about,
                     })
                 })
                 .collect::<Value>()
@@ -620,8 +634,10 @@ fn status() -> Value {
                 .access
                 .recent()
                 .into_iter()
-                .map(|(id, last)| json!({"device_id": id, "last": last}))
+                .map(|(id, h)| json!({"device_id": id, "last": h.last, "about": h.about}))
                 .collect::<Value>(),
+            "name": c.ctx.about.lock().map(|l| l.chosen().to_owned()).unwrap_or_default(),
+            "about": c.ctx.about(),
         })
     })
     .unwrap_or_else(|e| json!({"error": e}))

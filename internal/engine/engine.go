@@ -161,6 +161,11 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		}
 		h.changed()
 		return localapi.Response{OK: true, Network: &ns}
+	case localapi.RequestNameSet:
+		if req.Name == nil {
+			return localapi.Fail(localapi.CodeInvalid, "name missing")
+		}
+		return h.command("device.set_name", map[string]string{"name": *req.Name})
 	case localapi.RequestPermanentSet:
 		if req.Permanent == nil {
 			return localapi.Fail(localapi.CodeInvalid, "permanent password missing")
@@ -390,11 +395,12 @@ func (h *handler) status() (*localapi.Status, error) {
 	var sessions []localapi.SessionInfo
 	var recent []localapi.RecentDevice
 	var ai *localapi.AIActive
+	var about localapi.About
 	for _, part := range []struct {
 		name string
 		raw  json.RawMessage
 		dst  any
-	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}} {
+	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}, {"about", st.About, &about}} {
 		if err := json.Unmarshal(part.raw, part.dst); err != nil {
 			return nil, fmt.Errorf("%s status: %w", part.name, err)
 		}
@@ -404,6 +410,7 @@ func (h *handler) status() (*localapi.Status, error) {
 		StateDir: st.StateDir, RunMode: "user", Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
 		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
+		Name: st.Name, About: about,
 	}, nil
 }
 

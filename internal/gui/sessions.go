@@ -44,7 +44,10 @@ func (a *App) requestsView(c *ui.Context) {
 	for _, r := range reqs {
 		key := "req-" + itoa(r.ID)
 		card(c.Key(key)).Border(2, t.Accent).Children(func() {
-			ui.Text(c, L.RequestTitle(groupDigits(r.DeviceID))).FontSize(sizeHeading).Bold()
+			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
+				deviceAvatar(c, r.About)
+				ui.Text(c, L.RequestTitle(deviceTitle(r.About, r.DeviceID))).FontSize(sizeHeading).Bold()
+			})
 			switch {
 			case r.NewKey:
 				ui.Text(c, L.RequestNewKey()).FontSize(sizeSmall).TextColor(t.Warning)
@@ -136,16 +139,27 @@ func (a *App) connectCard(c *ui.Context) {
 			ui.Text(c, L.ConnectWithAI()).FontSize(sizeSmall)
 		})
 		if len(recent) > 0 {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
-				ui.Text(c, L.ConnectRecent()).FontSize(sizeSmall).TextColor(t.TextMuted)
-				for _, r := range recent {
-					if ui.Button(c.Key("recent-"+r.DeviceID), groupDigits(r.DeviceID)).Clicked() {
-						a.mu.Lock()
-						a.connect.deviceID = groupDigits(r.DeviceID)
-						a.mu.Unlock()
-					}
+			ui.Text(c, L.ConnectRecent()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			for _, r := range recent {
+				row := ui.ButtonBase(c.Key("recent-" + r.DeviceID)).FillWidth().Label(deviceTitle(r.About, r.DeviceID))
+				if row.Clicked() {
+					a.mu.Lock()
+					a.connect.deviceID = groupDigits(r.DeviceID)
+					a.mu.Unlock()
 				}
-			})
+				row.Children(func() {
+					ui.Row(c).FillWidth().Padding(6, 8).Gap(gap).AlignItems(ui.Center).Children(func() {
+						deviceAvatar(c, r.About)
+						ui.Column(c).Grow(1).Gap(2).Children(func() {
+							if r.About.Name != "" {
+								ui.Text(c, r.About.Name).Bold().Ellipsis("…").NoWrap()
+							}
+							ui.Text(c, groupDigits(r.DeviceID)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
+						})
+						ui.Text(c, time.Unix(r.Last, 0).Local().Format(time.DateTime)).FontSize(sizeSmall).TextColor(t.TextMuted)
+					})
+				})
+			}
 		}
 	})
 }
@@ -199,10 +213,11 @@ func (a *App) sessionsCard(c *ui.Context) {
 		ui.Text(c, L.SessionsTitle()).FontSize(sizeHeading).Bold()
 		for _, s := range list {
 			ui.Row(c.Key("sess-" + itoa(s.ID))).Gap(16).AlignItems(ui.Center).Children(func() {
+				deviceAvatar(c, s.Peer)
 				ui.Column(c).Grow(1).Gap(2).Children(func() {
-					title := L.SessionControlling(groupDigits(s.DeviceID))
+					title := L.SessionControlling(deviceTitle(s.Peer, s.DeviceID))
 					if s.Role == "host" {
-						title = L.SessionControlledBy(groupDigits(s.DeviceID))
+						title = L.SessionControlledBy(deviceTitle(s.Peer, s.DeviceID))
 					}
 					ui.Text(c, title)
 					detail, col := sessionState(s), t.TextMuted
@@ -351,7 +366,7 @@ func (a *App) accessSettings(c *ui.Context) {
 		}
 		for _, d := range f.trusted {
 			last := time.Unix(d.Last, 0).Local().Format(time.DateTime)
-			settingRow(c, "trust-"+d.Key, groupDigits(d.DeviceID), L.TrustedLast(last), func() {
+			settingRow(c, "trust-"+d.Key, deviceTitle(d.About, d.DeviceID), L.TrustedLast(last), func() {
 				if ui.Button(c.Key("trust-rm-"+d.Key), L.ActionRemove()).Disabled(busy).Clicked() {
 					a.untrust(d.Key)
 				}

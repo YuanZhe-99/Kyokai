@@ -56,8 +56,10 @@ type App struct {
 	// Sessions (sessions.go): the connect form, the permissions chosen per
 	// open host confirmation, the access card.
 	connect connectForm
-	grants  map[uint64][]string
-	access  accessForm
+	// name is the friendly-name field in Settings while it is edited.
+	name   nameForm
+	grants map[uint64][]string
+	access accessForm
 	// Identity backup passphrase (identity.go), write-only.
 	passphrase string
 	// Open viewer windows by session id (viewer.go).

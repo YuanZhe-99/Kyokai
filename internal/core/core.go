@@ -76,6 +76,9 @@ type Status struct {
 	Recent   json.RawMessage `json:"recent"`
 	// AI is the task in progress or null.
 	AI json.RawMessage `json:"ai"`
+	// Name is the chosen friendly name; About is decoded by the host.
+	Name  string          `json:"name"`
+	About json.RawMessage `json:"about"`
 }
 
 // Load opens the library at path (absolute) and checks its ABI version.

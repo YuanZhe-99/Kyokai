@@ -11,7 +11,8 @@ when `SCREENSHOT_DIR` is set.
   masked until Show, with Copy and New password; a note when secrets are not persisted. Below it,
   "Control another device" (Device ID, password, Connect; needs a network) and the sessions, newest
   first (to or from which device, state or why it failed, Disconnect; "Forget old identity" when a
-  host's key changed). Recent devices sit under the form as buttons that fill in the Device ID; a
+  host's key changed). Recent devices sit under the form as rows (avatar, friendly name, Device ID,
+last connection) that fill in the Device ID; a
   dropped session shows "reconnecting" while it resumes. A connected session that may view the
   screen has View, which opens the viewer: its own window with the picture scaled to fit on black,
   the host's pointer marked with a small ring, and a status line (Device ID, the display by number
@@ -44,6 +45,13 @@ when `SCREENSHOT_DIR` is set.
   settings form: servers (one URL per line), network name, and a write-only secret field (empty
   keeps the stored secret; a weak secret is flagged), Save and Leave network. Refused settings show
   the engine's reason.
+- **Device names:** wherever a device appears (a confirmation, Recent, the sessions, trusted
+  devices, the viewer's title) its friendly name goes beside the Device ID, never instead of it,
+  with a round avatar (`deviceAvatar`): the vendor's monochrome logo when the device's maker,
+  model, name or system (tried in that order; whole words only, so `hp` does not match `php-dev`)
+  names a known maker or system (`deviceLogoName`), else the name's first letter. Vendor logos are
+  trademarks of their owners, used only to identify a device's maker; their sources are listed in
+  `internal/gui/assets/logos/SOURCES.md` (see [packaging.md](packaging.md), "Vendor logos").
 - **Settings:** General (language, appearance, open at login — off by default, hide Kyokai from
   screen capture — on by default, applied to the main window and every viewer at once, close
   button),

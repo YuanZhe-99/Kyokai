@@ -138,7 +138,7 @@ func (a *App) openViewer(s localapi.SessionInfo) {
 		v.state = L.ViewerNoPicture()
 	}
 	v.win = mygo.NewWindow(mygo.WindowOptions{
-		Title: L.ViewerTitle(groupDigits(s.DeviceID)), Width: 1280, Height: 760, MinWidth: 480, MinHeight: 320,
+		Title: L.ViewerTitle(deviceTitle(s.Peer, s.DeviceID)), Width: 1280, Height: 760, MinWidth: 480, MinHeight: 320,
 		Content: ui.View(v.view),
 	})
 	a.mu.Lock()

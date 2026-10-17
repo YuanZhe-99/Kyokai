@@ -25,7 +25,7 @@ sessions with this host end and its resume tokens are dropped.
 
 ## Host confirmation
 
-After a correct password the host's user sees the controller's Device ID, whether its key is known,
+After a correct password the host's user sees the controller's friendly name and Device ID, whether its key is known,
 and the permissions it asks for, and allows (choosing permissions) or denies within 60 seconds.
 Silence denies. At most one confirmation is open per controller key and 4 in total; further
 attempts are answered `busy`.
@@ -38,6 +38,20 @@ attempts are answered `busy`.
 - **Controller side (known hosts):** the first accepted session pins the host's device key for its
   Device ID; later sessions with another key are refused until the user forgets the host. Each
   accepted session also records when, and the newest 8 are offered as recent devices.
+
+## Friendly names
+
+Each device has a friendly name, set in Settings (Device identity; at most 64 characters; empty
+uses the computer's name: `COMPUTERNAME` on Windows, the Sharing name on macOS) and kept in
+`device.json` in the state folder. With it a device describes its hardware maker and model (SMBIOS
+`SystemManufacturer` and `SystemProductName` on Windows; Apple and `hw.model` on macOS) and its
+system. The controller sends this description in its `login`, the host in an accepting `verdict`
+([protocol.md](protocol.md)), so nothing reaches a device before the password check and the EasyTier
+hostname stays `Kyokai-<Device ID>`. A received description is cleaned (control characters and
+bidirectional overrides removed, each field cut to 64 characters) and stored with the trusted device
+(host side) or the known host (controller side); a resumed session keeps the last one. It is a
+claim of the other device: the interface shows it beside the Device ID, never instead of it, and it
+authenticates nothing.
 
 ## Identity backup, restore and reset
 
