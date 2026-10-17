@@ -77,6 +77,20 @@ releases always pass. Kyokai's windows are left out of capture, so a check by fo
 clicks on windows the viewer and the model do see while Kyokai's unseen window was in front.
 Whatever a session holds is released when it ends. Malformed events are dropped without ending the session.
 
+### Session actions
+
+With `control-input` the viewer also offers RustDesk's session actions; each takes over from the
+host's AI task, like input:
+
+| Action | On the host |
+|---|---|
+| Lock screen | `LockWorkStation` in the user's session (the agent's, in the helper modes) |
+| Ctrl+Alt+Del | only in the helper modes: the helper, a SYSTEM service, calls `SendSAS`; the policy that lets services do that (`SoftwareSASGeneration`) is switched on for the call and put back as it was |
+| Block their keyboard and mouse | low-level hooks swallow the host's own keyboard and mouse while any session holds the block; Kyokai's injected input passes. The host user lifts it with Ctrl+Alt+Shift+Esc (which also stops an AI task) or Ctrl+Alt+Del, which no hook sees; it ends with the session |
+
+The host reports whether Ctrl+Alt+Del is available and whether the block holds; the viewer's
+switch shows that report, not the request.
+
 ## Clipboard
 
 While a session has `clipboard`, both engines look at their clipboard twice a second (on Windows
@@ -210,5 +224,5 @@ continues it until the engine stops.
 
 ## Not yet
 
-The remote cursor, other monitors, hardware encoders and the other codecs are Phase 3 steps that
-follow; AI tasks on macOS come with the Mac pass (PLAN.md).
+Keyboard modes, files on the clipboard, the libvpx and libaom codecs and full-colour 4:4:4 are
+Phase 3 steps that follow; AI tasks on macOS come with the Mac pass (PLAN.md).

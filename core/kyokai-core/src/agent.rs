@@ -303,6 +303,25 @@ impl Link {
         let _ = self.send("input.close", json!({"injector": id}));
     }
 
+    /// Locks the screen of the console session.
+    /// Returns: whether Windows locked it (false without an agent).
+    pub fn lock_screen(&self) -> bool {
+        self.call("lock", json!({})).unwrap_or(false)
+    }
+
+    /// Blocks or unblocks the host's own input for injector `id`.
+    /// Returns: whether it is blocked for it now (false without an agent).
+    pub fn block_input(&self, id: u64, on: bool) -> bool {
+        self.call("input.block", json!({"injector": id, "on": on}))
+            .unwrap_or(false)
+    }
+
+    /// Whether the host's input is still blocked for injector `id`.
+    pub fn input_blocked(&self, id: u64) -> bool {
+        self.call("input.blocked", json!({"injector": id}))
+            .unwrap_or(false)
+    }
+
     /// The pointer as fractions of `area` (the primary when None) and
     /// whether it is shown.
     pub fn pointer(&self, area: Option<Area>) -> Option<(f32, f32, bool)> {
@@ -507,6 +526,15 @@ impl Injector {
         false
     }
     fn release_all(&mut self) {}
+    fn block_input(&mut self, _: bool) -> bool {
+        false
+    }
+    fn input_blocked(&self) -> bool {
+        false
+    }
+    fn lock_screen(&self) -> bool {
+        false
+    }
 }
 
 impl Agent {
@@ -585,6 +613,18 @@ impl Agent {
                 }
                 return Ok(None);
             }
+            "input.block" => json!(
+                self.injectors
+                    .entry(injector)
+                    .or_default()
+                    .block_input(req["on"].as_bool().unwrap_or(false))
+            ),
+            "input.blocked" => json!(
+                self.injectors
+                    .get(&injector)
+                    .is_some_and(|i| i.input_blocked())
+            ),
+            "lock" => json!(Injector::default().lock_screen()),
             "pointer" => json!(match area {
                 Some(a) => crate::input::pointer_in(a),
                 None => crate::input::pointer(),
@@ -678,7 +718,7 @@ pub fn follow_input_desktop() {
 pub fn follow_input_desktop() {}
 
 #[cfg(windows)]
-pub use windows_impl::{run_agent, start_helper};
+pub use windows_impl::{run_agent, send_sas, start_helper};
 
 #[cfg(windows)]
 mod windows_impl {
@@ -723,6 +763,90 @@ mod windows_impl {
 
     /// How long a newly started agent has to connect.
     const CONNECT_WAIT: Duration = Duration::from_secs(15);
+
+    /// Where Windows keeps the policy that lets services send Ctrl+Alt+Del.
+    const SAS_POLICY_KEY: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System";
+    const SAS_POLICY: &str = "SoftwareSASGeneration";
+    /// The policy's bit for services.
+    const SAS_BY_SERVICES: u32 = 1;
+
+    /// Sends Ctrl+Alt+Del (the secure attention sequence) to the console
+    /// session, as RustDesk's service does with `SendSAS`.
+    /// Returns: whether it was sent.
+    /// Side effects: lets services send it for the moment of the call
+    /// (`SoftwareSASGeneration`), then puts the policy back as it was.
+    /// Notes: works only in a service running as SYSTEM: the helper.
+    pub fn send_sas() -> bool {
+        use windows::Win32::Foundation::FreeLibrary;
+        use windows::Win32::System::LibraryLoader::{
+            GetProcAddress, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW,
+        };
+        use windows::Win32::System::Registry::{
+            HKEY, HKEY_LOCAL_MACHINE, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_DWORD, RRF_RT_REG_DWORD,
+            RegCloseKey, RegDeleteValueW, RegGetValueW, RegOpenKeyExW, RegSetValueExW,
+        };
+        use windows::core::{s, w};
+        let key_name = HSTRING::from(SAS_POLICY_KEY);
+        let value = HSTRING::from(SAS_POLICY);
+        // SAFETY: the key and the library are closed and freed below; the
+        // function pointer has SendSAS's documented signature.
+        unsafe {
+            let mut before = 0u32;
+            let mut size = 4u32;
+            let had = RegGetValueW(
+                HKEY_LOCAL_MACHINE,
+                &key_name,
+                &value,
+                RRF_RT_REG_DWORD,
+                None,
+                Some(&mut before as *mut u32 as *mut _),
+                Some(&mut size),
+            )
+            .is_ok();
+            let mut key = HKEY::default();
+            if RegOpenKeyExW(
+                HKEY_LOCAL_MACHINE,
+                &key_name,
+                None,
+                KEY_QUERY_VALUE | KEY_SET_VALUE,
+                &mut key,
+            )
+            .is_err()
+            {
+                return false;
+            }
+            let set = |v: u32| RegSetValueExW(key, &value, None, REG_DWORD, Some(&v.to_le_bytes()));
+            let allowed = had && before & SAS_BY_SERVICES != 0;
+            if !allowed {
+                let _ = set(before | SAS_BY_SERVICES);
+            }
+            let sent = match LoadLibraryExW(w!("sas.dll"), None, LOAD_LIBRARY_SEARCH_SYSTEM32) {
+                Ok(lib) => {
+                    let sent = match GetProcAddress(lib, s!("SendSAS")) {
+                        Some(f) => {
+                            let send: unsafe extern "system" fn(i32) = std::mem::transmute(f);
+                            // FALSE: as a service, not as the user.
+                            send(0);
+                            true
+                        }
+                        None => false,
+                    };
+                    let _ = FreeLibrary(lib);
+                    sent
+                }
+                Err(_) => false,
+            };
+            if !allowed {
+                let _ = if had {
+                    set(before)
+                } else {
+                    RegDeleteValueW(key, &value)
+                };
+            }
+            let _ = RegCloseKey(key);
+            sent
+        }
+    }
 
     /// Sets the link and keeps an agent running in the console session,
     /// starting `exe agent …` there with this process's SYSTEM token and

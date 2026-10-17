@@ -231,12 +231,13 @@ pub fn pointer_in(_area: Area) -> Option<(f32, f32, bool)> {
 mod windows_impl {
     use super::*;
     use std::collections::BTreeSet;
-    use std::sync::OnceLock;
-    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
+    use std::sync::{Mutex, OnceLock};
     use windows::Win32::Foundation::{
         CloseHandle, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM,
     };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::System::Shutdown::LockWorkStation;
     use windows::Win32::System::Threading::{
         GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
         QueryFullProcessImageNameW,
@@ -249,10 +250,11 @@ mod windows_impl {
     use windows::Win32::UI::WindowsAndMessaging::{
         CURSOR_SHOWING, CURSORINFO, CallNextHookEx, GetCursorInfo, GetCursorPos,
         GetForegroundWindow, GetMessageW, GetSystemMetrics, GetWindowThreadProcessId,
-        KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW,
-        SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-        SM_YVIRTUALSCREEN, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL,
-        WM_KEYDOWN, WM_MOUSEMOVE, WM_QUIT, WM_SYSKEYDOWN, WindowFromPoint,
+        KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostQuitMessage,
+        PostThreadMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
+        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetWindowsHookExW, UnhookWindowsHookEx,
+        WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_MOUSEMOVE, WM_QUIT, WM_SYSKEYDOWN,
+        WindowFromPoint,
     };
     use windows::core::PWSTR;
 
@@ -281,6 +283,9 @@ mod windows_impl {
         /// The display pointer positions are fractions of; None for the
         /// primary.
         area: Option<Area>,
+        /// The block of the host's own input this session holds: its
+        /// generation (see `Block`).
+        block: Option<u64>,
     }
 
     impl Default for Injector {
@@ -291,11 +296,65 @@ mod windows_impl {
                 owner: (0, false, Instant::now() - OWNER_TTL),
                 remote: crate::agent::link().map(|l| l.injector()),
                 area: None,
+                block: None,
             }
         }
     }
 
     impl Injector {
+        /// Locks the host's screen (the session goes on; the lock screen
+        /// shows where the helper serves it).
+        /// Returns: whether Windows locked it.
+        pub fn lock_screen(&self) -> bool {
+            if let (Some(_), Some(link)) = (self.remote, crate::agent::link()) {
+                return link.lock_screen();
+            }
+            // SAFETY: no arguments; locks the calling session's workstation.
+            unsafe { LockWorkStation() }.is_ok()
+        }
+
+        /// Sends Ctrl+Alt+Del, which only a service can do: the helper.
+        /// Returns: whether it was sent.
+        pub fn ctrl_alt_del(&self) -> bool {
+            self.remote.is_some() && crate::agent::link().is_some() && crate::agent::send_sas()
+        }
+
+        /// Whether Ctrl+Alt+Del can be sent from here (the helper modes).
+        pub fn can_ctrl_alt_del(&self) -> bool {
+            self.remote.is_some()
+        }
+
+        /// Blocks or unblocks the host's own keyboard and mouse for this
+        /// session. Kyokai's injected input still passes; the emergency stop
+        /// (Ctrl+Alt+Shift+Esc) lifts the block for every session, and so
+        /// does Ctrl+Alt+Del, which Windows never lets a hook see.
+        /// Returns: whether the host's input is blocked for this session now.
+        pub fn block_input(&mut self, on: bool) -> bool {
+            if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
+                return link.block_input(id, on);
+            }
+            match (on, self.block) {
+                (true, None) => self.block = hold_block(),
+                (false, Some(generation)) => {
+                    release_block(generation);
+                    self.block = None;
+                }
+                _ => {}
+            }
+            self.input_blocked()
+        }
+
+        /// Whether the host's input is still blocked for this session (the
+        /// host user may have lifted it).
+        pub fn input_blocked(&self) -> bool {
+            if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
+                return link.input_blocked(id);
+            }
+            self.block.is_some_and(|g| {
+                BLOCKING.load(Ordering::Relaxed) && BLOCK_GEN.load(Ordering::Relaxed) == g
+            })
+        }
+
         /// Sets the display pointer positions refer to (None: the primary).
         pub fn set_area(&mut self, area: Option<Area>) {
             self.area = area;
@@ -555,9 +614,157 @@ mod windows_impl {
         fn drop(&mut self) {
             match (self.remote, crate::agent::link()) {
                 (Some(id), Some(link)) => link.drop_injector(id),
-                _ => self.release_all(),
+                _ => {
+                    self.release_all();
+                    if let Some(generation) = self.block.take() {
+                        release_block(generation);
+                    }
+                }
             }
         }
+    }
+
+    /// The hooks that block the host's own input while any session holds
+    /// the block.
+    struct Block {
+        /// The hook thread.
+        thread: u32,
+        holders: usize,
+        generation: u64,
+    }
+
+    static BLOCK: Mutex<Option<Block>> = Mutex::new(None);
+    /// The generation of the newest block; a block the host user lifted
+    /// is not held by anyone any more, even when a new one starts.
+    static BLOCK_GEN: AtomicU64 = AtomicU64::new(0);
+    /// Read by the hooks: whether to swallow the host's input.
+    static BLOCKING: AtomicBool = AtomicBool::new(false);
+    /// The modifiers the host's keyboard holds, seen by the block's hook
+    /// (which swallows them, so the key state does not show them).
+    static HELD: AtomicU8 = AtomicU8::new(0);
+    const HELD_CTRL: u8 = 1;
+    const HELD_ALT: u8 = 2;
+    const HELD_SHIFT: u8 = 4;
+
+    /// Takes a hold on the block, starting its hooks when it is the first.
+    /// Returns: the block's generation, or None when the hooks could not
+    /// be installed.
+    fn hold_block() -> Option<u64> {
+        let mut block = BLOCK.lock().expect("input block");
+        if block.is_some() && !BLOCKING.load(Ordering::Relaxed) {
+            // The host user lifted it; its thread is ending.
+            *block = None;
+        }
+        if let Some(b) = block.as_mut() {
+            b.holders += 1;
+            return Some(b.generation);
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            // The agent's hooks belong on the desktop that takes input.
+            crate::agent::follow_input_desktop();
+            // SAFETY: the hooks are installed and removed on this thread,
+            // which pumps messages for them until WM_QUIT.
+            unsafe {
+                let module = GetModuleHandleW(None).ok().map(|m| HINSTANCE(m.0));
+                let mouse = SetWindowsHookExW(WH_MOUSE_LL, Some(block_mouse_hook), module, 0);
+                let keys = SetWindowsHookExW(WH_KEYBOARD_LL, Some(block_key_hook), module, 0);
+                let (mouse, keys) = match (mouse, keys) {
+                    (Ok(m), Ok(k)) => (m, k),
+                    (m, k) => {
+                        for h in [m, k].into_iter().flatten() {
+                            let _ = UnhookWindowsHookEx(h);
+                        }
+                        let _ = tx.send(None);
+                        return;
+                    }
+                };
+                let _ = tx.send(Some(GetCurrentThreadId()));
+                let mut msg = MSG::default();
+                while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+                let _ = UnhookWindowsHookEx(mouse);
+                let _ = UnhookWindowsHookEx(keys);
+            }
+        });
+        let thread = rx.recv().ok().flatten()?;
+        let generation = BLOCK_GEN.fetch_add(1, Ordering::Relaxed) + 1;
+        HELD.store(0, Ordering::Relaxed);
+        BLOCKING.store(true, Ordering::Relaxed);
+        *block = Some(Block {
+            thread,
+            holders: 1,
+            generation,
+        });
+        Some(generation)
+    }
+
+    /// Gives up a hold on the block of `generation`; the last one removes
+    /// the hooks.
+    fn release_block(generation: u64) {
+        let mut block = BLOCK.lock().expect("input block");
+        let Some(b) = block.as_mut() else {
+            return;
+        };
+        if b.generation != generation {
+            return;
+        }
+        b.holders -= 1;
+        if b.holders == 0 || !BLOCKING.load(Ordering::Relaxed) {
+            BLOCKING.store(false, Ordering::Relaxed);
+            // SAFETY: posts WM_QUIT to the hook thread started above.
+            let _ = unsafe { PostThreadMessageW(b.thread, WM_QUIT, WPARAM(0), LPARAM(0)) };
+            *block = None;
+        }
+    }
+
+    /// Swallows the host's own mouse input while blocked.
+    unsafe extern "system" fn block_mouse_hook(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
+        if code >= 0 && BLOCKING.load(Ordering::Relaxed) {
+            // SAFETY: for HC_ACTION, `l` points to the event's MSLLHOOKSTRUCT.
+            let info = unsafe { &*(l.0 as *const MSLLHOOKSTRUCT) };
+            if info.flags & LLMHF_INJECTED == 0 || info.dwExtraInfo != INJECTED_TAG {
+                return LRESULT(1);
+            }
+        }
+        // SAFETY: passes the event on unchanged.
+        unsafe { CallNextHookEx(None, code, w, l) }
+    }
+
+    /// Swallows the host's own keys while blocked, except that the
+    /// emergency stop lifts the block (and stops the AI, as everywhere).
+    unsafe extern "system" fn block_key_hook(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
+        if code >= 0 && BLOCKING.load(Ordering::Relaxed) {
+            // SAFETY: for HC_ACTION, `l` points to the event's KBDLLHOOKSTRUCT.
+            let info = unsafe { &*(l.0 as *const KBDLLHOOKSTRUCT) };
+            if info.flags.0 & LLKHF_INJECTED.0 == 0 || info.dwExtraInfo != INJECTED_TAG {
+                let down = matches!(w.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
+                let bit = match VIRTUAL_KEY(info.vkCode as u16) {
+                    VK_LCONTROL | VK_RCONTROL | VK_CONTROL => HELD_CTRL,
+                    VK_LMENU | VK_RMENU | VK_MENU => HELD_ALT,
+                    VK_LSHIFT | VK_RSHIFT | VK_SHIFT => HELD_SHIFT,
+                    _ => 0,
+                };
+                if down {
+                    HELD.fetch_or(bit, Ordering::Relaxed);
+                } else {
+                    HELD.fetch_and(!bit, Ordering::Relaxed);
+                }
+                let all = HELD_CTRL | HELD_ALT | HELD_SHIFT;
+                if down
+                    && info.vkCode == VK_ESCAPE.0 as u32
+                    && HELD.load(Ordering::Relaxed) & all == all
+                {
+                    BLOCKING.store(false, Ordering::Relaxed);
+                    STOP.store(true, Ordering::Relaxed);
+                    // SAFETY: ends this hook thread's message loop.
+                    unsafe { PostQuitMessage(0) };
+                } else {
+                    return LRESULT(1);
+                }
+            }
+        }
+        // SAFETY: passes the event on unchanged.
+        unsafe { CallNextHookEx(None, code, w, l) }
     }
 
     /// The watch's clock: local input is stored as nanoseconds since it,

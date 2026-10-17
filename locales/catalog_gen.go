@@ -1642,6 +1642,16 @@ func (msgs Messages) LicensesHint() string {
 	return Catalog.Format(msgs.locale, "LicensesHint", nil)
 }
 
+// NameSaved says "Name saved."
+// in the language the app shows.
+func NameSaved() string { return In(i18n.Locale()).NameSaved() }
+
+// NameSaved says "Name saved."
+// in the language of msgs.
+func (msgs Messages) NameSaved() string {
+	return Catalog.Format(msgs.locale, "NameSaved", nil)
+}
+
 // NatCone says "Cone (easy to connect directly)"
 // in the language the app shows.
 func NatCone() string { return In(i18n.Locale()).NatCone() }
@@ -1690,16 +1700,6 @@ func NavAI() string { return In(i18n.Locale()).NavAI() }
 // in the language of msgs.
 func (msgs Messages) NavAI() string {
 	return Catalog.Format(msgs.locale, "NavAI", nil)
-}
-
-// NameSaved says "Name saved."
-// in the language the app shows.
-func NameSaved() string { return In(i18n.Locale()).NameSaved() }
-
-// NameSaved says "Name saved."
-// in the language of msgs.
-func (msgs Messages) NameSaved() string {
-	return Catalog.Format(msgs.locale, "NameSaved", nil)
 }
 
 // NavHome says "Home"
@@ -2806,6 +2806,16 @@ func (msgs Messages) TrustedNone() string {
 	return Catalog.Format(msgs.locale, "TrustedNone", nil)
 }
 
+// TrustedTitle says "Trusted devices"
+// in the language the app shows.
+func TrustedTitle() string { return In(i18n.Locale()).TrustedTitle() }
+
+// TrustedTitle says "Trusted devices"
+// in the language of msgs.
+func (msgs Messages) TrustedTitle() string {
+	return Catalog.Format(msgs.locale, "TrustedTitle", nil)
+}
+
 // TrustedUnattended says "Connect without asking"
 // in the language the app shows.
 func TrustedUnattended() string { return In(i18n.Locale()).TrustedUnattended() }
@@ -2850,16 +2860,6 @@ func (msgs Messages) TrustedUnattendedUntil(time_ string) string {
 	return Catalog.Format(msgs.locale, "TrustedUnattendedUntil", map[string]any{"time": time_})
 }
 
-// TrustedTitle says "Trusted devices"
-// in the language the app shows.
-func TrustedTitle() string { return In(i18n.Locale()).TrustedTitle() }
-
-// TrustedTitle says "Trusted devices"
-// in the language of msgs.
-func (msgs Messages) TrustedTitle() string {
-	return Catalog.Format(msgs.locale, "TrustedTitle", nil)
-}
-
 // ViewerAIHint says "The task runs on the other computer with its own AI provider. Your input in the picture pauses it."
 // in the language the app shows.
 func ViewerAIHint() string { return In(i18n.Locale()).ViewerAIHint() }
@@ -2890,6 +2890,26 @@ func (msgs Messages) ViewerAITitle() string {
 	return Catalog.Format(msgs.locale, "ViewerAITitle", nil)
 }
 
+// ViewerBlockInput says "Block their keyboard and mouse"
+// in the language the app shows.
+func ViewerBlockInput() string { return In(i18n.Locale()).ViewerBlockInput() }
+
+// ViewerBlockInput says "Block their keyboard and mouse"
+// in the language of msgs.
+func (msgs Messages) ViewerBlockInput() string {
+	return Catalog.Format(msgs.locale, "ViewerBlockInput", nil)
+}
+
+// ViewerCtrlAltDel says "Ctrl+Alt+Del"
+// in the language the app shows.
+func ViewerCtrlAltDel() string { return In(i18n.Locale()).ViewerCtrlAltDel() }
+
+// ViewerCtrlAltDel says "Ctrl+Alt+Del"
+// in the language of msgs.
+func (msgs Messages) ViewerCtrlAltDel() string {
+	return Catalog.Format(msgs.locale, "ViewerCtrlAltDel", nil)
+}
+
 // ViewerDisplay says "Display"
 // in the language the app shows.
 func ViewerDisplay() string { return In(i18n.Locale()).ViewerDisplay() }
@@ -2908,6 +2928,16 @@ func ViewerEnded() string { return In(i18n.Locale()).ViewerEnded() }
 // in the language of msgs.
 func (msgs Messages) ViewerEnded() string {
 	return Catalog.Format(msgs.locale, "ViewerEnded", nil)
+}
+
+// ViewerLock says "Lock screen"
+// in the language the app shows.
+func ViewerLock() string { return In(i18n.Locale()).ViewerLock() }
+
+// ViewerLock says "Lock screen"
+// in the language of msgs.
+func (msgs Messages) ViewerLock() string {
+	return Catalog.Format(msgs.locale, "ViewerLock", nil)
 }
 
 // ViewerNoDecoder says "The picture can't be shown: Kyokai's core library is missing."

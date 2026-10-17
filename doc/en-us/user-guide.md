@@ -51,7 +51,9 @@ other computer's user then sees your request and chooses what to allow:
 Once connected, **View** opens the other screen in its own window. The bar below the picture sets
 the quality (**Faster**, **Balanced**, **Sharper**) and a frame-rate cap. Click the picture to use
 the mouse and keyboard there; Kyokai's own windows on the other computer never receive your
-input. **Disconnect** ends the session; closing the window only stops the picture. A session that
+input. The bar above it can **Lock screen**, send **Ctrl+Alt+Del** (when the other computer runs
+Kyokai as a helper) and **Block their keyboard and mouse** while you work; its user can always
+lift the block with Ctrl+Alt+Shift+Esc or Ctrl+Alt+Del. **Disconnect** ends the session; closing the window only stops the picture. A session that
 drops reconnects by itself for a minute without asking again.
 
 ## Let someone control this device
@@ -103,7 +105,8 @@ them too, and sees a banner while your task works there, with **Stop** at hand.
 
 - Using the keyboard or mouse on a computer pauses its AI task at once; moving the mouse just after
   clicking Resume or Allow does not.
-- **Ctrl+Alt+Shift+Esc** stops a running AI task, as does **Stop AI task** in the tray menu.
+- **Ctrl+Alt+Shift+Esc** stops a running AI task, as does **Stop AI task** in the tray menu. It also
+  gives you your keyboard and mouse back when a controlling person blocked them.
 - A person at the controlling device who uses the mouse or keyboard in the viewer takes over: the
   AI task pauses first.
 - When the controlling device disconnects, its AI task pauses.

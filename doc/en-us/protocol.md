@@ -2,7 +2,7 @@
 
 A controller reaches a host's engine over the EasyTier data plane: TCP to the host's virtual IPv4
 address, port 47310 ([networking.md](networking.md)). EasyTier is an untrusted pipe, so the session
-is authenticated and encrypted end to end on top of it. The protocol version is 2 (2 added the AI and clipboard messages).
+is authenticated and encrypted end to end on top of it. The protocol version is 3 (2 added the AI and clipboard messages, 3 the session actions).
 
 ## Framing
 
@@ -78,7 +78,10 @@ sends `{"type": "video-start", codec, width, height}`; the controller may send `
 the quality with `{"type": "quality", preset, fps}`. With more than one display the host also sends `{"type": "displays", list, current}` (each
 display's place and size, the primary first) and the controller may ask for another with
 `{"type": "display", index}`. While it sends video the host also sends `{"type": "cursor", x, y, visible}`, its pointer as
-fractions of the picture, when it moves. With `clipboard`, either side sends
+fractions of the picture, when it moves. With `control-input` the host sends
+`{"type": "actions", ctrl_alt_del, blocked}` as the session starts and whenever the block changes,
+and the controller may send `{"type": "action", action}` with `lock`, `ctrl-alt-del`, `block` or
+`unblock` ([computer-use.md](computer-use.md)). With `clipboard`, either side sends
 `{"type": "clipboard", text}` for text copied on its side (at most 1 MiB) and
 `{"type": "clipboard-image", png}` for an image (base64 of an 8-bit RGBA PNG, at most 3 MiB and
 3840×2160). The host sends video only while the

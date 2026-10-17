@@ -38,6 +38,9 @@ pub mod packet {
     pub const CURSOR: u8 = 7;
     /// engine → GUI: the host's displays `{list, current}` JSON.
     pub const DISPLAYS: u8 = 8;
+    /// engine → GUI: the session actions the host offers
+    /// `{ctrl_alt_del, blocked}` JSON.
+    pub const ACTIONS: u8 = 9;
 }
 
 /// What a video stream carries, sent before its first frame.
@@ -174,8 +177,13 @@ impl Queue {
         if q.1 {
             return;
         }
-        if let Some(&kind @ (packet::STATS | packet::AI_TASK | packet::CURSOR | packet::DISPLAYS)) =
-            packet.first()
+        if let Some(
+            &kind @ (packet::STATS
+            | packet::AI_TASK
+            | packet::CURSOR
+            | packet::DISPLAYS
+            | packet::ACTIONS),
+        ) = packet.first()
         {
             q.0.retain(|p| p.first() != Some(&kind));
         }

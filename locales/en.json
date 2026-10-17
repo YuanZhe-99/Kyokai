@@ -333,12 +333,12 @@
     }
   },
   "LicensesHint": "Kyokai and the components it includes.",
+  "NameSaved": "Name saved.",
   "NatCone": "Cone (easy to connect directly)",
   "NatOpen": "Open internet",
   "NatSymmetric": "Symmetric (direct connections are hard)",
   "NatUnknown": "Not detected yet",
   "NavAI": "AI",
-  "NameSaved": "Name saved.",
   "NavHome": "Home",
   "NavNetwork": "Network",
   "NavSettings": "Settings",
@@ -501,6 +501,7 @@
     }
   },
   "TrustedNone": "None yet.",
+  "TrustedTitle": "Trusted devices",
   "TrustedUnattended": "Connect without asking",
   "TrustedUnattendedHint": "For 30 days this device gets in with the permanent password alone, so it can reach this computer when nobody is here.",
   "TrustedUnattendedNeedsPermanent": "Set a permanent password first.",
@@ -512,12 +513,14 @@
       }
     }
   },
-  "TrustedTitle": "Trusted devices",
   "ViewerAIHint": "The task runs on the other computer with its own AI provider. Your input in the picture pauses it.",
   "ViewerAIHostApproves": "The other computer's user approves this step.",
   "ViewerAITitle": "AI on this device",
+  "ViewerBlockInput": "Block their keyboard and mouse",
+  "ViewerCtrlAltDel": "Ctrl+Alt+Del",
   "ViewerDisplay": "Display",
   "ViewerEnded": "The session ended.",
+  "ViewerLock": "Lock screen",
   "ViewerNoDecoder": "The picture can't be shown: Kyokai's core library is missing.",
   "ViewerNoPicture": "This session does not show the screen.",
   "ViewerTitle": "{device} — Kyokai",

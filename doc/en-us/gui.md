@@ -17,7 +17,8 @@ last connection) that fill in the Device ID; a
   screen has View, which opens the viewer: its own window with the picture scaled to fit on black,
   the host's pointer marked with a small ring, and a status line (Device ID, the display by number
   when the host has several, quality preset, frame-rate cap, size, codec, frame rate, bitrate,
-  the host's measured delay); closing it stops the stream, not
+  the host's measured delay) — with `control-input`, a bar above it with Lock screen,
+  Ctrl+Alt+Del (helper modes) and the Block their keyboard and mouse switch; closing it stops the stream, not
   the session. With `control-input`, the mouse, the wheel and the keyboard on the picture go to the
   host ([computer-use.md](computer-use.md)). With `run-ai-task` the viewer has an AI panel at its
   side: an instruction and Start, then the host's task as the AI page shows it (state, the model's

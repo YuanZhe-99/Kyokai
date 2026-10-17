@@ -22,7 +22,7 @@ use tokio::sync::{Notify, mpsc};
 use crate::{media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
-pub const PROTOCOL: u32 = 2;
+pub const PROTOCOL: u32 = 3;
 const PATTERN: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
@@ -186,6 +186,29 @@ enum Message {
         y: f32,
         visible: bool,
     },
+    /// controller → host (`control-input`): lock the screen, send
+    /// Ctrl+Alt+Del, or block or unblock the host's own input.
+    Action {
+        action: SessionAction,
+    },
+    /// host → controller (`control-input`), as the session starts and when
+    /// the block changes: whether Ctrl+Alt+Del can be sent and whether the
+    /// host's input is blocked for this session.
+    Actions {
+        ctrl_alt_del: bool,
+        blocked: bool,
+    },
+}
+
+/// What a controller may do to the host's session (RustDesk's session
+/// actions).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum SessionAction {
+    Lock,
+    CtrlAltDel,
+    Block,
+    Unblock,
 }
 
 /// What a controller may do to its AI task.
@@ -1273,6 +1296,25 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut sent_this_second = 0usize;
     let mut heard = Instant::now();
     let mut plain = vec![0u8; MAX_FRAME];
+    // Whether the host's input is blocked for this session; checked every
+    // second, since the host user can lift it.
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut blocked = false;
+    let mut block_check = tokio::time::interval(Duration::from_secs(1));
+    #[cfg(windows)]
+    if let Some(inj) = &injector {
+        let ctrl_alt_del = inj.can_ctrl_alt_del();
+        seal_json(
+            &mut noise,
+            &mut buf,
+            &mut wr,
+            &Message::Actions {
+                ctrl_alt_del,
+                blocked,
+            },
+        )
+        .await?;
+    }
     let outcome: Result<(), Failure> = async { loop {
         tokio::select! {
             _ = stop.notified() => {
@@ -1329,6 +1371,16 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                 }
             }
+            _ = block_check.tick(), if blocked => {
+                #[cfg(windows)]
+                if let Some(inj) = &injector
+                    && !inj.input_blocked()
+                {
+                    blocked = false;
+                    let ctrl_alt_del = inj.can_ctrl_alt_del();
+                    seal_json(&mut noise, &mut buf, &mut wr, &Message::Actions { ctrl_alt_del, blocked }).await?;
+                }
+            }
             _ = ping.tick() => {
                 if heard.elapsed() > IDLE_LIMIT {
                     return Err(Failure::Broken);
@@ -1373,7 +1425,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 // Only messages a GUI may send pass on to the host.
-                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Quality { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. })) = serde_json::from_value::<Message>(msg) {
+                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. })) = serde_json::from_value::<Message>(msg) {
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
                 }
             }
@@ -1561,6 +1613,36 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     #[cfg(not(windows))]
                     Message::Input { .. } => {}
+                    // Session actions need control-input, like input; a
+                    // person acting takes over from the host's AI task.
+                    #[cfg(windows)]
+                    Message::Action { action } => {
+                        if let (Some(inj), Side::Host { ai, .. }) = (injector.as_mut(), &side) {
+                            ai.ai.take_over();
+                            match action {
+                                SessionAction::Lock => {
+                                    inj.lock_screen();
+                                }
+                                SessionAction::CtrlAltDel => {
+                                    inj.ctrl_alt_del();
+                                }
+                                SessionAction::Block | SessionAction::Unblock => {
+                                    blocked = inj.block_input(action == SessionAction::Block);
+                                    let ctrl_alt_del = inj.can_ctrl_alt_del();
+                                    seal_json(&mut noise, &mut buf, &mut wr, &Message::Actions { ctrl_alt_del, blocked }).await?;
+                                }
+                            }
+                        }
+                    }
+                    #[cfg(not(windows))]
+                    Message::Action { .. } => {}
+                    Message::Actions { ctrl_alt_del, blocked } => {
+                        if let Some(q) = &queue {
+                            let mut packet = vec![media::packet::ACTIONS];
+                            packet.extend(serde_json::to_vec(&json!({"ctrl_alt_del": ctrl_alt_del, "blocked": blocked})).map_err(|_| Failure::Broken)?);
+                            q.push(packet);
+                        }
+                    }
                 }
             }
         }
@@ -1747,6 +1829,58 @@ mod tests {
                 .iter()
                 .any(|e| e["state"] == "connected" && e["peer"]["name"] == "Laptop")
         );
+    }
+
+    /// A host offers its session actions only to a controller that may
+    /// control input; the user mode cannot send Ctrl+Alt+Del. (Locking and
+    /// blocking would act on this machine's desktop and are not run here.)
+    #[cfg(windows)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn session_actions_are_offered_with_control_input_only() {
+        for (granted, offered) in [
+            (vec![Permission::ViewScreen, Permission::ControlInput], true),
+            (vec![Permission::ViewScreen], false),
+        ] {
+            let host = device("1.0.0");
+            let controller = device("1.0.1");
+            host.access
+                .slots
+                .lock()
+                .unwrap()
+                .set_temporary("k7mq2xpa", &host.identity.public_key())
+                .unwrap();
+            let dialed = host.identity.device_id();
+            let id = attempt(&host, &controller, &dialed, "k7mq2xpa", Some(granted)).await;
+            let (queue, _) = controller.sessions.media(id).unwrap();
+            let until = Instant::now() + Duration::from_secs(3);
+            let mut actions = None;
+            while actions.is_none() && Instant::now() < until {
+                if let Ok(p) = queue.pop(Duration::from_millis(200))
+                    && p[0] == media::packet::ACTIONS
+                {
+                    actions = Some(serde_json::from_slice::<Value>(&p[1..]).unwrap());
+                }
+            }
+            match (offered, actions) {
+                (true, Some(a)) => assert_eq!(a, json!({"ctrl_alt_del": false, "blocked": false})),
+                (false, None) => {}
+                (_, a) => panic!("offered {offered}, got {a:?}"),
+            }
+            controller.sessions.close(id).unwrap();
+        }
+    }
+
+    #[test]
+    fn session_actions_have_wire_names() {
+        for (action, name) in [
+            (SessionAction::Lock, "lock"),
+            (SessionAction::CtrlAltDel, "ctrl-alt-del"),
+            (SessionAction::Block, "block"),
+            (SessionAction::Unblock, "unblock"),
+        ] {
+            let m = serde_json::to_value(Message::Action { action }).unwrap();
+            assert_eq!(m, json!({"type": "action", "action": name}));
+        }
     }
 
     fn state(ctx: &Ctx) -> Value {

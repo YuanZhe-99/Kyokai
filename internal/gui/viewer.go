@@ -31,7 +31,15 @@ const (
 	packetStats      byte = 4
 	packetCursor     byte = 7
 	packetDisplays   byte = 8
+	packetActions    byte = 9
 )
+
+// hostActions are the session actions the host offers (media ACTIONS),
+// sent only to a session that may control input.
+type hostActions struct {
+	CtrlAltDel bool `json:"ctrl_alt_del"`
+	Blocked    bool `json:"blocked"`
+}
 
 // hostStats is what the host's QoS measured and chose (media STATS).
 type hostStats struct {
@@ -118,6 +126,8 @@ type viewer struct {
 	pointer hostPointer
 	// The host's displays, to choose which one shows.
 	displays hostDisplays
+	// The host's session actions; nil until it offers them.
+	actions *hostActions
 	// The AI panel (viewerai.go).
 	ai viewerAI
 }
@@ -244,6 +254,15 @@ func (v *viewer) pump() {
 					v.mu.Unlock()
 				})
 			}
+		case packetActions:
+			var a hostActions
+			if json.Unmarshal(p[1:], &a) == nil {
+				v.win.Update(func() {
+					v.mu.Lock()
+					v.actions = &a
+					v.mu.Unlock()
+				})
+			}
 		case packetCursor:
 			var ptr hostPointer
 			if json.Unmarshal(p[1:], &ptr) == nil {
@@ -338,7 +357,7 @@ func (v *viewer) setState(s string) {
 func (v *viewer) view(c *ui.Context) {
 	v.mu.Lock()
 	bm, state, start, fps, kbps, host := v.bm, v.state, v.start, v.fps, v.kbps, v.host
-	preset, fpsCap, withAI, ptr, displays := v.preset, v.fpsCap, v.ai.run, v.pointer, v.displays
+	preset, fpsCap, withAI, ptr, displays, actions := v.preset, v.fpsCap, v.ai.run, v.pointer, v.displays, v.actions
 	v.mu.Unlock()
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
 		ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
@@ -347,6 +366,9 @@ func (v *viewer) view(c *ui.Context) {
 				v.aiPanel(c)
 			}
 		})
+		if actions != nil {
+			v.actionBar(c, *actions)
+		}
 		v.statusBar(c, start, fps, kbps, host, preset, fpsCap, displays)
 	})
 }
@@ -378,6 +400,32 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 				ui.Column(c.Key("pointer")).Absolute().Left(x-pointerR).Top(y-pointerR).
 					Width(2*pointerR).Height(2*pointerR).Radius(pointerR).
 					Background(ui.Hex("#ffffff").Alpha(0.85)).Border(2, ui.Hex("#000000")).PassThrough()
+			}
+		}
+	})
+}
+
+// actionBar offers the host's session actions: lock its screen, send
+// Ctrl+Alt+Del (helper modes only) and block its keyboard and mouse. The
+// switch shows what the host reports, not what was asked.
+func (v *viewer) actionBar(c *ui.Context, a hostActions) {
+	t := c.Theme()
+	action := func(name string) {
+		v.sendControl(map[string]any{"type": "action", "action": name})
+	}
+	ui.Row(c).FillWidth().Padding(6, 12).Gap(12).AlignItems(ui.Center).Background(t.Surface).Children(func() {
+		if ui.Button(c.Key("act-lock"), L.ViewerLock()).Clicked() {
+			action("lock")
+		}
+		if a.CtrlAltDel && ui.Button(c.Key("act-cad"), L.ViewerCtrlAltDel()).Clicked() {
+			action("ctrl-alt-del")
+		}
+		blocked := a.Blocked
+		if ui.Switch(c.Key("act-block"), &blocked).Label(L.ViewerBlockInput()).Changed() {
+			if blocked {
+				action("block")
+			} else {
+				action("unblock")
 			}
 		}
 	})
