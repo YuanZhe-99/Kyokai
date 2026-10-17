@@ -70,7 +70,10 @@ the core writes no log; a provider's error carries its status and message, never
 ## Local API
 
 Only the engine's own user is served (peer credentials, never the request body); see
-[architecture.md](architecture.md).
+[architecture.md](architecture.md). The privileged helper's socket can be opened by every local
+user, and the helper serves only SYSTEM, its operator and the `kyokai` group, judged by the
+caller's token (its user and its enabled groups); an administrator outside them is refused too
+([run-modes.md](run-modes.md)).
 
 ## Threat model
 
@@ -84,6 +87,7 @@ Only the engine's own user is served (peer credentials, never the request body);
 | Old messages | replaying input, commands or logins | Noise nonces; resume tokens single-use, bound to the controller's key and valid 2 minutes; commands never re-sent after a reconnect; idempotent task start |
 | A revoked device | coming back | revoking ends its live sessions and drops its resume tokens; its task pauses when its session ends |
 | The local API | another local user driving the engine | peer credentials, the engine's own user only |
+| The helper | a local user driving the SYSTEM service, or swapping what it runs | peer credentials, the operator and the `kyokai` group only; its files are administrator-owned copies; the state folder is SYSTEM and Administrators only |
 
 Out of scope: malware running as the same user (it can drive the desktop anyway), someone at the
 unlocked desktop, and a compromised provider.

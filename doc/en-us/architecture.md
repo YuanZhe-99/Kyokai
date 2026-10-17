@@ -19,10 +19,11 @@ lock), socket and state directory.
 | Mode | Requirement | Engine | Status |
 |---|---|---|---|
 | No privileges | none | user-level child of the GUI | implemented |
-| Follow GUI | privileged helper installed once | in the helper while the GUI runs | not implemented |
+| Follow GUI | privileged helper installed once | in the helper while the GUI runs | the helper's install, service and authorization (Windows); the mode itself not yet |
 | Background service | the same helper | from boot | not implemented |
 
-Administrator rights are never requested when the GUI starts.
+Administrator rights are never requested when the GUI starts. The helper and the modes are
+described in [run-modes.md](run-modes.md).
 
 ## Packages and crates
 

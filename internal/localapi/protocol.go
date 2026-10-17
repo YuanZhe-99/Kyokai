@@ -368,7 +368,7 @@ type Status struct {
 	DeviceID    string `json:"device_id"`
 	Fingerprint string `json:"fingerprint"`
 	StateDir    string `json:"state_dir"`
-	// RunMode is "user" (No privileges).
+	// RunMode is "user" (No privileges) or "helper" (the privileged helper).
 	RunMode string `json:"run_mode"`
 	// Persistence is "os-store", "memory-only" or "unreadable".
 	Persistence string `json:"persistence"`

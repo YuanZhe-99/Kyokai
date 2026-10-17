@@ -60,13 +60,8 @@ type ListenOptions struct {
 	Authorizer Authorizer
 }
 
-// Listen creates the daemon socket, replacing a stale one but refusing to
-// take over from a live daemon.
-func Listen(path string) (net.Listener, error) {
-	return ListenWith(ListenOptions{Path: path, Mode: 0o600})
-}
-
-// ListenWith creates the daemon socket with explicit ownership and mode.
+// ListenWith creates the daemon socket with explicit ownership and mode,
+// replacing a stale one but refusing to take over from a live daemon.
 // A zero Mode means 0600 (the per-user default).
 // Notes: a path longer than the kernel's limit is refused with a readable
 // error instead of bind's EINVAL.
@@ -126,19 +121,14 @@ func ListenWith(o ListenOptions) (net.Listener, error) {
 	return ln, nil
 }
 
-// Serve accepts connections until ctx is cancelled, answering each
+// ServeWith accepts connections until ctx is cancelled, answering each
 // request on its own line. Access is decided once per connection from the
 // kernel-reported peer identity (see Authorizer); connections whose
 // identity cannot be read, or that belong to another user, are closed
 // without a reply.
 //
-// Serve is for the per-user socket of the No privileges engine: its owner
-// is this process's user.
-func Serve(ctx context.Context, ln net.Listener, h Handler) error {
-	return ServeWith(ctx, ln, h, Authorizer{OwnerUID: uint32(os.Getuid()), OwnerSID: CurrentSID()})
-}
-
-// ServeWith is Serve with an explicit authorizer.
+// authz decides who is served: the per-user engine's own user, or the
+// helper's operator and group.
 func ServeWith(ctx context.Context, ln net.Listener, h Handler, authz Authorizer) error {
 	go func() {
 		<-ctx.Done()

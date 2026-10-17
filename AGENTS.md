@@ -32,6 +32,7 @@ about to change, verify against the code, then fix the docs in the same commit.
 | The embedded EasyTier node: settings, status, trust, build | `doc/en-us/networking.md` |
 | The session wire protocol: framing, handshake, login, messages | `doc/en-us/protocol.md` |
 | Passwords, permissions, confirmation, pinned keys, rate limits | `doc/en-us/identity-and-access.md` |
+| Run modes, the privileged helper and its authorization | `doc/en-us/run-modes.md` |
 | Seeing and operating a host: video, input, AI | `doc/en-us/computer-use.md` |
 | How people use Kyokai, step by step | `doc/en-us/user-guide.md` |
 | Interface structure, wording, tray, languages | `doc/en-us/gui.md` |

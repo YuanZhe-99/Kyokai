@@ -38,7 +38,8 @@ func peerCredentials(conn net.Conn) (Peer, error) {
 	return processIdentity(pid)
 }
 
-// processIdentity reads a process's user SID and Administrators membership.
+// processIdentity reads a process's user SID, Administrators membership and
+// enabled groups.
 func processIdentity(pid uint32) (Peer, error) {
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
@@ -59,7 +60,15 @@ func processIdentity(pid uint32) (Peer, error) {
 		return Peer{}, err
 	}
 	isAdmin, _ := tok.IsMember(admins)
-	return Peer{PID: pid, SID: user.User.Sid.String(), Admin: isAdmin, Known: true}, nil
+	var groups []string
+	if g, err := tok.GetTokenGroups(); err == nil {
+		for _, x := range g.AllGroups() {
+			if x.Attributes&windows.SE_GROUP_ENABLED != 0 {
+				groups = append(groups, x.Sid.String())
+			}
+		}
+	}
+	return Peer{PID: pid, SID: user.User.Sid.String(), Admin: isAdmin, GroupSIDs: groups, Known: true}, nil
 }
 
 // CurrentSID is this process's user SID (the owner of a user daemon).

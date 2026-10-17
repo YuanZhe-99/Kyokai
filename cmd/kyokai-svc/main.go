@@ -2,6 +2,8 @@
 //
 //	kyokai-svc run --host user [--socket P] [--state-dir D] [--core LIB]
 //	               [--parent-pid N | --lifeline-fd N]
+//	kyokai-svc run --host helper      (the KyokaiHelper service; doc/en-us/run-modes.md)
+//	kyokai-svc helper install [--from DIR] [--operator-sid SID] | uninstall [--purge] | status
 //	kyokai-svc ctl status | password | regenerate | shutdown | network | trusted [--socket P]
 //	kyokai-svc ctl network-set --server URL [--server URL…] --name N
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
@@ -62,6 +64,8 @@ func main() {
 		err = run(os.Args[2:])
 	case "ctl":
 		err = ctl(os.Args[2:])
+	case "helper":
+		err = helperCmd(os.Args[2:])
 	case "version":
 		fmt.Println(version.Version)
 	default:
@@ -74,7 +78,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: kyokai-svc run --host user [flags] | ctl <command> [flags] (see the package doc) | version")
+	fmt.Fprintln(os.Stderr, "usage: kyokai-svc run --host user|helper [flags] | ctl <command> [flags] | helper install|uninstall|status (see the package doc) | version")
 	os.Exit(2)
 }
 
@@ -83,17 +87,32 @@ func usage() {
 func run(args []string) error {
 	profile := os.Getenv("KYOKAI_PROFILE")
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
-	host := fs.String("host", "user", `host kind: "user" (No privileges)`)
+	host := fs.String("host", "user", `host kind: "user" (No privileges) or "helper" (the privileged helper)`)
 	socket := fs.String("socket", localapi.UserSocketPath(profile), "local API socket path")
 	stateDir := fs.String("state-dir", "", "state directory (default: the per-user Kyokai folder)")
 	lib := fs.String("core", "", "core library (default: next to this executable)")
 	parent := fs.Int("parent-pid", 0, "stop when this process exits")
 	lifeline := fs.Int("lifeline-fd", -1, "file descriptor whose EOF stops the engine")
 	fs.Parse(args)
-	if *host != "user" {
-		return fmt.Errorf("host %q is not available yet", *host)
+	if *host != "user" && *host != "helper" {
+		return fmt.Errorf("unknown host %q", *host)
 	}
 	opts := engine.Options{Version: version.Version, Socket: *socket, StateDir: *stateDir, Profile: profile, CoreLib: *lib, ParentPID: *parent}
+	if *host == "helper" {
+		// The helper runs its own installed copies, with its own state.
+		exe, err := os.Executable()
+		if err != nil {
+			return err
+		}
+		opts.CoreLib, opts.ParentPID, opts.Profile = filepath.Join(filepath.Dir(exe), core.LibraryName()), 0, ""
+		run := func(ctx context.Context) error { return runHelper(ctx, opts) }
+		if handled, err := asService(run); handled || err != nil {
+			return err
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return run(ctx)
+	}
 	if opts.StateDir == "" {
 		dir, err := engine.DefaultStateDir(profile)
 		if err != nil {

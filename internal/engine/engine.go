@@ -46,6 +46,10 @@ type Options struct {
 	Lifeline *os.File
 	// Logf receives diagnostics; nil discards them. Never a secret.
 	Logf func(format string, args ...any)
+	// Helper, when set, runs the engine as the privileged helper: its
+	// socket is open to every local user and this authorizer decides who
+	// is served (the operator and the kyokai group).
+	Helper *localapi.Authorizer
 }
 
 // DefaultStateDir is %APPDATA%\Kyokai on Windows and
@@ -74,7 +78,13 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	// The socket first: a second engine stops here without touching the
 	// identity.
-	ln, err := localapi.Listen(opts.Socket)
+	authz := localapi.Authorizer{OwnerUID: uint32(os.Getuid()), OwnerSID: localapi.CurrentSID()}
+	listen := localapi.ListenOptions{Path: opts.Socket, Mode: 0o600}
+	runMode := "user"
+	if opts.Helper != nil {
+		authz, listen.Mode, runMode = *opts.Helper, 0o666, "helper"
+	}
+	ln, err := localapi.ListenWith(listen)
 	if err != nil {
 		return err
 	}
@@ -111,8 +121,8 @@ func Run(ctx context.Context, opts Options) error {
 		}()
 	}
 
-	h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}}
-	return localapi.Serve(ctx, ln, h)
+	h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}, runMode: runMode}
+	return localapi.ServeWith(ctx, ln, h, authz)
 }
 
 // handler answers the local API from the core.
@@ -120,6 +130,8 @@ type handler struct {
 	lib     *core.Lib
 	stop    context.CancelFunc
 	started time.Time
+	// runMode is "user" or "helper", for the status.
+	runMode string
 
 	mu       sync.Mutex
 	sessions map[chan struct{}]bool // each is poked when the status changes
@@ -407,7 +419,7 @@ func (h *handler) status() (*localapi.Status, error) {
 	}
 	return &localapi.Status{
 		Version: st.Version, ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
-		StateDir: st.StateDir, RunMode: "user", Persistence: st.Persistence,
+		StateDir: st.StateDir, RunMode: h.runMode, Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
 		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
 		Name: st.Name, About: about,
