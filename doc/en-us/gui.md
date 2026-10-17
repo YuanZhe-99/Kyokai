@@ -24,8 +24,8 @@ last connection) that fill in the Device ID; a
   side: an instruction and Start, then the host's task as the AI page shows it (state, the model's
   text, its latest actions, Pause or Resume and Stop, a reply when it is done); its approvals have
   Allow and Deny with `approve-ai-action`, otherwise a note that the host's user approves. Such a
-  session has View even without `view-screen`. Connecting asks for viewing, input and the
-  clipboard by default. The connect form's switch "Also ask to run AI
+  session has View even without `view-screen`. Connecting asks for viewing, input, the
+  clipboard and files by default. The connect form's switch "Also ask to run AI
   tasks there" asks for `run-ai-task` and `approve-ai-action` as well.
 - **Confirmations:** a controller waiting for this host's user shows at the top of every page with
   its Device ID, whether it is known or a new key claiming a known ID, and a switch per requested

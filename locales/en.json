@@ -374,6 +374,7 @@
   "PermApproveAIAction": "Approve AI actions",
   "PermClipboard": "Share the clipboard",
   "PermControlInput": "Use the mouse and keyboard",
+  "PermFiles": "Copy files",
   "PermRunAITask": "Run AI tasks",
   "PermViewScreen": "See the screen",
   "PermanentNotSet": "Not set. Other devices can connect only with the temporary password on the Home page.",

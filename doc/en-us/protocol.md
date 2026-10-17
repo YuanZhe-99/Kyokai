@@ -2,7 +2,7 @@
 
 A controller reaches a host's engine over the EasyTier data plane: TCP to the host's virtual IPv4
 address, port 47310 ([networking.md](networking.md)). EasyTier is an untrusted pipe, so the session
-is authenticated and encrypted end to end on top of it. The protocol version is 3 (2 added the AI and clipboard messages, 3 the session actions).
+is authenticated and encrypted end to end on top of it. The protocol version is 4 (2 added the AI and clipboard messages, 3 the session actions, 4 files on the clipboard).
 
 ## Framing
 
@@ -84,7 +84,13 @@ or privacy mode changes, and the controller may send `{"type": "action", action}
 `ctrl-alt-del`, `block`, `unblock`, `privacy-on` or `privacy-off` ([computer-use.md](computer-use.md)). With `clipboard`, either side sends
 `{"type": "clipboard", text}` for text copied on its side (at most 1 MiB) and
 `{"type": "clipboard-image", png}` for an image (base64 of an 8-bit RGBA PNG, at most 3 MiB and
-3840×2160). The host sends video only while the
+3840×2160). With `files`, either side offers files it copied with `{"type": "clipboard-files", id,
+files}`, each file `{path, size, dir}` (a relative path with `/` between names; at most 1000
+entries and 1 GiB); the other side accepts with `{"type": "files-get", id}` and may later ask the
+sender to stop with `{"type": "files-stop", id}`, and the sender gives up an accepted offer with
+`{"type": "files-cancel", id}` ([computer-use.md](computer-use.md), "Files"). The contents follow
+as plaintexts that start with byte `0x03` and the offer's id (u64, big-endian), then bytes: every
+file of the offer in its order, each exactly its `size`; a newer offer replaces an older one. The host sends video only while the
 controller may view the screen: its screen as H.264, or the 320×180 raw RGBA test pattern (codec
 `raw-rgba`) on a host that cannot capture.
 

@@ -201,6 +201,7 @@
   "PermApproveAIAction": "AI の操作を承認する",
   "PermClipboard": "クリップボードを共有する",
   "PermControlInput": "マウスとキーボードを使う",
+  "PermFiles": "ファイルをコピーする",
   "PermRunAITask": "AI タスクを実行する",
   "PermViewScreen": "画面を見る",
   "PermanentNotSet": "未設定です。ほかのデバイスはホームに表示される一時パスワードでのみ接続できます。",

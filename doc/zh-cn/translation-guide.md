@@ -58,6 +58,9 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | host confirmation | 被控端确认 |
 | pinned key | 固定的密钥 |
 | rate limit | 速率限制 |
+| Copy files (the `files` permission) | 复制文件 |
+| temporary folder | 临时文件夹 |
+| impersonate (a user) | 模拟（用户身份） |
 | local API | 本地 API |
 | lifeline | 生命线 |
 | state directory | 状态目录 |

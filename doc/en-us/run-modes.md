@@ -65,9 +65,11 @@ waiting read would block every write), each with a random name, created as the f
 with a SYSTEM-only DACL; the helper checks that the client is the agent process it started, and
 the agent that the server is the helper named on its command line. Messages are a u32 length, a
 kind (JSON request or reply, a video frame, a screenshot) and the body. Only encoded video, input
-events, clipboard text, clipboard images this computer copied (as PNG, encoded by the agent) and
-the AI's screenshots cross. Both processes are privileged and never decode remote media, so in the
-helper modes clipboard images from a controller are not taken. Without an agent, video falls back
+events, clipboard text, clipboard images this computer copied (as PNG, encoded by the agent), the
+paths of copied files and the AI's screenshots cross. Both processes are privileged and never decode remote media, so in the
+helper modes clipboard images from a controller are not taken. Files on the clipboard are read
+and written by the helper while it impersonates the console's signed-in user
+([computer-use.md](computer-use.md), "Files"). Without an agent, video falls back
 to the test pattern, input is refused, and an AI task reads it as the host user taking over.
 
 ## Updates

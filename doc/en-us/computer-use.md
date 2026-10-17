@@ -108,8 +108,35 @@ began to the other side, which puts it on its own clipboard; what arrived this w
 back. What was on a clipboard before the session is not offered,
 nor is text that Kyokai itself copied (the Device ID, a password: on Windows the clipboard's owner
 is a Kyokai process). Text up to 1 MiB, or an image up to 3840×2160 sent as PNG (at most 3 MiB; text wins when both are
-there); files come later. In the helper modes images from a controller are not taken, because the
+there; files are under Files). In the helper modes images from a controller are not taken, because the
 helper and its agent are privileged and never decode remote media ([run-modes.md](run-modes.md)).
+
+### Files
+
+With the separate `files` permission, files and folders copied on one side (on Windows, Explorer's
+file list, `CF_HDROP`) can be pasted on the other; `clipboard` alone carries no files, and `files`
+alone carries no text. The copying side lists what was copied — folders walked, links and
+junctions skipped — and offers each entry's path and size: at most 1000 entries and 1 GiB in all,
+anything larger is not offered. The other side checks every path and the limits again and accepts
+at once; it refuses paths that are empty, absolute, contain `.` or `..`, a character Windows does
+not allow in a name (`< > : " / \ | ? *`, control characters), end in a dot or a space, name a
+device (`CON`, `NUL`, `COM1`, `LPT1` and the like) or appear twice. The copying side then streams
+the contents in pieces of up to 64 KiB, one file after another, reading as the connection takes
+them, so a file is never held in memory whole. The receiving side writes them into a folder of
+its own for the session (`Kyokai\<random>` in the temporary folder) and, once everything arrived,
+puts those files on its clipboard, so they paste anywhere. A new copy replaces a transfer in
+progress, and a file whose size changed while it was sent ends its transfer. The folder is
+deleted when the session ends; files pasted before stay where they were pasted.
+
+The contents cross as soon as the offer is accepted, not at the moment of pasting: Windows asks
+the program that copied for delayed data while the pasting program waits, so a large transfer
+would freeze it.
+
+In the helper modes the agent reads and writes the clipboard (only the list of paths crosses
+the pipe), and the helper reads and writes the files while impersonating the user signed in at
+the console, so they are read with that user's rights and land in that user's temporary folder;
+with nobody signed in, no files are shared. The helper only moves the bytes and never interprets
+them.
 
 ## AI tasks
 
@@ -233,5 +260,5 @@ continues it until the engine stops.
 
 ## Not yet
 
-Keyboard modes, files on the clipboard, the libvpx and libaom codecs and full-colour 4:4:4 are
+Keyboard modes, the libvpx and libaom codecs and full-colour 4:4:4 are
 Phase 3 steps that follow; AI tasks on macOS come with the Mac pass (PLAN.md).

@@ -166,7 +166,7 @@ func (a *App) connectCard(c *ui.Context) {
 
 // connectWant is what a connection asks the host for.
 func connectWant(ai bool) []string {
-	want := []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard}
+	want := []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard, localapi.PermFiles}
 	if ai {
 		want = append(want, localapi.PermRunAITask, localapi.PermApproveAIAction)
 	}
@@ -321,6 +321,8 @@ func permissionLabel(p string) string {
 		return L.PermApproveAIAction()
 	case localapi.PermClipboard:
 		return L.PermClipboard()
+	case localapi.PermFiles:
+		return L.PermFiles()
 	}
 	return p
 }

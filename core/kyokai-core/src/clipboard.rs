@@ -1,10 +1,12 @@
 //! Clipboard sharing in a session (doc/en-us/computer-use.md,
 //! "Clipboard"): while a session may share the clipboard, text or an image
-//! copied on either side is offered to the other. What Kyokai itself put
-//! there (the Device ID, a password) is never offered.
+//! copied on either side is offered to the other, and with `files` copied
+//! files (crate::files moves them). What Kyokai itself put there (the
+//! Device ID, a password) is never offered.
 
 use base64::Engine;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -35,6 +37,8 @@ pub enum Item {
     /// An image as base64 PNG, as the session agent hands this computer's
     /// clipboard to the helper: forwarded, never decoded there.
     Png(String),
+    /// Copied files and folders (on Windows `CF_HDROP`).
+    Files(Vec<PathBuf>),
 }
 
 /// A clipboard: the system's, or a test double.
@@ -42,7 +46,7 @@ pub trait Clipboard: Send {
     /// A number that changes whenever the clipboard does, where the system
     /// keeps one; reading is skipped while it stays the same.
     fn serial(&mut self) -> Option<u32>;
-    /// What the clipboard holds (text before an image), unless it is empty,
+    /// What the clipboard holds (files, then text, then an image), unless it is empty,
     /// something else, or Kyokai put it there.
     fn item(&mut self) -> Option<Item>;
     /// Puts an item on the clipboard. Returns: whether it worked.
@@ -81,6 +85,11 @@ impl Clipboard for System {
         if owned_by_kyokai() {
             return None;
         }
+        if let Ok(files) = self.0.get().file_list()
+            && !files.is_empty()
+        {
+            return Some(Item::Files(files));
+        }
         if let Ok(text) = self.0.get_text() {
             return Some(Item::Text(text));
         }
@@ -100,6 +109,7 @@ impl Clipboard for System {
         match item {
             Item::Text(t) => self.0.set_text(t).is_ok(),
             Item::Png(_) => false,
+            Item::Files(f) => self.0.set().file_list(f).is_ok(),
             Item::Image(i) => self
                 .0
                 .set_image(arboard::ImageData {
@@ -135,10 +145,12 @@ fn owned_by_kyokai() -> bool {
 }
 
 /// Whether an item may be offered: some text up to MAX_TEXT, an image up
-/// to MAX_PIXELS whose pixels match its size.
+/// to MAX_PIXELS whose pixels match its size, some files (their limits are
+/// checked when they are listed).
 fn fits(item: &Item) -> bool {
     match item {
         Item::Text(t) => !t.is_empty() && t.len() <= MAX_TEXT,
+        Item::Files(f) => !f.is_empty() && f.len() <= crate::files::MAX_ENTRIES,
         Item::Png(p) => !p.is_empty() && p.len() <= MAX_PNG * 4 / 3 + 4,
         Item::Image(i) => {
             let pixels = i.width as u64 * i.height as u64;
@@ -191,6 +203,7 @@ impl Hash for Item {
             Item::Text(t) => (0u8, t).hash(h),
             Item::Image(i) => (1u8, i.width, i.height, &i.rgba).hash(h),
             Item::Png(p) => (2u8, p).hash(h),
+            Item::Files(f) => (3u8, f).hash(h),
         }
     }
 }
@@ -242,7 +255,8 @@ pub fn from_png(b64: &str) -> Option<Image> {
 pub struct Share {
     /// Local copies to offer to the other side.
     pub offers: mpsc::Receiver<Item>,
-    /// Items from the other side, to put on the local clipboard.
+    /// Items from the other side (or files received), to put on the local
+    /// clipboard.
     pub writes: std::sync::mpsc::Sender<Item>,
     stop: Arc<AtomicBool>,
 }

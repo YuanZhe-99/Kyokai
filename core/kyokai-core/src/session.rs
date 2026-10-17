@@ -22,7 +22,7 @@ use tokio::sync::{Notify, mpsc};
 use crate::{media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
-pub const PROTOCOL: u32 = 3;
+pub const PROTOCOL: u32 = 4;
 const PATTERN: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
@@ -164,6 +164,24 @@ enum Message {
     /// base64 PNG (8-bit RGBA).
     ClipboardImage {
         png: String,
+    },
+    /// either way (`files`): files copied on the sender's side, offered by
+    /// path and size; the contents follow a `files-get`.
+    ClipboardFiles {
+        id: u64,
+        files: Vec<crate::files::Entry>,
+    },
+    /// either way (`files`): accepts an offer; send its contents.
+    FilesGet {
+        id: u64,
+    },
+    /// either way (`files`): the receiver wants no more of an offer.
+    FilesStop {
+        id: u64,
+    },
+    /// either way (`files`): the sender cannot finish an accepted offer.
+    FilesCancel {
+        id: u64,
     },
     /// host → controller, with video: the host's displays and the one
     /// shown.
@@ -715,10 +733,7 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             ctx.sessions.update(id, |e| e.peer = peer);
             let video = granted.contains(&Permission::ViewScreen);
             let input = granted.contains(&Permission::ControlInput);
-            let clipboard = granted
-                .contains(&Permission::Clipboard)
-                .then(|| (ctx.clipboard)())
-                .flatten();
+            let clipboard = shared(&ctx, &granted);
             let ai = HostAi {
                 ai: ctx.ai.clone(),
                 peer: device_id.clone(),
@@ -990,10 +1005,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     .await;
     match result {
         Ok((ch, granted, token)) => {
-            let clipboard = granted
-                .contains(&Permission::Clipboard)
-                .then(|| (ctx.clipboard)())
-                .flatten();
+            let clipboard = shared(&ctx, &granted);
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
                 e.granted = granted;
@@ -1052,6 +1064,24 @@ pub fn begin(ctx: &Ctx, device_id: &str) -> (u64, Arc<Notify>) {
 /// Ends an outgoing session that found no device to talk to.
 pub fn give_up(ctx: &Ctx, id: u64, failure: Failure) {
     ctx.sessions.end(id, Some(failure));
+}
+
+/// This side's clipboard in a session, and what the session may share on
+/// it.
+struct Shared {
+    board: Box<dyn crate::clipboard::Clipboard>,
+    /// `clipboard`: text and images.
+    text: bool,
+    /// `files`: copied files.
+    files: bool,
+}
+
+/// Opens this side's clipboard when the session may share text or files.
+fn shared(ctx: &Ctx, granted: &[Permission]) -> Option<Shared> {
+    let text = granted.contains(&Permission::Clipboard);
+    let files = granted.contains(&Permission::Files);
+    let board = (text || files).then(|| (ctx.clipboard)()).flatten()?;
+    Some(Shared { board, text, files })
 }
 
 /// What one end of an established session does besides the heartbeat.
@@ -1228,7 +1258,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     ch: Channel<S>,
     stop: &Notify,
     side: Side,
-    clipboard: Option<Box<dyn crate::clipboard::Clipboard>>,
+    clipboard: Option<Shared>,
 ) -> Result<(), Failure> {
     let Channel {
         stream,
@@ -1283,8 +1313,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         _ => None,
     };
     // Clipboard sharing, when the session may: local copies go out, the
-    // other side's texts are put on the local clipboard.
-    let mut clip = clipboard.map(crate::clipboard::share);
+    // other side's items are put on the local clipboard; files go through
+    // their transfers.
+    let (text_ok, files_ok) = clipboard
+        .as_ref()
+        .map_or((false, false), |s| (s.text, s.files));
+    let mut clip = clipboard.map(|s| crate::clipboard::share(s.board));
+    let mut transfers =
+        files_ok.then(|| crate::files::Transfers::new(MAX_PLAINTEXT - crate::files::HEADER));
     let mut ai_sync = tokio::time::interval(AI_SYNC);
     // The host's pointer, which the captured picture leaves out.
     let mut pointer_tick = tokio::time::interval(POINTER_EVERY);
@@ -1345,6 +1381,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 let msg = match item {
+                    crate::clipboard::Item::Files(paths) => {
+                        if let Some(t) = transfers.as_mut() {
+                            t.copied(paths);
+                        }
+                        None
+                    }
+                    _ if !text_ok => None,
                     crate::clipboard::Item::Text(text) => Some(Message::Clipboard { text }),
                     crate::clipboard::Item::Image(img) => {
                         crate::clipboard::to_png(&img).map(|png| Message::ClipboardImage { png })
@@ -1353,6 +1396,25 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 };
                 if let Some(m) = msg {
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+                }
+            }
+            step = async {
+                match transfers.as_mut() {
+                    Some(t) => t.next().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                use crate::files::Step;
+                match step {
+                    Step::Offer(id, files) => seal_json(&mut noise, &mut buf, &mut wr, &Message::ClipboardFiles { id, files }).await?,
+                    Step::Piece(p) => seal(&mut noise, &mut buf, &mut wr, &p).await?,
+                    Step::Cancel(id) => seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesCancel { id }).await?,
+                    Step::Stop(id) => seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesStop { id }).await?,
+                    Step::Received(paths) => {
+                        if let Some(c) = &clip {
+                            let _ = c.writes.send(crate::clipboard::Item::Files(paths));
+                        }
+                    }
                 }
             }
             _ = &mut video_wait, if wants_video && source.is_none() => {
@@ -1450,6 +1512,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     continue;
                 }
+                if plain.first() == Some(&crate::files::TAG) {
+                    if let Some(t) = transfers.as_mut() {
+                        t.piece(plain).await;
+                    }
+                    continue;
+                }
                 // A message longer than a frame comes in parts.
                 let whole = if plain.first() == Some(&PART_TAG) {
                     match parts.push(plain)? {
@@ -1504,6 +1572,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     Message::Clipboard { text } => {
                         if let Some(c) = &clip
+                            && text_ok
                             && text.len() <= crate::clipboard::MAX_TEXT
                         {
                             let _ = c.writes.send(crate::clipboard::Item::Text(text));
@@ -1513,10 +1582,33 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         // The helper is privileged and never decodes remote
                         // media: images from a controller are not taken there.
                         if let Some(c) = &clip
+                            && text_ok
                             && crate::agent::link().is_none()
                             && let Some(img) = crate::clipboard::from_png(&png)
                         {
                             let _ = c.writes.send(crate::clipboard::Item::Image(img));
+                        }
+                    }
+                    Message::ClipboardFiles { id, files } => {
+                        if let Some(t) = transfers.as_mut()
+                            && t.offered(id, files)
+                        {
+                            seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesGet { id }).await?;
+                        }
+                    }
+                    Message::FilesGet { id } => {
+                        if let Some(t) = transfers.as_mut() {
+                            t.get(id);
+                        }
+                    }
+                    Message::FilesStop { id } => {
+                        if let Some(t) = transfers.as_mut() {
+                            t.stop(id);
+                        }
+                    }
+                    Message::FilesCancel { id } => {
+                        if let Some(t) = transfers.as_mut() {
+                            t.cancelled(id);
                         }
                     }
                     Message::Cursor { x, y, visible } => {
@@ -2631,6 +2723,234 @@ mod tests {
             "connected",
             "the session goes on"
         );
+    }
+
+    /// Waits until a fake clipboard holds files.
+    async fn board_files(board: &crate::clipboard::fake::Board) -> Option<Vec<std::path::PathBuf>> {
+        for _ in 0..250 {
+            if let Some(crate::clipboard::Item::Files(f)) = board.lock().unwrap().clone() {
+                return Some(f);
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        None
+    }
+
+    /// A folder of its own for a test's files.
+    fn files_dir(name: &str) -> std::path::PathBuf {
+        let d = test_dir().join(name);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn files_cross_both_ways_only_with_their_own_permission() {
+        let (host_board, controller_board): (
+            crate::clipboard::fake::Board,
+            crate::clipboard::fake::Board,
+        ) = (Arc::default(), Arc::default());
+        let rig = fake::rig("session-files", "claude", "http://127.0.0.1:9");
+        let host = device_full(rig.ai.clone(), host_board.clone(), "1.0.0");
+        let controller = device_full(rig.ai.clone(), controller_board.clone(), "1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let want = vec![Permission::Files];
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            Some(want.clone()),
+            want,
+        )
+        .await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        // A folder and a file copied on the controller paste on the host.
+        let src = files_dir("controller-copy");
+        std::fs::create_dir_all(src.join("photos/empty")).unwrap();
+        let big: Vec<u8> = (0..300_000u32).map(|i| (i % 253) as u8).collect();
+        std::fs::write(src.join("photos/big.bin"), &big).unwrap();
+        std::fs::write(src.join("notes.txt"), b"hello").unwrap();
+        *controller_board.lock().unwrap() = Some(crate::clipboard::Item::Files(vec![
+            src.join("photos"),
+            src.join("notes.txt"),
+        ]));
+        let got = board_files(&host_board).await.expect("the files arrived");
+        assert_eq!(got.len(), 2);
+        assert!(
+            got.iter().all(|p| !p.starts_with(&src)),
+            "copies, not the originals"
+        );
+        assert_eq!(std::fs::read(got[0].join("big.bin")).unwrap(), big);
+        assert!(got[0].join("empty").is_dir());
+        assert_eq!(std::fs::read(&got[1]).unwrap(), b"hello");
+        let inbox = got[0].parent().unwrap().parent().unwrap().to_path_buf();
+        // And the other way round.
+        *controller_board.lock().unwrap() = None;
+        let back = files_dir("host-copy").join("report.txt");
+        std::fs::write(&back, b"from the host").unwrap();
+        *host_board.lock().unwrap() = Some(crate::clipboard::Item::Files(vec![back]));
+        let got = board_files(&controller_board)
+            .await
+            .expect("files to the controller");
+        assert_eq!(std::fs::read(&got[0]).unwrap(), b"from the host");
+        // `files` alone shares no text.
+        *controller_board.lock().unwrap() = Some(crate::clipboard::Item::Text("words".into()));
+        assert!(!board_holds(&host_board, "words").await);
+        // The received files go when the session ends.
+        controller.sessions.close(id).unwrap();
+        let mut gone = false;
+        for _ in 0..150 {
+            if !inbox.exists() {
+                gone = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(gone, "{} was left behind", inbox.display());
+
+        // `clipboard` alone carries no files (a second controller).
+        let other_board: crate::clipboard::fake::Board = Arc::default();
+        let other = device_full(rig.ai.clone(), other_board.clone(), "1.0.2");
+        let want = vec![Permission::Clipboard];
+        let id = attempt_with(&host, &other, &dialed, "k7mq2xpa", Some(want.clone()), want).await;
+        assert_eq!(session(&other, id)["state"], "connected");
+        *host_board.lock().unwrap() = None;
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        let secret = files_dir("other-copy").join("secret.txt");
+        std::fs::write(&secret, b"private").unwrap();
+        *other_board.lock().unwrap() = Some(crate::clipboard::Item::Files(vec![secret]));
+        assert!(board_files(&host_board).await.is_none());
+    }
+
+    /// Two ends of an established channel in memory, without a login.
+    fn raw_channels() -> (
+        Channel<tokio::io::DuplexStream>,
+        Channel<tokio::io::DuplexStream>,
+    ) {
+        let (a, b) = tokio::io::duplex(1 << 20);
+        let (mut i, _) = noise(true).unwrap();
+        let (mut r, _) = noise(false).unwrap();
+        let (mut msg, mut out) = (vec![0u8; MAX_FRAME], vec![0u8; MAX_FRAME]);
+        for initiator in [true, false, true] {
+            let (w, rd) = if initiator {
+                (&mut i, &mut r)
+            } else {
+                (&mut r, &mut i)
+            };
+            let n = w.write_message(&[], &mut msg).unwrap();
+            rd.read_message(&msg[..n], &mut out).unwrap();
+        }
+        let channel = |stream, hs: snow::HandshakeState| Channel {
+            stream,
+            noise: hs.into_transport_mode().unwrap(),
+            buf: vec![0u8; MAX_FRAME],
+        };
+        (channel(a, i), channel(b, r))
+    }
+
+    /// Reads from a raw channel until a message of `kind` arrives.
+    /// Returns: its id, or None after a second without one.
+    async fn raw_wait(ch: &mut Channel<tokio::io::DuplexStream>, kind: &str) -> Option<u64> {
+        let until = Instant::now() + Duration::from_secs(1);
+        loop {
+            let left = until.checked_duration_since(Instant::now())?;
+            let m: Value = tokio::time::timeout(left, ch.recv()).await.ok()?.ok()?;
+            if m["type"] == kind {
+                return m["id"].as_u64();
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn offers_with_unsafe_names_or_over_the_limits_are_refused() {
+        let board: crate::clipboard::fake::Board = Arc::default();
+        let (host_end, mut peer) = raw_channels();
+        let stop = Arc::new(Notify::new());
+        let host = device("1.0.0");
+        let side = Side::Host {
+            video: false,
+            input: false,
+            ai: HostAi {
+                ai: host.ai.clone(),
+                peer: "123456789".into(),
+                run: false,
+                approve: false,
+            },
+        };
+        let shared = Shared {
+            board: Box::new(crate::clipboard::fake::Fake(board.clone())),
+            text: false,
+            files: true,
+        };
+        let stopped = stop.clone();
+        let task = tokio::spawn(async move { run(host_end, &stopped, side, Some(shared)).await });
+        let entry = |path: &str, size: u64| crate::files::Entry {
+            path: path.into(),
+            size,
+            dir: false,
+        };
+        for (id, files) in [
+            (1, vec![entry("../escape.txt", 4)]),
+            (2, vec![entry("C:/Windows/evil.dll", 4)]),
+            (3, vec![entry("folder/NUL", 4)]),
+            (4, vec![entry("a.txt", 4), entry("A.TXT", 4)]),
+            (5, vec![entry("huge.bin", crate::files::MAX_TOTAL + 1)]),
+            (
+                6,
+                (0..=crate::files::MAX_ENTRIES)
+                    .map(|i| entry(&format!("f{i}"), 0))
+                    .collect(),
+            ),
+        ] {
+            peer.send(&Message::ClipboardFiles { id, files })
+                .await
+                .unwrap();
+            assert_eq!(
+                raw_wait(&mut peer, "files-get").await,
+                None,
+                "offer {id} accepted"
+            );
+        }
+        // A good offer is accepted, and only exactly its bytes are taken.
+        peer.send(&Message::ClipboardFiles {
+            id: 7,
+            files: vec![entry("ok.txt", 4)],
+        })
+        .await
+        .unwrap();
+        assert_eq!(raw_wait(&mut peer, "files-get").await, Some(7));
+        let mut piece = vec![crate::files::TAG];
+        piece.extend_from_slice(&7u64.to_be_bytes());
+        piece.extend_from_slice(b"data");
+        seal(&mut peer.noise, &mut peer.buf, &mut peer.stream, &piece)
+            .await
+            .unwrap();
+        let got = board_files(&board).await.expect("the good offer arrived");
+        assert_eq!(std::fs::read(&got[0]).unwrap(), b"data");
+        // More bytes than offered: the writer refuses, the sender is told.
+        peer.send(&Message::ClipboardFiles {
+            id: 8,
+            files: vec![entry("short.txt", 2)],
+        })
+        .await
+        .unwrap();
+        assert_eq!(raw_wait(&mut peer, "files-get").await, Some(8));
+        let mut piece = vec![crate::files::TAG];
+        piece.extend_from_slice(&8u64.to_be_bytes());
+        piece.extend_from_slice(b"toolong");
+        seal(&mut peer.noise, &mut peer.buf, &mut peer.stream, &piece)
+            .await
+            .unwrap();
+        assert_eq!(raw_wait(&mut peer, "files-stop").await, Some(8));
+        stop.notify_one();
+        assert!(task.await.unwrap().is_ok());
     }
 
     #[cfg(windows)]

@@ -5,8 +5,9 @@
 //! (`kyokai-svc agent`), which follows the input desktop (also the UAC
 //! secure desktop and the lock screen) and does the desktop's work there:
 //! capture and encoding, input, the pointer, the clipboard and the AI's
-//! desktop calls. Only encoded video, input events, clipboard text and the
-//! AI's screenshots cross between them; nothing decodes remote media.
+//! desktop calls. Only encoded video, input events, clipboard text, images
+//! this computer copied, the paths of copied files and the AI's screenshots
+//! cross between them; nothing decodes remote media.
 //!
 //! This module is both ends: [`Link`] in the helper, [`serve`] in the agent.
 //! Video, input, the pointer, the clipboard and the AI's desktop check
@@ -361,14 +362,16 @@ impl Link {
     }
 }
 
-/// A clipboard item on the pipe: text, or an image as PNG (encoded by the
+/// A clipboard item on the pipe: text, an image as PNG (encoded by the
 /// agent from this computer's clipboard; images from a controller are not
-/// decoded in the helper modes).
+/// decoded in the helper modes), or the paths of copied files (the helper
+/// reads and writes the files themselves as the console's user).
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum ClipItem {
     Text { text: String },
     Image { png: String },
+    Files { paths: Vec<std::path::PathBuf> },
 }
 
 /// The agent's clipboard, seen from the helper.
@@ -388,20 +391,21 @@ impl crate::clipboard::Clipboard for RemoteClipboard {
             ClipItem::Text { text } => Some(crate::clipboard::Item::Text(text)),
             // A privileged process never decodes images; it forwards the PNG.
             ClipItem::Image { png } => Some(crate::clipboard::Item::Png(png)),
+            ClipItem::Files { paths } => Some(crate::clipboard::Item::Files(paths)),
         }
     }
 
     fn set(&mut self, item: &crate::clipboard::Item) -> bool {
-        match item {
-            crate::clipboard::Item::Text(text) => self
-                .0
-                .call(
-                    "clip.set",
-                    json!({"item": ClipItem::Text { text: text.clone() }}),
-                )
-                .unwrap_or(false),
-            _ => false,
-        }
+        let item = match item {
+            crate::clipboard::Item::Text(text) => ClipItem::Text { text: text.clone() },
+            crate::clipboard::Item::Files(paths) => ClipItem::Files {
+                paths: paths.clone(),
+            },
+            _ => return false,
+        };
+        self.0
+            .call("clip.set", json!({ "item": item }))
+            .unwrap_or(false)
     }
 }
 
@@ -669,11 +673,16 @@ impl Agent {
                 crate::clipboard::Item::Image(img) =>
                     crate::clipboard::to_png(&img).map(|png| ClipItem::Image { png }),
                 crate::clipboard::Item::Png(png) => Some(ClipItem::Image { png }),
+                crate::clipboard::Item::Files(paths) => Some(ClipItem::Files { paths }),
             })),
             "clip.set" => match serde_json::from_value::<ClipItem>(req["item"].clone()) {
                 Ok(ClipItem::Text { text }) => json!(
                     self.clip()
                         .is_some_and(|c| c.set(&crate::clipboard::Item::Text(text)))
+                ),
+                Ok(ClipItem::Files { paths }) => json!(
+                    self.clip()
+                        .is_some_and(|c| c.set(&crate::clipboard::Item::Files(paths)))
                 ),
                 // Images from a controller are not taken in the helper modes.
                 _ => json!(false),
