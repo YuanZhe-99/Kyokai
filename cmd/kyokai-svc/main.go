@@ -12,7 +12,8 @@
 //	kyokai-svc ctl connect --device ID [--want P,P…]
 //	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
-//	kyokai-svc ctl untrust --key K | forget --device ID
+//	kyokai-svc ctl untrust --key K | forget --device ID | unattended --key K [--days N]
+//	kyokai-svc ctl background [--on]     (the helper: Background service or Follow GUI)
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
 //	kyokai-svc ctl ai | ai-tasks | ai-clear | ai-stop
 //	kyokai-svc ctl ai-set [--provider P] [--openai-model M] [--claude-model M] [--approval A]
@@ -165,6 +166,8 @@ func ctl(args []string) error {
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
 	file := fs.String("file", "", "backup, restore: the backup file")
 	yes := fs.Bool("yes", false, "reset-identity: confirm a new Device ID")
+	days := fs.Int("days", 30, "unattended: how long the device may connect without confirmation (0 stops it)")
+	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached)")
 	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
@@ -189,7 +192,7 @@ func ctl(args []string) error {
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
-		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet,
+		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "unattended": localapi.RequestUnattended, "background": localapi.RequestBackground,
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
@@ -210,6 +213,10 @@ func ctl(args []string) error {
 	switch cmd {
 	case "name-set":
 		req.Name = name
+	case "unattended":
+		req.Days = *days
+	case "background":
+		req.Background = on
 	case "network-set":
 		req.Network = &localapi.NetworkSettings{Servers: servers, Name: *name}
 		if s, ok := os.LookupEnv(networkSecretEnv); ok {
@@ -315,7 +322,11 @@ func ctl(args []string) error {
 		}
 	case req.Type == localapi.RequestTrustedList:
 		for _, t := range resp.Trusted {
-			fmt.Printf("%s  %s  %s\n", t.DeviceID, strings.Join(t.Granted, ","), t.Key)
+			until := "asks"
+			if t.UnattendedUntil != nil {
+				until = "unattended until " + time.Unix(*t.UnattendedUntil, 0).Format(time.DateTime)
+			}
+			fmt.Printf("%s %q  %s  %s  %s\n", t.DeviceID, t.About.Name, strings.Join(t.Granted, ","), until, t.Key)
 		}
 	default:
 		fmt.Println("ok")

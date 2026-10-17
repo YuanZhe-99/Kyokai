@@ -4,7 +4,7 @@
 //! either side leaves. Generic over the stream, so tests run it in memory.
 
 use crate::about::About;
-use crate::access::{Access, CONFIRM_TIMEOUT, Permission, Refusal};
+use crate::access::{Access, CONFIRM_TIMEOUT, Permission, Refusal, Serve};
 use crate::auth::{self, Slot};
 use crate::identity::{self, Identity};
 use base64::Engine;
@@ -462,6 +462,14 @@ impl Sessions {
     }
 
     /// Asks a live session to end.
+    /// Ends every session in which this device is the host.
+    pub fn close_hosts(&self) {
+        let s = self.inner.lock().expect("sessions lock");
+        for e in s.1.iter().filter(|e| e.role == Role::Host) {
+            e.stop.notify_one();
+        }
+    }
+
     pub fn close(&self, id: u64) -> Result<(), String> {
         let s = self.inner.lock().map_err(|_| "sessions lock poisoned")?;
         let e = s.1.iter().find(|e| e.id == id).ok_or("no such session")?;
@@ -720,6 +728,10 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         let _ = ch.send(&refuse(reason)).await;
         return Err(Failure::Refused(reason));
     }
+    if ctx.access.serve() == Serve::None {
+        let _ = ch.send(&refuse(Refusal::Absent)).await;
+        return Err(Failure::Refused(Refusal::Absent));
+    }
     if ctx.sessions.connected_hosts() >= MAX_HOST_SESSIONS {
         let _ = ch.send(&refuse(Refusal::Busy)).await;
         return Err(Failure::Refused(Refusal::Busy));
@@ -756,6 +768,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         .map_err(|_| Failure::Broken)?;
     step(ch.send(&Challenge { responses })).await?;
     let login: Login = step(ch.recv()).await?;
+    let slot = login.slot;
     let ok = match (login.slot, login.finalization) {
         (Some(slot), Some(fin)) => half.finish(slot, &fin, &host_key, context),
         _ => false,
@@ -765,9 +778,31 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         let _ = ch.send(&refuse(Refusal::Password)).await;
         return Err(Failure::Refused(Refusal::Password));
     }
-    ctx.sessions.update(id, |e| e.state = State::Confirming);
     let peer = login.about.unwrap_or_default().clean();
     let device_id = identity::device_id(client_key);
+    // An unattended grant: a pinned key and the permanent password, while
+    // the grant lasts, need no confirmation.
+    let unattended = (slot == Some(Slot::Permanent))
+        .then(|| ctx.access.unattended(&key_b64, &client.want))
+        .flatten();
+    if unattended.is_none() && ctx.access.serve() != Serve::All {
+        let _ = ch.send(&refuse(Refusal::Absent)).await;
+        return Err(Failure::Refused(Refusal::Absent));
+    }
+    if let Some(granted) = unattended {
+        let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
+        let resume = ctx.access.issue_resume(&key_b64, &granted);
+        step(ch.send(&Verdict {
+            accepted: true,
+            granted: granted.clone(),
+            reason: None,
+            resume: Some(resume),
+            about: Some(ctx.about()),
+        }))
+        .await?;
+        return Ok((granted, peer));
+    }
+    ctx.sessions.update(id, |e| e.state = State::Confirming);
     let (ask_id, decision) = match ctx
         .access
         .ask(&key_b64, &device_id, client.want.clone(), &peer)
@@ -1596,6 +1631,78 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn unattended_grants_need_the_permanent_password_and_follow_whom_the_host_serves() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        {
+            let mut slots = host.access.slots.lock().unwrap();
+            let key = host.identity.public_key();
+            slots.set_temporary("k7mq2xpa", &key).unwrap();
+            slots
+                .set_permanent(host.access.secrets(), Some("long-lived-pw"), &key)
+                .unwrap();
+        }
+        let dialed = host.identity.device_id();
+        let view = vec![Permission::ViewScreen];
+        // The first session is confirmed; then the host grants 30 days.
+        let id = attempt(&host, &controller, &dialed, "k7mq2xpa", Some(view.clone())).await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        controller.sessions.close(id).unwrap();
+        let key = host.access.trusted().into_keys().next().unwrap();
+        host.access.set_unattended(&key, 30).unwrap();
+        let fresh = |c: &Arc<Ctx>| {
+            // Each attempt below looks at the newest session only.
+            let list = c.sessions.list();
+            list.as_array().unwrap().last().unwrap().clone()
+        };
+        // Permanent password: in at once, no confirmation, even when only
+        // unattended grants are served.
+        host.access.set_serve(Serve::Unattended);
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "long-lived-pw",
+            None,
+            view.clone(),
+        )
+        .await;
+        assert_eq!(
+            session(&controller, id)["state"],
+            "connected",
+            "{}",
+            fresh(&controller)
+        );
+        assert_eq!(session(&controller, id)["granted"], json!(["view-screen"]));
+        controller.sessions.close(id).unwrap();
+        // The temporary password needs someone to confirm: nobody is there.
+        let id = attempt_with(&host, &controller, &dialed, "k7mq2xpa", None, view.clone()).await;
+        assert_eq!(
+            session(&controller, id)["failure"],
+            json!({"refused": "absent"})
+        );
+        // A host that serves no one refuses even the unattended grant.
+        host.access.set_serve(Serve::None);
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "long-lived-pw",
+            None,
+            view.clone(),
+        )
+        .await;
+        assert_eq!(
+            session(&controller, id)["failure"],
+            json!({"refused": "absent"})
+        );
+        // An expired or withdrawn grant asks again.
+        host.access.set_serve(Serve::All);
+        host.access.set_unattended(&key, 0).unwrap();
+        assert!(host.access.unattended(&key, &view).is_none());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

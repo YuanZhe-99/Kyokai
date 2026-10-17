@@ -542,6 +542,23 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 c.ctx.access.decide(d.id, granted).map(|()| json!({}))
             })
         }
+        "host.serve" => {
+            let s: access::Serve = serde_json::from_value(req.params["serve"].take())
+                .map_err(|e| format!("bad serve: {e}"))?;
+            try_core(|c| {
+                c.ctx.access.set_serve(s);
+                // Follow GUI without a GUI serves no one: its sessions end.
+                if s == access::Serve::None {
+                    c.ctx.sessions.close_hosts();
+                }
+                Ok(json!({}))
+            })
+        }
+        "trusted.unattended" => {
+            let key = req.params["key"].as_str().ok_or("bad key")?.to_owned();
+            let days = req.params["days"].as_u64().ok_or("bad days")?;
+            try_core(|c| c.ctx.access.set_unattended(&key, days).map(|()| json!({})))
+        }
         "trusted.list" => with_core(|c| {
             c.ctx
                 .access
@@ -555,6 +572,7 @@ fn call(input: &[u8]) -> Result<Value, String> {
                         "last": t.last,
                         "granted": t.granted,
                         "about": t.about,
+                        "unattended_until": t.unattended_until,
                     })
                 })
                 .collect::<Value>()

@@ -57,8 +57,9 @@ drops reconnects by itself for a minute without asking again.
 When someone connects, a request appears at the top of every page with their Device ID — and a
 warning if a known Device ID arrives with a new key — and a switch for each permission they asked
 for. Choose what to allow, then **Allow**, or **Deny**. Devices you allowed are listed in Settings,
-Access; **Remove** revokes one at once and ends its sessions. Your own use of the keyboard and mouse
-always wins over theirs and over any AI.
+Access; **Remove** revokes one at once and ends its sessions. **Connect without asking** lets that
+device in for 30 days with the permanent password alone, for a computer nobody sits at. Your own use
+of the keyboard and mouse always wins over theirs and over any AI.
 
 ## AI on this computer
 

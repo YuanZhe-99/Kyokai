@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
+	"github.com/YuanZhe-99/Kyokai/internal/fsutil"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 )
 
@@ -131,7 +132,15 @@ func Run(ctx context.Context, opts Options) error {
 		}()
 	}
 
-	h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}, runMode: runMode}
+	h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}, runMode: runMode, stateDir: opts.StateDir}
+	if runMode == "helper" {
+		var m struct {
+			Background bool `json:"background"`
+		}
+		_, _ = fsutil.ReadJSON(filepath.Join(opts.StateDir, "mode.json"), &m)
+		h.background = m.Background
+	}
+	h.updateServe()
 	return localapi.ServeWith(ctx, ln, h, authz)
 }
 
@@ -142,6 +151,12 @@ type handler struct {
 	started time.Time
 	// runMode is "user" or "helper", for the status.
 	runMode string
+	// stateDir keeps the helper's mode (mode.json).
+	stateDir string
+	// background: the helper serves from boot, not only with a GUI.
+	background bool
+	// served is what the core was last told to serve.
+	served string
 
 	mu       sync.Mutex
 	sessions map[chan struct{}]bool // each is poked when the status changes
@@ -188,6 +203,24 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "name missing")
 		}
 		return h.command("device.set_name", map[string]string{"name": *req.Name})
+	case localapi.RequestUnattended:
+		if req.Key == "" || req.Days < 0 {
+			return localapi.Fail(localapi.CodeInvalid, "device key and days needed")
+		}
+		return h.command("trusted.unattended", map[string]any{"key": req.Key, "days": req.Days})
+	case localapi.RequestBackground:
+		if h.runMode != "helper" || req.Background == nil {
+			return localapi.Fail(localapi.CodeInvalid, "only the helper has a background mode")
+		}
+		if err := fsutil.WriteJSON(filepath.Join(h.stateDir, "mode.json"), map[string]bool{"background": *req.Background}); err != nil {
+			return localapi.Fail(localapi.CodeInternal, "%v", err)
+		}
+		h.mu.Lock()
+		h.background = *req.Background
+		h.mu.Unlock()
+		h.updateServe()
+		h.changed()
+		return localapi.Response{OK: true}
 	case localapi.RequestPermanentSet:
 		if req.Permanent == nil {
 			return localapi.Fail(localapi.CodeInvalid, "permanent password missing")
@@ -368,10 +401,12 @@ func (h *handler) Stream(ctx context.Context, _ localapi.Request, send func(loca
 	h.mu.Lock()
 	h.sessions[poke] = true
 	h.mu.Unlock()
+	h.updateServe()
 	defer func() {
 		h.mu.Lock()
 		delete(h.sessions, poke)
 		h.mu.Unlock()
+		h.updateServe()
 	}()
 	tick := time.NewTicker(statusPoll)
 	defer tick.Stop()
@@ -393,6 +428,27 @@ func (h *handler) Stream(ctx context.Context, _ localapi.Request, send func(loca
 		case <-poke:
 		case <-tick.C:
 		}
+	}
+}
+
+// updateServe tells the core whom it serves: everyone in No privileges
+// mode and while a GUI is attached to the helper; without one, the helper
+// serves only unattended grants (Background service) or no one (Follow
+// GUI), which ends its host sessions (doc/en-us/run-modes.md).
+func (h *handler) updateServe() {
+	h.mu.Lock()
+	serve := "all"
+	if h.runMode == "helper" && len(h.sessions) == 0 {
+		serve = "none"
+		if h.background {
+			serve = "unattended"
+		}
+	}
+	same := serve == h.served
+	h.served = serve
+	h.mu.Unlock()
+	if !same {
+		_ = h.lib.Call("host.serve", map[string]string{"serve": serve}, nil)
 	}
 }
 
@@ -429,7 +485,7 @@ func (h *handler) status() (*localapi.Status, error) {
 	}
 	return &localapi.Status{
 		Version: st.Version, ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
-		StateDir: st.StateDir, RunMode: h.runMode, Persistence: st.Persistence,
+		StateDir: st.StateDir, RunMode: h.runMode, Background: h.isBackground(), Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
 		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
 		Name: st.Name, About: about,
@@ -447,4 +503,11 @@ func Logger(path string) func(string, ...any) {
 	}
 	l := log.New(w, "", log.LstdFlags)
 	return l.Printf
+}
+
+// isBackground reports the helper's mode for the status.
+func (h *handler) isBackground() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.background
 }

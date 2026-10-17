@@ -64,6 +64,8 @@ const (
 	RequestIdentityImport     RequestType = "identity.import"        // restore an identity backup (Request.Backup)
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
 	RequestNameSet            RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
+	RequestUnattended         RequestType = "trusted.unattended"     // let a trusted device in without confirmation for Request.Days (0 stops it; Request.Key)
+	RequestBackground         RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
 	RequestMedia              RequestType = "session.media"          // a controller session's media (Request.ID); the connection then carries packets
 	RequestSessionAttach      RequestType = "session.attach"         // streaming; see package doc
 	RequestAISettingsGet      RequestType = "ai.settings.get"        // the AI settings and which keys are stored
@@ -109,6 +111,11 @@ type Request struct {
 	DeviceID string `json:"device_id,omitempty"`
 	// Name is the friendly name of RequestNameSet.
 	Name *string `json:"name,omitempty"`
+	// Days is how long RequestUnattended lets the device in (0 stops it).
+	Days int `json:"days,omitempty"`
+	// Background chooses Background service (true) or Follow GUI
+	// (RequestBackground).
+	Background *bool `json:"background,omitempty"`
 	// Backup carries the passphrase (and for an import the document).
 	Backup *IdentityBackup `json:"backup,omitempty"`
 	// AISettings carries the fields RequestAISettingsSet changes.
@@ -275,6 +282,9 @@ type TrustedDevice struct {
 	Granted  []string `json:"granted"`
 	// About is what the controller last said about itself.
 	About About `json:"about"`
+	// UnattendedUntil (Unix seconds) is when its unattended grant ends;
+	// nil: it is always asked about.
+	UnattendedUntil *int64 `json:"unattended_until,omitempty"`
 }
 
 // About is what a device says about itself after a login: a friendly
@@ -368,8 +378,11 @@ type Status struct {
 	DeviceID    string `json:"device_id"`
 	Fingerprint string `json:"fingerprint"`
 	StateDir    string `json:"state_dir"`
-	// RunMode is "user" (No privileges) or "helper" (the privileged helper).
-	RunMode string `json:"run_mode"`
+	// RunMode is "user" (No privileges) or "helper" (the privileged helper);
+	// Background says whether the helper serves from boot (Background
+	// service) or only while a GUI is attached (Follow GUI).
+	RunMode    string `json:"run_mode"`
+	Background bool   `json:"background,omitempty"`
 	// Persistence is "os-store", "memory-only" or "unreadable".
 	Persistence string `json:"persistence"`
 	// PasswordSerial changes whenever the temporary password does.

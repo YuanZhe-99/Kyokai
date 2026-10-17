@@ -61,6 +61,20 @@ devices and the known hosts, as JSON encrypted with XChaCha20-Poly1305 under a k
 before writing; reset forgets all of these, giving a new Device ID. Both rebuild the core at once:
 sessions end and the network reconnects. Network settings are not part of the identity.
 
+## Unattended access
+
+The host's user can let a trusted device connect without confirmation for 30 days (Settings,
+Access: "Connect without asking"; at most 365 days through the local API). Such a login needs the
+device's pinned key **and** the permanent password (the temporary one always asks), gets the
+permissions last granted to that device within what it asks for, and stops once the grant
+expires or is switched off. Off by default; nothing else skips the confirmation.
+
+Whom the host serves depends on its run mode ([run-modes.md](run-modes.md)): everyone in No
+privileges and while a GUI is attached to the helper; without a GUI, a Background service helper
+serves only unattended grants and a Follow GUI helper no one (its host sessions end). A login that
+nobody can confirm is refused at once with `absent`, before the password check when no one is
+served.
+
 ## Rate limits
 
 | Limit | Value |

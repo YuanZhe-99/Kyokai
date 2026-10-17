@@ -34,7 +34,7 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 |---|---|---|
 | 4 | 被控端 → 控制端 | `challenge`：每个槽位一个凭据响应；未设置的槽位以伪造记录应答，因此控制端无法得知哪些槽位存在 |
 | 5 | 控制端 → 被控端 | `login`：被密码打开的槽位及其凭据终结消息，以及控制端的说明（`about`：别名、厂商、型号、系统）；两个都打不开时不带槽位 |
-| 6 | 被控端 → 控制端 | `verdict`：接受并附上授予的权限、恢复令牌和被控端的说明（`about`），或以原因名称拒绝（`password`、`denied`、`timeout`、`busy`、`rate-limited`） |
+| 6 | 被控端 → 控制端 | `verdict`：接受并附上授予的权限、恢复令牌和被控端的说明（`about`），或以原因名称拒绝（`password`、`denied`、`timeout`、`busy`、`rate-limited`、`absent`：无人能确认） |
 
 一次失败的 `login` 计为一次失败（[identity-and-access.md](identity-and-access.md)）。密码正确后，被控端会请它的用户确认
 （最多 60 秒），然后才给出结果。

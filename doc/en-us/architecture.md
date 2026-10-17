@@ -70,7 +70,9 @@ the stored one), `password.set_permanent` (`{password}`, null removes it), `sess
 `session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,
 `host.forget`, `identity.export` (`{passphrase}` → `{document}`), `identity.import`
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
-name; the status carries `name` and this device's `about`), and for AI tasks ([computer-use.md](computer-use.md)):
+name; the status carries `name` and this device's `about`), `trusted.unattended` (`{key, days}`; 0
+stops it), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
+mode), and for AI tasks ([computer-use.md](computer-use.md)):
 `ai.settings.get`, `ai.settings.set` (`{provider?, openai_model?, claude_model?, approval?}`),
 `ai.key.set` (`{provider, key}`, null removes it; a key is never returned), `ai.task.start`
 (`{key, instruction}` → `{id}`; the key makes it idempotent), `ai.task.reply` (`{id, text}`),
@@ -94,7 +96,8 @@ runtime statically, so nothing is resolved through the search path.
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
   `password.set_permanent`, `session.connect`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
-  `device.set_name`, `session.attach`, `session.media`, `shutdown`, and the AI requests named after the core's
+  `device.set_name`, `trusted.unattended`, `helper.background` (the helper only), `session.attach`,
+  `session.media`, `shutdown`, and the AI requests named after the core's
   methods (`ai.settings.get` … `ai.stop`). `session.media` (`{id}` of a live controller
   session) answers OK and then carries length-prefixed packets both ways: video, stats and the
   host's AI task from the engine, control and AI messages from the GUI; the GUI asks for a key frame first. The status includes the open host

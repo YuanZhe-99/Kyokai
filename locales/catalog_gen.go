@@ -1252,6 +1252,16 @@ func (msgs Messages) EngineStarting() string {
 	return Catalog.Format(msgs.locale, "EngineStarting", nil)
 }
 
+// FailAbsent says "Nobody is at that computer to allow the connection."
+// in the language the app shows.
+func FailAbsent() string { return In(i18n.Locale()).FailAbsent() }
+
+// FailAbsent says "Nobody is at that computer to allow the connection."
+// in the language of msgs.
+func (msgs Messages) FailAbsent() string {
+	return Catalog.Format(msgs.locale, "FailAbsent", nil)
+}
+
 // FailBroken says "The connection broke."
 // in the language the app shows.
 func FailBroken() string { return In(i18n.Locale()).FailBroken() }
@@ -1862,11 +1872,11 @@ func (msgs Messages) PermanentSaved() string {
 	return Catalog.Format(msgs.locale, "PermanentSaved", nil)
 }
 
-// PermanentSet says "Set. Other devices can also connect with it; every connection still needs your approval."
+// PermanentSet says "Set. Other devices can also connect with it; a connection still needs your approval unless you let that device connec…"
 // in the language the app shows.
 func PermanentSet() string { return In(i18n.Locale()).PermanentSet() }
 
-// PermanentSet says "Set. Other devices can also connect with it; every connection still needs your approval."
+// PermanentSet says "Set. Other devices can also connect with it; a connection still needs your approval unless you let that device connec…"
 // in the language of msgs.
 func (msgs Messages) PermanentSet() string {
 	return Catalog.Format(msgs.locale, "PermanentSet", nil)
@@ -2452,6 +2462,50 @@ func TrustedNone() string { return In(i18n.Locale()).TrustedNone() }
 // in the language of msgs.
 func (msgs Messages) TrustedNone() string {
 	return Catalog.Format(msgs.locale, "TrustedNone", nil)
+}
+
+// TrustedUnattended says "Connect without asking"
+// in the language the app shows.
+func TrustedUnattended() string { return In(i18n.Locale()).TrustedUnattended() }
+
+// TrustedUnattended says "Connect without asking"
+// in the language of msgs.
+func (msgs Messages) TrustedUnattended() string {
+	return Catalog.Format(msgs.locale, "TrustedUnattended", nil)
+}
+
+// TrustedUnattendedHint says "For 30 days this device gets in with the permanent password alone, so it can reach this computer when nobody is here."
+// in the language the app shows.
+func TrustedUnattendedHint() string { return In(i18n.Locale()).TrustedUnattendedHint() }
+
+// TrustedUnattendedHint says "For 30 days this device gets in with the permanent password alone, so it can reach this computer when nobody is here."
+// in the language of msgs.
+func (msgs Messages) TrustedUnattendedHint() string {
+	return Catalog.Format(msgs.locale, "TrustedUnattendedHint", nil)
+}
+
+// TrustedUnattendedNeedsPermanent says "Set a permanent password first."
+// in the language the app shows.
+func TrustedUnattendedNeedsPermanent() string {
+	return In(i18n.Locale()).TrustedUnattendedNeedsPermanent()
+}
+
+// TrustedUnattendedNeedsPermanent says "Set a permanent password first."
+// in the language of msgs.
+func (msgs Messages) TrustedUnattendedNeedsPermanent() string {
+	return Catalog.Format(msgs.locale, "TrustedUnattendedNeedsPermanent", nil)
+}
+
+// TrustedUnattendedUntil says "Connects without asking until {time}"
+// in the language the app shows.
+func TrustedUnattendedUntil(time_ string) string {
+	return In(i18n.Locale()).TrustedUnattendedUntil(time_)
+}
+
+// TrustedUnattendedUntil says "Connects without asking until {time}"
+// in the language of msgs.
+func (msgs Messages) TrustedUnattendedUntil(time_ string) string {
+	return Catalog.Format(msgs.locale, "TrustedUnattendedUntil", map[string]any{"time": time_})
 }
 
 // TrustedTitle says "Trusted devices"

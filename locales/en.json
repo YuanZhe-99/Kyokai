@@ -280,6 +280,7 @@
   "DiagVersion": "Version",
   "EngineDown": "The Kyokai engine is not running.",
   "EngineStarting": "Starting…",
+  "FailAbsent": "Nobody is at that computer to allow the connection.",
   "FailBroken": "The connection broke.",
   "FailBusy": "The other device has too many open requests. Try again shortly.",
   "FailDenied": "The other device declined.",
@@ -348,7 +349,7 @@
   "PermViewScreen": "See the screen",
   "PermanentNotSet": "Not set. Other devices can connect only with the temporary password on the Home page.",
   "PermanentSaved": "Permanent password saved.",
-  "PermanentSet": "Set. Other devices can also connect with it; every connection still needs your approval.",
+  "PermanentSet": "Set. Other devices can also connect with it; a connection still needs your approval unless you let that device connect without asking (below).",
   "PermanentTitle": "Permanent password",
   "QualityBalanced": "Balanced",
   "QualityBest": "Sharper",
@@ -449,6 +450,17 @@
     }
   },
   "TrustedNone": "None yet.",
+  "TrustedUnattended": "Connect without asking",
+  "TrustedUnattendedHint": "For 30 days this device gets in with the permanent password alone, so it can reach this computer when nobody is here.",
+  "TrustedUnattendedNeedsPermanent": "Set a permanent password first.",
+  "TrustedUnattendedUntil": "Connects without asking until {time}",
+  "@TrustedUnattendedUntil": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "TrustedTitle": "Trusted devices",
   "ViewerAIHint": "The task runs on the other computer with its own AI provider. Your input in the picture pauses it.",
   "ViewerAIHostApproves": "The other computer's user approves this step.",

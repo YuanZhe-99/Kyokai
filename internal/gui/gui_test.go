@@ -102,7 +102,11 @@ func TestViewsRender(t *testing.T) {
 		},
 		"settings-access": func(a *App) {
 			a.page, a.status.PermanentPassword = pageSettings, true
-			a.access = accessForm{loaded: true, trusted: []localapi.TrustedDevice{{Key: "k", DeviceID: "213559601", Last: 1797400000, Granted: []string{localapi.PermViewScreen}}}}
+			until := int64(1799900000)
+			a.access = accessForm{loaded: true, trusted: []localapi.TrustedDevice{
+				{Key: "k", DeviceID: "213559601", Last: 1797400000, Granted: []string{localapi.PermViewScreen}, About: localapi.About{Name: "Office laptop", Maker: "LENOVO"}, UnattendedUntil: &until},
+				{Key: "k2", DeviceID: "647222040", Last: 1797300000, Granted: []string{localapi.PermViewScreen}},
+			}}
 		},
 		"home-remote-ai": func(a *App) {
 			a.status.AI = &localapi.AIActive{ID: 4, State: "running", Origin: "213559601"}
@@ -140,7 +144,11 @@ func TestViewsRender(t *testing.T) {
 				}
 				a := demoApp(t)
 				setup(a)
-				tt := ui.NewTester(a.View, 1000, 900)
+				height := 900
+				if name == "settings-access" {
+					height = 1500 // the trusted devices sit below the fold
+				}
+				tt := ui.NewTester(a.View, 1000, height)
 				tt.SetDark(dark)
 				tt.Frame()
 				if dir == "" {

@@ -41,7 +41,7 @@ the controller sends one credential request per slot, both from the password the
 |---|---|---|
 | 4 | host → controller | `challenge`: one credential response per slot; an unset slot answers with a fake record, so a controller cannot tell which slots exist |
 | 5 | controller → host | `login`: the slot whose response the password opened and its credential finalization with the controller's description (`about`: name, maker, model, system), or no slot when neither opened |
-| 6 | host → controller | `verdict`: accepted with the granted permissions, a resume token and the host's description (`about`), or refused with a reason name (`password`, `denied`, `timeout`, `busy`, `rate-limited`) |
+| 6 | host → controller | `verdict`: accepted with the granted permissions, a resume token and the host's description (`about`), or refused with a reason name (`password`, `denied`, `timeout`, `busy`, `rate-limited`, `absent`: nobody can confirm) |
 
 A failed `login` counts as one failure ([identity-and-access.md](identity-and-access.md)). After a
 correct password the host asks its user to confirm (up to 60 seconds) before the verdict.

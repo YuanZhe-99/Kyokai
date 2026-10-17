@@ -34,6 +34,23 @@ pub enum Refusal {
     Timeout,
     Busy,
     RateLimited,
+    /// Nobody is at the host to confirm, and the controller has no
+    /// unattended grant (or the host serves no one now).
+    Absent,
+}
+
+/// Whom the host serves now (the engine decides from its run mode and
+/// whether a GUI is attached; doc/en-us/run-modes.md).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Serve {
+    /// Everyone who logs in, with confirmation or an unattended grant.
+    #[default]
+    All,
+    /// Only unattended grants: nobody is there to confirm.
+    Unattended,
+    /// No one (Follow GUI without a GUI).
+    None,
 }
 
 const TRUSTED_NAME: &str = "trusted_devices";
@@ -68,6 +85,10 @@ pub struct Trusted {
     /// What the controller last said about itself.
     #[serde(default)]
     pub about: About,
+    /// Until when (Unix seconds) the device may connect without
+    /// confirmation, with its permanent password; None: always asks.
+    #[serde(default)]
+    pub unattended_until: Option<u64>,
 }
 
 /// The host user's answer to a confirmation: the granted permissions, or
@@ -121,6 +142,7 @@ pub struct Access {
     pending: Mutex<(u64, Vec<Pending>)>,
     /// Resume tokens issued to accepted controllers, in memory only.
     resumes: Mutex<HashMap<String, Resume>>,
+    serve: Mutex<Serve>,
 }
 
 impl Access {
@@ -133,12 +155,52 @@ impl Access {
             limits: Mutex::default(),
             pending: Mutex::new((0, Vec::new())),
             resumes: Mutex::default(),
+            serve: Mutex::default(),
         })
     }
 
     /// The secrets store the slots persist into.
     pub fn secrets(&self) -> &Secrets {
         &self.secrets
+    }
+
+    /// Whom the host serves now.
+    pub fn serve(&self) -> Serve {
+        self.serve.lock().map(|s| *s).unwrap_or(Serve::None)
+    }
+
+    /// Sets whom the host serves; open confirmations are withdrawn when
+    /// nobody can answer them any more.
+    pub fn set_serve(&self, s: Serve) {
+        if let Ok(mut cur) = self.serve.lock() {
+            *cur = s;
+        }
+        if s != Serve::All
+            && let Ok(mut p) = self.pending.lock()
+        {
+            p.1.clear(); // dropping the replies denies them
+        }
+    }
+
+    /// The permissions a trusted controller may have without confirmation
+    /// now: those last granted, within `want`, while its grant lasts.
+    /// Returns: None without a valid unattended grant.
+    pub fn unattended(&self, key: &str, want: &[Permission]) -> Option<Vec<Permission>> {
+        let t = self.trusted().remove(key)?;
+        if !t.unattended_until.is_some_and(|until| until > unix_now()) {
+            return None;
+        }
+        Some(t.granted.into_iter().filter(|p| want.contains(p)).collect())
+    }
+
+    /// Gives a trusted device an unattended grant for `days` (0 takes it
+    /// away).
+    /// Side effects: rewrites the secrets store.
+    pub fn set_unattended(&self, key: &str, days: u64) -> Result<(), String> {
+        let mut all = self.trusted();
+        let t = all.get_mut(key).ok_or("not a trusted device")?;
+        t.unattended_until = (days > 0).then(|| unix_now() + days.min(365) * 86_400);
+        self.store(TRUSTED_NAME, &all)
     }
 
     /// Refuses an address that is blocked, and unpinned controllers while
@@ -290,6 +352,7 @@ impl Access {
             last: now,
             granted: Vec::new(),
             about: About::default(),
+            unattended_until: None,
         });
         entry.about = about.clone();
         entry.last = now;

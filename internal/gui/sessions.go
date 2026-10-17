@@ -294,6 +294,8 @@ func failureText(raw json.RawMessage) string {
 		return L.FailBusy()
 	case "refused-rate-limited":
 		return L.FailRateLimited()
+	case "refused-absent":
+		return L.FailAbsent()
 	case "unreachable":
 		return L.FailUnreachable()
 	case "wrong-device":
@@ -365,8 +367,28 @@ func (a *App) accessSettings(c *ui.Context) {
 			ui.Text(c, L.TrustedNone()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		}
 		for _, d := range f.trusted {
-			last := time.Unix(d.Last, 0).Local().Format(time.DateTime)
-			settingRow(c, "trust-"+d.Key, deviceTitle(d.About, d.DeviceID), L.TrustedLast(last), func() {
+			hint := L.TrustedLast(time.Unix(d.Last, 0).Local().Format(time.DateTime))
+			if d.UnattendedUntil != nil {
+				hint = L.TrustedUnattendedUntil(time.Unix(*d.UnattendedUntil, 0).Local().Format(time.DateTime))
+			}
+			settingRow(c, "trust-"+d.Key, deviceTitle(d.About, d.DeviceID), hint, func() {
+				on := d.UnattendedUntil != nil
+				sw := ui.Switch(c.Key("trust-un-"+d.Key), &on).Label(L.TrustedUnattended()).Disabled(busy || !hasPermanent && !on)
+				if !hasPermanent && !on {
+					sw.Tooltip(L.TrustedUnattendedNeedsPermanent())
+				} else {
+					sw.Tooltip(L.TrustedUnattendedHint())
+				}
+				if sw.Changed() {
+					days := 0
+					if on {
+						days = 30
+					}
+					a.accessCommand(localapi.Request{Type: localapi.RequestUnattended, Key: d.Key, Days: days}, func() {
+						a.access.loaded = false // fetch the list again
+					})
+				}
+				ui.Text(c, L.TrustedUnattended()).FontSize(sizeSmall)
 				if ui.Button(c.Key("trust-rm-"+d.Key), L.ActionRemove()).Disabled(busy).Clicked() {
 					a.untrust(d.Key)
 				}
