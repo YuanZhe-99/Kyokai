@@ -115,7 +115,7 @@ impl Capturer {
 
         if res.is_err() {
             gdi_capturer = display.create_gdi();
-            println!("Fallback to GDI");
+            log::info!("desktop duplication unavailable: capturing through GDI");
             if gdi_capturer.is_some() {
                 res = Ok(());
             }
@@ -124,7 +124,7 @@ impl Capturer {
                 let hres = Self::duplicate_output(&display, device.0, &mut duplication);
                 if hres != S_OK {
                     gdi_capturer = display.create_gdi();
-                    println!("Fallback to GDI");
+                    log::info!("desktop duplication unavailable: capturing through GDI");
                     if gdi_capturer.is_some() {
                         S_OK
                     } else {
@@ -306,7 +306,7 @@ impl Capturer {
             _ => None,
         };
         if let Some(processor_rotation) = processor_rotation {
-            println!("create rotations");
+            log::debug!("create rotations");
             if !device.is_null() && !context.is_null() {
                 unsafe {
                     (*context).QueryInterface(

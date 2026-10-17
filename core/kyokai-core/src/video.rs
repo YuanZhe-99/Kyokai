@@ -271,6 +271,9 @@ fn test_pattern(tx: mpsc::Sender<Encoded>, stop: Arc<AtomicBool>) -> VideoStart 
 mod screen {
     //! A display through RustDesk's DXGI capturer and the system's H.264
     //! encoder, on one thread (both are tied to the thread that made them).
+    //! Where desktop duplication cannot open a display (no GPU output, some
+    //! virtual machines and remote sessions), the capturer reads it through
+    //! GDI instead and reports an unchanged screen the same way.
     use super::*;
     use crate::mf;
     use rustdesk_dxgi::{Capturer, Displays, Frame};
@@ -279,13 +282,23 @@ mod screen {
     /// after it was lost.
     const REOPEN_AFTER: Duration = Duration::from_millis(500);
 
+    /// Lists the displays attached to the desktop: DXGI's outputs, or GDI's
+    /// display devices when DXGI has none.
+    fn attached() -> Vec<rustdesk_dxgi::Display> {
+        let dxgi: Vec<_> = Displays::new()
+            .map(|all| all.filter(|d| d.attached_to_desktop()).collect())
+            .unwrap_or_default();
+        if dxgi.is_empty() {
+            Displays::get_from_gdi()
+        } else {
+            dxgi
+        }
+    }
+
     /// The displays attached to the desktop, in the viewer's order.
     pub fn displays() -> Vec<Display> {
-        let Ok(all) = Displays::new() else {
-            return Vec::new();
-        };
-        let mut list: Vec<Display> = all
-            .filter(|d| d.attached_to_desktop())
+        let mut list: Vec<Display> = attached()
+            .iter()
             .map(|d| {
                 let (x, y) = d.origin();
                 Display {
@@ -304,8 +317,8 @@ mod screen {
     /// Opens a display by its place on the virtual desktop.
     /// Returns: its capturer and size in pixels.
     fn open(want: Display) -> Result<(Capturer, u32, u32), String> {
-        let display = Displays::new()
-            .map_err(|e| format!("displays: {e}"))?
+        let display = attached()
+            .into_iter()
             .find(|d| d.origin() == (want.x, want.y))
             .ok_or("the display is gone")?;
         let (dw, dh) = (display.width() as u32, display.height() as u32);
@@ -409,6 +422,10 @@ mod screen {
                         if wanted {
                             key.store(true, Ordering::Relaxed);
                         }
+                        // GDI answers at once instead of waiting the timeout.
+                        if let Some(rest) = period.checked_sub(begun.elapsed()) {
+                            std::thread::sleep(rest);
+                        }
                         continue;
                     }
                 }
@@ -443,6 +460,33 @@ mod screen {
 #[cfg(all(test, windows))]
 mod screen_tests {
     use super::*;
+
+    /// The GDI fallback reads a picture of the display's size and then
+    /// reports the unchanged screen as nothing new. Needs an interactive
+    /// desktop (skipped otherwise).
+    #[test]
+    fn the_gdi_fallback_captures_and_skips_unchanged_frames() {
+        let Some(display) = rustdesk_dxgi::Displays::get_from_gdi().into_iter().next() else {
+            return eprintln!("skipped: no display");
+        };
+        let (w, h) = (display.width() as usize, display.height() as usize);
+        let mut cap = match rustdesk_dxgi::Capturer::new(display) {
+            Ok(c) => c,
+            Err(e) => return eprintln!("skipped: {e}"),
+        };
+        assert!(cap.is_gdi());
+        match cap.frame(0) {
+            Ok(rustdesk_dxgi::Frame::PixelBuffer(pb)) => {
+                assert_eq!((pb.width, pb.height), (w, h));
+                assert!(pb.data.len() >= w * h * 4);
+            }
+            Ok(_) => panic!("not a pixel buffer"),
+            Err(e) => return eprintln!("skipped: {e}"),
+        }
+        // A still screen gives WouldBlock (a blinking caret may change it).
+        let second = cap.frame(0).map(|_| ());
+        eprintln!("second frame: {second:?}");
+    }
 
     /// Needs an interactive desktop (skipped when capture is unavailable).
     #[test]

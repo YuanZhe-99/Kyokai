@@ -114,7 +114,7 @@ certificates are needed, and privileged processes (Phase 6) relay encoded bytes 
 | Step | Scope | Done when |
 |---|---|---|
 | 3.1 Video channel (done) | binary session messages (chunked frames, key-frame requests, latest-frame-wins), engine ↔ GUI media stream over the local API, the GUI-side core | a synthetic test pattern from the host shows in the controller's viewer |
-| 3.2 Capture (primary display and window exclusion done; monitor choice and the GDI fallback for video left) | RustDesk DXGI + GDI fallback (from S3-lite) in the core, capture thread, monitor choice; the GUI excludes its own windows (`WDA_EXCLUDEFROMCAPTURE`) | the host's screen at 1080p / 30+ fps in the viewer |
+| 3.2 Capture (done; the GDI fallback is still to be seen on a machine without desktop duplication) | RustDesk DXGI + GDI fallback (from S3-lite) in the core, capture thread, monitor choice; the GUI excludes its own windows (`WDA_EXCLUDEFROMCAPTURE`) | the host's screen at 1080p / 30+ fps in the viewer |
 | 3.3 First codec (software and hardware H.264 done; the VM measurement left) | Media Foundation H.264: a hardware encoder when present, Microsoft's software MFT otherwise; decode in the GUI | 1080p60 over the VM path; latency and bitrate shown |
 | 3.4 Viewer | its own window, fit / original size / full screen, stats, Disconnect | §26 viewing items on Windows |
 | 3.5 Input (done; the real run on the VM's desktop is left) | mouse and keyboard to the host only with `control-input`, virtual-desktop coordinates, nothing into Kyokai's own windows, held keys released | typing and clicking into apps on the VM |
