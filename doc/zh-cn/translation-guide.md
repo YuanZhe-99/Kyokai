@@ -71,6 +71,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | software codec | 软件编解码器 |
 | full colour (4:4:4) | 全彩（4:4:4） |
 | key frame | 关键帧 |
+| tile (HEVC picture partition) | 图块 |
 | patent grant | 专利授权 |
 
 ## 6. 审阅清单

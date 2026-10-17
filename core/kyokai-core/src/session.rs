@@ -1332,9 +1332,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut qos = rustdesk_qos::VideoQoS::default();
     let mut base_kbps = 0;
     // The host's codec choice: what the controller decodes (and in full
-    // colour), whether its viewer wants full colour, and the candidates the
+    // colour), whether its viewer wants full colour, whether this host had a
+    // free hardware HEVC encoder when the codecs came (kept, so the stream's
+    // own encoder does not change the choice), and the candidates the
     // current source was opened from.
     let mut decodes: (Vec<String>, Vec<String>) = Default::default();
+    let mut hevc_first = false;
     let mut full_colour = false;
     let mut chosen: Vec<video::Choice> = Vec::new();
     if wants_video {
@@ -1436,7 +1439,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             }
             _ = &mut video_wait, if wants_video && source.is_none() => {
                 // A controller that names no codecs gets H.264.
-                chosen = video::choose(&[], &[], false);
+                chosen = video::choose(&[], &[], false, false);
                 reopen!(None);
             }
             _ = pointer_tick.tick(), if source.is_some() => {
@@ -1546,7 +1549,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         // changes the codec or its chroma.
                         if i444 != full_colour {
                             full_colour = i444;
-                            let c = video::choose(&decodes.0, &decodes.1, full_colour);
+                            let c = video::choose(&decodes.0, &decodes.1, full_colour, hevc_first);
                             if wants_video && source.is_some() && c != chosen {
                                 chosen = c;
                                 reopen!(source.as_ref().and_then(|s| s.display));
@@ -1673,7 +1676,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // of them this host can send.
                     Message::Codecs { decode, i444 } => {
                         decodes = (decode, i444);
-                        let c = video::choose(&decodes.0, &decodes.1, full_colour);
+                        hevc_first = video::hevc_hardware();
+                        let c = video::choose(&decodes.0, &decodes.1, full_colour, hevc_first);
                         if wants_video && (source.is_none() || c != chosen) {
                             chosen = c;
                             reopen!(source.as_ref().and_then(|s| s.display));

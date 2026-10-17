@@ -5,7 +5,7 @@
 //! GPU or the Store's video extensions. The encoder is the GPU's hardware
 //! transform where one works (one per process), else a synchronous software
 //! transform; the decoder is Microsoft's for H.264, the extensions' for the
-//! others.
+//! others (HEVC on the GPU only, through Direct3D 11).
 //!
 //! Every object here belongs to the thread that made it (COM, multithreaded
 //! apartment); pixels cross as NV12.
@@ -518,9 +518,34 @@ impl Drop for Encoder {
     }
 }
 
+/// Whether this process may open a hardware encoder for `codec` now: the
+/// GPU has one and no stream holds it (the host prefers HEVC then).
+/// Notes: it only looks; the hardware encoder may still fail its trial, and
+/// then the codec's software encoder is used.
+pub fn hardware_free(codec: Codec) -> bool {
+    !HARDWARE_IN_USE.load(std::sync::atomic::Ordering::Acquire)
+        && startup().is_ok()
+        && !transforms(
+            MFT_CATEGORY_VIDEO_ENCODER,
+            true,
+            MFVideoFormat_NV12,
+            codec.subtype(),
+        )
+        .is_empty()
+}
+
 /// Finds the first transform of a category from `from` to `to`: the GPU's
 /// (asynchronous) when `hardware`, else a synchronous software one.
 fn find_transform(category: GUID, hardware: bool, from: GUID, to: GUID) -> Option<IMFTransform> {
+    transforms(category, hardware, from, to)
+        .into_iter()
+        // SAFETY: activating a registered transform.
+        .find_map(|a| unsafe { a.ActivateObject::<IMFTransform>() }.ok())
+}
+
+/// The registered transforms of a category from `from` to `to`, best first,
+/// not yet activated.
+fn transforms(category: GUID, hardware: bool, from: GUID, to: GUID) -> Vec<IMFActivate> {
     let input = MFT_REGISTER_TYPE_INFO {
         guidMajorType: MFMediaType_Video,
         guidSubtype: from,
@@ -531,10 +556,10 @@ fn find_transform(category: GUID, hardware: bool, from: GUID, to: GUID) -> Optio
     };
     let mut list: *mut Option<IMFActivate> = std::ptr::null_mut();
     let mut count = 0u32;
-    // SAFETY: MFTEnumEx fills `list` with `count` activates, which are
-    // released (by taking them) and whose array is freed with CoTaskMemFree.
+    // SAFETY: MFTEnumEx fills `list` with `count` activates, which are taken
+    // out (the caller owns them) and whose array is freed with CoTaskMemFree.
     unsafe {
-        MFTEnumEx(
+        if MFTEnumEx(
             category,
             if hardware {
                 MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER
@@ -546,14 +571,59 @@ fn find_transform(category: GUID, hardware: bool, from: GUID, to: GUID) -> Optio
             &mut list,
             &mut count,
         )
-        .ok()?;
-        let activates: Vec<Option<IMFActivate>> =
-            (0..count as usize).map(|i| (*list.add(i)).take()).collect();
+        .is_err()
+        {
+            return Vec::new();
+        }
+        let activates = (0..count as usize)
+            .filter_map(|i| (*list.add(i)).take())
+            .collect();
         CoTaskMemFree(Some(list as *const _));
         activates
-            .into_iter()
-            .flatten()
-            .find_map(|a| a.ActivateObject::<IMFTransform>().ok())
+    }
+}
+
+/// A Direct3D 11 device manager on the default GPU, for a decoder to decode
+/// HEVC with.
+/// Returns: an error when the GPU has no HEVC (Main) decoder.
+fn hevc_gpu() -> windows::core::Result<IMFDXGIDeviceManager> {
+    use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
+    use windows::Win32::Graphics::Direct3D11::*;
+    use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_NV12;
+    // SAFETY: creating and configuring a device and a manager this function
+    // owns; the manager keeps its own reference to the device.
+    unsafe {
+        let mut device = None;
+        D3D11CreateDevice(
+            None,
+            D3D_DRIVER_TYPE_HARDWARE,
+            Default::default(),
+            D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
+            None,
+            D3D11_SDK_VERSION,
+            Some(&mut device),
+            None,
+            None,
+        )?;
+        let device = device.ok_or_else(|| windows::core::Error::from(MF_E_TOPO_CODEC_NOT_FOUND))?;
+        let video = device.cast::<ID3D11VideoDevice>()?;
+        if !video
+            .CheckVideoDecoderFormat(&D3D11_DECODER_PROFILE_HEVC_VLD_MAIN, DXGI_FORMAT_NV12)?
+            .as_bool()
+        {
+            return Err(MF_E_TOPO_CODEC_NOT_FOUND.into());
+        }
+        // Media Foundation uses the device from its own threads too.
+        let _ = device
+            .cast::<ID3D11Multithread>()?
+            .SetMultithreadProtected(true);
+        let mut token = 0;
+        let mut manager = None;
+        MFCreateDXGIDeviceManager(&mut token, &mut manager)?;
+        let manager =
+            manager.ok_or_else(|| windows::core::Error::from(MF_E_TOPO_CODEC_NOT_FOUND))?;
+        manager.ResetDevice(&device, token)?;
+        Ok(manager)
     }
 }
 
@@ -570,6 +640,9 @@ impl Decoder {
     /// mode: Microsoft's for H.264, the video extensions' for HEVC and VP9.
     /// Inputs: the stream's picture size, which the extensions' decoders need
     /// up front.
+    /// Notes: HEVC decodes only on the GPU: the extension's software path
+    /// never outputs pictures for streams with uneven tile columns (what
+    /// Qualcomm's hardware encoder sends above 1024 pixels wide).
     pub fn new(codec: Codec, width: u32, height: u32) -> Result<Self, String> {
         startup()?;
         let open = || -> windows::core::Result<IMFTransform> {
@@ -586,10 +659,15 @@ impl Decoder {
                 )
                 .ok_or_else(|| windows::core::Error::from(MF_E_TOPO_CODEC_NOT_FOUND))?,
             };
-            // SAFETY: configuring the transform this function owns.
+            // SAFETY: configuring the transform this function owns; the
+            // transform keeps its own reference to the device manager.
             unsafe {
                 if let Ok(attrs) = t.GetAttributes() {
                     let _ = attrs.SetUINT32(&MF_LOW_LATENCY, 1);
+                }
+                if codec == Codec::Hevc {
+                    let gpu = hevc_gpu()?;
+                    t.ProcessMessage(MFT_MESSAGE_SET_D3D_MANAGER, gpu.as_raw() as usize)?;
                 }
                 t.SetInputType(0, &video_type(&codec.subtype(), width, height, 0)?, 0)?;
             }
@@ -683,13 +761,24 @@ mod tests {
                 continue;
             };
             tried.push((codec.name(), encoder.events.is_some()));
-            round_trip(encoder, decoder);
+            round_trip(encoder, decoder, 320, 192);
         }
         eprintln!("round trips (codec, hardware): {tried:?}");
     }
 
-    fn round_trip(mut encoder: Encoder, mut decoder: Decoder) {
-        let (w, h) = (320u32, 192u32);
+    /// The GPU's HEVC encoder's 1080p stream decodes (Qualcomm's splits it
+    /// into uneven tile columns, which only the GPU decoder takes).
+    #[test]
+    #[ignore = "needs a GPU that encodes and decodes HEVC; run alone"]
+    fn hardware_hevc_survives_at_1080p() {
+        let (w, h) = (1920, 1080);
+        let encoder = Encoder::new(Codec::Hevc, w, h, 30, 4_000_000).unwrap();
+        assert!(encoder.events.is_some(), "no hardware HEVC encoder");
+        round_trip(encoder, Decoder::new(Codec::Hevc, w, h).unwrap(), w, h);
+    }
+
+    /// Carries 30 frames of a moving picture through, checking the last one.
+    fn round_trip(mut encoder: Encoder, mut decoder: Decoder, w: u32, h: u32) {
         let mut pictures = Vec::new();
         let mut nv12 = Vec::new();
         for n in 0..30usize {

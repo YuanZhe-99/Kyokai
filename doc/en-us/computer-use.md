@@ -13,7 +13,7 @@ control, Phase 4 AI tasks).
 | Encode (software) | host engine | VP9 (`vp9-sw`) and VP8 through libvpx, AV1 through libaom — RustDesk's wrappers (`core/third_party/rustdesk-codec`) and settings: real-time, CBR at RustDesk's quality ratio of the base bitrate, a key frame every 4 seconds and on request; VP9 profile 1 and AV1 profile 1 carry 4:4:4 |
 | Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); the producer waits while the session is busy, so capture runs at the speed the network takes |
 | Forward | controller engine | the session's media queue (newest 3 frames kept) → `session.media` on the local API |
-| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for `h264`, `hevc` and `vp9` in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9), NV12 into RGBA, cropped to the stream's size; libvpx or libaom for `vp9-sw`, `vp8` and `av1`, I420 or I444 into RGBA |
+| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for `h264`, `hevc` and `vp9` in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9; HEVC on the GPU through Direct3D 11), NV12 into RGBA, cropped to the stream's size; libvpx or libaom for `vp9-sw`, `vp8` and `av1`, I420 or I444 into RGBA |
 | Show | GUI | the viewer window's bitmap, two pictures alternating |
 
 While a frame waits inside the encoder, the host repeats the last picture so it comes out even when
@@ -36,11 +36,15 @@ The controller says which codecs it decodes, and which of them in full colour, a
 starts; the host waits up to a second for that before it starts the video. It tries, in order,
 H.264, HEVC and VP9 through Media Foundation (Windows hosts), then VP9, AV1 and VP8 in software,
 and sends in the first one the controller decodes whose encoder opens — so a host or controller
-without Media Foundation's codecs (Windows N) falls back to software VP9. The HEVC and VP9
-encoders and decoders of Media Foundation come from the GPU or the Store's video extensions. HEVC
-from this machine's GPU encoder did not decode at 720p and above with Microsoft's HEVC decoder (it
-did at 320×192, and the software HEVC encoder's stream decoded at 1080p), so H.264 stays first
-until that is understood. A controller that names no codecs (an older build) gets H.264.
+without Media Foundation's codecs (Windows N) falls back to software VP9. HEVC goes before H.264
+when the host has a free hardware HEVC encoder as the controller's codecs arrive (checked in the
+engine's process and kept for the session; an encoder that then fails its trial falls back to the
+software HEVC encoder). The HEVC and VP9 encoders and decoders of Media Foundation come from the
+GPU or the Store's video extensions. A controller decodes HEVC on its GPU only (Direct3D 11) and
+offers it only when its GPU has an HEVC decoder: Qualcomm's hardware HEVC encoder splits pictures
+wider than 1024 pixels into uneven tile columns, and the HEVC Video Extension's software decoder
+accepts such streams but never outputs a picture. A controller that names no codecs (an older
+build) gets H.264.
 
 **Full colour (4:4:4).** The viewer's status bar has a Full colour switch. When it is on and the
 controller decodes software VP9 or AV1 in 4:4:4 (every current build does), the host puts those

@@ -12,7 +12,7 @@
 | 编码（软件） | 被控端引擎 | 通过 libvpx 编码 VP9（`vp9-sw`）与 VP8，通过 libaom 编码 AV1——使用 RustDesk 的封装（`core/third_party/rustdesk-codec`）与设置：实时模式、按基础码率的 RustDesk 画质系数进行 CBR、每 4 秒及按需生成关键帧；VP9 profile 1 与 AV1 profile 1 承载 4:4:4 |
 | 传输 | 会话 | 媒体分片在 Noise 通道中传输（[protocol.md](protocol.md)）；会话忙时生产者会等待，因此采集速度与网络的接收速度一致 |
 | 转发 | 控制端引擎 | 会话的媒体队列（保留最新 3 帧）→ 本地 API 的 `session.media` |
-| 解码 | 界面 | 界面自己加载的核心（`kyokai_decoder_*`）：`h264`、`hevc` 与 `vp9` 用低延迟模式下 Media Foundation 的解码器（H.264 用 Microsoft 的，HEVC 与 VP9 用应用商店的视频扩展），NV12 转为 RGBA，并裁剪为视频流的尺寸；`vp9-sw`、`vp8` 与 `av1` 用 libvpx 或 libaom，I420 或 I444 转为 RGBA |
+| 解码 | 界面 | 界面自己加载的核心（`kyokai_decoder_*`）：`h264`、`hevc` 与 `vp9` 用低延迟模式下 Media Foundation 的解码器（H.264 用 Microsoft 的，HEVC 与 VP9 用应用商店的视频扩展；HEVC 经 Direct3D 11 在 GPU 上解码），NV12 转为 RGBA，并裁剪为视频流的尺寸；`vp9-sw`、`vp8` 与 `av1` 用 libvpx 或 libaom，I420 或 I444 转为 RGBA |
 | 显示 | 界面 | 查看窗口的位图，两幅画面交替使用 |
 
 有帧滞留在编码器中时，被控端会重复上一幅画面，使其在屏幕静止时也能输出。无法采集的被控端（没有交互式桌面，例如服务或
@@ -27,9 +27,11 @@ SSH 会话）会改为发送 320×180 的测试图案（`raw-rgba`）；没有 M
 
 会话开始时，控制端会说明它能解码哪些编解码器、其中哪些能以全彩解码，被控端在开始视频之前最多等待一秒。它依次尝试经 Media
 Foundation 的 H.264、HEVC 与 VP9（Windows 被控端），然后是软件的 VP9、AV1 与 VP8，使用控制端能解码且编码器能打开的第一个——
-因此没有 Media Foundation 编解码器的被控端或控制端（Windows N）会退回到软件 VP9。Media Foundation 的 HEVC 与 VP9 编码器和解码器
-来自 GPU 或应用商店的视频扩展。本机 GPU 编码器输出的 HEVC 在 720p 及以上无法被 Microsoft 的 HEVC 解码器解码（320×192 时可以，
-软件 HEVC 编码器的码流在 1080p 下也能解码），因此在弄清原因之前 H.264 仍排在首位。不说明编解码器的控制端（旧版本）得到 H.264。
+因此没有 Media Foundation 编解码器的被控端或控制端（Windows N）会退回到软件 VP9。控制端的编解码器到达时，如果被控端有空闲的硬件
+HEVC 编码器，HEVC 排在 H.264 之前（在引擎进程中检查，并在整个会话中保留；之后未通过试编码的编码器退回到软件 HEVC 编码器）。
+Media Foundation 的 HEVC 与 VP9 编码器和解码器来自 GPU 或应用商店的视频扩展。控制端只在 GPU 上解码 HEVC（Direct3D 11），
+并且只在其 GPU 有 HEVC 解码器时才提供 HEVC：Qualcomm 的硬件 HEVC 编码器会把宽于 1024 像素的画面分成宽度不等的图块列，
+HEVC 视频扩展的软件解码器接受这样的码流，却从不输出画面。不说明编解码器的控制端（旧版本）得到 H.264。
 
 **全彩（4:4:4）。** 查看窗口的状态栏有一个“全彩”开关。打开且控制端能以 4:4:4 解码软件 VP9 或 AV1 时（当前每个版本都可以），
 被控端把它们以全彩排在最前（I444：每个像素都有色度，因此一像素宽的彩色文字和线条保持清晰）并重新开始视频；关闭后恢复正常顺序。

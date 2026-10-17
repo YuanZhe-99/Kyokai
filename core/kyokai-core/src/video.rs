@@ -227,8 +227,8 @@ impl Choice {
 }
 
 /// The codecs a host tries, best first: the system's (Media Foundation on
-/// Windows) before the software ones; H.264 first (one GPU's HEVC did not
-/// decode at 720p and above with Microsoft's HEVC decoder).
+/// Windows) before the software ones; H.264 first unless `choose` is told
+/// the host has a free hardware HEVC encoder.
 #[cfg(windows)]
 const ORDER: [&str; 6] = ["h264", "hevc", "vp9", "vp9-sw", "av1", "vp8"];
 #[cfg(not(windows))]
@@ -239,9 +239,16 @@ const ORDER: [&str; 3] = ["vp9-sw", "av1", "vp8"];
 /// Inputs: `full_colour` is the viewer's wish; full colour is chosen only
 /// when the viewer wants it and both sides do it for the codec.
 /// Returns: the candidates; the host opens the first whose encoder works.
+/// `hevc_first` puts HEVC before H.264 (the host has a free hardware HEVC
+/// encoder: better pictures for the bits).
 /// Notes: a controller that names no codecs (older builds wait for none)
 /// gets H.264 on Windows.
-pub fn choose(decode: &[String], i444: &[String], full_colour: bool) -> Vec<Choice> {
+pub fn choose(
+    decode: &[String],
+    i444: &[String],
+    full_colour: bool,
+    hevc_first: bool,
+) -> Vec<Choice> {
     let has = |list: &[String], c: &str| list.iter().any(|d| d == c);
     let mut out = Vec::new();
     if full_colour {
@@ -257,12 +264,16 @@ pub fn choose(decode: &[String], i444: &[String], full_colour: bool) -> Vec<Choi
             }
         }
     }
+    let plain = out.len();
     out.extend(
         ORDER
             .into_iter()
             .filter(|c| has(decode, c))
             .map(|codec| Choice { codec, i444: false }),
     );
+    if hevc_first && let Some(i) = out[plain..].iter().position(|c| c.codec == "hevc") {
+        out[plain..=plain + i].rotate_right(1);
+    }
     if decode.is_empty() && cfg!(windows) {
         out.push(Choice {
             codec: "h264",
@@ -270,6 +281,19 @@ pub fn choose(decode: &[String], i444: &[String], full_colour: bool) -> Vec<Choi
         });
     }
     out
+}
+
+/// Whether this host has a free hardware HEVC encoder (`choose`'s
+/// `hevc_first`).
+pub fn hevc_hardware() -> bool {
+    #[cfg(windows)]
+    {
+        crate::mf::hardware_free(crate::mf::Codec::Hevc)
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
 }
 
 /// The codecs this controller decodes, by name, and those it decodes in
@@ -821,9 +845,9 @@ mod tests {
     type Case<'a> = (&'a [&'a str], &'a [&'a str], bool, &'a [&'a str]);
 
     /// The codecs a host tries, by name with `+444` for full colour.
-    fn tried(decode: &[&str], i444: &[&str], full_colour: bool) -> Vec<String> {
+    fn tried(decode: &[&str], i444: &[&str], full_colour: bool, hevc_first: bool) -> Vec<String> {
         let names = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        choose(&names(decode), &names(i444), full_colour)
+        choose(&names(decode), &names(i444), full_colour, hevc_first)
             .into_iter()
             .map(|c| format!("{}{}", c.codec, if c.i444 { "+444" } else { "" }))
             .collect()
@@ -881,7 +905,42 @@ mod tests {
         ];
         for (decode, i444, want, expected) in cases {
             assert_eq!(
-                tried(decode, i444, *want),
+                tried(decode, i444, *want, false),
+                expected.to_vec(),
+                "{decode:?} {i444:?} {want}"
+            );
+        }
+        // A free hardware HEVC encoder puts HEVC before H.264 (full colour
+        // stays first).
+        #[cfg(windows)]
+        let cases: &[Case] = &[
+            (
+                &all,
+                &full,
+                false,
+                &["hevc", "h264", "vp9", "vp9-sw", "av1", "vp8"],
+            ),
+            (
+                &all,
+                &full,
+                true,
+                &[
+                    "vp9-sw+444",
+                    "av1+444",
+                    "hevc",
+                    "h264",
+                    "vp9",
+                    "vp9-sw",
+                    "av1",
+                    "vp8",
+                ],
+            ),
+            (&["h264", "vp9"], &[], false, &["h264", "vp9"]),
+            (&[], &[], false, &["h264"]),
+        ];
+        for (decode, i444, want, expected) in cases {
+            assert_eq!(
+                tried(decode, i444, *want, true),
                 expected.to_vec(),
                 "{decode:?} {i444:?} {want}"
             );
