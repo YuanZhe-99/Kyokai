@@ -7,7 +7,7 @@ use base64::Engine;
 
 use super::Shot;
 use super::action::{Action, Button, Key, Point};
-use crate::input::{Event, Mods, PointerAction};
+use crate::input::{Event, LocalInput, Mods, PointerAction};
 
 /// Largest screenshot the model gets; bigger screens are scaled down
 /// (Claude recommends about 1280×720 to 1366×768).
@@ -33,9 +33,11 @@ pub trait Desktop: Send {
     fn release(&mut self);
     /// The cursor as fractions of the screen.
     fn cursor(&mut self) -> Option<(f32, f32)>;
-    /// Whether the host user used the keyboard or mouse since the last call
+    /// When the host user last used the keyboard or mouse.
+    fn local_input(&mut self) -> LocalInput;
+    /// Whether the emergency-stop shortcut was pressed since the last call
     /// (the call clears it).
-    fn touched(&mut self) -> bool;
+    fn stop_requested(&mut self) -> bool;
 }
 
 /// One step of an action.
@@ -493,8 +495,12 @@ mod windows_impl {
             })
         }
 
-        fn touched(&mut self) -> bool {
-            self.watch.touched()
+        fn local_input(&mut self) -> LocalInput {
+            self.watch.input()
+        }
+
+        fn stop_requested(&mut self) -> bool {
+            self.watch.stop_requested()
         }
     }
 }

@@ -6,7 +6,7 @@
 //	kyokai-svc ctl network-set --server URL [--server URL…] --name N
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--want P,P…]
-//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N]
+//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
@@ -150,7 +150,7 @@ func ctl(args []string) error {
 	openaiModel := fs.String("openai-model", "", "ai-set: the OpenAI model")
 	claudeModel := fs.String("claude-model", "", "ai-set: the Claude model")
 	approval := fs.String("approval", "", "ai-set: flagged or every-action")
-	text := fs.String("text", "", "ai-start, ai-reply: what the AI should do")
+	text := fs.String("text", "", "ai-start, ai-reply, watch: what the AI should do (watch: on the host)")
 	// The command comes first, its flags after it.
 	if len(args) == 0 {
 		usage()
@@ -161,7 +161,7 @@ func ctl(args []string) error {
 	}
 	cmd := args[0]
 	if cmd == "watch" {
-		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap)
+		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *text)
 	}
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
@@ -369,10 +369,11 @@ func printStatus(s *localapi.Status) {
 }
 
 // watch reads a controller session's media like the GUI's viewer does and
-// prints what arrives: the stream, frames per second and bitrate. With a
-// snapshot path it also decodes the frames (the viewer's decoder) and saves
-// the last picture.
-func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int) error {
+// prints what arrives: the stream, frames per second and bitrate, and the
+// host's AI task. With a snapshot path it also decodes the frames (the
+// viewer's decoder) and saves the last picture; with a text it first asks
+// the host's AI to do it (the viewer's AI panel).
+func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, aiText string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), d+10*time.Second)
 	defer cancel()
 	conn, err := localapi.NewClient(socket).Media(ctx, id)
@@ -399,6 +400,12 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	}
 	if quality != "" || fpsCap > 0 {
 		body, _ := json.Marshal(map[string]any{"type": "quality", "preset": quality, "fps": fpsCap})
+		if err := localapi.WritePacket(conn, append([]byte{3}, body...)); err != nil {
+			return err
+		}
+	}
+	if aiText != "" {
+		body, _ := json.Marshal(map[string]any{"type": "ai-start", "key": strconv.FormatInt(time.Now().UnixNano(), 36), "instruction": aiText})
 		if err := localapi.WritePacket(conn, append([]byte{3}, body...)); err != nil {
 			return err
 		}
@@ -432,6 +439,8 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 			}
 		case len(p) > 0 && p[0] == 4:
 			fmt.Println("host", string(p[1:]))
+		case len(p) > 0 && (p[0] == 5 || p[0] == 6):
+			fmt.Println("ai", string(p[1:]))
 		case len(p) >= 10 && p[0] == 2:
 			frames++
 			bytes += len(p) - 10

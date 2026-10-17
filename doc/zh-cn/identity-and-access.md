@@ -16,7 +16,8 @@
 ## 权限
 
 `view-screen`、`control-input`、`run-ai-task`、`approve-ai-action`、`clipboard`。控制端请求一组权限；被控端用户授予其中
-的子集；任何权限都不隐含另一个。加入网络本身不授予任何权限。
+的子集；任何权限都不隐含另一个。加入网络本身不授予任何权限。`run-ai-task` 允许控制端在被控端上启动并控制自己的 AI 任务（使用被控端的密钥运行）；
+`approve-ai-action` 允许它答复这些任务的批准请求（[computer-use.md](computer-use.md)）。
 
 ## 被控端确认
 

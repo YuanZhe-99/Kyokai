@@ -1,7 +1,7 @@
 # 线路协议
 
 控制端经由 EasyTier 数据面连接被控端的引擎：TCP 连到被控端的虚拟 IPv4 地址、端口 47310（[networking.md](networking.md)）。
-EasyTier 是不可信的通道，所以会话在它之上做端到端的认证与加密。协议版本为 1。
+EasyTier 是不可信的通道，所以会话在它之上做端到端的认证与加密。协议版本为 2（版本 2 加入了 AI 消息）。
 
 ## 分帧
 
@@ -47,7 +47,7 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 ## 会话消息
 
 结果为接受之后，双方交换 `{"type": …}` 文档：每 5 秒一次 `ping` / `pong`，以及 `bye`。15 秒内没有任何帧的会话会被关闭。
-后续阶段会在这条通道上加入视频、输入与 AI 消息。
+视频与输入见“媒体”，AI 任务见其单独一节。
 
 ## 媒体
 
@@ -55,9 +55,22 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 显示时间（u64），均为大端，之后是帧的一部分。一帧按需拆成若干分片，在另一端重新拼合；较新帧的分片会丢弃尚未拼完的旧帧
 （最新帧优先），超过 64 MiB 的帧会被丢弃。被控端在第一帧之前发送 `{"type": "video-start", codec, width, height}`；控制端可以发送
 `{"type": "key-frame"}`（被控端随后重新描述视频流并发送关键帧），在拥有 `control-input` 时还可发送 `{"type": "input", event}`。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
-回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate}`（[computer-use.md](computer-use.md)）。
-只有在控制端可以查看屏幕时，被控端才发送视频。目前视频流是 15 fps 的 320×180 测试图案，以原始 RGBA 传输（编解码器
-`raw-rgba`）；采集并编码的视频在 Phase 3 中到来。
+回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate}`（[computer-use.md](computer-use.md)）；控制端可用
+`{"type": "quality", preset, fps}` 设置画质。只有在控制端可以查看屏幕时，被控端才发送视频：它的屏幕（H.264），或在无法采集的被控端上发送
+320×180 的原始 RGBA 测试图案（编解码器 `raw-rgba`）。
+
+## AI 任务
+
+| 消息 | 方向 | 需要 | 作用 |
+|---|---|---|---|
+| `{"type": "ai-start", key, instruction}` | 控制端 → 被控端 | `run-ai-task` | 为该控制端在被控端上启动任务；重复的 key 只启动一个任务 |
+| `{"type": "ai-command", id, command, text}` | 控制端 → 被控端 | `run-ai-task` | 对该控制端启动的任务执行 `pause`、`resume`、`cancel` 或 `reply`（带 `text`） |
+| `{"type": "ai-decide", id, approve}` | 控制端 → 被控端 | `approve-ai-action` | 答复该控制端启动的任务的批准请求 |
+| `{"type": "ai-task", task}` | 被控端 → 控制端 | — | 该控制端最新启动的任务，在它变化时以及会话（重新）开始时发送；带最近 20 个操作与 3 条进度说明 |
+| `{"type": "ai-error", error}` | 被控端 → 控制端 | — | 请求被拒绝的原因 |
+
+重新连接后命令绝不会重发；被控端改为发送当前的任务。拥有 `control-input` 的控制端发来的输入会在注入之前暂停正在占用桌面的任务（接管）；
+任务执行期间，单纯的指针移动会被丢弃。控制端的引擎把 `ai-task` 与 `ai-error` 作为媒体包 5 与 6 交给界面；与统计（包 4）一样，较新的任务会替换仍在等待的那个。
 
 ## 解码
 

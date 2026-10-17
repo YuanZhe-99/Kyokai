@@ -18,6 +18,8 @@ import (
 type connectForm struct {
 	deviceID string
 	password string
+	// ai also asks to run AI tasks on the host and approve their actions.
+	ai bool
 }
 
 // accessForm is the Settings page's permanent password field and the
@@ -129,6 +131,10 @@ func (a *App) connectCard(c *ui.Context) {
 				a.startSession(f)
 			}
 		})
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			edit(ui.Switch(c.Key("conn-ai"), &f.ai).Label(L.ConnectWithAI()).Disabled(busy))
+			ui.Text(c, L.ConnectWithAI()).FontSize(sizeSmall)
+		})
 		if len(recent) > 0 {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
 				ui.Text(c, L.ConnectRecent()).FontSize(sizeSmall).TextColor(t.TextMuted)
@@ -144,6 +150,15 @@ func (a *App) connectCard(c *ui.Context) {
 	})
 }
 
+// connectWant is what a connection asks the host for.
+func connectWant(ai bool) []string {
+	want := []string{localapi.PermViewScreen, localapi.PermControlInput}
+	if ai {
+		want = append(want, localapi.PermRunAITask, localapi.PermApproveAIAction)
+	}
+	return want
+}
+
 // startSession asks the engine to connect; progress shows in the sessions.
 func (a *App) startSession(f connectForm) {
 	id := strings.Join(strings.Fields(f.deviceID), "")
@@ -153,7 +168,7 @@ func (a *App) startSession(f connectForm) {
 	go func() {
 		_, err := a.requestWith(localapi.Request{Type: localapi.RequestConnect, Connect: &localapi.ConnectRequest{
 			DeviceID: id, Password: f.password,
-			Want: []string{localapi.PermViewScreen, localapi.PermControlInput},
+			Want: connectWant(f.ai),
 		}})
 		a.update(func() {
 			delete(a.busy, "connect")
@@ -202,7 +217,7 @@ func (a *App) sessionsCard(c *ui.Context) {
 						go func() { _, _ = a.requestWith(localapi.Request{Type: localapi.RequestHostForget, DeviceID: device}) }()
 					}
 				}
-				if s.Role == "controller" && s.State == "connected" && slices.Contains(s.Granted, localapi.PermViewScreen) {
+				if s.Role == "controller" && s.State == "connected" && (slices.Contains(s.Granted, localapi.PermViewScreen) || slices.Contains(s.Granted, localapi.PermRunAITask)) {
 					if ui.Button(c.Key("sess-view-"+itoa(s.ID)), L.ActionView()).Clicked() {
 						a.openViewer(s)
 					}

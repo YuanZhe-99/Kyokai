@@ -93,6 +93,8 @@ type viewer struct {
 	box     ui.Rect
 	control bool
 	held    map[ui.Key]bool
+	// The AI panel (viewerai.go).
+	ai viewerAI
 }
 
 // openViewer shows the viewer of a session, opening it the first time.
@@ -105,7 +107,11 @@ func (a *App) openViewer(s localapi.SessionInfo) {
 		return
 	}
 	v = &viewer{app: a, id: s.ID, device: s.DeviceID, counted: time.Now(), out: make(chan []byte, 256), preset: 1, fpsCap: "30",
-		control: slices.Contains(s.Granted, localapi.PermControlInput)}
+		control: slices.Contains(s.Granted, localapi.PermControlInput),
+		ai:      viewerAI{run: slices.Contains(s.Granted, localapi.PermRunAITask), approve: slices.Contains(s.Granted, localapi.PermApproveAIAction)}}
+	if !slices.Contains(s.Granted, localapi.PermViewScreen) {
+		v.state = L.ViewerNoPicture()
+	}
 	v.win = mygo.NewWindow(mygo.WindowOptions{
 		Title: L.ViewerTitle(groupDigits(s.DeviceID)), Width: 1280, Height: 760, MinWidth: 480, MinHeight: 320,
 		Content: ui.View(v.view),
@@ -201,6 +207,8 @@ func (v *viewer) pump() {
 			}
 			dec = d
 			v.begin(s)
+		case packetAITask, packetAIError:
+			v.aiPacket(p[0], p[1:])
 		case packetStats:
 			var s hostStats
 			if json.Unmarshal(p[1:], &s) == nil {
@@ -279,43 +287,60 @@ func (v *viewer) setState(s string) {
 	})
 }
 
-// view is the viewer window: the picture scaled to fit, and a status line.
+// view is the viewer window: the picture scaled to fit, the AI panel when
+// the session may run AI tasks, and a status line.
 func (v *viewer) view(c *ui.Context) {
-	t := c.Theme()
 	v.mu.Lock()
 	bm, state, start, fps, kbps, host := v.bm, v.state, v.start, v.fps, v.kbps, v.host
-	preset, fpsCap := v.preset, v.fpsCap
+	preset, fpsCap, withAI := v.preset, v.fpsCap, v.ai.run
 	v.mu.Unlock()
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
-		ui.Column(c).Grow(1).FillWidth().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-			switch {
-			case state != "":
-				ui.Text(c, state).TextColor(ui.Hex("#ffffff"))
-			case bm == nil:
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Spinner(c)
-					ui.Text(c, L.ViewerWaiting()).TextColor(ui.Hex("#ffffff"))
-				})
-			default:
-				img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().HandleInput(v.sendInput)
-				box := img.LayoutBounds()
-				v.mu.Lock()
-				v.box = box
-				v.mu.Unlock()
+		ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
+			v.picture(c, bm, state)
+			if withAI {
+				v.aiPanel(c)
 			}
 		})
-		ui.Row(c).FillWidth().Padding(6, 12).Gap(16).Background(t.Surface).Children(func() {
-			ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).Grow(1)
-			if ui.Segmented(c.Key("quality"), &preset, L.QualitySpeed(), L.QualityBalanced(), L.QualityBest()).Changed() {
-				v.setQuality(preset, fpsCap)
-			}
-			if ui.Select(c.Key("fps"), &fpsCap, fpsCaps).Width(90).Changed() {
-				v.setQuality(preset, fpsCap)
-			}
-			if start.Width > 0 {
-				ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s · %d ms", start.Width, start.Height, start.Codec, fps, kbps, host.DelayMS)).
-					FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
-			}
-		})
+		v.statusBar(c, start, fps, kbps, host, preset, fpsCap)
+	})
+}
+
+// picture is the host's screen scaled to fit, or why it does not show.
+func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string) {
+	ui.Column(c).Grow(1).FillHeight().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+		switch {
+		case state != "":
+			ui.Text(c, state).TextColor(ui.Hex("#ffffff"))
+		case bm == nil:
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Spinner(c)
+				ui.Text(c, L.ViewerWaiting()).TextColor(ui.Hex("#ffffff"))
+			})
+		default:
+			img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().HandleInput(v.sendInput)
+			box := img.LayoutBounds()
+			v.mu.Lock()
+			v.box = box
+			v.mu.Unlock()
+		}
+	})
+}
+
+// statusBar is the Device ID, the quality controls and the stream's
+// numbers.
+func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, host hostStats, preset int, fpsCap string) {
+	t := c.Theme()
+	ui.Row(c).FillWidth().Padding(6, 12).Gap(16).Background(t.Surface).Children(func() {
+		ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).Grow(1)
+		if ui.Segmented(c.Key("quality"), &preset, L.QualitySpeed(), L.QualityBalanced(), L.QualityBest()).Changed() {
+			v.setQuality(preset, fpsCap)
+		}
+		if ui.Select(c.Key("fps"), &fpsCap, fpsCaps).Width(90).Changed() {
+			v.setQuality(preset, fpsCap)
+		}
+		if start.Width > 0 {
+			ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s · %d ms", start.Width, start.Height, start.Codec, fps, kbps, host.DelayMS)).
+				FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
+		}
 	})
 }

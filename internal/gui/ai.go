@@ -153,6 +153,9 @@ func (a *App) aiTaskDetail(c *ui.Context, task *localapi.AITask) {
 			ui.Text(c, aiStateLabel(task)).TextColor(col)
 			ui.Text(c, aiProviderName(task.Provider)+" · "+task.Model).FontSize(sizeSmall).TextColor(t.TextMuted)
 		})
+		if task.Origin != "" {
+			ui.Text(c, L.AITaskFrom(groupDigits(task.Origin))).FontSize(sizeSmall).TextColor(t.TextMuted)
+		}
 		if task.Error != "" {
 			ui.Text(c, task.Error).FontSize(sizeSmall).TextColor(t.TextMuted).Selectable()
 		}
@@ -317,22 +320,33 @@ func (a *App) aiHistoryCard(c *ui.Context) {
 }
 
 // aiBanner tells the user on every other page that the AI task waits for
-// them.
+// them, or that a controller's AI task is working on this computer (with
+// the emergency stop at hand).
 func (a *App) aiBanner(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
-	waiting := a.connected && a.status != nil && a.status.AI != nil && a.status.AI.State == "approval" && a.page != pageAI
+	var active *localapi.AIActive
+	if a.connected && a.status != nil && a.page != pageAI {
+		active = a.status.AI
+	}
 	a.mu.Unlock()
-	if !waiting {
+	if active == nil || (active.State != "approval" && active.Origin == "") {
 		return
+	}
+	text := L.AIApprovalBanner()
+	if active.Origin != "" && active.State != "approval" {
+		text = L.AIRemoteBanner(groupDigits(active.Origin))
 	}
 	card(c.Key("ai-banner")).Border(2, t.Accent).Children(func() {
 		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, L.AIApprovalBanner()).Grow(1)
+			ui.Text(c, text).Grow(1)
 			if ui.Button(c.Key("ai-review"), L.AIReview()).Clicked() {
 				a.mu.Lock()
 				a.page = pageAI
 				a.mu.Unlock()
+			}
+			if active.Origin != "" && ui.Button(c.Key("ai-banner-stop"), L.AIActionStop()).Clicked() {
+				a.stopAI()
 			}
 		})
 	})
@@ -549,8 +563,13 @@ func aiStateLabel(t *localapi.AITask) string {
 	case "approval":
 		return L.AIStateApproval()
 	case "paused":
-		if t.Paused == "local-input" {
+		switch t.Paused {
+		case "local-input":
 			return L.AIStatePausedLocal()
+		case "controller":
+			return L.AIStatePausedController()
+		case "take-over":
+			return L.AIStatePausedTakeOver()
 		}
 		return L.AIStatePaused()
 	case "done":

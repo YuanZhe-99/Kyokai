@@ -75,7 +75,7 @@ the stored one), `password.set_permanent` (`{password}`, null removes it), `sess
 `ai.task.pause`, `ai.task.resume`, `ai.task.cancel` (`{id}`), `ai.task.decide` (`{id, approve}`),
 `ai.tasks` (newest first), `ai.history.clear`, `ai.stop` (cancels every task). The status also
 carries `permanent_password`, `requests` (open host confirmations), `sessions`, `recent` (hosts
-connected to, newest first) and `ai` (the task in progress, or null). The Go binding keeps the response slots it passes to the core in heap memory,
+connected to, newest first) and `ai` (the task in progress with its state and origin, or null). The Go binding keeps the response slots it passes to the core in heap memory,
 never on a goroutine stack, which may move between taking an address and the call. On Windows the
 library is loaded by absolute path with
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` and links the C
@@ -94,8 +94,8 @@ runtime statically, so nothing is resolved through the search path.
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
   `session.attach`, `session.media`, `shutdown`, and the AI requests named after the core's
   methods (`ai.settings.get` … `ai.stop`). `session.media` (`{id}` of a live controller
-  session) answers OK and then carries length-prefixed packets both ways: video from the engine,
-  control messages from the GUI; the GUI asks for a key frame first. The status includes the open host
+  session) answers OK and then carries length-prefixed packets both ways: video, stats and the
+  host's AI task from the engine, control and AI messages from the GUI; the GUI asks for a key frame first. The status includes the open host
   confirmations and the sessions; secrets travel only towards the engine (the network secret, the
   permanent password, a typed password, a provider's API key). A session receives the status after every command that changes it
   and whenever the network's status moves.

@@ -542,6 +542,16 @@ func (msgs Messages) AIProvider() string {
 	return Catalog.Format(msgs.locale, "AIProvider", nil)
 }
 
+// AIRemoteBanner says "An AI task from {device} is working on this computer."
+// in the language the app shows.
+func AIRemoteBanner(device string) string { return In(i18n.Locale()).AIRemoteBanner(device) }
+
+// AIRemoteBanner says "An AI task from {device} is working on this computer."
+// in the language of msgs.
+func (msgs Messages) AIRemoteBanner(device string) string {
+	return Catalog.Format(msgs.locale, "AIRemoteBanner", map[string]any{"device": device})
+}
+
 // AIRemoveKey says "Remove key"
 // in the language the app shows.
 func AIRemoveKey() string { return In(i18n.Locale()).AIRemoveKey() }
@@ -652,6 +662,16 @@ func (msgs Messages) AIStatePaused() string {
 	return Catalog.Format(msgs.locale, "AIStatePaused", nil)
 }
 
+// AIStatePausedController says "Paused from the controlling device"
+// in the language the app shows.
+func AIStatePausedController() string { return In(i18n.Locale()).AIStatePausedController() }
+
+// AIStatePausedController says "Paused from the controlling device"
+// in the language of msgs.
+func (msgs Messages) AIStatePausedController() string {
+	return Catalog.Format(msgs.locale, "AIStatePausedController", nil)
+}
+
 // AIStatePausedLocal says "Paused because you used the keyboard or mouse"
 // in the language the app shows.
 func AIStatePausedLocal() string { return In(i18n.Locale()).AIStatePausedLocal() }
@@ -660,6 +680,16 @@ func AIStatePausedLocal() string { return In(i18n.Locale()).AIStatePausedLocal()
 // in the language of msgs.
 func (msgs Messages) AIStatePausedLocal() string {
 	return Catalog.Format(msgs.locale, "AIStatePausedLocal", nil)
+}
+
+// AIStatePausedTakeOver says "Paused: a person took over"
+// in the language the app shows.
+func AIStatePausedTakeOver() string { return In(i18n.Locale()).AIStatePausedTakeOver() }
+
+// AIStatePausedTakeOver says "Paused: a person took over"
+// in the language of msgs.
+func (msgs Messages) AIStatePausedTakeOver() string {
+	return Catalog.Format(msgs.locale, "AIStatePausedTakeOver", nil)
 }
 
 // AIStateRunning says "Working…"
@@ -680,6 +710,16 @@ func AIStepsTitle() string { return In(i18n.Locale()).AIStepsTitle() }
 // in the language of msgs.
 func (msgs Messages) AIStepsTitle() string {
 	return Catalog.Format(msgs.locale, "AIStepsTitle", nil)
+}
+
+// AITaskFrom says "Started from {device}"
+// in the language the app shows.
+func AITaskFrom(device string) string { return In(i18n.Locale()).AITaskFrom(device) }
+
+// AITaskFrom says "Started from {device}"
+// in the language of msgs.
+func (msgs Messages) AITaskFrom(device string) string {
+	return Catalog.Format(msgs.locale, "AITaskFrom", map[string]any{"device": device})
 }
 
 // AITaskHint says "The AI works on this computer's screen with this computer's API key. Using the keyboard or mouse pauses it at once."
@@ -1110,6 +1150,16 @@ func ConnectTitle() string { return In(i18n.Locale()).ConnectTitle() }
 // in the language of msgs.
 func (msgs Messages) ConnectTitle() string {
 	return Catalog.Format(msgs.locale, "ConnectTitle", nil)
+}
+
+// ConnectWithAI says "Also ask to run AI tasks there"
+// in the language the app shows.
+func ConnectWithAI() string { return In(i18n.Locale()).ConnectWithAI() }
+
+// ConnectWithAI says "Also ask to run AI tasks there"
+// in the language of msgs.
+func (msgs Messages) ConnectWithAI() string {
+	return Catalog.Format(msgs.locale, "ConnectWithAI", nil)
 }
 
 // Copied says "Copied"
@@ -2354,6 +2404,36 @@ func (msgs Messages) TrustedTitle() string {
 	return Catalog.Format(msgs.locale, "TrustedTitle", nil)
 }
 
+// ViewerAIHint says "The task runs on the other computer with its own AI provider. Your input in the picture pauses it."
+// in the language the app shows.
+func ViewerAIHint() string { return In(i18n.Locale()).ViewerAIHint() }
+
+// ViewerAIHint says "The task runs on the other computer with its own AI provider. Your input in the picture pauses it."
+// in the language of msgs.
+func (msgs Messages) ViewerAIHint() string {
+	return Catalog.Format(msgs.locale, "ViewerAIHint", nil)
+}
+
+// ViewerAIHostApproves says "The other computer's user approves this step."
+// in the language the app shows.
+func ViewerAIHostApproves() string { return In(i18n.Locale()).ViewerAIHostApproves() }
+
+// ViewerAIHostApproves says "The other computer's user approves this step."
+// in the language of msgs.
+func (msgs Messages) ViewerAIHostApproves() string {
+	return Catalog.Format(msgs.locale, "ViewerAIHostApproves", nil)
+}
+
+// ViewerAITitle says "AI on this device"
+// in the language the app shows.
+func ViewerAITitle() string { return In(i18n.Locale()).ViewerAITitle() }
+
+// ViewerAITitle says "AI on this device"
+// in the language of msgs.
+func (msgs Messages) ViewerAITitle() string {
+	return Catalog.Format(msgs.locale, "ViewerAITitle", nil)
+}
+
 // ViewerEnded says "The session ended."
 // in the language the app shows.
 func ViewerEnded() string { return In(i18n.Locale()).ViewerEnded() }
@@ -2372,6 +2452,16 @@ func ViewerNoDecoder() string { return In(i18n.Locale()).ViewerNoDecoder() }
 // in the language of msgs.
 func (msgs Messages) ViewerNoDecoder() string {
 	return Catalog.Format(msgs.locale, "ViewerNoDecoder", nil)
+}
+
+// ViewerNoPicture says "This session does not show the screen."
+// in the language the app shows.
+func ViewerNoPicture() string { return In(i18n.Locale()).ViewerNoPicture() }
+
+// ViewerNoPicture says "This session does not show the screen."
+// in the language of msgs.
+func (msgs Messages) ViewerNoPicture() string {
+	return Catalog.Format(msgs.locale, "ViewerNoPicture", nil)
 }
 
 // ViewerTitle says "{device} — Kyokai"

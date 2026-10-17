@@ -18,7 +18,9 @@ slots are set.
 
 `view-screen`, `control-input`, `run-ai-task`, `approve-ai-action`, `clipboard`. A controller asks
 for a set; the host's user grants a subset; none implies another. Network membership grants none of
-them.
+them. `run-ai-task` lets a controller start and steer its own AI tasks on the host, which run with
+the host's key; `approve-ai-action` lets it answer their approvals
+([computer-use.md](computer-use.md)).
 
 ## Host confirmation
 

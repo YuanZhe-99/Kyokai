@@ -17,7 +17,12 @@ when `SCREENSHOT_DIR` is set.
   and a status line (Device ID, quality preset, frame-rate cap, size, codec, frame rate, bitrate,
   the host's measured delay); closing it stops the stream, not
   the session. With `control-input`, the mouse, the wheel and the keyboard on the picture go to the
-  host ([computer-use.md](computer-use.md)).
+  host ([computer-use.md](computer-use.md)). With `run-ai-task` the viewer has an AI panel at its
+  side: an instruction and Start, then the host's task as the AI page shows it (state, the model's
+  text, its latest actions, Pause or Resume and Stop, a reply when it is done); its approvals have
+  Allow and Deny with `approve-ai-action`, otherwise a note that the host's user approves. Such a
+  session has View even without `view-screen`. The connect form's switch "Also ask to run AI
+  tasks there" asks for `run-ai-task` and `approve-ai-action` as well.
 - **Confirmations:** a controller waiting for this host's user shows at the top of every page with
   its Device ID, whether it is known or a new key claiming a known ID, and a switch per requested
   permission, with Allow and Deny; a notification and the window coming forward announce it.
@@ -29,7 +34,8 @@ when `SCREENSHOT_DIR` is set.
   A finished task can be continued with a reply. Below: the provider card (Claude or OpenAI, the
   model, a write-only API key field, Remove key, the approval policy) and the task history with
   Clear history. While the task waits for approval, every other page shows a banner with Review,
-  and a notification announces it.
+  and a notification announces it. A controller's task shows "Started from" its Device ID, and
+  while it works every other page shows a banner with Review and Stop.
 - **Network:** the node's live status (connected, connecting, or why it could not connect; the
   virtual address; the NAT type in plain words) and the Kyokai devices it routes to (Device ID,
   direct or relayed, latency), with a note that announced Device IDs are not proof; then the

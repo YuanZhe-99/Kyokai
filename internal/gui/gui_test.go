@@ -72,6 +72,9 @@ func TestViewsRender(t *testing.T) {
 			a.page, a.status.PermanentPassword = pageSettings, true
 			a.access = accessForm{loaded: true, trusted: []localapi.TrustedDevice{{Key: "k", DeviceID: "213559601", Last: 1797400000, Granted: []string{localapi.PermViewScreen}}}}
 		},
+		"home-remote-ai": func(a *App) {
+			a.status.AI = &localapi.AIActive{ID: 4, State: "running", Origin: "213559601"}
+		},
 		"ai-new": func(a *App) {
 			a.page = pageAI
 			s := &localapi.AISettings{Provider: "claude", ClaudeModel: "claude-opus-5-5", OpenAIModel: "gpt-6.1-sol", Approval: "flagged", Keys: &localapi.AIKeys{}}
@@ -187,11 +190,19 @@ func TestViewerRenders(t *testing.T) {
 			v.start, v.bm, v.fps, v.kbps = videoStart{Codec: "raw-rgba", Width: 320, Height: 180}, ui.NewBitmap(pic), 15, 6900
 		},
 		"viewer-unsupported": func(v *viewer) { v.state = "This picture uses h265, which this version can't show yet." },
+		"viewer-ai": func(v *viewer) {
+			v.start, v.bm, v.fps, v.kbps = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), 30, 1390
+			v.ai = viewerAI{run: true, approve: true, task: &localapi.AITask{ID: 3, Instruction: "Rename the report to Q3.docx", State: "approval",
+				Text: "I will open the file menu.", Progress: []string{"Opening the File menu."},
+				Steps:    []localapi.AIStep{{Action: []byte(`{"kind":"screenshot"}`), Outcome: "ok"}, {Action: []byte(`{"kind":"click","at":{"x":24,"y":12},"button":"left","count":1,"modifiers":[]}`), Outcome: "ok"}},
+				Approval: &localapi.AIApproval{Action: []byte(`{"kind":"type","text":"Q3.docx"}`)}}}
+		},
+		"viewer-ai-new": func(v *viewer) { v.state, v.ai = "This session does not show the screen.", viewerAI{run: true} },
 	}
 	for name, setup := range cases {
 		v := &viewer{device: "657365333"}
 		setup(v)
-		tt := ui.NewTester(v.view, 800, 500)
+		tt := ui.NewTester(v.view, 1100, 560)
 		tt.Frame()
 		if dir == "" {
 			continue

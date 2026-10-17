@@ -17,7 +17,8 @@ const (
 	cardPad      float32 = 16
 	gap          float32 = 12
 	contentMaxW  float32 = 760
-	inputAreaH   float32 = 72 // a multi-line input of about three lines
+	inputAreaH   float32 = 72  // a multi-line input of about three lines
+	aiPanelW     float32 = 320 // the viewer's AI panel
 )
 
 // card is a rounded panel.

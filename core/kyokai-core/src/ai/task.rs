@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Notify;
 use zeroize::Zeroizing;
 
@@ -109,6 +109,10 @@ pub enum Pause {
     HostUser,
     /// The host user used the keyboard or mouse.
     LocalInput,
+    /// The controller that started the task paused it.
+    Controller,
+    /// A person at a controller took over with their own input.
+    TakeOver,
 }
 
 /// One action of a task, as the history keeps it.
@@ -140,6 +144,10 @@ pub struct Task {
     #[serde(skip)]
     key: String,
     pub instruction: String,
+    /// The Device ID of the controller that started the task; None for the
+    /// host's own user.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
     pub provider: Provider,
     pub model: String,
     pub state: State,
@@ -160,6 +168,10 @@ pub struct Task {
     /// never acts.
     #[serde(skip)]
     lease: u64,
+    /// When the task was last given the desktop (started, resumed or an
+    /// action approved): local input before it is not a take-over.
+    #[serde(skip)]
+    since: Option<Instant>,
     #[serde(skip)]
     decision: Option<bool>,
     /// The host user's next message for a finished task.
@@ -175,6 +187,8 @@ const MAX_PROGRESS: usize = 20;
 const MAX_STEPS: usize = 500;
 /// Most finished tasks kept in the history.
 const MAX_HISTORY: usize = 100;
+/// Steps a session's task snapshot carries.
+const SESSION_STEPS: usize = 20;
 /// How often local input is checked while the model thinks.
 const WATCH: Duration = Duration::from_millis(100);
 
@@ -198,7 +212,8 @@ struct Shared {
 pub struct Ai {
     shared: Arc<Shared>,
     client: Arc<Client>,
-    rt: tokio::runtime::Runtime,
+    /// Taken when the runtime shuts down (see Drop).
+    rt: Option<tokio::runtime::Runtime>,
 }
 
 impl Ai {
@@ -233,7 +248,7 @@ impl Ai {
                 url,
             }),
             client: Arc::new(Client::new()?),
-            rt,
+            rt: Some(rt),
         })
     }
 
@@ -284,9 +299,10 @@ impl Ai {
 
     /// Starts a task with the current provider and model.
     /// Inputs: `key` — the caller's idempotency key; a second start with the
-    /// same key returns the first task.
+    /// same key returns the first task; `origin` — the Device ID of the
+    /// controller that asked, None for the host's own user.
     /// Returns: the task's id.
-    pub fn start(&self, key: &str, instruction: &str) -> Result<u64, String> {
+    pub fn start(&self, key: &str, instruction: &str, origin: Option<&str>) -> Result<u64, String> {
         let instruction = instruction.trim();
         if instruction.is_empty() || instruction.len() > MAX_INSTRUCTION {
             return Err("describe the task in a few sentences".into());
@@ -298,7 +314,10 @@ impl Ai {
         }
         let id = {
             let mut tasks = self.shared.tasks.lock().expect("tasks");
-            if let Some(t) = tasks.iter().find(|t| !key.is_empty() && t.key == key) {
+            if let Some(t) = tasks
+                .iter()
+                .find(|t| !key.is_empty() && t.key == key && t.origin.as_deref() == origin)
+            {
                 return Ok(t.id);
             }
             if tasks.iter().any(|t| !t.state.finished()) {
@@ -310,6 +329,7 @@ impl Ai {
                 id,
                 key: key.into(),
                 instruction: instruction.into(),
+                origin: origin.map(str::to_string),
                 provider,
                 model: match provider {
                     Provider::Openai => settings.openai_model,
@@ -325,6 +345,7 @@ impl Ai {
                 created: now,
                 updated: now,
                 lease: 0,
+                since: Some(Instant::now()),
                 decision: None,
                 reply: None,
                 conversation: None,
@@ -356,6 +377,7 @@ impl Ai {
             t.state = next(t.state, Event::Reply).ok_or("the task is not finished")?;
             t.reply = Some(text.into());
             t.error = None;
+            t.since = Some(Instant::now());
             t.updated = now();
         }
         self.shared.changed.notify_waiters();
@@ -366,17 +388,70 @@ impl Ai {
     fn spawn(&self, id: u64) {
         let shared = self.shared.clone();
         let client = self.client.clone();
-        self.rt.spawn(async move {
-            let outcome = run(&shared, &client, id).await;
-            shared.end(id, outcome);
-        });
+        self.rt
+            .as_ref()
+            .expect("running until dropped")
+            .spawn(async move {
+                let outcome = run(&shared, &client, id).await;
+                shared.end(id, outcome);
+            });
     }
 
-    /// Pauses a task (the host user's pause).
-    pub fn pause(&self, id: u64) -> Result<(), String> {
-        self.shared.apply(id, Event::Pause, |t| {
-            t.paused = Some(Pause::HostUser);
-        })
+    /// Pauses a task, saying who did.
+    pub fn pause(&self, id: u64, by: Pause) -> Result<(), String> {
+        self.shared.apply(id, Event::Pause, |t| t.paused = Some(by))
+    }
+
+    /// Pauses the task in progress because a person at a controller is
+    /// operating the desktop: the AI's input lease ends at once.
+    pub fn take_over(&self) {
+        let id = {
+            let tasks = self.shared.tasks.lock().expect("tasks");
+            tasks
+                .iter()
+                .find(|t| matches!(t.state, State::Running | State::Approval))
+                .map(|t| t.id)
+        };
+        if let Some(id) = id {
+            let _ = self.pause(id, Pause::TakeOver);
+        }
+    }
+
+    /// Whether a task holds the desktop now (running or waiting for
+    /// approval).
+    pub fn acting(&self) -> bool {
+        let tasks = self.shared.tasks.lock().expect("tasks");
+        tasks
+            .iter()
+            .any(|t| matches!(t.state, State::Running | State::Approval))
+    }
+
+    /// Whether a controller started the task (and so may steer it).
+    pub fn started_by(&self, id: u64, device_id: &str) -> bool {
+        let tasks = self.shared.tasks.lock().expect("tasks");
+        tasks
+            .iter()
+            .any(|t| t.id == id && t.origin.as_deref() == Some(device_id))
+    }
+
+    /// The newest task a controller started, as the session shows it: the
+    /// task with its latest steps and progress notes only.
+    pub fn latest_for(&self, device_id: &str) -> Option<Value> {
+        let tasks = self.shared.tasks.lock().expect("tasks");
+        let t = tasks
+            .iter()
+            .rev()
+            .find(|t| t.origin.as_deref() == Some(device_id))?;
+        let mut v = json!(t);
+        let trim = |v: &mut Value, keep: usize| {
+            if let Some(a) = v.as_array_mut() {
+                let extra = a.len().saturating_sub(keep);
+                a.drain(..extra);
+            }
+        };
+        trim(&mut v["steps"], SESSION_STEPS);
+        trim(&mut v["progress"], 3);
+        Some(v)
     }
 
     /// Resumes a paused task.
@@ -423,7 +498,9 @@ impl Ai {
     pub fn active(&self) -> Value {
         let tasks = self.shared.tasks.lock().expect("tasks");
         match tasks.iter().find(|t| !t.state.finished()) {
-            Some(t) => json!({"id": t.id, "state": t.state, "paused": t.paused}),
+            Some(t) => {
+                json!({"id": t.id, "state": t.state, "paused": t.paused, "origin": t.origin})
+            }
             None => Value::Null,
         }
     }
@@ -440,8 +517,13 @@ impl Ai {
 impl Drop for Ai {
     fn drop(&mut self) {
         // Nothing acts after the core stops: the runners are cancelled with
-        // the runtime, and each runner's desktop releases what it holds.
+        // the runtime, and each runner's desktop releases what it holds. The
+        // last owner may be a session task, so the runtime shuts down without
+        // blocking.
         self.stop_all();
+        if let Some(rt) = self.rt.take() {
+            rt.shutdown_background();
+        }
     }
 }
 
@@ -464,6 +546,9 @@ impl Shared {
                 t.lease += 1;
                 t.approval = None;
                 t.decision = None;
+            }
+            if matches!(event, Event::Resume | Event::Decide) {
+                t.since = Some(Instant::now());
             }
             t.updated = now();
             f(t);
@@ -491,6 +576,21 @@ impl Shared {
             .iter()
             .find(|t| t.id == id)
             .map_or((State::Cancelled, 0), |t| (t.state, t.lease))
+    }
+
+    /// Whether the host user used the keyboard or mouse since the task was
+    /// last given the desktop.
+    fn local_input(&self, id: u64, desk: &Desk) -> bool {
+        let since = {
+            let tasks = self.tasks.lock().expect("tasks");
+            tasks.iter().find(|t| t.id == id).and_then(|t| t.since)
+        };
+        since.is_some_and(|s| desk.lock().expect("desktop").local_input().after(s))
+    }
+
+    /// Pauses a running task because of local input.
+    fn yield_to_user(&self, id: u64) {
+        let _ = self.apply(id, Event::Pause, |t| t.paused = Some(Pause::LocalInput));
     }
 
     /// Waits until the task runs.
@@ -669,6 +769,7 @@ async fn run(shared: &Arc<Shared>, client: &Client, id: u64) -> Result<Conversat
         url: shared.url.clone().unwrap_or_else(|| provider.url().into()),
     };
     let desk: Desk = Arc::new(Mutex::new((shared.open_desktop)()?));
+    let watcher = tokio::spawn(watch(shared.clone(), id, desk.clone()));
     let result = drive(
         shared,
         client,
@@ -684,8 +785,26 @@ async fn run(shared: &Arc<Shared>, client: &Client, id: u64) -> Result<Conversat
         },
     )
     .await;
+    watcher.abort();
     desk.lock().expect("desktop").release();
     result
+}
+
+/// Watches the host user for as long as the task's runner lives: local
+/// input pauses a running task at once (also while the model thinks), and
+/// Ctrl+Alt+Shift+Esc cancels it.
+async fn watch(shared: Arc<Shared>, id: u64, desk: Desk) {
+    let mut tick = tokio::time::interval(WATCH);
+    loop {
+        tick.tick().await;
+        if desk.lock().expect("desktop").stop_requested() {
+            let _ = shared.apply(id, Event::Cancel, |_| {});
+            return;
+        }
+        if shared.phase(id).0 == State::Running && shared.local_input(id, &desk) {
+            shared.yield_to_user(id);
+        }
+    }
 }
 
 /// How a runner begins: a new conversation, or a reply to a finished one.
@@ -705,8 +824,6 @@ async fn drive(
     key: &str,
     start: Start,
 ) -> Result<Conversation, Stop> {
-    // Input before the task began is not a reason to pause it.
-    desk.lock().expect("desktop").touched();
     let mut seen = observe(desk).await?;
     let mut conv = match (start.conversation, start.reply) {
         (Some(mut c), Some(text)) => {
@@ -724,7 +841,7 @@ async fn drive(
     loop {
         shared.running(id).await?;
         let body = conv.body();
-        let response = ask_model(shared, client, id, desk, endpoint, key, &body).await?;
+        let response = ask_model(shared, client, id, endpoint, key, &body).await?;
         let turn = conv
             .accept(&response)
             .map_err(|e| format!("the provider's answer could not be read: {e}"))?;
@@ -756,7 +873,6 @@ async fn drive(
         // The answer goes out only while the task runs: after a pause it
         // waits for the resume, with a fresh screenshot.
         shared.running(id).await?;
-        desk.lock().expect("desktop").touched();
         let last = if conv.wants_final_shot() {
             seen = observe(desk).await?;
             Some(seen.shot.clone())
@@ -767,13 +883,12 @@ async fn drive(
     }
 }
 
-/// Sends one request, pausing the task when the host user touches the
-/// keyboard or mouse meanwhile.
+/// Sends one request; a cancel drops it (the watcher pauses the task on
+/// local input meanwhile, and the response then waits for a resume).
 async fn ask_model(
     shared: &Arc<Shared>,
     client: &Client,
     id: u64,
-    desk: &Desk,
     endpoint: &Endpoint,
     key: &str,
     body: &Value,
@@ -787,9 +902,6 @@ async fn ask_model(
             _ = tick.tick() => {
                 if shared.phase(id).0.finished() {
                     return Err(Stop::Cancelled);
-                }
-                if desk.lock().expect("desktop").touched() {
-                    let _ = shared.apply(id, Event::Pause, |t| t.paused = Some(Pause::LocalInput));
                 }
             }
         }
@@ -882,11 +994,14 @@ async fn act(
 
 /// Whether the task still holds the input lease; local input pauses it.
 fn holds(shared: &Shared, id: u64, lease: u64, desk: &Desk) -> bool {
-    if desk.lock().expect("desktop").touched() {
-        let _ = shared.apply(id, Event::Pause, |t| t.paused = Some(Pause::LocalInput));
+    if shared.phase(id) != (State::Running, lease) {
         return false;
     }
-    shared.phase(id) == (State::Running, lease)
+    if shared.local_input(id, desk) {
+        shared.yield_to_user(id);
+        return false;
+    }
+    true
 }
 
 /// Whether an action points at the screen.
@@ -1007,14 +1122,11 @@ async fn execute(
             for step in steps {
                 match step {
                     Step::Inject(e) => {
-                        let mut d = desk.lock().expect("desktop");
-                        if d.touched() {
-                            d.release();
-                            drop(d);
-                            let _ = shared
-                                .apply(id, Event::Pause, |t| t.paused = Some(Pause::LocalInput));
+                        if !holds(shared, id, lease, desk) {
+                            desk.lock().expect("desktop").release();
                             return Outcome::Paused;
                         }
+                        let mut d = desk.lock().expect("desktop");
                         if !d.inject(&e) {
                             d.release();
                             return Outcome::Failed(

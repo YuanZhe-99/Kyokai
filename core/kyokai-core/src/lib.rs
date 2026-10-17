@@ -42,8 +42,6 @@ struct Core {
     ctx: Arc<session::Ctx>,
     password: password::Temporary,
     network: net::Network,
-    /// The host's AI tasks.
-    ai: ai::Ai,
 }
 
 impl Core {
@@ -378,13 +376,13 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
     let secrets = Arc::new(secrets);
     let identity = Arc::new(identity::Identity::load_or_create(&secrets)?);
     let ctx = Arc::new(session::Ctx {
+        ai: Arc::new(ai::Ai::new(&cfg.state_dir, secrets.clone())?),
         identity,
         access: Arc::new(access::Access::load(secrets.clone())?),
         sessions: Arc::default(),
         version: cfg.version.clone(),
     });
     let network = net::Network::start(&secrets, ctx.clone())?;
-    let ai = ai::Ai::new(&cfg.state_dir, secrets.clone())?;
     let mut core = Core {
         state_dir: cfg.state_dir.clone(),
         cfg,
@@ -392,7 +390,6 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
         ctx,
         password: password::Temporary::generate(),
         network,
-        ai,
     };
     core.new_password()?;
     Ok(core)
@@ -535,8 +532,8 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 .to_owned();
             try_core(|c| c.ctx.access.forget_host(&id).map(|()| json!({})))
         }
-        "ai.settings.get" => with_core(|c| c.ai.settings()),
-        "ai.settings.set" => try_core(|c| c.ai.set_settings(&req.params)),
+        "ai.settings.get" => with_core(|c| c.ctx.ai.settings()),
+        "ai.settings.set" => try_core(|c| c.ctx.ai.set_settings(&req.params)),
         "ai.key.set" => {
             // {"provider": "claude", "key": "…"} stores it, {"key": null} removes it.
             let provider: ai::Provider = serde_json::from_value(req.params["provider"].take())
@@ -545,8 +542,10 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 serde_json::from_value(req.params["key"].take())
                     .map_err(|e| format!("bad key: {e}"))?;
             try_core(|c| {
-                c.ai.set_key(provider, key.as_deref().map(String::as_str))?;
-                Ok(c.ai.settings())
+                c.ctx
+                    .ai
+                    .set_key(provider, key.as_deref().map(String::as_str))?;
+                Ok(c.ctx.ai.settings())
             })
         }
         "ai.task.start" => {
@@ -555,30 +554,30 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 .as_str()
                 .ok_or("bad instruction")?
                 .to_owned();
-            try_core(|c| Ok(json!({"id": c.ai.start(&key, &instruction)?})))
+            try_core(|c| Ok(json!({"id": c.ctx.ai.start(&key, &instruction, None)?})))
         }
         "ai.task.reply" => {
             let id = req.params["id"].as_u64().ok_or("bad task id")?;
             let text = req.params["text"].as_str().ok_or("bad text")?.to_owned();
-            try_core(|c| c.ai.reply(id, &text).map(|()| json!({})))
+            try_core(|c| c.ctx.ai.reply(id, &text).map(|()| json!({})))
         }
         "ai.task.pause" | "ai.task.resume" | "ai.task.cancel" | "ai.task.decide" => {
             let id = req.params["id"].as_u64().ok_or("bad task id")?;
             let approve = req.params["approve"].as_bool();
             try_core(|c| {
                 match req.method.as_str() {
-                    "ai.task.pause" => c.ai.pause(id),
-                    "ai.task.resume" => c.ai.resume(id),
-                    "ai.task.cancel" => c.ai.cancel(id),
-                    _ => c.ai.decide(id, approve.ok_or("bad decision")?),
+                    "ai.task.pause" => c.ctx.ai.pause(id, ai::Pause::HostUser),
+                    "ai.task.resume" => c.ctx.ai.resume(id),
+                    "ai.task.cancel" => c.ctx.ai.cancel(id),
+                    _ => c.ctx.ai.decide(id, approve.ok_or("bad decision")?),
                 }
                 .map(|()| json!({}))
             })
         }
-        "ai.tasks" => with_core(|c| c.ai.tasks()),
-        "ai.history.clear" => try_core(|c| c.ai.clear().map(|()| json!({}))),
+        "ai.tasks" => with_core(|c| c.ctx.ai.tasks()),
+        "ai.history.clear" => try_core(|c| c.ctx.ai.clear().map(|()| json!({}))),
         "ai.stop" => with_core(|c| {
-            c.ai.stop_all();
+            c.ctx.ai.stop_all();
             json!({})
         }),
         other => Err(format!("unknown method {other:?}")),
@@ -611,7 +610,7 @@ fn status() -> Value {
             "password_serial": c.password.serial(),
             "network": c.network.status(),
             "permanent_password": c.ctx.access.slots.lock().is_ok_and(|s| s.has_permanent()),
-            "ai": c.ai.active(),
+            "ai": c.ctx.ai.active(),
             "requests": c.ctx.access.pending(),
             "sessions": c.ctx.sessions.list(),
             "recent": c

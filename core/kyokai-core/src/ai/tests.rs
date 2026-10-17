@@ -4,18 +4,15 @@
 //! tasks") against a fake desktop and a local stand-in for the provider.
 
 use serde_json::{Value, json};
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::action::{Action, Button, Key, ParseError, Point, normalize_key, parse_combo, validate};
 use super::desktop::{self, Desktop, Frame, Step};
-use super::task::{State, testing};
+use super::fake::*;
+use super::task::{Pause, State, testing};
 use super::{End, Outcome, Shot, claude, openai, screens};
-use crate::input::{Event, Mods, PointerAction};
-use crate::store::Secrets;
+use crate::input::{Event, LocalInput, Mods, PointerAction};
 
 fn dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ai/fixtures")
@@ -809,244 +806,18 @@ fn screenshots_fit_the_model_and_regions_map_back() {
     assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
 }
 
-// ---- The runtime against a fake desktop and a local provider ----
-
-/// What the fake desktop saw and does.
-#[derive(Default)]
-struct Log {
-    events: Vec<Event>,
-    pressed: bool,
-    /// Report local input on the next check.
-    touch: bool,
-    /// The size `size()` reports, when not the capture's.
-    size: Option<(u32, u32)>,
-    released: u32,
-}
-
-struct Fake(Arc<Mutex<Log>>);
-
-impl Desktop for Fake {
-    fn size(&mut self) -> Result<(u32, u32), String> {
-        Ok(self
-            .0
-            .lock()
-            .unwrap()
-            .size
-            .unwrap_or((screens::WIDTH, screens::HEIGHT)))
-    }
-
-    fn capture(&mut self) -> Result<Frame, String> {
-        Ok(screens::screen(self.0.lock().unwrap().pressed).frame())
-    }
-
-    fn inject(&mut self, e: &Event) -> bool {
-        let mut log = self.0.lock().unwrap();
-        if let Event::Pointer {
-            action: PointerAction::Down,
-            button: 0,
-            x,
-            y,
-        } = e
-        {
-            let [x0, y0, x1, y1] = screens::BUTTON;
-            let (px, py) = (x * screens::WIDTH as f32, y * screens::HEIGHT as f32);
-            if (x0 as f32..x1 as f32).contains(&px) && (y0 as f32..y1 as f32).contains(&py) {
-                log.pressed = true;
-            }
-        }
-        log.events.push(e.clone());
-        true
-    }
-
-    fn release(&mut self) {
-        self.0.lock().unwrap().released += 1;
-    }
-
-    fn cursor(&mut self) -> Option<(f32, f32)> {
-        Some((0.5, 0.5))
-    }
-
-    fn touched(&mut self) -> bool {
-        std::mem::take(&mut self.0.lock().unwrap().touch)
-    }
-}
-
-/// What the stand-in received: each request's header lines and body.
-type Requests = Arc<Mutex<Vec<(Vec<String>, Value)>>>;
-
-/// A local stand-in for a provider: answers each request with the next
-/// response, after its delay.
-struct Provider {
-    url: String,
-    requests: Requests,
-}
-
-fn provider(responses: Vec<(u64, Value)>) -> Provider {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://{}/v1/test", listener.local_addr().unwrap());
-    let requests = Arc::new(Mutex::new(Vec::new()));
-    let log = requests.clone();
-    std::thread::spawn(move || {
-        for (delay, response) in responses {
-            let Ok((stream, _)) = listener.accept() else {
-                return;
-            };
-            let mut reader = BufReader::new(stream.try_clone().unwrap());
-            let mut headers = Vec::new();
-            let mut len = 0;
-            loop {
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                let line = line.trim_end().to_string();
-                if line.is_empty() {
-                    break;
-                }
-                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
-                    len = v.trim().parse().unwrap();
-                }
-                headers.push(line);
-            }
-            let mut body = vec![0; len];
-            reader.read_exact(&mut body).unwrap();
-            log.lock()
-                .unwrap()
-                .push((headers, serde_json::from_slice(&body).unwrap()));
-            std::thread::sleep(Duration::from_millis(delay));
-            let text = response.to_string();
-            let mut stream = stream;
-            let _ = write!(
-                stream,
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
-                text.len()
-            );
-        }
-    });
-    Provider { url, requests }
-}
-
-impl Provider {
-    /// Waits until the stand-in has received `n` requests.
-    fn wait_for(&self, n: usize) {
-        let t0 = Instant::now();
-        while self.requests.lock().unwrap().len() < n {
-            assert!(
-                t0.elapsed() < Duration::from_secs(20),
-                "waiting for request {n}"
-            );
-            std::thread::sleep(Duration::from_millis(5));
-        }
-    }
-}
-
-struct Rig {
-    ai: super::Ai,
-    log: Arc<Mutex<Log>>,
-    dir: PathBuf,
-}
-
-impl Drop for Rig {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.dir);
-    }
-}
-
-const TEST_KEY: &str = "sk-test-not-a-real-key";
-
-fn rig(name: &str, provider_kind: &str, url: &str) -> Rig {
-    let dir = std::env::temp_dir().join(format!("kyokai-ai-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let log = Arc::new(Mutex::new(Log::default()));
-    let shared = log.clone();
-    let ai = testing::ai(
-        &dir,
-        Arc::new(Secrets::memory()),
-        Arc::new(move || Ok(Box::new(Fake(shared.clone())) as Box<dyn Desktop>)),
-        url.into(),
-    );
-    ai.set_settings(&json!({"provider": provider_kind}))
-        .unwrap();
-    let kind: super::Provider = serde_json::from_value(json!(provider_kind)).unwrap();
-    ai.set_key(kind, Some(TEST_KEY)).unwrap();
-    Rig { ai, log, dir }
-}
-
-impl Rig {
-    fn task(&self, id: u64) -> Value {
-        self.ai
-            .tasks()
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|t| t["id"] == id)
-            .unwrap()
-            .clone()
-    }
-
-    /// Waits until the task satisfies `f`.
-    fn until(&self, id: u64, what: &str, f: impl Fn(&Value) -> bool) -> Value {
-        let t0 = Instant::now();
-        loop {
-            let t = self.task(id);
-            if f(&t) {
-                return t;
-            }
-            assert!(
-                t0.elapsed() < Duration::from_secs(20),
-                "waiting for {what}: {t:#}"
-            );
-            std::thread::sleep(Duration::from_millis(10));
-        }
-    }
-
-    fn state(&self, id: u64, state: &str) -> Value {
-        self.until(id, state, |t| t["state"] == state)
-    }
-
-    fn clicks(&self) -> usize {
-        let log = self.log.lock().unwrap();
-        log.events
-            .iter()
-            .filter(|e| {
-                matches!(
-                    e,
-                    Event::Pointer {
-                        action: PointerAction::Down,
-                        ..
-                    }
-                )
-            })
-            .count()
-    }
-}
-
-fn claude_turn(id: &str, blocks: Value) -> Value {
-    json!({"id": id, "model": "claude-opus-5-5", "stop_reason": "tool_use", "content": blocks})
-}
-
-fn claude_end(text: &str) -> Value {
-    json!({"id": "msg_end", "model": "claude-opus-5-5", "stop_reason": "end_turn",
-        "content": [{"type": "text", "text": text}]})
-}
-
-fn click_save() -> Value {
-    json!([
-        {"type": "thinking", "thinking": "Pressing Save.", "signature": "sig"},
-        {"type": "tool_use", "id": "t1", "name": "left_click", "toolset_name": "computer", "input": {"coordinate": [640, 425]}},
-        {"type": "tool_use", "id": "t2", "name": "screenshot", "toolset_name": "computer", "input": {}}
-    ])
-}
+// ---- The runtime against a fake desktop and a local provider (ai::fake) ----
 
 #[test]
 fn claude_task_clicks_and_finishes() {
-    let server = provider(vec![
+    let server = server(vec![
         (0, claude_turn("m1", click_save())),
         (0, claude_end("Saved the file.")),
     ]);
     let rig = rig("claude", "claude", &server.url);
-    let id = rig.ai.start("k1", "Save the file").unwrap();
+    let id = rig.ai.start("k1", "Save the file", None).unwrap();
     assert_eq!(
-        rig.ai.start("k1", "Save the file").unwrap(),
+        rig.ai.start("k1", "Save the file", None).unwrap(),
         id,
         "one task per idempotency key"
     );
@@ -1094,14 +865,14 @@ fn claude_task_clicks_and_finishes() {
 #[test]
 fn a_response_after_a_pause_never_acts() {
     // The model answers slowly; the host user pauses meanwhile.
-    let server = provider(vec![
+    let server = server(vec![
         (400, claude_turn("m1", click_save())),
         (0, claude_end("ok")),
     ]);
     let rig = rig("pause", "claude", &server.url);
-    let id = rig.ai.start("k", "Save the file").unwrap();
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
     server.wait_for(1);
-    rig.ai.pause(id).unwrap();
+    rig.ai.pause(id, Pause::HostUser).unwrap();
     let t = rig.until(id, "the late turn recorded", |t| {
         t["steps"].as_array().unwrap().len() == 2
     });
@@ -1125,14 +896,14 @@ fn a_response_after_a_pause_never_acts() {
 
 #[test]
 fn local_input_pauses_the_task_at_once() {
-    let server = provider(vec![
+    let server = server(vec![
         (300, claude_turn("m1", click_save())),
         (0, claude_end("ok")),
     ]);
     let rig = rig("local", "claude", &server.url);
-    let id = rig.ai.start("k", "Save the file").unwrap();
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
     server.wait_for(1);
-    rig.log.lock().unwrap().touch = true;
+    rig.log.lock().unwrap().press_at = Some(Instant::now());
     let t = rig.state(id, "paused");
     assert_eq!(t["paused"], "local-input");
     rig.until(id, "the late turn recorded", |t| {
@@ -1145,7 +916,7 @@ fn local_input_pauses_the_task_at_once() {
 
 #[test]
 fn every_action_policy_asks_and_a_decline_runs_nothing() {
-    let server = provider(vec![
+    let server = server(vec![
         (0, claude_turn("m1", click_save())),
         (0, claude_end("I could not save.")),
     ]);
@@ -1153,7 +924,7 @@ fn every_action_policy_asks_and_a_decline_runs_nothing() {
     rig.ai
         .set_settings(&json!({"approval": "every-action"}))
         .unwrap();
-    let id = rig.ai.start("k", "Save the file").unwrap();
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
     let t = rig.state(id, "approval");
     assert_eq!(t["approval"]["action"]["kind"], "click");
     assert_eq!(rig.clicks(), 0);
@@ -1180,9 +951,9 @@ fn openai_safety_check_waits_for_approval_and_is_acknowledged() {
     let turn2 = json!({"id": "resp_2", "status": "completed", "output": [{
         "type": "message", "content": [{"type": "output_text", "text": "Done."}]
     }]});
-    let server = provider(vec![(0, turn1), (0, turn2)]);
+    let server = server(vec![(0, turn1), (0, turn2)]);
     let rig = rig("openai", "openai", &server.url);
-    let id = rig.ai.start("k", "Save the file").unwrap();
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
     let t = rig.state(id, "approval");
     assert_eq!(t["approval"]["flagged"], json!(["Check the page."]));
     assert_eq!(rig.clicks(), 0);
@@ -1213,13 +984,13 @@ fn stale_and_out_of_range_actions_are_rejected() {
             {"type": "tool_use", "id": "t2", "name": "left_click", "toolset_name": "computer", "input": {"coordinate": [640, 425]}}
         ]),
     );
-    let server = provider(vec![
+    let server = server(vec![
         (0, out_of_range),
         (400, claude_turn("m2", click_save())),
         (0, claude_end("ok")),
     ]);
     let rig = rig("stale", "claude", &server.url);
-    let id = rig.ai.start("k", "Save the file").unwrap();
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
     // After the first turn the screen changes size: the second turn's click
     // refers to a screenshot that is no longer current.
     rig.until(id, "first turn", |t| {
@@ -1243,15 +1014,18 @@ fn stale_and_out_of_range_actions_are_rejected() {
 
 #[test]
 fn one_task_at_a_time_and_cancel_stops_a_request() {
-    let server = provider(vec![(3000, claude_end("late"))]);
+    let server = server(vec![(3000, claude_end("late"))]);
     let rig = rig("cancel", "claude", &server.url);
-    let id = rig.ai.start("a", "First").unwrap();
-    assert!(rig.ai.start("b", "Second").is_err());
+    let id = rig.ai.start("a", "First", None).unwrap();
+    assert!(rig.ai.start("b", "Second", None).is_err());
     rig.ai.cancel(id).unwrap();
     let t = rig.state(id, "cancelled");
     assert_eq!(t["text"], "", "the late answer never arrives");
     assert!(rig.ai.resume(id).is_err());
-    assert!(rig.ai.start("", "").is_err(), "an instruction is needed");
+    assert!(
+        rig.ai.start("", "", None).is_err(),
+        "an instruction is needed"
+    );
 }
 
 #[test]
@@ -1268,7 +1042,7 @@ fn settings_and_keys_never_expose_the_key() {
     let saved = std::fs::read_to_string(rig.dir.join("ai.json")).unwrap();
     assert!(saved.contains("claude-sonnet-5-5") && !saved.contains(TEST_KEY));
     rig.ai.set_key(super::Provider::Claude, None).unwrap();
-    assert!(rig.ai.start("k", "Save").is_err(), "no key, no task");
+    assert!(rig.ai.start("k", "Save", None).is_err(), "no key, no task");
 }
 
 /// A real Claude round trip on the synthetic screens (nothing touches the
@@ -1289,6 +1063,7 @@ fn live_claude_task_on_synthetic_screens() {
         .start(
             "k",
             "Press the SAVE button in the dialog, then confirm that the file was saved.",
+            None,
         )
         .unwrap();
     let t0 = Instant::now();
@@ -1335,6 +1110,76 @@ fn real_screen_capture_and_hooks() {
         "primary {w}x{h}, shot {}x{}, cursor ({x:.3}, {y:.3}), touched {}",
         s.width,
         s.height,
-        screen.touched()
+        screen.local_input().press.is_some()
     );
+}
+
+#[test]
+fn local_input_counts_after_the_desktop_was_given() {
+    let since = Instant::now();
+    let before = since - Duration::from_millis(10);
+    let soon = since + Duration::from_millis(500);
+    let later = since + crate::input::MOVE_GRACE + Duration::from_millis(10);
+    let cases = [
+        (None, None, false),
+        (Some(before), Some(before), false),
+        (Some(soon), None, true),
+        (None, Some(soon), false),
+        (None, Some(later), true),
+    ];
+    for (press, moved, want) in cases {
+        assert_eq!(
+            LocalInput { press, moved }.after(since),
+            want,
+            "{press:?} {moved:?}"
+        );
+    }
+}
+
+#[test]
+fn clicking_allow_in_kyokai_is_not_a_take_over() {
+    let server = server(vec![
+        (0, claude_turn("m1", click_save())),
+        (0, claude_end("ok")),
+    ]);
+    let rig = rig("allow-click", "claude", &server.url);
+    rig.ai
+        .set_settings(&json!({"approval": "every-action"}))
+        .unwrap();
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    rig.state(id, "approval");
+    // The host user clicks Allow: a press just before the decision, then the
+    // hand leaves the mouse.
+    {
+        let mut log = rig.log.lock().unwrap();
+        log.press_at = Some(Instant::now());
+        log.moved_at = Some(Instant::now());
+    }
+    std::thread::sleep(Duration::from_millis(5));
+    rig.ai.decide(id, true).unwrap();
+    rig.log.lock().unwrap().moved_at = Some(Instant::now());
+    rig.until(id, "the screenshot's approval", |t| {
+        t["state"] == "approval" && t["steps"].as_array().unwrap().len() == 1
+    });
+    assert_eq!(rig.clicks(), 1, "the approved click ran");
+    rig.ai.decide(id, true).unwrap();
+    rig.state(id, "done");
+}
+
+#[test]
+fn the_stop_shortcut_cancels_and_a_take_over_pauses() {
+    let server = server(vec![
+        (500, claude_turn("m1", click_save())),
+        (0, claude_end("ok")),
+    ]);
+    let rig = rig("stop-key", "claude", &server.url);
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    server.wait_for(1);
+    rig.ai.take_over();
+    let t = rig.state(id, "paused");
+    assert_eq!(t["paused"], "take-over");
+    assert!(rig.ai.pause(id, Pause::HostUser).is_err(), "already paused");
+    rig.log.lock().unwrap().stop = true;
+    rig.state(id, "cancelled");
+    assert_eq!(rig.clicks(), 0);
 }

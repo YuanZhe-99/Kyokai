@@ -58,9 +58,11 @@ when it ends. Malformed events are dropped without ending the session.
 ## AI tasks
 
 A task runs on the host, with the host's provider key, on the host's primary display. The host's
-user starts it on the AI page (or with `kyokai-svc ctl ai-start`); tasks from a controller come in
-Phase 5. One task holds the desktop at a time, and starting twice with one idempotency key starts
-one task.
+user starts it on the AI page (or with `kyokai-svc ctl ai-start`). A controller granted
+`run-ai-task` starts and steers its own tasks from the viewer's AI panel
+([protocol.md](protocol.md), "AI tasks"); with `approve-ai-action` it also answers their approvals,
+which the host's user can always answer too. One task holds the desktop at a time, and starting
+twice with one idempotency key starts one task.
 
 ### Providers
 
@@ -112,7 +114,7 @@ continues from there.
 
 | Event | From | To |
 |---|---|---|
-| pause (the host user, or local input) | running, approval | paused |
+| pause (the host user, local input, the controller, a take-over) | running, approval | paused |
 | resume | paused | running |
 | cancel (also the emergency stop) | running, approval, paused | cancelled |
 | an action needs approval | running | approval |
@@ -124,12 +126,18 @@ continues from there.
 ### The host user always wins
 
 While a task runs, low-level keyboard and mouse hooks watch for local input: any event that Kyokai
-did not inject. Local input pauses the task at once, whether the model is thinking or an action is
-running; a held key or button is released. Every pause and cancel moves the task's lease on: a
-model response that arrives afterwards is recorded but none of its actions run, and its answer
-goes out only after a resume, telling the model that nothing ran and that it should take a new
-screenshot. A cancel also drops the request in flight. The tray's Stop AI task item (and `ai.stop`)
-cancels every task, and so does stopping the engine.
+did not inject, after the task was last given the desktop (started, resumed or an action
+approved). A key, a button or the wheel counts at once; a pointer move after 1.5 seconds, so a hand
+leaving the mouse after clicking Resume or Allow is not a take-over; while the task waits for
+approval, local input does not count. Local input pauses a running task at once, whether the model
+is thinking or an action is running; a held key or button is released. A person at a controller
+who uses the keyboard or mouse in the viewer takes over the same way: the task pauses before their
+input is injected, and pointer moves alone are not injected while the task acts. Every pause and
+cancel moves the task's lease on: a model response that arrives afterwards is recorded but none of
+its actions run, and its answer goes out only after a resume, telling the model that nothing ran
+and that it should take a new screenshot. A cancel also drops the request in flight.
+Ctrl+Alt+Shift+Esc (the emergency stop, while a task runs), the tray's Stop AI task item and
+`ai.stop` cancel the task, and so does stopping the engine.
 
 ### History and settings
 
@@ -143,5 +151,4 @@ continues it until the engine stops.
 ## Not yet
 
 The remote cursor, other monitors, hardware encoders and the other codecs are Phase 3 steps that
-follow; AI tasks from a controller, the AI workspace and an emergency-stop hotkey are Phase 5; AI
-tasks on macOS come with the Mac pass (PLAN.md).
+follow; AI tasks on macOS come with the Mac pass (PLAN.md).

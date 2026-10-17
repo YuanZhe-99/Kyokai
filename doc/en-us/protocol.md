@@ -2,7 +2,7 @@
 
 A controller reaches a host's engine over the EasyTier data plane: TCP to the host's virtual IPv4
 address, port 47310 ([networking.md](networking.md)). EasyTier is an untrusted pipe, so the session
-is authenticated and encrypted end to end on top of it. The protocol version is 1.
+is authenticated and encrypted end to end on top of it. The protocol version is 2 (2 added the AI messages).
 
 ## Framing
 
@@ -55,8 +55,8 @@ sent again.
 ## Session messages
 
 After an accepted verdict both sides exchange `{"type": …}` documents: `ping` / `pong` every
-5 seconds, and `bye`. A session with no frame for 15 seconds is closed. Later phases add video,
-input and AI messages to this channel.
+5 seconds, and `bye`. A session with no frame for 15 seconds is closed. Video and input follow
+under Media, AI tasks under their own heading.
 
 ## Media
 
@@ -69,9 +69,26 @@ sends `{"type": "video-start", codec, width, height}`; the controller may send `
 "key-frame"}` (the host then describes the stream again and sends a key frame) and, with
 `control-input`, `{"type": "input", event}`. While it sends video the host sends `{"type":
 "test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":
-"stats", delay_ms, fps, bitrate}` ([computer-use.md](computer-use.md)). The host sends video only while the controller may
-view the screen. For now the stream is a 320×180 test pattern at 15 fps as raw RGBA (codec
-`raw-rgba`); captured, encoded video follows in Phase 3.
+"stats", delay_ms, fps, bitrate}` ([computer-use.md](computer-use.md)); the controller may set
+the quality with `{"type": "quality", preset, fps}`. The host sends video only while the
+controller may view the screen: its screen as H.264, or the 320×180 raw RGBA test pattern (codec
+`raw-rgba`) on a host that cannot capture.
+
+## AI tasks
+
+| Message | Direction | Needs | Does |
+|---|---|---|---|
+| `{"type": "ai-start", key, instruction}` | controller → host | `run-ai-task` | starts a task on the host for this controller; a repeated key starts one task |
+| `{"type": "ai-command", id, command, text}` | controller → host | `run-ai-task` | `pause`, `resume`, `cancel` or `reply` (with `text`) for a task this controller started |
+| `{"type": "ai-decide", id, approve}` | controller → host | `approve-ai-action` | answers the approval of a task this controller started |
+| `{"type": "ai-task", task}` | host → controller | — | the newest task this controller started, whenever it changes and when a session (re)starts; its latest 20 actions and 3 progress notes |
+| `{"type": "ai-error", error}` | host → controller | — | why a request was refused |
+
+Commands are never sent again after a reconnect; the host sends the current task instead. Input
+from a controller with `control-input` pauses a task that holds the desktop (a take-over) before it
+is injected; pointer moves alone are dropped while a task acts. The controller's engine passes
+`ai-task` and `ai-error` to its GUI as media packets 5 and 6; a newer task replaces one still
+waiting, like the stats (packet 4).
 
 ## Decoders
 

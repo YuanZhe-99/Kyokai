@@ -33,6 +33,9 @@
   is injected while a Kyokai window has the focus.
 - Local input, pause, cancel and the emergency stop revoke the task's input lease at once; a
   response that arrives afterwards never acts ([computer-use.md](computer-use.md)).
+- A controller's task runs with the host's key under the host's approval policy; the controller
+  needs `run-ai-task` to start or steer and `approve-ai-action` to approve, and only for the tasks
+  it started. The host's user sees every task and can pause, stop or approve any of them.
 
 ## Device identity
 

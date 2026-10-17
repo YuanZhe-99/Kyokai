@@ -20,7 +20,7 @@ use tokio::sync::{Notify, mpsc};
 use crate::{media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
-pub const PROTOCOL: u32 = 1;
+pub const PROTOCOL: u32 = 2;
 const PATTERN: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
@@ -119,7 +119,49 @@ enum Message {
         fps: u32,
         bitrate: u32,
     },
+    /// controller → host (`run-ai-task`): start an AI task on the host; the
+    /// key makes a repeated start (after a reconnect) start one task.
+    AiStart {
+        key: String,
+        instruction: String,
+    },
+    /// controller → host (`run-ai-task`): steer a task this controller
+    /// started; `text` is the reply's.
+    AiCommand {
+        id: u64,
+        command: Steer,
+        #[serde(default)]
+        text: String,
+    },
+    /// controller → host (`approve-ai-action`): answer the approval of a
+    /// task this controller started.
+    AiDecide {
+        id: u64,
+        approve: bool,
+    },
+    /// host → controller: the newest task this controller started, whenever
+    /// it changes and when a session (re)starts.
+    AiTask {
+        task: Value,
+    },
+    /// host → controller: why an AI request was refused.
+    AiError {
+        error: String,
+    },
 }
+
+/// What a controller may do to its AI task.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum Steer {
+    Pause,
+    Resume,
+    Cancel,
+    Reply,
+}
+
+/// How often the host looks for changes of a controller's AI task.
+const AI_SYNC: Duration = Duration::from_millis(400);
 
 /// Why a session ended or never started, as shown to people.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -299,6 +341,8 @@ impl Sessions {
 
 /// What both ends need: who this device is and the shared state.
 pub struct Ctx {
+    /// The host's AI tasks, which controllers may start and steer.
+    pub ai: Arc<crate::ai::Ai>,
     pub identity: Arc<Identity>,
     pub access: Arc<Access>,
     pub sessions: Arc<Sessions>,
@@ -457,11 +501,17 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         Ok(granted) => {
             let video = granted.contains(&Permission::ViewScreen);
             let input = granted.contains(&Permission::ControlInput);
+            let ai = HostAi {
+                ai: ctx.ai.clone(),
+                peer: device_id.clone(),
+                run: granted.contains(&Permission::RunAiTask),
+                approve: granted.contains(&Permission::ApproveAiAction),
+            };
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
                 e.granted = granted;
             });
-            let failure = run(ch, &stop, Side::Host { video, input }).await.err();
+            let failure = run(ch, &stop, Side::Host { video, input, ai }).await.err();
             ctx.sessions.end(id, failure);
         }
         Err(f) => ctx.sessions.end(id, Some(f)),
@@ -723,6 +773,7 @@ pub enum Side {
         // Read by the Windows input service; macOS input comes with the Mac pass.
         #[cfg_attr(not(windows), allow(dead_code))]
         input: bool,
+        ai: HostAi,
     },
     /// The controller: puts media into the queue its GUI drains, and sends
     /// the GUI's control messages (input, key-frame requests) to the host.
@@ -730,6 +781,50 @@ pub enum Side {
         queue: Arc<media::Queue>,
         control: Arc<tokio::sync::Mutex<mpsc::Receiver<Value>>>,
     },
+}
+
+/// The host's AI as one session sees it: which controller it serves and
+/// what that controller may do.
+pub struct HostAi {
+    ai: Arc<crate::ai::Ai>,
+    /// The controller's Device ID: the origin of the tasks it starts.
+    peer: String,
+    /// `run-ai-task`: start and steer its own tasks.
+    run: bool,
+    /// `approve-ai-action`: answer its own tasks' approvals.
+    approve: bool,
+}
+
+impl HostAi {
+    /// Answers an AI request from the controller.
+    /// Returns: why it was refused, safe to show.
+    fn handle(&self, msg: Message) -> Result<(), String> {
+        let not_allowed = || "this session may not do that".to_string();
+        match msg {
+            Message::AiStart { key, instruction } if self.run => self
+                .ai
+                .start(&key, &instruction, Some(&self.peer))
+                .map(|_| ()),
+            Message::AiCommand { id, command, text } if self.run => {
+                if !self.ai.started_by(id, &self.peer) {
+                    return Err(not_allowed());
+                }
+                match command {
+                    Steer::Pause => self.ai.pause(id, crate::ai::Pause::Controller),
+                    Steer::Resume => self.ai.resume(id),
+                    Steer::Cancel => self.ai.cancel(id),
+                    Steer::Reply => self.ai.reply(id, &text),
+                }
+            }
+            Message::AiDecide { id, approve } if self.approve => {
+                if !self.ai.started_by(id, &self.peer) {
+                    return Err(not_allowed());
+                }
+                self.ai.decide(id, approve)
+            }
+            _ => Err(not_allowed()),
+        }
+    }
 }
 
 /// Encrypts one plaintext and writes it as a frame.
@@ -809,6 +904,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         Side::Controller { queue, control } => (Some(queue.clone()), Some(control.clone())),
         Side::Host { .. } => (None, None),
     };
+    let host_ai = match &side {
+        Side::Host { ai, .. } if ai.run || ai.approve => Some(ai),
+        _ => None,
+    };
+    let mut ai_sync = tokio::time::interval(AI_SYNC);
+    let mut ai_sent: Option<Value> = None;
     let mut control = match &control {
         Some(c) => Some(c.lock().await),
         None => None,
@@ -838,6 +939,17 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             _ = stop.notified() => {
                 let _ = seal_json(&mut noise, &mut buf, &mut wr, &Message::Bye).await;
                 return Ok(());
+            }
+            _ = ai_sync.tick(), if host_ai.is_some() => {
+                // The controller's task as it is now; sent again after a
+                // reconnect, never replayed as commands.
+                let h = host_ai.expect("checked");
+                let now = h.ai.latest_for(&h.peer);
+                if now.is_some() && now != ai_sent {
+                    let task = now.clone().expect("checked");
+                    seal_json(&mut noise, &mut buf, &mut wr, &Message::AiTask { task }).await?;
+                    ai_sent = now;
+                }
             }
             _ = ping.tick() => {
                 if heard.elapsed() > IDLE_LIMIT {
@@ -883,7 +995,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 // Only messages a GUI may send pass on to the host.
-                if let Ok(m @ (Message::KeyFrame | Message::Input { .. } | Message::Quality { .. })) = serde_json::from_value::<Message>(msg) {
+                if let Ok(m @ (Message::KeyFrame | Message::Input { .. } | Message::Quality { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. })) = serde_json::from_value::<Message>(msg) {
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
                 }
             }
@@ -938,6 +1050,28 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         }
                     }
                     Message::Bye => return Ok(()),
+                    m @ (Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. }) => {
+                        // Only a host answers AI requests.
+                        if let Side::Host { ai, .. } = &side
+                            && let Err(error) = ai.handle(m)
+                        {
+                            seal_json(&mut noise, &mut buf, &mut wr, &Message::AiError { error }).await?;
+                        }
+                    }
+                    Message::AiTask { task } => {
+                        if let Some(q) = &queue {
+                            let mut packet = vec![media::packet::AI_TASK];
+                            packet.extend(serde_json::to_vec(&task).map_err(|_| Failure::Broken)?);
+                            q.push(packet);
+                        }
+                    }
+                    Message::AiError { error } => {
+                        if let Some(q) = &queue {
+                            let mut packet = vec![media::packet::AI_ERROR];
+                            packet.extend(serde_json::to_vec(&json!({"error": error})).map_err(|_| Failure::Broken)?);
+                            q.push(packet);
+                        }
+                    }
                     Message::VideoStart(v) => {
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::VIDEO_START];
@@ -955,10 +1089,18 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     // Input reaches the host only with control-input; a
                     // malformed event is dropped, not fatal.
+                    // A person's input takes over from the host's AI task:
+                    // it pauses before the event is injected. Pointer moves
+                    // alone (a hand resting on the viewer) neither take over
+                    // nor reach the desktop while the AI acts.
                     #[cfg(windows)]
                     Message::Input { event } => {
-                        if let (Some(inj), Ok(e)) = (injector.as_mut(), serde_json::from_value::<crate::input::Event>(event)) {
-                            inj.inject(&e);
+                        if let (Some(inj), Ok(e), Side::Host { ai, .. }) = (injector.as_mut(), serde_json::from_value::<crate::input::Event>(event), &side) {
+                            let hover = matches!(e, crate::input::Event::Pointer { action: crate::input::PointerAction::Move, .. });
+                            if !(hover && ai.ai.acting()) {
+                                ai.ai.take_over();
+                                inj.inject(&e);
+                            }
                         }
                     }
                     #[cfg(not(windows))]
@@ -988,11 +1130,22 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai::fake;
     use crate::store::Secrets;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
+    /// A device whose AI runs on the fake desktop and reaches no provider.
     fn device(version: &str) -> Arc<Ctx> {
+        static N: AtomicU32 = AtomicU32::new(0);
+        let n = N.fetch_add(1, Ordering::Relaxed);
+        let rig = fake::rig(&format!("session-{n}"), "claude", "http://127.0.0.1:9");
+        device_with(rig.ai.clone(), version)
+    }
+
+    fn device_with(ai: Arc<crate::ai::Ai>, version: &str) -> Arc<Ctx> {
         let secrets = Arc::new(Secrets::memory());
         Arc::new(Ctx {
+            ai,
             identity: Arc::new(Identity::load_or_create(&secrets).unwrap()),
             access: Arc::new(Access::load(secrets).unwrap()),
             sessions: Arc::new(Sessions::default()),
@@ -1013,11 +1166,23 @@ mod tests {
         password: &str,
         decide: Option<Vec<Permission>>,
     ) -> u64 {
+        let want = vec![Permission::ViewScreen, Permission::ControlInput];
+        attempt_with(host, controller, dialed, password, decide, want).await
+    }
+
+    /// `attempt`, asking for `want`.
+    async fn attempt_with(
+        host: &Arc<Ctx>,
+        controller: &Arc<Ctx>,
+        dialed: &str,
+        password: &str,
+        decide: Option<Vec<Permission>>,
+        want: Vec<Permission>,
+    ) -> u64 {
         let (a, b) = tokio::io::duplex(1 << 16);
         let from: IpAddr = "10.126.126.2".parse().unwrap();
         tokio::spawn(serve(host.clone(), b, from));
         let (id, stop) = begin(controller, dialed);
-        let want = vec![Permission::ViewScreen, Permission::ControlInput];
         let c = controller.clone();
         let (dialed_owned, password) = (
             dialed.to_owned(),
@@ -1070,6 +1235,124 @@ mod tests {
             .find(|e| e["id"] == id)
             .unwrap()
             .clone()
+    }
+
+    /// Reads the controller's media until an AI packet satisfies `f`.
+    fn ai_packet(queue: &media::Queue, what: &str, f: impl Fn(u8, &Value) -> bool) -> Value {
+        let until = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < until {
+            let Ok(p) = queue.pop(Duration::from_millis(200)) else {
+                continue;
+            };
+            if let kind @ (media::packet::AI_TASK | media::packet::AI_ERROR) = p[0] {
+                let v: Value = serde_json::from_slice(&p[1..]).unwrap();
+                if f(kind, &v) {
+                    return v;
+                }
+            }
+        }
+        panic!("no AI packet: {what}");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_controller_runs_and_approves_an_ai_task_on_the_host() {
+        let server = fake::server(vec![
+            (0, fake::claude_turn("m1", fake::click_save())),
+            (0, fake::claude_end("Saved the file.")),
+        ]);
+        let rig = fake::rig("session-ai", "claude", &server.url);
+        rig.ai
+            .set_settings(&json!({"approval": "every-action"}))
+            .unwrap();
+        let host = device_with(rig.ai.clone(), "1.0.0");
+        let controller = device("1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let ai = vec![Permission::RunAiTask, Permission::ApproveAiAction];
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            Some(ai.clone()),
+            ai,
+        )
+        .await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        let (queue, control) = controller.sessions.media(id).unwrap();
+        let start = json!({"type": "ai-start", "key": "k1", "instruction": "Save the file"});
+        control.try_send(start.clone()).unwrap();
+        // A repeated start (as after a reconnect) starts one task.
+        control.try_send(start).unwrap();
+        let task = ai_packet(&queue, "approval", |_, t| t["state"] == "approval");
+        assert_eq!(task["origin"], controller.identity.device_id());
+        assert_eq!(task["approval"]["action"]["kind"], "click");
+        let tid = task["id"].as_u64().unwrap();
+        // The click, then the screenshot, each approved from the controller.
+        let approve = json!({"type": "ai-decide", "id": tid, "approve": true});
+        control.try_send(approve.clone()).unwrap();
+        ai_packet(&queue, "the screenshot's approval", |_, t| {
+            t["state"] == "approval" && t["steps"].as_array().unwrap().len() == 1
+        });
+        control.try_send(approve).unwrap();
+        let done = ai_packet(&queue, "done", |_, t| t["state"] == "done");
+        assert_eq!(done["text"], "Saved the file.");
+        assert!(
+            rig.log.lock().unwrap().pressed,
+            "the AI pressed SAVE on the host"
+        );
+        assert_eq!(
+            rig.ai.tasks().as_array().unwrap().len(),
+            1,
+            "one task for one key"
+        );
+        // A task the host's own user starts is not the controller's to steer.
+        let own = rig.ai.start("host", "Something else", None).unwrap();
+        control
+            .try_send(json!({"type": "ai-command", "id": own, "command": "cancel"}))
+            .unwrap();
+        ai_packet(&queue, "refusal", |k, _| k == media::packet::AI_ERROR);
+        assert_ne!(rig.task(own)["state"], "cancelled");
+        rig.ai.cancel(own).unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn ai_requests_need_their_permissions() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let want = vec![Permission::ViewScreen];
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            Some(want.clone()),
+            want,
+        )
+        .await;
+        let (queue, control) = controller.sessions.media(id).unwrap();
+        control
+            .try_send(json!({"type": "ai-start", "key": "k", "instruction": "Open the settings"}))
+            .unwrap();
+        let refused = ai_packet(&queue, "refusal", |k, _| k == media::packet::AI_ERROR);
+        assert!(refused["error"].as_str().unwrap().contains("may not"));
+        assert_eq!(
+            host.ai.tasks(),
+            json!([]),
+            "view-screen alone starts no AI task"
+        );
     }
 
     // Multithreaded: the test waits for media with a blocking pop, which

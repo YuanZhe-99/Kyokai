@@ -30,6 +30,10 @@ pub mod packet {
     pub const CONTROL: u8 = 3;
     /// engine → GUI: the host's `{delay_ms, fps, bitrate}` JSON, every second.
     pub const STATS: u8 = 4;
+    /// engine → GUI: the host's AI task this controller started, as JSON.
+    pub const AI_TASK: u8 = 5;
+    /// engine → GUI: `{error}` JSON, why the host refused an AI request.
+    pub const AI_ERROR: u8 = 6;
 }
 
 /// What a video stream carries, sent before its first frame.
@@ -156,13 +160,17 @@ impl Default for Queue {
 }
 
 impl Queue {
-    /// Adds a packet; frames beyond KEEP_FRAMES push out the oldest frame.
+    /// Adds a packet; frames beyond KEEP_FRAMES push out the oldest frame,
+    /// and a newer stats or AI task packet replaces one still waiting.
     pub fn push(&self, packet: Vec<u8>) {
         let Ok(mut q) = self.inner.lock() else {
             return;
         };
         if q.1 {
             return;
+        }
+        if let Some(&kind @ (packet::STATS | packet::AI_TASK)) = packet.first() {
+            q.0.retain(|p| p.first() != Some(&kind));
         }
         if packet.first() == Some(&packet::FRAME) {
             let frames =
@@ -311,5 +319,28 @@ mod tests {
         assert_eq!(q.pop(Duration::ZERO), Err(Empty::Closed));
         let open = Queue::default();
         assert_eq!(open.pop(Duration::from_millis(10)), Err(Empty::Timeout));
+    }
+
+    /// Regression: with no reader, a stats report a second piled up for as
+    /// long as the session lived.
+    #[test]
+    fn stats_and_ai_tasks_keep_only_the_newest_but_errors_all_stay() {
+        let q = Queue::default();
+        for i in 0..100u8 {
+            q.push(vec![packet::STATS, i]);
+            q.push(vec![packet::AI_TASK, i]);
+        }
+        q.push(vec![packet::AI_ERROR, 1]);
+        q.push(vec![packet::AI_ERROR, 2]);
+        let got: Vec<Vec<u8>> = std::iter::from_fn(|| q.pop(Duration::ZERO).ok()).collect();
+        assert_eq!(
+            got,
+            vec![
+                vec![packet::STATS, 99],
+                vec![packet::AI_TASK, 99],
+                vec![packet::AI_ERROR, 1],
+                vec![packet::AI_ERROR, 2],
+            ]
+        );
     }
 }

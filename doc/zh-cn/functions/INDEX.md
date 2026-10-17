@@ -7,13 +7,13 @@
 |---|---|---|
 | `cmd/kyokai` | 界面入口 | `main` |
 | `cmd/kyokai-svc` | 引擎入口 | `run`、`ctl` |
-| `internal/gui` | 界面状态、视图（含 AI 页面）、托盘、更新、引擎子进程 | `App`、`App.View`、`App.connectLoop`、`engineChild.ensure`、`App.aiView`、`describeAction` |
+| `internal/gui` | 界面状态、视图（含 AI 页面）、托盘、更新、引擎子进程 | `App`、`App.View`、`App.connectLoop`、`engineChild.ensure`、`App.aiView`、`describeAction`、`viewer.aiPanel` |
 | `internal/engine` | 引擎宿主 | `Run`、`Options`、`DefaultStateDir` |
 | `internal/localapi` | 本地 API 协议、服务端、客户端、授权 | `ProtocolVersion`、`Request`、`Status`、`AISettings`、`AITask`、`NetworkSettings`、`NetworkStatus`、`SessionInfo`、`HostRequest`、`Client.Attach`、`Authorizer.Allows` |
 | `internal/core` | 通过 purego 绑定 Rust 核心 | `Load`、`Lib.Start`、`Lib.Call` |
 | `internal/version` | 产品版本 | `Version`、`Older` |
 | `internal/fsutil` | 原子写入与 JSON 文档 | `WriteFileAtomic`、`WriteJSON`、`ReadJSON` |
-| `core/kyokai-core` | Rust 核心：C ABI、机密、身份、临时密码、EasyTier 节点 | `kyokai_start`、`kyokai_call`、`store::open`、`Identity::load_or_create`、`device_id`、`net::Network`、`session::serve`、`session::connect`、`access::Access`、`auth::Slots`、`backup::export`、`backup::import`、`media::Reassembler`、`media::Queue`、`kyokai_media_read`、`video::Source`、`mf::Encoder`、`mf::Decoder`、`decode::open`、`input::Event`、`input::Injector`、`input::LocalWatch`、`ai::Ai`、`ai::action::validate`、`ai::desktop::plan` |
+| `core/kyokai-core` | Rust 核心：C ABI、机密、身份、临时密码、EasyTier 节点 | `kyokai_start`、`kyokai_call`、`store::open`、`Identity::load_or_create`、`device_id`、`net::Network`、`session::serve`、`session::connect`、`session::HostAi`、`access::Access`、`auth::Slots`、`backup::export`、`backup::import`、`media::Reassembler`、`media::Queue`、`kyokai_media_read`、`video::Source`、`mf::Encoder`、`mf::Decoder`、`decode::open`、`input::Event`、`input::Injector`、`input::LocalWatch`、`ai::Ai`、`ai::action::validate`、`ai::desktop::plan` |
 | `core/third_party/rustdesk-dxgi` | 复用的 RustDesk Windows 屏幕采集 | `Displays`、`Capturer::frame` |
 | `core/third_party/rustdesk-qos` | 复用的 RustDesk 视频 QoS | `VideoQoS`、`base_bitrate` |
 | `core/third_party/thunk-noop` | EasyTier `thunk-rs` 的空操作替代 | `thunk` |

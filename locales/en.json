@@ -174,6 +174,14 @@
   "AIOutcomePaused": "not run (paused)",
   "AIOutcomeSkipped": "skipped",
   "AIProvider": "Provider",
+  "AIRemoteBanner": "An AI task from {device} is working on this computer.",
+  "@AIRemoteBanner": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "AIRemoveKey": "Remove key",
   "AIReplyHint": "Reply to continue this task",
   "AIReview": "Review",
@@ -185,9 +193,19 @@
   "AIStateDone": "Done",
   "AIStateFailed": "Stopped by an error",
   "AIStatePaused": "Paused",
+  "AIStatePausedController": "Paused from the controlling device",
   "AIStatePausedLocal": "Paused because you used the keyboard or mouse",
+  "AIStatePausedTakeOver": "Paused: a person took over",
   "AIStateRunning": "Working…",
   "AIStepsTitle": "Actions",
+  "AITaskFrom": "Started from {device}",
+  "@AITaskFrom": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "AITaskHint": "The AI works on this computer's screen with this computer's API key. Using the keyboard or mouse pauses it at once.",
   "AITaskTitle": "AI task",
   "AboutLicense": "AGPL-3.0-only. Includes MyGo (MIT).",
@@ -245,6 +263,7 @@
   "ConnectPassword": "Password",
   "ConnectRecent": "Recent:",
   "ConnectTitle": "Control another device",
+  "ConnectWithAI": "Also ask to run AI tasks there",
   "Copied": "Copied",
   "DiagEngine": "Engine",
   "DiagEngineRunning": "Running since {time}",
@@ -425,8 +444,12 @@
   },
   "TrustedNone": "None yet.",
   "TrustedTitle": "Trusted devices",
+  "ViewerAIHint": "The task runs on the other computer with its own AI provider. Your input in the picture pauses it.",
+  "ViewerAIHostApproves": "The other computer's user approves this step.",
+  "ViewerAITitle": "AI on this device",
   "ViewerEnded": "The session ended.",
   "ViewerNoDecoder": "The picture can't be shown: Kyokai's core library is missing.",
+  "ViewerNoPicture": "This session does not show the screen.",
   "ViewerTitle": "{device} — Kyokai",
   "@ViewerTitle": {
     "placeholders": {

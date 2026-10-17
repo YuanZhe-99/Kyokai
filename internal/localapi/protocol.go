@@ -154,12 +154,16 @@ type AITaskRequest struct {
 type AITask struct {
 	ID          uint64 `json:"id"`
 	Instruction string `json:"instruction"`
-	Provider    string `json:"provider"`
-	Model       string `json:"model"`
+	// Origin is the Device ID of the controller that started the task,
+	// empty for this computer's own user.
+	Origin   string `json:"origin,omitempty"`
+	Provider string `json:"provider"`
+	Model    string `json:"model"`
 	// State is "running", "approval", "paused", "done", "failed" or
 	// "cancelled".
 	State string `json:"state"`
-	// Paused says why: "host-user" or "local-input".
+	// Paused says why: "host-user", "local-input", "controller" or
+	// "take-over".
 	Paused string `json:"paused,omitempty"`
 	// Error says why the task failed; safe to show.
 	Error    string      `json:"error,omitempty"`
@@ -194,6 +198,9 @@ type AIActive struct {
 	ID     uint64 `json:"id"`
 	State  string `json:"state"`
 	Paused string `json:"paused,omitempty"`
+	// Origin is the controller that started it, empty for this computer's
+	// own user.
+	Origin string `json:"origin,omitempty"`
 }
 
 // IdentityBackup is an identity backup document and its passphrase.
