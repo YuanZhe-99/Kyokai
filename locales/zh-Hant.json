@@ -83,6 +83,7 @@
   "AIStatePausedController": "已由控制端暫停",
   "AIStatePausedDisconnected": "已暫停：控制端已中斷連線",
   "AIStatePausedLocal": "因你使用了鍵盤或滑鼠而暫停",
+  "AIStatePausedSleep": "已暫停：電腦進入了睡眠",
   "AIStatePausedTakeOver": "已暫停：有人接管了操作",
   "AIStateRunning": "正在操作…",
   "AIStepsTitle": "操作",
@@ -291,6 +292,7 @@
   "ViewerLock": "鎖定螢幕",
   "ViewerNoDecoder": "無法顯示畫面：缺少 Kyokai 的核心程式庫。",
   "ViewerNoPicture": "此工作階段不顯示螢幕。",
+  "ViewerPrivacy": "隱私模式（對方螢幕變黑）",
   "ViewerTitle": "{device} — Kyokai",
   "ViewerUnsupported": "這個畫面使用 {codec}，目前版本還無法顯示。",
   "ViewerWaiting": "正在等待畫面…"

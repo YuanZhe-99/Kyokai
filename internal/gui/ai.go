@@ -440,6 +440,8 @@ func aiStateLabel(t *localapi.AITask) string {
 			return L.AIStatePausedTakeOver()
 		case "disconnected":
 			return L.AIStatePausedDisconnected()
+		case "sleep":
+			return L.AIStatePausedSleep()
 		}
 		return L.AIStatePaused()
 	case "done":

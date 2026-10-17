@@ -210,7 +210,9 @@ impl LocalInput {
 }
 
 #[cfg(windows)]
-pub use windows_impl::{Injector, LocalWatch, kyokai_process, physical, pointer, pointer_in};
+pub use windows_impl::{
+    Injector, LocalWatch, emergency_stop, kyokai_process, physical, pointer, pointer_in,
+};
 
 /// Where the pointer is, as fractions of the primary display (outside 0–1
 /// on another display), and whether it is shown. Not available yet off
@@ -230,9 +232,10 @@ pub fn pointer_in(_area: Area) -> Option<(f32, f32, bool)> {
 #[cfg(windows)]
 mod windows_impl {
     use super::*;
+    use crate::privacy::{self, Kind};
     use std::collections::BTreeSet;
-    use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::OnceLock;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use windows::Win32::Foundation::{
         CloseHandle, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM,
     };
@@ -250,11 +253,10 @@ mod windows_impl {
     use windows::Win32::UI::WindowsAndMessaging::{
         CURSOR_SHOWING, CURSORINFO, CallNextHookEx, GetCursorInfo, GetCursorPos,
         GetForegroundWindow, GetMessageW, GetSystemMetrics, GetWindowThreadProcessId,
-        KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostQuitMessage,
-        PostThreadMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
-        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetWindowsHookExW, UnhookWindowsHookEx,
-        WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_MOUSEMOVE, WM_QUIT, WM_SYSKEYDOWN,
-        WindowFromPoint,
+        KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW,
+        SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL,
+        WM_KEYDOWN, WM_MOUSEMOVE, WM_QUIT, WM_SYSKEYDOWN, WindowFromPoint,
     };
     use windows::core::PWSTR;
 
@@ -284,8 +286,11 @@ mod windows_impl {
         /// primary.
         area: Option<Area>,
         /// The block of the host's own input this session holds: its
-        /// generation (see `Block`).
+        /// generation (see `crate::privacy`).
         block: Option<u64>,
+        /// The privacy mode this session holds: the mask's generation and
+        /// the block's that comes with it.
+        privacy: Option<(u64, u64)>,
     }
 
     impl Default for Injector {
@@ -297,6 +302,7 @@ mod windows_impl {
                 remote: crate::agent::link().map(|l| l.injector()),
                 area: None,
                 block: None,
+                privacy: None,
             }
         }
     }
@@ -334,14 +340,50 @@ mod windows_impl {
                 return link.block_input(id, on);
             }
             match (on, self.block) {
-                (true, None) => self.block = hold_block(),
+                (true, None) => self.block = privacy::hold(Kind::Block),
                 (false, Some(generation)) => {
-                    release_block(generation);
+                    privacy::release(Kind::Block, generation);
                     self.block = None;
                 }
                 _ => {}
             }
             self.input_blocked()
+        }
+
+        /// Turns privacy mode on or off for this session: the host's screen
+        /// goes black for the people there (not in the picture) and their
+        /// keyboard and mouse are blocked; lifted like the block.
+        /// Returns: whether privacy mode is on for this session now.
+        pub fn privacy(&mut self, on: bool) -> bool {
+            if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
+                return link.privacy(id, on);
+            }
+            match (on, self.privacy) {
+                (true, None) => {
+                    if let Some(block) = privacy::hold(Kind::Block) {
+                        match privacy::hold(Kind::Mask) {
+                            Some(mask) => self.privacy = Some((mask, block)),
+                            None => privacy::release(Kind::Block, block),
+                        }
+                    }
+                }
+                (false, Some((mask, block))) => {
+                    privacy::release(Kind::Mask, mask);
+                    privacy::release(Kind::Block, block);
+                    self.privacy = None;
+                }
+                _ => {}
+            }
+            self.privacy_on()
+        }
+
+        /// Whether privacy mode is still on for this session.
+        pub fn privacy_on(&self) -> bool {
+            if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
+                return link.privacy_on(id);
+            }
+            self.privacy
+                .is_some_and(|(mask, _)| privacy::live(Kind::Mask, mask))
         }
 
         /// Whether the host's input is still blocked for this session (the
@@ -350,9 +392,10 @@ mod windows_impl {
             if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
                 return link.input_blocked(id);
             }
-            self.block.is_some_and(|g| {
-                BLOCKING.load(Ordering::Relaxed) && BLOCK_GEN.load(Ordering::Relaxed) == g
-            })
+            self.block.is_some_and(|g| privacy::live(Kind::Block, g))
+                || self
+                    .privacy
+                    .is_some_and(|(_, g)| privacy::live(Kind::Block, g))
         }
 
         /// Sets the display pointer positions refer to (None: the primary).
@@ -617,154 +660,15 @@ mod windows_impl {
                 _ => {
                     self.release_all();
                     if let Some(generation) = self.block.take() {
-                        release_block(generation);
+                        privacy::release(Kind::Block, generation);
+                    }
+                    if let Some((mask, block)) = self.privacy.take() {
+                        privacy::release(Kind::Mask, mask);
+                        privacy::release(Kind::Block, block);
                     }
                 }
             }
         }
-    }
-
-    /// The hooks that block the host's own input while any session holds
-    /// the block.
-    struct Block {
-        /// The hook thread.
-        thread: u32,
-        holders: usize,
-        generation: u64,
-    }
-
-    static BLOCK: Mutex<Option<Block>> = Mutex::new(None);
-    /// The generation of the newest block; a block the host user lifted
-    /// is not held by anyone any more, even when a new one starts.
-    static BLOCK_GEN: AtomicU64 = AtomicU64::new(0);
-    /// Read by the hooks: whether to swallow the host's input.
-    static BLOCKING: AtomicBool = AtomicBool::new(false);
-    /// The modifiers the host's keyboard holds, seen by the block's hook
-    /// (which swallows them, so the key state does not show them).
-    static HELD: AtomicU8 = AtomicU8::new(0);
-    const HELD_CTRL: u8 = 1;
-    const HELD_ALT: u8 = 2;
-    const HELD_SHIFT: u8 = 4;
-
-    /// Takes a hold on the block, starting its hooks when it is the first.
-    /// Returns: the block's generation, or None when the hooks could not
-    /// be installed.
-    fn hold_block() -> Option<u64> {
-        let mut block = BLOCK.lock().expect("input block");
-        if block.is_some() && !BLOCKING.load(Ordering::Relaxed) {
-            // The host user lifted it; its thread is ending.
-            *block = None;
-        }
-        if let Some(b) = block.as_mut() {
-            b.holders += 1;
-            return Some(b.generation);
-        }
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            // The agent's hooks belong on the desktop that takes input.
-            crate::agent::follow_input_desktop();
-            // SAFETY: the hooks are installed and removed on this thread,
-            // which pumps messages for them until WM_QUIT.
-            unsafe {
-                let module = GetModuleHandleW(None).ok().map(|m| HINSTANCE(m.0));
-                let mouse = SetWindowsHookExW(WH_MOUSE_LL, Some(block_mouse_hook), module, 0);
-                let keys = SetWindowsHookExW(WH_KEYBOARD_LL, Some(block_key_hook), module, 0);
-                let (mouse, keys) = match (mouse, keys) {
-                    (Ok(m), Ok(k)) => (m, k),
-                    (m, k) => {
-                        for h in [m, k].into_iter().flatten() {
-                            let _ = UnhookWindowsHookEx(h);
-                        }
-                        let _ = tx.send(None);
-                        return;
-                    }
-                };
-                let _ = tx.send(Some(GetCurrentThreadId()));
-                let mut msg = MSG::default();
-                while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
-                let _ = UnhookWindowsHookEx(mouse);
-                let _ = UnhookWindowsHookEx(keys);
-            }
-        });
-        let thread = rx.recv().ok().flatten()?;
-        let generation = BLOCK_GEN.fetch_add(1, Ordering::Relaxed) + 1;
-        HELD.store(0, Ordering::Relaxed);
-        BLOCKING.store(true, Ordering::Relaxed);
-        *block = Some(Block {
-            thread,
-            holders: 1,
-            generation,
-        });
-        Some(generation)
-    }
-
-    /// Gives up a hold on the block of `generation`; the last one removes
-    /// the hooks.
-    fn release_block(generation: u64) {
-        let mut block = BLOCK.lock().expect("input block");
-        let Some(b) = block.as_mut() else {
-            return;
-        };
-        if b.generation != generation {
-            return;
-        }
-        b.holders -= 1;
-        if b.holders == 0 || !BLOCKING.load(Ordering::Relaxed) {
-            BLOCKING.store(false, Ordering::Relaxed);
-            // SAFETY: posts WM_QUIT to the hook thread started above.
-            let _ = unsafe { PostThreadMessageW(b.thread, WM_QUIT, WPARAM(0), LPARAM(0)) };
-            *block = None;
-        }
-    }
-
-    /// Swallows the host's own mouse input while blocked.
-    unsafe extern "system" fn block_mouse_hook(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
-        if code >= 0 && BLOCKING.load(Ordering::Relaxed) {
-            // SAFETY: for HC_ACTION, `l` points to the event's MSLLHOOKSTRUCT.
-            let info = unsafe { &*(l.0 as *const MSLLHOOKSTRUCT) };
-            if info.flags & LLMHF_INJECTED == 0 || info.dwExtraInfo != INJECTED_TAG {
-                return LRESULT(1);
-            }
-        }
-        // SAFETY: passes the event on unchanged.
-        unsafe { CallNextHookEx(None, code, w, l) }
-    }
-
-    /// Swallows the host's own keys while blocked, except that the
-    /// emergency stop lifts the block (and stops the AI, as everywhere).
-    unsafe extern "system" fn block_key_hook(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
-        if code >= 0 && BLOCKING.load(Ordering::Relaxed) {
-            // SAFETY: for HC_ACTION, `l` points to the event's KBDLLHOOKSTRUCT.
-            let info = unsafe { &*(l.0 as *const KBDLLHOOKSTRUCT) };
-            if info.flags.0 & LLKHF_INJECTED.0 == 0 || info.dwExtraInfo != INJECTED_TAG {
-                let down = matches!(w.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
-                let bit = match VIRTUAL_KEY(info.vkCode as u16) {
-                    VK_LCONTROL | VK_RCONTROL | VK_CONTROL => HELD_CTRL,
-                    VK_LMENU | VK_RMENU | VK_MENU => HELD_ALT,
-                    VK_LSHIFT | VK_RSHIFT | VK_SHIFT => HELD_SHIFT,
-                    _ => 0,
-                };
-                if down {
-                    HELD.fetch_or(bit, Ordering::Relaxed);
-                } else {
-                    HELD.fetch_and(!bit, Ordering::Relaxed);
-                }
-                let all = HELD_CTRL | HELD_ALT | HELD_SHIFT;
-                if down
-                    && info.vkCode == VK_ESCAPE.0 as u32
-                    && HELD.load(Ordering::Relaxed) & all == all
-                {
-                    BLOCKING.store(false, Ordering::Relaxed);
-                    STOP.store(true, Ordering::Relaxed);
-                    // SAFETY: ends this hook thread's message loop.
-                    unsafe { PostQuitMessage(0) };
-                } else {
-                    return LRESULT(1);
-                }
-            }
-        }
-        // SAFETY: passes the event on unchanged.
-        unsafe { CallNextHookEx(None, code, w, l) }
     }
 
     /// The watch's clock: local input is stored as nanoseconds since it,
@@ -774,6 +678,12 @@ mod windows_impl {
     static MOVED: AtomicU64 = AtomicU64::new(0);
     /// Set by Ctrl+Alt+Shift+Esc, the emergency stop.
     static STOP: AtomicBool = AtomicBool::new(false);
+
+    /// Records the emergency stop (seen by the block's hook, which
+    /// swallows it before the watch's hook could).
+    pub fn emergency_stop() {
+        STOP.store(true, Ordering::Relaxed);
+    }
 
     fn stamp(at: &AtomicU64) {
         let epoch = *EPOCH.get_or_init(Instant::now);

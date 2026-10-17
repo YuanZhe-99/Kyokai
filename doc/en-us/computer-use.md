@@ -87,9 +87,18 @@ host's AI task, like input:
 | Lock screen | `LockWorkStation` in the user's session (the agent's, in the helper modes) |
 | Ctrl+Alt+Del | only in the helper modes: the helper, a SYSTEM service, calls `SendSAS`; the policy that lets services do that (`SoftwareSASGeneration`) is switched on for the call and put back as it was |
 | Block their keyboard and mouse | low-level hooks swallow the host's own keyboard and mouse while any session holds the block; Kyokai's injected input passes. The host user lifts it with Ctrl+Alt+Shift+Esc (which also stops an AI task) or Ctrl+Alt+Del, which no hook sees; it ends with the session |
+| Privacy mode | RustDesk's privacy mode: a black, click-through, topmost window over the whole virtual desktop, left out of capture (`WDA_EXCLUDEFROMCAPTURE`), so the people at the host see black while the picture shows the screen; it blocks their keyboard and mouse too and is lifted the same way. Refused where Windows cannot leave the window out of capture |
 
-The host reports whether Ctrl+Alt+Del is available and whether the block holds; the viewer's
-switch shows that report, not the request.
+The host reports whether Ctrl+Alt+Del is available, whether the block holds and whether privacy
+mode is on; the viewer's switches show that report, not the request.
+
+## Sleep
+
+While a session is connected the host keeps the computer and its displays awake (a power
+request, "Kyokai: someone is connected"), so the idle timer neither cuts the session nor darkens
+the captured display. When the computer goes to sleep anyway, the AI task in progress pauses
+("the computer went to sleep") and waits for a person to resume it; after waking, sessions
+resume through the network as after any drop.
 
 ## Clipboard
 

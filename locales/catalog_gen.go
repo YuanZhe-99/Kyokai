@@ -872,6 +872,16 @@ func (msgs Messages) AIStatePausedLocal() string {
 	return Catalog.Format(msgs.locale, "AIStatePausedLocal", nil)
 }
 
+// AIStatePausedSleep says "Paused: the computer went to sleep"
+// in the language the app shows.
+func AIStatePausedSleep() string { return In(i18n.Locale()).AIStatePausedSleep() }
+
+// AIStatePausedSleep says "Paused: the computer went to sleep"
+// in the language of msgs.
+func (msgs Messages) AIStatePausedSleep() string {
+	return Catalog.Format(msgs.locale, "AIStatePausedSleep", nil)
+}
+
 // AIStatePausedTakeOver says "Paused: a person took over"
 // in the language the app shows.
 func AIStatePausedTakeOver() string { return In(i18n.Locale()).AIStatePausedTakeOver() }
@@ -2958,6 +2968,16 @@ func ViewerNoPicture() string { return In(i18n.Locale()).ViewerNoPicture() }
 // in the language of msgs.
 func (msgs Messages) ViewerNoPicture() string {
 	return Catalog.Format(msgs.locale, "ViewerNoPicture", nil)
+}
+
+// ViewerPrivacy says "Privacy mode (their screen goes black)"
+// in the language the app shows.
+func ViewerPrivacy() string { return In(i18n.Locale()).ViewerPrivacy() }
+
+// ViewerPrivacy says "Privacy mode (their screen goes black)"
+// in the language of msgs.
+func (msgs Messages) ViewerPrivacy() string {
+	return Catalog.Format(msgs.locale, "ViewerPrivacy", nil)
 }
 
 // ViewerTitle says "{device} — Kyokai"

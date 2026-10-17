@@ -21,6 +21,9 @@ mod media;
 mod mf;
 mod net;
 mod password;
+mod power;
+#[cfg(windows)]
+mod privacy;
 mod session;
 mod store;
 mod video;
@@ -45,6 +48,8 @@ struct Core {
     ctx: Arc<session::Ctx>,
     password: password::Temporary,
     network: net::Network,
+    /// Pauses the AI task when the computer goes to sleep.
+    _suspend: power::Suspend,
 }
 
 impl Core {
@@ -396,6 +401,7 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
         agent::start_helper(exe.clone());
     }
     let network = net::Network::start(&secrets, ctx.clone(), cfg.agent.is_some())?;
+    let suspend = power::Suspend::watch(&ctx.ai);
     let mut core = Core {
         state_dir: cfg.state_dir.clone(),
         cfg,
@@ -403,6 +409,7 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
         ctx,
         password: password::Temporary::generate(),
         network,
+        _suspend: suspend,
     };
     core.new_password()?;
     Ok(core)

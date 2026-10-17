@@ -221,6 +221,7 @@
   "AIStatePausedController": "Paused from the controlling device",
   "AIStatePausedDisconnected": "Paused: the controlling device disconnected",
   "AIStatePausedLocal": "Paused because you used the keyboard or mouse",
+  "AIStatePausedSleep": "Paused: the computer went to sleep",
   "AIStatePausedTakeOver": "Paused: a person took over",
   "AIStateRunning": "Working…",
   "AIStepsTitle": "Actions",
@@ -523,6 +524,7 @@
   "ViewerLock": "Lock screen",
   "ViewerNoDecoder": "The picture can't be shown: Kyokai's core library is missing.",
   "ViewerNoPicture": "This session does not show the screen.",
+  "ViewerPrivacy": "Privacy mode (their screen goes black)",
   "ViewerTitle": "{device} — Kyokai",
   "@ViewerTitle": {
     "placeholders": {

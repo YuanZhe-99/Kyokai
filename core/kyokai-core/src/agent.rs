@@ -316,6 +316,19 @@ impl Link {
             .unwrap_or(false)
     }
 
+    /// Turns privacy mode on or off for injector `id`.
+    /// Returns: whether it is on for it now (false without an agent).
+    pub fn privacy(&self, id: u64, on: bool) -> bool {
+        self.call("privacy", json!({"injector": id, "on": on}))
+            .unwrap_or(false)
+    }
+
+    /// Whether privacy mode is still on for injector `id`.
+    pub fn privacy_on(&self, id: u64) -> bool {
+        self.call("privacy.on", json!({"injector": id}))
+            .unwrap_or(false)
+    }
+
     /// Whether the host's input is still blocked for injector `id`.
     pub fn input_blocked(&self, id: u64) -> bool {
         self.call("input.blocked", json!({"injector": id}))
@@ -535,6 +548,12 @@ impl Injector {
     fn lock_screen(&self) -> bool {
         false
     }
+    fn privacy(&mut self, _: bool) -> bool {
+        false
+    }
+    fn privacy_on(&self) -> bool {
+        false
+    }
 }
 
 impl Agent {
@@ -623,6 +642,17 @@ impl Agent {
                 self.injectors
                     .get(&injector)
                     .is_some_and(|i| i.input_blocked())
+            ),
+            "privacy" => json!(
+                self.injectors
+                    .entry(injector)
+                    .or_default()
+                    .privacy(req["on"].as_bool().unwrap_or(false))
+            ),
+            "privacy.on" => json!(
+                self.injectors
+                    .get(&injector)
+                    .is_some_and(|i| i.privacy_on())
             ),
             "lock" => json!(Injector::default().lock_screen()),
             "pointer" => json!(match area {

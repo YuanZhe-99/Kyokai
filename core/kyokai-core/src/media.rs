@@ -39,7 +39,7 @@ pub mod packet {
     /// engine → GUI: the host's displays `{list, current}` JSON.
     pub const DISPLAYS: u8 = 8;
     /// engine → GUI: the session actions the host offers
-    /// `{ctrl_alt_del, blocked}` JSON.
+    /// `{ctrl_alt_del, blocked, privacy}` JSON.
     pub const ACTIONS: u8 = 9;
 }
 

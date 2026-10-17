@@ -253,6 +253,8 @@ pub enum Pause {
     TakeOver,
     /// The controller that started the task disconnected.
     Disconnected,
+    /// The computer went to sleep.
+    Sleep,
 }
 
 /// One action of a task, as the history keeps it.
@@ -601,6 +603,11 @@ impl Ai {
     // Used by the Windows input service; macOS input comes with the Mac pass.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub fn take_over(&self) {
+        self.pause_current(Pause::TakeOver);
+    }
+
+    /// Pauses the task in progress, if there is one, saying why.
+    pub fn pause_current(&self, by: Pause) {
         let id = {
             let tasks = self.shared.tasks.lock().expect("tasks");
             tasks
@@ -609,7 +616,7 @@ impl Ai {
                 .map(|t| t.id)
         };
         if let Some(id) = id {
-            let _ = self.pause(id, Pause::TakeOver);
+            let _ = self.pause(id, by);
         }
     }
 

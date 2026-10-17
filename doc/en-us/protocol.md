@@ -79,9 +79,9 @@ the quality with `{"type": "quality", preset, fps}`. With more than one display 
 display's place and size, the primary first) and the controller may ask for another with
 `{"type": "display", index}`. While it sends video the host also sends `{"type": "cursor", x, y, visible}`, its pointer as
 fractions of the picture, when it moves. With `control-input` the host sends
-`{"type": "actions", ctrl_alt_del, blocked}` as the session starts and whenever the block changes,
-and the controller may send `{"type": "action", action}` with `lock`, `ctrl-alt-del`, `block` or
-`unblock` ([computer-use.md](computer-use.md)). With `clipboard`, either side sends
+`{"type": "actions", ctrl_alt_del, blocked, privacy}` as the session starts and whenever the block
+or privacy mode changes, and the controller may send `{"type": "action", action}` with `lock`,
+`ctrl-alt-del`, `block`, `unblock`, `privacy-on` or `privacy-off` ([computer-use.md](computer-use.md)). With `clipboard`, either side sends
 `{"type": "clipboard", text}` for text copied on its side (at most 1 MiB) and
 `{"type": "clipboard-image", png}` for an image (base64 of an 8-bit RGBA PNG, at most 3 MiB and
 3840×2160). The host sends video only while the

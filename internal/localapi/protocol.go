@@ -205,7 +205,7 @@ type AITask struct {
 	// "cancelled".
 	State string `json:"state"`
 	// Paused says why: "host-user", "local-input", "controller",
-	// "take-over" or "disconnected".
+	// "take-over", "disconnected" or "sleep".
 	Paused string `json:"paused,omitempty"`
 	// Error says why the task failed; safe to show.
 	Error    string      `json:"error,omitempty"`

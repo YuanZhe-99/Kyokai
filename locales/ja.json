@@ -83,6 +83,7 @@
   "AIStatePausedController": "操作側のデバイスから一時停止されました",
   "AIStatePausedDisconnected": "一時停止：操作側のデバイスの接続が切れました",
   "AIStatePausedLocal": "キーボードまたはマウスが使われたため一時停止しました",
+  "AIStatePausedSleep": "一時停止：コンピューターがスリープしました",
   "AIStatePausedTakeOver": "一時停止：人が操作を引き継ぎました",
   "AIStateRunning": "操作中…",
   "AIStepsTitle": "操作",
@@ -291,6 +292,7 @@
   "ViewerLock": "画面をロック",
   "ViewerNoDecoder": "画面を表示できません。Kyokai のコアライブラリが見つかりません。",
   "ViewerNoPicture": "このセッションでは画面を表示しません。",
+  "ViewerPrivacy": "プライバシーモード（相手の画面を黒くする）",
   "ViewerTitle": "{device} — Kyokai",
   "ViewerUnsupported": "この画面は {codec} を使っており、このバージョンではまだ表示できません。",
   "ViewerWaiting": "画面を待っています…"

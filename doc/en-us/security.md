@@ -91,6 +91,7 @@ caller's token (its user and its enabled groups); an administrator outside them 
 | The helper | a local user driving the SYSTEM service, or swapping what it runs | peer credentials, the operator and the `kyokai` group only; its files are administrator-owned copies; the state folder is SYSTEM and Administrators only |
 | Helper updates | a local user swapping the app's files to have SYSTEM run them | the release key's signature over every file's hash, read once and installed as verified; unsigned builds need an administrator prompt |
 | The session agent | a local process posing as the helper or the agent to inject as SYSTEM, or feeding them media to decode | random pipe names created as the first instance, SYSTEM-only DACLs, each side checks the other's process id; neither decodes remote media |
+| The host user's control | a controller locking them out with the input block or privacy mode | both need `control-input`, end with the session, and the host user lifts them with Ctrl+Alt+Shift+Esc (seen by the block's own hook) or Ctrl+Alt+Del (never hookable); Ctrl+Alt+Del is sent only by the helper, with the services policy switched on just for the call |
 
 Out of scope: malware running as the same user (it can drive the desktop anyway), someone at the
 unlocked desktop, and a compromised provider.

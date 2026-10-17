@@ -52,8 +52,10 @@ Once connected, **View** opens the other screen in its own window. The bar below
 the quality (**Faster**, **Balanced**, **Sharper**) and a frame-rate cap. Click the picture to use
 the mouse and keyboard there; Kyokai's own windows on the other computer never receive your
 input. The bar above it can **Lock screen**, send **Ctrl+Alt+Del** (when the other computer runs
-Kyokai as a helper) and **Block their keyboard and mouse** while you work; its user can always
-lift the block with Ctrl+Alt+Shift+Esc or Ctrl+Alt+Del. **Disconnect** ends the session; closing the window only stops the picture. A session that
+Kyokai as a helper) and **Block their keyboard and mouse** while you work, or turn on **Privacy mode**, which also
+blacks out their screen while you still see it; its user can always lift both with
+Ctrl+Alt+Shift+Esc or Ctrl+Alt+Del. While you are connected the other computer does not go to
+sleep by itself. **Disconnect** ends the session; closing the window only stops the picture. A session that
 drops reconnects by itself for a minute without asking again.
 
 ## Let someone control this device

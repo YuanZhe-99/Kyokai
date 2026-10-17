@@ -83,6 +83,7 @@
   "AIStatePausedController": "已由控制端暂停",
   "AIStatePausedDisconnected": "已暂停：控制端已断开",
   "AIStatePausedLocal": "因你使用了键盘或鼠标而暂停",
+  "AIStatePausedSleep": "已暂停：电脑进入了睡眠",
   "AIStatePausedTakeOver": "已暂停：有人接管了操作",
   "AIStateRunning": "正在操作…",
   "AIStepsTitle": "操作",
@@ -291,6 +292,7 @@
   "ViewerLock": "锁定屏幕",
   "ViewerNoDecoder": "无法显示画面：缺少 Kyokai 的核心库。",
   "ViewerNoPicture": "此会话不显示屏幕。",
+  "ViewerPrivacy": "隐私模式（对方屏幕变黑）",
   "ViewerTitle": "{device} — Kyokai",
   "ViewerUnsupported": "这个画面使用 {codec}，当前版本还无法显示。",
   "ViewerWaiting": "正在等待画面…"

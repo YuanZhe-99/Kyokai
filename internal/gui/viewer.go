@@ -39,6 +39,7 @@ const (
 type hostActions struct {
 	CtrlAltDel bool `json:"ctrl_alt_del"`
 	Blocked    bool `json:"blocked"`
+	Privacy    bool `json:"privacy"`
 }
 
 // hostStats is what the host's QoS measured and chose (media STATS).
@@ -406,8 +407,9 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 }
 
 // actionBar offers the host's session actions: lock its screen, send
-// Ctrl+Alt+Del (helper modes only) and block its keyboard and mouse. The
-// switch shows what the host reports, not what was asked.
+// Ctrl+Alt+Del (helper modes only), block its keyboard and mouse, and
+// privacy mode (which blocks them too). The switches show what the host
+// reports, not what was asked.
 func (v *viewer) actionBar(c *ui.Context, a hostActions) {
 	t := c.Theme()
 	action := func(name string) {
@@ -421,11 +423,19 @@ func (v *viewer) actionBar(c *ui.Context, a hostActions) {
 			action("ctrl-alt-del")
 		}
 		blocked := a.Blocked
-		if ui.Switch(c.Key("act-block"), &blocked).Label(L.ViewerBlockInput()).Changed() {
+		if ui.Switch(c.Key("act-block"), &blocked).Label(L.ViewerBlockInput()).Disabled(a.Privacy).Changed() {
 			if blocked {
 				action("block")
 			} else {
 				action("unblock")
+			}
+		}
+		privacy := a.Privacy
+		if ui.Switch(c.Key("act-privacy"), &privacy).Label(L.ViewerPrivacy()).Changed() {
+			if privacy {
+				action("privacy-on")
+			} else {
+				action("privacy-off")
 			}
 		}
 	})

@@ -192,11 +192,13 @@ enum Message {
         action: SessionAction,
     },
     /// host → controller (`control-input`), as the session starts and when
-    /// the block changes: whether Ctrl+Alt+Del can be sent and whether the
-    /// host's input is blocked for this session.
+    /// the block or privacy mode changes: whether Ctrl+Alt+Del can be sent,
+    /// whether the host's input is blocked and whether privacy mode is on
+    /// for this session.
     Actions {
         ctrl_alt_del: bool,
         blocked: bool,
+        privacy: bool,
     },
 }
 
@@ -209,6 +211,18 @@ enum SessionAction {
     CtrlAltDel,
     Block,
     Unblock,
+    PrivacyOn,
+    PrivacyOff,
+}
+
+/// The session actions as the host offers them now.
+#[cfg(windows)]
+fn offered(inj: &crate::input::Injector) -> Message {
+    Message::Actions {
+        ctrl_alt_del: inj.can_ctrl_alt_del(),
+        blocked: inj.input_blocked(),
+        privacy: inj.privacy_on(),
+    }
 }
 
 /// What a controller may do to its AI task.
@@ -1223,6 +1237,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     } = ch;
     let (mut rd, mut wr) = tokio::io::split(stream);
     let (frames_tx, mut frames) = mpsc::channel::<Vec<u8>>(64);
+    // A host stays awake while someone is connected.
+    let _awake = matches!(side, Side::Host { .. }).then(crate::power::keep_awake);
     let _reader = AbortOnDrop(tokio::spawn(async move {
         while let Ok(f) = read_frame(&mut rd).await {
             if frames_tx.send(f).await.is_err() {
@@ -1296,24 +1312,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut sent_this_second = 0usize;
     let mut heard = Instant::now();
     let mut plain = vec![0u8; MAX_FRAME];
-    // Whether the host's input is blocked for this session; checked every
-    // second, since the host user can lift it.
+    // Whether this session holds the block or privacy mode; checked every
+    // second, since the host user can lift them.
     #[cfg_attr(not(windows), allow(unused_mut))]
-    let mut blocked = false;
+    let mut holding = false;
     let mut block_check = tokio::time::interval(Duration::from_secs(1));
     #[cfg(windows)]
     if let Some(inj) = &injector {
-        let ctrl_alt_del = inj.can_ctrl_alt_del();
-        seal_json(
-            &mut noise,
-            &mut buf,
-            &mut wr,
-            &Message::Actions {
-                ctrl_alt_del,
-                blocked,
-            },
-        )
-        .await?;
+        seal_json(&mut noise, &mut buf, &mut wr, &offered(inj)).await?;
     }
     let outcome: Result<(), Failure> = async { loop {
         tokio::select! {
@@ -1371,14 +1377,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                 }
             }
-            _ = block_check.tick(), if blocked => {
+            _ = block_check.tick(), if holding => {
                 #[cfg(windows)]
                 if let Some(inj) = &injector
                     && !inj.input_blocked()
                 {
-                    blocked = false;
-                    let ctrl_alt_del = inj.can_ctrl_alt_del();
-                    seal_json(&mut noise, &mut buf, &mut wr, &Message::Actions { ctrl_alt_del, blocked }).await?;
+                    holding = false;
+                    seal_json(&mut noise, &mut buf, &mut wr, &offered(inj)).await?;
                 }
             }
             _ = ping.tick() => {
@@ -1627,19 +1632,25 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                                     inj.ctrl_alt_del();
                                 }
                                 SessionAction::Block | SessionAction::Unblock => {
-                                    blocked = inj.block_input(action == SessionAction::Block);
-                                    let ctrl_alt_del = inj.can_ctrl_alt_del();
-                                    seal_json(&mut noise, &mut buf, &mut wr, &Message::Actions { ctrl_alt_del, blocked }).await?;
+                                    inj.block_input(action == SessionAction::Block);
                                 }
+                                SessionAction::PrivacyOn | SessionAction::PrivacyOff => {
+                                    inj.privacy(action == SessionAction::PrivacyOn);
+                                }
+                            }
+                            if matches!(action, SessionAction::Block | SessionAction::Unblock | SessionAction::PrivacyOn | SessionAction::PrivacyOff) {
+                                let now = offered(inj);
+                                holding = matches!(now, Message::Actions { blocked: true, .. });
+                                seal_json(&mut noise, &mut buf, &mut wr, &now).await?;
                             }
                         }
                     }
                     #[cfg(not(windows))]
                     Message::Action { .. } => {}
-                    Message::Actions { ctrl_alt_del, blocked } => {
+                    Message::Actions { ctrl_alt_del, blocked, privacy } => {
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::ACTIONS];
-                            packet.extend(serde_json::to_vec(&json!({"ctrl_alt_del": ctrl_alt_del, "blocked": blocked})).map_err(|_| Failure::Broken)?);
+                            packet.extend(serde_json::to_vec(&json!({"ctrl_alt_del": ctrl_alt_del, "blocked": blocked, "privacy": privacy})).map_err(|_| Failure::Broken)?);
                             q.push(packet);
                         }
                     }
@@ -1862,7 +1873,10 @@ mod tests {
                 }
             }
             match (offered, actions) {
-                (true, Some(a)) => assert_eq!(a, json!({"ctrl_alt_del": false, "blocked": false})),
+                (true, Some(a)) => assert_eq!(
+                    a,
+                    json!({"ctrl_alt_del": false, "blocked": false, "privacy": false})
+                ),
                 (false, None) => {}
                 (_, a) => panic!("offered {offered}, got {a:?}"),
             }
@@ -1877,6 +1891,8 @@ mod tests {
             (SessionAction::CtrlAltDel, "ctrl-alt-del"),
             (SessionAction::Block, "block"),
             (SessionAction::Unblock, "unblock"),
+            (SessionAction::PrivacyOn, "privacy-on"),
+            (SessionAction::PrivacyOff, "privacy-off"),
         ] {
             let m = serde_json::to_value(Message::Action { action }).unwrap();
             assert_eq!(m, json!({"type": "action", "action": name}));

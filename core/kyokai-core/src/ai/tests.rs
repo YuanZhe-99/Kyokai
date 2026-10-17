@@ -1408,3 +1408,20 @@ fn chat_task_clicks_and_finishes() {
     );
     assert_eq!(answer.last().unwrap()["content"][1]["type"], "image_url");
 }
+
+/// Sleep pauses the task in progress, so it never acts on a screen from
+/// before the sleep.
+#[test]
+fn sleep_pauses_the_task() {
+    let server = server(vec![
+        (500, claude_turn("m1", click_save())),
+        (0, claude_end("ok")),
+    ]);
+    let rig = rig("sleep", "claude", &server.url);
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    server.wait_for(1);
+    crate::power::going_to_sleep(&std::sync::Arc::downgrade(&rig.ai));
+    let t = rig.state(id, "paused");
+    assert_eq!(t["paused"], "sleep");
+    assert_eq!(rig.clicks(), 0);
+}
