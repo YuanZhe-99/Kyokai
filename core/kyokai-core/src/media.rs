@@ -34,6 +34,8 @@ pub mod packet {
     pub const AI_TASK: u8 = 5;
     /// engine → GUI: `{error}` JSON, why the host refused an AI request.
     pub const AI_ERROR: u8 = 6;
+    /// engine → GUI: the host's pointer `{x, y, visible}` JSON.
+    pub const CURSOR: u8 = 7;
 }
 
 /// What a video stream carries, sent before its first frame.
@@ -161,7 +163,8 @@ impl Default for Queue {
 
 impl Queue {
     /// Adds a packet; frames beyond KEEP_FRAMES push out the oldest frame,
-    /// and a newer stats or AI task packet replaces one still waiting.
+    /// and a newer stats, AI task or pointer packet replaces one still
+    /// waiting.
     pub fn push(&self, packet: Vec<u8>) {
         let Ok(mut q) = self.inner.lock() else {
             return;
@@ -169,7 +172,7 @@ impl Queue {
         if q.1 {
             return;
         }
-        if let Some(&kind @ (packet::STATS | packet::AI_TASK)) = packet.first() {
+        if let Some(&kind @ (packet::STATS | packet::AI_TASK | packet::CURSOR)) = packet.first() {
             q.0.retain(|p| p.first() != Some(&kind));
         }
         if packet.first() == Some(&packet::FRAME) {
@@ -324,11 +327,12 @@ mod tests {
     /// Regression: with no reader, a stats report a second piled up for as
     /// long as the session lived.
     #[test]
-    fn stats_and_ai_tasks_keep_only_the_newest_but_errors_all_stay() {
+    fn stats_ai_tasks_and_the_pointer_keep_only_the_newest_but_errors_all_stay() {
         let q = Queue::default();
         for i in 0..100u8 {
             q.push(vec![packet::STATS, i]);
             q.push(vec![packet::AI_TASK, i]);
+            q.push(vec![packet::CURSOR, i]);
         }
         q.push(vec![packet::AI_ERROR, 1]);
         q.push(vec![packet::AI_ERROR, 2]);
@@ -338,6 +342,7 @@ mod tests {
             vec![
                 vec![packet::STATS, 99],
                 vec![packet::AI_TASK, 99],
+                vec![packet::CURSOR, 99],
                 vec![packet::AI_ERROR, 1],
                 vec![packet::AI_ERROR, 2],
             ]

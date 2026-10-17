@@ -188,6 +188,7 @@ func TestViewerRenders(t *testing.T) {
 		"viewer-waiting": func(v *viewer) {},
 		"viewer-picture": func(v *viewer) {
 			v.start, v.bm, v.fps, v.kbps = videoStart{Codec: "raw-rgba", Width: 320, Height: 180}, ui.NewBitmap(pic), 15, 6900
+			v.pointer = hostPointer{X: 0.25, Y: 0.5, Visible: true}
 		},
 		"viewer-unsupported": func(v *viewer) { v.state = "This picture uses h265, which this version can't show yet." },
 		"viewer-ai": func(v *viewer) {
@@ -204,6 +205,7 @@ func TestViewerRenders(t *testing.T) {
 		setup(v)
 		tt := ui.NewTester(v.view, 1100, 560)
 		tt.Frame()
+		tt.Frame() // the pointer marker uses the first frame's layout
 		if dir == "" {
 			continue
 		}

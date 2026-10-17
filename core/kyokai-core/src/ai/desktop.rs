@@ -403,14 +403,9 @@ pub use windows_impl::Screen;
 mod windows_impl {
     //! The primary display of the interactive desktop.
     use super::*;
+    use crate::input::physical;
     use crate::input::{Injector, LocalWatch};
     use rustdesk_dxgi::{CapturerGDI, Displays};
-    use windows::Win32::Foundation::POINT;
-    use windows::Win32::UI::HiDpi::{
-        DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-        SetThreadDpiAwarenessContext,
-    };
-    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
     /// The real desktop: GDI capture, `SendInput` injection, and a watch on
     /// local input.
@@ -427,18 +422,6 @@ mod windows_impl {
                 watch: LocalWatch::start()?,
             })
         }
-    }
-
-    /// Runs `f` with this thread aware of the real pixel size of every
-    /// monitor, then restores the thread's previous awareness.
-    fn physical<T>(f: impl FnOnce() -> T) -> T {
-        // SAFETY: changes only this thread's DPI awareness; restored below.
-        let before: DPI_AWARENESS_CONTEXT =
-            unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
-        let out = f();
-        // SAFETY: restores the value returned above.
-        unsafe { SetThreadDpiAwarenessContext(before) };
-        out
     }
 
     /// The primary display (the one at the desktop's origin): its name and
@@ -483,16 +466,8 @@ mod windows_impl {
         }
 
         fn cursor(&mut self) -> Option<(f32, f32)> {
-            physical(|| {
-                let (_, w, h) = primary().ok()?;
-                let mut p = POINT::default();
-                // SAFETY: writes the cursor position into `p`.
-                unsafe { GetCursorPos(&mut p) }.ok()?;
-                Some((
-                    (p.x as f32 / w as f32).clamp(0.0, 1.0),
-                    (p.y as f32 / h as f32).clamp(0.0, 1.0),
-                ))
-            })
+            let (x, y, _) = crate::input::pointer()?;
+            Some((x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)))
         }
 
         fn local_input(&mut self) -> LocalInput {

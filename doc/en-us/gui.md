@@ -14,7 +14,7 @@ when `SCREENSHOT_DIR` is set.
   host's key changed). Recent devices sit under the form as buttons that fill in the Device ID; a
   dropped session shows "reconnecting" while it resumes. A connected session that may view the
   screen has View, which opens the viewer: its own window with the picture scaled to fit on black,
-  and a status line (Device ID, quality preset, frame-rate cap, size, codec, frame rate, bitrate,
+  the host's pointer marked with a small ring, and a status line (Device ID, quality preset, frame-rate cap, size, codec, frame rate, bitrate,
   the host's measured delay); closing it stops the stream, not
   the session. With `control-input`, the mouse, the wheel and the keyboard on the picture go to the
   host ([computer-use.md](computer-use.md)). With `run-ai-task` the viewer has an AI panel at its

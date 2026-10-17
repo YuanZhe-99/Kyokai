@@ -28,6 +28,7 @@ const (
 	packetFrame      byte = 2
 	packetControl    byte = 3
 	packetStats      byte = 4
+	packetCursor     byte = 7
 )
 
 // hostStats is what the host's QoS measured and chose (media STATS).
@@ -35,6 +36,14 @@ type hostStats struct {
 	DelayMS int `json:"delay_ms"`
 	FPS     int `json:"fps"`
 	Bitrate int `json:"bitrate"`
+}
+
+// hostPointer is where the host's pointer is (media CURSOR), as fractions
+// of the picture.
+type hostPointer struct {
+	X       float32 `json:"x"`
+	Y       float32 `json:"y"`
+	Visible bool    `json:"visible"`
 }
 
 // videoStart describes the stream that follows (media::VideoStart).
@@ -93,6 +102,8 @@ type viewer struct {
 	box     ui.Rect
 	control bool
 	held    map[ui.Key]bool
+	// The host's pointer, which the picture leaves out.
+	pointer hostPointer
 	// The AI panel (viewerai.go).
 	ai viewerAI
 }
@@ -207,6 +218,15 @@ func (v *viewer) pump() {
 			}
 			dec = d
 			v.begin(s)
+		case packetCursor:
+			var ptr hostPointer
+			if json.Unmarshal(p[1:], &ptr) == nil {
+				v.win.Update(func() {
+					v.mu.Lock()
+					v.pointer = ptr
+					v.mu.Unlock()
+				})
+			}
 		case packetAITask, packetAIError:
 			v.aiPacket(p[0], p[1:])
 		case packetStats:
@@ -292,11 +312,11 @@ func (v *viewer) setState(s string) {
 func (v *viewer) view(c *ui.Context) {
 	v.mu.Lock()
 	bm, state, start, fps, kbps, host := v.bm, v.state, v.start, v.fps, v.kbps, v.host
-	preset, fpsCap, withAI := v.preset, v.fpsCap, v.ai.run
+	preset, fpsCap, withAI, ptr := v.preset, v.fpsCap, v.ai.run, v.pointer
 	v.mu.Unlock()
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
 		ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
-			v.picture(c, bm, state)
+			v.picture(c, bm, state, start, ptr)
 			if withAI {
 				v.aiPanel(c)
 			}
@@ -305,9 +325,12 @@ func (v *viewer) view(c *ui.Context) {
 	})
 }
 
-// picture is the host's screen scaled to fit, or why it does not show.
-func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string) {
-	ui.Column(c).Grow(1).FillHeight().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+// picture is the host's screen scaled to fit, with the host's pointer
+// marked on it, or why it does not show.
+func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start videoStart, ptr hostPointer) {
+	area := ui.Column(c.Key("picture-area")).Grow(1).FillHeight().AlignItems(ui.Center).Justify(ui.Center)
+	at := area.LayoutBounds()
+	area.Children(func() {
 		switch {
 		case state != "":
 			ui.Text(c, state).TextColor(ui.Hex("#ffffff"))
@@ -322,6 +345,14 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string) {
 			v.mu.Lock()
 			v.box = box
 			v.mu.Unlock()
+			// The marker lets the pointer through, so it never takes a click.
+			if ox, oy, w, h := pictureBox(box, start.Width, start.Height); ptr.Visible && w > 0 {
+				x := box.X - at.X + ox + ptr.X*w
+				y := box.Y - at.Y + oy + ptr.Y*h
+				ui.Column(c.Key("pointer")).Absolute().Left(x-pointerR).Top(y-pointerR).
+					Width(2*pointerR).Height(2*pointerR).Radius(pointerR).
+					Background(ui.Hex("#ffffff").Alpha(0.85)).Border(2, ui.Hex("#000000")).PassThrough()
+			}
 		}
 	})
 }

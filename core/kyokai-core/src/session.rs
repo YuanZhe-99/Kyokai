@@ -152,6 +152,13 @@ enum Message {
     Clipboard {
         text: String,
     },
+    /// host → controller, with video: where the host's pointer is, as
+    /// fractions of the picture, and whether it shows there.
+    Cursor {
+        x: f32,
+        y: f32,
+        visible: bool,
+    },
 }
 
 /// What a controller may do to its AI task.
@@ -163,6 +170,9 @@ enum Steer {
     Cancel,
     Reply,
 }
+
+/// How often the host looks where its pointer is (with video).
+const POINTER_EVERY: Duration = Duration::from_millis(50);
 
 /// How often the host looks for changes of a controller's AI task.
 const AI_SYNC: Duration = Duration::from_millis(400);
@@ -958,6 +968,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // other side's texts are put on the local clipboard.
     let mut clip = clipboard.map(crate::clipboard::share);
     let mut ai_sync = tokio::time::interval(AI_SYNC);
+    // The host's pointer, which the captured picture leaves out.
+    let mut pointer_tick = tokio::time::interval(POINTER_EVERY);
+    let mut pointer_sent: Option<((i32, i32), bool)> = None;
     let mut ai_sent: Option<Value> = None;
     let mut control = match &control {
         Some(c) => Some(c.lock().await),
@@ -1007,6 +1020,16 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 seal_json(&mut noise, &mut buf, &mut wr, &Message::Clipboard { text }).await?;
+            }
+            _ = pointer_tick.tick(), if source.is_some() => {
+                if let Some((x, y, shown)) = crate::input::pointer() {
+                    let visible = shown && (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y);
+                    let now = (((x * 4096.0) as i32, (y * 4096.0) as i32), visible);
+                    if pointer_sent != Some(now) {
+                        pointer_sent = Some(now);
+                        seal_json(&mut noise, &mut buf, &mut wr, &Message::Cursor { x, y, visible }).await?;
+                    }
+                }
             }
             _ = ping.tick() => {
                 if heard.elapsed() > IDLE_LIMIT {
@@ -1120,6 +1143,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             && text.len() <= crate::clipboard::MAX_TEXT
                         {
                             let _ = c.writes.send(text);
+                        }
+                    }
+                    Message::Cursor { x, y, visible } => {
+                        if let Some(q) = &queue {
+                            let mut packet = vec![media::packet::CURSOR];
+                            packet.extend(serde_json::to_vec(&json!({"x": x, "y": y, "visible": visible})).map_err(|_| Failure::Broken)?);
+                            q.push(packet);
                         }
                     }
                     Message::AiTask { task } => {
@@ -1462,12 +1492,16 @@ mod tests {
         let start = queue.pop(Duration::from_secs(5)).unwrap();
         assert_eq!(start[0], media::packet::VIDEO_START);
         let v: media::VideoStart = serde_json::from_slice(&start[1..]).unwrap();
-        // The host's QoS stats arrive between frames; the test wants frames.
+        // The host's QoS stats and pointer arrive between frames; the test
+        // wants frames.
         let mut stats = 0;
         let frame = loop {
             let p = queue.pop(Duration::from_secs(5)).unwrap();
             if p[0] == media::packet::STATS {
                 stats += 1;
+                continue;
+            }
+            if p[0] == media::packet::CURSOR {
                 continue;
             }
             break p;

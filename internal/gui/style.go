@@ -19,6 +19,7 @@ const (
 	contentMaxW  float32 = 760
 	inputAreaH   float32 = 72  // a multi-line input of about three lines
 	aiPanelW     float32 = 320 // the viewer's AI panel
+	pointerR     float32 = 6   // the host's pointer marker in the viewer
 )
 
 // card is a rounded panel.

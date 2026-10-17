@@ -23,6 +23,10 @@ screen or a UAC prompt — the host releases it and opens the primary display ag
 second; the stream keeps its size and a new mode is scaled into it (a changed aspect ratio shows
 stretched until the next session).
 
+Desktop duplication leaves the pointer out of the picture, so the host reports where its pointer
+is — at most 20 times a second, when it moves or hides — and the viewer marks it with a small ring
+that lets clicks through.
+
 The viewer asks for a key frame when it opens; the host then describes the stream again and starts
 a new group of pictures.
 

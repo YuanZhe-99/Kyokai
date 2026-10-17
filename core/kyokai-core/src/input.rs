@@ -152,7 +152,15 @@ impl LocalInput {
 }
 
 #[cfg(windows)]
-pub use windows_impl::{Injector, LocalWatch, kyokai_process};
+pub use windows_impl::{Injector, LocalWatch, kyokai_process, physical, pointer};
+
+/// Where the pointer is, as fractions of the primary display (outside 0–1
+/// on another display), and whether it is shown. Not available yet off
+/// Windows.
+#[cfg(not(windows))]
+pub fn pointer() -> Option<(f32, f32, bool)> {
+    None
+}
 
 #[cfg(windows)]
 mod windows_impl {
@@ -166,10 +174,15 @@ mod windows_impl {
         GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
         QueryFullProcessImageNameW,
     };
+    use windows::Win32::UI::HiDpi::{
+        DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        SetThreadDpiAwarenessContext,
+    };
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
-        KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW,
+        CURSOR_SHOWING, CURSORINFO, CallNextHookEx, GetCursorInfo, GetForegroundWindow,
+        GetMessageW, GetSystemMetrics, GetWindowThreadProcessId, KBDLLHOOKSTRUCT, LLKHF_INJECTED,
+        LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW, SM_CXSCREEN, SM_CYSCREEN,
         SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN,
         WM_MOUSEMOVE, WM_QUIT, WM_SYSKEYDOWN,
     };
@@ -324,6 +337,42 @@ mod windows_impl {
             self.guard = (Instant::now(), front);
             front
         }
+    }
+
+    /// Runs `f` with this thread aware of the real pixel size of every
+    /// monitor, then restores the thread's previous awareness.
+    pub fn physical<T>(f: impl FnOnce() -> T) -> T {
+        // SAFETY: changes only this thread's DPI awareness; restored below.
+        let before: DPI_AWARENESS_CONTEXT =
+            unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+        let out = f();
+        // SAFETY: restores the value returned above.
+        unsafe { SetThreadDpiAwarenessContext(before) };
+        out
+    }
+
+    /// Where the pointer is, as fractions of the primary display (outside
+    /// 0–1 on another display), and whether it is shown.
+    pub fn pointer() -> Option<(f32, f32, bool)> {
+        physical(|| {
+            let mut info = CURSORINFO {
+                cbSize: std::mem::size_of::<CURSORINFO>() as u32,
+                ..Default::default()
+            };
+            // SAFETY: fills `info`, whose size is set; plain metric queries.
+            let (w, h) = unsafe {
+                GetCursorInfo(&mut info).ok()?;
+                (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN))
+            };
+            if w <= 0 || h <= 0 {
+                return None;
+            }
+            Some((
+                info.ptScreenPos.x as f32 / w as f32,
+                info.ptScreenPos.y as f32 / h as f32,
+                info.flags.0 & CURSOR_SHOWING.0 != 0,
+            ))
+        })
     }
 
     /// Whether a process is one of Kyokai's (by its executable's name).
