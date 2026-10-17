@@ -107,6 +107,12 @@ enum Message {
         #[serde(default)]
         reply: bool,
     },
+    /// controller → host: the viewer's image quality (`best`, `balanced`,
+    /// `speed`) and frame-rate cap (RustDesk's presets).
+    Quality {
+        preset: String,
+        fps: u32,
+    },
     /// host → controller: what QoS measured and chose, for the viewer.
     Stats {
         delay_ms: u32,
@@ -872,7 +878,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 // Only messages a GUI may send pass on to the host.
-                if let Ok(m @ (Message::KeyFrame | Message::Input { .. })) = serde_json::from_value::<Message>(msg) {
+                if let Ok(m @ (Message::KeyFrame | Message::Input { .. } | Message::Quality { .. })) = serde_json::from_value::<Message>(msg) {
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
                 }
             }
@@ -895,6 +901,20 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 match serde_json::from_slice::<Message>(plain).map_err(|_| Failure::Broken)? {
                     Message::Ping => seal_json(&mut noise, &mut buf, &mut wr, &Message::Pong).await?,
                     Message::Pong => {}
+                    Message::Quality { preset, fps } => {
+                        let quality = match preset.as_str() {
+                            "best" => Some(rustdesk_qos::ImageQuality::Best),
+                            "balanced" => Some(rustdesk_qos::ImageQuality::Balanced),
+                            "speed" => Some(rustdesk_qos::ImageQuality::Low),
+                            _ => None,
+                        };
+                        if let Some(q) = quality {
+                            qos.user_image_quality(QOS_VIEWER, q.value());
+                        }
+                        if (1..=video::MAX_FPS).contains(&fps) {
+                            qos.user_custom_fps(QOS_VIEWER, fps);
+                        }
+                    }
                     // The controller echoes probes at once; the host measures them.
                     Message::TestDelay { reply: false } => {
                         seal_json(&mut noise, &mut buf, &mut wr, &Message::TestDelay { reply: true }).await?;

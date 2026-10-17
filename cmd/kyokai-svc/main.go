@@ -6,7 +6,7 @@
 //	kyokai-svc ctl network-set --server URL [--server URL…] --name N
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--want P,P…]
-//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png]
+//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
@@ -137,6 +137,8 @@ func ctl(args []string) error {
 	yes := fs.Bool("yes", false, "reset-identity: confirm a new Device ID")
 	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
+	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
+	fpsCap := fs.Int("fps", 0, "watch: ask for a frame-rate cap first")
 	// The command comes first, its flags after it.
 	if len(args) == 0 {
 		usage()
@@ -147,7 +149,7 @@ func ctl(args []string) error {
 	}
 	cmd := args[0]
 	if cmd == "watch" {
-		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot)
+		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap)
 	}
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
@@ -302,7 +304,7 @@ func printStatus(s *localapi.Status) {
 // prints what arrives: the stream, frames per second and bitrate. With a
 // snapshot path it also decodes the frames (the viewer's decoder) and saves
 // the last picture.
-func watch(socket string, id uint64, d time.Duration, snapshot string) error {
+func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), d+10*time.Second)
 	defer cancel()
 	conn, err := localapi.NewClient(socket).Media(ctx, id)
@@ -326,6 +328,12 @@ func watch(socket string, id uint64, d time.Duration, snapshot string) error {
 	// Like the viewer: ask for a key frame (and the stream description) first.
 	if err := localapi.WritePacket(conn, append([]byte{3}, `{"type":"key-frame"}`...)); err != nil {
 		return err
+	}
+	if quality != "" || fpsCap > 0 {
+		body, _ := json.Marshal(map[string]any{"type": "quality", "preset": quality, "fps": fpsCap})
+		if err := localapi.WritePacket(conn, append([]byte{3}, body...)); err != nil {
+			return err
+		}
 	}
 	_ = conn.SetReadDeadline(time.Now().Add(d))
 	var buf []byte

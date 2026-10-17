@@ -33,6 +33,10 @@ ratio; the encoder's bitrate is RustDesk's base bitrate for the picture size tim
 (Balanced: 0.67, about 1.4 Mbit/s at 1080p), changed while it runs. Once a second the host also
 reports the delay, frame rate and bitrate it chose; the viewer shows the delay.
 
+The viewer's status bar offers RustDesk's presets — Faster (ratio 0.5), Balanced (0.67) and
+Sharper (1.5) — and a frame-rate cap of 15, 30 or 60; they reach the host as `{"type":
+"quality", preset, fps}` and set that viewer's image quality and custom frame rate in the QoS.
+
 ## Input
 
 The viewer sends input only for a session granted `control-input`; the host checks it again.
@@ -53,5 +57,5 @@ when it ends. Malformed events are dropped without ending the session.
 
 ## Not yet
 
-The remote cursor, other monitors, the quality presets in the viewer, hardware encoders and the
-other codecs are Phase 3 steps that follow (PLAN.md).
+The remote cursor, other monitors, hardware encoders and the other codecs are Phase 3 steps that
+follow (PLAN.md).

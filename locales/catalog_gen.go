@@ -1136,6 +1136,36 @@ func (msgs Messages) PermanentTitle() string {
 	return Catalog.Format(msgs.locale, "PermanentTitle", nil)
 }
 
+// QualityBalanced says "Balanced"
+// in the language the app shows.
+func QualityBalanced() string { return In(i18n.Locale()).QualityBalanced() }
+
+// QualityBalanced says "Balanced"
+// in the language of msgs.
+func (msgs Messages) QualityBalanced() string {
+	return Catalog.Format(msgs.locale, "QualityBalanced", nil)
+}
+
+// QualityBest says "Sharper"
+// in the language the app shows.
+func QualityBest() string { return In(i18n.Locale()).QualityBest() }
+
+// QualityBest says "Sharper"
+// in the language of msgs.
+func (msgs Messages) QualityBest() string {
+	return Catalog.Format(msgs.locale, "QualityBest", nil)
+}
+
+// QualitySpeed says "Faster"
+// in the language the app shows.
+func QualitySpeed() string { return In(i18n.Locale()).QualitySpeed() }
+
+// QualitySpeed says "Faster"
+// in the language of msgs.
+func (msgs Messages) QualitySpeed() string {
+	return Catalog.Format(msgs.locale, "QualitySpeed", nil)
+}
+
 // RequestAsks says "It asks to:"
 // in the language the app shows.
 func RequestAsks() string { return In(i18n.Locale()).RequestAsks() }

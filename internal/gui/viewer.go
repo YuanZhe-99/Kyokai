@@ -84,6 +84,10 @@ type viewer struct {
 	bytes   int
 	counted time.Time
 	host    hostStats
+	// The viewer's quality choice: preset index (speed, balanced, best)
+	// and frame-rate cap.
+	preset int
+	fpsCap string
 	// Input: the picture element's box, whether this session may control
 	// input, and the keys sent down.
 	box     ui.Rect
@@ -100,7 +104,7 @@ func (a *App) openViewer(s localapi.SessionInfo) {
 		v.win.Focus()
 		return
 	}
-	v = &viewer{app: a, id: s.ID, device: s.DeviceID, counted: time.Now(), out: make(chan []byte, 256),
+	v = &viewer{app: a, id: s.ID, device: s.DeviceID, counted: time.Now(), out: make(chan []byte, 256), preset: 1, fpsCap: "30",
 		control: slices.Contains(s.Granted, localapi.PermControlInput)}
 	v.win = mygo.NewWindow(mygo.WindowOptions{
 		Title: L.ViewerTitle(groupDigits(s.DeviceID)), Width: 1280, Height: 760, MinWidth: 480, MinHeight: 320,
@@ -279,6 +283,7 @@ func (v *viewer) view(c *ui.Context) {
 	t := c.Theme()
 	v.mu.Lock()
 	bm, state, start, fps, kbps, host := v.bm, v.state, v.start, v.fps, v.kbps, v.host
+	preset, fpsCap := v.preset, v.fpsCap
 	v.mu.Unlock()
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
 		ui.Column(c).Grow(1).FillWidth().AlignItems(ui.Center).Justify(ui.Center).Children(func() {
@@ -300,6 +305,12 @@ func (v *viewer) view(c *ui.Context) {
 		})
 		ui.Row(c).FillWidth().Padding(6, 12).Gap(16).Background(t.Surface).Children(func() {
 			ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).Grow(1)
+			if ui.Segmented(c.Key("quality"), &preset, L.QualitySpeed(), L.QualityBalanced(), L.QualityBest()).Changed() {
+				v.setQuality(preset, fpsCap)
+			}
+			if ui.Select(c.Key("fps"), &fpsCap, fpsCaps).Width(90).Changed() {
+				v.setQuality(preset, fpsCap)
+			}
 			if start.Width > 0 {
 				ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s · %d ms", start.Width, start.Height, start.Codec, fps, kbps, host.DelayMS)).
 					FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)

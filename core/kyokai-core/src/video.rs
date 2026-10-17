@@ -139,6 +139,8 @@ use tokio::sync::mpsc;
 
 /// Frame rate the host captures and encodes at.
 pub const FPS: u32 = 30;
+/// Highest frame-rate cap a viewer may choose.
+pub const MAX_FPS: u32 = 60;
 /// Largest picture sent; bigger screens are scaled down.
 const MAX_SIZE: (u32, u32) = (1920, 1080);
 /// Starting target bitrate (RustDesk's QoS adapts it later).
@@ -198,7 +200,9 @@ impl Source {
     /// Sets the frame rate and bitrate QoS chose (the test pattern keeps its
     /// own).
     pub fn set_targets(&self, fps: u32, bitrate: u32) {
-        self.targets.fps.store(fps.clamp(1, 60), Ordering::Relaxed);
+        self.targets
+            .fps
+            .store(fps.clamp(1, MAX_FPS), Ordering::Relaxed);
         self.targets
             .bitrate
             .store(bitrate.clamp(100_000, 50_000_000), Ordering::Relaxed);

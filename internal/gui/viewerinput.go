@@ -2,6 +2,7 @@ package gui
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -132,6 +133,27 @@ func toEvent(ev ui.InputEvent, box ui.Rect, pw, ph int, held map[ui.Key]bool) (i
 		return inputEvent{Kind: "text", Text: ev.Text}, true
 	}
 	return inputEvent{}, false
+}
+
+// qualityPresets are RustDesk's image qualities, in the viewer's order.
+var qualityPresets = []string{"speed", "balanced", "best"}
+
+// fpsCaps are the frame-rate caps the viewer offers.
+var fpsCaps = []string{"15", "30", "60"}
+
+// setQuality sends the viewer's quality preset and frame-rate cap to the
+// host's QoS.
+func (v *viewer) setQuality(preset int, fpsCap string) {
+	v.mu.Lock()
+	v.preset, v.fpsCap = preset, fpsCap
+	v.mu.Unlock()
+	fps := 30
+	_, _ = fmt.Sscan(fpsCap, &fps)
+	body, _ := json.Marshal(map[string]any{"type": "quality", "preset": qualityPresets[min(max(preset, 0), 2)], "fps": fps})
+	select {
+	case v.out <- append([]byte{packetControl}, body...):
+	default:
+	}
 }
 
 // controlPacket wraps an input event as a media control packet.
