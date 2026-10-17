@@ -30,6 +30,8 @@ about to change, verify against the code, then fix the docs in the same commit.
 | Processes, run modes, packages, crates, FFI, local API, state | `doc/en-us/architecture.md` |
 | Secrets, identity, passwords, logging | `doc/en-us/security.md` |
 | The embedded EasyTier node: settings, status, trust, build | `doc/en-us/networking.md` |
+| The session wire protocol: framing, handshake, login, messages | `doc/en-us/protocol.md` |
+| Passwords, permissions, confirmation, pinned keys, rate limits | `doc/en-us/identity-and-access.md` |
 | Interface structure, wording, tray, languages | `doc/en-us/gui.md` |
 | Verified upstream contracts (MyGo, EasyTier, RustDesk, OpenAI, Claude) and quirks | `doc/en-us/upstream.md` |
 | Reused third-party code, licenses and obligations | `doc/en-us/third-party.md` |
@@ -40,8 +42,7 @@ about to change, verify against the code, then fix the docs in the same commit.
 | Past releases and pinned upstream versions | `doc/en-us/version-history.md` |
 | Per-package and per-crate roles | `doc/en-us/functions/INDEX.md` |
 
-Concept docs still to come (identity and access, the wire protocol, computer use) are added with the
-code they describe; add their rows here in the same commit.
+Concept docs still to come (computer use) are added with the code they describe; add their rows here in the same commit.
 
 ## Required workflow
 

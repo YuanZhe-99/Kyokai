@@ -56,6 +56,19 @@ func TestViewsRender(t *testing.T) {
 		"settings":      func(a *App) { a.page = pageSettings },
 		"licenses":      func(a *App) { a.page, a.showLicenses = pageSettings, true },
 		"network-off":   func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
+		"home-sessions": func(a *App) {
+			a.status.Network.State = "online"
+			a.status.Requests = []localapi.HostRequest{{ID: 3, DeviceID: "213559601", NewKey: true, Want: []string{localapi.PermViewScreen, localapi.PermControlInput}}}
+			a.status.Sessions = []localapi.SessionInfo{
+				{ID: 1, Role: "controller", DeviceID: "647222040", State: "failed", Failure: []byte(`{"refused":"password"}`)},
+				{ID: 2, Role: "controller", DeviceID: "647222040", State: "failed", Failure: []byte(`"key-changed"`)},
+				{ID: 4, Role: "host", DeviceID: "100000002", State: "connected", Granted: []string{localapi.PermViewScreen}},
+			}
+		},
+		"settings-access": func(a *App) {
+			a.page, a.status.PermanentPassword = pageSettings, true
+			a.access = accessForm{loaded: true, trusted: []localapi.TrustedDevice{{Key: "k", DeviceID: "213559601", Last: 1797400000, Granted: []string{localapi.PermViewScreen}}}}
+		},
 		"network-online": func(a *App) {
 			a.page = pageNetwork
 			a.status.Network = localapi.NetworkStatus{State: "online", Address: "10.126.126.236", NAT: "symmetric",
@@ -72,7 +85,7 @@ func TestViewsRender(t *testing.T) {
 				}
 				a := demoApp(t)
 				setup(a)
-				tt := ui.NewTester(a.View, 1000, 700)
+				tt := ui.NewTester(a.View, 1000, 900)
 				tt.SetDark(dark)
 				tt.Frame()
 				if dir == "" {

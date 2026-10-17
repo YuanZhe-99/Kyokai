@@ -27,10 +27,16 @@ base64 = "0.23.1"
 chacha20poly1305 = "0.11.0"
 ed25519-dalek = "3.0.0"
 getrandom = "0.4.3"
+opaque-ke = { version = "4.0.1", features = ["argon2"] }
+# OPAQUE (opaque-ke) builds on the RustCrypto 0.10 generation: its RNG trait
+# and SHA-512 come from rand_core 0.6 and sha2 0.10.
+rand_core = { version = "0.6", features = ["getrandom"] }
+sha2_10 = { package = "sha2", version = "0.10" }
+snow = "0.10.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
-tokio = { version = "1.53", features = ["rt-multi-thread", "time"] }
+tokio = { version = "1.53", features = ["rt-multi-thread", "time", "io-util", "sync", "macros"] }
 uuid = { version = "1.26", features = ["v5"] }
 zeroize = "1.9.1"
 

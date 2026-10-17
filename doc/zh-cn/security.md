@@ -9,8 +9,10 @@
 - 系统凭据存储不可用时不持久化任何内容：机密只在本次运行的内存中，界面会说明设备 ID 将改变。已存在但无法解密的存储
   从不被覆盖；本次运行使用临时身份并说明这一点。
 - 机密在释放时清零；`kyokai_stop` 会全部丢弃。
-- 存储中保存设备密钥，以及含网络密钥的网络设置（[networking.md](networking.md)）。本地 API 只把网络密钥从界面（或
-  `ctl`）传给引擎，从不回传；`ctl` 从环境变量而不是命令行读取它。
+- 存储中保存设备密钥、含网络密钥的网络设置（[networking.md](networking.md)）、OPAQUE 服务器密钥与固定密码的记录、受信任设备
+  以及已知被控端（[identity-and-access.md](identity-and-access.md)）。本地 API 只把网络密钥从界面（或
+  `ctl`）传给引擎，从不回传；`ctl` 从环境变量而不是命令行读取它。固定密码与连接时输入的密码同样如此（`KYOKAI_PERMANENT_PASSWORD`、
+  `KYOKAI_PASSWORD`）；核心只在该会话结束前把用户输入的密码保留在内存中，随后将其清零。
 
 ## 设备身份
 

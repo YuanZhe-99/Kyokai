@@ -65,6 +65,11 @@ type Status struct {
 	PasswordSerial uint64 `json:"password_serial"`
 	// Network is the EasyTier node's status, decoded by the host.
 	Network json.RawMessage `json:"network"`
+	// PermanentPassword says whether a permanent password is set.
+	PermanentPassword bool `json:"permanent_password"`
+	// Requests and Sessions are decoded by the host (localapi types).
+	Requests json.RawMessage `json:"requests"`
+	Sessions json.RawMessage `json:"sessions"`
 }
 
 // Load opens the library at path (absolute) and checks its ABI version.

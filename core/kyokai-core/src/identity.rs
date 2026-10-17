@@ -45,6 +45,17 @@ impl Identity {
         Ok(id)
     }
 
+    /// Returns the public device key.
+    pub fn public_key(&self) -> [u8; 32] {
+        self.key.verifying_key().to_bytes()
+    }
+
+    /// Signs a message with the device key.
+    pub fn sign(&self, message: &[u8]) -> [u8; 64] {
+        use ed25519_dalek::Signer;
+        self.key.sign(message).to_bytes()
+    }
+
     /// Returns the 9-digit Device ID (never starting with 0).
     pub fn device_id(&self) -> String {
         device_id(&self.key.verifying_key().to_bytes())
@@ -58,6 +69,14 @@ impl Identity {
             .map(|b| format!("{b:02x}"))
             .collect()
     }
+}
+
+/// Checks a device key's signature (strict: no malleable encodings).
+pub fn verify(public_key: &[u8; 32], message: &[u8], signature: &[u8; 64]) -> bool {
+    ed25519_dalek::VerifyingKey::from_bytes(public_key).is_ok_and(|k| {
+        k.verify_strict(message, &ed25519_dalek::Signature::from_bytes(signature))
+            .is_ok()
+    })
 }
 
 /// Derives the Device ID of a public key: SHA-256 over a domain tag and the

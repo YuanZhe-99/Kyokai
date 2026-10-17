@@ -66,6 +66,16 @@ func (msgs Messages) AboutTagline() string {
 	return Catalog.Format(msgs.locale, "AboutTagline", nil)
 }
 
+// ActionAllow says "Allow"
+// in the language the app shows.
+func ActionAllow() string { return In(i18n.Locale()).ActionAllow() }
+
+// ActionAllow says "Allow"
+// in the language of msgs.
+func (msgs Messages) ActionAllow() string {
+	return Catalog.Format(msgs.locale, "ActionAllow", nil)
+}
+
 // ActionCheckAppUpdate says "Check for updates"
 // in the language the app shows.
 func ActionCheckAppUpdate() string { return In(i18n.Locale()).ActionCheckAppUpdate() }
@@ -76,6 +86,16 @@ func (msgs Messages) ActionCheckAppUpdate() string {
 	return Catalog.Format(msgs.locale, "ActionCheckAppUpdate", nil)
 }
 
+// ActionConnect says "Connect"
+// in the language the app shows.
+func ActionConnect() string { return In(i18n.Locale()).ActionConnect() }
+
+// ActionConnect says "Connect"
+// in the language of msgs.
+func (msgs Messages) ActionConnect() string {
+	return Catalog.Format(msgs.locale, "ActionConnect", nil)
+}
+
 // ActionCopy says "Copy"
 // in the language the app shows.
 func ActionCopy() string { return In(i18n.Locale()).ActionCopy() }
@@ -84,6 +104,36 @@ func ActionCopy() string { return In(i18n.Locale()).ActionCopy() }
 // in the language of msgs.
 func (msgs Messages) ActionCopy() string {
 	return Catalog.Format(msgs.locale, "ActionCopy", nil)
+}
+
+// ActionDeny says "Deny"
+// in the language the app shows.
+func ActionDeny() string { return In(i18n.Locale()).ActionDeny() }
+
+// ActionDeny says "Deny"
+// in the language of msgs.
+func (msgs Messages) ActionDeny() string {
+	return Catalog.Format(msgs.locale, "ActionDeny", nil)
+}
+
+// ActionDisconnect says "Disconnect"
+// in the language the app shows.
+func ActionDisconnect() string { return In(i18n.Locale()).ActionDisconnect() }
+
+// ActionDisconnect says "Disconnect"
+// in the language of msgs.
+func (msgs Messages) ActionDisconnect() string {
+	return Catalog.Format(msgs.locale, "ActionDisconnect", nil)
+}
+
+// ActionForgetIdentity says "Forget old identity"
+// in the language the app shows.
+func ActionForgetIdentity() string { return In(i18n.Locale()).ActionForgetIdentity() }
+
+// ActionForgetIdentity says "Forget old identity"
+// in the language of msgs.
+func (msgs Messages) ActionForgetIdentity() string {
+	return Catalog.Format(msgs.locale, "ActionForgetIdentity", nil)
 }
 
 // ActionHide says "Hide"
@@ -134,6 +184,16 @@ func ActionOpenFolder() string { return In(i18n.Locale()).ActionOpenFolder() }
 // in the language of msgs.
 func (msgs Messages) ActionOpenFolder() string {
 	return Catalog.Format(msgs.locale, "ActionOpenFolder", nil)
+}
+
+// ActionRemove says "Remove"
+// in the language the app shows.
+func ActionRemove() string { return In(i18n.Locale()).ActionRemove() }
+
+// ActionRemove says "Remove"
+// in the language of msgs.
+func (msgs Messages) ActionRemove() string {
+	return Catalog.Format(msgs.locale, "ActionRemove", nil)
 }
 
 // ActionRetry says "Retry"
@@ -246,6 +306,36 @@ func (msgs Messages) CloseQuit() string {
 	return Catalog.Format(msgs.locale, "CloseQuit", nil)
 }
 
+// ConnectNeedsNetwork says "Join a network on the Network page first."
+// in the language the app shows.
+func ConnectNeedsNetwork() string { return In(i18n.Locale()).ConnectNeedsNetwork() }
+
+// ConnectNeedsNetwork says "Join a network on the Network page first."
+// in the language of msgs.
+func (msgs Messages) ConnectNeedsNetwork() string {
+	return Catalog.Format(msgs.locale, "ConnectNeedsNetwork", nil)
+}
+
+// ConnectPassword says "Password"
+// in the language the app shows.
+func ConnectPassword() string { return In(i18n.Locale()).ConnectPassword() }
+
+// ConnectPassword says "Password"
+// in the language of msgs.
+func (msgs Messages) ConnectPassword() string {
+	return Catalog.Format(msgs.locale, "ConnectPassword", nil)
+}
+
+// ConnectTitle says "Control another device"
+// in the language the app shows.
+func ConnectTitle() string { return In(i18n.Locale()).ConnectTitle() }
+
+// ConnectTitle says "Control another device"
+// in the language of msgs.
+func (msgs Messages) ConnectTitle() string {
+	return Catalog.Format(msgs.locale, "ConnectTitle", nil)
+}
+
 // Copied says "Copied"
 // in the language the app shows.
 func Copied() string { return In(i18n.Locale()).Copied() }
@@ -326,14 +416,104 @@ func (msgs Messages) EngineStarting() string {
 	return Catalog.Format(msgs.locale, "EngineStarting", nil)
 }
 
-// HomeComingSoon says "Connecting to other devices arrives in a later version."
+// FailBroken says "The connection broke."
 // in the language the app shows.
-func HomeComingSoon() string { return In(i18n.Locale()).HomeComingSoon() }
+func FailBroken() string { return In(i18n.Locale()).FailBroken() }
 
-// HomeComingSoon says "Connecting to other devices arrives in a later version."
+// FailBroken says "The connection broke."
 // in the language of msgs.
-func (msgs Messages) HomeComingSoon() string {
-	return Catalog.Format(msgs.locale, "HomeComingSoon", nil)
+func (msgs Messages) FailBroken() string {
+	return Catalog.Format(msgs.locale, "FailBroken", nil)
+}
+
+// FailBusy says "The other device has too many open requests. Try again shortly."
+// in the language the app shows.
+func FailBusy() string { return In(i18n.Locale()).FailBusy() }
+
+// FailBusy says "The other device has too many open requests. Try again shortly."
+// in the language of msgs.
+func (msgs Messages) FailBusy() string {
+	return Catalog.Format(msgs.locale, "FailBusy", nil)
+}
+
+// FailDenied says "The other device declined."
+// in the language the app shows.
+func FailDenied() string { return In(i18n.Locale()).FailDenied() }
+
+// FailDenied says "The other device declined."
+// in the language of msgs.
+func (msgs Messages) FailDenied() string {
+	return Catalog.Format(msgs.locale, "FailDenied", nil)
+}
+
+// FailIncompatible says "That device runs an incompatible version of Kyokai."
+// in the language the app shows.
+func FailIncompatible() string { return In(i18n.Locale()).FailIncompatible() }
+
+// FailIncompatible says "That device runs an incompatible version of Kyokai."
+// in the language of msgs.
+func (msgs Messages) FailIncompatible() string {
+	return Catalog.Format(msgs.locale, "FailIncompatible", nil)
+}
+
+// FailKeyChanged says "That device's identity changed since you last connected. If you expected this, forget the old identity and connect ag…"
+// in the language the app shows.
+func FailKeyChanged() string { return In(i18n.Locale()).FailKeyChanged() }
+
+// FailKeyChanged says "That device's identity changed since you last connected. If you expected this, forget the old identity and connect ag…"
+// in the language of msgs.
+func (msgs Messages) FailKeyChanged() string {
+	return Catalog.Format(msgs.locale, "FailKeyChanged", nil)
+}
+
+// FailPassword says "Wrong password."
+// in the language the app shows.
+func FailPassword() string { return In(i18n.Locale()).FailPassword() }
+
+// FailPassword says "Wrong password."
+// in the language of msgs.
+func (msgs Messages) FailPassword() string {
+	return Catalog.Format(msgs.locale, "FailPassword", nil)
+}
+
+// FailRateLimited says "Too many attempts. Try again later."
+// in the language the app shows.
+func FailRateLimited() string { return In(i18n.Locale()).FailRateLimited() }
+
+// FailRateLimited says "Too many attempts. Try again later."
+// in the language of msgs.
+func (msgs Messages) FailRateLimited() string {
+	return Catalog.Format(msgs.locale, "FailRateLimited", nil)
+}
+
+// FailTimeout says "No one answered on the other device."
+// in the language the app shows.
+func FailTimeout() string { return In(i18n.Locale()).FailTimeout() }
+
+// FailTimeout says "No one answered on the other device."
+// in the language of msgs.
+func (msgs Messages) FailTimeout() string {
+	return Catalog.Format(msgs.locale, "FailTimeout", nil)
+}
+
+// FailUnreachable says "Couldn't reach that device. Check that it's online in the same network."
+// in the language the app shows.
+func FailUnreachable() string { return In(i18n.Locale()).FailUnreachable() }
+
+// FailUnreachable says "Couldn't reach that device. Check that it's online in the same network."
+// in the language of msgs.
+func (msgs Messages) FailUnreachable() string {
+	return Catalog.Format(msgs.locale, "FailUnreachable", nil)
+}
+
+// FailWrongDevice says "A different device answered for that ID."
+// in the language the app shows.
+func FailWrongDevice() string { return In(i18n.Locale()).FailWrongDevice() }
+
+// FailWrongDevice says "A different device answered for that ID."
+// in the language of msgs.
+func (msgs Messages) FailWrongDevice() string {
+	return Catalog.Format(msgs.locale, "FailWrongDevice", nil)
 }
 
 // HomeDeviceID says "Device ID"
@@ -746,6 +926,166 @@ func (msgs Messages) PathRelay() string {
 	return Catalog.Format(msgs.locale, "PathRelay", nil)
 }
 
+// PermApproveAIAction says "Approve AI actions"
+// in the language the app shows.
+func PermApproveAIAction() string { return In(i18n.Locale()).PermApproveAIAction() }
+
+// PermApproveAIAction says "Approve AI actions"
+// in the language of msgs.
+func (msgs Messages) PermApproveAIAction() string {
+	return Catalog.Format(msgs.locale, "PermApproveAIAction", nil)
+}
+
+// PermClipboard says "Share the clipboard"
+// in the language the app shows.
+func PermClipboard() string { return In(i18n.Locale()).PermClipboard() }
+
+// PermClipboard says "Share the clipboard"
+// in the language of msgs.
+func (msgs Messages) PermClipboard() string {
+	return Catalog.Format(msgs.locale, "PermClipboard", nil)
+}
+
+// PermControlInput says "Use the mouse and keyboard"
+// in the language the app shows.
+func PermControlInput() string { return In(i18n.Locale()).PermControlInput() }
+
+// PermControlInput says "Use the mouse and keyboard"
+// in the language of msgs.
+func (msgs Messages) PermControlInput() string {
+	return Catalog.Format(msgs.locale, "PermControlInput", nil)
+}
+
+// PermRunAITask says "Run AI tasks"
+// in the language the app shows.
+func PermRunAITask() string { return In(i18n.Locale()).PermRunAITask() }
+
+// PermRunAITask says "Run AI tasks"
+// in the language of msgs.
+func (msgs Messages) PermRunAITask() string {
+	return Catalog.Format(msgs.locale, "PermRunAITask", nil)
+}
+
+// PermViewScreen says "See the screen"
+// in the language the app shows.
+func PermViewScreen() string { return In(i18n.Locale()).PermViewScreen() }
+
+// PermViewScreen says "See the screen"
+// in the language of msgs.
+func (msgs Messages) PermViewScreen() string {
+	return Catalog.Format(msgs.locale, "PermViewScreen", nil)
+}
+
+// PermanentNotSet says "Not set. Other devices can connect only with the temporary password on the Home page."
+// in the language the app shows.
+func PermanentNotSet() string { return In(i18n.Locale()).PermanentNotSet() }
+
+// PermanentNotSet says "Not set. Other devices can connect only with the temporary password on the Home page."
+// in the language of msgs.
+func (msgs Messages) PermanentNotSet() string {
+	return Catalog.Format(msgs.locale, "PermanentNotSet", nil)
+}
+
+// PermanentSaved says "Permanent password saved."
+// in the language the app shows.
+func PermanentSaved() string { return In(i18n.Locale()).PermanentSaved() }
+
+// PermanentSaved says "Permanent password saved."
+// in the language of msgs.
+func (msgs Messages) PermanentSaved() string {
+	return Catalog.Format(msgs.locale, "PermanentSaved", nil)
+}
+
+// PermanentSet says "Set. Other devices can also connect with it; every connection still needs your approval."
+// in the language the app shows.
+func PermanentSet() string { return In(i18n.Locale()).PermanentSet() }
+
+// PermanentSet says "Set. Other devices can also connect with it; every connection still needs your approval."
+// in the language of msgs.
+func (msgs Messages) PermanentSet() string {
+	return Catalog.Format(msgs.locale, "PermanentSet", nil)
+}
+
+// PermanentTitle says "Permanent password"
+// in the language the app shows.
+func PermanentTitle() string { return In(i18n.Locale()).PermanentTitle() }
+
+// PermanentTitle says "Permanent password"
+// in the language of msgs.
+func (msgs Messages) PermanentTitle() string {
+	return Catalog.Format(msgs.locale, "PermanentTitle", nil)
+}
+
+// RequestAsks says "It asks to:"
+// in the language the app shows.
+func RequestAsks() string { return In(i18n.Locale()).RequestAsks() }
+
+// RequestAsks says "It asks to:"
+// in the language of msgs.
+func (msgs Messages) RequestAsks() string {
+	return Catalog.Format(msgs.locale, "RequestAsks", nil)
+}
+
+// RequestFirstTime says "This device hasn't connected before."
+// in the language the app shows.
+func RequestFirstTime() string { return In(i18n.Locale()).RequestFirstTime() }
+
+// RequestFirstTime says "This device hasn't connected before."
+// in the language of msgs.
+func (msgs Messages) RequestFirstTime() string {
+	return Catalog.Format(msgs.locale, "RequestFirstTime", nil)
+}
+
+// RequestGone says "That request is no longer open."
+// in the language the app shows.
+func RequestGone() string { return In(i18n.Locale()).RequestGone() }
+
+// RequestGone says "That request is no longer open."
+// in the language of msgs.
+func (msgs Messages) RequestGone() string {
+	return Catalog.Format(msgs.locale, "RequestGone", nil)
+}
+
+// RequestKnown says "You allowed this device before."
+// in the language the app shows.
+func RequestKnown() string { return In(i18n.Locale()).RequestKnown() }
+
+// RequestKnown says "You allowed this device before."
+// in the language of msgs.
+func (msgs Messages) RequestKnown() string {
+	return Catalog.Format(msgs.locale, "RequestKnown", nil)
+}
+
+// RequestNewKey says "This Device ID was used before by another key. It may be a different device claiming it — allow only if you expecte…"
+// in the language the app shows.
+func RequestNewKey() string { return In(i18n.Locale()).RequestNewKey() }
+
+// RequestNewKey says "This Device ID was used before by another key. It may be a different device claiming it — allow only if you expecte…"
+// in the language of msgs.
+func (msgs Messages) RequestNewKey() string {
+	return Catalog.Format(msgs.locale, "RequestNewKey", nil)
+}
+
+// RequestNotify says "Open Kyokai to allow or deny it."
+// in the language the app shows.
+func RequestNotify() string { return In(i18n.Locale()).RequestNotify() }
+
+// RequestNotify says "Open Kyokai to allow or deny it."
+// in the language of msgs.
+func (msgs Messages) RequestNotify() string {
+	return Catalog.Format(msgs.locale, "RequestNotify", nil)
+}
+
+// RequestTitle says "{device} wants to connect"
+// in the language the app shows.
+func RequestTitle(device string) string { return In(i18n.Locale()).RequestTitle(device) }
+
+// RequestTitle says "{device} wants to connect"
+// in the language of msgs.
+func (msgs Messages) RequestTitle(device string) string {
+	return Catalog.Format(msgs.locale, "RequestTitle", map[string]any{"device": device})
+}
+
 // RunModeUser says "No privileges"
 // in the language the app shows.
 func RunModeUser() string { return In(i18n.Locale()).RunModeUser() }
@@ -786,6 +1126,88 @@ func (msgs Messages) SecretsUnreadable() string {
 	return Catalog.Format(msgs.locale, "SecretsUnreadable", nil)
 }
 
+// SessionClosed says "Ended"
+// in the language the app shows.
+func SessionClosed() string { return In(i18n.Locale()).SessionClosed() }
+
+// SessionClosed says "Ended"
+// in the language of msgs.
+func (msgs Messages) SessionClosed() string {
+	return Catalog.Format(msgs.locale, "SessionClosed", nil)
+}
+
+// SessionConfirmingHere says "Waiting for you to allow it"
+// in the language the app shows.
+func SessionConfirmingHere() string { return In(i18n.Locale()).SessionConfirmingHere() }
+
+// SessionConfirmingHere says "Waiting for you to allow it"
+// in the language of msgs.
+func (msgs Messages) SessionConfirmingHere() string {
+	return Catalog.Format(msgs.locale, "SessionConfirmingHere", nil)
+}
+
+// SessionConfirmingThere says "Waiting for the other device to allow it…"
+// in the language the app shows.
+func SessionConfirmingThere() string { return In(i18n.Locale()).SessionConfirmingThere() }
+
+// SessionConfirmingThere says "Waiting for the other device to allow it…"
+// in the language of msgs.
+func (msgs Messages) SessionConfirmingThere() string {
+	return Catalog.Format(msgs.locale, "SessionConfirmingThere", nil)
+}
+
+// SessionConnected says "Connected: {permissions}"
+// in the language the app shows.
+func SessionConnected(permissions string) string {
+	return In(i18n.Locale()).SessionConnected(permissions)
+}
+
+// SessionConnected says "Connected: {permissions}"
+// in the language of msgs.
+func (msgs Messages) SessionConnected(permissions string) string {
+	return Catalog.Format(msgs.locale, "SessionConnected", map[string]any{"permissions": permissions})
+}
+
+// SessionConnecting says "Connecting…"
+// in the language the app shows.
+func SessionConnecting() string { return In(i18n.Locale()).SessionConnecting() }
+
+// SessionConnecting says "Connecting…"
+// in the language of msgs.
+func (msgs Messages) SessionConnecting() string {
+	return Catalog.Format(msgs.locale, "SessionConnecting", nil)
+}
+
+// SessionControlledBy says "From {device}"
+// in the language the app shows.
+func SessionControlledBy(device string) string { return In(i18n.Locale()).SessionControlledBy(device) }
+
+// SessionControlledBy says "From {device}"
+// in the language of msgs.
+func (msgs Messages) SessionControlledBy(device string) string {
+	return Catalog.Format(msgs.locale, "SessionControlledBy", map[string]any{"device": device})
+}
+
+// SessionControlling says "To {device}"
+// in the language the app shows.
+func SessionControlling(device string) string { return In(i18n.Locale()).SessionControlling(device) }
+
+// SessionControlling says "To {device}"
+// in the language of msgs.
+func (msgs Messages) SessionControlling(device string) string {
+	return Catalog.Format(msgs.locale, "SessionControlling", map[string]any{"device": device})
+}
+
+// SessionsTitle says "Sessions"
+// in the language the app shows.
+func SessionsTitle() string { return In(i18n.Locale()).SessionsTitle() }
+
+// SessionsTitle says "Sessions"
+// in the language of msgs.
+func (msgs Messages) SessionsTitle() string {
+	return Catalog.Format(msgs.locale, "SessionsTitle", nil)
+}
+
 // SettingsAbout says "About"
 // in the language the app shows.
 func SettingsAbout() string { return In(i18n.Locale()).SettingsAbout() }
@@ -794,6 +1216,16 @@ func SettingsAbout() string { return In(i18n.Locale()).SettingsAbout() }
 // in the language of msgs.
 func (msgs Messages) SettingsAbout() string {
 	return Catalog.Format(msgs.locale, "SettingsAbout", nil)
+}
+
+// SettingsAccess says "Access"
+// in the language the app shows.
+func SettingsAccess() string { return In(i18n.Locale()).SettingsAccess() }
+
+// SettingsAccess says "Access"
+// in the language of msgs.
+func (msgs Messages) SettingsAccess() string {
+	return Catalog.Format(msgs.locale, "SettingsAccess", nil)
 }
 
 // SettingsCheckAppUpdates says "Check for updates daily"
@@ -994,4 +1426,44 @@ func TrayShow() string { return In(i18n.Locale()).TrayShow() }
 // in the language of msgs.
 func (msgs Messages) TrayShow() string {
 	return Catalog.Format(msgs.locale, "TrayShow", nil)
+}
+
+// TrustedHint says "Devices you allowed before. A removed device shows as new the next time."
+// in the language the app shows.
+func TrustedHint() string { return In(i18n.Locale()).TrustedHint() }
+
+// TrustedHint says "Devices you allowed before. A removed device shows as new the next time."
+// in the language of msgs.
+func (msgs Messages) TrustedHint() string {
+	return Catalog.Format(msgs.locale, "TrustedHint", nil)
+}
+
+// TrustedLast says "Last connected {time}"
+// in the language the app shows.
+func TrustedLast(time_ string) string { return In(i18n.Locale()).TrustedLast(time_) }
+
+// TrustedLast says "Last connected {time}"
+// in the language of msgs.
+func (msgs Messages) TrustedLast(time_ string) string {
+	return Catalog.Format(msgs.locale, "TrustedLast", map[string]any{"time": time_})
+}
+
+// TrustedNone says "None yet."
+// in the language the app shows.
+func TrustedNone() string { return In(i18n.Locale()).TrustedNone() }
+
+// TrustedNone says "None yet."
+// in the language of msgs.
+func (msgs Messages) TrustedNone() string {
+	return Catalog.Format(msgs.locale, "TrustedNone", nil)
+}
+
+// TrustedTitle says "Trusted devices"
+// in the language the app shows.
+func TrustedTitle() string { return In(i18n.Locale()).TrustedTitle() }
+
+// TrustedTitle says "Trusted devices"
+// in the language of msgs.
+func (msgs Messages) TrustedTitle() string {
+	return Catalog.Format(msgs.locale, "TrustedTitle", nil)
 }

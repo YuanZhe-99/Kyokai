@@ -25,6 +25,7 @@ Studio 2026 without its Clang component):
 | S3-lite capture spike | RustDesk's DXGI capturer, vendored and decoupled from `hbb_common`, captures the 4K display at about 60 fps; converting to RGBA and scaling to 1080p costs about 15 % of one core |
 | S1 EasyTier spike | v2.7.0 embedded in-process, no TUN, no admin: data plane both ways through a stock server, whitelist holds, clean restarts; hole punching untested (symmetric NAT) |
 | EasyTier in the engine (2026-10-17) | through a standard public server: online with a DHCP address within 10 s; the NAT type is found through STUN (symmetric on this network); two engines with their own profiles list each other's Device ID, relayed, about 36 ms |
+| Sessions (2026-10-17) | two engines through a standard server: a wrong password is refused as such on both sides; the right temporary password raises the host's confirmation, which granted view-screen only, and the session connected with exactly that; the controller then became a trusted device ("known"); a permanent password works the same; closing from the controller ends both sides |
 | `cargo deny` | passes (advisories, bans, licenses, sources) once VS's clang is on `PATH` |
 
 ## macOS

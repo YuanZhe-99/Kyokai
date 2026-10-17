@@ -52,6 +52,10 @@ and Latin words only where it helps readability.
 | data plane | 数据面 |
 | hole punching | 打洞 |
 | relay | 中继 |
+| session | 会话 |
+| host confirmation | 被控端确认 |
+| pinned key | 固定的密钥 |
+| rate limit | 速率限制 |
 | local API | 本地 API |
 | lifeline | 生命线 |
 | state directory | 状态目录 |

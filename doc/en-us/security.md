@@ -11,9 +11,12 @@
   interface says the Device ID will change. A store that exists but cannot be decrypted is never
   overwritten; that run uses a temporary identity and says so.
 - Secrets are zeroized when dropped; `kyokai_stop` drops them all.
-- The store holds the device key and the network settings with the network secret
-  ([networking.md](networking.md)). The local API carries the network secret only from the GUI (or
-  `ctl`) to the engine, never back; `ctl` reads it from the environment, not the command line.
+- The store holds the device key, the network settings with the network secret
+  ([networking.md](networking.md)), the OPAQUE server key and the permanent password's record, the
+  trusted devices and the known hosts ([identity-and-access.md](identity-and-access.md)). The local API carries the network secret only from the GUI (or
+  `ctl`) to the engine, never back; `ctl` reads it from the environment, not the command line. The same
+  holds for the permanent password and the password typed to connect (`KYOKAI_PERMANENT_PASSWORD`,
+  `KYOKAI_PASSWORD`); the core keeps a typed password in memory only until that session ends and then zeroizes it.
 
 ## Device identity
 

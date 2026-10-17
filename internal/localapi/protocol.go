@@ -46,12 +46,19 @@ func UserSocketPath(profile string) string {
 type RequestType string
 
 const (
-	RequestStatus             RequestType = "status"              // identity summary, never a secret
-	RequestPasswordReveal     RequestType = "password.reveal"     // the temporary password, for the host's own GUI
-	RequestPasswordRegenerate RequestType = "password.regenerate" // a new temporary password
-	RequestNetworkGet         RequestType = "network.get"         // network settings without the secret
-	RequestNetworkSet         RequestType = "network.set"         // new network settings (Request.Network)
-	RequestSessionAttach      RequestType = "session.attach"      // streaming; see package doc
+	RequestStatus             RequestType = "status"                 // identity summary, never a secret
+	RequestPasswordReveal     RequestType = "password.reveal"        // the temporary password, for the host's own GUI
+	RequestPasswordRegenerate RequestType = "password.regenerate"    // a new temporary password
+	RequestNetworkGet         RequestType = "network.get"            // network settings without the secret
+	RequestNetworkSet         RequestType = "network.set"            // new network settings (Request.Network)
+	RequestPermanentSet       RequestType = "password.set_permanent" // set or remove the permanent password (Request.Permanent)
+	RequestConnect            RequestType = "session.connect"        // start a session with a device (Request.Connect)
+	RequestClose              RequestType = "session.close"          // end a session (Request.ID)
+	RequestDecide             RequestType = "request.decide"         // answer a host confirmation (Request.Decide)
+	RequestTrustedList        RequestType = "trusted.list"           // the trusted devices
+	RequestTrustedRemove      RequestType = "trusted.remove"         // forget a trusted device (Request.Key)
+	RequestHostForget         RequestType = "host.forget"            // forget a pinned host key (Request.DeviceID)
+	RequestSessionAttach      RequestType = "session.attach"         // streaming; see package doc
 	RequestShutdown           RequestType = "shutdown"
 )
 
@@ -70,7 +77,49 @@ type Request struct {
 	Type    RequestType `json:"type"`
 	// Network carries the settings of RequestNetworkSet.
 	Network *NetworkSettings `json:"network,omitempty"`
+	// Permanent sets (a password) or removes (nil Password) the permanent
+	// password.
+	Permanent *PermanentPassword `json:"permanent,omitempty"`
+	Connect   *ConnectRequest    `json:"connect,omitempty"`
+	Decide    *Decision          `json:"decide,omitempty"`
+	// ID names a session (RequestClose).
+	ID uint64 `json:"id,omitempty"`
+	// Key names a trusted device by its device key (RequestTrustedRemove).
+	Key string `json:"key,omitempty"`
+	// DeviceID names a host whose pinned key to forget (RequestHostForget).
+	DeviceID string `json:"device_id,omitempty"`
 }
+
+// PermanentPassword is the request body of RequestPermanentSet.
+type PermanentPassword struct {
+	Password *string `json:"password"`
+}
+
+// ConnectRequest asks the engine to start a session with a device.
+type ConnectRequest struct {
+	DeviceID string   `json:"device_id"`
+	Password string   `json:"password"`
+	Want     []string `json:"want"`
+}
+
+// Decision answers a host confirmation; Permissions are the granted ones.
+type Decision struct {
+	ID          uint64   `json:"id"`
+	Allow       bool     `json:"allow"`
+	Permissions []string `json:"permissions"`
+}
+
+// Permission names, as the wire and the core spell them.
+const (
+	PermViewScreen      = "view-screen"
+	PermControlInput    = "control-input"
+	PermRunAITask       = "run-ai-task"
+	PermApproveAIAction = "approve-ai-action"
+	PermClipboard       = "clipboard"
+)
+
+// AllPermissions in the order the interface lists them.
+var AllPermissions = []string{PermViewScreen, PermControlInput, PermRunAITask, PermApproveAIAction, PermClipboard}
 
 // Response is one line from the engine: an answer, or a pushed frame of a
 // session.
@@ -83,6 +132,45 @@ type Response struct {
 	Password string    `json:"password,omitempty"`
 	// Network answers RequestNetworkGet and RequestNetworkSet.
 	Network *NetworkSettings `json:"network,omitempty"`
+	// ID answers RequestConnect: the new session's id.
+	ID uint64 `json:"id,omitempty"`
+	// Trusted answers RequestTrustedList.
+	Trusted []TrustedDevice `json:"trusted,omitempty"`
+}
+
+// TrustedDevice is a controller this host accepted before.
+type TrustedDevice struct {
+	Key      string   `json:"key"`
+	DeviceID string   `json:"device_id"`
+	First    int64    `json:"first"` // Unix seconds
+	Last     int64    `json:"last"`
+	Granted  []string `json:"granted"`
+}
+
+// HostRequest is a controller waiting for this host's user to confirm.
+type HostRequest struct {
+	ID       uint64 `json:"id"`
+	DeviceID string `json:"device_id"`
+	// Known: the controller's key was accepted before. NewKey: its Device ID
+	// is known with another key.
+	Known  bool     `json:"known"`
+	NewKey bool     `json:"new_key"`
+	Want   []string `json:"want"`
+}
+
+// SessionInfo is one session of this device, live or recently finished.
+type SessionInfo struct {
+	ID   uint64 `json:"id"`
+	Role string `json:"role"` // "host" or "controller"
+	// DeviceID is the other device.
+	DeviceID string `json:"device_id"`
+	// State is "connecting", "confirming", "connected", "closed" or "failed".
+	State string `json:"state"`
+	// Failure says why a session failed: a name, or {"refused": reason}.
+	Failure     json.RawMessage `json:"failure,omitempty"`
+	Granted     []string        `json:"granted"`
+	PeerVersion string          `json:"peer_version"`
+	PeerSource  string          `json:"peer_source"`
 }
 
 // NetworkSettings are the EasyTier network the engine joins.
@@ -133,7 +221,11 @@ type Status struct {
 	// PasswordSerial changes whenever the temporary password does.
 	PasswordSerial uint64        `json:"password_serial"`
 	Network        NetworkStatus `json:"network"`
-	Started        time.Time     `json:"started"`
+	// PermanentPassword says whether a permanent password is set.
+	PermanentPassword bool          `json:"permanent_password"`
+	Requests          []HostRequest `json:"requests"`
+	Sessions          []SessionInfo `json:"sessions"`
+	Started           time.Time     `json:"started"`
 }
 
 // ErrNotRunning reports that no engine listens on the socket.

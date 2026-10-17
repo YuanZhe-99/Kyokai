@@ -4,14 +4,18 @@
 //! EasyTier is an untrusted pipe: its routes, instance ids and hostnames are
 //! hints for finding a device, never proof of who it is.
 
+use crate::access::Permission;
+use crate::session::{self, Ctx};
 use crate::store::Secrets;
 use easytier::instance::factory::{NativeCoreInstance, create_native_instance};
 use easytier::proto::common::NatType;
 use easytier_core::config::toml::TomlConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 /// Name of the settings entry in the secrets store (the network secret is in
@@ -28,6 +32,12 @@ const SCHEMES: &[&str] = &["tcp", "udp", "ws", "wss", "quic", "wg"];
 const MAX_SERVERS: usize = 8;
 /// Network secrets shorter than this are reported as weak.
 const STRONG_SECRET_LEN: usize = 16;
+/// How long binding the listener or opening a connection may take.
+const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
+/// How often to retry binding the listener until the address is assigned.
+const BIND_RETRY: Duration = Duration::from_secs(2);
+/// Most route entries tried for one Device ID (anyone can announce one).
+const MAX_CANDIDATES: usize = 3;
 /// How long stopping the node may take before the runtime is dropped.
 const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -64,16 +74,19 @@ enum Phase {
 /// The running node and its runtime.
 pub struct Network {
     rt: tokio::runtime::Runtime,
+    ctx: Arc<Ctx>,
     device_id: String,
     settings: Settings,
     node: Option<Arc<NativeCoreInstance>>,
+    /// Starts the node, then accepts sessions; aborted when the node stops.
+    serving: Option<JoinHandle<()>>,
     phase: Arc<Mutex<Phase>>,
 }
 
 impl Network {
     /// Starts the node with the stored settings, if there are any.
     /// Side effects: starts a tokio runtime; connects to the configured servers.
-    pub fn start(secrets: &Secrets, device_id: &str) -> Result<Self, String> {
+    pub fn start(secrets: &Secrets, ctx: Arc<Ctx>) -> Result<Self, String> {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("kyokai-net")
@@ -86,9 +99,11 @@ impl Network {
             .unwrap_or_default();
         let mut net = Network {
             rt,
-            device_id: device_id.to_owned(),
+            device_id: ctx.identity.device_id(),
+            ctx,
             settings,
             node: None,
+            serving: None,
             phase: Arc::new(Mutex::new(Phase::Off)),
         };
         net.restart();
@@ -184,17 +199,89 @@ impl Network {
         self.set_phase(Phase::Connecting);
         let phase = self.phase.clone();
         let starting = node.clone();
-        self.rt.spawn(async move {
-            if let Err(e) = starting.start().await
-                && let Ok(mut p) = phase.lock()
-            {
-                *p = Phase::Failed(format!("{e:#}"));
+        let ctx = self.ctx.clone();
+        self.serving = Some(self.rt.spawn(async move {
+            let fail = |e: String| {
+                if let Ok(mut p) = phase.lock() {
+                    *p = Phase::Failed(e);
+                }
+            };
+            if let Err(e) = starting.start().await {
+                return fail(format!("{e:#}"));
             }
-        });
+            // The data plane binds only once the node has its virtual address.
+            let mut listener = loop {
+                match starting
+                    .data_plane_tcp_bind(KYOKAI_PORT, DIAL_TIMEOUT)
+                    .await
+                {
+                    Ok(l) => break l,
+                    Err(_) => tokio::time::sleep(BIND_RETRY).await,
+                }
+            };
+            while let Ok((stream, from)) = listener.accept().await {
+                tokio::spawn(session::serve(ctx.clone(), stream, from.ip()));
+            }
+        }));
         self.node = Some(node);
     }
 
+    /// Starts a session with the device that announces `device_id`.
+    /// Returns: the session's id at once; its progress shows in the status.
+    /// Notes: every route that announces the Device ID is a candidate (up to
+    /// MAX_CANDIDATES); the handshake decides which one is the device.
+    pub fn connect(
+        &self,
+        device_id: &str,
+        password: zeroize::Zeroizing<String>,
+        want: Vec<Permission>,
+    ) -> Result<u64, String> {
+        let node = self.node.clone().ok_or("not connected to a network")?;
+        let (id, stop) = session::begin(&self.ctx, device_id);
+        let ctx = self.ctx.clone();
+        let device_id = device_id.to_owned();
+        self.rt.spawn(async move {
+            let hostname = format!("Kyokai-{device_id}");
+            let candidates: Vec<Ipv4Addr> = node
+                .route_snapshots()
+                .await
+                .into_iter()
+                .filter(|r| r.hostname == hostname)
+                .filter_map(|r| r.ipv4_addr.and_then(|a| a.address).map(Ipv4Addr::from))
+                .take(MAX_CANDIDATES)
+                .collect();
+            let mut failure = session::Failure::Unreachable;
+            for ip in candidates {
+                let addr = SocketAddr::new(ip.into(), KYOKAI_PORT);
+                let Ok(stream) = node.data_plane_tcp_connect(addr, DIAL_TIMEOUT).await else {
+                    continue;
+                };
+                // A squatter with another key fails the handshake: try the next.
+                let (stop, password, want) = (stop.clone(), password.clone(), want.clone());
+                if session::connect(
+                    ctx.clone(),
+                    id,
+                    stop,
+                    stream,
+                    device_id.clone(),
+                    password,
+                    want,
+                )
+                .await
+                {
+                    return;
+                }
+                failure = session::Failure::WrongDevice;
+            }
+            session::give_up(&ctx, id, failure);
+        });
+        Ok(id)
+    }
+
     fn stop_node(&mut self) {
+        if let Some(serving) = self.serving.take() {
+            serving.abort();
+        }
         if let Some(node) = self.node.take() {
             let _ = self
                 .rt

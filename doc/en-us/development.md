@@ -47,6 +47,7 @@ scripts/build.sh windows/arm64           # or no target: this machine's platform
 KYOKAI_PROFILE=dev build/windows-arm64/Kyokai.exe
 KYOKAI_PROFILE=dev build/windows-arm64/bin/kyokai-svc.exe ctl status
 KYOKAI_NETWORK_SECRET=… kyokai-svc ctl network-set --server tcp://host:11010 --name net
+KYOKAI_PASSWORD=… kyokai-svc ctl connect --device 482916735   # then on the host: ctl allow --id N
 scripts/smoke.sh user                    # the engine end to end with the real core
 SCREENSHOT_DIR=$PWD/.dev/shots go test ./internal/gui/
 KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/

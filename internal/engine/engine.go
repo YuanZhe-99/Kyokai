@@ -159,11 +159,53 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		}
 		h.changed()
 		return localapi.Response{OK: true, Network: &ns}
+	case localapi.RequestPermanentSet:
+		if req.Permanent == nil {
+			return localapi.Fail(localapi.CodeInvalid, "permanent password missing")
+		}
+		return h.command("password.set_permanent", req.Permanent)
+	case localapi.RequestConnect:
+		if req.Connect == nil {
+			return localapi.Fail(localapi.CodeInvalid, "connect request missing")
+		}
+		var out struct{ ID uint64 }
+		if err := h.lib.Call("session.connect", req.Connect, &out); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		h.changed()
+		return localapi.Response{OK: true, ID: out.ID}
+	case localapi.RequestClose:
+		return h.command("session.close", map[string]uint64{"id": req.ID})
+	case localapi.RequestDecide:
+		if req.Decide == nil {
+			return localapi.Fail(localapi.CodeInvalid, "decision missing")
+		}
+		return h.command("request.decide", req.Decide)
+	case localapi.RequestTrustedList:
+		var list []localapi.TrustedDevice
+		if err := h.lib.Call("trusted.list", nil, &list); err != nil {
+			return localapi.Fail(localapi.CodeInternal, "%v", err)
+		}
+		return localapi.Response{OK: true, Trusted: list}
+	case localapi.RequestTrustedRemove:
+		return h.command("trusted.remove", map[string]string{"key": req.Key})
+	case localapi.RequestHostForget:
+		return h.command("host.forget", map[string]string{"device_id": req.DeviceID})
 	case localapi.RequestShutdown:
 		h.stop()
 		return localapi.Response{OK: true}
 	}
 	return localapi.Fail(localapi.CodeUnknown, "unknown request %q", req.Type)
+}
+
+// command runs a core method that changes state and answers ok or the
+// core's reason; attached sessions see the change at once.
+func (h *handler) command(method string, params any) localapi.Response {
+	if err := h.lib.Call(method, params, nil); err != nil {
+		return localapi.Fail(localapi.CodeInvalid, "%v", err)
+	}
+	h.changed()
+	return localapi.Response{OK: true}
 }
 
 // Stream pushes the status now, after every command that changes it, and
@@ -219,13 +261,22 @@ func (h *handler) status() (*localapi.Status, error) {
 		return nil, err
 	}
 	var network localapi.NetworkStatus
-	if err := json.Unmarshal(st.Network, &network); err != nil {
-		return nil, fmt.Errorf("network status: %w", err)
+	var requests []localapi.HostRequest
+	var sessions []localapi.SessionInfo
+	for _, part := range []struct {
+		name string
+		raw  json.RawMessage
+		dst  any
+	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}} {
+		if err := json.Unmarshal(part.raw, part.dst); err != nil {
+			return nil, fmt.Errorf("%s status: %w", part.name, err)
+		}
 	}
 	return &localapi.Status{
 		Version: st.Version, ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: "user", Persistence: st.Persistence,
-		PasswordSerial: st.PasswordSerial, Network: network, Started: h.started,
+		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
+		Requests: requests, Sessions: sessions, Started: h.started,
 	}, nil
 }
 

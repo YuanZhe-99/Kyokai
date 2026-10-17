@@ -11,6 +11,8 @@ AI 任务在被操作的那台电脑上运行。支持 Windows（x64、ARM64）�
 | [architecture.md](architecture.md) | 进程、运行方式、包与 crate、FFI、本地 API、状态 |
 | [security.md](security.md) | 机密存储、设备身份、临时密码、日志 |
 | [networking.md](networking.md) | 内嵌 EasyTier 节点：设置、状态、信任、构建 |
+| [protocol.md](protocol.md) | 会话线路协议：分帧、Noise 握手、OPAQUE 登录、消息 |
+| [identity-and-access.md](identity-and-access.md) | 密码、权限、被控端确认、固定的密钥、速率限制 |
 | [gui.md](gui.md) | 界面结构、措辞、托盘、语言 |
 | [upstream.md](upstream.md) | 已核实的上游契约与特殊行为：MyGo、EasyTier、RustDesk、OpenAI、Claude |
 | [third-party.md](third-party.md) | 复用的代码与依赖、许可证与义务 |

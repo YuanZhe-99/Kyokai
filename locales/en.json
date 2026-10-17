@@ -3,13 +3,19 @@
   "AboutLicense": "AGPL-3.0-only. Includes MyGo (MIT).",
   "AboutSource": "Source code",
   "AboutTagline": "AI Computer Use Across Devices",
+  "ActionAllow": "Allow",
   "ActionCheckAppUpdate": "Check for updates",
+  "ActionConnect": "Connect",
   "ActionCopy": "Copy",
+  "ActionDeny": "Deny",
+  "ActionDisconnect": "Disconnect",
+  "ActionForgetIdentity": "Forget old identity",
   "ActionHide": "Hide",
   "ActionInstallUpdate": "Install and restart",
   "ActionLeaveNetwork": "Leave network",
   "ActionNewPassword": "New password",
   "ActionOpenFolder": "Open folder",
+  "ActionRemove": "Remove",
   "ActionRetry": "Retry",
   "ActionSave": "Save",
   "ActionShow": "Show",
@@ -35,6 +41,9 @@
   "AppUpdateUnavailable": "This copy of Kyokai cannot update itself.",
   "CloseHide": "Keep running in the tray",
   "CloseQuit": "Quit",
+  "ConnectNeedsNetwork": "Join a network on the Network page first.",
+  "ConnectPassword": "Password",
+  "ConnectTitle": "Control another device",
   "Copied": "Copied",
   "DiagEngine": "Engine",
   "DiagEngineRunning": "Running since {time}",
@@ -50,7 +59,16 @@
   "DiagVersion": "Version",
   "EngineDown": "The Kyokai engine is not running.",
   "EngineStarting": "Starting…",
-  "HomeComingSoon": "Connecting to other devices arrives in a later version.",
+  "FailBroken": "The connection broke.",
+  "FailBusy": "The other device has too many open requests. Try again shortly.",
+  "FailDenied": "The other device declined.",
+  "FailIncompatible": "That device runs an incompatible version of Kyokai.",
+  "FailKeyChanged": "That device's identity changed since you last connected. If you expected this, forget the old identity and connect again.",
+  "FailPassword": "Wrong password.",
+  "FailRateLimited": "Too many attempts. Try again later.",
+  "FailTimeout": "No one answered on the other device.",
+  "FailUnreachable": "Couldn't reach that device. Check that it's online in the same network.",
+  "FailWrongDevice": "A different device answered for that ID.",
   "HomeDeviceID": "Device ID",
   "HomePasswordHint": "Changes every time Kyokai starts, or when you ask for a new one.",
   "HomeTemporaryPassword": "Temporary password",
@@ -99,11 +117,64 @@
   "NotifyStillRunningTitle": "Kyokai is still running",
   "PathDirect": "Direct",
   "PathRelay": "Relayed",
+  "PermApproveAIAction": "Approve AI actions",
+  "PermClipboard": "Share the clipboard",
+  "PermControlInput": "Use the mouse and keyboard",
+  "PermRunAITask": "Run AI tasks",
+  "PermViewScreen": "See the screen",
+  "PermanentNotSet": "Not set. Other devices can connect only with the temporary password on the Home page.",
+  "PermanentSaved": "Permanent password saved.",
+  "PermanentSet": "Set. Other devices can also connect with it; every connection still needs your approval.",
+  "PermanentTitle": "Permanent password",
+  "RequestAsks": "It asks to:",
+  "RequestFirstTime": "This device hasn't connected before.",
+  "RequestGone": "That request is no longer open.",
+  "RequestKnown": "You allowed this device before.",
+  "RequestNewKey": "This Device ID was used before by another key. It may be a different device claiming it — allow only if you expected this.",
+  "RequestNotify": "Open Kyokai to allow or deny it.",
+  "RequestTitle": "{device} wants to connect",
+  "@RequestTitle": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "RunModeUser": "No privileges",
   "SecretsMemoryOnly": "In memory only: this computer's credential store is not available, so the Device ID changes on the next start.",
   "SecretsOSStore": "Encrypted with this computer's credential store",
   "SecretsUnreadable": "The saved identity cannot be unlocked. Kyokai uses a temporary one this time and leaves the saved one untouched.",
+  "SessionClosed": "Ended",
+  "SessionConfirmingHere": "Waiting for you to allow it",
+  "SessionConfirmingThere": "Waiting for the other device to allow it…",
+  "SessionConnected": "Connected: {permissions}",
+  "@SessionConnected": {
+    "placeholders": {
+      "permissions": {
+        "type": "String"
+      }
+    }
+  },
+  "SessionConnecting": "Connecting…",
+  "SessionControlledBy": "From {device}",
+  "@SessionControlledBy": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "SessionControlling": "To {device}",
+  "@SessionControlling": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "SessionsTitle": "Sessions",
   "SettingsAbout": "About",
+  "SettingsAccess": "Access",
   "SettingsCheckAppUpdates": "Check for updates daily",
   "SettingsCheckAppUpdatesHint": "Only signed updates from Kyokai's GitHub releases are offered.",
   "SettingsCloseButton": "Close button",
@@ -130,5 +201,16 @@
     }
   },
   "TrayQuit": "Quit Kyokai",
-  "TrayShow": "Show Kyokai"
+  "TrayShow": "Show Kyokai",
+  "TrustedHint": "Devices you allowed before. A removed device shows as new the next time.",
+  "TrustedLast": "Last connected {time}",
+  "@TrustedLast": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "TrustedNone": "None yet.",
+  "TrustedTitle": "Trusted devices"
 }

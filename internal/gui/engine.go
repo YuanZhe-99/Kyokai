@@ -164,6 +164,11 @@ func (a *App) connectLoop() {
 					if a.status == nil || a.status.PasswordSerial != st.PasswordSerial {
 						a.password, a.showPassword = "", false
 					}
+					// A controller waits for this user: say so even with the window hidden.
+					if fresh := newRequests(a.status, st); len(fresh) > 0 {
+						a.notify("request", L.RequestTitle(groupDigits(fresh[0].DeviceID)), L.RequestNotify())
+						go a.Focus()
+					}
 					a.status, a.connected, a.engineErr = st, true, ""
 				})
 				return nil

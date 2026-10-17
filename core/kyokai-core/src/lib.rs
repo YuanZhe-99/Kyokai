@@ -6,16 +6,19 @@
 //! response `{"ok": true, "result": …}` or `{"ok": false, "error": "…"}` into a
 //! buffer the core allocates, which the caller hands back to `kyokai_free`.
 
+mod access;
+mod auth;
 mod identity;
 mod net;
 mod password;
+mod session;
 mod store;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Version of the C ABI. Hosts compare it with their own before any other
 /// call; changing an export's signature or meaning bumps it.
@@ -23,13 +26,44 @@ pub const ABI_VERSION: u32 = 1;
 
 /// The running core: what `kyokai_start` set up, until `kyokai_stop`.
 struct Core {
-    version: String,
     state_dir: PathBuf,
-    identity: identity::Identity,
     persistence: store::Persistence,
-    secrets: store::Secrets,
+    /// Identity, access state and sessions, shared with the session tasks.
+    ctx: Arc<session::Ctx>,
     password: password::Temporary,
     network: net::Network,
+}
+
+impl Core {
+    /// Replaces the temporary password and its OPAQUE record.
+    fn new_password(&mut self) -> Result<(), String> {
+        let password = password::Temporary::generate();
+        self.ctx
+            .access
+            .slots
+            .lock()
+            .map_err(|_| "access state poisoned")?
+            .set_temporary(password.reveal(), &self.ctx.identity.public_key())?;
+        self.password = password;
+        Ok(())
+    }
+}
+
+/// A `session.connect` request.
+#[derive(Deserialize)]
+struct Connect {
+    device_id: String,
+    password: zeroize::Zeroizing<String>,
+    want: Vec<access::Permission>,
+}
+
+/// A `request.decide` answer to a host confirmation.
+#[derive(Deserialize)]
+struct Decide {
+    id: u64,
+    allow: bool,
+    #[serde(default)]
+    permissions: Vec<access::Permission>,
 }
 
 static CORE: Mutex<Option<Core>> = Mutex::new(None);
@@ -170,60 +204,159 @@ fn start(input: &[u8]) -> Result<(), String> {
     }
     std::fs::create_dir_all(&cfg.state_dir).map_err(|e| format!("state directory: {e}"))?;
     let (secrets, persistence) = store::open(&cfg.state_dir, &cfg.profile);
-    let identity = identity::Identity::load_or_create(&secrets)?;
-    let network = net::Network::start(&secrets, &identity.device_id())?;
-    *guard = Some(Core {
-        version: cfg.version,
-        state_dir: cfg.state_dir,
+    let secrets = Arc::new(secrets);
+    let identity = Arc::new(identity::Identity::load_or_create(&secrets)?);
+    let ctx = Arc::new(session::Ctx {
         identity,
+        access: Arc::new(access::Access::load(secrets.clone())?),
+        sessions: Arc::default(),
+        version: cfg.version,
+    });
+    let network = net::Network::start(&secrets, ctx.clone())?;
+    let mut core = Core {
+        state_dir: cfg.state_dir,
         persistence,
-        secrets,
+        ctx,
         password: password::Temporary::generate(),
         network,
-    });
+    };
+    core.new_password()?;
+    *guard = Some(core);
     Ok(())
 }
 
 fn call(input: &[u8]) -> Result<Value, String> {
-    let req: Call = serde_json::from_slice(input).map_err(|e| format!("bad call: {e}"))?;
+    let mut req: Call = serde_json::from_slice(input).map_err(|e| format!("bad call: {e}"))?;
     match req.method.as_str() {
         "status" => Ok(status()),
         "password.reveal" => with_core(|c| json!({"temporary": c.password.reveal()})),
-        "password.regenerate" => with_core(|c| {
-            c.password = password::Temporary::generate();
-            json!({"serial": c.password.serial()})
+        "password.regenerate" => try_core(|c| {
+            c.new_password()?;
+            Ok(json!({"serial": c.password.serial()}))
         }),
+        "password.set_permanent" => {
+            // {"password": "…"} sets it, {"password": null} removes it.
+            let password: Option<zeroize::Zeroizing<String>> =
+                serde_json::from_value(req.params["password"].take())
+                    .map_err(|e| format!("bad password: {e}"))?;
+            if password
+                .as_ref()
+                .is_some_and(|p| p.chars().count() < MIN_PERMANENT)
+            {
+                return Err(format!(
+                    "the permanent password needs at least {MIN_PERMANENT} characters"
+                ));
+            }
+            try_core(|c| {
+                let mut slots = c
+                    .ctx
+                    .access
+                    .slots
+                    .lock()
+                    .map_err(|_| "access state poisoned")?;
+                let key = c.ctx.identity.public_key();
+                slots.set_permanent(
+                    c.ctx.access.secrets(),
+                    password.as_deref().map(String::as_str),
+                    &key,
+                )?;
+                Ok(json!({"permanent_password": slots.has_permanent()}))
+            })
+        }
         "network.get" => with_core(|c| c.network.settings()),
         "network.set" => {
             let update: net::Update = serde_json::from_value(req.params)
                 .map_err(|e| format!("bad network settings: {e}"))?;
-            let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
-            let c = guard.as_mut().ok_or("the core is not started")?;
-            c.network.update(&c.secrets, update)?;
-            Ok(c.network.settings())
+            try_core(|c| {
+                c.network.update(c.ctx.access.secrets(), update)?;
+                Ok(c.network.settings())
+            })
+        }
+        "session.connect" => {
+            let r: Connect = serde_json::from_value(req.params)
+                .map_err(|e| format!("bad connect request: {e}"))?;
+            if r.device_id.len() != 9 || !r.device_id.bytes().all(|b| b.is_ascii_digit()) {
+                return Err("a Device ID has 9 digits".into());
+            }
+            try_core(|c| {
+                if r.device_id == c.ctx.identity.device_id() {
+                    return Err("that is this device's own ID".into());
+                }
+                let id = c.network.connect(&r.device_id, r.password, r.want)?;
+                Ok(json!({"id": id}))
+            })
+        }
+        "session.close" => {
+            let id = req.params["id"].as_u64().ok_or("bad session id")?;
+            try_core(|c| c.ctx.sessions.close(id).map(|()| json!({})))
+        }
+        "request.decide" => {
+            let d: Decide =
+                serde_json::from_value(req.params).map_err(|e| format!("bad decision: {e}"))?;
+            try_core(|c| {
+                let granted = d.allow.then_some(d.permissions);
+                c.ctx.access.decide(d.id, granted).map(|()| json!({}))
+            })
+        }
+        "trusted.list" => with_core(|c| {
+            c.ctx
+                .access
+                .trusted()
+                .into_iter()
+                .map(|(key, t)| {
+                    json!({
+                        "key": key,
+                        "device_id": t.device_id,
+                        "first": t.first,
+                        "last": t.last,
+                        "granted": t.granted,
+                    })
+                })
+                .collect::<Value>()
+        }),
+        "trusted.remove" => {
+            let key = req.params["key"].as_str().ok_or("bad key")?.to_owned();
+            try_core(|c| c.ctx.access.untrust(&key).map(|()| json!({})))
+        }
+        "host.forget" => {
+            let id = req.params["device_id"]
+                .as_str()
+                .ok_or("bad Device ID")?
+                .to_owned();
+            try_core(|c| c.ctx.access.forget_host(&id).map(|()| json!({})))
         }
         other => Err(format!("unknown method {other:?}")),
     }
 }
 
 fn with_core(f: impl FnOnce(&mut Core) -> Value) -> Result<Value, String> {
+    try_core(|c| Ok(f(c)))
+}
+
+fn try_core(f: impl FnOnce(&mut Core) -> Result<Value, String>) -> Result<Value, String> {
     let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
     let core = guard.as_mut().ok_or("the core is not started")?;
-    Ok(f(core))
+    f(core)
 }
+
+/// Shortest permanent password accepted.
+const MIN_PERMANENT: usize = 8;
 
 /// The status a host shows: never a secret.
 fn status() -> Value {
     with_core(|c| {
         json!({
-            "version": c.version,
+            "version": c.ctx.version,
             "abi": ABI_VERSION,
-            "device_id": c.identity.device_id(),
-            "fingerprint": c.identity.fingerprint(),
+            "device_id": c.ctx.identity.device_id(),
+            "fingerprint": c.ctx.identity.fingerprint(),
             "state_dir": c.state_dir,
             "persistence": c.persistence,
             "password_serial": c.password.serial(),
             "network": c.network.status(),
+            "permanent_password": c.ctx.access.slots.lock().is_ok_and(|s| s.has_permanent()),
+            "requests": c.ctx.access.pending(),
+            "sessions": c.ctx.sessions.list(),
         })
     })
     .unwrap_or_else(|e| json!({"error": e}))

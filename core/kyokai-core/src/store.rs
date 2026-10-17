@@ -43,15 +43,7 @@ pub struct Secrets {
 /// Opens the store in state_dir, keyed in the OS store by profile.
 pub fn open(state_dir: &Path, profile: &str) -> (Secrets, Persistence) {
     let path = state_dir.join(FILE);
-    let memory = |p| {
-        (
-            Secrets {
-                map: Mutex::new(Map::new()),
-                disk: None,
-            },
-            p,
-        )
-    };
+    let memory = |p| (Secrets::memory(), p);
     let Some(key) = os::master_key(state_dir, profile) else {
         return memory(Persistence::MemoryOnly);
     };
@@ -78,11 +70,33 @@ impl Secrets {
         self.map.lock().ok()?.get(name).cloned()
     }
 
+    /// A store that lives in memory only (tests, and runs without an OS
+    /// credential store).
+    pub fn memory() -> Self {
+        Secrets {
+            map: Mutex::new(Map::new()),
+            disk: None,
+        }
+    }
+
     /// Stores a secret and, when the store persists, rewrites the file
     /// atomically.
     pub fn set(&self, name: &str, value: &str) -> Result<(), String> {
+        self.write(|map| {
+            map.insert(name.to_owned(), Zeroizing::new(value.to_owned()));
+        })
+    }
+
+    /// Removes a secret, rewriting the file like `set`.
+    pub fn remove(&self, name: &str) -> Result<(), String> {
+        self.write(|map| {
+            map.remove(name);
+        })
+    }
+
+    fn write(&self, change: impl FnOnce(&mut Map)) -> Result<(), String> {
         let mut map = self.map.lock().map_err(|_| "secrets store poisoned")?;
-        map.insert(name.to_owned(), Zeroizing::new(value.to_owned()));
+        change(&mut map);
         let Some((path, key)) = &self.disk else {
             return Ok(());
         };

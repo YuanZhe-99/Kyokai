@@ -5,7 +5,7 @@
 | 工作流 | 触发 | 作用 |
 |---|---|---|
 | `ci.yml` → checks | 推送到 `main`、拉取请求、手动 | gofmt、Windows 与 macOS 的 `go vet`、界面目录、文档镜像、`cargo fmt`、`cargo deny`、机密扫描（gitleaks）、上游版本（仅提示） |
-| `ci.yml` → test | 同上 | `windows-11-arm` 与 `macos-latest`：clippy、Rust 测试、使用真实核心的 Go 测试（ABI 冒烟测试）、`mygo vet`、`scripts/smoke.sh user`、未签名安装包作为产物；`windows-latest` 与 `macos-15-intel`：构建核心与 Go 测试。所有任务都使用固定版本的 `protoc`（`scripts/protoc.sh`）；`windows-11-arm` 把 LLVM 的 clang 加入 `PATH` 供 `ring` 使用；macOS 任务使用各自已解锁的默认钥匙串 |
+| `ci.yml` → test | 同上 | `windows-11-arm` 与 `macos-latest`：clippy、Rust 测试、使用真实核心的 Go 测试（ABI 冒烟测试）、`mygo vet`、`scripts/smoke.sh user`、未签名安装包作为产物；`windows-latest` 与 `macos-15-intel`：构建核心与 Go 测试，`windows-latest` 还会上传未签名的 x64 安装包（安装在远程测试虚拟机上）。所有任务都使用固定版本的 `protoc`（`scripts/protoc.sh`）；`windows-11-arm` 把 LLVM 的 clang 加入 `PATH` 供 `ring` 使用；macOS 任务使用各自已解锁的默认钥匙串 |
 | `release.yml` | 标签 `v*`、手动 | Windows 核心在 `windows-latest`（x64）与 `windows-11-arm` 上构建，在 Ubuntu 上用 NSIS 打包；macOS 在 `macos-latest` 上构建打包；标签会在核对与 `internal/version` 一致后附带 `SHA256SUMS.txt` 发布 |
 | `upstream.yml` | 每周、手动 | `go run ./tools/deps check -strict`；MyGo、EasyTier、RustDesk 或 Rust 有更新时开 issue |
 | `dependabot.yml` | 每周 | Actions、Go 模块（不含 MyGo）与 Cargo |

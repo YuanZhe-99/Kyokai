@@ -52,6 +52,11 @@ type App struct {
 
 	// Network page: the settings form (network.go).
 	net netForm
+	// Sessions (sessions.go): the connect form, the permissions chosen per
+	// open host confirmation, the access card.
+	connect connectForm
+	grants  map[uint64][]string
+	access  accessForm
 
 	// View state.
 	page         page
@@ -73,7 +78,7 @@ func New(profile, stateDir, socket string) *App {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &App{
 		profile: profile, stateDir: stateDir, socket: socket, ctx: ctx, cancel: cancel,
-		prefs: loadPrefs(stateDir), busy: map[string]bool{},
+		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{},
 	}
 }
 
@@ -192,6 +197,7 @@ func (a *App) View(c *ui.Context) {
 		ui.Row(c).Fill().Grow(1).AlignItems(ui.Stretch).Children(func() {
 			a.sidebar(c)
 			ui.Scroll(c).Grow(1).Fill().Padding(24).Gap(gap).Children(func() {
+				a.requestsView(c)
 				switch pg {
 				case pageNetwork:
 					a.networkView(c)

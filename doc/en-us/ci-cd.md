@@ -6,7 +6,7 @@ push there is checked only by the local gate.
 | Workflow | Trigger | Does |
 |---|---|---|
 | `ci.yml` → checks | push to `main`, pull requests, manual | gofmt, `go vet` for Windows and macOS, interface catalogs, doc mirror, `cargo fmt`, `cargo deny`, secret scan (gitleaks), upstream pins (informational) |
-| `ci.yml` → test | same | `windows-11-arm` and `macos-latest`: clippy, Rust tests, the Go tests with the real core (ABI smoke test), `mygo vet`, `scripts/smoke.sh user`, unsigned packages as artifacts; `windows-latest` and `macos-15-intel`: core build and Go tests. Every job uses the pinned `protoc` (`scripts/protoc.sh`); `windows-11-arm` puts LLVM's clang on `PATH` for `ring`; the macOS jobs run with their own unlocked default keychain |
+| `ci.yml` → test | same | `windows-11-arm` and `macos-latest`: clippy, Rust tests, the Go tests with the real core (ABI smoke test), `mygo vet`, `scripts/smoke.sh user`, unsigned packages as artifacts; `windows-latest` and `macos-15-intel`: core build and Go tests, and `windows-latest` also uploads the unsigned x64 package (installed on the remote test VM). Every job uses the pinned `protoc` (`scripts/protoc.sh`); `windows-11-arm` puts LLVM's clang on `PATH` for `ring`; the macOS jobs run with their own unlocked default keychain |
 | `release.yml` | tag `v*`, manual | Windows cores on `windows-latest` (x64) and `windows-11-arm`, packaged on Ubuntu with NSIS; macOS built and packaged on `macos-latest`; a tag publishes with `SHA256SUMS.txt` after checking that it matches `internal/version` |
 | `upstream.yml` | weekly, manual | `go run ./tools/deps check -strict`; opens an issue when MyGo, EasyTier, RustDesk or Rust has moved |
 | `dependabot.yml` | weekly | Actions, Go modules (MyGo excluded) and Cargo |

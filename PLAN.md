@@ -41,6 +41,20 @@ The active plan: milestones, done-when criteria and open decisions. Long-lived c
 - **Secrets:** OS-protected master key + encrypted store; helper stores in SYSTEM / root scope;
   operator-only migration between stores; one active host per identity.
 
+## Test setup and order (user decision 2026-10-17)
+
+All of Phases 2–9 are finished and tested on Windows first, then macOS gets one pass at the end.
+
+- **This machine (Windows ARM64):** two instances with their own profiles (host and controller)
+  for authentication, sessions, capture → viewer, input into other apps, the AI runtime and
+  workspace, packaging.
+- **A remote Windows 11 x64 VM** on another network, reached over SSH with a dedicated key (commands)
+  and watched through its console or RustDesk (screens): native x64, hole punching across real
+  NATs, clipboard and display differences, lock screen, UAC and Background service (console
+  session, not RDP).
+- **macOS pass:** ScreenCaptureKit, privacy permissions, VideoToolbox, LaunchDaemon, signing and
+  updates, Mac ↔ Windows throughput.
+
 ## Milestones
 
 ### Phase 0 — Spikes (`spikes/`, results recorded in `doc/en-us/upstream.md` / `platform-notes.md`)
@@ -60,7 +74,7 @@ the input-event mapping check of S2 with real keys.
 
 | Phase | Scope | Done when |
 |---|---|---|
-| 2 Identity & networking | EasyTier in the engine, Server / Network page, resolver, Noise + OPAQUE, host confirmation, trusted devices page, identity backup / restore / reset, recent devices, rate limits, session control and resume, hello with the source URL, decoder fuzzing, GUI-side binding | spec §26 Authentication, EasyTier Networking and Device Identity pass between Windows ARM64 and a Mac through a standard server; throughput measured |
+| 2 Identity & networking | Done (2026-10-17): EasyTier in the engine, Network page, resolver, Noise + OPAQUE, host confirmation, trusted devices, permanent password, rate limits, hello with the source URL, sessions with heartbeat and close. Left: identity backup / restore / reset, recent devices, session resume, decoder fuzzing, the controller role in the GUI process (with Phase 3's viewer), the VM run across real NATs | §26 Authentication, EasyTier Networking and Device Identity pass between this machine and the remote x64 VM through a standard server; throughput measured; the Mac pass later |
 | 3 Manual Computer Use | codec decision, capture, video channel, viewer, input with focused capture, DPI / multi-monitor, clipboard, macOS permission guidance | §26 Manual Computer Use on two machines |
 | 4 Host AI runtime | provider trait + OpenAI and Claude adapters and settings, task manager, state machine, observation, coordinates, executor, leases, policy, approvals, task history | §26 AI Computer Use and the host side of Authorization and Safety |
 | 5 AI workspace | chat panel, remote tasks, progress, pause / resume / cancel / take over, controller approvals, host status, emergency stop, reconnect without replay | spec §27 steps 4–5 on two machines |

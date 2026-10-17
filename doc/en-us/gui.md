@@ -8,7 +8,13 @@ when `SCREENSHOT_DIR` is set.
 
 - **Sidebar:** Home, Network, Settings.
 - **Home:** "This device" — the Device ID in groups of three with Copy; the temporary password,
-  masked until Show, with Copy and New password; a note when secrets are not persisted.
+  masked until Show, with Copy and New password; a note when secrets are not persisted. Below it,
+  "Control another device" (Device ID, password, Connect; needs a network) and the sessions, newest
+  first (to or from which device, state or why it failed, Disconnect; "Forget old identity" when a
+  host's key changed).
+- **Confirmations:** a controller waiting for this host's user shows at the top of every page with
+  its Device ID, whether it is known or a new key claiming a known ID, and a switch per requested
+  permission, with Allow and Deny; a notification and the window coming forward announce it.
 - **Network:** the node's live status (connected, connecting, or why it could not connect; the
   virtual address; the NAT type in plain words) and the Kyokai devices it routes to (Device ID,
   direct or relayed, latency), with a note that announced Device IDs are not proof; then the
@@ -16,7 +22,8 @@ when `SCREENSHOT_DIR` is set.
   keeps the stored secret; a weak secret is flagged), Save and Leave network. Refused settings show
   the engine's reason.
 - **Settings:** General (language, appearance, open at login — off by default, close button),
-  Device identity (Device ID, fingerprint), Storage (data folder with Open folder, how secrets are
+  Device identity (Device ID, fingerprint), Access (permanent password: set, change or remove;
+  trusted devices with their last connection and Remove), Storage (data folder with Open folder, how secrets are
   kept), Diagnostics (version and ABI, engine start time, run mode, logs folder), About (version,
   license, source code, app updates), Open source licenses (the shipped notices).
 - Until the engine's session is attached, pages that need it show "Starting…" or why the engine is

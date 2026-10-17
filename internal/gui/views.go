@@ -122,7 +122,8 @@ func (a *App) homeView(c *ui.Context) {
 			ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Warning)
 		}
 	})
-	ui.Text(c, L.HomeComingSoon()).FontSize(sizeSmall).TextColor(t.TextMuted)
+	a.connectCard(c)
+	a.sessionsCard(c)
 }
 
 func secretsNote(p string) string {
@@ -141,6 +142,7 @@ func (a *App) settingsView(c *ui.Context) {
 	a.generalSettings(c)
 	if a.engineState(c) {
 		a.identitySettings(c)
+		a.accessSettings(c)
 		a.storageSettings(c)
 		a.diagnostics(c)
 	}

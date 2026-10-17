@@ -67,10 +67,11 @@ jobs:
       matrix:
         include:
           # Full gate on one runner per OS; build-only on the other arch.
-          - { os: windows-11-arm, full: true }
-          - { os: macos-latest, full: true }
-          - { os: windows-latest, full: false }
-          - { os: macos-15-intel, full: false }
+          - { os: windows-11-arm, full: true, package: true }
+          - { os: macos-latest, full: true, package: true }
+          # x64 is packaged too: the remote test VM installs it.
+          - { os: windows-latest, full: false, package: true }
+          - { os: macos-15-intel, full: false, package: false }
     runs-on: ${{ matrix.os }}
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
@@ -143,16 +144,16 @@ jobs:
 
       # Packages ship every Rust crate's license text (scripts/build.sh).
       - uses: taiki-e/install-action@v2
-        if: matrix.full
+        if: matrix.package
         with:
           tool: cargo-about
       - name: Package (unsigned)
-        if: matrix.full
+        if: matrix.package
         shell: bash
         run: scripts/build.sh
 
       - uses: actions/upload-artifact@v7
-        if: matrix.full
+        if: matrix.package
         with:
           name: unsigned-${{ matrix.os }}
           path: |

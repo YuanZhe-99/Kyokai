@@ -5,7 +5,7 @@
 | Process | Binary | Runs as | Role |
 |---|---|---|---|
 | GUI | `Kyokai` (MyGo) | the user, never elevated | Window, tray, settings. Holds no identity; shows what the engine pushes. |
-| Engine | `kyokai-svc run --host user` | the user, a child of the GUI | Loads the Rust core, which owns the device identity, the temporary password and the embedded EasyTier node ([networking.md](networking.md)); serves the local API. |
+| Engine | `kyokai-svc run --host user` | the user, a child of the GUI | Loads the Rust core, which owns the device identity, the passwords, the embedded EasyTier node ([networking.md](networking.md)) and both ends of sessions ([protocol.md](protocol.md)); serves the local API. |
 | Control CLI | `kyokai-svc ctl …` | the user | Scriptable client of the local API (development, smoke tests). |
 
 The engine lives exactly as long as the GUI: on macOS it stops when the lifeline pipe the GUI holds
@@ -36,7 +36,7 @@ Administrator rights are never requested when the GUI starts.
 | `internal/core` | purego binding to the Rust core |
 | `internal/fsutil` | Atomic writes and JSON documents |
 | `internal/version` | The single product version |
-| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, temporary password, EasyTier node |
+| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`) |
 | `core/third_party/thunk-noop` | Stands in for EasyTier's `thunk-rs` build step, so Windows builds keep the static C runtime |
 
 ## FFI
@@ -57,7 +57,11 @@ Responses are `{"ok": true, "result": …}` or `{"ok": false, "error": "…"}` i
 allocates; panics are caught at the boundary and reported as errors. Methods: `status` (never a
 secret; includes the network status), `password.reveal`, `password.regenerate`, `network.get`
 (settings without the secret), `network.set` (`{servers, name, secret?}`; a missing secret keeps
-the stored one). The Go binding keeps the response slots it passes to the core in heap memory,
+the stored one), `password.set_permanent` (`{password}`, null removes it), `session.connect`
+(`{device_id, password, want}`; returns the session id at once, progress shows in the status),
+`session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,
+`host.forget`. The status also carries `permanent_password`, `requests` (open host confirmations)
+and `sessions`. The Go binding keeps the response slots it passes to the core in heap memory,
 never on a goroutine stack, which may move between taking an address and the call. On Windows the
 library is loaded by absolute path with
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` and links the C
@@ -72,7 +76,10 @@ runtime statically, so nothing is resolved through the search path.
   changes.
 - Requests: `status` (with the network status), `password.reveal`, `password.regenerate`,
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
-  `session.attach`, `shutdown`. A session receives the status after every command that changes it
+  `password.set_permanent`, `session.connect`, `session.close`, `request.decide`, `trusted.list`,
+  `trusted.remove`, `host.forget`, `session.attach`, `shutdown`. The status includes the open host
+  confirmations and the sessions; secrets travel only towards the engine (the network secret, the
+  permanent password, a typed password). A session receives the status after every command that changes it
   and whenever the network's status moves.
 - Authorization comes from the operating system's peer credentials (`LOCAL_PEERCRED` on macOS;
   `SIO_AF_UNIX_GETPEERPID` and the process token's SID on Windows), never from the request: only
