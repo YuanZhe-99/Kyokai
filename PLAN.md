@@ -82,7 +82,7 @@ the input-event mapping check of S2 with real keys.
 | 6 Run modes & helper | helper install / uninstall / status, session agents, Follow GUI, Background service, store migration, verified self-update, self-disable when the app is removed | UAC and lock screen operable in Follow GUI; Background admits only unattended grants; uninstall leaves nothing |
 | 7 Security & reliability | Done so far (2026-10-17): threat model (security.md), provider-answer fuzzing, revocation (ends live sessions and resume tokens), lease cleanup (a controller's task pauses when its session ends), log audit, bounded queues. Capture reopens the display after a mode change, the lock screen or a UAC prompt (not yet seen happen). Left: verifying that on the VM, sleep, privacy masking, resource limits review, helper and agents in the threat model (Phase 6) | §26 Authorization and Safety complete |
 | 8 Release path | tagged release, packages, checksums, app and helper updates from the previous version | §26 Build and Release |
-| 9 Docs & acceptance | user guide, final README, third-party inventory, §27 acceptance with evidence | every §26 group recorded |
+| 9 Docs & acceptance | User guide written and README brought up to date (2026-10-17). Left: the final README at release, the third-party inventory review, §27 acceptance with evidence | every §26 group recorded |
 
 ## RustDesk reuse per platform
 

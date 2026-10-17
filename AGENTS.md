@@ -33,6 +33,7 @@ about to change, verify against the code, then fix the docs in the same commit.
 | The session wire protocol: framing, handshake, login, messages | `doc/en-us/protocol.md` |
 | Passwords, permissions, confirmation, pinned keys, rate limits | `doc/en-us/identity-and-access.md` |
 | Seeing and operating a host: video, input, AI | `doc/en-us/computer-use.md` |
+| How people use Kyokai, step by step | `doc/en-us/user-guide.md` |
 | Interface structure, wording, tray, languages | `doc/en-us/gui.md` |
 | Verified upstream contracts (MyGo, EasyTier, RustDesk, OpenAI, Claude) and quirks | `doc/en-us/upstream.md` |
 | Reused third-party code, licenses and obligations | `doc/en-us/third-party.md` |

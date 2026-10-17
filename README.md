@@ -6,22 +6,23 @@ Kyokai is a cross-platform Computer Use application that enables people and AI a
 with computers across devices. It combines secure peer-to-peer connectivity, direct human control,
 and host-side AI execution in one unified experience.
 
-> **Status:** early development. Version 0.1.0 is the foundation (the app, its engine, the device
-> identity); connections, manual control and AI tasks arrive in the following milestones. Nothing
-> here is ready for use yet. See [PLAN.md](PLAN.md) and the [platform notes](doc/en-us/platform-notes.md).
+> **Status:** early development, not released yet. On Windows the app, its engine, connections,
+> manual control (screen, mouse, keyboard, clipboard text) and AI tasks work; the privileged helper,
+> more codecs, monitor choice and the macOS pass follow. See [PLAN.md](PLAN.md), the
+> [platform notes](doc/en-us/platform-notes.md) and the [user guide](doc/en-us/user-guide.md).
 
 ## Features
 
 | Feature | Status |
 |---|---|
-| Persistent Device ID backed by a cryptographic device key | in progress (0.1.0) |
-| Temporary and permanent host passwords | temporary password in progress; permanent password planned |
-| Connect by Device ID + password over a standard EasyTier network, no IP addresses | planned |
-| Manual Computer Use: view the host screen, mouse, keyboard, monitors | planned |
-| AI Computer Use with OpenAI or Claude, executed on the host with its own key | planned |
-| Human take-over, pause, cancel and emergency stop | planned |
+| Persistent Device ID backed by a cryptographic device key | done (Windows) |
+| Temporary and permanent host passwords | done |
+| Connect by Device ID + password over a standard EasyTier network, no IP addresses | done (Windows) |
+| Manual Computer Use: view the host screen, mouse, keyboard, clipboard, monitors | screen, mouse, keyboard and clipboard text done (Windows); monitor choice planned |
+| AI Computer Use with OpenAI or Claude, executed on the host with its own key | done (Windows); Claude verified live, OpenAI waits for a live run |
+| Human take-over, pause, cancel and emergency stop | done |
 | Optional privileged helper for UAC prompts, the lock screen and unattended access | planned |
-| English, Simplified Chinese, Traditional Chinese, Japanese | in progress |
+| English, Simplified Chinese, Traditional Chinese, Japanese | done |
 
 ## AI Computer Use
 
@@ -32,8 +33,8 @@ host's API key. The host user can always take over or stop the task.
 
 ## Manual Computer Use
 
-The same connection shows the host's screen and forwards your mouse and keyboard, with monitor
-selection and quality settings. It works without any AI provider configured.
+The same connection shows the host's screen and forwards your mouse, keyboard and clipboard, with
+quality settings; monitor selection follows. It works without any AI provider configured.
 
 ## Device ID & Password
 
