@@ -240,6 +240,7 @@
   "ViewerAIHint": "任务在对方电脑上运行，使用对方自己的 AI 服务商。你在画面中的操作会暂停它。",
   "ViewerAIHostApproves": "由对方电脑的用户批准这一步。",
   "ViewerAITitle": "此设备上的 AI",
+  "ViewerDisplay": "显示器",
   "ViewerEnded": "会话已结束。",
   "ViewerNoDecoder": "无法显示画面：缺少 Kyokai 的核心库。",
   "ViewerNoPicture": "此会话不显示屏幕。",

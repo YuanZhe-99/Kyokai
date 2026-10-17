@@ -2444,6 +2444,16 @@ func (msgs Messages) ViewerAITitle() string {
 	return Catalog.Format(msgs.locale, "ViewerAITitle", nil)
 }
 
+// ViewerDisplay says "Display"
+// in the language the app shows.
+func ViewerDisplay() string { return In(i18n.Locale()).ViewerDisplay() }
+
+// ViewerDisplay says "Display"
+// in the language of msgs.
+func (msgs Messages) ViewerDisplay() string {
+	return Catalog.Format(msgs.locale, "ViewerDisplay", nil)
+}
+
 // ViewerEnded says "The session ended."
 // in the language the app shows.
 func ViewerEnded() string { return In(i18n.Locale()).ViewerEnded() }

@@ -153,6 +153,16 @@ enum Message {
     Clipboard {
         text: String,
     },
+    /// host → controller, with video: the host's displays and the one
+    /// shown.
+    Displays {
+        list: Vec<video::Display>,
+        current: usize,
+    },
+    /// controller → host (`view-screen`): show this display instead.
+    Display {
+        index: usize,
+    },
     /// host → controller, with video: where the host's pointer is, as
     /// fractions of the picture, and whether it shows there.
     Cursor {
@@ -170,6 +180,29 @@ enum Steer {
     Resume,
     Cancel,
     Reply,
+}
+
+/// A display as the input service's area.
+fn area(d: video::Display) -> crate::input::Area {
+    crate::input::Area {
+        x: d.x,
+        y: d.y,
+        width: d.width,
+        height: d.height,
+    }
+}
+
+/// The displays message for a source, when there is a choice and it shows
+/// one of them.
+fn shown(displays: &[video::Display], s: &video::Source) -> Option<Message> {
+    if displays.len() < 2 {
+        return None;
+    }
+    let current = displays.iter().position(|d| Some(*d) == s.display)?;
+    Some(Message::Displays {
+        list: displays.to_vec(),
+        current,
+    })
 }
 
 /// How often the host looks where its pointer is (with video).
@@ -982,7 +1015,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     }));
     // The host's video: the screen through H.264, or the test pattern.
     let mut source = match side {
-        Side::Host { video: true, .. } => Some(video::Source::open()),
+        Side::Host { video: true, .. } => Some(video::Source::open(None)),
         _ => None,
     };
     // The host's input service; dropping it releases what it holds.
@@ -991,6 +1024,16 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         Side::Host { input: true, .. } => Some(crate::input::Injector::default()),
         _ => None,
     };
+    // The displays the controller may choose from, with the one shown.
+    let displays = if source.is_some() {
+        video::displays()
+    } else {
+        Vec::new()
+    };
+    #[cfg(windows)]
+    if let Some(inj) = injector.as_mut() {
+        inj.set_area(source.as_ref().and_then(|s| s.display).map(area));
+    }
     if let Some(s) = &source {
         seal_json(
             &mut noise,
@@ -999,6 +1042,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             &Message::VideoStart(s.start.clone()),
         )
         .await?;
+        if let Some(m) = shown(&displays, s) {
+            seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+        }
     }
     let (queue, control) = match &side {
         Side::Controller { queue, control } => (Some(queue.clone()), Some(control.clone())),
@@ -1066,7 +1112,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 seal_json(&mut noise, &mut buf, &mut wr, &Message::Clipboard { text }).await?;
             }
             _ = pointer_tick.tick(), if source.is_some() => {
-                if let Some((x, y, shown)) = crate::input::pointer() {
+                let at = source.as_ref().and_then(|s| s.display).map(area);
+                if let Some((x, y, shown)) = at.map_or_else(crate::input::pointer, crate::input::pointer_in) {
                     let visible = shown && (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y);
                     let now = (((x * 4096.0) as i32, (y * 4096.0) as i32), visible);
                     if pointer_sent != Some(now) {
@@ -1119,7 +1166,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 // Only messages a GUI may send pass on to the host.
-                if let Ok(m @ (Message::KeyFrame | Message::Input { .. } | Message::Quality { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. })) = serde_json::from_value::<Message>(msg) {
+                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Input { .. } | Message::Quality { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. })) = serde_json::from_value::<Message>(msg) {
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
                 }
             }
@@ -1214,6 +1261,32 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::VIDEO_START];
                             packet.extend(serde_json::to_vec(&v).map_err(|_| Failure::Broken)?);
+                            q.push(packet);
+                        }
+                    }
+                    // The controller picks another display: capture it
+                    // instead, and map input and the pointer onto it.
+                    Message::Display { index } => {
+                        if let (Some(s), Some(&d)) = (&source, displays.get(index))
+                            && s.display != Some(d)
+                        {
+                            let s = video::Source::open(Some(d));
+                            #[cfg(windows)]
+                            if let Some(inj) = injector.as_mut() {
+                                inj.set_area(s.display.map(area));
+                            }
+                            seal_json(&mut noise, &mut buf, &mut wr, &Message::VideoStart(s.start.clone())).await?;
+                            if let Some(m) = shown(&displays, &s) {
+                                seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+                            }
+                            source = Some(s);
+                            pointer_sent = None;
+                        }
+                    }
+                    Message::Displays { list, current } => {
+                        if let Some(q) = &queue {
+                            let mut packet = vec![media::packet::DISPLAYS];
+                            packet.extend(serde_json::to_vec(&json!({"list": list, "current": current})).map_err(|_| Failure::Broken)?);
                             q.push(packet);
                         }
                     }
@@ -1545,7 +1618,7 @@ mod tests {
                 stats += 1;
                 continue;
             }
-            if p[0] == media::packet::CURSOR {
+            if p[0] == media::packet::CURSOR || p[0] == media::packet::DISPLAYS {
                 continue;
             }
             break p;

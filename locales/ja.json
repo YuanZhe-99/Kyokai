@@ -240,6 +240,7 @@
   "ViewerAIHint": "タスクは相手のコンピューターで、その AI サービス提供元を使って動きます。画面上で操作すると一時停止します。",
   "ViewerAIHostApproves": "この手順は相手のコンピューターの利用者が承認します。",
   "ViewerAITitle": "このデバイスの AI",
+  "ViewerDisplay": "ディスプレイ",
   "ViewerEnded": "セッションが終了しました。",
   "ViewerNoDecoder": "画面を表示できません。Kyokai のコアライブラリが見つかりません。",
   "ViewerNoPicture": "このセッションでは画面を表示しません。",

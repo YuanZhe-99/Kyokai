@@ -7,7 +7,7 @@ control, Phase 4 AI tasks).
 
 | Stage | Where | What |
 |---|---|---|
-| Capture | host engine | the primary display through RustDesk's DXGI desktop duplication (`core/third_party/rustdesk-dxgi`); a still screen yields no frame |
+| Capture | host engine | one display — the primary unless the viewer chose another — through RustDesk's DXGI desktop duplication (`core/third_party/rustdesk-dxgi`); a still screen yields no frame |
 | Scale and convert | host engine | BGRA into NV12 (BT.601, limited range), scaled down to fit 1920×1080, sides even |
 | Encode | host engine | H.264 through Media Foundation's synchronous Microsoft encoder: low latency (set before the media types; the first output follows the first frame), CBR 4 Mbit/s, no B-frames, a key frame every 4 seconds and on request; 30 fps |
 | Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); the producer waits while the session is busy, so capture runs at the speed the network takes |
@@ -22,6 +22,10 @@ SSH session) or has no H.264 encoder (Windows N, Server editions without Media F
 screen or a UAC prompt — the host releases it and opens the primary display again every half
 second; the stream keeps its size and a new mode is scaled into it (a changed aspect ratio shows
 stretched until the next session).
+
+With more than one display the host sends the list (the primary first, the others left to
+right) with the stream, and the viewer offers them by number; choosing one restarts capture on it
+and moves input and the pointer there. AI tasks always use the primary display.
 
 Desktop duplication leaves the pointer out of the picture, so the host reports where its pointer
 is — at most 20 times a second, when it moves or hides — and the viewer marks it with a small ring
@@ -56,7 +60,8 @@ The viewer sends input only for a session granted `control-input`; the host chec
 | text | `{kind: "text", text}`: typed as Unicode characters, so the controller's layout and dead keys decide |
 | other keys and shortcuts | `{kind: "key", key, down, mods}` by name (`enter`, `f5`, `page-down`, `c` with Ctrl, …); a release only when its press was sent |
 
-The host injects with `SendInput`: absolute moves over the captured display, extended-key flags
+The host injects with `SendInput`: absolute moves over the display shown (mapped onto the virtual
+desktop, so a display left of or above the primary works too), extended-key flags
 for the navigation keys, modifiers pressed and released to match each key, every event tagged as
 Kyokai's (`dwExtraInfo`) so local input can be told apart. Nothing is injected while a Kyokai
 window has the focus (checked at most every 200 ms), and whatever a session holds is released

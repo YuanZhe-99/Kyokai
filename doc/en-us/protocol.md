@@ -70,7 +70,9 @@ sends `{"type": "video-start", codec, width, height}`; the controller may send `
 `control-input`, `{"type": "input", event}`. While it sends video the host sends `{"type":
 "test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":
 "stats", delay_ms, fps, bitrate}` ([computer-use.md](computer-use.md)); the controller may set
-the quality with `{"type": "quality", preset, fps}`. While it sends video the host also sends `{"type": "cursor", x, y, visible}`, its pointer as
+the quality with `{"type": "quality", preset, fps}`. With more than one display the host also sends `{"type": "displays", list, current}` (each
+display's place and size, the primary first) and the controller may ask for another with
+`{"type": "display", index}`. While it sends video the host also sends `{"type": "cursor", x, y, visible}`, its pointer as
 fractions of the picture, when it moves. With `clipboard`, either side sends
 `{"type": "clipboard", text}` for text copied on its side (at most 1 MiB). The host sends video only while the
 controller may view the screen: its screen as H.264, or the 320×180 raw RGBA test pattern (codec

@@ -198,6 +198,15 @@ func TestViewerRenders(t *testing.T) {
 				Steps:    []localapi.AIStep{{Action: []byte(`{"kind":"screenshot"}`), Outcome: "ok"}, {Action: []byte(`{"kind":"click","at":{"x":24,"y":12},"button":"left","count":1,"modifiers":[]}`), Outcome: "ok"}},
 				Approval: &localapi.AIApproval{Action: []byte(`{"kind":"type","text":"Q3.docx"}`)}}}
 		},
+		"viewer-displays": func(v *viewer) {
+			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
+			v.displays.List = make([]struct {
+				Width   int  `json:"width"`
+				Height  int  `json:"height"`
+				Primary bool `json:"primary"`
+			}, 3)
+			v.displays.Current = 1
+		},
 		"viewer-ai-new": func(v *viewer) { v.state, v.ai = "This session does not show the screen.", viewerAI{run: true} },
 	}
 	for name, setup := range cases {

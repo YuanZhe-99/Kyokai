@@ -128,6 +128,28 @@ pub fn vk(name: &str) -> Option<u16> {
 /// told apart from remote input.
 pub const INJECTED_TAG: usize = 0x4B59_4F4B; // "KYOK"
 
+/// A rectangle of the virtual desktop, in pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Area {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Maps a point given as fractions of `area` to `SendInput`'s absolute
+/// coordinates over the virtual desktop `desk` (0–65535 across it).
+pub fn absolute(fx: f32, fy: f32, area: Area, desk: Area) -> (i32, i32) {
+    let axis = |f: f32, start: i32, len: u32, desk_start: i32, desk_len: u32| {
+        let px = start as f32 + f.clamp(0.0, 1.0) * (len.max(1) - 1) as f32;
+        ((px - desk_start as f32) * 65535.0 / (desk_len.max(2) - 1) as f32).round() as i32
+    };
+    (
+        axis(fx, area.x, area.width, desk.x, desk.width),
+        axis(fy, area.y, area.height, desk.y, desk.height),
+    )
+}
+
 /// How long pointer moves are forgiven after the host user handed an AI
 /// task the desktop (a hand leaving the mouse after clicking Resume or
 /// Allow in Kyokai's window); presses never are.
@@ -152,13 +174,20 @@ impl LocalInput {
 }
 
 #[cfg(windows)]
-pub use windows_impl::{Injector, LocalWatch, kyokai_process, physical, pointer};
+pub use windows_impl::{Injector, LocalWatch, kyokai_process, physical, pointer, pointer_in};
 
 /// Where the pointer is, as fractions of the primary display (outside 0–1
 /// on another display), and whether it is shown. Not available yet off
 /// Windows.
 #[cfg(not(windows))]
 pub fn pointer() -> Option<(f32, f32, bool)> {
+    None
+}
+
+/// Where the pointer is, as fractions of `area`, and whether it is shown.
+/// Not available yet off Windows.
+#[cfg(not(windows))]
+pub fn pointer_in(_area: Area) -> Option<(f32, f32, bool)> {
     None
 }
 
@@ -182,9 +211,10 @@ mod windows_impl {
     use windows::Win32::UI::WindowsAndMessaging::{
         CURSOR_SHOWING, CURSORINFO, CallNextHookEx, GetCursorInfo, GetForegroundWindow,
         GetMessageW, GetSystemMetrics, GetWindowThreadProcessId, KBDLLHOOKSTRUCT, LLKHF_INJECTED,
-        LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW, SM_CXSCREEN, SM_CYSCREEN,
-        SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN,
-        WM_MOUSEMOVE, WM_QUIT, WM_SYSKEYDOWN,
+        LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN,
+        SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetWindowsHookExW,
+        UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_MOUSEMOVE, WM_QUIT,
+        WM_SYSKEYDOWN,
     };
     use windows::core::PWSTR;
 
@@ -203,6 +233,9 @@ mod windows_impl {
         keys: BTreeSet<u16>,
         buttons: BTreeSet<u8>,
         guard: (Instant, bool),
+        /// The display pointer positions are fractions of; None for the
+        /// primary.
+        area: Option<Area>,
     }
 
     impl Default for Injector {
@@ -211,11 +244,17 @@ mod windows_impl {
                 keys: BTreeSet::new(),
                 buttons: BTreeSet::new(),
                 guard: (Instant::now() - Duration::from_secs(1), false),
+                area: None,
             }
         }
     }
 
     impl Injector {
+        /// Sets the display pointer positions refer to (None: the primary).
+        pub fn set_area(&mut self, area: Option<Area>) {
+            self.area = area;
+        }
+
         /// Injects an event, unless a Kyokai window has the focus.
         /// Returns: whether it was injected.
         pub fn inject(&mut self, e: &Event) -> bool {
@@ -229,8 +268,10 @@ mod windows_impl {
                     x,
                     y,
                 } => {
-                    let (ax, ay) = ((x * 65535.0) as i32, (y * 65535.0) as i32);
-                    let mut flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+                    let (desk, primary) = physical(desktop_areas);
+                    let (ax, ay) = absolute(*x, *y, self.area.unwrap_or(primary), desk);
+                    let mut flags =
+                        MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
                     match action {
                         PointerAction::Move => {}
                         PointerAction::Down => {
@@ -351,25 +392,48 @@ mod windows_impl {
         out
     }
 
+    /// The virtual desktop and the primary display, in pixels (call it
+    /// inside `physical`).
+    fn desktop_areas() -> (Area, Area) {
+        // SAFETY: plain metric queries.
+        unsafe {
+            (
+                Area {
+                    x: GetSystemMetrics(SM_XVIRTUALSCREEN),
+                    y: GetSystemMetrics(SM_YVIRTUALSCREEN),
+                    width: GetSystemMetrics(SM_CXVIRTUALSCREEN).max(1) as u32,
+                    height: GetSystemMetrics(SM_CYVIRTUALSCREEN).max(1) as u32,
+                },
+                Area {
+                    x: 0,
+                    y: 0,
+                    width: GetSystemMetrics(SM_CXSCREEN).max(1) as u32,
+                    height: GetSystemMetrics(SM_CYSCREEN).max(1) as u32,
+                },
+            )
+        }
+    }
+
     /// Where the pointer is, as fractions of the primary display (outside
     /// 0–1 on another display), and whether it is shown.
     pub fn pointer() -> Option<(f32, f32, bool)> {
+        let (_, primary) = physical(desktop_areas);
+        pointer_in(primary)
+    }
+
+    /// Where the pointer is, as fractions of `area` (outside 0–1 elsewhere),
+    /// and whether it is shown.
+    pub fn pointer_in(area: Area) -> Option<(f32, f32, bool)> {
         physical(|| {
             let mut info = CURSORINFO {
                 cbSize: std::mem::size_of::<CURSORINFO>() as u32,
                 ..Default::default()
             };
-            // SAFETY: fills `info`, whose size is set; plain metric queries.
-            let (w, h) = unsafe {
-                GetCursorInfo(&mut info).ok()?;
-                (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN))
-            };
-            if w <= 0 || h <= 0 {
-                return None;
-            }
+            // SAFETY: fills `info`, whose size is set.
+            unsafe { GetCursorInfo(&mut info) }.ok()?;
             Some((
-                info.ptScreenPos.x as f32 / w as f32,
-                info.ptScreenPos.y as f32 / h as f32,
+                (info.ptScreenPos.x - area.x) as f32 / area.width.max(1) as f32,
+                (info.ptScreenPos.y - area.y) as f32 / area.height.max(1) as f32,
                 info.flags.0 & CURSOR_SHOWING.0 != 0,
             ))
         })
@@ -608,6 +672,54 @@ pub fn is_kyokai(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pointer_positions_land_on_the_shown_display() {
+        let primary = Area {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let right = Area {
+            x: 1920,
+            y: 0,
+            width: 2560,
+            height: 1440,
+        };
+        let left = Area {
+            x: -1280,
+            y: 0,
+            width: 1280,
+            height: 1024,
+        };
+        // One display: the same as the plain 0..65535 mapping.
+        assert_eq!(absolute(0.0, 0.0, primary, primary), (0, 0));
+        assert_eq!(absolute(1.0, 1.0, primary, primary), (65535, 65535));
+        assert_eq!(absolute(0.5, 0.5, primary, primary), (32768, 32768));
+        // Two side by side: the right one starts after the primary.
+        let desk = Area {
+            x: 0,
+            y: 0,
+            width: 4480,
+            height: 1440,
+        };
+        let (x, y) = absolute(0.0, 0.0, right, desk);
+        assert_eq!((x, y), ((1920.0 * 65535.0 / 4479.0_f32).round() as i32, 0));
+        assert_eq!(absolute(1.0, 1.0, right, desk), (65535, 65535));
+        // A display left of the primary has negative coordinates.
+        let desk = Area {
+            x: -1280,
+            y: 0,
+            width: 3200,
+            height: 1080,
+        };
+        assert_eq!(absolute(0.0, 0.0, left, desk), (0, 0));
+        let (x, _) = absolute(0.0, 0.0, primary, desk);
+        assert_eq!(x, (1280.0 * 65535.0 / 3199.0_f32).round() as i32);
+        // Out-of-range fractions stay on the display.
+        assert_eq!(absolute(-1.0, 2.0, primary, primary), (0, 65535));
+    }
 
     #[test]
     fn events_parse_and_are_checked() {

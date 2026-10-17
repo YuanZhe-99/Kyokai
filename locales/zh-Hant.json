@@ -240,6 +240,7 @@
   "ViewerAIHint": "任務在對方電腦上執行，使用對方自己的 AI 服務商。你在畫面中的操作會暫停它。",
   "ViewerAIHostApproves": "由對方電腦的使用者核准這一步。",
   "ViewerAITitle": "此裝置上的 AI",
+  "ViewerDisplay": "顯示器",
   "ViewerEnded": "工作階段已結束。",
   "ViewerNoDecoder": "無法顯示畫面：缺少 Kyokai 的核心程式庫。",
   "ViewerNoPicture": "此工作階段不顯示螢幕。",

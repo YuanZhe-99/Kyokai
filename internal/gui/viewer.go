@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ const (
 	packetControl    byte = 3
 	packetStats      byte = 4
 	packetCursor     byte = 7
+	packetDisplays   byte = 8
 )
 
 // hostStats is what the host's QoS measured and chose (media STATS).
@@ -44,6 +46,16 @@ type hostPointer struct {
 	X       float32 `json:"x"`
 	Y       float32 `json:"y"`
 	Visible bool    `json:"visible"`
+}
+
+// hostDisplays are the host's displays and the one shown (media DISPLAYS).
+type hostDisplays struct {
+	List []struct {
+		Width   int  `json:"width"`
+		Height  int  `json:"height"`
+		Primary bool `json:"primary"`
+	} `json:"list"`
+	Current int `json:"current"`
 }
 
 // videoStart describes the stream that follows (media::VideoStart).
@@ -104,6 +116,8 @@ type viewer struct {
 	held    map[ui.Key]bool
 	// The host's pointer, which the picture leaves out.
 	pointer hostPointer
+	// The host's displays, to choose which one shows.
+	displays hostDisplays
 	// The AI panel (viewerai.go).
 	ai viewerAI
 }
@@ -218,6 +232,15 @@ func (v *viewer) pump() {
 			}
 			dec = d
 			v.begin(s)
+		case packetDisplays:
+			var d hostDisplays
+			if json.Unmarshal(p[1:], &d) == nil {
+				v.win.Update(func() {
+					v.mu.Lock()
+					v.displays = d
+					v.mu.Unlock()
+				})
+			}
 		case packetCursor:
 			var ptr hostPointer
 			if json.Unmarshal(p[1:], &ptr) == nil {
@@ -312,7 +335,7 @@ func (v *viewer) setState(s string) {
 func (v *viewer) view(c *ui.Context) {
 	v.mu.Lock()
 	bm, state, start, fps, kbps, host := v.bm, v.state, v.start, v.fps, v.kbps, v.host
-	preset, fpsCap, withAI, ptr := v.preset, v.fpsCap, v.ai.run, v.pointer
+	preset, fpsCap, withAI, ptr, displays := v.preset, v.fpsCap, v.ai.run, v.pointer, v.displays
 	v.mu.Unlock()
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
 		ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
@@ -321,7 +344,7 @@ func (v *viewer) view(c *ui.Context) {
 				v.aiPanel(c)
 			}
 		})
-		v.statusBar(c, start, fps, kbps, host, preset, fpsCap)
+		v.statusBar(c, start, fps, kbps, host, preset, fpsCap, displays)
 	})
 }
 
@@ -359,10 +382,21 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 
 // statusBar is the Device ID, the quality controls and the stream's
 // numbers.
-func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, host hostStats, preset int, fpsCap string) {
+func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, host hostStats, preset int, fpsCap string, displays hostDisplays) {
 	t := c.Theme()
-	ui.Row(c).FillWidth().Padding(6, 12).Gap(16).Background(t.Surface).Children(func() {
+	ui.Row(c).FillWidth().Padding(6, 12).Gap(16).AlignItems(ui.Center).Background(t.Surface).Children(func() {
 		ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).Grow(1)
+		if n := len(displays.List); n > 1 {
+			ui.Text(c, L.ViewerDisplay()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			labels := make([]string, n)
+			for i := range labels {
+				labels[i] = strconv.Itoa(i + 1)
+			}
+			current := displays.Current
+			if ui.Segmented(c.Key("display"), &current, labels...).Changed() {
+				v.sendControl(map[string]any{"type": "display", "index": current})
+			}
+		}
 		if ui.Segmented(c.Key("quality"), &preset, L.QualitySpeed(), L.QualityBalanced(), L.QualityBest()).Changed() {
 			v.setQuality(preset, fpsCap)
 		}

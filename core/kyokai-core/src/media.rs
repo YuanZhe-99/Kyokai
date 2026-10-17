@@ -36,6 +36,8 @@ pub mod packet {
     pub const AI_ERROR: u8 = 6;
     /// engine → GUI: the host's pointer `{x, y, visible}` JSON.
     pub const CURSOR: u8 = 7;
+    /// engine → GUI: the host's displays `{list, current}` JSON.
+    pub const DISPLAYS: u8 = 8;
 }
 
 /// What a video stream carries, sent before its first frame.
@@ -172,7 +174,9 @@ impl Queue {
         if q.1 {
             return;
         }
-        if let Some(&kind @ (packet::STATS | packet::AI_TASK | packet::CURSOR)) = packet.first() {
+        if let Some(&kind @ (packet::STATS | packet::AI_TASK | packet::CURSOR | packet::DISPLAYS)) =
+            packet.first()
+        {
             q.0.retain(|p| p.first() != Some(&kind));
         }
         if packet.first() == Some(&packet::FRAME) {

@@ -91,6 +91,7 @@ pub fn nv12_to_rgba(
 }
 
 use crate::media::{self, VideoStart};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
@@ -109,10 +110,41 @@ const BITRATE: u32 = 4_000_000;
 /// bytes.
 pub type Encoded = (u8, u64, Vec<u8>);
 
+/// A display of the host: its place on the virtual desktop, in pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Display {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub primary: bool,
+}
+
+/// The host's displays: the primary first, the others left to right (empty
+/// where it cannot capture).
+pub fn displays() -> Vec<Display> {
+    #[cfg(windows)]
+    {
+        screen::displays()
+    }
+    #[cfg(not(windows))]
+    {
+        Vec::new()
+    }
+}
+
+/// Puts displays in the order the viewer numbers them: the primary first,
+/// the others left to right, then top to bottom.
+pub fn order(list: &mut [Display]) {
+    list.sort_by_key(|d| (!d.primary, d.x, d.y));
+}
+
 /// The host's video: its screen through H.264 when it can, else the test
 /// pattern. Dropping it stops the producer.
 pub struct Source {
     pub start: VideoStart,
+    /// The display shown, None for the test pattern.
+    pub display: Option<Display>,
     pub frames: mpsc::Receiver<Encoded>,
     key: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
@@ -127,8 +159,9 @@ pub struct Targets {
 }
 
 impl Source {
-    /// Starts the best source this host has.
-    pub fn open() -> Source {
+    /// Starts the best source this host has: `display` (the primary when
+    /// None), or the test pattern.
+    pub fn open(display: Option<Display>) -> Source {
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
         let targets = Arc::new(Targets {
@@ -137,18 +170,24 @@ impl Source {
         });
         let (tx, frames) = mpsc::channel(2);
         #[cfg(windows)]
-        if let Ok(start) = screen::start(tx.clone(), key.clone(), stop.clone(), targets.clone()) {
+        if let Some(d) = display.or_else(|| displays().first().copied())
+            && let Ok(start) =
+                screen::start(tx.clone(), key.clone(), stop.clone(), targets.clone(), d)
+        {
             return Source {
                 start,
+                display: Some(d),
                 frames,
                 key,
                 stop,
                 targets,
             };
         }
+        let _ = display;
         let start = test_pattern(tx, stop.clone());
         Source {
             start,
+            display: None,
             frames,
             key,
             stop,
@@ -203,9 +242,8 @@ fn test_pattern(tx: mpsc::Sender<Encoded>, stop: Arc<AtomicBool>) -> VideoStart 
 
 #[cfg(windows)]
 mod screen {
-    //! The primary display through RustDesk's DXGI capturer and the system's
-    //! H.264 encoder, on one thread (both are tied to the thread that made
-    //! them).
+    //! A display through RustDesk's DXGI capturer and the system's H.264
+    //! encoder, on one thread (both are tied to the thread that made them).
     use super::*;
     use crate::mf;
     use rustdesk_dxgi::{Capturer, Displays, Frame};
@@ -214,14 +252,35 @@ mod screen {
     /// after it was lost.
     const REOPEN_AFTER: Duration = Duration::from_millis(500);
 
-    /// Opens the primary display (the one at the desktop's origin, which
-    /// input maps onto).
+    /// The displays attached to the desktop, in the viewer's order.
+    pub fn displays() -> Vec<Display> {
+        let Ok(all) = Displays::new() else {
+            return Vec::new();
+        };
+        let mut list: Vec<Display> = all
+            .filter(|d| d.attached_to_desktop())
+            .map(|d| {
+                let (x, y) = d.origin();
+                Display {
+                    x,
+                    y,
+                    width: d.width() as u32,
+                    height: d.height() as u32,
+                    primary: (x, y) == (0, 0),
+                }
+            })
+            .collect();
+        order(&mut list);
+        list
+    }
+
+    /// Opens a display by its place on the virtual desktop.
     /// Returns: its capturer and size in pixels.
-    fn primary() -> Result<(Capturer, u32, u32), String> {
+    fn open(want: Display) -> Result<(Capturer, u32, u32), String> {
         let display = Displays::new()
             .map_err(|e| format!("displays: {e}"))?
-            .find(|d| d.origin() == (0, 0))
-            .ok_or("no primary display")?;
+            .find(|d| d.origin() == (want.x, want.y))
+            .ok_or("the display is gone")?;
         let (dw, dh) = (display.width() as u32, display.height() as u32);
         let capturer = Capturer::new(display).map_err(|e| format!("capturer: {e}"))?;
         Ok((capturer, dw, dh))
@@ -244,11 +303,12 @@ mod screen {
         key: Arc<AtomicBool>,
         stop: Arc<AtomicBool>,
         targets: Arc<Targets>,
+        display: Display,
     ) -> Result<VideoStart, String> {
         let (ready_tx, ready) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let opened = (|| {
-                let (capturer, dw, dh) = primary()?;
+                let (capturer, dw, dh) = open(display)?;
                 let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
                 let encoder = mf::Encoder::new(w, h, FPS, BITRATE)?;
                 Ok::<_, String>((capturer, encoder, w, h))
@@ -279,7 +339,7 @@ mod screen {
             while !stop.load(Ordering::Relaxed) {
                 let Some(cap) = capturer.as_mut() else {
                     std::thread::sleep(REOPEN_AFTER);
-                    capturer = primary().ok().map(|(c, _, _)| c);
+                    capturer = open(display).ok().map(|(c, _, _)| c);
                     continue;
                 };
                 let begun = Instant::now();
@@ -358,6 +418,9 @@ mod screen_tests {
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
         let (tx, mut rx) = mpsc::channel(2);
+        let Some(display) = displays().first().copied() else {
+            return eprintln!("skipped: no display");
+        };
         let start = match screen::start(
             tx,
             key,
@@ -366,6 +429,7 @@ mod screen_tests {
                 fps: AtomicU32::new(FPS),
                 bitrate: AtomicU32::new(BITRATE),
             }),
+            display,
         ) {
             Ok(s) => s,
             Err(e) => return eprintln!("skipped: {e}"),
@@ -380,6 +444,33 @@ mod screen_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn displays_are_numbered_primary_first_then_left_to_right() {
+        let d = |x, y, primary| Display {
+            x,
+            y,
+            width: 1920,
+            height: 1080,
+            primary,
+        };
+        let mut list = vec![
+            d(1920, 0, false),
+            d(-1920, 0, false),
+            d(0, 0, true),
+            d(0, 1080, false),
+        ];
+        order(&mut list);
+        assert_eq!(
+            list,
+            vec![
+                d(0, 0, true),
+                d(-1920, 0, false),
+                d(0, 1080, false),
+                d(1920, 0, false)
+            ]
+        );
+    }
 
     #[test]
     fn sizes_fit_and_stay_even() {

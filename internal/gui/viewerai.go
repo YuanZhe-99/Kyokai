@@ -49,8 +49,9 @@ func (v *viewer) aiPacket(kind byte, body []byte) {
 	}
 }
 
-// sendAI queues an AI request for the host.
-func (v *viewer) sendAI(msg map[string]any) {
+// sendControl queues a control message (an AI request, a display choice)
+// for the host.
+func (v *viewer) sendControl(msg map[string]any) {
 	body, err := json.Marshal(msg)
 	if err != nil {
 		return
@@ -90,7 +91,7 @@ func (v *viewer) aiPanel(c *ui.Context) {
 					v.mu.Unlock()
 				}
 				if ui.Button(c.Key("v-ai-send"), L.AIActionSend()).Disabled(strings.TrimSpace(reply) == "").Clicked() {
-					v.sendAI(map[string]any{"type": "ai-command", "id": task.ID, "command": "reply", "text": reply})
+					v.sendControl(map[string]any{"type": "ai-command", "id": task.ID, "command": "reply", "text": reply})
 					v.mu.Lock()
 					v.ai.reply = ""
 					v.mu.Unlock()
@@ -110,7 +111,7 @@ func (v *viewer) aiPanel(c *ui.Context) {
 				// The key makes a start that is sent again after a
 				// reconnect start one task on the host.
 				key := strconv.FormatInt(time.Now().UnixNano(), 36)
-				v.sendAI(map[string]any{"type": "ai-start", "key": key, "instruction": draft})
+				v.sendControl(map[string]any{"type": "ai-start", "key": key, "instruction": draft})
 				v.mu.Lock()
 				v.ai.draft, v.ai.err = "", ""
 				v.mu.Unlock()
@@ -154,10 +155,10 @@ func (v *viewer) aiTask(c *ui.Context, task *localapi.AITask, approve bool) {
 				}
 				ui.Row(c).Gap(gap).Children(func() {
 					if ui.Button(c.Key(key+"-allow"), L.ActionAllow()).Clicked() {
-						v.sendAI(map[string]any{"type": "ai-decide", "id": task.ID, "approve": true})
+						v.sendControl(map[string]any{"type": "ai-decide", "id": task.ID, "approve": true})
 					}
 					if ui.Button(c.Key(key+"-deny"), L.ActionDeny()).Clicked() {
-						v.sendAI(map[string]any{"type": "ai-decide", "id": task.ID, "approve": false})
+						v.sendControl(map[string]any{"type": "ai-decide", "id": task.ID, "approve": false})
 					}
 				})
 			})
@@ -176,13 +177,13 @@ func (v *viewer) aiTask(c *ui.Context, task *localapi.AITask, approve bool) {
 		ui.Row(c).Gap(gap).Children(func() {
 			if task.State == "paused" {
 				if ui.Button(c.Key(key+"-resume"), L.AIActionResume()).Clicked() {
-					v.sendAI(map[string]any{"type": "ai-command", "id": task.ID, "command": "resume"})
+					v.sendControl(map[string]any{"type": "ai-command", "id": task.ID, "command": "resume"})
 				}
 			} else if ui.Button(c.Key(key+"-pause"), L.AIActionPause()).Clicked() {
-				v.sendAI(map[string]any{"type": "ai-command", "id": task.ID, "command": "pause"})
+				v.sendControl(map[string]any{"type": "ai-command", "id": task.ID, "command": "pause"})
 			}
 			if ui.Button(c.Key(key+"-cancel"), L.AIActionStop()).Clicked() {
-				v.sendAI(map[string]any{"type": "ai-command", "id": task.ID, "command": "cancel"})
+				v.sendControl(map[string]any{"type": "ai-command", "id": task.ID, "command": "cancel"})
 			}
 		})
 	})

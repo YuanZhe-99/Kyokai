@@ -448,6 +448,7 @@
   "ViewerAIHint": "The task runs on the other computer with its own AI provider. Your input in the picture pauses it.",
   "ViewerAIHostApproves": "The other computer's user approves this step.",
   "ViewerAITitle": "AI on this device",
+  "ViewerDisplay": "Display",
   "ViewerEnded": "The session ended.",
   "ViewerNoDecoder": "The picture can't be shown: Kyokai's core library is missing.",
   "ViewerNoPicture": "This session does not show the screen.",
