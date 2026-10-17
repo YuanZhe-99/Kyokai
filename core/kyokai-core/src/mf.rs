@@ -1,8 +1,9 @@
 //! H.264 through Windows Media Foundation (doc/en-us/computer-use.md,
 //! "Video"): the system's encoder on the host and its decoder on the
-//! controller, so the OS vendor's codec licence covers H.264. Both use the
-//! synchronous Microsoft transforms, which every Windows edition with Media
-//! Foundation has; hardware transforms come later.
+//! controller, so the OS vendor's codec licence covers H.264. The encoder is
+//! the GPU's hardware transform where there is one that works, else
+//! Microsoft's synchronous software transform, which every Windows edition
+//! with Media Foundation has; the decoder is Microsoft's.
 //!
 //! Every object here belongs to the thread that made it (COM, multithreaded
 //! apartment); pixels cross as NV12.
@@ -114,12 +115,32 @@ fn bytes_of(sample: &IMFSample) -> windows::core::Result<Vec<u8>> {
     }
 }
 
+/// What one ProcessOutput call gave.
+enum Output {
+    Unit(Unit),
+    /// The transform has nothing until it gets more input.
+    NeedInput,
+    /// The output format changed (decoders, before their first frame).
+    StreamChange,
+}
+
 /// Pulls every output the transform has ready.
 /// Returns: the outputs (bytes and whether each is a key frame), and
 /// whether the output format changed (decoders, before their first frame).
 fn drain(t: &IMFTransform) -> windows::core::Result<(Vec<Unit>, bool)> {
     let mut out = Vec::new();
     loop {
+        match output_once(t)? {
+            Output::Unit(u) => out.push(u),
+            Output::NeedInput => return Ok((out, false)),
+            Output::StreamChange => return Ok((out, true)),
+        }
+    }
+}
+
+/// Calls ProcessOutput once.
+fn output_once(t: &IMFTransform) -> windows::core::Result<Output> {
+    {
         // SAFETY: COM calls on the transform; the output buffer's sample is
         // ours (allocated here when the transform does not provide one) and
         // released below.
@@ -144,15 +165,16 @@ fn drain(t: &IMFTransform) -> windows::core::Result<(Vec<Unit>, bool)> {
             let sample = ManuallyDrop::take(&mut buffers[0].pSample);
             drop(ManuallyDrop::take(&mut buffers[0].pEvents));
             match result {
-                Ok(()) => {
-                    if let Some(s) = sample {
+                Ok(()) => match sample {
+                    Some(s) => {
                         let key = s.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0;
-                        out.push((bytes_of(&s)?, key));
+                        Ok(Output::Unit((bytes_of(&s)?, key)))
                     }
-                }
-                Err(e) if e.code() == MF_E_TRANSFORM_NEED_MORE_INPUT => return Ok((out, false)),
-                Err(e) if e.code() == MF_E_TRANSFORM_STREAM_CHANGE => return Ok((out, true)),
-                Err(e) => return Err(e),
+                    None => Ok(Output::NeedInput),
+                },
+                Err(e) if e.code() == MF_E_TRANSFORM_NEED_MORE_INPUT => Ok(Output::NeedInput),
+                Err(e) if e.code() == MF_E_TRANSFORM_STREAM_CHANGE => Ok(Output::StreamChange),
+                Err(e) => Err(e),
             }
         }
     }
@@ -165,7 +187,19 @@ pub struct Encoder {
     height: u32,
     fps: u32,
     n: i64,
+    /// A hardware transform's events (it is asynchronous); None for the
+    /// software one.
+    events: Option<IMFMediaEventGenerator>,
+    /// Inputs the hardware transform asked for and has not had yet.
+    wanted: u32,
 }
+
+/// How long one encode waits for a hardware transform's output before the
+/// frame's output is left for the next call.
+const HARDWARE_WAIT: std::time::Duration = std::time::Duration::from_millis(12);
+/// Frames a hardware transform may take before its first output, when it
+/// is tried at start.
+const HARDWARE_TRIAL: usize = 30;
 
 impl Encoder {
     /// Opens an encoder for `width`×`height` (even) at `fps` and a target
@@ -174,8 +208,53 @@ impl Encoder {
     /// and Server editions without Media Foundation).
     pub fn new(width: u32, height: u32, fps: u32, bitrate: u32) -> Result<Self, String> {
         startup()?;
-        let t = find_encoder().ok_or("this system has no H.264 encoder")?;
-        let open = || -> windows::core::Result<()> {
+        // The GPU's encoder, if it opens and encodes a few frames; some need
+        // a Direct3D device or reject system memory, so it is tried first.
+        if let Some(t) = find_encoder(true)
+            && let Ok(mut e) = Encoder::open(t, width, height, fps, bitrate, true)
+            && e.works()
+        {
+            return Ok(e);
+        }
+        let t = find_encoder(false).ok_or("this system has no H.264 encoder")?;
+        Encoder::open(t, width, height, fps, bitrate, false)
+    }
+
+    /// Encodes black frames until an output comes, as a trial.
+    fn works(&mut self) -> bool {
+        let black = vec![16u8; (self.width * self.height) as usize]
+            .into_iter()
+            .chain(std::iter::repeat_n(
+                128u8,
+                (self.width * self.height / 2) as usize,
+            ))
+            .collect::<Vec<u8>>();
+        (0..HARDWARE_TRIAL).any(|i| self.encode(&black, i == 0).is_ok_and(|u| !u.is_empty()))
+    }
+
+    /// Configures a transform as a low-latency H.264 encoder.
+    fn open(
+        t: IMFTransform,
+        width: u32,
+        height: u32,
+        fps: u32,
+        bitrate: u32,
+        hardware: bool,
+    ) -> Result<Self, String> {
+        let open = || -> windows::core::Result<Option<IMFMediaEventGenerator>> {
+            // A hardware transform is asynchronous: it must be unlocked
+            // before anything else, and it says by events when it wants
+            // input and has output.
+            let events = if hardware {
+                // SAFETY: an attribute on the transform's own store.
+                unsafe {
+                    t.GetAttributes()?
+                        .SetUINT32(&MF_TRANSFORM_ASYNC_UNLOCK, 1)?
+                };
+                Some(t.cast::<IMFMediaEventGenerator>()?)
+            } else {
+                None
+            };
             // Low latency first: some transforms read it only when their types
             // are set.
             // SAFETY: an attribute on the transform's own store.
@@ -208,15 +287,17 @@ impl Encoder {
                 t.ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)?;
                 t.ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0)?;
             }
-            Ok(())
+            Ok(events)
         };
-        open().map_err(|e| format!("H.264 encoder: {e}"))?;
+        let events = open().map_err(|e| format!("H.264 encoder: {e}"))?;
         Ok(Encoder {
             t,
             width,
             height,
             fps,
             n: 0,
+            events,
+            wanted: 0,
         })
     }
 
@@ -236,20 +317,69 @@ impl Encoder {
             codec_value(&self.t, &CODECAPI_AVEncVideoForceKeyFrame, 1, false);
         }
         let step = 10_000_000 / self.fps as i64;
-        let run = || -> windows::core::Result<Vec<Unit>> {
-            let sample = sample_from(nv12, self.n * step, step)?;
-            // SAFETY: the transform takes its own reference to the sample.
-            unsafe { self.t.ProcessInput(0, &sample, 0)? };
-            Ok(drain(&self.t)?.0)
-        };
-        let out = run().map_err(|e| format!("H.264 encoder: {e}"))?;
+        let sample =
+            sample_from(nv12, self.n * step, step).map_err(|e| format!("H.264 encoder: {e}"))?;
+        let out = match self.events.clone() {
+            None => {
+                let run = || -> windows::core::Result<Vec<Unit>> {
+                    // SAFETY: the transform takes its own reference to the sample.
+                    unsafe { self.t.ProcessInput(0, &sample, 0)? };
+                    Ok(drain(&self.t)?.0)
+                };
+                run()
+            }
+            Some(events) => self.pump(&events, &sample),
+        }
+        .map_err(|e| format!("H.264 encoder: {e}"))?;
         self.n += 1;
         Ok(out)
     }
+
+    /// Feeds a hardware transform one frame when it wants it and collects
+    /// the outputs it has, waiting a little for this frame's.
+    fn pump(
+        &mut self,
+        events: &IMFMediaEventGenerator,
+        sample: &IMFSample,
+    ) -> windows::core::Result<Vec<Unit>> {
+        let mut out = Vec::new();
+        let mut fed = false;
+        let until = std::time::Instant::now() + HARDWARE_WAIT;
+        loop {
+            if !fed && self.wanted > 0 {
+                // SAFETY: the transform takes its own reference to the sample.
+                unsafe { self.t.ProcessInput(0, sample, 0)? };
+                self.wanted -= 1;
+                fed = true;
+            }
+            // SAFETY: a non-blocking event query on the transform.
+            match unsafe { events.GetEvent(MF_EVENT_FLAG_NO_WAIT) } {
+                Ok(ev) => {
+                    // SAFETY: reading the event's type.
+                    let kind = unsafe { ev.GetType()? };
+                    if kind == METransformNeedInput.0 as u32 {
+                        self.wanted += 1;
+                    } else if kind == METransformHaveOutput.0 as u32
+                        && let Output::Unit(u) = output_once(&self.t)?
+                    {
+                        out.push(u);
+                    }
+                }
+                Err(e) if e.code() == MF_E_NO_EVENTS_AVAILABLE => {
+                    if (fed && !out.is_empty()) || std::time::Instant::now() >= until {
+                        return Ok(out);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
 }
 
-/// Finds the first synchronous H.264 encoder that takes NV12.
-fn find_encoder() -> Option<IMFTransform> {
+/// Finds the first H.264 encoder that takes NV12: the GPU's (asynchronous)
+/// when `hardware`, else a synchronous software one.
+fn find_encoder(hardware: bool) -> Option<IMFTransform> {
     let input = MFT_REGISTER_TYPE_INFO {
         guidMajorType: MFMediaType_Video,
         guidSubtype: MFVideoFormat_NV12,
@@ -265,7 +395,11 @@ fn find_encoder() -> Option<IMFTransform> {
     unsafe {
         MFTEnumEx(
             MFT_CATEGORY_VIDEO_ENCODER,
-            MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_LOCALMFT | MFT_ENUM_FLAG_SORTANDFILTER,
+            if hardware {
+                MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER
+            } else {
+                MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_LOCALMFT | MFT_ENUM_FLAG_SORTANDFILTER
+            },
             Some(&input),
             Some(&output),
             &mut list,
@@ -456,7 +590,10 @@ mod latency {
                 break n;
             }
         };
-        eprintln!("first output after {first} frames");
+        eprintln!(
+            "first output after {first} frames (hardware: {})",
+            e.events.is_some()
+        );
         assert!(first <= 2, "the encoder holds {first} frames");
     }
 }
