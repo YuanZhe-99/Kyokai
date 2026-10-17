@@ -970,6 +970,15 @@ async fn seal<W: AsyncWrite + Unpin>(
     step(write_frame(w, &buf[..n])).await
 }
 
+/// Starts a plaintext that is one part of a message longer than a frame.
+const PART_TAG: u8 = 0x02;
+/// Bytes before a part's piece: the tag, its index and the count (u16 each).
+const PART_HEADER: usize = 5;
+/// Longest message sent in parts.
+const MAX_MESSAGE: usize = 4 << 20;
+
+/// Encrypts one message and writes it, in parts when it is longer than a
+/// frame (a long clipboard text, a long AI task).
 async fn seal_json<W: AsyncWrite + Unpin, T: Serialize>(
     noise: &mut snow::TransportState,
     buf: &mut [u8],
@@ -977,7 +986,71 @@ async fn seal_json<W: AsyncWrite + Unpin, T: Serialize>(
     msg: &T,
 ) -> Result<(), Failure> {
     let plain = serde_json::to_vec(msg).map_err(|_| Failure::Broken)?;
-    seal(noise, buf, w, &plain).await
+    if plain.len() <= MAX_PLAINTEXT {
+        return seal(noise, buf, w, &plain).await;
+    }
+    for part in split(&plain).ok_or(Failure::Broken)? {
+        seal(noise, buf, w, &part).await?;
+    }
+    Ok(())
+}
+
+/// Splits a long message into parts that each fit a frame.
+/// Returns: None when it is longer than MAX_MESSAGE.
+fn split(plain: &[u8]) -> Option<Vec<Vec<u8>>> {
+    if plain.len() > MAX_MESSAGE {
+        return None;
+    }
+    let room = MAX_PLAINTEXT - PART_HEADER;
+    let count = u16::try_from(plain.len().div_ceil(room)).ok()?;
+    Some(
+        plain
+            .chunks(room)
+            .enumerate()
+            .map(|(i, piece)| {
+                let mut part = Vec::with_capacity(PART_HEADER + piece.len());
+                part.push(PART_TAG);
+                part.extend_from_slice(&(i as u16).to_be_bytes());
+                part.extend_from_slice(&count.to_be_bytes());
+                part.extend_from_slice(piece);
+                part
+            })
+            .collect(),
+    )
+}
+
+/// Puts a message sent in parts back together; the parts of one message
+/// arrive in order, one message at a time.
+#[derive(Default)]
+struct Parts {
+    buf: Vec<u8>,
+    next: u16,
+}
+
+impl Parts {
+    /// Takes one part.
+    /// Returns: the whole message after its last part; an error for a part
+    /// out of order, a malformed one, or a message past MAX_MESSAGE.
+    fn push(&mut self, part: &[u8]) -> Result<Option<Vec<u8>>, Failure> {
+        let (idx, count) = match part {
+            [PART_TAG, i0, i1, c0, c1, ..] => (
+                u16::from_be_bytes([*i0, *i1]),
+                u16::from_be_bytes([*c0, *c1]),
+            ),
+            _ => return Err(Failure::Broken),
+        };
+        let piece = &part[PART_HEADER..];
+        if idx != self.next || idx >= count || self.buf.len() + piece.len() > MAX_MESSAGE {
+            return Err(Failure::Broken);
+        }
+        self.buf.extend_from_slice(piece);
+        if idx + 1 == count {
+            self.next = 0;
+            return Ok(Some(std::mem::take(&mut self.buf)));
+        }
+        self.next += 1;
+        Ok(None)
+    }
 }
 
 /// Aborts a task when dropped (the reader of an ending session).
@@ -1067,6 +1140,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         None => None,
     };
     let mut reassembler = media::Reassembler::default();
+    let mut parts = Parts::default();
     let mut frame_no: u32 = 0;
     let mut ping = tokio::time::interval(PING_EVERY);
     // RustDesk's QoS on the host: one probe a second, frames counted per
@@ -1186,7 +1260,16 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     continue;
                 }
-                match serde_json::from_slice::<Message>(plain).map_err(|_| Failure::Broken)? {
+                // A message longer than a frame comes in parts.
+                let whole = if plain.first() == Some(&PART_TAG) {
+                    match parts.push(plain)? {
+                        Some(bytes) => std::borrow::Cow::Owned(bytes),
+                        None => continue,
+                    }
+                } else {
+                    std::borrow::Cow::Borrowed(plain)
+                };
+                match serde_json::from_slice::<Message>(&whole).map_err(|_| Failure::Broken)? {
                     Message::Ping => seal_json(&mut noise, &mut buf, &mut wr, &Message::Pong).await?,
                     Message::Pong => {}
                     Message::Quality { preset, fps } => {
@@ -2022,5 +2105,70 @@ mod tests {
         let extra = device("1.0.1");
         let id = attempt_with(&host, &extra, &dialed, "k7mq2xpa", Some(want.clone()), want).await;
         assert_eq!(session(&extra, id)["failure"], json!({"refused": "busy"}));
+    }
+
+    #[test]
+    fn long_messages_go_in_parts_and_come_back_whole() {
+        for len in [MAX_PLAINTEXT + 1, 3 * MAX_PLAINTEXT + 17, 1 << 20] {
+            let msg: Vec<u8> = (0..len).map(|i| (i % 251) as u8).collect();
+            let parts = split(&msg).unwrap();
+            assert!(parts.iter().all(|p| p.len() <= MAX_PLAINTEXT));
+            let mut back = Parts::default();
+            let mut whole = None;
+            for p in &parts {
+                whole = back.push(p).unwrap();
+            }
+            assert_eq!(whole.unwrap(), msg);
+        }
+        assert!(split(&vec![0; MAX_MESSAGE + 1]).is_none());
+        let parts = split(&vec![7; 3 * MAX_PLAINTEXT]).unwrap();
+        assert!(Parts::default().push(&parts[1]).is_err(), "out of order");
+        assert!(Parts::default().push(&[PART_TAG, 0]).is_err(), "malformed");
+        assert!(
+            Parts::default().push(&[PART_TAG, 0, 2, 0, 1]).is_err(),
+            "index past the count"
+        );
+    }
+
+    /// Regression: a message longer than one frame (a long copied text) used
+    /// to fail its encryption and end the session.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_long_clipboard_text_crosses_in_parts() {
+        let (host_board, controller_board): (
+            crate::clipboard::fake::Board,
+            crate::clipboard::fake::Board,
+        ) = (Arc::default(), Arc::default());
+        let rig = fake::rig("session-long", "claude", "http://127.0.0.1:9");
+        let host = device_full(rig.ai.clone(), host_board.clone(), "1.0.0");
+        let controller = device_full(rig.ai.clone(), controller_board.clone(), "1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let want = vec![Permission::Clipboard];
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            Some(want.clone()),
+            want,
+        )
+        .await;
+        let long: String = "kyokai ".repeat(30_000);
+        tokio::time::sleep(Duration::from_millis(600)).await;
+        *controller_board.lock().unwrap() = Some(long.clone());
+        assert!(
+            board_holds(&host_board, &long).await,
+            "the long text arrived"
+        );
+        assert_eq!(
+            session(&controller, id)["state"],
+            "connected",
+            "the session goes on"
+        );
     }
 }

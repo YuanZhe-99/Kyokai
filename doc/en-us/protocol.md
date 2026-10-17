@@ -8,7 +8,10 @@ is authenticated and encrypted end to end on top of it. The protocol version is 
 
 Every frame is a 2-byte big-endian length followed by that many bytes (at most 65 535). The first
 three frames are Noise handshake messages; every later frame is one Noise transport message whose
-plaintext is a JSON document.
+plaintext is a JSON document, a media chunk (below), or a part of a JSON document longer than one
+frame: byte `0x02`, the part's index and the number of parts (u16 each, big-endian), then a piece.
+A document's parts arrive in order, one document at a time, at most 4 MiB in all; anything else
+closes the session.
 
 ## Handshake
 
