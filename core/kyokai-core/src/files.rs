@@ -378,7 +378,16 @@ impl Transfers {
 
     /// Takes a local copy of files: lists it on a thread, then offers it
     /// (through `next`), replacing an older offer.
+    /// Notes: files from this session's own inbox came from the other side
+    /// and are not offered back (another clipboard program, such as
+    /// RustDesk, can rewrite the clipboard between Kyokai's write and its
+    /// record of it, so the clipboard watch alone does not catch the echo).
     pub fn copied(&mut self, paths: Vec<PathBuf>) {
+        if let Some(Some(root)) = self.inbox.root.get()
+            && paths.iter().all(|p| within(p, root))
+        {
+            return;
+        }
         self.next += 1;
         self.offer = None;
         self.sending = None;
@@ -525,6 +534,17 @@ impl Transfers {
             }
         }
     }
+}
+
+/// Whether `path` is `root` or inside it, ignoring case as Windows does (the
+/// clipboard reports a folder with the spelling it was first made with).
+fn within(path: &Path, root: &Path) -> bool {
+    let (p, r) = (
+        path.to_string_lossy().to_lowercase(),
+        root.to_string_lossy().to_lowercase(),
+    );
+    p.strip_prefix(&r)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(['\\', '/']))
 }
 
 /// The folder for temporary files of the user the files are for.
@@ -804,5 +824,38 @@ mod tests {
         assert!(!t.offered(2, vec![file("ok.txt", MAX_TOTAL + 1)]));
         assert!(t.receiving.is_none());
         assert!(t.inbox.root.get().is_none(), "no folder was made");
+    }
+
+    /// Regression: files received from the other side and put on this
+    /// clipboard were offered straight back (seen with RustDesk also
+    /// watching the clipboard). The inbox is matched without regard to case.
+    #[tokio::test]
+    async fn received_files_are_never_offered_back() {
+        let mut t = Transfers::new(1000);
+        let root = t.inbox.root().unwrap().to_path_buf();
+        let upper = PathBuf::from(root.to_string_lossy().to_uppercase());
+        t.copied(vec![
+            root.join("1").join("a.txt"),
+            upper.join("1").join("b"),
+        ]);
+        assert_eq!(t.next, 0, "an inbox copy was offered");
+        // A folder that only starts with the inbox's name is not in it.
+        let beside = PathBuf::from(format!("{}x", root.display()));
+        t.copied(vec![beside.join("c.txt")]);
+        assert_eq!(t.next, 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn within_matches_whole_folders_without_case() {
+        let root = Path::new(r"C:\Temp\Kyokai\ab");
+        for (path, inside) in [
+            (r"C:\Temp\Kyokai\ab", true),
+            (r"c:\temp\kyokai\AB\1\x.txt", true),
+            (r"C:\Temp\Kyokai\abc\x.txt", false),
+            (r"C:\Temp\Kyokai\x.txt", false),
+        ] {
+            assert_eq!(within(Path::new(path), root), inside, "{path}");
+        }
     }
 }
