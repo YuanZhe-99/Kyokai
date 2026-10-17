@@ -90,47 +90,6 @@ pub fn nv12_to_rgba(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sizes_fit_and_stay_even() {
-        assert_eq!(fit(3840, 2160, 1920, 1080), (1920, 1080));
-        assert_eq!(fit(1280, 720, 1920, 1080), (1280, 720));
-        assert_eq!(fit(2560, 1600, 1920, 1080), (1728, 1080));
-        assert_eq!(fit(1366, 769, 1920, 1080), (1366, 768));
-    }
-
-    #[test]
-    fn colours_survive_the_round_trip() {
-        // Flat colour blocks: BGRA → NV12 → RGBA stays within a few levels.
-        let colours = [
-            [30u8, 60, 200],
-            [250, 250, 250],
-            [10, 10, 10],
-            [200, 120, 40],
-        ];
-        let (w, h) = (8, 8);
-        for [r, g, b] in colours {
-            let bgra: Vec<u8> = (0..w * h).flat_map(|_| [b, g, r, 255]).collect();
-            let mut nv12 = Vec::new();
-            bgra_to_nv12(&bgra, w, h, w * 4, w, h, &mut nv12);
-            let mut rgba = Vec::new();
-            nv12_to_rgba(&nv12, w, h, w, h, &mut rgba);
-            for px in rgba.chunks(4) {
-                for (got, want) in px[..3].iter().zip([r, g, b]) {
-                    assert!(
-                        (*got as i32 - want as i32).abs() <= 3,
-                        "{px:?} vs {:?}",
-                        [r, g, b]
-                    );
-                }
-            }
-        }
-    }
-}
-
 use crate::media::{self, VideoStart};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -372,5 +331,46 @@ mod screen_tests {
         let first = rx.blocking_recv().expect("a first frame");
         assert_eq!(first.0 & media::KEY_FRAME, media::KEY_FRAME);
         stop.store(true, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sizes_fit_and_stay_even() {
+        assert_eq!(fit(3840, 2160, 1920, 1080), (1920, 1080));
+        assert_eq!(fit(1280, 720, 1920, 1080), (1280, 720));
+        assert_eq!(fit(2560, 1600, 1920, 1080), (1728, 1080));
+        assert_eq!(fit(1366, 769, 1920, 1080), (1366, 768));
+    }
+
+    #[test]
+    fn colours_survive_the_round_trip() {
+        // Flat colour blocks: BGRA → NV12 → RGBA stays within a few levels.
+        let colours = [
+            [30u8, 60, 200],
+            [250, 250, 250],
+            [10, 10, 10],
+            [200, 120, 40],
+        ];
+        let (w, h) = (8, 8);
+        for [r, g, b] in colours {
+            let bgra: Vec<u8> = (0..w * h).flat_map(|_| [b, g, r, 255]).collect();
+            let mut nv12 = Vec::new();
+            bgra_to_nv12(&bgra, w, h, w * 4, w, h, &mut nv12);
+            let mut rgba = Vec::new();
+            nv12_to_rgba(&nv12, w, h, w, h, &mut rgba);
+            for px in rgba.chunks(4) {
+                for (got, want) in px[..3].iter().zip([r, g, b]) {
+                    assert!(
+                        (*got as i32 - want as i32).abs() <= 3,
+                        "{px:?} vs {:?}",
+                        [r, g, b]
+                    );
+                }
+            }
+        }
     }
 }

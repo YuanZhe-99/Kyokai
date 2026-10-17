@@ -718,7 +718,12 @@ pub fn give_up(ctx: &Ctx, id: u64, failure: Failure) {
 pub enum Side {
     /// The host: sends video while the controller may view the screen, and
     /// injects its input while it may control input.
-    Host { video: bool, input: bool },
+    Host {
+        video: bool,
+        // Read by the Windows input service; macOS input comes with the Mac pass.
+        #[cfg_attr(not(windows), allow(dead_code))]
+        input: bool,
+    },
     /// The controller: puts media into the queue its GUI drains, and sends
     /// the GUI's control messages (input, key-frame requests) to the host.
     Controller {
