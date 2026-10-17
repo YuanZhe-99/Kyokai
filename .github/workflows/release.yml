@@ -142,6 +142,21 @@ jobs:
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: scripts/build.sh darwin/arm64 darwin/amd64
+      # Each disk image must verify, and the app in it must carry a
+      # signature that verifies strictly; Gatekeeper's verdict is printed
+      # (a self-signed app is not notarized, so it rejects it).
+      - name: Verify the disk images
+        run: |
+          find build -maxdepth 2 -type f -name '*.dmg' -print0 | while IFS= read -r -d '' dmg; do
+            echo "== $dmg"
+            hdiutil verify "$dmg"
+            mnt=$(mktemp -d)
+            hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" > /dev/null
+            codesign --verify --deep --strict --verbose=2 "$mnt"/*.app
+            codesign -dv --verbose=2 "$mnt"/*.app 2>&1 | grep -E '^(Authority|TeamIdentifier|Timestamp|Runtime)'
+            spctl --assess --type execute --verbose=4 "$mnt"/*.app || true
+            hdiutil detach "$mnt" > /dev/null
+          done
       - name: Collect the downloads
         run: |
           mkdir -p dist
