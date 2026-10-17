@@ -1,13 +1,15 @@
 // Command deps compares the project's upstream pins with the latest upstream
-// releases: the MyGo module (go.mod), the EasyTier release the engine embeds
-// and the RustDesk release the vendored code comes from
-// (third_party/upstream.json), and the Rust toolchain (rust-toolchain.toml).
+// releases: the MyGo module (go.mod), the EasyTier release the engine embeds,
+// the RustDesk release the vendored code comes from and the vcpkg release
+// that builds libvpx and libaom (third_party/upstream.json; its commit is
+// the baseline in core/vcpkg-configuration.json), and the Rust toolchain
+// (rust-toolchain.toml).
 //
 //	go run ./tools/deps check [-strict]   compare pins with the latest releases
 //	go run ./tools/deps update            move MyGo to its latest version
 //
-// EasyTier, RustDesk and Rust move by hand, each with its review and checks
-// (doc/en-us/ci-cd.md). Run from the repository root.
+// EasyTier, RustDesk, vcpkg and Rust move by hand, each with its review and
+// checks (doc/en-us/ci-cd.md). Run from the repository root.
 package main
 
 import (
@@ -26,15 +28,17 @@ import (
 )
 
 const (
-	pinsPath      = "third_party/upstream.json"
-	toolchainPath = "rust-toolchain.toml"
-	mygoModule    = "github.com/egoist/mygo"
+	pinsPath        = "third_party/upstream.json"
+	toolchainPath   = "rust-toolchain.toml"
+	vcpkgConfigPath = "core/vcpkg-configuration.json"
+	mygoModule      = "github.com/egoist/mygo"
 )
 
 // Pins are the upstream releases recorded in third_party/upstream.json.
 type Pins struct {
 	EasyTier Pin `json:"easytier"`
 	RustDesk Pin `json:"rustdesk"`
+	Vcpkg    Pin `json:"vcpkg"`
 }
 
 // Pin is one upstream: its repository, the release used and that release's
@@ -124,6 +128,15 @@ func check(args []string) error {
 		return err
 	}
 	report("RustDesk", pins.RustDesk.Tag, rd, "vendored code: review the diff")
+
+	vc, err := latestRelease(pins.Vcpkg.Repository)
+	if err != nil {
+		return err
+	}
+	report("vcpkg", pins.Vcpkg.Tag, vc, "libvpx, libaom")
+	if err := sameBaseline(pins.Vcpkg.Commit); err != nil {
+		return err
+	}
 
 	rust, err := rustChannel()
 	if err != nil {
@@ -252,4 +265,26 @@ func githubGet(path string, v any) error {
 		return fmt.Errorf("GitHub %s: %s", path, resp.Status)
 	}
 	return json.NewDecoder(resp.Body).Decode(v)
+}
+
+// sameBaseline checks that core/vcpkg-configuration.json builds from the
+// vcpkg commit third_party/upstream.json pins.
+// Returns: an error naming both commits when they differ.
+func sameBaseline(commit string) error {
+	data, err := os.ReadFile(vcpkgConfigPath)
+	if err != nil {
+		return err
+	}
+	var cfg struct {
+		DefaultRegistry struct {
+			Baseline string `json:"baseline"`
+		} `json:"default-registry"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("%s: %w", vcpkgConfigPath, err)
+	}
+	if cfg.DefaultRegistry.Baseline != commit {
+		return fmt.Errorf("%s builds from vcpkg %s, but %s pins %s", vcpkgConfigPath, cfg.DefaultRegistry.Baseline, pinsPath, commit)
+	}
+	return nil
 }

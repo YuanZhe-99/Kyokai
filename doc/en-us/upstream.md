@@ -147,6 +147,17 @@ when they run; anything not listed here is not assumed.
   builds on its own once `hbb_common`, `base` and libyuv are replaced by a small shim (frame types,
   rotate/mirror in plain Rust) and the Magnification module is dropped; it captures a 3840×2160
   display at about 60 fps.
+- **Codecs in Kyokai.** `libs/scrap/src/common/{vpxcodec,vpx,aom}.rs` build on their own once
+  their `hbb_common`, protobuf and libyuv uses are cut away (`core/third_party/rustdesk-codec`);
+  the bindings are RustDesk's headers and bindgen settings, generated ahead of time. RustDesk
+  pins vcpkg at the same commit (`9e593bb`, release 2026.07.29: libvpx 1.16.0, aom 3.13.3).
+  Contracts relied on: libvpx and libaom take a forced key frame per call (`VPX_EFLAG_FORCE_KF`,
+  `AOM_EFLAG_FORCE_KF`); `vpx_codec_enc_config_set` changes the bitrate of a running encoder;
+  with no look-ahead (`g_lag_in_frames` 0, which Kyokai sets for libvpx; libaom's real-time
+  usage has it) both return a frame per picture or drop it, so nothing needs flushing; VP9
+  profile 1 and AV1 profile 1 take I444 input, and their decoders report I444 pictures by format.
+  vcpkg builds aom for Windows ARM64 as generic C (`AOM_TARGET_CPU=generic`) and libvpx for
+  Windows ARM64 without SVE.
 
 
 ## OpenAI computer use

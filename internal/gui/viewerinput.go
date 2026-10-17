@@ -142,14 +142,15 @@ var qualityPresets = []string{"speed", "balanced", "best"}
 var fpsCaps = []string{"15", "30", "60"}
 
 // setQuality sends the viewer's quality preset and frame-rate cap to the
-// host's QoS.
-func (v *viewer) setQuality(preset int, fpsCap string) {
+// host's QoS, and whether it wants full colour (4:4:4) where both sides
+// do it, which may restart the video in another codec.
+func (v *viewer) setQuality(preset int, fpsCap string, full bool) {
 	v.mu.Lock()
-	v.preset, v.fpsCap = preset, fpsCap
+	v.preset, v.fpsCap, v.full = preset, fpsCap, full
 	v.mu.Unlock()
 	fps := 30
 	_, _ = fmt.Sscan(fpsCap, &fps)
-	body, _ := json.Marshal(map[string]any{"type": "quality", "preset": qualityPresets[min(max(preset, 0), 2)], "fps": fps})
+	body, _ := json.Marshal(map[string]any{"type": "quality", "preset": qualityPresets[min(max(preset, 0), 2)], "fps": fps, "i444": full})
 	select {
 	case v.out <- append([]byte{packetControl}, body...):
 	default:

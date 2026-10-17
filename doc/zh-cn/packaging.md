@@ -1,7 +1,8 @@
 # 打包
 
-`scripts/build.sh [goos/goarch …]` 为每个目标把 Rust 核心（`cargo build --release`）与引擎（`kyokai-svc`，
-`CGO_ENABLED=0`）构建到 `resources/<goos>-<goarch>/bin`，把 `LICENSE` 与 `THIRD_PARTY_NOTICES.md` 复制到
+`scripts/build.sh [goos/goarch …]` 为每个目标构建 libvpx 与 libaom（`scripts/codecs.sh`，静态链接进核心），
+再把 Rust 核心（`cargo build --release`）与引擎（`kyokai-svc`，`CGO_ENABLED=0`）构建到
+`resources/<goos>-<goarch>/bin`，把 `LICENSE`、`THIRD_PARTY_NOTICES.md` 与 `third_party/licenses` 复制到
 `resources/licenses`，再运行 `go tool mygo build`。Windows 目标需要 Windows 主机（核心用 MSVC 链接；ARM64 机器也能构建
 x64）；macOS 目标需要 Mac。`CORE_PREBUILT=1` 使用已放入 resources 的核心库（发布工作流），`MYGO_SIGN` 把签名身份传给
 `mygo build -sign`。
@@ -32,7 +33,9 @@ x64）；macOS 目标需要 Mac。`CORE_PREBUILT=1` 使用已放入 resources �
 Kyokai 采用 AGPL-3.0-only。每个安装包都带有 `licenses/LICENSE` 与 `licenses/THIRD_PARTY_NOTICES.md`，设置页会显示它们；
 “关于”页链接到源代码。安装包还带有 `licenses/RUST_LICENSES.txt`——核心中每个 Rust crate 及其许可证文本，由
 `cargo about` 根据 `core/about.toml` 与 `core/about.hbs` 生成——以及 EasyTier 的 LGPL-3.0 要求随附的
-`licenses/GPL-3.0.txt`。缺少 `cargo-about` 时构建会停止。
+`licenses/GPL-3.0.txt`，以及来自 `third_party/licenses` 的原生编解码库文本：`libvpx-LICENSE.txt`（BSD-3-Clause）与
+`libvpx-PATENTS.txt`（Google 的专利授权），`libaom-LICENSE.txt`（BSD-2-Clause）与 `libaom-PATENTS.txt`（Alliance for
+Open Media Patent License 1.0）。缺少 `cargo-about` 时构建会停止。
 
 ## 厂商标志
 

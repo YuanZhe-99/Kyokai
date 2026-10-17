@@ -68,14 +68,16 @@ chunk index and count (u16 each), flags (bit 0: key frame) and the presentation 
 microseconds (u64), all big-endian, then a part of the frame. A frame is split into as many chunks
 as it needs and put back together on the other side; a chunk of a newer frame drops an unfinished
 older one (latest frame wins), and frames over 64 MiB are dropped. As the session starts the
-controller sends `{"type": "codecs", decode}`, the codecs it decodes (`h264`, `hevc`, `vp9`).
-Before its first frame the host
-sends `{"type": "video-start", codec, width, height}`; the controller may send `{"type":
+controller sends `{"type": "codecs", decode, i444}`: the codecs it decodes (`h264`, `hevc` and
+`vp9` through Media Foundation, `vp9-sw`, `av1` and `vp8` in software) and those it decodes in
+full colour (`vp9-sw`, `av1`; a field older builds leave out). Before its first frame the host
+sends `{"type": "video-start", codec, width, height, i444}` (`i444` only when true); the controller may send `{"type":
 "key-frame"}` (the host then describes the stream again and sends a key frame) and, with
 `control-input`, `{"type": "input", event}`. While it sends video the host sends `{"type":
 "test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":
 "stats", delay_ms, fps, bitrate}` ([computer-use.md](computer-use.md)); the controller may set
-the quality with `{"type": "quality", preset, fps}`. With more than one display the host also sends `{"type": "displays", list, current}` (each
+the quality with `{"type": "quality", preset, fps, i444}`, where `i444` asks for full colour
+(4:4:4) where both sides do it. With more than one display the host also sends `{"type": "displays", list, current}` (each
 display's place and size, the primary first) and the controller may ask for another with
 `{"type": "display", index}`. While it sends video the host also sends `{"type": "cursor", x, y, visible}`, its pointer as
 fractions of the picture, when it moves. With `control-input` the host sends
@@ -85,7 +87,7 @@ or privacy mode changes, and the controller may send `{"type": "action", action}
 `{"type": "clipboard", text}` for text copied on its side (at most 1 MiB) and
 `{"type": "clipboard-image", png}` for an image (base64 of an 8-bit RGBA PNG, at most 3 MiB and
 3840×2160). The host sends video only while the
-controller may view the screen: its screen as H.264, or the 320×180 raw RGBA test pattern (codec
+controller may view the screen: its screen in the codec chosen from `codecs`, or the 320×180 raw RGBA test pattern (codec
 `raw-rgba`) on a host that cannot capture.
 
 ## AI tasks

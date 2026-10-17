@@ -32,6 +32,7 @@ opaque-ke = { version = "4.0.1", features = ["argon2"] }
 # and SHA-512 come from rand_core 0.6 and sha2 0.10.
 rand_core = { version = "0.6", features = ["getrandom"] }
 rustdesk-qos = { path = "../third_party/rustdesk-qos" }
+rustdesk-codec = { path = "../third_party/rustdesk-codec" }
 sha2_10 = { package = "sha2", version = "0.10" }
 snow = "0.10.0"
 serde = { version = "1.0.229", features = ["derive"] }

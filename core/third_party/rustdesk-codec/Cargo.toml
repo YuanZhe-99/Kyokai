@@ -1,0 +1,21 @@
+# RustDesk's libvpx (VP8 / VP9) and libaom (AV1) codecs, vendored from
+# rustdesk/rustdesk libs/scrap (commit in third_party/upstream.json) and
+# decoupled from hbb_common; each file keeps its notice and says what Kyokai
+# changed (doc/en-us/third-party.md). The libraries themselves are linked
+# statically from vcpkg (build.rs, scripts/codecs.sh). Not under the
+# workspace lints: vendored code stays close to upstream.
+[package]
+name = "rustdesk-codec"
+version = "0.0.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+build = "build.rs"
+links = "vpx"
+
+[lib]
+# Kyokai's codec module tests the encoders and decoders through this API.
+test = false
+
+[dependencies]
+rustdesk-qos = { path = "../rustdesk-qos" }

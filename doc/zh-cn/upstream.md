@@ -112,6 +112,13 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
 - **实测（S3-lite，Windows ARM64，`spikes/s3-capture`）。** 用一个小的替代模块（帧类型、纯 Rust 的旋转/镜像）取代 `hbb_common`、
   `base` 与 libyuv 并去掉 Magnification 模块后，`libs/scrap/src/dxgi` 中的 DXGI 采集器可以独立构建；它以约 60 fps 采集
   3840×2160 显示器。
+- **Kyokai 中的编解码器。** 去掉对 `hbb_common`、protobuf 与 libyuv 的使用后，`libs/scrap/src/common/{vpxcodec,vpx,aom}.rs`
+  可以独立构建（`core/third_party/rustdesk-codec`）；绑定使用 RustDesk 的头文件与 bindgen 设置，预先生成。RustDesk 把
+  vcpkg 固定在同一提交（`9e593bb`，发布版 2026.07.29：libvpx 1.16.0、aom 3.13.3）。依赖的约定：libvpx 与 libaom 每次调用
+  都可强制关键帧（`VPX_EFLAG_FORCE_KF`、`AOM_EFLAG_FORCE_KF`）；`vpx_codec_enc_config_set` 可改变运行中编码器的码率；
+  不做前瞻时（`g_lag_in_frames` 为 0，Kyokai 为 libvpx 设置它；libaom 的实时用法本就如此），两者每幅画面输出一帧或丢弃它，
+  因此无需冲刷；VP9 profile 1 与 AV1 profile 1 接受 I444 输入，其解码器按格式报告 I444 画面。vcpkg 把 Windows ARM64 的
+  aom 构建为通用 C 代码（`AOM_TARGET_CPU=generic`），Windows ARM64 的 libvpx 不含 SVE。
 
 
 ## OpenAI 电脑操作

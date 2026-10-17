@@ -72,6 +72,7 @@ type videoStart struct {
 	Codec  string `json:"codec"`
 	Width  int    `json:"width"`
 	Height int    `json:"height"`
+	I444   bool   `json:"i444"`
 }
 
 // coreLib loads the core library into the GUI once, for the viewers'
@@ -114,10 +115,11 @@ type viewer struct {
 	bytes   int
 	counted time.Time
 	host    hostStats
-	// The viewer's quality choice: preset index (speed, balanced, best)
-	// and frame-rate cap.
+	// The viewer's quality choice: preset index (speed, balanced, best),
+	// frame-rate cap and full colour (4:4:4).
 	preset int
 	fpsCap string
+	full   bool
 	// Input: the picture element's box, whether this session may control
 	// input, and the keys sent down.
 	box     ui.Rect
@@ -358,7 +360,7 @@ func (v *viewer) setState(s string) {
 func (v *viewer) view(c *ui.Context) {
 	v.mu.Lock()
 	bm, state, start, fps, kbps, host := v.bm, v.state, v.start, v.fps, v.kbps, v.host
-	preset, fpsCap, withAI, ptr, displays, actions := v.preset, v.fpsCap, v.ai.run, v.pointer, v.displays, v.actions
+	preset, fpsCap, full, withAI, ptr, displays, actions := v.preset, v.fpsCap, v.full, v.ai.run, v.pointer, v.displays, v.actions
 	v.mu.Unlock()
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
 		ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
@@ -370,7 +372,7 @@ func (v *viewer) view(c *ui.Context) {
 		if actions != nil {
 			v.actionBar(c, *actions)
 		}
-		v.statusBar(c, start, fps, kbps, host, preset, fpsCap, displays)
+		v.statusBar(c, start, fps, kbps, host, preset, fpsCap, full, displays)
 	})
 }
 
@@ -443,7 +445,7 @@ func (v *viewer) actionBar(c *ui.Context, a hostActions) {
 
 // statusBar is the Device ID, the quality controls and the stream's
 // numbers.
-func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, host hostStats, preset int, fpsCap string, displays hostDisplays) {
+func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, host hostStats, preset int, fpsCap string, full bool, displays hostDisplays) {
 	t := c.Theme()
 	ui.Row(c).FillWidth().Padding(6, 12).Gap(16).AlignItems(ui.Center).Background(t.Surface).Children(func() {
 		ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).Grow(1)
@@ -459,13 +461,20 @@ func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, h
 			}
 		}
 		if ui.Segmented(c.Key("quality"), &preset, L.QualitySpeed(), L.QualityBalanced(), L.QualityBest()).Changed() {
-			v.setQuality(preset, fpsCap)
+			v.setQuality(preset, fpsCap, full)
 		}
 		if ui.Select(c.Key("fps"), &fpsCap, fpsCaps).Width(90).Changed() {
-			v.setQuality(preset, fpsCap)
+			v.setQuality(preset, fpsCap, full)
+		}
+		if ui.Switch(c.Key("full-colour"), &full).Label(L.QualityFullColour()).Changed() {
+			v.setQuality(preset, fpsCap, full)
 		}
 		if start.Width > 0 {
-			ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s · %d ms", start.Width, start.Height, start.Codec, fps, kbps, host.DelayMS)).
+			codec := start.Codec
+			if start.I444 {
+				codec += " 4:4:4"
+			}
+			ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s · %d ms", start.Width, start.Height, codec, fps, kbps, host.DelayMS)).
 				FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
 		}
 	})

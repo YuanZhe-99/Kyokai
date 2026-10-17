@@ -1,5 +1,5 @@
 [workspace]
-members = ["kyokai-core", "third_party/rustdesk-dxgi", "third_party/rustdesk-qos"]
+members = ["kyokai-core", "third_party/rustdesk-codec", "third_party/rustdesk-dxgi", "third_party/rustdesk-qos"]
 resolver = "3"
 
 [workspace.package]

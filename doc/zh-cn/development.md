@@ -13,11 +13,37 @@
   `export PROTOC=$(scripts/protoc.sh)`。没有 `PROTOC` 时，EasyTier 的构建会在 Windows 上下载未经校验的候选版本。
 - 依赖检查用 `cargo-deny`（`cargo install cargo-deny --locked`）；在 Windows ARM64 上要装好 clang 才能构建。
 - `scripts/build.sh` 放入每个安装包的许可证文件需要 `cargo-about`（`cargo install cargo-about --locked --features cli`）。
+- libvpx 1.16.0 与 libaom 3.13.3 静态链接进核心：`scripts/codecs.sh` 以清单模式用 vcpkg 构建它们（`core/vcpkg.json`，
+  注册表固定在 `core/vcpkg-configuration.json`，覆盖三元组在 `core/vcpkg-triplets`），装到
+  `core/vcpkg_installed/<triplet>`（不提交）；每个目标在 cargo 之前运行一次，vcpkg 固定版本变动后再运行。它优先用
+  `VCPKG_ROOT`，否则在 Windows 上用 Visual Studio 2026 自带的 vcpkg（“vcpkg package manager” 组件，在其安装目录中只读），
+  再否则用 `PATH` 中的 `vcpkg`。vcpkg 把它的工具（CMake、供 libvpx 的 configure 使用的便携 MSYS2 与 Perl、x64 用的
+  NASM）、下载与二进制缓存放在它共用的默认位置（Windows 上为 `%LOCALAPPDATA%\vcpkg`）；不做系统级安装，也不修改
+  `PATH`。macOS 的 x64 部分需要 `brew install nasm`。`KYOKAI_CODECS_DIR` 让核心的构建改用另一个安装目录。
+- libvpx 与 libaom 的绑定（`core/third_party/rustdesk-codec/generated`）预先生成，构建既不需要 bindgen 也不需要
+  libclang。移动 vcpkg 固定版本后，用 `bindgen-cli`（`cargo install bindgen-cli --locked`）与 clang 的 `libclang`
+  （Windows 上把 Visual Studio 的 `VC\Tools\Llvm\ARM64\bin` 设为 `LIBCLANG_PATH`）重新生成：
+
+  ```bash
+  inc=core/vcpkg_installed/arm64-windows-static/arm64-windows-static/include
+  out=core/third_party/rustdesk-codec
+  bindgen $out/src/bindings/vpx_ffi.h -o $out/generated/vpx_ffi.rs --allowlist-type '^[vV].*' \
+    --allowlist-var '^[vV].*' --allowlist-function '^[vV].*' --rustified-enum '^[vV].*' \
+    --distrust-clang-mangling --no-layout-tests --no-doc-comments -- -I$inc
+  bindgen $out/src/bindings/aom_ffi.h -o $out/generated/aom_ffi.rs \
+    --allowlist-type '^(aom|AOM|OBU|AV1).*' --allowlist-var '^(aom|AOM|OBU|AV1).*' \
+    --allowlist-function '^(aom|AOM|OBU|AV1).*' --rustified-enum '^(aom|AOM|OBU|AV1).*' \
+    --distrust-clang-mangling --no-layout-tests --no-doc-comments -- -I$inc
+  ```
+
+  这是 RustDesk 的设置（`libs/scrap/build.rs`）。在 Kyokai 构建的每个 64 位目标上，声明都相同：C 的 `long` 保持为
+  `c_long`。
 
 ## 命令
 
 ```bash
-go run ./tools/deps check          # pinned vs latest MyGo, EasyTier, RustDesk, Rust
+go run ./tools/deps check          # pinned vs latest MyGo, EasyTier, RustDesk, vcpkg, Rust
+scripts/codecs.sh                  # libvpx and libaom for this platform (once, before cargo)
 gofmt -l cmd internal tools
 go vet ./...
 go test ./...

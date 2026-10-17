@@ -37,7 +37,8 @@ described in [run-modes.md](run-modes.md).
 | `internal/core` | purego binding to the Rust core |
 | `internal/fsutil` | Atomic writes and JSON documents |
 | `internal/version` | The single product version |
-| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and H.264 (`video`, `mf`), the input service (`input`), AI tasks (`ai`: the providers, the task runtime, the desktop it drives) |
+| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and codecs (`video`, `mf` for Media Foundation, `soft` for libvpx and libaom), the input service (`input`), AI tasks (`ai`: the providers, the task runtime, the desktop it drives) |
+| `core/third_party/rustdesk-codec` | RustDesk's libvpx and libaom codecs, vendored, with the static libraries vcpkg builds ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-dxgi` | RustDesk's DXGI and GDI screen capture, vendored ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-qos` | RustDesk's video QoS, vendored |
 | `core/third_party/thunk-noop` | Stands in for EasyTier's `thunk-rs` build step, so Windows builds keep the static C runtime |

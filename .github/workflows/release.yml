@@ -35,6 +35,10 @@ jobs:
         run: |
           if (-not (Test-Path "C:\Program Files\LLVM\bin\clang.exe")) { choco install llvm --no-progress -y }
           "C:\Program Files\LLVM\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      # libvpx and libaom, linked statically into the core.
+      - uses: ./.github/actions/codecs
+        with:
+          targets: windows/${{ matrix.arch }}
       - run: cargo build --release --manifest-path core/Cargo.toml --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v7
         with:
@@ -106,6 +110,10 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about
+      # libvpx and libaom for both slices; the x64 one is cross-built here.
+      - uses: ./.github/actions/codecs
+        with:
+          targets: darwin/arm64 darwin/amd64
       # The self-signed "Kyokai Code Signing" identity keeps privacy grants
       # across updates (doc/en-us/packaging.md). Without the secrets the
       # build is ad hoc signed, and the release notes must say so.

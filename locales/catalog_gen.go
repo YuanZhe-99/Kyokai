@@ -2132,6 +2132,16 @@ func (msgs Messages) QualityBest() string {
 	return Catalog.Format(msgs.locale, "QualityBest", nil)
 }
 
+// QualityFullColour says "Full colour"
+// in the language the app shows.
+func QualityFullColour() string { return In(i18n.Locale()).QualityFullColour() }
+
+// QualityFullColour says "Full colour"
+// in the language of msgs.
+func (msgs Messages) QualityFullColour() string {
+	return Catalog.Format(msgs.locale, "QualityFullColour", nil)
+}
+
 // QualitySpeed says "Faster"
 // in the language the app shows.
 func QualitySpeed() string { return In(i18n.Locale()).QualitySpeed() }

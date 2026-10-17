@@ -54,15 +54,16 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 
 以字节 `0x01` 开头的明文是媒体分片，而不是 JSON：帧号（u32）、分片序号与分片数（各 u16）、标志（第 0 位：关键帧）以及以微秒计的
 显示时间（u64），均为大端，之后是帧的一部分。一帧按需拆成若干分片，在另一端重新拼合；较新帧的分片会丢弃尚未拼完的旧帧
-（最新帧优先），超过 64 MiB 的帧会被丢弃。会话开始时，控制端发送 `{"type": "codecs", decode}`，即它能解码的编解码器（`h264`、`hevc`、`vp9`）。
-被控端在第一帧之前发送 `{"type": "video-start", codec, width, height}`；控制端可以发送
+（最新帧优先），超过 64 MiB 的帧会被丢弃。会话开始时，控制端发送 `{"type": "codecs", decode, i444}`：它能解码的编解码器（经 Media Foundation 的 `h264`、`hevc` 与
+`vp9`，软件的 `vp9-sw`、`av1` 与 `vp8`），以及其中能以全彩解码的（`vp9-sw`、`av1`；旧版本不带此字段）。
+被控端在第一帧之前发送 `{"type": "video-start", codec, width, height, i444}`（`i444` 仅在为真时出现）；控制端可以发送
 `{"type": "key-frame"}`（被控端随后重新描述视频流并发送关键帧），在拥有 `control-input` 时还可发送 `{"type": "input", event}`。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
 回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate}`（[computer-use.md](computer-use.md)）；控制端可用
-`{"type": "quality", preset, fps}` 设置画质。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用
+`{"type": "quality", preset, fps, i444}` 设置画质，其中 `i444` 表示在双方都支持时要求全彩（4:4:4）。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用
 `{"type": "display", index}` 请求另一个显示器。发送视频期间，被控端还会在指针移动时发送 `{"type": "cursor", x, y, visible}`，即以画面比例表示的指针位置。拥有 `control-input` 时，被控端在会话开始时发送
 `{"type": "actions", ctrl_alt_del, blocked, privacy}`（阻止或隐私模式变化时也会发送），控制端可以发送 `{"type": "action", action}`，其值为 `lock`、`ctrl-alt-del`、`block`、`unblock`、
 `privacy-on` 或 `privacy-off`（[computer-use.md](computer-use.md)）。拥有 `clipboard` 时，任一端都会为本端复制的文本发送 `{"type": "clipboard", text}`（最大 1 MiB），为图片发送
-`{"type": "clipboard-image", png}`（8 位 RGBA PNG 的 base64，最多 3 MiB、3840×2160）。只有在控制端可以查看屏幕时，被控端才发送视频：它的屏幕（H.264），或在无法采集的被控端上发送
+`{"type": "clipboard-image", png}`（8 位 RGBA PNG 的 base64，最多 3 MiB、3840×2160）。只有在控制端可以查看屏幕时，被控端才发送视频：它的屏幕（以从 `codecs` 中选定的编解码器），或在无法采集的被控端上发送
 320×180 的原始 RGBA 测试图案（编解码器 `raw-rgba`）。
 
 ## AI 任务

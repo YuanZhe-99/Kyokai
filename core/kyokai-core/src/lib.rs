@@ -25,6 +25,7 @@ mod power;
 #[cfg(windows)]
 mod privacy;
 mod session;
+mod soft;
 mod store;
 mod video;
 

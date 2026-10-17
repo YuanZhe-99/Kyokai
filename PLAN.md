@@ -119,7 +119,7 @@ certificates are needed, and privileged processes (Phase 6) relay encoded bytes 
 | 3.4 Viewer | its own window, fit / original size / full screen, stats, Disconnect | §26 viewing items on Windows |
 | 3.5 Input (done; the real run on the VM's desktop is left) | mouse and keyboard to the host only with `control-input`, virtual-desktop coordinates, nothing into Kyokai's own windows, held keys released | typing and clicking into apps on the VM |
 | 3.6 QoS (done) | RustDesk's `video_qos.rs`, delay probes, bitrate / frame-rate adaptation, presets | adapts on the VM path; unchanged frames skipped |
-| 3.7 Codecs (negotiation and Media Foundation's HEVC and VP9 done; H.264 preferred because the GPU's HEVC did not decode at 720p and above; libvpx / libaom and 4:4:4 left) | VP8 / VP9 (libvpx), AV1 (libaom), HEVC through Media Foundation, negotiation, 4:4:4 | every codec the plan lists, chosen by capability |
+| 3.7 Codecs (negotiation, Media Foundation's HEVC and VP9, libvpx VP8 / VP9, libaom AV1 and 4:4:4 done in code; H.264 preferred because the GPU's HEVC did not decode at 720p and above; the run on two machines left) | VP8 / VP9 (libvpx), AV1 (libaom), HEVC through Media Foundation, negotiation, 4:4:4 | every codec the plan lists, chosen by capability |
 | 3.8 Manual control (clipboard text and images, the remote pointer and display choice done; keyboard modes and clipboard files left) | RustDesk keyboard modes with rdev, clipboard (arboard), multi-monitor and DPI | §26 Manual Computer Use on Windows |
 
 Testing: this machine as controller, the remote VM as host. Capture needs the host engine in the
@@ -172,6 +172,14 @@ OS APIs (whose vendors license H.264 / H.265):
 
 Host and controller exchange capability lists and use the best common codec; without hardware
 (e.g. Windows N editions) they fall back to VP9.
+
+### 3.7 libvpx / libaom (done in code 2026-10-17)
+
+Built with vcpkg (Visual Studio's own copy on Windows, by user decision 2026-10-17; a pinned clone
+in CI) as described in doc/en-us/development.md and ci-cd.md; negotiation and full colour in
+computer-use.md. Left: the first CI run with `.github/actions/codecs` (Windows x64, both macOS
+slices; after the push is approved), the software codecs on two machines (this machine ↔ the VM),
+and AV1 hardware encoding where a device has it.
 
 RustDesk's QoS stays codec-independent: frame rate is paced by the capture loop and unchanged frames
 are skipped before encoding; each encoder implements RustDesk's `EncoderApi` contract (`set_quality`
