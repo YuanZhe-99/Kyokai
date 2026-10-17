@@ -153,6 +153,11 @@ enum Message {
     Clipboard {
         text: String,
     },
+    /// either way (`clipboard`): an image copied on the sender's side, as
+    /// base64 PNG (8-bit RGBA).
+    ClipboardImage {
+        png: String,
+    },
     /// host → controller, with video: the host's displays and the one
     /// shown.
     Displays {
@@ -1177,13 +1182,21 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     ai_sent = now;
                 }
             }
-            Some(text) = async {
+            Some(item) = async {
                 match clip.as_mut() {
                     Some(c) => c.offers.recv().await,
                     None => std::future::pending().await,
                 }
             } => {
-                seal_json(&mut noise, &mut buf, &mut wr, &Message::Clipboard { text }).await?;
+                let msg = match item {
+                    crate::clipboard::Item::Text(text) => Some(Message::Clipboard { text }),
+                    crate::clipboard::Item::Image(img) => {
+                        crate::clipboard::to_png(&img).map(|png| Message::ClipboardImage { png })
+                    }
+                };
+                if let Some(m) = msg {
+                    seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+                }
             }
             _ = pointer_tick.tick(), if source.is_some() => {
                 let at = source.as_ref().and_then(|s| s.display).map(area);
@@ -1316,7 +1329,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         if let Some(c) = &clip
                             && text.len() <= crate::clipboard::MAX_TEXT
                         {
-                            let _ = c.writes.send(text);
+                            let _ = c.writes.send(crate::clipboard::Item::Text(text));
+                        }
+                    }
+                    Message::ClipboardImage { png } => {
+                        if let Some(c) = &clip
+                            && let Some(img) = crate::clipboard::from_png(&png)
+                        {
+                            let _ = c.writes.send(crate::clipboard::Item::Image(img));
                         }
                     }
                     Message::Cursor { x, y, visible } => {
@@ -2019,8 +2039,16 @@ mod tests {
 
     /// Waits until a fake clipboard holds `want`.
     async fn board_holds(board: &crate::clipboard::fake::Board, want: &str) -> bool {
+        board_has(board, &crate::clipboard::Item::Text(want.into())).await
+    }
+
+    /// Waits until a fake clipboard holds `want`.
+    async fn board_has(
+        board: &crate::clipboard::fake::Board,
+        want: &crate::clipboard::Item,
+    ) -> bool {
         for _ in 0..150 {
-            if board.lock().unwrap().as_deref() == Some(want) {
+            if board.lock().unwrap().as_ref() == Some(want) {
                 return true;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -2031,9 +2059,9 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn the_clipboard_is_shared_both_ways_only_with_its_permission() {
         let (host_board, controller_board) = (
-            Arc::new(std::sync::Mutex::new(Some(
+            Arc::new(std::sync::Mutex::new(Some(crate::clipboard::Item::Text(
                 "on the host before".to_string(),
-            ))),
+            )))),
             Arc::new(std::sync::Mutex::new(None)),
         );
         let rig = fake::rig("session-clip", "claude", "http://127.0.0.1:9");
@@ -2060,10 +2088,21 @@ mod tests {
         // What was on a clipboard before the session is not offered.
         tokio::time::sleep(Duration::from_millis(700)).await;
         assert_eq!(*controller_board.lock().unwrap(), None);
-        *controller_board.lock().unwrap() = Some("copied on the controller".into());
+        *controller_board.lock().unwrap() = Some(crate::clipboard::Item::Text(
+            "copied on the controller".into(),
+        ));
         assert!(board_holds(&host_board, "copied on the controller").await);
-        *host_board.lock().unwrap() = Some("copied on the host".into());
+        *host_board.lock().unwrap() =
+            Some(crate::clipboard::Item::Text("copied on the host".into()));
         assert!(board_holds(&controller_board, "copied on the host").await);
+        // An image crosses as PNG.
+        let image = crate::clipboard::Item::Image(crate::clipboard::Image {
+            width: 32,
+            height: 16,
+            rgba: (0..32 * 16 * 4).map(|i| i as u8).collect(),
+        });
+        *controller_board.lock().unwrap() = Some(image.clone());
+        assert!(board_has(&host_board, &image).await);
         controller.sessions.close(id).unwrap();
 
         // Without the permission nothing crosses (a second controller).
@@ -2072,7 +2111,7 @@ mod tests {
         let want = vec![Permission::ViewScreen];
         let id = attempt_with(&host, &other, &dialed, "k7mq2xpa", Some(want.clone()), want).await;
         assert_eq!(session(&other, id)["state"], "connected");
-        *other_board.lock().unwrap() = Some("private".into());
+        *other_board.lock().unwrap() = Some(crate::clipboard::Item::Text("private".into()));
         assert!(!board_holds(&host_board, "private").await);
     }
 
@@ -2160,7 +2199,7 @@ mod tests {
         .await;
         let long: String = "kyokai ".repeat(30_000);
         tokio::time::sleep(Duration::from_millis(600)).await;
-        *controller_board.lock().unwrap() = Some(long.clone());
+        *controller_board.lock().unwrap() = Some(crate::clipboard::Item::Text(long.clone()));
         assert!(
             board_holds(&host_board, &long).await,
             "the long text arrived"

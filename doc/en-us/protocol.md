@@ -77,7 +77,9 @@ the quality with `{"type": "quality", preset, fps}`. With more than one display 
 display's place and size, the primary first) and the controller may ask for another with
 `{"type": "display", index}`. While it sends video the host also sends `{"type": "cursor", x, y, visible}`, its pointer as
 fractions of the picture, when it moves. With `clipboard`, either side sends
-`{"type": "clipboard", text}` for text copied on its side (at most 1 MiB). The host sends video only while the
+`{"type": "clipboard", text}` for text copied on its side (at most 1 MiB) and
+`{"type": "clipboard-image", png}` for an image (base64 of an 8-bit RGBA PNG, at most 3 MiB and
+3840×2160). The host sends video only while the
 controller may view the screen: its screen as H.264, or the 320×180 raw RGBA test pattern (codec
 `raw-rgba`) on a host that cannot capture.
 

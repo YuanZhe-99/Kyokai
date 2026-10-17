@@ -69,11 +69,13 @@ when it ends. Malformed events are dropped without ending the session.
 
 ## Clipboard
 
-While a session has `clipboard`, both engines read their clipboard twice a second and offer text
-copied since the session began to the other side, which puts it on its own clipboard; a text that
-arrived this way is not offered back. What was on a clipboard before the session is not offered,
+While a session has `clipboard`, both engines look at their clipboard twice a second (on Windows
+reading it only when its sequence number changed) and offer what was copied since the session
+began to the other side, which puts it on its own clipboard; what arrived this way is not offered
+back. What was on a clipboard before the session is not offered,
 nor is text that Kyokai itself copied (the Device ID, a password: on Windows the clipboard's owner
-is a Kyokai process). Text only, up to 1 MiB; images and files come later.
+is a Kyokai process). Text up to 1 MiB, or an image up to 3840×2160 sent as PNG (at most 3 MiB; text wins when both are
+there); files come later.
 
 ## AI tasks
 

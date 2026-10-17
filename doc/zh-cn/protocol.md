@@ -58,7 +58,8 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 `{"type": "key-frame"}`（被控端随后重新描述视频流并发送关键帧），在拥有 `control-input` 时还可发送 `{"type": "input", event}`。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
 回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate}`（[computer-use.md](computer-use.md)）；控制端可用
 `{"type": "quality", preset, fps}` 设置画质。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用
-`{"type": "display", index}` 请求另一个显示器。发送视频期间，被控端还会在指针移动时发送 `{"type": "cursor", x, y, visible}`，即以画面比例表示的指针位置。拥有 `clipboard` 时，任一端都会为本端复制的文本发送 `{"type": "clipboard", text}`（最大 1 MiB）。只有在控制端可以查看屏幕时，被控端才发送视频：它的屏幕（H.264），或在无法采集的被控端上发送
+`{"type": "display", index}` 请求另一个显示器。发送视频期间，被控端还会在指针移动时发送 `{"type": "cursor", x, y, visible}`，即以画面比例表示的指针位置。拥有 `clipboard` 时，任一端都会为本端复制的文本发送 `{"type": "clipboard", text}`（最大 1 MiB），为图片发送
+`{"type": "clipboard-image", png}`（8 位 RGBA PNG 的 base64，最多 3 MiB、3840×2160）。只有在控制端可以查看屏幕时，被控端才发送视频：它的屏幕（H.264），或在无法采集的被控端上发送
 320×180 的原始 RGBA 测试图案（编解码器 `raw-rgba`）。
 
 ## AI 任务
