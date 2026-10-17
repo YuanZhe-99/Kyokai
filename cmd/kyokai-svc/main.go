@@ -10,7 +10,7 @@
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--want P,P…]
-//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T] [--click X,Y] [--action A,A…]
+//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T] [--click X,Y] [--action A,A…] [--display N]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID | unattended --key K [--days N]
 //	kyokai-svc ctl background [--on]     (the helper: Background service or Follow GUI)
@@ -178,6 +178,7 @@ func ctl(args []string) error {
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
 	fpsCap := fs.Int("fps", 0, "watch: ask for a frame-rate cap first")
 	click := fs.String("click", "", "watch: click at X,Y (fractions of the picture) after 2 s")
+	display := fs.Int("display", -1, "watch: show the host's display N (0 first) from the start")
 	actions := fs.String("action", "", "watch: session actions to send, 4 s apart from 2 s on (lock, ctrl-alt-del, block, unblock, privacy-on, privacy-off)")
 	source := fs.String("source", "", "ai-key, ai-models: the AI source's id")
 	model := fs.String("model", "", "ai-set: the model tasks use, as SOURCE:MODEL")
@@ -201,7 +202,7 @@ func ctl(args []string) error {
 		return err
 	}
 	if cmd == "watch" {
-		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *text, *click, *actions)
+		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *text, *click, *actions, *display)
 	}
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
@@ -463,7 +464,7 @@ func printStatus(s *localapi.Status) {
 // viewer's decoder) and saves the last picture; with a text it first asks
 // the host's AI to do it (the viewer's AI panel); with actions it sends them
 // as the viewer's action bar does and prints the host's reports.
-func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, aiText, click, actions string) error {
+func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, aiText, click, actions string, display int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), d+10*time.Second)
 	defer cancel()
 	conn, err := localapi.NewClient(socket).Media(ctx, id)
@@ -510,6 +511,12 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 			}
 		}()
 	}
+	if display >= 0 {
+		body, _ := json.Marshal(map[string]any{"type": "display", "index": display})
+		if err := localapi.WritePacket(conn, append([]byte{3}, body...)); err != nil {
+			return err
+		}
+	}
 	if actions != "" {
 		go func() {
 			time.Sleep(2 * time.Second)
@@ -532,6 +539,7 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	var dec *core.Decoder
 	var pic *image.RGBA
 	frames, bytes, pictures := 0, 0, 0
+	printedDisplays := map[byte]bool{}
 	start := time.Now()
 	for {
 		p, err := localapi.ReadPacket(conn, buf)
@@ -558,6 +566,9 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 			fmt.Println("host", string(p[1:]))
 		case len(p) > 0 && (p[0] == 5 || p[0] == 6):
 			fmt.Println("ai", string(p[1:]))
+		case len(p) > 0 && (p[0] == 7 || p[0] == 8) && !printedDisplays[p[0]]:
+			printedDisplays[p[0]] = true
+			fmt.Printf("%s %s\n", map[byte]string{7: "pointer", 8: "displays"}[p[0]], p[1:])
 		case len(p) > 0 && p[0] == 9:
 			fmt.Printf("%s actions %s\n", time.Now().Format("15:04:05"), p[1:])
 		case len(p) >= 10 && p[0] == 2:

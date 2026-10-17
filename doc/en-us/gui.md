@@ -87,8 +87,10 @@ last connection) that fill in the Device ID; a
 - Body text 14, titles 20–24, nothing below 12; the Device ID is 34 with tabular digits.
 - The app icon is original artwork: a ring split by a boundary line (鏡界), solid on one side and
   an outline on the other, with a pointer reaching across. The tray shows the same mark as a
-  one-colour template glyph. `go run ./tools/icon resources/icon.png internal/gui/assets/tray.png`
-  draws both from their geometry.
+  one-colour template glyph: white, or black (`tray-black.png`) while Windows draws the taskbar
+  light (`SystemUsesLightTheme`), checked with each status update; macOS tints the template
+  itself. `go run ./tools/icon resources/icon.png internal/gui/assets/tray.png` draws them all
+  from their geometry.
 
 ## Tray
 

@@ -498,6 +498,7 @@ pub fn serve(input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
         injectors: HashMap::new(),
         clipboard: None,
         desks: HashMap::new(),
+        awake: None,
     };
     let mut input = input;
     while let Ok((kind, body)) = read_message(&mut input) {
@@ -530,6 +531,9 @@ struct Agent {
     injectors: HashMap<u64, Injector>,
     clipboard: Option<Box<dyn crate::clipboard::Clipboard>>,
     desks: HashMap<u64, Box<dyn crate::ai::desktop::Desktop>>,
+    /// Keeps the console session's displays awake while video streams: a
+    /// display request from the helper in session 0 does not count.
+    awake: Option<crate::power::Awake>,
 }
 
 #[cfg(windows)]
@@ -605,6 +609,7 @@ impl Agent {
                     }
                 });
                 self.sources.insert(stream, source);
+                self.awake.get_or_insert_with(crate::power::keep_awake);
                 reply
             }
             "video.key" => {
@@ -624,6 +629,9 @@ impl Agent {
             }
             "video.close" => {
                 self.sources.remove(&stream);
+                if self.sources.is_empty() {
+                    self.awake = None;
+                }
                 return Ok(None);
             }
             "input.open" => {

@@ -12,31 +12,53 @@ import (
 //go:embed assets/tray.png
 var trayGlyph []byte
 
+// trayGlyphBlack is the glyph for light taskbars on Windows, which shows
+// tray icons as they are (macOS tints the template itself).
+//
+//go:embed assets/tray-black.png
+var trayGlyphBlack []byte
+
+// trayIcon is the glyph that shows on the current taskbar.
+func trayIcon(light bool) []byte {
+	if light {
+		return trayGlyphBlack
+	}
+	return trayGlyph
+}
+
 // Tray owns the status icon: the Device ID, Stop AI task while one runs, Show
 // and Quit. It never shows a password.
 type Tray struct {
 	app  *App
 	tray *mygo.Tray
 	last string
+	// light is whether the black glyph is shown (a light taskbar).
+	light bool
 }
 
 // NewTray creates the status icon (main thread). It returns nil when the
 // desktop has no tray; closing the window then quits.
 func (a *App) NewTray() *Tray {
-	t, err := mygo.NewTray(mygo.TrayOptions{Icon: trayGlyph, IconIsTemplate: true, ToolTip: "Kyokai"})
+	light := lightTaskbar()
+	t, err := mygo.NewTray(mygo.TrayOptions{Icon: trayIcon(light), IconIsTemplate: true, ToolTip: "Kyokai"})
 	if err != nil {
 		return nil
 	}
-	tr := &Tray{app: a, tray: t, last: "-"}
+	tr := &Tray{app: a, tray: t, last: "-", light: light}
 	tr.Refresh()
 	return tr
 }
 
-// Refresh rebuilds the menu when the Device ID or the language changed
-// (main thread).
+// Refresh swaps the glyph when the taskbar turned light or dark, and
+// rebuilds the menu when the Device ID or the language changed (main
+// thread).
 func (t *Tray) Refresh() {
 	if t == nil {
 		return
+	}
+	if light := lightTaskbar(); light != t.light {
+		t.light = light
+		_ = t.tray.SetIcon(trayIcon(light), true)
 	}
 	a := t.app
 	a.mu.Lock()

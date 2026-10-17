@@ -46,7 +46,7 @@ Kyokai runs the same flow with any configured provider, and the live runs so far
 | Remote screen viewing | Verified (Windows) | platform notes: The VM's real desktop, Screen video |
 | Mouse control | Verified (Windows) | platform notes: The helper (a click on the UAC secure desktop) |
 | Keyboard control | Verified (Windows) | platform notes: Typing into Windows 11 Notepad |
-| Multi-monitor selection | In code | platform notes: Displays (no machine with two displays yet) |
+| Multi-monitor selection | Verified (Windows VM) | platform notes: Displays |
 | DPI coordinate mapping | Tested | the input mapping tests over the virtual desktop; a mixed-DPI setup has not been tried |
 | Disconnection releases resources | Tested | held keys and buttons released, capture and encoder dropped with the session |
 

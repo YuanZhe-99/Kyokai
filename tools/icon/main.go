@@ -1,6 +1,8 @@
 // icon renders Kyokai's icon, a ring split by the boundary with a pointer crossing it, as PNGs:
 // the app icon (full colour) and the tray glyph (one colour, template).
 // Usage: go run ./tools/icon resources/icon.png internal/gui/assets/tray.png
+// (the black tray glyph for light Windows taskbars goes next to it, as
+// tray-black.png)
 package main
 
 import (
@@ -9,6 +11,7 @@ import (
 	"image/png"
 	"math"
 	"os"
+	"strings"
 )
 
 type pt struct{ x, y float64 }
@@ -145,10 +148,15 @@ func save(path string, img image.Image) {
 
 func main() {
 	save(os.Args[1], render(1024, 40, 4, func(p pt) (color.NRGBA, float64) { return app(p), 1 }))
-	save(os.Args[2], render(64, 0, 8, func(p pt) (color.NRGBA, float64) {
-		if tray(p) {
-			return white, 1
-		}
-		return transparent, 0
-	}))
+	for path, ink := range map[string]color.NRGBA{
+		os.Args[2]: white,
+		strings.TrimSuffix(os.Args[2], ".png") + "-black.png": {A: 255},
+	} {
+		save(path, render(64, 0, 8, func(p pt) (color.NRGBA, float64) {
+			if tray(p) {
+				return ink, 1
+			}
+			return transparent, 0
+		}))
+	}
 }
