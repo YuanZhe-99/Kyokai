@@ -2,7 +2,7 @@
 
 A controller reaches a host's engine over the EasyTier data plane: TCP to the host's virtual IPv4
 address, port 47310 ([networking.md](networking.md)). EasyTier is an untrusted pipe, so the session
-is authenticated and encrypted end to end on top of it. The protocol version is 3 (2 added the AI and clipboard messages, 3 the session actions).
+is authenticated and encrypted end to end on top of it. The protocol version is 4 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes).
 
 ## Framing
 

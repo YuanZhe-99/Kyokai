@@ -22,7 +22,7 @@ use tokio::sync::{Notify, mpsc};
 use crate::{media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
-pub const PROTOCOL: u32 = 3;
+pub const PROTOCOL: u32 = 4;
 const PATTERN: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
@@ -1882,6 +1882,58 @@ mod tests {
             }
             controller.sessions.close(id).unwrap();
         }
+    }
+
+    /// A Map-mode key travels from the controller's GUI through the session
+    /// to the host's injector by scan code, press and release. (The
+    /// injector's test sink records instead of injecting.)
+    #[cfg(windows)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn map_mode_keys_reach_the_host_by_scan_code() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let granted = vec![Permission::ViewScreen, Permission::ControlInput];
+        let id = attempt(&host, &controller, &dialed, "k7mq2xpa", Some(granted)).await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        let (_, control) = controller.sessions.media(id).unwrap();
+        // Right Ctrl (extended) and D, which no other test presses.
+        let ours = |s: &(u16, u16, u32, usize)| s.2 & 0x8 != 0 && matches!(s.1, 0x1D | 0x20);
+        for (code, down) in [(0xE01D, true), (0x20, true), (0x20, false), (0xE01D, false)] {
+            let event = json!({"kind": "scan", "code": code, "down": down});
+            control
+                .send(json!({"type": "input", "event": event}))
+                .await
+                .unwrap();
+        }
+        let until = Instant::now() + Duration::from_secs(3);
+        let mut sent = Vec::new();
+        while sent.len() < 4 && Instant::now() < until {
+            sent.extend(crate::input::take_sent(ours));
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        if sent.is_empty() {
+            // The injector drops keys while a Kyokai window is in front.
+            controller.sessions.close(id).unwrap();
+            return;
+        }
+        let tag = crate::input::INJECTED_TAG;
+        assert_eq!(
+            sent,
+            [
+                (0, 0x1D, 0x8 | 0x1, tag),
+                (0, 0x20, 0x8, tag),
+                (0, 0x20, 0x8 | 0x2, tag),
+                (0, 0x1D, 0x8 | 0x1 | 0x2, tag),
+            ]
+        );
+        controller.sessions.close(id).unwrap();
     }
 
     #[test]

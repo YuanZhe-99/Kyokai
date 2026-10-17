@@ -33,6 +33,50 @@ pub enum Event {
     },
     /// Text to type as it is (characters, not keys).
     Text { text: String },
+    /// A key by its position (Map and Translate modes): its scan code as
+    /// Windows numbers it (`crate::keyboard::scan_code`), with the
+    /// controller's CapsLock and NumLock, which the host follows.
+    Scan {
+        code: u32,
+        down: bool,
+        #[serde(default)]
+        caps: bool,
+        #[serde(default)]
+        num: bool,
+    },
+}
+
+/// Whether a scan code names a key: a set-1 code, the same 0xE0-prefixed,
+/// or Pause (0xE11D).
+pub fn valid_scan(code: u32) -> bool {
+    matches!(code, 0x01..=0xFF | 0xE001..=0xE0FF | 0xE11D)
+}
+
+/// `KEYBDINPUT` flags, as numbers so the mapping is testable everywhere.
+const EXTENDED_KEY: u32 = 0x1; // KEYEVENTF_EXTENDEDKEY
+const BY_SCAN_CODE: u32 = 0x8; // KEYEVENTF_SCANCODE
+
+/// How `SendInput` presses a scan code: virtual key, scan code and flags.
+/// Notes: by scan code, so the host's layout decides what the key types;
+/// Pause has no scan code Windows takes and goes by virtual key.
+pub fn scan_input(code: u32) -> (u16, u16, u32) {
+    match code {
+        0xE11D => (0x13, 0x45, 0), // VK_PAUSE
+        c if c >> 8 == 0xE0 => (0, (c & 0xFF) as u16, BY_SCAN_CODE | EXTENDED_KEY),
+        c => (0, c as u16, BY_SCAN_CODE),
+    }
+}
+
+/// The lock key the host first brings in line with the controller before
+/// a key goes down, as RustDesk's input service does: CapsLock before a
+/// letter, NumLock before a numpad key whose meaning it changes.
+/// Returns: the lock's scan code, and whether the controller has it on.
+pub fn lock_for(code: u32, caps: bool, num: bool) -> Option<(u32, bool)> {
+    match code {
+        0x10..=0x19 | 0x1E..=0x26 | 0x2C..=0x32 => Some((0x3A, caps)),
+        0x47..=0x49 | 0x4B..=0x4D | 0x4F..=0x53 => Some((0x45, num)),
+        _ => None,
+    }
 }
 
 /// The window an event is checked against before it is injected, so that
@@ -63,10 +107,11 @@ impl Event {
                 action: PointerAction::Up,
                 ..
             }
-            | Event::Key { down: false, .. } => Guard::None,
+            | Event::Key { down: false, .. }
+            | Event::Scan { down: false, .. } => Guard::None,
             Event::Pointer { x, y, .. } => Guard::At(*x, *y),
             Event::Scroll { .. } => Guard::Pointer,
-            Event::Key { .. } | Event::Text { .. } => Guard::Focus,
+            Event::Key { .. } | Event::Text { .. } | Event::Scan { .. } => Guard::Focus,
         }
     }
 }
@@ -107,6 +152,7 @@ impl Event {
             }
             Event::Key { key, .. } => vk(key).is_some(),
             Event::Text { text } => !text.is_empty() && text.len() <= MAX_TEXT,
+            Event::Scan { code, .. } => valid_scan(*code),
         }
     }
 }
@@ -209,6 +255,8 @@ impl LocalInput {
     }
 }
 
+#[cfg(all(windows, test))]
+pub use windows_impl::take_sent;
 #[cfg(windows)]
 pub use windows_impl::{
     Injector, LocalWatch, emergency_stop, kyokai_process, physical, pointer, pointer_in,
@@ -276,6 +324,8 @@ mod windows_impl {
     /// Injects one session's events and remembers what it holds down.
     pub struct Injector {
         keys: BTreeSet<u16>,
+        /// Keys held by scan code (Map and Translate modes).
+        scans: BTreeSet<u32>,
         buttons: BTreeSet<u8>,
         /// The last process asked about: its id, whether it is Kyokai's,
         /// and when that was checked.
@@ -297,6 +347,7 @@ mod windows_impl {
         fn default() -> Self {
             Injector {
                 keys: BTreeSet::new(),
+                scans: BTreeSet::new(),
                 buttons: BTreeSet::new(),
                 owner: (0, false, Instant::now() - OWNER_TTL),
                 remote: crate::agent::link().map(|l| l.injector()),
@@ -476,6 +527,29 @@ mod windows_impl {
                     }
                     send(&batch);
                 }
+                Event::Scan {
+                    code,
+                    down,
+                    caps,
+                    num,
+                } => {
+                    let mut batch = Vec::new();
+                    if *down {
+                        // The host's CapsLock or NumLock follows the
+                        // controller's before a key it changes.
+                        if let Some((lock, on)) = lock_for(*code, *caps, *num)
+                            && host_lock(lock) != on
+                        {
+                            batch.push(by_scan(lock, false));
+                            batch.push(by_scan(lock, true));
+                        }
+                        self.scans.insert(*code);
+                    } else {
+                        self.scans.remove(code);
+                    }
+                    batch.push(by_scan(*code, !*down));
+                    send(&batch);
+                }
             }
             true
         }
@@ -501,6 +575,7 @@ mod windows_impl {
                 return;
             }
             let mut batch: Vec<INPUT> = self.keys.iter().map(|k| keyboard(*k, true)).collect();
+            batch.extend(self.scans.iter().map(|c| by_scan(*c, true)));
             for b in &self.buttons {
                 batch.push(mouse(
                     0,
@@ -515,6 +590,7 @@ mod windows_impl {
             }
             send(&batch);
             self.keys.clear();
+            self.scans.clear();
             self.buttons.clear();
         }
 
@@ -800,10 +876,66 @@ mod windows_impl {
         unsafe { CallNextHookEx(None, code, w, l) }
     }
 
+    #[cfg(not(test))]
     fn send(batch: &[INPUT]) {
         if !batch.is_empty() {
             // SAFETY: a slice of fully initialized INPUT records.
             unsafe { SendInput(batch, std::mem::size_of::<INPUT>() as i32) };
+        }
+    }
+
+    /// The keyboard input tests would have injected: virtual key, scan
+    /// code, flags and tag. Tests never inject into the desktop they run on.
+    #[cfg(test)]
+    static SENT: std::sync::Mutex<Vec<(u16, u16, u32, usize)>> = std::sync::Mutex::new(Vec::new());
+
+    #[cfg(test)]
+    fn send(batch: &[INPUT]) {
+        let mut sent = SENT.lock().unwrap();
+        for i in batch.iter().filter(|i| i.r#type == INPUT_KEYBOARD) {
+            // SAFETY: keyboard records carry `ki`.
+            let ki = unsafe { i.Anonymous.ki };
+            sent.push((ki.wVk.0, ki.wScan, ki.dwFlags.0, ki.dwExtraInfo));
+        }
+    }
+
+    /// Takes the recorded keyboard input that `ours` picks (tests run in
+    /// parallel; each takes only its own keys).
+    #[cfg(test)]
+    pub fn take_sent(
+        ours: impl Fn(&(u16, u16, u32, usize)) -> bool,
+    ) -> Vec<(u16, u16, u32, usize)> {
+        let mut sent = SENT.lock().unwrap();
+        let (mine, rest) = sent.drain(..).partition(|s| ours(s));
+        *sent = rest;
+        mine
+    }
+
+    /// Whether the host's CapsLock (0x3A) or NumLock (0x45) is on.
+    pub(super) fn host_lock(lock: u32) -> bool {
+        let vk = if lock == 0x3A { VK_CAPITAL } else { VK_NUMLOCK };
+        // SAFETY: a plain query of the keyboard state.
+        unsafe { GetKeyState(vk.0 as i32) & 1 != 0 }
+    }
+
+    /// A press or release of a key by scan code (`scan_input`).
+    fn by_scan(code: u32, up: bool) -> INPUT {
+        let (vk, scan, flags) = scan_input(code);
+        let mut flags = KEYBD_EVENT_FLAGS(flags);
+        if up {
+            flags |= KEYEVENTF_KEYUP;
+        }
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VIRTUAL_KEY(vk),
+                    wScan: scan,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: INJECTED_TAG,
+                },
+            },
         }
     }
 
@@ -958,6 +1090,20 @@ mod tests {
             ),
             (r#"{"kind":"text","text":"héllo 世界"}"#, true),
             (r#"{"kind":"text","text":""}"#, false),
+            (r#"{"kind":"scan","code":30,"down":true}"#, true),
+            (
+                r#"{"kind":"scan","code":57435,"down":false,"caps":true,"num":true}"#,
+                true,
+            ),
+            (r#"{"kind":"scan","code":57629,"down":true}"#, true),
+            // As the GUI sends it, with the fields other kinds use.
+            (
+                r#"{"kind":"scan","button":0,"x":0,"y":0,"dx":0,"dy":0,"code":57373,"down":true,"caps":true}"#,
+                true,
+            ),
+            (r#"{"kind":"scan","code":0,"down":true}"#, false),
+            (r#"{"kind":"scan","code":512,"down":true}"#, false),
+            (r#"{"kind":"scan","code":57344,"down":true}"#, false),
         ];
         for (json, ok) in cases {
             let e: Event = serde_json::from_str(json).unwrap();
@@ -998,10 +1144,109 @@ mod tests {
             (key(true), Guard::Focus),
             (key(false), Guard::None),
             (Event::Text { text: "x".into() }, Guard::Focus),
+            (scan(0x1E, true), Guard::Focus),
+            (scan(0x1E, false), Guard::None),
         ];
         for (event, want) in cases {
             assert_eq!(event.guard(), want, "{event:?}");
         }
+    }
+
+    fn scan(code: u32, down: bool) -> Event {
+        Event::Scan {
+            code,
+            down,
+            caps: false,
+            num: false,
+        }
+    }
+
+    #[test]
+    fn scan_codes_are_pressed_by_position() {
+        // code → (virtual key, scan code, flags) for SendInput.
+        let cases = [
+            (0x1E, (0, 0x1E, BY_SCAN_CODE)),                  // A
+            (0x1C, (0, 0x1C, BY_SCAN_CODE)),                  // Enter
+            (0xE01C, (0, 0x1C, BY_SCAN_CODE | EXTENDED_KEY)), // numpad Enter
+            (0x47, (0, 0x47, BY_SCAN_CODE)),                  // numpad 7
+            (0xE047, (0, 0x47, BY_SCAN_CODE | EXTENDED_KEY)), // Home
+            (0xE01D, (0, 0x1D, BY_SCAN_CODE | EXTENDED_KEY)), // right Ctrl
+            (0xE05B, (0, 0x5B, BY_SCAN_CODE | EXTENDED_KEY)), // left Win
+            (0x45, (0, 0x45, BY_SCAN_CODE)),                  // NumLock
+            (0xE11D, (0x13, 0x45, 0)),                        // Pause
+            (0xF2, (0, 0xF2, BY_SCAN_CODE)),                  // Hangul
+        ];
+        for (code, want) in cases {
+            assert_eq!(scan_input(code), want, "{code:#x}");
+        }
+    }
+
+    #[test]
+    fn locks_follow_the_controller_before_the_keys_they_change() {
+        let cases = [
+            (0x1E, Some((0x3A, true))),  // A: CapsLock
+            (0x32, Some((0x3A, true))),  // M
+            (0x02, None),                // 1: no lock
+            (0x47, Some((0x45, false))), // numpad 7: NumLock
+            (0x52, Some((0x45, false))), // numpad 0
+            (0x4A, None),                // numpad minus: the same either way
+            (0xE047, None),              // Home
+            (0x3A, None),                // CapsLock itself
+        ];
+        for (code, want) in cases {
+            assert_eq!(lock_for(code, true, false), want, "{code:#x}");
+        }
+    }
+
+    /// A Map-mode key reaches SendInput by scan code, tagged as Kyokai's,
+    /// with CapsLock brought in line first; ending the session releases it.
+    /// (The test sink records instead of injecting.)
+    #[cfg(windows)]
+    #[test]
+    fn map_keys_are_injected_by_scan_code() {
+        use windows_impl::{host_lock, take_sent};
+        let ours = |s: &(u16, u16, u32, usize)| matches!(s.1, 0x3A | 0x1F | 0x5B);
+        let caps = host_lock(0x3A);
+        let mut inj = Injector::default();
+        let down = Event::Scan {
+            code: 0x1F,
+            down: true,
+            caps: !caps,
+            num: false,
+        };
+        if !inj.inject(&down) {
+            return; // a Kyokai window is in front
+        }
+        let tag = INJECTED_TAG;
+        assert_eq!(
+            take_sent(ours),
+            [
+                (0, 0x3A, BY_SCAN_CODE, tag),
+                (0, 0x3A, BY_SCAN_CODE | 2, tag),
+                (0, 0x1F, BY_SCAN_CODE, tag),
+            ]
+        );
+        let win = Event::Scan {
+            code: 0xE05B,
+            down: true,
+            caps,
+            num: false,
+        };
+        assert!(inj.inject(&win));
+        assert_eq!(
+            take_sent(ours),
+            [(0, 0x5B, BY_SCAN_CODE | EXTENDED_KEY, tag)]
+        );
+        inj.release_all();
+        let mut released = take_sent(ours);
+        released.sort();
+        assert_eq!(
+            released,
+            [
+                (0, 0x1F, BY_SCAN_CODE | 2, tag),
+                (0, 0x5B, BY_SCAN_CODE | EXTENDED_KEY | 2, tag),
+            ]
+        );
     }
 
     #[test]

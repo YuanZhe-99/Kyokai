@@ -66,6 +66,8 @@ and Latin words only where it helps readability.
 | lifeline | 生命线 |
 | state directory | 状态目录 |
 | secrets store | 机密存储 |
+| keyboard mode (Map / Translate / Legacy) | 键盘模式（映射 / 翻译 / 传统） |
+| scan code | 扫描码 |
 | spike | 可行性验证（spike） |
 
 ## 6. Review checklist

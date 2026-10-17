@@ -145,17 +145,18 @@ RustDesk's own controls, all to be offered; the host-side adaptation reuses Rust
 User decision (2026-10-16): RustDesk's manual-control systems are reused, decoupled from
 `hbb_common` the way S3-lite decoupled the capturer (wire types become Kyokai's own protobuf):
 
-- **Controller keyboard:** `src/keyboard.rs` — the grab loop on top of `rustdesk-org/rdev` (MIT;
-  low-level hook while the viewer has focus), and the Map / Translate / Legacy keyboard modes with
-  their numpad, lock-key and layout handling. This replaces MyGo's key events for the viewer (no
-  scancodes, consumed shortcuts) instead of new hook code.
-- **Host input:** `src/server/input_service.rs` — key events per mode, lock-mode (CapsLock /
-  NumLock) sync, mouse with virtual-desktop coordinates, release of held keys and buttons, cursor
+- **Controller keyboard:** the Map / Translate / Legacy modes are in code on Windows (protocol 4,
+  ABI 3; the core's own low-level hook in `keyboard.rs` rather than `rdev`, whose Windows grab is
+  the same `WH_KEYBOARD_LL` hook). Left: run them with a real keyboard against a real host (Map,
+  Translate with AltGr, dead keys and an input method; lock sync), and the macOS grab with the Mac
+  pass.
+- **Host input:** `src/server/input_service.rs` — key events per mode and the CapsLock / NumLock
+  sync are in code (above); left: mouse with virtual-desktop coordinates, release of held keys and buttons, cursor
   shape and position services (the remote cursor), window-focus tracking; injection through
   RustDesk's `libs/enigo` changes where upstream `enigo` 0.6.1 lacks them.
 - **Session actions** (done in code, protocol 3: lock, Ctrl+Alt+Del in the helper modes, block the
   host's input; the remote cursor was done before). Left: running lock, block and Ctrl+Alt+Del on
-  a real host (they act on that desktop), and the keyboard mode choice with the keyboard modes.
+  a real host (they act on that desktop).
 - Each vendored file keeps its header, gains a "Modified by Kyokai" note and an entry in
   `doc/en-us/third-party.md`.
 

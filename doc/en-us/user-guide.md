@@ -54,7 +54,11 @@ the mouse and keyboard there; Kyokai's own windows on the other computer never r
 input. The bar above it can **Lock screen**, send **Ctrl+Alt+Del** (when the other computer runs
 Kyokai as a helper) and **Block their keyboard and mouse** while you work, or turn on **Privacy mode**, which also
 blacks out their screen while you still see it; its user can always lift both with
-Ctrl+Alt+Shift+Esc or Ctrl+Alt+Del. While you are connected the other computer does not go to
+Ctrl+Alt+Shift+Esc or Ctrl+Alt+Del. On Windows the bar also chooses how your keyboard reaches the
+other computer: **Map** (the default) sends each key by its place, so the other computer's layout
+decides what it types and shortcuts such as the Windows key or Alt+Tab go there too; **Translate**
+types with your own layout and input method; **Legacy** sends only the keys the viewer window
+receives. Keys go there only while the picture has the focus: click it first. While you are connected the other computer does not go to
 sleep by itself. **Disconnect** ends the session; closing the window only stops the picture. A session that
 drops reconnects by itself for a minute without asking again.
 

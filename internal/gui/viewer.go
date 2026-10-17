@@ -123,6 +123,12 @@ type viewer struct {
 	box     ui.Rect
 	control bool
 	held    map[ui.Key]bool
+	// The keyboard grab (viewerinput.go): the mode the core grabs keys in for
+	// this window ("" for none), whether the core refused to, and the
+	// window's native handle the grab is for.
+	grabbed string
+	noGrab  bool
+	window  uintptr
 	// The host's pointer, which the picture leaves out.
 	pointer hostPointer
 	// The host's displays, to choose which one shows.
@@ -157,6 +163,7 @@ func (a *App) openViewer(s localapi.SessionInfo) {
 	a.mu.Unlock()
 	v.win.SetContentProtection(!show)
 	v.win.OnClosed(func() {
+		v.endGrab()
 		a.mu.Lock()
 		delete(a.viewers, s.ID)
 		a.mu.Unlock()
@@ -379,6 +386,8 @@ func (v *viewer) view(c *ui.Context) {
 func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start videoStart, ptr hostPointer) {
 	area := ui.Column(c.Key("picture-area")).Grow(1).FillHeight().AlignItems(ui.Center).Justify(ui.Center)
 	at := area.LayoutBounds()
+	focused := false
+	defer func() { v.syncGrab(focused) }()
 	area.Children(func() {
 		switch {
 		case state != "":
@@ -390,6 +399,7 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 			})
 		default:
 			img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().HandleInput(v.sendInput)
+			focused = img.Focused()
 			box := img.LayoutBounds()
 			v.mu.Lock()
 			v.box = box
@@ -436,6 +446,15 @@ func (v *viewer) actionBar(c *ui.Context, a hostActions) {
 				action("privacy-on")
 			} else {
 				action("privacy-off")
+			}
+		}
+		if grabsKeyboard {
+			ui.Row(c).Grow(1)
+			ui.Text(c, L.ViewerKeyboard()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			mode := slices.Index(keyboardModes, v.app.keyboardMode())
+			if ui.Segmented(c.Key("keyboard"), &mode, L.ViewerKeyboardMap(), L.ViewerKeyboardTranslate(), L.ViewerKeyboardLegacy()).
+				Tooltip(L.ViewerKeyboardHint()).Changed() {
+				v.app.setKeyboardMode(keyboardModes[mode])
 			}
 		}
 	})
