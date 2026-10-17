@@ -126,7 +126,7 @@ the same Kyokai-window guard and tag.
 | `mouse-down`, `mouse-up` | `button` | a press or release where the pointer is |
 | `drag` | `path` of points, `modifiers` | press, eight moves per segment 10 ms apart, release |
 | `scroll` | `at`, `dx`, `dy` (120 per notch), `modifiers` | wheel notches |
-| `type` | `text` | Unicode text; each line break presses Enter |
+| `type` | `text` | Unicode text, one character every 30 ms (apps such as Windows 11 Notepad garble a faster burst); each line break presses Enter |
 | `key-combo` | `keys`, `repeat` | the keys pressed with the combination's modifiers |
 | `hold-key` | `keys`, `duration_ms` | pressed, held, released |
 | `wait` | `duration_ms` | a pause |

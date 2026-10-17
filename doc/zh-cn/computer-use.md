@@ -95,7 +95,7 @@ Kyokai 那个看不见的窗口在前台时，查看窗口与模型能看到的�
 | `mouse-down`、`mouse-up` | `button` | 在指针位置按下或松开 |
 | `drag` | 点的 `path`、`modifiers` | 按下，每段移动八次、间隔 10 ms，松开 |
 | `scroll` | `at`、`dx`、`dy`（每格 120）、`modifiers` | 滚轮格数 |
-| `type` | `text` | Unicode 文本；每个换行按一次 Enter |
+| `type` | `text` | Unicode 文本，每 30 ms 一个字符（Windows 11 记事本等应用会把更快的连串输入弄乱）；每个换行按一次 Enter |
 | `key-combo` | `keys`、`repeat` | 按组合中的修饰键按下各键 |
 | `hold-key` | `keys`、`duration_ms` | 按下、保持、松开 |
 | `wait` | `duration_ms` | 暂停 |
