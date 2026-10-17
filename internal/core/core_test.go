@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -39,6 +40,26 @@ func TestRealLibrary(t *testing.T) {
 	if err := l.Call("no.such.method", nil, nil); err == nil {
 		t.Fatal("an unknown method must fail")
 	}
+	// Regression: the response slots once lived on the goroutine stack, and
+	// a stack that grew on the way into the C call left the response behind
+	// at the old address. Calling at many depths makes the stack grow at
+	// the call in some of them.
+	for depth := range 300 {
+		if err := atDepth(depth, func() error { return l.Call("status", nil, nil) }); err != nil {
+			t.Fatalf("status at depth %d: %v", depth, err)
+		}
+	}
+}
+
+// atDepth runs f below depth stack frames of 256 bytes each.
+func atDepth(depth int, f func() error) error {
+	var pad [256]byte
+	if depth == 0 {
+		return f()
+	}
+	err := atDepth(depth-1, f)
+	runtime.KeepAlive(&pad)
+	return err
 }
 
 func TestLoadRefusesRelativePaths(t *testing.T) {

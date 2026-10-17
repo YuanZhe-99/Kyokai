@@ -33,6 +33,14 @@ func LibraryName() string {
 type Lib struct {
 	abiVersion, start, call, stop, free uintptr
 	mu                                  sync.Mutex // the core is one process-wide instance
+	// out receives a response's buffer. It lives in the Lib (on the heap,
+	// which never moves) rather than on a goroutine stack, which may move
+	// between converting its address to a uintptr and the C call. Guarded
+	// by mu.
+	out struct {
+		ptr *byte
+		len uintptr
+	}
 }
 
 // Config is what the core starts with.
@@ -55,6 +63,8 @@ type Status struct {
 	// Persistence is "os-store", "memory-only" or "unreadable".
 	Persistence    string `json:"persistence"`
 	PasswordSerial uint64 `json:"password_serial"`
+	// Network is the EasyTier node's status, decoded by the host.
+	Network json.RawMessage `json:"network"`
 }
 
 // Load opens the library at path (absolute) and checks its ABI version.
@@ -114,15 +124,15 @@ func (l *Lib) exchange(fn uintptr, req, out any) error {
 	if err != nil {
 		return err
 	}
-	var outPtr *byte
-	var outLen uintptr
 	l.mu.Lock()
+	l.out.ptr, l.out.len = nil, 0
 	rc := int32(syscallN(fn, uintptr(unsafe.Pointer(unsafe.SliceData(in))), uintptr(len(in)),
-		uintptr(unsafe.Pointer(&outPtr)), uintptr(unsafe.Pointer(&outLen))))
+		uintptr(unsafe.Pointer(&l.out.ptr)), uintptr(unsafe.Pointer(&l.out.len))))
 	runtime.KeepAlive(in)
+	outPtr, outLen := l.out.ptr, l.out.len
 	l.mu.Unlock()
 	if rc != 0 || outPtr == nil {
-		return errors.New("core call failed")
+		return fmt.Errorf("core call failed (code %d, response %t)", rc, outPtr != nil)
 	}
 	data := string(unsafe.Slice(outPtr, outLen)) // copy before freeing
 	syscallN(l.free, uintptr(unsafe.Pointer(outPtr)), outLen)
