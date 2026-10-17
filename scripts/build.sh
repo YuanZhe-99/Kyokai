@@ -61,4 +61,4 @@ sign=()
 if [ -n "${MYGO_SIGN:-}" ]; then
 	sign=(-sign "$MYGO_SIGN")
 fi
-go tool mygo build "${sign[@]}" -platform "$(IFS=,; echo "${targets[*]}")"
+go tool mygo build ${sign[@]+"${sign[@]}"} -platform "$(IFS=,; echo "${targets[*]}")"
