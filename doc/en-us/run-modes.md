@@ -93,8 +93,10 @@ The helper's install, uninstall and status commands, the service, its authorizat
 session agent (its link, start in the console session and desktop following) are implemented on
 Windows; the link is tested in-process, the service and the agent not yet on a machine. The macOS
 helper (a root LaunchDaemon) comes with the Mac pass and reports "not available yet" until then.
-The run-mode choice and the store move are implemented and the move was run between two user
-engines; the switch with the real helper waits for an administrator install on a test machine.
+The helper ran as a service on Windows ARM64 ([platform-notes.md](platform-notes.md), "The
+helper"): install, authorization, the agent and its secure-desktop capture, the store move both
+ways, unattended access and uninstall. The run-mode switch in the GUI and the signed update have
+not run there yet.
 The signed self-update and the self-disable are implemented and their rules tested (a file
 swapped after the check is not installed); none of this has run as a service yet. A helper
 installed with `kyokai-svc helper install` alone runs an engine of its own with a separate Device ID

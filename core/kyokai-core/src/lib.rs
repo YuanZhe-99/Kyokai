@@ -418,8 +418,12 @@ fn replace_identity(
     let core = guard.as_ref().ok_or("the core is not started")?;
     change(core.ctx.access.secrets())?;
     let cfg = core.cfg.clone();
+    // Whom the host serves is the engine's decision and outlives the
+    // identity (a helper without a GUI must not start serving everyone).
+    let serve = core.ctx.access.serve();
     *guard = None; // stops the network and drops the old identity
     let core = build(cfg)?;
+    core.ctx.access.set_serve(serve);
     let id = core.ctx.identity.device_id();
     *guard = Some(core);
     Ok(json!({"device_id": id}))
@@ -707,6 +711,7 @@ fn status() -> Value {
                 .map(|(id, h)| json!({"device_id": id, "last": h.last, "about": h.about}))
                 .collect::<Value>(),
             "name": c.ctx.about.lock().map(|l| l.chosen().to_owned()).unwrap_or_default(),
+            "serve": c.ctx.access.serve(),
             "about": c.ctx.about(),
         })
     })
@@ -760,6 +765,16 @@ mod tests {
         assert_ne!(first, second);
         let unknown = roundtrip(kyokai_call, r#"{"method":"nope"}"#);
         assert_eq!(unknown["ok"], false);
+        // A new identity keeps whom the host serves (regression: a helper
+        // without a GUI served everyone after a store moved in).
+        roundtrip(
+            kyokai_call,
+            r#"{"method":"host.serve","params":{"serve":"none"}}"#,
+        );
+        let reset = roundtrip(kyokai_call, r#"{"method":"identity.reset"}"#);
+        assert_eq!(reset["ok"], true, "{reset}");
+        let after = roundtrip(kyokai_call, r#"{"method":"status"}"#);
+        assert_eq!(after["result"]["serve"], "none");
         kyokai_stop();
         let _ = std::fs::remove_dir_all(dir);
     }

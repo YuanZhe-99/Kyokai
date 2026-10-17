@@ -15,6 +15,7 @@
 //	kyokai-svc ctl untrust --key K | forget --device ID | unattended --key K [--days N]
 //	kyokai-svc ctl background [--on]     (the helper: Background service or Follow GUI)
 //	kyokai-svc ctl move --to SOCKET       (moves the whole store to another engine of this device, which stops this one)
+//	kyokai-svc ctl helper-update --from DIR (the helper installs the signed bundle in DIR)
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
 //	kyokai-svc ctl ai | ai-tasks | ai-clear | ai-stop
 //	kyokai-svc ctl ai-set [--provider P] [--openai-model M] [--claude-model M] [--approval A]
@@ -167,6 +168,7 @@ func ctl(args []string) error {
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
 	file := fs.String("file", "", "backup, restore: the backup file")
 	yes := fs.Bool("yes", false, "reset-identity: confirm a new Device ID")
+	from := fs.String("from", "", "helper-update: the app folder holding the signed bundle")
 	to := fs.String("to", "", "move: the socket of the engine that takes over this device's store")
 	days := fs.Int("days", 30, "unattended: how long the device may connect without confirmation (0 stops it)")
 	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached)")
@@ -201,7 +203,7 @@ func ctl(args []string) error {
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
-		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "unattended": localapi.RequestUnattended, "background": localapi.RequestBackground,
+		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "unattended": localapi.RequestUnattended, "background": localapi.RequestBackground, "helper-update": localapi.RequestHelperUpdate,
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
@@ -226,6 +228,8 @@ func ctl(args []string) error {
 		req.Days = *days
 	case "background":
 		req.Background = on
+	case "helper-update":
+		req.From = *from
 	case "network-set":
 		req.Network = &localapi.NetworkSettings{Servers: servers, Name: *name}
 		if s, ok := os.LookupEnv(networkSecretEnv); ok {
