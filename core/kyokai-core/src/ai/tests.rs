@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use super::action::{Action, Button, Key, ParseError, Point, normalize_key, parse_combo, validate};
-use super::desktop::{self, Desktop, Frame, Step};
+use super::desktop::{self, Frame, Step};
 use super::fake::*;
 use super::task::{Pause, State, testing};
 use super::{End, Outcome, Shot, claude, openai, screens};
@@ -1093,6 +1093,7 @@ fn live_claude_task_on_synthetic_screens() {
 #[test]
 #[ignore]
 fn real_screen_capture_and_hooks() {
+    use super::desktop::Desktop;
     let mut screen = desktop::Screen::open().unwrap();
     let (w, h) = screen.size().unwrap();
     let frame = screen.capture().unwrap();

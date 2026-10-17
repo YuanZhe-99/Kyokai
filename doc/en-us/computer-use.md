@@ -58,6 +58,14 @@ Kyokai's (`dwExtraInfo`) so local input can be told apart. Nothing is injected w
 window has the focus (checked at most every 200 ms), and whatever a session holds is released
 when it ends. Malformed events are dropped without ending the session.
 
+## Clipboard
+
+While a session has `clipboard`, both engines read their clipboard twice a second and offer text
+copied since the session began to the other side, which puts it on its own clipboard; a text that
+arrived this way is not offered back. What was on a clipboard before the session is not offered,
+nor is text that Kyokai itself copied (the Device ID, a password: on Windows the clipboard's owner
+is a Kyokai process). Text only, up to 1 MiB; images and files come later.
+
 ## AI tasks
 
 A task runs on the host, with the host's provider key, on the host's primary display. The host's

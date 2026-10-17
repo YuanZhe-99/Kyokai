@@ -152,7 +152,7 @@ func (a *App) connectCard(c *ui.Context) {
 
 // connectWant is what a connection asks the host for.
 func connectWant(ai bool) []string {
-	want := []string{localapi.PermViewScreen, localapi.PermControlInput}
+	want := []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard}
 	if ai {
 		want = append(want, localapi.PermRunAITask, localapi.PermApproveAIAction)
 	}

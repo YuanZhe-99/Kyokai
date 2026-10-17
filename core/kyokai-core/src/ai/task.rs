@@ -406,6 +406,8 @@ impl Ai {
 
     /// Pauses the task in progress because a person at a controller is
     /// operating the desktop: the AI's input lease ends at once.
+    // Used by the Windows input service; macOS input comes with the Mac pass.
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub fn take_over(&self) {
         let id = {
             let tasks = self.shared.tasks.lock().expect("tasks");
@@ -439,6 +441,7 @@ impl Ai {
 
     /// Whether a task holds the desktop now (running or waiting for
     /// approval).
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub fn acting(&self) -> bool {
         let tasks = self.shared.tasks.lock().expect("tasks");
         tasks

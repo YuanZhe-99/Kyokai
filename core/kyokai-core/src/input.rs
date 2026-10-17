@@ -152,7 +152,7 @@ impl LocalInput {
 }
 
 #[cfg(windows)]
-pub use windows_impl::{Injector, LocalWatch};
+pub use windows_impl::{Injector, LocalWatch, kyokai_process};
 
 #[cfg(windows)]
 mod windows_impl {
@@ -314,30 +314,38 @@ mod windows_impl {
             if self.guard.0.elapsed() < Duration::from_millis(200) {
                 return self.guard.1;
             }
-            // SAFETY: plain queries; the process handle is closed below.
+            // SAFETY: plain queries of the focused window's process.
             let front = unsafe {
                 let hwnd: HWND = GetForegroundWindow();
                 let mut pid = 0u32;
                 GetWindowThreadProcessId(hwnd, Some(&mut pid));
-                match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
-                    Ok(h) => {
-                        let mut name = [0u16; 1024];
-                        let mut len = name.len() as u32;
-                        let ok = QueryFullProcessImageNameW(
-                            h,
-                            PROCESS_NAME_WIN32,
-                            PWSTR(name.as_mut_ptr()),
-                            &mut len,
-                        )
-                        .is_ok();
-                        let _ = CloseHandle(h);
-                        ok && is_kyokai(&String::from_utf16_lossy(&name[..len as usize]))
-                    }
-                    Err(_) => false,
-                }
+                kyokai_process(pid)
             };
             self.guard = (Instant::now(), front);
             front
+        }
+    }
+
+    /// Whether a process is one of Kyokai's (by its executable's name).
+    pub fn kyokai_process(pid: u32) -> bool {
+        // SAFETY: plain queries; the process handle is closed below.
+        unsafe {
+            match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+                Ok(h) => {
+                    let mut name = [0u16; 1024];
+                    let mut len = name.len() as u32;
+                    let ok = QueryFullProcessImageNameW(
+                        h,
+                        PROCESS_NAME_WIN32,
+                        PWSTR(name.as_mut_ptr()),
+                        &mut len,
+                    )
+                    .is_ok();
+                    let _ = CloseHandle(h);
+                    ok && is_kyokai(&String::from_utf16_lossy(&name[..len as usize]))
+                }
+                Err(_) => false,
+            }
         }
     }
 

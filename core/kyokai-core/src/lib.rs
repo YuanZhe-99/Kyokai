@@ -10,6 +10,7 @@ mod access;
 mod ai;
 mod auth;
 mod backup;
+mod clipboard;
 mod decode;
 mod identity;
 mod input;
@@ -376,6 +377,7 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
     let secrets = Arc::new(secrets);
     let identity = Arc::new(identity::Identity::load_or_create(&secrets)?);
     let ctx = Arc::new(session::Ctx {
+        clipboard: Arc::new(clipboard::system),
         ai: Arc::new(ai::Ai::new(&cfg.state_dir, secrets.clone())?),
         identity,
         access: Arc::new(access::Access::load(secrets.clone())?),

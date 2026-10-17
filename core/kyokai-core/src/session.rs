@@ -148,6 +148,10 @@ enum Message {
     AiError {
         error: String,
     },
+    /// either way (`clipboard`): text copied on the sender's side.
+    Clipboard {
+        text: String,
+    },
 }
 
 /// What a controller may do to its AI task.
@@ -354,6 +358,8 @@ impl Sessions {
 
 /// What both ends need: who this device is and the shared state.
 pub struct Ctx {
+    /// Opens this side's clipboard for a session that may share it.
+    pub clipboard: crate::clipboard::Open,
     /// The host's AI tasks, which controllers may start and steer.
     pub ai: Arc<crate::ai::Ai>,
     pub identity: Arc<Identity>,
@@ -514,6 +520,10 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         Ok(granted) => {
             let video = granted.contains(&Permission::ViewScreen);
             let input = granted.contains(&Permission::ControlInput);
+            let clipboard = granted
+                .contains(&Permission::Clipboard)
+                .then(|| (ctx.clipboard)())
+                .flatten();
             let ai = HostAi {
                 ai: ctx.ai.clone(),
                 peer: device_id.clone(),
@@ -524,7 +534,9 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 e.state = State::Connected;
                 e.granted = granted;
             });
-            let failure = run(ch, &stop, Side::Host { video, input, ai }).await.err();
+            let failure = run(ch, &stop, Side::Host { video, input, ai }, clipboard)
+                .await
+                .err();
             // The controller's AI task does not go on without it.
             ctx.ai.controller_left(&device_id);
             ctx.sessions.end(id, failure);
@@ -733,13 +745,17 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     .await;
     match result {
         Ok((ch, granted, token)) => {
+            let clipboard = granted
+                .contains(&Permission::Clipboard)
+                .then(|| (ctx.clipboard)())
+                .flatten();
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
                 e.granted = granted;
             });
             let side = ctx.sessions.side(id).ok_or(Failure::Broken);
             let result = match side {
-                Ok(side) => run(ch, &stop, side).await,
+                Ok(side) => run(ch, &stop, side, clipboard).await,
                 Err(f) => Err(f),
             };
             match (result, token) {
@@ -894,6 +910,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     ch: Channel<S>,
     stop: &Notify,
     side: Side,
+    clipboard: Option<Box<dyn crate::clipboard::Clipboard>>,
 ) -> Result<(), Failure> {
     let Channel {
         stream,
@@ -937,6 +954,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         Side::Host { ai, .. } if ai.run || ai.approve => Some(ai),
         _ => None,
     };
+    // Clipboard sharing, when the session may: local copies go out, the
+    // other side's texts are put on the local clipboard.
+    let mut clip = clipboard.map(crate::clipboard::share);
     let mut ai_sync = tokio::time::interval(AI_SYNC);
     let mut ai_sent: Option<Value> = None;
     let mut control = match &control {
@@ -979,6 +999,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     seal_json(&mut noise, &mut buf, &mut wr, &Message::AiTask { task }).await?;
                     ai_sent = now;
                 }
+            }
+            Some(text) = async {
+                match clip.as_mut() {
+                    Some(c) => c.offers.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                seal_json(&mut noise, &mut buf, &mut wr, &Message::Clipboard { text }).await?;
             }
             _ = ping.tick() => {
                 if heard.elapsed() > IDLE_LIMIT {
@@ -1087,6 +1115,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             seal_json(&mut noise, &mut buf, &mut wr, &Message::AiError { error }).await?;
                         }
                     }
+                    Message::Clipboard { text } => {
+                        if let Some(c) = &clip
+                            && text.len() <= crate::clipboard::MAX_TEXT
+                        {
+                            let _ = c.writes.send(text);
+                        }
+                    }
                     Message::AiTask { task } => {
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::AI_TASK];
@@ -1172,8 +1207,18 @@ mod tests {
     }
 
     fn device_with(ai: Arc<crate::ai::Ai>, version: &str) -> Arc<Ctx> {
+        device_full(ai, Arc::default(), version)
+    }
+
+    /// A device whose clipboard is `board`.
+    fn device_full(
+        ai: Arc<crate::ai::Ai>,
+        board: crate::clipboard::fake::Board,
+        version: &str,
+    ) -> Arc<Ctx> {
         let secrets = Arc::new(Secrets::memory());
         Arc::new(Ctx {
+            clipboard: crate::clipboard::fake::opener(board),
             ai,
             identity: Arc::new(Identity::load_or_create(&secrets).unwrap()),
             access: Arc::new(Access::load(secrets).unwrap()),
@@ -1736,5 +1781,64 @@ mod tests {
             t["state"] == "paused"
         });
         assert_eq!(t["paused"], "disconnected");
+    }
+
+    /// Waits until a fake clipboard holds `want`.
+    async fn board_holds(board: &crate::clipboard::fake::Board, want: &str) -> bool {
+        for _ in 0..150 {
+            if board.lock().unwrap().as_deref() == Some(want) {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        false
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_clipboard_is_shared_both_ways_only_with_its_permission() {
+        let (host_board, controller_board) = (
+            Arc::new(std::sync::Mutex::new(Some(
+                "on the host before".to_string(),
+            ))),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+        let rig = fake::rig("session-clip", "claude", "http://127.0.0.1:9");
+        let host = device_full(rig.ai.clone(), host_board.clone(), "1.0.0");
+        let controller = device_full(rig.ai.clone(), controller_board.clone(), "1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let want = vec![Permission::Clipboard];
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            Some(want.clone()),
+            want,
+        )
+        .await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        // What was on a clipboard before the session is not offered.
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        assert_eq!(*controller_board.lock().unwrap(), None);
+        *controller_board.lock().unwrap() = Some("copied on the controller".into());
+        assert!(board_holds(&host_board, "copied on the controller").await);
+        *host_board.lock().unwrap() = Some("copied on the host".into());
+        assert!(board_holds(&controller_board, "copied on the host").await);
+        controller.sessions.close(id).unwrap();
+
+        // Without the permission nothing crosses (a second controller).
+        let other_board: crate::clipboard::fake::Board = Arc::default();
+        let other = device_full(rig.ai.clone(), other_board.clone(), "1.0.2");
+        let want = vec![Permission::ViewScreen];
+        let id = attempt_with(&host, &other, &dialed, "k7mq2xpa", Some(want.clone()), want).await;
+        assert_eq!(session(&other, id)["state"], "connected");
+        *other_board.lock().unwrap() = Some("private".into());
+        assert!(!board_holds(&host_board, "private").await);
     }
 }

@@ -20,6 +20,7 @@ accepted = [
   "0BSD",
   "bzip2-1.0.6",
   "CDLA-Permissive-2.0",
+  "BSL-1.0",
 ]
 targets = [
   "aarch64-pc-windows-msvc",

@@ -2,7 +2,7 @@
 
 A controller reaches a host's engine over the EasyTier data plane: TCP to the host's virtual IPv4
 address, port 47310 ([networking.md](networking.md)). EasyTier is an untrusted pipe, so the session
-is authenticated and encrypted end to end on top of it. The protocol version is 2 (2 added the AI messages).
+is authenticated and encrypted end to end on top of it. The protocol version is 2 (2 added the AI and clipboard messages).
 
 ## Framing
 
@@ -70,7 +70,8 @@ sends `{"type": "video-start", codec, width, height}`; the controller may send `
 `control-input`, `{"type": "input", event}`. While it sends video the host sends `{"type":
 "test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":
 "stats", delay_ms, fps, bitrate}` ([computer-use.md](computer-use.md)); the controller may set
-the quality with `{"type": "quality", preset, fps}`. The host sends video only while the
+the quality with `{"type": "quality", preset, fps}`. With `clipboard`, either side sends
+`{"type": "clipboard", text}` for text copied on its side (at most 1 MiB). The host sends video only while the
 controller may view the screen: its screen as H.264, or the 320×180 raw RGBA test pattern (codec
 `raw-rgba`) on a host that cannot capture.
 

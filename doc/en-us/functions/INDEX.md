@@ -14,7 +14,7 @@ returns, side effects and notes where non-trivial).
 | `internal/core` | purego binding to the Rust core | `Load`, `Lib.Start`, `Lib.Call` |
 | `internal/version` | Product version | `Version`, `Older` |
 | `internal/fsutil` | Atomic writes and JSON documents | `WriteFileAtomic`, `WriteJSON`, `ReadJSON` |
-| `core/kyokai-core` | Rust core: C ABI, secrets, identity, temporary password, EasyTier node | `kyokai_start`, `kyokai_call`, `store::open`, `Identity::load_or_create`, `device_id`, `net::Network`, `session::serve`, `session::connect`, `session::HostAi`, `access::Access`, `auth::Slots`, `backup::export`, `backup::import`, `media::Reassembler`, `media::Queue`, `kyokai_media_read`, `video::Source`, `mf::Encoder`, `mf::Decoder`, `decode::open`, `input::Event`, `input::Injector`, `input::LocalWatch`, `ai::Ai`, `ai::action::validate`, `ai::desktop::plan` |
+| `core/kyokai-core` | Rust core: C ABI, secrets, identity, temporary password, EasyTier node | `kyokai_start`, `kyokai_call`, `store::open`, `Identity::load_or_create`, `device_id`, `net::Network`, `session::serve`, `session::connect`, `session::HostAi`, `access::Access`, `auth::Slots`, `backup::export`, `backup::import`, `media::Reassembler`, `media::Queue`, `kyokai_media_read`, `video::Source`, `mf::Encoder`, `mf::Decoder`, `decode::open`, `input::Event`, `input::Injector`, `input::LocalWatch`, `clipboard::share`, `clipboard::Watch`, `ai::Ai`, `ai::action::validate`, `ai::desktop::plan` |
 | `core/third_party/rustdesk-dxgi` | RustDesk's Windows screen capture, vendored | `Displays`, `Capturer::frame` |
 | `core/third_party/rustdesk-qos` | RustDesk's video QoS, vendored | `VideoQoS`, `base_bitrate` |
 | `core/third_party/thunk-noop` | No-op stand-in for EasyTier's `thunk-rs` | `thunk` |

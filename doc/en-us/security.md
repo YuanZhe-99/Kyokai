@@ -20,6 +20,11 @@
   `KYOKAI_PASSWORD`); the core keeps a typed password in memory only until that session ends and then zeroizes it.
   A provider key travels the same way (`KYOKAI_AI_KEY` for `ctl ai-key`) and is never returned.
 
+## Clipboard
+
+Sharing needs the `clipboard` permission, starts with copies made after the session began and
+never offers text that Kyokai itself copied ([computer-use.md](computer-use.md)).
+
 ## AI tasks
 
 - The model runs on the host's provider account: the key goes only to that provider, over HTTPS,
