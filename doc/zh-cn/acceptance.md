@@ -96,7 +96,7 @@ OpenAI 是规格中的服务商；Kyokai 对任何已配置的服务商运行相
 | Rust 原生库可以加载 | 已验证 | Windows 与 macOS CI 上的 ABI 冒烟测试 |
 | 图形界面与打包的核心库配合工作 | 已验证（Windows） | 平台说明：应用（ARM64 与 x64 安装包） |
 | CI 产物是真实的安装包 | 已验证（Windows x64） | 平台说明：远程 x64 虚拟机（CI 构建的安装程序） |
-| 发布校验和一致 | 未完成 | 尚未发布 |
+| 发布校验和一致 | 已验证（0.1.0） | 下载的 `Kyokai.Setup.0.1.0.arm64.exe` 与 `SHA256SUMS.txt` 一致；0.1.0 中安装程序以带空格的文件名列出，之后的版本使用 GitHub 提供的文件名 |
 | 报告缺少签名 | 已验证 | 未签名的构建会被标注；助手在没有提示的情况下拒绝未签名的更新 |
 | README 致谢 | 已完成 | README 的致谢部分 |
 | 第三方义务 | 已完成 | [third-party.md](third-party.md)、`THIRD_PARTY_NOTICES.md`、`RUST_LICENSES.txt` |

@@ -7,7 +7,7 @@
 | `ci.yml` → changes | 推送到 `main`、拉取请求、手动 | 自推送的上一个提交或拉取请求的基准以来，`doc/` 与 Markdown 文件以外是否有改动（手动运行时总是视为有）；只改文档时运行检查，但不运行测试作业 |
 | `ci.yml` → checks | 推送到 `main`、拉取请求、手动 | gofmt、Windows 与 macOS 的 `go vet`、界面目录、文档镜像、`cargo fmt`、`cargo deny`、机密扫描（gitleaks）、上游版本（仅提示） |
 | `ci.yml` → test | 同上，只改文档时不运行 | `windows-11-arm` 与 `macos-latest`：clippy、Rust 测试、使用真实核心的 Go 测试（ABI 冒烟测试）、`mygo vet`、`scripts/smoke.sh user`、未签名安装包作为产物；`windows-latest` 与 `macos-15-intel`：构建核心与 Go 测试，`windows-latest` 还会上传未签名的 x64 安装包（安装在远程测试虚拟机上）。所有任务都使用固定版本的 `protoc`（`scripts/protoc.sh`），并通过 `.github/actions/codecs` 构建 libvpx 与 libaom（在固定提交克隆并引导 vcpkg，用 `actions/cache` 按 `core/vcpkg*.json` 与三元组保留其二进制缓存，macOS 上从 Homebrew 安装 NASM，然后运行 `scripts/codecs.sh`）；`windows-11-arm` 把 LLVM 的 clang 加入 `PATH` 供 `ring` 使用；macOS 任务使用各自已解锁的默认钥匙串。核心只按运行器自身的目标三元组以 release 构建一次，`scripts/smoke.sh` 与 `scripts/build.sh` 都在那里找到它；关闭 LTO 并使用 16 个代码生成单元（`CARGO_PROFILE_RELEASE_*`）：这些安装包用于测试，正式发布仍使用 `core/Cargo.toml` 的配置。只有 `main` 保存 Rust 缓存，其他引用只恢复它 |
-| `release.yml` | 标签 `v*`、手动 | Windows 核心在 `windows-latest`（x64）与 `windows-11-arm` 上构建，各自带上编解码库（`.github/actions/codecs`），在 Ubuntu 上用 NSIS 打包；macOS 在 `macos-latest` 上构建打包，两种架构的编解码库都在那里构建（x64 交叉构建）；标签会在核对与 `internal/version` 一致后附带 `SHA256SUMS.txt` 发布 |
+| `release.yml` | 标签 `v*`、手动 | Windows 核心在 `windows-latest`（x64）与 `windows-11-arm` 上构建，各自带上编解码库（`.github/actions/codecs`），在 Ubuntu 上用 NSIS 打包；macOS 在 `macos-latest` 上构建打包，两种架构的编解码库都在那里构建（x64 交叉构建）；标签会在核对与 `internal/version` 一致后附带 `SHA256SUMS.txt` 发布；文件名中的空格先改为点，与 GitHub 保存的名称一致 |
 | `upstream.yml` | 每周、手动 | `go run ./tools/deps check -strict`；MyGo、EasyTier、RustDesk、vcpkg 或 Rust 有更新时开 issue |
 | `dependabot.yml` | 每周 | Actions、Go 模块（不含 MyGo）与 Cargo |
 

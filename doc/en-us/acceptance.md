@@ -98,7 +98,7 @@ Kyokai runs the same flow with any configured provider, and the live runs so far
 | Rust native libraries load | Verified | ABI smoke test on Windows and macOS CI |
 | GUI works with the packaged core | Verified (Windows) | platform notes: App (ARM64 and x64 packages) |
 | CI artifacts are real packages | Verified (Windows x64) | platform notes: Remote x64 VM (the CI installer) |
-| Release checksums match | Open | no release yet |
+| Release checksums match | Verified (0.1.0) | the downloaded `Kyokai.Setup.0.1.0.arm64.exe` matches `SHA256SUMS.txt`; 0.1.0 lists the installers under their names with spaces, later releases under the names GitHub serves |
 | Missing signing reported | Verified | unsigned builds are labelled; the helper refuses unsigned updates without a prompt |
 | README acknowledgements | Done | README, Acknowledgements |
 | Third-party obligations | Done | [third-party.md](third-party.md), `THIRD_PARTY_NOTICES.md`, `RUST_LICENSES.txt` |

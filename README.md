@@ -74,7 +74,12 @@ tasks use. Controllers only see the model name.
 
 ## Getting Started
 
-Builds are not published yet. See [Building from Source](#building-from-source).
+Download the installer for your computer from the
+[latest release](https://github.com/YuanZhe-99/Kyokai/releases/latest): `Kyokai.Setup.<version>.amd64.exe`
+or `.arm64.exe` for Windows, `Kyokai.<version>.arm64.dmg` (Apple silicon) or `.amd64.dmg` (Intel)
+for macOS; the `.zip` files are portable Windows builds. `SHA256SUMS.txt` lists every file's
+checksum. Then follow the [user guide](doc/en-us/user-guide.md). To build it yourself, see
+[Building from Source](#building-from-source).
 
 ## Building from Source
 

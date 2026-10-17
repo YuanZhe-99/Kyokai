@@ -175,7 +175,15 @@ jobs:
           merge-multiple: true
       - name: Checksums
         working-directory: dist
-        run: sha256sum * > SHA256SUMS.txt
+        # GitHub serves "Kyokai Setup 0.1.0 arm64.exe" as
+        # "Kyokai.Setup.0.1.0.arm64.exe"; rename first so the list names the
+        # files people download.
+        run: |
+          for f in *\ *; do
+            [ -e "$f" ] || continue
+            mv "$f" "${f// /.}"
+          done
+          sha256sum * > SHA256SUMS.txt
       - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
