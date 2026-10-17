@@ -6,9 +6,9 @@ Kyokai is a cross-platform Computer Use application that enables people and AI a
 with computers across devices. It combines secure peer-to-peer connectivity, direct human control,
 and host-side AI execution in one unified experience.
 
-> **Status:** early development, not released yet. On Windows the app, its engine, connections,
-> manual control, AI tasks and the optional privileged helper work; keyboard modes, more software
-> codecs and the macOS pass follow. See [PLAN.md](PLAN.md), the
+> **Status:** 0.1.0, the first release: Windows (x64, ARM64). The app, its engine, connections,
+> manual control, AI tasks and the optional privileged helper work there; the macOS pass and more
+> viewer controls follow. See [PLAN.md](PLAN.md), the
 > [platform notes](doc/en-us/platform-notes.md) (what was verified where) and the
 > [user guide](doc/en-us/user-guide.md).
 
@@ -19,12 +19,12 @@ and host-side AI execution in one unified experience.
 | Persistent Device ID backed by a cryptographic device key, with a friendly name and backup | done (Windows) |
 | Temporary and permanent host passwords, trusted devices, unattended access | done |
 | Connect by Device ID + password over a standard EasyTier network, no IP addresses | done (Windows) |
-| Manual Computer Use: the host's screen (H.264, HEVC, VP9; adaptive quality), mouse, keyboard, clipboard text, images and files, monitors, the remote pointer | done (Windows) |
+| Manual Computer Use: the host's screen (H.264, HEVC, VP9 through Media Foundation; VP8, VP9 and AV1 in software; full colour 4:4:4; adaptive quality), mouse, RustDesk's keyboard modes, clipboard text, images and files, monitors, the remote pointer | done (Windows) |
 | Session actions: lock the screen, Ctrl+Alt+Del, block the host's input, privacy mode | done (Windows): run on a test VM, Ctrl+Alt+Del in the helper mode |
 | AI Computer Use with Claude, OpenAI or any of 20+ provider templates and custom OpenAI-compatible servers, executed on the host with its own key | done (Windows); Claude verified live |
 | Human take-over, pause, cancel, emergency stop; tasks pause at sleep | done |
 | Optional privileged helper for UAC prompts, the lock screen and unattended access | done (Windows); macOS follows |
-| Keyboard modes, libvpx / libaom, 4:4:4 | planned |
+| Viewer controls: original size, full screen, codec preference, per-session clipboard switch | planned |
 | English, Simplified Chinese, Traditional Chinese, Japanese | done |
 
 ## AI Computer Use
