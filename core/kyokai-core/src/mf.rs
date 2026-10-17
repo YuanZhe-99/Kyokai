@@ -194,6 +194,11 @@ pub struct Encoder {
     wanted: u32,
 }
 
+/// Whether a hardware encoder is open in this process: one at a time (the
+/// GPU's encoder may not take several, and several crashed one here); the
+/// others use the software encoder.
+static HARDWARE_IN_USE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// How long one encode waits for a hardware transform's output before the
 /// frame's output is left for the next call.
 const HARDWARE_WAIT: std::time::Duration = std::time::Duration::from_millis(12);
@@ -210,11 +215,14 @@ impl Encoder {
         startup()?;
         // The GPU's encoder, if it opens and encodes a few frames; some need
         // a Direct3D device or reject system memory, so it is tried first.
-        if let Some(t) = find_encoder(true)
-            && let Ok(mut e) = Encoder::open(t, width, height, fps, bitrate, true)
-            && e.works()
-        {
-            return Ok(e);
+        if !HARDWARE_IN_USE.swap(true, std::sync::atomic::Ordering::AcqRel) {
+            if let Some(t) = find_encoder(true)
+                && let Ok(mut e) = Encoder::open(t, width, height, fps, bitrate, true)
+                && e.works()
+            {
+                return Ok(e);
+            }
+            HARDWARE_IN_USE.store(false, std::sync::atomic::Ordering::Release);
         }
         let t = find_encoder(false).ok_or("this system has no H.264 encoder")?;
         Encoder::open(t, width, height, fps, bitrate, false)
@@ -373,6 +381,26 @@ impl Encoder {
                 }
                 Err(e) => return Err(e),
             }
+        }
+    }
+}
+
+impl Drop for Encoder {
+    fn drop(&mut self) {
+        if self.events.is_some() {
+            // An asynchronous transform runs threads of its own: it is shut
+            // down before its last reference goes, so none of them calls
+            // into freed objects.
+            // SAFETY: streaming messages and shutdown on the transform, which
+            // is not used afterwards.
+            unsafe {
+                let _ = self.t.ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
+                let _ = self.t.ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
+                if let Ok(s) = self.t.cast::<IMFShutdown>() {
+                    let _ = s.Shutdown();
+                }
+            }
+            HARDWARE_IN_USE.store(false, std::sync::atomic::Ordering::Release);
         }
     }
 }
