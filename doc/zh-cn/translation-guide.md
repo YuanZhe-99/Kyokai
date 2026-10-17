@@ -62,6 +62,8 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | lifeline | 生命线 |
 | state directory | 状态目录 |
 | secrets store | 机密存储 |
+| keyboard mode (Map / Translate / Legacy) | 键盘模式（映射 / 翻译 / 传统） |
+| scan code | 扫描码 |
 | spike | 可行性验证（spike） |
 | software codec | 软件编解码器 |
 | full colour (4:4:4) | 全彩（4:4:4） |

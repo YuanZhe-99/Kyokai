@@ -76,19 +76,42 @@ The viewer sends input only for a session granted `control-input`; the host chec
 |---|---|
 | pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses on the bars around it are dropped, releases always sent |
 | scroll | `{kind: "scroll", dx, dy}` in lines (touchpad pixels ÷ 40); positive `dy` moves the content down |
-| a key without Ctrl, Alt or Win that types | nothing: its text follows |
-| text | `{kind: "text", text}`: typed as Unicode characters, so the controller's layout and dead keys decide |
-| other keys and shortcuts | `{kind: "key", key, down, mods}` by name (`enter`, `f5`, `page-down`, `c` with Ctrl, …); a release only when its press was sent |
+| a key, in Map or Translate mode | `{kind: "scan", code, down, caps, num}`: the key's scan code as Windows numbers it (the set-1 code, 0xE0xx for extended keys, 0xE11D for Pause) with the controller's CapsLock and NumLock ([Keyboard modes](#keyboard-modes)) |
+| text | `{kind: "text", text}`: typed as Unicode characters, so the controller's layout and dead keys decide (Translate and Legacy) |
+| Legacy: a key without Ctrl, Alt or Win that types | nothing: its text follows |
+| Legacy: other keys and shortcuts | `{kind: "key", key, down, mods}` by name (`enter`, `f5`, `page-down`, `c` with Ctrl, …); a release only when its press was sent |
 
 The host injects with `SendInput`: absolute moves over the display shown (mapped onto the virtual
-desktop, so a display left of or above the primary works too), extended-key flags
-for the navigation keys, modifiers pressed and released to match each key, every event tagged as
+desktop, so a display left of or above the primary works too), scan-code keys with
+`KEYEVENTF_SCANCODE` (and the extended flag for 0xE0 codes; Pause by its virtual key), named keys
+with extended-key flags for the navigation keys and modifiers pressed and released to match each key, every event tagged as
 Kyokai's (`dwExtraInfo`) so local input can be told apart. Nothing is injected into a Kyokai
 window: pointer presses and moves are dropped when the window under the point is Kyokai's, the
 wheel when the window under the pointer is, keys and text when Kyokai's window has the focus;
 releases always pass. Kyokai's windows are left out of capture, so a check by focus alone refused
 clicks on windows the viewer and the model do see while Kyokai's unseen window was in front.
 Whatever a session holds is released when it ends. Malformed events are dropped without ending the session.
+
+### Keyboard modes
+
+The viewer offers RustDesk's three keyboard modes; its bar chooses one for every viewer and Kyokai
+remembers it (Map unless chosen). Map and Translate need the controller to grab the keyboard, which
+only Windows controllers do so far; elsewhere every viewer works in Legacy mode.
+
+| Mode | On the controller | On the host |
+|---|---|---|
+| Map | while the picture has the focus and its window is in front, a low-level keyboard hook in the core takes every key by scan code before the controller's windows see it: Win, Alt+Tab, Alt+F4 and every shortcut go to the host; CapsLock, NumLock and ScrollLock act on the controller too | each key by scan code, so the host's layout decides what it types |
+| Translate | a key that makes a character on the controller's layout with the modifiers held (a dead key too; not with Win, or with Ctrl or Alt alone) stays with the controller, whose layout and input method type it, and its text is sent; Shift, Ctrl, Alt and the lock keys go both ways; AltGr stays the controller's; every other key and shortcut is taken by scan code | text as Unicode, the other keys by scan code |
+| Legacy | the GUI toolkit's key events as above: no Win key, no shortcut the window consumes, no left or right modifier, numpad keys by their meaning | named keys and Unicode |
+
+Each key the grab takes carries the controller's CapsLock and NumLock: before a letter the host
+presses its own CapsLock if it differs, before a numpad key whose meaning NumLock changes its
+NumLock, as RustDesk's input service does. The keys Windows makes up (the Ctrl that comes with
+AltGr, the Shift around numpad keys) are not sent; the host's layout makes its own. Keys the grab
+sent down are released when their window leaves the front, its grab ends or the mode changes; keys
+other programs inject on the controller are left alone. The hook is installed with the first grab
+and removed with the last. Ctrl+Alt+Del cannot be taken (Windows shows it to no hook); the bar's
+button sends it in the helper modes.
 
 ### Session actions
 
@@ -246,6 +269,6 @@ continues it until the engine stops.
 
 ## Not yet
 
-Keyboard modes and files on the clipboard are Phase 3 steps that follow. macOS capture,
+Files on the clipboard are a Phase 3 step that follows. macOS capture,
 VideoToolbox (H.264 and HEVC) and AI tasks on macOS come with the Mac pass (PLAN.md); the software
 codecs are part of the macOS build too.

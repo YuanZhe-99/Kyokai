@@ -40,6 +40,17 @@ func TestRealLibrary(t *testing.T) {
 	if err := l.Call("no.such.method", nil, nil); err == nil {
 		t.Fatal("an unknown method must fail")
 	}
+	// The keyboard grab: ending one that never began and a bad request
+	// install nothing; no key is waiting.
+	if err := l.KeyboardGrab(1, "off"); err != nil {
+		t.Fatal(err)
+	}
+	if l.KeyboardGrab(1, "legacy") == nil || l.KeyboardGrab(0, "map") == nil {
+		t.Fatal("a bad grab must fail")
+	}
+	if _, ok, err := l.Keyboard().Read(time.Millisecond); ok || (err != nil) != (runtime.GOOS != "windows") {
+		t.Fatalf("read: %v %v", ok, err)
+	}
 	// The viewer's decoder: raw test-pattern frames pass through.
 	dec, err := l.OpenDecoder([]byte(`{"codec":"raw-rgba","width":2,"height":1}`))
 	if err != nil {

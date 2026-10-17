@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"encoding/json"
 	"image"
 	"image/png"
 	"io/fs"
@@ -16,6 +17,7 @@ import (
 	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/YuanZhe-99/Kyokai/internal/core"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 )
 
@@ -248,6 +250,10 @@ func TestViewerRenders(t *testing.T) {
 			v.displays.Current = 1
 		},
 		"viewer-ai-new": func(v *viewer) { v.state, v.ai = "This session does not show the screen.", viewerAI{run: true} },
+		"viewer-actions": func(v *viewer) {
+			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
+			v.app, v.control, v.actions = &App{}, true, &hostActions{CtrlAltDel: true}
+		},
 	}
 	for name, setup := range cases {
 		v := &viewer{device: "657365333"}
@@ -277,26 +283,35 @@ func TestViewerInputMapping(t *testing.T) {
 	}
 	held := map[ui.Key]bool{}
 	cases := []struct {
-		name string
-		ev   ui.InputEvent
-		want *inputEvent
+		name    string
+		ev      ui.InputEvent
+		grabbed string
+		want    *inputEvent
 	}{
-		{"click centre", ui.InputEvent{Kind: ui.InputPointerDown, X: 400, Y: 300}, &inputEvent{Kind: "pointer", Action: "down", X: 0.5, Y: 0.5}},
-		{"press on the bar", ui.InputEvent{Kind: ui.InputPointerDown, X: 400, Y: 20}, nil},
-		{"release on the bar still goes", ui.InputEvent{Kind: ui.InputPointerUp, X: 400, Y: 20}, &inputEvent{Kind: "pointer", Action: "up", X: 0.5, Y: 0}},
-		{"right button", ui.InputEvent{Kind: ui.InputPointerDown, Button: 1, X: 0, Y: 75}, &inputEvent{Kind: "pointer", Action: "down", Button: 1, X: 0, Y: 0}},
-		{"letter types as text", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyA}, nil},
-		{"text", ui.InputEvent{Kind: ui.InputText, Text: "é"}, &inputEvent{Kind: "text", Text: "é"}},
-		{"shortcut goes as a key", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyC, Mods: ui.Ctrl},
+		{"click centre", ui.InputEvent{Kind: ui.InputPointerDown, X: 400, Y: 300}, "", &inputEvent{Kind: "pointer", Action: "down", X: 0.5, Y: 0.5}},
+		{"press on the bar", ui.InputEvent{Kind: ui.InputPointerDown, X: 400, Y: 20}, "", nil},
+		{"release on the bar still goes", ui.InputEvent{Kind: ui.InputPointerUp, X: 400, Y: 20}, "", &inputEvent{Kind: "pointer", Action: "up", X: 0.5, Y: 0}},
+		{"right button", ui.InputEvent{Kind: ui.InputPointerDown, Button: 1, X: 0, Y: 75}, "", &inputEvent{Kind: "pointer", Action: "down", Button: 1, X: 0, Y: 0}},
+		{"letter types as text", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyA}, "", nil},
+		{"text", ui.InputEvent{Kind: ui.InputText, Text: "é"}, "", &inputEvent{Kind: "text", Text: "é"}},
+		{"shortcut goes as a key", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyC, Mods: ui.Ctrl}, "",
 			&inputEvent{Kind: "key", Key: "c", Down: true, Mods: &inputMods{Ctrl: true}}},
-		{"its release follows", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyC},
+		{"its release follows", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyC}, "",
 			&inputEvent{Kind: "key", Key: "c", Down: false, Mods: &inputMods{}}},
-		{"a release never pressed is dropped", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyC}, nil},
-		{"enter", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyEnter}, &inputEvent{Kind: "key", Key: "enter", Down: true, Mods: &inputMods{}}},
-		{"touchpad scroll in pixels", ui.InputEvent{Kind: ui.InputScroll, DY: 80, Precise: true}, &inputEvent{Kind: "scroll", DY: 2}},
+		{"a release never pressed is dropped", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyC}, "", nil},
+		{"enter", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyEnter}, "", &inputEvent{Kind: "key", Key: "enter", Down: true, Mods: &inputMods{}}},
+		{"touchpad scroll in pixels", ui.InputEvent{Kind: ui.InputScroll, DY: 80, Precise: true}, "", &inputEvent{Kind: "scroll", DY: 2}},
+		// While the core grabs the keyboard, keys come from the grab; text only
+		// in Translate mode, and a release whose press was sent still goes.
+		{"held before the grab", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyF5}, "", &inputEvent{Kind: "key", Key: "f5", Down: true, Mods: &inputMods{}}},
+		{"map: no keys", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyEnter}, "map", nil},
+		{"map: no text", ui.InputEvent{Kind: ui.InputText, Text: "a"}, "map", nil},
+		{"map: the release of a sent press", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyF5}, "map", &inputEvent{Kind: "key", Key: "f5", Mods: &inputMods{}}},
+		{"translate: no keys", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyC, Mods: ui.Ctrl}, "translate", nil},
+		{"translate: text", ui.InputEvent{Kind: ui.InputText, Text: "ü"}, "translate", &inputEvent{Kind: "text", Text: "ü"}},
 	}
 	for _, c := range cases {
-		got, ok := toEvent(c.ev, box, 1600, 900, held)
+		got, ok := toEvent(c.ev, box, 1600, 900, held, c.grabbed)
 		if (c.want == nil) != !ok {
 			t.Errorf("%s: sent=%v, want sent=%v", c.name, ok, c.want != nil)
 			continue
@@ -304,6 +319,19 @@ func TestViewerInputMapping(t *testing.T) {
 		if c.want != nil && !reflect.DeepEqual(got, *c.want) {
 			t.Errorf("%s: %+v, want %+v", c.name, got, *c.want)
 		}
+	}
+}
+
+// TestScanEvent: a key the grab took crosses as the host's scan event
+// (input::Event::Scan), with the controller's lock state.
+func TestScanEvent(t *testing.T) {
+	var got map[string]any
+	b, _ := json.Marshal(scanEvent(core.KeyEvent{Window: 7, Code: 0xE01D, Down: 1, Caps: 1}))
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["kind"] != "scan" || got["code"] != float64(0xE01D) || got["down"] != true || got["caps"] != true || got["num"] != nil {
+		t.Fatalf("%s", b)
 	}
 }
 

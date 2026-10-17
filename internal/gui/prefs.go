@@ -29,6 +29,9 @@ type Prefs struct {
 	CheckAppUpdates bool      `json:"check_app_updates"`
 	LastAppCheck    time.Time `json:"last_app_check,omitzero"`
 	AnnouncedApp    string    `json:"announced_app,omitempty"`
+	// KeyboardMode is the viewers' keyboard mode: "map" (also when empty),
+	// "translate" or "legacy".
+	KeyboardMode string `json:"keyboard_mode,omitempty"`
 }
 
 func defaultPrefs() Prefs { return Prefs{Theme: "system", CheckAppUpdates: true} }

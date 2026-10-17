@@ -69,6 +69,9 @@ type App struct {
 	passphrase string
 	// Open viewer windows by session id (viewer.go).
 	viewers map[uint64]*viewer
+	// keyReader starts the reader of the keys the viewers' keyboard grab
+	// takes (viewerinput.go), once.
+	keyReader sync.Once
 	// The AI page (ai.go).
 	ai aiState
 

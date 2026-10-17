@@ -16,6 +16,7 @@ mod clipboard;
 mod decode;
 mod identity;
 mod input;
+mod keyboard;
 mod media;
 #[cfg(windows)]
 mod mf;
@@ -37,7 +38,7 @@ use std::sync::{Arc, Mutex};
 
 /// Version of the C ABI. Hosts compare it with their own before any other
 /// call; changing an export's signature or meaning bumps it.
-pub const ABI_VERSION: u32 = 2;
+pub const ABI_VERSION: u32 = 3;
 
 /// The running core: what `kyokai_start` set up, until `kyokai_stop`.
 struct Core {
@@ -321,6 +322,67 @@ pub unsafe extern "C" fn kyokai_decoder_decode(
 #[unsafe(no_mangle)]
 pub extern "C" fn kyokai_decoder_close(id: u64) {
     let _ = catch_unwind(|| decode::close(id));
+}
+
+/// Grabs the keyboard for a viewer window, or ends its grab
+/// (doc/en-us/computer-use.md, "Keyboard modes"). Needs no started core.
+/// Inputs: `window` — the viewer's native window handle; `mode`/`len` — the
+/// mode's name (`map`, `translate`, `off`), borrowed for the call.
+/// Returns: 0; -1 for an unknown mode or no window; -2 when the keyboard cannot be
+/// grabbed here (no hook, or not Windows yet).
+///
+/// # Safety
+/// `mode` points to `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kyokai_keyboard_grab(window: usize, mode: *const u8, len: usize) -> i32 {
+    if mode.is_null() {
+        return -1;
+    }
+    // SAFETY: the caller guarantees `len` readable bytes at `mode`.
+    let name = unsafe { std::slice::from_raw_parts(mode, len) };
+    let Some(mode) = std::str::from_utf8(name)
+        .ok()
+        .and_then(keyboard::Mode::from_name)
+    else {
+        return -1;
+    };
+    // No window is in front at times (handle 0): a grab for it would take
+    // keys from whatever comes next.
+    if window == 0 && mode.is_some() {
+        return -1;
+    }
+    match catch_unwind(|| keyboard::grab(window, mode)) {
+        Ok(true) => 0,
+        Ok(false) if mode.is_none() => 0,
+        _ => -2,
+    }
+}
+
+/// Waits for the next key the keyboard grab took for a viewer.
+/// Inputs: `out` — a `keyboard::KeyEvent` the caller owns, written by the
+/// core.
+/// Returns: 1 with the key in `*out`; 0 when `timeout_ms` passed without
+/// one; -2 when the keyboard cannot be grabbed here.
+///
+/// # Safety
+/// `out` is valid for a write of one `keyboard::KeyEvent`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kyokai_keyboard_read(
+    out: *mut keyboard::KeyEvent,
+    timeout_ms: u32,
+) -> i32 {
+    if out.is_null() || !cfg!(windows) {
+        return -2;
+    }
+    match catch_unwind(|| keyboard::next(std::time::Duration::from_millis(timeout_ms.into()))) {
+        Ok(Some(e)) => {
+            // SAFETY: the caller guarantees `out` is writable.
+            unsafe { out.write(e) };
+            1
+        }
+        Ok(None) => 0,
+        Err(_) => -2,
+    }
 }
 
 /// Frees a response buffer from `kyokai_start` or `kyokai_call`.

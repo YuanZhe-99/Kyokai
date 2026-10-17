@@ -17,7 +17,7 @@ import (
 
 // ABIVersion is the C ABI this package speaks; the library must report the
 // same one.
-const ABIVersion = 2
+const ABIVersion = 3
 
 // LibraryName is the file name of the core library on this platform.
 func LibraryName() string {
@@ -35,6 +35,7 @@ type Lib struct {
 	abiVersion, start, call, stop, free uintptr
 	mediaRead, mediaWrite               uintptr
 	decOpen, decDecode, decClose        uintptr
+	kbGrab, kbRead                      uintptr
 	mu                                  sync.Mutex // the core is one process-wide instance
 	// out receives a response's buffer. It lives in the Lib (on the heap,
 	// which never moves) rather than on a goroutine stack, which may move
@@ -103,6 +104,7 @@ func Load(path string) (*Lib, error) {
 		"kyokai_stop": &l.stop, "kyokai_free": &l.free,
 		"kyokai_media_read": &l.mediaRead, "kyokai_media_write": &l.mediaWrite,
 		"kyokai_decoder_open": &l.decOpen, "kyokai_decoder_decode": &l.decDecode, "kyokai_decoder_close": &l.decClose,
+		"kyokai_keyboard_grab": &l.kbGrab, "kyokai_keyboard_read": &l.kbRead,
 	} {
 		if *dst, err = symbol(h, name); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
@@ -273,4 +275,65 @@ func (d *Decoder) Decode(frame, out []byte) (int, int, bool, error) {
 // Close releases the decoder.
 func (d *Decoder) Close() {
 	syscallN(d.l.decClose, uintptr(d.id))
+}
+
+// ErrNoKeyboard reports that the core cannot grab the keyboard here (no
+// hook, or not Windows yet).
+var ErrNoKeyboard = errors.New("the keyboard cannot be grabbed here")
+
+// KeyEvent is a key the core's keyboard grab took for a viewer
+// (keyboard::KeyEvent): its scan code as Windows numbers it, and the
+// controller's CapsLock and NumLock after it.
+type KeyEvent struct {
+	Window          uintptr
+	Code            uint32
+	Down, Caps, Num uint8
+	_               uint8
+}
+
+// KeyboardGrab grabs the keyboard for a viewer window (its native handle)
+// in mode "map" or "translate", or ends its grab with "off". Keys are taken
+// only while that window is in front; they arrive through Keyboard.Read.
+// Returns: ErrNoKeyboard where the hook is unavailable.
+// Side effects: the core installs its keyboard hook with the first grab and
+// removes it with the last; an ending grab releases the keys it held.
+func (l *Lib) KeyboardGrab(window uintptr, mode string) error {
+	b := []byte(mode)
+	rc := int32(syscallN(l.kbGrab, window, uintptr(unsafe.Pointer(unsafe.SliceData(b))), uintptr(len(b))))
+	runtime.KeepAlive(b)
+	switch rc {
+	case 0:
+		return nil
+	case -1:
+		return fmt.Errorf("unknown keyboard mode %q", mode)
+	}
+	return ErrNoKeyboard
+}
+
+// Keyboard reads the keys the core's keyboard grab takes. Use one from one
+// goroutine.
+type Keyboard struct {
+	l *Lib
+	// ev receives a key. It lives in the Keyboard (a heap object, which
+	// never moves) rather than on a goroutine stack.
+	ev KeyEvent
+}
+
+// Keyboard returns a reader of grabbed keys.
+func (l *Lib) Keyboard() *Keyboard { return &Keyboard{l: l} }
+
+// Read waits up to timeout for the next grabbed key.
+// Returns: the key and true; false when none came in time; ErrNoKeyboard
+// where the hook is unavailable.
+// Notes: blocks its goroutine's OS thread without the Lib's lock.
+func (k *Keyboard) Read(timeout time.Duration) (KeyEvent, bool, error) {
+	rc := int32(syscallN(k.l.kbRead, uintptr(unsafe.Pointer(&k.ev)), uintptr(timeout.Milliseconds())))
+	runtime.KeepAlive(k)
+	switch rc {
+	case 1:
+		return k.ev, true, nil
+	case 0:
+		return KeyEvent{}, false, nil
+	}
+	return KeyEvent{}, false, ErrNoKeyboard
 }

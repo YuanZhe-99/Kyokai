@@ -2950,6 +2950,56 @@ func (msgs Messages) ViewerEnded() string {
 	return Catalog.Format(msgs.locale, "ViewerEnded", nil)
 }
 
+// ViewerKeyboard says "Keyboard"
+// in the language the app shows.
+func ViewerKeyboard() string { return In(i18n.Locale()).ViewerKeyboard() }
+
+// ViewerKeyboard says "Keyboard"
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboard() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboard", nil)
+}
+
+// ViewerKeyboardHint says "Map sends each key by its place on the keyboard, and the other computer's layout decides what it types. Translate typ…"
+// in the language the app shows.
+func ViewerKeyboardHint() string { return In(i18n.Locale()).ViewerKeyboardHint() }
+
+// ViewerKeyboardHint says "Map sends each key by its place on the keyboard, and the other computer's layout decides what it types. Translate typ…"
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardHint() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardHint", nil)
+}
+
+// ViewerKeyboardLegacy says "Legacy"
+// in the language the app shows.
+func ViewerKeyboardLegacy() string { return In(i18n.Locale()).ViewerKeyboardLegacy() }
+
+// ViewerKeyboardLegacy says "Legacy"
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardLegacy() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardLegacy", nil)
+}
+
+// ViewerKeyboardMap says "Map"
+// in the language the app shows.
+func ViewerKeyboardMap() string { return In(i18n.Locale()).ViewerKeyboardMap() }
+
+// ViewerKeyboardMap says "Map"
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardMap() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardMap", nil)
+}
+
+// ViewerKeyboardTranslate says "Translate"
+// in the language the app shows.
+func ViewerKeyboardTranslate() string { return In(i18n.Locale()).ViewerKeyboardTranslate() }
+
+// ViewerKeyboardTranslate says "Translate"
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardTranslate() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardTranslate", nil)
+}
+
 // ViewerLock says "Lock screen"
 // in the language the app shows.
 func ViewerLock() string { return In(i18n.Locale()).ViewerLock() }
