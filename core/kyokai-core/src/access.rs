@@ -23,6 +23,8 @@ pub enum Permission {
     RunAiTask,
     ApproveAiAction,
     Clipboard,
+    /// Copying files through the clipboard; `Clipboard` does not include it.
+    Files,
 }
 
 /// Why a host refused a controller (names cross the wire and the FFI).

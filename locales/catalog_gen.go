@@ -2052,6 +2052,16 @@ func (msgs Messages) PermControlInput() string {
 	return Catalog.Format(msgs.locale, "PermControlInput", nil)
 }
 
+// PermFiles says "Copy files"
+// in the language the app shows.
+func PermFiles() string { return In(i18n.Locale()).PermFiles() }
+
+// PermFiles says "Copy files"
+// in the language of msgs.
+func (msgs Messages) PermFiles() string {
+	return Catalog.Format(msgs.locale, "PermFiles", nil)
+}
+
 // PermRunAITask says "Run AI tasks"
 // in the language the app shows.
 func PermRunAITask() string { return In(i18n.Locale()).PermRunAITask() }

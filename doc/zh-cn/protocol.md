@@ -1,7 +1,7 @@
 # 线路协议
 
 控制端经由 EasyTier 数据面连接被控端的引擎：TCP 连到被控端的虚拟 IPv4 地址、端口 47310（[networking.md](networking.md)）。
-EasyTier 是不可信的通道，所以会话在它之上做端到端的认证与加密。协议版本为 4（版本 2 加入了 AI 与剪贴板消息，版本 3 加入了会话操作，版本 4 加入了键盘模式的扫描码按键事件）。
+EasyTier 是不可信的通道，所以会话在它之上做端到端的认证与加密。协议版本为 4（版本 2 加入了 AI 与剪贴板消息，版本 3 加入了会话操作，版本 4 加入了键盘模式的扫描码按键事件与剪贴板中的文件）。
 
 ## 分帧
 
@@ -63,7 +63,11 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 `{"type": "display", index}` 请求另一个显示器。发送视频期间，被控端还会在指针移动时发送 `{"type": "cursor", x, y, visible}`，即以画面比例表示的指针位置。拥有 `control-input` 时，被控端在会话开始时发送
 `{"type": "actions", ctrl_alt_del, blocked, privacy}`（阻止或隐私模式变化时也会发送），控制端可以发送 `{"type": "action", action}`，其值为 `lock`、`ctrl-alt-del`、`block`、`unblock`、
 `privacy-on` 或 `privacy-off`（[computer-use.md](computer-use.md)）。拥有 `clipboard` 时，任一端都会为本端复制的文本发送 `{"type": "clipboard", text}`（最大 1 MiB），为图片发送
-`{"type": "clipboard-image", png}`（8 位 RGBA PNG 的 base64，最多 3 MiB、3840×2160）。只有在控制端可以查看屏幕时，被控端才发送视频：它的屏幕（以从 `codecs` 中选定的编解码器），或在无法采集的被控端上发送
+`{"type": "clipboard-image", png}`（8 位 RGBA PNG 的 base64，最多 3 MiB、3840×2160）。拥有 `files` 时，任一端用 `{"type": "clipboard-files", id,
+files}` 提供本端复制的文件，每个文件为 `{path, size, dir}`（名称之间用 `/` 分隔的相对路径；最多 1000 项、1 GiB）；
+另一端用 `{"type": "files-get", id}` 接受，之后可以用 `{"type": "files-stop", id}` 请发送方停止，发送方用
+`{"type": "files-cancel", id}` 放弃已被接受的提供（[computer-use.md](computer-use.md)，“文件”）。内容随后以明文发送：以字节 `0x03`
+和提供的 id（u64，大端）开头，然后是字节：按顺序依次为该提供的每个文件，每个恰好 `size` 字节；较新的提供取代较旧的。只有在控制端可以查看屏幕时，被控端才发送视频：它的屏幕（以从 `codecs` 中选定的编解码器），或在无法采集的被控端上发送
 320×180 的原始 RGBA 测试图案（编解码器 `raw-rgba`）。
 
 ## AI 任务

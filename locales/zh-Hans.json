@@ -201,6 +201,7 @@
   "PermApproveAIAction": "批准 AI 操作",
   "PermClipboard": "共享剪贴板",
   "PermControlInput": "使用鼠标和键盘",
+  "PermFiles": "复制文件",
   "PermRunAITask": "运行 AI 任务",
   "PermViewScreen": "查看屏幕",
   "PermanentNotSet": "未设置。其他设备只能用主页上的临时密码连接。",

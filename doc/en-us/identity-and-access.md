@@ -16,7 +16,8 @@ slots are set.
 
 ## Permissions
 
-`view-screen`, `control-input`, `run-ai-task`, `approve-ai-action`, `clipboard`. A controller asks
+`view-screen`, `control-input`, `run-ai-task`, `approve-ai-action`, `clipboard`, `files`
+(copying files through the clipboard; `clipboard` does not include it). A controller asks
 for a set; the host's user grants a subset; none implies another. Network membership grants none of
 them. `run-ai-task` lets a controller start and steer its own AI tasks on the host, which run with
 the host's key; `approve-ai-action` lets it answer their approvals

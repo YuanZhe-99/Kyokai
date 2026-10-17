@@ -120,7 +120,7 @@ certificates are needed, and privileged processes (Phase 6) relay encoded bytes 
 | 3.5 Input (done; the real run on the VM's desktop is left) | mouse and keyboard to the host only with `control-input`, virtual-desktop coordinates, nothing into Kyokai's own windows, held keys released | typing and clicking into apps on the VM |
 | 3.6 QoS (done) | RustDesk's `video_qos.rs`, delay probes, bitrate / frame-rate adaptation, presets | adapts on the VM path; unchanged frames skipped |
 | 3.7 Codecs (negotiation, Media Foundation's HEVC and VP9, libvpx VP8 / VP9, libaom AV1 and 4:4:4 done in code; H.264 preferred because the GPU's HEVC did not decode at 720p and above; the run on two machines left) | VP8 / VP9 (libvpx), AV1 (libaom), HEVC through Media Foundation, negotiation, 4:4:4 | every codec the plan lists, chosen by capability |
-| 3.8 Manual control (clipboard text and images, the remote pointer and display choice done; keyboard modes and clipboard files left) | RustDesk keyboard modes with rdev, clipboard (arboard), multi-monitor and DPI | §26 Manual Computer Use on Windows |
+| 3.8 Manual control (clipboard text, images and files, the remote pointer, display choice and keyboard modes done in code; multi-monitor and the keyboard modes on real hardware left) | RustDesk keyboard modes with rdev, clipboard (arboard), multi-monitor and DPI | §26 Manual Computer Use on Windows |
 
 Testing: this machine as controller, the remote VM as host. Capture needs the host engine in the
 VM's interactive desktop session, not the SSH session.

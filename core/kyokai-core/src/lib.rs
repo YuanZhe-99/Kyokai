@@ -14,6 +14,7 @@ mod auth;
 mod backup;
 mod clipboard;
 mod decode;
+mod files;
 mod identity;
 mod input;
 mod keyboard;

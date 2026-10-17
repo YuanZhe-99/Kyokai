@@ -25,6 +25,14 @@
 Sharing needs the `clipboard` permission, starts with copies made after the session began and
 never offers text that Kyokai itself copied ([computer-use.md](computer-use.md)).
 
+Files need the separate `files` permission. The receiving side checks every offered path (no
+absolute paths, `..`, reserved characters or device names, no duplicates) and the limits (1000
+entries, 1 GiB) before anything is written, writes only inside a folder created for the session
+with names it creates new (never overwriting), and deletes that folder when the session ends.
+The sender never follows links or junctions. In the helper modes the files are read and written
+while impersonating the console's signed-in user, so a path put on the clipboard grants nothing
+that user could not read.
+
 ## AI tasks
 
 - The model runs on the host's provider account: each source's key goes only to that source, over
@@ -91,6 +99,7 @@ caller's token (its user and its enabled groups); an administrator outside them 
 | The helper | a local user driving the SYSTEM service, or swapping what it runs | peer credentials, the operator and the `kyokai` group only; its files are administrator-owned copies; the state folder is SYSTEM and Administrators only |
 | Helper updates | a local user swapping the app's files to have SYSTEM run them | the release key's signature over every file's hash, read once and installed as verified; unsigned builds need an administrator prompt |
 | The session agent | a local process posing as the helper or the agent to inject as SYSTEM, or feeding them media to decode | random pipe names created as the first instance, SYSTEM-only DACLs, each side checks the other's process id; neither decodes remote media |
+| Files on the clipboard | a peer writing outside the receiving folder, overwriting files, filling the disk, or making the helper read files as SYSTEM | the `files` permission; every path checked (no `..`, absolute paths, reserved names or devices) and written only as new files inside the session's folder, deleted when the session ends; 1000 entries and 1 GiB per offer, checked on both sides and while receiving; the helper reads and writes as the console's user and never interprets the bytes |
 | The host user's control | a controller locking them out with the input block or privacy mode | both need `control-input`, end with the session, and the host user lifts them with Ctrl+Alt+Shift+Esc (seen by the block's own hook) or Ctrl+Alt+Del (never hookable); Ctrl+Alt+Del is sent only by the helper, with the services policy switched on just for the call |
 
 Out of scope: malware running as the same user (it can drive the desktop anyway), someone at the

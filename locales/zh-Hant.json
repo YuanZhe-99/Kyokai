@@ -201,6 +201,7 @@
   "PermApproveAIAction": "核准 AI 操作",
   "PermClipboard": "共用剪貼簿",
   "PermControlInput": "使用滑鼠和鍵盤",
+  "PermFiles": "複製檔案",
   "PermRunAITask": "執行 AI 任務",
   "PermViewScreen": "檢視螢幕",
   "PermanentNotSet": "未設定。其他裝置只能用首頁上的臨時密碼連線。",

@@ -36,8 +36,8 @@ networks allow it; Windows may then ask to let Kyokai through its firewall.
 ## Control another device
 
 Under **Control another device** on Home, enter the other device's Device ID and its password and
-choose **Connect**. By default you ask to see the screen, use the mouse and keyboard and share the
-clipboard; switch on **Also ask to run AI tasks there** to ask for the AI permissions as well. The
+choose **Connect**. By default you ask to see the screen, use the mouse and keyboard, share the
+clipboard and copy files; switch on **Also ask to run AI tasks there** to ask for the AI permissions as well. The
 other computer's user then sees your request and chooses what to allow:
 
 | Permission | Lets you |
@@ -45,6 +45,7 @@ other computer's user then sees your request and chooses what to allow:
 | See the screen | watch the other computer's screen |
 | Use the mouse and keyboard | operate it from the picture |
 | Share the clipboard | copy text on one side and paste it on the other |
+| Copy files | copy files or folders on one side and paste them on the other (up to 1000 items and 1 GiB at a time) |
 | Run AI tasks | give the other computer's AI a task and steer it |
 | Approve AI actions | answer the approvals of those tasks |
 

@@ -277,10 +277,11 @@ const (
 	PermRunAITask       = "run-ai-task"
 	PermApproveAIAction = "approve-ai-action"
 	PermClipboard       = "clipboard"
+	PermFiles           = "files"
 )
 
 // AllPermissions in the order the interface lists them.
-var AllPermissions = []string{PermViewScreen, PermControlInput, PermRunAITask, PermApproveAIAction, PermClipboard}
+var AllPermissions = []string{PermViewScreen, PermControlInput, PermRunAITask, PermApproveAIAction, PermClipboard, PermFiles}
 
 // Response is one line from the engine: an answer, or a pushed frame of a
 // session.
