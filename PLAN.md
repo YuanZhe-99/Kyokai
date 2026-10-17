@@ -182,6 +182,24 @@ VideoToolbox (`AverageBitRate`, `ForceKeyFrame`, `RealTime`) provide these; an e
 a live bitrate change is recreated. Full-colour 4:4:4 stays a software VP9 / AV1 option, as in
 RustDesk. Done when each encoder follows the QoS on two machines.
 
+## Phase 6 breakdown (proposed 2026-10-17, to decide with the user)
+
+The helper comes from Easytier-MyGo's `internal/helper` and `internal/bundlesig` (install,
+uninstall, status, protected copies, read-once verified self-update); the session agents from
+RustDesk's Windows service and portable service (SYSTEM token in the console session) and its
+macOS LaunchDaemon / LaunchAgent scripts.
+
+| Step | Scope | Done when |
+|---|---|---|
+| 6.1 Helper | `kyokai-svc helper install / uninstall / status`: protected copies, a SYSTEM service (Windows) or root LaunchDaemon (macOS), the helper's local API socket for the operator and the `kyokai` group | one administrator prompt installs it; status shows it; uninstall leaves nothing |
+| 6.2 Session agent | `kyokai-svc agent`, started by the helper in the active console session with a SYSTEM token: captures the input desktop (also the UAC secure desktop and the lock screen) and injects there; talks to the helper over a local pipe; encoded video only crosses | a UAC prompt and the lock screen show in the viewer and take input |
+| 6.3 Run modes | Settings: No privileges / Follow GUI / Background service; the engine runs in the helper; the secrets store moves by one operator-only call; Background admits only unattended grants | switching modes keeps the Device ID and trusted devices; Background serves before login |
+| 6.4 Updates | the helper verifies a signed bundle read once and installs those bytes; macOS by code-signing requirement | an update from the previous build installs without a new prompt (signed) |
+| 6.5 Self-disable | the helper stops itself when the app is removed | uninstalling the app leaves no running helper |
+
+Needs from the user: approval to install the helper (an administrator prompt) on this machine and
+on the VM for each test, and to uninstall it afterwards; the VM's interactive session for 6.2.
+
 ## Decided (2026-10-16)
 
 - No EasyTier listeners by default (outbound + hole punching, no firewall or Local Network
