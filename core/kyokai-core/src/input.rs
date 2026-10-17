@@ -35,6 +35,42 @@ pub enum Event {
     Text { text: String },
 }
 
+/// The window an event is checked against before it is injected, so that
+/// remote and AI input never reaches a Kyokai window.
+/// Notes: Kyokai's windows are left out of capture, so a check by focus
+/// alone would refuse clicks on windows the viewer does see while Kyokai's
+/// (unseen) window is in front.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(not(windows), allow(dead_code))]
+enum Guard {
+    /// Releases: they end what was pressed elsewhere and start nothing.
+    None,
+    /// Pointer presses and moves: the window under this point (fractions
+    /// of the shared picture).
+    At(f32, f32),
+    /// The wheel: the window under the pointer.
+    Pointer,
+    /// Keys and text: the focused window.
+    Focus,
+}
+
+impl Event {
+    /// Which window this event is checked against.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    fn guard(&self) -> Guard {
+        match self {
+            Event::Pointer {
+                action: PointerAction::Up,
+                ..
+            }
+            | Event::Key { down: false, .. } => Guard::None,
+            Event::Pointer { x, y, .. } => Guard::At(*x, *y),
+            Event::Scroll { .. } => Guard::Pointer,
+            Event::Key { .. } | Event::Text { .. } => Guard::Focus,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PointerAction {
@@ -197,7 +233,9 @@ mod windows_impl {
     use std::collections::BTreeSet;
     use std::sync::OnceLock;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-    use windows::Win32::Foundation::{CloseHandle, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::Foundation::{
+        CloseHandle, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM,
+    };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::System::Threading::{
         GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -209,14 +247,17 @@ mod windows_impl {
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CURSOR_SHOWING, CURSORINFO, CallNextHookEx, GetCursorInfo, GetForegroundWindow,
-        GetMessageW, GetSystemMetrics, GetWindowThreadProcessId, KBDLLHOOKSTRUCT, LLKHF_INJECTED,
-        LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN,
-        SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetWindowsHookExW,
-        UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_MOUSEMOVE, WM_QUIT,
-        WM_SYSKEYDOWN,
+        CURSOR_SHOWING, CURSORINFO, CallNextHookEx, GetCursorInfo, GetCursorPos,
+        GetForegroundWindow, GetMessageW, GetSystemMetrics, GetWindowThreadProcessId,
+        KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW,
+        SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL,
+        WM_KEYDOWN, WM_MOUSEMOVE, WM_QUIT, WM_SYSKEYDOWN, WindowFromPoint,
     };
     use windows::core::PWSTR;
+
+    /// How long the answer for one process is reused.
+    const OWNER_TTL: Duration = Duration::from_secs(1);
 
     /// A modifier's virtual key and whether `Mods` holds it.
     type Modifier = (u16, fn(&Mods) -> bool);
@@ -232,7 +273,9 @@ mod windows_impl {
     pub struct Injector {
         keys: BTreeSet<u16>,
         buttons: BTreeSet<u8>,
-        guard: (Instant, bool),
+        /// The last process asked about: its id, whether it is Kyokai's,
+        /// and when that was checked.
+        owner: (u32, bool, Instant),
         /// The display pointer positions are fractions of; None for the
         /// primary.
         area: Option<Area>,
@@ -243,7 +286,7 @@ mod windows_impl {
             Injector {
                 keys: BTreeSet::new(),
                 buttons: BTreeSet::new(),
-                guard: (Instant::now() - Duration::from_secs(1), false),
+                owner: (0, false, Instant::now() - OWNER_TTL),
                 area: None,
             }
         }
@@ -255,10 +298,11 @@ mod windows_impl {
             self.area = area;
         }
 
-        /// Injects an event, unless a Kyokai window has the focus.
+        /// Injects an event, unless it would reach a Kyokai window (see
+        /// `Guard`).
         /// Returns: whether it was injected.
         pub fn inject(&mut self, e: &Event) -> bool {
-            if !e.valid() || self.kyokai_in_front() {
+            if !e.valid() || self.blocked(e.guard()) {
                 return false;
             }
             match e {
@@ -362,21 +406,50 @@ mod windows_impl {
             self.buttons.clear();
         }
 
-        /// Whether the focused window is one of Kyokai's (checked at most
-        /// every 200 ms).
-        fn kyokai_in_front(&mut self) -> bool {
-            if self.guard.0.elapsed() < Duration::from_millis(200) {
-                return self.guard.1;
-            }
-            // SAFETY: plain queries of the focused window's process.
-            let front = unsafe {
-                let hwnd: HWND = GetForegroundWindow();
-                let mut pid = 0u32;
-                GetWindowThreadProcessId(hwnd, Some(&mut pid));
-                kyokai_process(pid)
+        /// Whether the window `guard` names is one of Kyokai's (or cannot
+        /// be found).
+        fn blocked(&mut self, guard: Guard) -> bool {
+            let hwnd = match guard {
+                Guard::None => return false,
+                Guard::At(x, y) => {
+                    let area = self.area.unwrap_or_else(|| physical(desktop_areas).1);
+                    let at = POINT {
+                        x: area.x + (x.clamp(0.0, 1.0) * (area.width.max(1) - 1) as f32) as i32,
+                        y: area.y + (y.clamp(0.0, 1.0) * (area.height.max(1) - 1) as f32) as i32,
+                    };
+                    // SAFETY: a plain query of the window at a point.
+                    physical(|| unsafe { WindowFromPoint(at) })
+                }
+                Guard::Pointer => {
+                    let mut at = POINT::default();
+                    // SAFETY: plain queries of the pointer and the window
+                    // under it.
+                    match physical(|| unsafe { GetCursorPos(&mut at).map(|_| WindowFromPoint(at)) })
+                    {
+                        Ok(h) => h,
+                        Err(_) => return true,
+                    }
+                }
+                // SAFETY: a plain query of the focused window.
+                Guard::Focus => unsafe { GetForegroundWindow() },
             };
-            self.guard = (Instant::now(), front);
-            front
+            self.kyokai_window(hwnd)
+        }
+
+        /// Whether a window belongs to one of Kyokai's processes (the
+        /// answer for the last process is reused for OWNER_TTL, so moves
+        /// do not query the process each time).
+        fn kyokai_window(&mut self, hwnd: HWND) -> bool {
+            let mut pid = 0u32;
+            // SAFETY: a plain query of the window's process.
+            unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+            let (last, kyokai, at) = self.owner;
+            if pid == last && at.elapsed() < OWNER_TTL {
+                return kyokai;
+            }
+            let kyokai = kyokai_process(pid);
+            self.owner = (pid, kyokai, Instant::now());
+            kyokai
         }
     }
 
@@ -765,6 +838,34 @@ mod tests {
         assert_eq!(vk("f24"), Some(0x87));
         assert_eq!(vk("f25"), None);
         assert_eq!(vk("page-down"), Some(0x22));
+    }
+
+    #[test]
+    fn each_event_is_checked_against_the_window_it_would_reach() {
+        let pointer = |action| Event::Pointer {
+            action,
+            button: 0,
+            x: 0.25,
+            y: 0.75,
+        };
+        let key = |down| Event::Key {
+            key: "a".into(),
+            down,
+            mods: Mods::default(),
+        };
+        let cases = [
+            // A click lands on the window under it, whatever has the focus.
+            (pointer(PointerAction::Down), Guard::At(0.25, 0.75)),
+            (pointer(PointerAction::Move), Guard::At(0.25, 0.75)),
+            (pointer(PointerAction::Up), Guard::None),
+            (Event::Scroll { dx: 0.0, dy: 1.0 }, Guard::Pointer),
+            (key(true), Guard::Focus),
+            (key(false), Guard::None),
+            (Event::Text { text: "x".into() }, Guard::Focus),
+        ];
+        for (event, want) in cases {
+            assert_eq!(event.guard(), want, "{event:?}");
+        }
     }
 
     #[test]

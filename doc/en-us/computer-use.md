@@ -70,9 +70,12 @@ The viewer sends input only for a session granted `control-input`; the host chec
 The host injects with `SendInput`: absolute moves over the display shown (mapped onto the virtual
 desktop, so a display left of or above the primary works too), extended-key flags
 for the navigation keys, modifiers pressed and released to match each key, every event tagged as
-Kyokai's (`dwExtraInfo`) so local input can be told apart. Nothing is injected while a Kyokai
-window has the focus (checked at most every 200 ms), and whatever a session holds is released
-when it ends. Malformed events are dropped without ending the session.
+Kyokai's (`dwExtraInfo`) so local input can be told apart. Nothing is injected into a Kyokai
+window: pointer presses and moves are dropped when the window under the point is Kyokai's, the
+wheel when the window under the pointer is, keys and text when Kyokai's window has the focus;
+releases always pass. Kyokai's windows are left out of capture, so a check by focus alone refused
+clicks on windows the viewer and the model do see while Kyokai's unseen window was in front.
+Whatever a session holds is released when it ends. Malformed events are dropped without ending the session.
 
 ## Clipboard
 

@@ -35,7 +35,8 @@ never offers text that Kyokai itself copied ([computer-use.md](computer-use.md))
   approvals never reach the model.
 - The model's proposals are only input: every action is parsed, bounds-checked against the latest
   screenshot and executed by the host's own executor; nothing runs commands or code, and nothing
-  is injected while a Kyokai window has the focus.
+  is injected into a Kyokai window (pointer input by the window under it, keys by the focused
+  window).
 - Local input, pause, cancel and the emergency stop revoke the task's input lease at once; a
   response that arrives afterwards never acts ([computer-use.md](computer-use.md)).
 - A controller's task runs with the host's key under the host's approval policy; the controller
