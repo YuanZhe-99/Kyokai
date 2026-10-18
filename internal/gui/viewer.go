@@ -620,6 +620,8 @@ func (v *viewer) view(c *ui.Context) {
 	phase, pumping := v.phase, v.pumping
 	v.mu.Unlock()
 	if !pumping && phase.State != "connected" {
+		// No picture, no keys: the grab ends with the connection.
+		v.syncGrab(false)
 		v.connectPanel(c, phase)
 		return
 	}

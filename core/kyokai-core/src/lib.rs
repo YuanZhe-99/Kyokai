@@ -457,7 +457,9 @@ pub unsafe extern "C" fn kyokai_keyboard_read(
     out: *mut keyboard::KeyEvent,
     timeout_ms: u32,
 ) -> i32 {
-    if out.is_null() || !cfg!(windows) {
+    // Regression: this answered -2 off Windows, so a Mac viewer's reader
+    // stopped and the keys its grab took went nowhere.
+    if out.is_null() || !cfg!(any(windows, target_os = "macos")) {
         return -2;
     }
     match catch_unwind(|| keyboard::next(std::time::Duration::from_millis(timeout_ms.into()))) {

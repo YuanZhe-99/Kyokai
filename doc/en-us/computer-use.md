@@ -131,7 +131,10 @@ Accessibility permission on the controlling Mac, and without it the viewer works
 says so). A Mac's tap takes the keys going to Kyokai while a viewer grabs, by their Mac key codes
 turned into the PC scan codes the host maps back (Command is the Windows key); keys no scan code
 names (Fn, the media keys) stay the Mac's, and Caps Lock, which a Mac reports only as it toggles,
-goes as a press and a release. The picture takes text while it has the focus: macOS makes text of
+goes as a press and a release. The tap takes keys only while Kyokai owns the frontmost window and
+the viewer reads them (it lets every key pass when either stops), a viewer whose tab is hidden or
+whose connection ended releases its grab, and the tap is switched off and invalidated with its
+thread (left installed, it froze every program's keyboard until Kyokai quit). The picture takes text while it has the focus: macOS makes text of
 keys only for an element that does, and Legacy sends letters as that text (with it missing, no
 letter reached the host from a Mac). In Legacy mode a Mac's menu takes Cmd+C, X, V, A, Z and
 Shift+Cmd+Z before the window sees them; their edit commands are sent as those shortcuts again.

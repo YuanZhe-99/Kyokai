@@ -247,6 +247,9 @@ mod mac_impl {
         caps: bool,
         queue: VecDeque<KeyEvent>,
         run_loop: Option<Loop>,
+        /// When the GUI last asked for a key: keys are taken only while it
+        /// reads them, so none are lost when its reader is gone.
+        read: Option<std::time::Instant>,
     }
 
     impl State {
@@ -328,9 +331,15 @@ mod mac_impl {
         mode.is_some()
     }
 
+    /// How long after the GUI last asked for a key the tap still takes keys.
+    const READER_GONE: Duration = Duration::from_secs(3);
+
     /// Waits up to `timeout` for the next key taken for a viewer.
     pub fn next(timeout: Duration) -> Option<KeyEvent> {
-        let guard = STATE.lock().ok()?;
+        let mut guard = STATE.lock().ok()?;
+        if let Some(st) = guard.as_mut() {
+            st.read = Some(std::time::Instant::now());
+        }
         let (mut guard, _) = READY
             .wait_timeout_while(guard, timeout, |st| {
                 st.as_ref().is_none_or(|st| st.queue.is_empty())
@@ -381,7 +390,13 @@ mod mac_impl {
             CGEvent::tap_enable(&tap, true);
             let _ = tx.send(Some(Loop(run_loop)));
             CFRunLoop::run();
+            // The tap goes with its run loop: left installed, macOS would
+            // wait on it for every key of every program (regression: the
+            // keyboard froze everywhere until Kyokai quit).
             TAP.store(std::ptr::null_mut(), Ordering::Release);
+            CGEvent::tap_enable(&tap, false);
+            source.invalidate();
+            tap.invalidate();
         });
         rx.recv().ok().flatten()
     }
@@ -424,6 +439,12 @@ mod mac_impl {
         }
     }
 
+    /// Whether Kyokai owns the frontmost window. Tests route events as if
+    /// it did.
+    fn front_is_ours(ours: i64) -> bool {
+        cfg!(test) || crate::mac::window_owner(None).is_some_and(|pid| pid as i64 == ours)
+    }
+
     /// Handles one key event in the tap.
     /// Returns: whether to swallow it.
     fn route(kind: CGEventType, e: &CGEvent) -> bool {
@@ -442,10 +463,18 @@ mod mac_impl {
         let Some(window) = st.front else {
             return false;
         };
+        // Nobody reads the keys (the GUI's reader ended): take none.
+        if st.read.is_none_or(|t| t.elapsed() > READER_GONE) {
+            st.release(window);
+            return false;
+        }
         // Keys for another program (Kyokai left the front before its
-        // viewer said so) are its own; what the viewer held is let go.
+        // viewer said so) are its own; what the viewer held is let go. The
+        // event's target may not be known yet, so Kyokai must also own the
+        // frontmost window.
+        let ours = std::process::id() as i64;
         let target = CGEvent::integer_value_field(Some(e), CGEventField::EventTargetUnixProcessID);
-        if target != 0 && target != std::process::id() as i64 {
+        if target != 0 && target != ours || !front_is_ours(ours) {
             st.release(window);
             return false;
         }
@@ -518,6 +547,7 @@ mod mac_impl {
                 *STATE.lock().unwrap() = Some(State {
                     windows: HashMap::from([(7, Grab::new(mode))]),
                     front: Some(7),
+                    read: Some(std::time::Instant::now()),
                     ..State::default()
                 });
                 let swallowed: Vec<bool> = events
@@ -563,6 +593,15 @@ mod mac_impl {
                 (swallowed, sent),
                 (vec![true, true], vec![(0x1E, true), (0x1E, false)])
             );
+            // Without a reader (the GUI's ended) nothing is taken.
+            *STATE.lock().unwrap() = Some(State {
+                windows: HashMap::from([(7, Grab::new(Mode::Map))]),
+                front: Some(7),
+                ..State::default()
+            });
+            let e = key(CGEventType::KeyDown, 0x00, none, "a");
+            assert!(!route(CGEventType::KeyDown, &e), "no reader, no grab");
+            assert!(STATE.lock().unwrap().take().unwrap().queue.is_empty());
             // Fn has no scan code: it stays this Mac's.
             let (swallowed, sent) =
                 route_in(Mode::Map, &[(CGEventType::FlagsChanged, 0x3F, none, "")]);

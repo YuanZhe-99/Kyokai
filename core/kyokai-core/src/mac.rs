@@ -757,7 +757,7 @@ fn post(event: Option<CFRetained<CGEvent>>) {
 
 /// The owner of the frontmost on-screen window at `at` (points), or of the
 /// frontmost normal window (the focused application's) when None.
-fn window_owner(at: Option<CGPoint>) -> Option<i32> {
+pub(crate) fn window_owner(at: Option<CGPoint>) -> Option<i32> {
     let list = CGWindowListCopyWindowInfo(
         CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements,
         0,

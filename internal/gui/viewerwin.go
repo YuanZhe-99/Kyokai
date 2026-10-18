@@ -235,6 +235,13 @@ func (vw *viewerWindow) view(c *ui.Context) {
 			ui.Column(c.Key("tab-" + v.device)).Grow(1).FillWidth().Children(func() { v.view(c) })
 		}
 	})
+	// A tab not shown takes no keys (regression: a grab stayed on behind
+	// the Home tab, and keys typed there went to the other computer).
+	for i, v := range tabs {
+		if i != cur || vw.main && home {
+			v.syncGrab(false)
+		}
+	}
 }
 
 // tabBar is the row of tabs: Home first in the main window, then one per
