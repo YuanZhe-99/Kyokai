@@ -37,7 +37,7 @@ func TestAccessCommandWithoutFollowUp(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go localapi.ServeWith(ctx, ln, okEngine{}, localapi.Authorizer{OwnerUID: uint32(os.Getuid())})
+	go localapi.ServeWith(ctx, ln, okEngine{}, localapi.Authorizer{OwnerUID: uint32(os.Getuid()), OwnerSID: localapi.CurrentSID()})
 
 	a := New("", t.TempDir(), path)
 	a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, PasswordMode: "permanent"}, nil)
