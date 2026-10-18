@@ -69,8 +69,8 @@ bandwidth and encoder time than 4:2:0, and the stream description says when it i
 bar shows "4:4:4"). libaom on Windows ARM64 is built without its SIMD code (vcpkg's port), so AV1
 is slow there; VP9 comes first.
 
-The viewer asks for a key frame when it opens; the host then describes the stream again and starts
-a new group of pictures.
+The viewer asks for a key frame when it opens; the host then describes the stream, its displays
+and the codec offer again and starts a new group of pictures.
 
 ## Quality and bandwidth
 

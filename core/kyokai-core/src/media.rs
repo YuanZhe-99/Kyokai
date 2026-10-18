@@ -164,7 +164,13 @@ struct Inner {
     /// Frames were dropped for a slow reader: the frames up to the next
     /// key frame cannot be decoded without them, so they are left out too.
     skipping: bool,
+    /// When a reader last took a packet: a session with no viewer open
+    /// drops frames too, but asks for no key frames.
+    read: Option<Instant>,
 }
+
+/// How long after its last packet a reader counts as gone.
+const READER_GONE: Duration = Duration::from_secs(2);
 
 /// Frames kept for a slow reader; older ones are dropped first.
 const KEEP_FRAMES: usize = 3;
@@ -199,6 +205,17 @@ impl Queue {
             return;
         }
         match packet.first() {
+            // The same stream described again (a key frame was asked for)
+            // adds nothing to the description still waiting.
+            Some(&packet::VIDEO_START)
+                if q.packets
+                    .iter()
+                    .rev()
+                    .find(|p| p.first() == Some(&packet::VIDEO_START))
+                    == Some(&packet) =>
+            {
+                return;
+            }
             Some(
                 &kind @ (packet::STATS
                 | packet::AI_TASK
@@ -233,10 +250,13 @@ impl Queue {
         self.ready.notify_one();
     }
 
-    /// Whether frames are left out until the next key frame, which the
-    /// session then asks the host for.
+    /// Whether a reader that fell behind waits for the next key frame,
+    /// which the session then asks the host for: frames are left out, and
+    /// a reader took a packet within READER_GONE (no viewer, no request).
     pub fn waiting_for_key(&self) -> bool {
-        self.inner.lock().is_ok_and(|q| q.skipping)
+        self.inner
+            .lock()
+            .is_ok_and(|q| q.skipping && q.read.is_some_and(|t| t.elapsed() < READER_GONE))
     }
 
     /// Waits up to `timeout` for the next packet.
@@ -245,6 +265,7 @@ impl Queue {
         let mut q = self.inner.lock().map_err(|_| Empty::Closed)?;
         loop {
             if let Some(p) = q.packets.pop_front() {
+                q.read = Some(Instant::now());
                 return Ok(p);
             }
             if q.closed {
@@ -363,6 +384,15 @@ mod tests {
     fn a_slow_reader_goes_on_from_the_next_key_frame() {
         let q = Queue::default();
         let frame = |n: u8, key: bool| vec![packet::FRAME, if key { KEY_FRAME } else { 0 }, n];
+        // With no reader, frames are dropped the same way but no key frame
+        // is asked for.
+        for n in 0..5 {
+            q.push(frame(n, n == 0));
+        }
+        assert!(!q.waiting_for_key());
+        q.push(frame(5, true));
+        assert_eq!(q.pop(Duration::ZERO).unwrap(), frame(5, true));
+        // A reader that took a packet and fell behind waits for a key frame.
         q.push(vec![packet::VIDEO_START]);
         q.push(frame(0, true));
         q.push(frame(1, false));
@@ -382,6 +412,26 @@ mod tests {
         let got: Vec<Vec<u8>> = std::iter::from_fn(|| q.pop(Duration::ZERO).ok()).collect();
         assert_eq!(got, vec![vec![packet::VIDEO_START], frame(8, true)]);
         assert!(!q.waiting_for_key());
+    }
+
+    /// Regression: with no viewer open, the descriptions a key frame
+    /// request brings piled up for the next one.
+    #[test]
+    fn the_same_stream_description_waits_once() {
+        let q = Queue::default();
+        let start = |codec: u8| vec![packet::VIDEO_START, codec];
+        for _ in 0..10 {
+            q.push(start(1));
+        }
+        q.push(vec![packet::FRAME, KEY_FRAME, 0]);
+        q.push(start(1));
+        q.push(start(2));
+        q.push(start(2));
+        let got: Vec<Vec<u8>> = std::iter::from_fn(|| q.pop(Duration::ZERO).ok()).collect();
+        assert_eq!(
+            got,
+            vec![start(1), vec![packet::FRAME, KEY_FRAME, 0], start(2)]
+        );
     }
 
     #[test]

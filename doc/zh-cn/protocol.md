@@ -59,7 +59,7 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 被控端回复 `{"type": "codec-offer", codecs}`：它能发送且控制端能解码的编码，按它的顺序；控制端可以用 `{"type": "codec", codec}`
 选择其中之一（`auto`，或清单中的名称；其他名称不改变任何东西），恢复的控制端会在发送其 `codecs` 之前再次发送查看者的 `quality` 与 `codec`。
 被控端在第一帧之前发送 `{"type": "video-start", codec, width, height, i444}`（`i444` 仅在为真时出现）；控制端可以发送
-`{"type": "key-frame"}`（被控端随后重新描述视频流并发送关键帧）——即其界面的第一次请求，以及控制端在其队列丢弃帧期间自己的请求
+`{"type": "key-frame"}`（被控端随后重新说明视频流、其显示器与编码清单，并发送关键帧）——即其界面的第一次请求，以及控制端在其队列丢弃帧期间自己的请求
 （最多每秒一次）——在拥有 `control-input` 时还可发送 `{"type": "input", event}`。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
 回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate, encode_ms}`（`encode_ms`：上一秒各帧从画面到编码完成的平均时间）（[computer-use.md](computer-use.md)）；控制端可用
 `{"type": "quality", preset, fps, i444}` 设置画质，其中 `i444` 表示在双方都支持时要求全彩（4:4:4）。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用

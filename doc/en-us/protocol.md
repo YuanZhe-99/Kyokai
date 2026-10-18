@@ -79,7 +79,8 @@ controller may choose one with `{"type": "codec", codec}` (`auto`, or a name of 
 name changes nothing), and a resumed controller sends its viewer's `quality` and `codec` again
 before its `codecs`. Before its first frame the host
 sends `{"type": "video-start", codec, width, height, i444}` (`i444` only when true); the controller may send `{"type":
-"key-frame"}` (the host then describes the stream again and sends a key frame) — its GUI's first
+"key-frame"}` (the host then describes the stream, its displays and the codec offer again and
+sends a key frame) — its GUI's first
 request, and the controller's own while its queue leaves frames out (at most once a second) — and,
 with `control-input`, `{"type": "input", event}`. While it sends video the host sends `{"type":
 "test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":

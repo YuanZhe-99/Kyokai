@@ -10,7 +10,7 @@
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--want P,P…]
-//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T] [--click X,Y] [--type T] [--keys K,K…] [--action A,A…] [--display N]
+//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--codec C] [--text T] [--click X,Y] [--type T] [--keys K,K…] [--action A,A…] [--display N]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID | access [--mode temporary|permanent|both] [--without-asking=true|false]
 //	kyokai-svc ctl password-grants --grant P,P…   (what a correct password grants without asking; empty: none)
@@ -180,6 +180,7 @@ func ctl(args []string) error {
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
 	fpsCap := fs.Int("fps", 0, "watch: ask for a frame-rate cap first")
+	codec := fs.String("codec", "", "watch: ask for a codec first (auto, or one the host offers: h264, hevc, vp9, vp9-sw, av1, vp8)")
 	click := fs.String("click", "", "watch: click at X,Y (fractions of the picture) after 2 s")
 	typed := fs.String("type", "", "watch: type this text after 3 s, as the viewer's text input")
 	keys := fs.String("keys", "", "watch: press these keys by name after 3 s, after --type (e.g. meta+a,backspace,enter)")
@@ -207,7 +208,7 @@ func ctl(args []string) error {
 		return err
 	}
 	if cmd == "watch" {
-		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *text, *click, *typed, *keys, *actions, *display)
+		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *codec, *text, *click, *typed, *keys, *actions, *display)
 	}
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
@@ -477,7 +478,7 @@ func printStatus(s *localapi.Status) {
 // viewer's decoder) and saves the last picture; with a text it first asks
 // the host's AI to do it (the viewer's AI panel); with actions it sends them
 // as the viewer's action bar does and prints the host's reports.
-func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, aiText, click, typed, keys, actions string, display int) error {
+func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, codec, aiText, click, typed, keys, actions string, display int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), d+10*time.Second)
 	defer cancel()
 	conn, err := localapi.NewClient(socket).Media(ctx, id)
@@ -504,6 +505,12 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	}
 	if quality != "" || fpsCap > 0 {
 		body, _ := json.Marshal(map[string]any{"type": "quality", "preset": quality, "fps": fpsCap})
+		if err := localapi.WritePacket(conn, append([]byte{3}, body...)); err != nil {
+			return err
+		}
+	}
+	if codec != "" {
+		body, _ := json.Marshal(map[string]any{"type": "codec", "codec": codec})
 		if err := localapi.WritePacket(conn, append([]byte{3}, body...)); err != nil {
 			return err
 		}
@@ -580,6 +587,8 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	var buf []byte
 	var dec *core.Decoder
 	var pic *image.RGBA
+	// fresh: the decoder has not had a key frame yet.
+	fresh := false
 	frames, bytes, pictures := 0, 0, 0
 	var decodeErr error
 	printedDisplays := map[byte]bool{}
@@ -603,6 +612,7 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 						return err
 					}
 					pic = image.NewRGBA(image.Rect(0, 0, s.Width, s.Height))
+					fresh = true
 				}
 			}
 		case len(p) > 0 && p[0] == 4:
@@ -614,9 +624,16 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 			fmt.Printf("%s %s\n", map[byte]string{7: "pointer", 8: "displays"}[p[0]], p[1:])
 		case len(p) > 0 && p[0] == 9:
 			fmt.Printf("%s actions %s\n", time.Now().Format("15:04:05"), p[1:])
+		case len(p) > 0 && p[0] == 11:
+			fmt.Printf("codecs %s\n", p[1:])
 		case len(p) >= 10 && p[0] == 2:
 			frames++
 			bytes += len(p) - 10
+			// Like the viewer: a new decoder starts at a key frame.
+			if fresh && p[1]&1 == 0 {
+				continue
+			}
+			fresh = false
 			if dec != nil {
 				switch _, _, ok, err := dec.Decode(p[10:], pic.Pix); {
 				case err != nil && decodeErr == nil:

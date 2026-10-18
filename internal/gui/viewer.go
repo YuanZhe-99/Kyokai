@@ -35,6 +35,9 @@ const (
 	packetCodecs     byte = 11
 )
 
+// keyFrame flags a frame that decodes on its own (media::KEY_FRAME).
+const keyFrame byte = 1
+
 // hostActions are the session actions the host offers (media ACTIONS),
 // sent only to a session that may control input.
 type hostActions struct {
@@ -364,6 +367,8 @@ func (v *viewer) pump() {
 		return
 	}
 	var dec *core.Decoder
+	// fresh: the decoder has not had a key frame yet.
+	fresh := false
 	defer func() {
 		if dec != nil {
 			dec.Close()
@@ -428,7 +433,7 @@ func (v *viewer) pump() {
 				v.setState(L.ViewerUnsupported(codecLabel(s.Codec)))
 				continue
 			}
-			dec = d
+			dec, fresh = d, true
 			v.begin(s)
 		case packetDisplays:
 			var d hostDisplays
@@ -481,6 +486,13 @@ func (v *viewer) pump() {
 			if len(p) < 10 {
 				continue
 			}
+			// A new decoder starts at a key frame: the frames encoded before
+			// the host's (they may still come after its stream description)
+			// refer to pictures it never had.
+			if fresh && p[1]&keyFrame == 0 {
+				continue
+			}
+			fresh = false
 			if dec != nil {
 				v.show(dec, p[10:])
 			}

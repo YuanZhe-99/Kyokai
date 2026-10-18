@@ -1476,8 +1476,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut decodes: (Vec<String>, Vec<String>) = Default::default();
     let mut hevc_first = false;
     let mut full_colour = false;
-    // The viewer's codec (None: Auto).
+    // The viewer's codec (None: Auto), and what this host offers.
     let mut preferred: Option<String> = None;
+    let mut offer: Vec<String> = Vec::new();
     let mut chosen: Vec<video::Choice> = Vec::new();
     if wants_video {
         qos.on_connection_open(QOS_VIEWER);
@@ -1858,8 +1859,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         hevc_first = video::hevc_hardware();
                         let c = video::prefer(video::choose(&decodes.0, &decodes.1, full_colour, hevc_first), preferred.as_deref());
                         if wants_video {
-                            let codecs = video::offer(&decodes.0, &video::encodable()).iter().map(|c| c.to_string()).collect();
-                            seal_json(&mut noise, &mut buf, &mut wr, &Message::CodecOffer { codecs }).await?;
+                            offer = video::offer(&decodes.0, &video::encodable()).iter().map(|c| c.to_string()).collect();
+                            seal_json(&mut noise, &mut buf, &mut wr, &Message::CodecOffer { codecs: offer.clone() }).await?;
                         }
                         if wants_video && (source.is_none() || c != chosen) {
                             chosen = c;
@@ -1897,11 +1898,15 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         }
                     }
                     // A viewer that (re)opens asks for a key frame: describe the
-                    // stream again and start a new group of pictures.
+                    // stream, its displays and the codecs again and start a
+                    // new group of pictures.
                     Message::KeyFrame => {
                         if let Some(s) = &source {
                             s.key_frame();
-                            seal_json(&mut noise, &mut buf, &mut wr, &Message::VideoStart(s.start.clone())).await?;
+                            announce(&mut noise, &mut buf, &mut wr, s, &displays).await?;
+                            if !offer.is_empty() {
+                                seal_json(&mut noise, &mut buf, &mut wr, &Message::CodecOffer { codecs: offer.clone() }).await?;
+                            }
                         }
                     }
                     // Input reaches the host only with control-input; a
