@@ -588,6 +588,7 @@ func (a *App) untrust(key string) {
 }
 
 // accessCommand sends a request of the access card and reports the result.
+// Inputs: then runs after success; nil when the pushed status is enough.
 func (a *App) accessCommand(req localapi.Request, then func()) {
 	a.mu.Lock()
 	a.busy["access"] = true
@@ -602,7 +603,7 @@ func (a *App) accessCommand(req localapi.Request, then func()) {
 				a.setToast(refused.Message, true)
 			case err != nil:
 				a.setToast(L.EngineDown(), true)
-			default:
+			case then != nil:
 				then()
 			}
 		})

@@ -10,6 +10,7 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -36,6 +37,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	engine.CrashLog(filepath.Join(stateDir, "logs", "gui-crash.log"))
 	a := gui.New(profile, stateDir, localapi.UserSocketPath(profile))
 	gui.ApplyTheme(a.ThemePref())
 	if lang := a.LanguagePref(); lang != "" {

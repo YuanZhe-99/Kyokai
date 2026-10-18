@@ -80,7 +80,9 @@ without revealing it.
 Logs record versions, the Device ID and how secrets are kept — never a password, key or secret.
 The engine writes `logs/engine.log` in the state directory. Audited on 2026-10-17: the engine logs
 its start (version, Device ID, how secrets are kept) and why it stops (lifeline or parent gone);
-the core writes no log; a provider's error carries its status and message, never the key.
+the core writes no log; a provider's error carries its status and message, never the key. A Go
+crash trace (in `engine.log`, and `logs/gui-crash.log` for the GUI) holds the stack and the
+runtime's message, which never include secrets.
 
 ## Local API
 

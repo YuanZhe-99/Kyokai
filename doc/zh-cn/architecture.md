@@ -100,7 +100,8 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
 | `gui.json` | 界面偏好设置 |
 | `ai.json` | AI 设置：服务商、模型、批准方式（不含密钥） |
 | `ai-tasks.json` | 已结束的 AI 任务，不含截图 |
-| `logs/engine.log` | 引擎日志，不含机密 |
+| `logs/engine.log` | 引擎日志，不含机密，以及引擎的崩溃跟踪 |
+| `logs/gui-crash.log` | 界面的崩溃跟踪 |
 
 ## 通用规则
 

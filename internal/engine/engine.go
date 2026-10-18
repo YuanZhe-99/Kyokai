@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime/debug"
 	"slices"
 	"sync"
 	"time"
@@ -591,15 +592,29 @@ func (h *handler) status() (*localapi.Status, error) {
 
 // Logger returns a Logf writing to path (appending), or to stderr when the
 // file cannot be opened.
+// Side effects: a fatal Go error's trace goes to the same file (CrashLog).
 func Logger(path string) func(string, ...any) {
 	var w io.Writer = os.Stderr
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err == nil {
-		if f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
-			w = f
-		}
+	if f := CrashLog(path); f != nil {
+		w = f
 	}
 	l := log.New(w, "", log.LstdFlags)
 	return l.Printf
+}
+
+// CrashLog opens path for appending and sends this process's crash trace
+// (an unrecovered panic or a fatal runtime error) there as well as to stderr.
+// Returns: the file, or nil when it cannot be opened.
+func CrashLog(path string) *os.File {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil
+	}
+	_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+	return f
 }
 
 // isBackground reports the helper's mode for the status.

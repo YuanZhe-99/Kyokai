@@ -129,7 +129,8 @@ runtime statically, so nothing is resolved through the search path.
 | `gui.json` | GUI preferences |
 | `ai.json` | AI settings: provider, models, approval policy (no key) |
 | `ai-tasks.json` | Finished AI tasks, without screenshots |
-| `logs/engine.log` | Engine log, without secrets |
+| `logs/engine.log` | Engine log, without secrets, and the engine's crash trace |
+| `logs/gui-crash.log` | The GUI's crash trace |
 
 ## Cross-cutting rules
 
