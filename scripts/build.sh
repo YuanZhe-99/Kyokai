@@ -111,6 +111,10 @@ for t in "${targets[@]}"; do
 	test -f "$libdir/$lib" || { echo "missing $libdir/$lib" >&2; exit 1; }
 	CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w" -o "$bin/kyokai-svc$ext" ./cmd/kyokai-svc
 	if [ "$goos" = darwin ]; then
+		# The x86_64 linker leaves the core unsigned, and codesign refuses
+		# the bundle's engine while a library beside it carries no signature
+		# at all; the ad hoc one is replaced when the app is signed.
+		codesign --force --sign - "$libdir/$lib"
 		cp "$bin/kyokai-svc" "$libdir/kyokai-svc"
 		helper_bundle "$(dirname "$libdir")"
 	fi
