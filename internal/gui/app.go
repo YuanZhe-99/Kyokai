@@ -56,10 +56,10 @@ type App struct {
 	passwordFor  uint64 // the serial the fetched password belongs to
 	showPassword bool
 	// permissionsAsked: this run already looked at the privacy
-	// permissions (permissions.go); screenAsked: this run asked for Screen
-	// Recording, which counts only after a restart.
+	// permissions (permissions.go); asked: the privacy permissions this run
+	// asked for, which macOS counts only in an engine started afterwards.
 	permissionsAsked bool
-	screenAsked      bool
+	asked            map[string]bool
 
 	// Network page: the settings form (network.go).
 	net netForm

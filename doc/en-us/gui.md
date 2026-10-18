@@ -12,9 +12,9 @@ when `SCREENSHOT_DIR` is set.
   when the saved identity cannot be unlocked, Start over (the old store moved aside, a new
   identity kept from then on; `secrets.start_over`). On macOS,
   while Screen Recording, Accessibility, Input Monitoring or the Keychain is missing, "Privacy
-  permissions" with Allow for each (Settings always shows it there); once Screen Recording was
-  asked for in this run, its row also offers "Reopen Kyokai", since macOS counts that grant only
-  after a restart. In the helper modes the card says the permissions are Kyokai Helper's, and a
+  permissions" with Allow for each (Settings always shows it there); a permission asked for in
+  this run also offers "Reopen Kyokai", since macOS counts a new grant only in an engine started
+  after it. In the helper modes the card says the permissions are Kyokai Helper's, and a
   missing one offers Restart Kyokai Helper. Below it,
   "Control another device" (Device ID, password, Connect; Remember password; a saved password
   for the Device ID typed is used when the field is left empty; needs a network) and the sessions, newest

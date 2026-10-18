@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"maps"
+
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
@@ -26,8 +28,8 @@ func permissionsMissing(p *localapi.Permissions) bool {
 // permissionsCard shows the system's privacy permissions Kyokai needs
 // (macOS) with Allow for a missing one. Inputs: always shows it even when
 // everything is granted (Settings); Home shows it only while one is missing.
-// Notes: once Screen Recording was asked for in this run, its row offers
-// to reopen Kyokai, since macOS counts that grant only after a restart.
+// Notes: a privacy permission asked for in this run offers to reopen
+// Kyokai, since macOS counts a new grant only in an engine started after it.
 func (a *App) permissionsCard(c *ui.Context, always bool) {
 	t := c.Theme()
 	a.mu.Lock()
@@ -35,7 +37,7 @@ func (a *App) permissionsCard(c *ui.Context, always bool) {
 	if a.status != nil {
 		p = a.status.Permissions
 	}
-	screenAsked := a.screenAsked
+	asked := maps.Clone(a.asked)
 	helperMode := a.status != nil && a.status.RunMode == "helper"
 	a.mu.Unlock()
 	if p == nil || !always && !permissionsMissing(p) {
@@ -66,17 +68,15 @@ func (a *App) permissionsCard(c *ui.Context, always bool) {
 						a.restartAgent()
 					}
 				}
-				if row.name == "screen" && screenAsked && !helperMode {
+				if asked[row.name] && !helperMode {
 					if ui.Button(c.Key("perm-reopen"), L.ActionReopen()).Clicked() {
 						a.reopen()
 					}
 				}
 				if ui.Button(c.Key("perm-ask-"+row.name), L.ActionAllowPermission()).Clicked() {
-					if row.name == "screen" {
-						a.mu.Lock()
-						a.screenAsked = true
-						a.mu.Unlock()
-					}
+					a.mu.Lock()
+					a.markAsked(row.name)
+					a.mu.Unlock()
 					a.askPermission(row.name, true)
 				}
 			})
@@ -116,6 +116,18 @@ func (a *App) reopen() {
 	go a.relaunch()
 }
 
+// markAsked notes that this run asked for a privacy permission (the
+// Keychain needs no restart). Notes: the caller holds a.mu.
+func (a *App) markAsked(name string) {
+	if _, privacy := permissionPanes[name]; !privacy {
+		return
+	}
+	if a.asked == nil {
+		a.asked = map[string]bool{}
+	}
+	a.asked[name] = true
+}
+
 // restartAgent starts the helper's session agent anew, which then has the
 // privacy permissions granted to Kyokai Helper since it started.
 func (a *App) restartAgent() {
@@ -146,14 +158,11 @@ func (a *App) permissionsChanged(st *localapi.Status) {
 	p.AskedPermissions = version.Version
 	a.prefs = p
 	go func() { _ = savePrefs(a.stateDir, p) }()
-	if !st.Permissions.Screen {
-		a.screenAsked = true
-		a.askPermission("screen", false)
-	}
-	if !st.Permissions.Accessibility {
-		a.askPermission("accessibility", false)
-	}
-	if !st.Permissions.InputMonitoring {
-		a.askPermission("input-monitoring", false)
+	for name, granted := range map[string]bool{"screen": st.Permissions.Screen,
+		"accessibility": st.Permissions.Accessibility, "input-monitoring": st.Permissions.InputMonitoring} {
+		if !granted {
+			a.markAsked(name)
+			a.askPermission(name, false)
+		}
 	}
 }

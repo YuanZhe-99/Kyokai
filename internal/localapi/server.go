@@ -118,7 +118,33 @@ func ListenWith(o ListenOptions) (net.Listener, error) {
 		ln.Close()
 		return nil, err
 	}
-	return ln, nil
+	// Closing removes the socket file only while it is still this one: an
+	// engine that stops late must not remove the socket of the engine
+	// started after it.
+	ul := ln.(*net.UnixListener)
+	ul.SetUnlinkOnClose(false)
+	own, _ := os.Stat(path)
+	return &ownedListener{UnixListener: ul, path: path, own: own}, nil
+}
+
+// ownedListener is a socket listener that, closing, removes its socket
+// file only when the path still names that socket.
+type ownedListener struct {
+	*net.UnixListener
+	path string
+	// own is the socket file as created; nil when it could not be read,
+	// in which case closing removes the path as before.
+	own os.FileInfo
+}
+
+// Close stops listening and removes the socket file if it is still this
+// listener's.
+func (l *ownedListener) Close() error {
+	err := l.UnixListener.Close()
+	if now, statErr := os.Stat(l.path); statErr == nil && (l.own == nil || os.SameFile(l.own, now)) {
+		_ = os.Remove(l.path)
+	}
+	return err
 }
 
 // ServeWith accepts connections until ctx is cancelled, answering each

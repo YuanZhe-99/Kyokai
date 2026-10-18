@@ -18,8 +18,8 @@ Kyokai asks on its first start for **Screen Recording** (so others can see this 
 **Accessibility** (so they can use the mouse and keyboard) and **Input Monitoring** (so your own
 keyboard and mouse pause an AI task, and Control+Option+Shift+Esc stops it). Allow them in System
 Settings, Privacy & Security; **Privacy permissions** on Home and in Settings shows what is still
-missing and opens the right pane with **Allow…**. Screen Recording counts only after Kyokai starts
-again: click **Reopen Kyokai** on its row. Allow Kyokai to use its
+missing and opens the right pane with **Allow…**. A permission you allow counts only after Kyokai
+starts again: click **Reopen Kyokai** on its row. Allow Kyokai to use its
 Keychain item too (**Always Allow**); if you denied it, **Allow…** on the Keychain row asks again.
 
 Kyokai keeps its secrets — this device's identity, passwords, keys — encrypted with your Windows

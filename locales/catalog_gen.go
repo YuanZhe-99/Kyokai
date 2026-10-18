@@ -2352,11 +2352,11 @@ func (msgs Messages) PermissionScreen() string {
 	return Catalog.Format(msgs.locale, "PermissionScreen", nil)
 }
 
-// PermissionScreenHint says "Lets other devices and AI tasks see this screen. After allowing it, reopen Kyokai."
+// PermissionScreenHint says "Lets other devices and AI tasks see this screen."
 // in the language the app shows.
 func PermissionScreenHint() string { return In(i18n.Locale()).PermissionScreenHint() }
 
-// PermissionScreenHint says "Lets other devices and AI tasks see this screen. After allowing it, reopen Kyokai."
+// PermissionScreenHint says "Lets other devices and AI tasks see this screen."
 // in the language of msgs.
 func (msgs Messages) PermissionScreenHint() string {
 	return Catalog.Format(msgs.locale, "PermissionScreenHint", nil)

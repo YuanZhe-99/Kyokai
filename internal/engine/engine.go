@@ -99,7 +99,8 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(opts.Socket)
+	// Closing the listener removes its own socket file, never a newer one.
+	defer ln.Close()
 	lib, err := core.Load(opts.CoreLib)
 	if err != nil {
 		ln.Close()
