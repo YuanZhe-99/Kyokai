@@ -44,13 +44,13 @@ func (v *viewer) aiPacket(kind byte, body []byte) {
 	var refused struct{ Error string }
 	switch {
 	case kind == packetAITask && json.Unmarshal(body, &task) == nil:
-		v.win.Update(func() {
+		v.update(func() {
 			v.mu.Lock()
 			v.ai.task, v.ai.err = &task, ""
 			v.mu.Unlock()
 		})
 	case kind == packetAIError && json.Unmarshal(body, &refused) == nil:
-		v.win.Update(func() {
+		v.update(func() {
 			v.mu.Lock()
 			v.ai.err = refused.Error
 			v.mu.Unlock()

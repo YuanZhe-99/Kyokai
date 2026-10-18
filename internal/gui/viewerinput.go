@@ -265,7 +265,11 @@ func (v *viewer) syncGrab(focused bool) {
 	if err != nil {
 		return
 	}
-	window := v.win.NativeHandle()
+	w := v.home.Load()
+	if w == nil {
+		return
+	}
+	window := w.win.NativeHandle()
 	mode := want
 	if mode == "" {
 		mode = "off"
@@ -317,7 +321,8 @@ func (a *App) readKeys(lib *core.Lib) {
 		a.mu.Unlock()
 		for _, v := range viewers {
 			v.mu.Lock()
-			mine, may := v.window == ev.Window, v.control
+			// Several tabs share a window: the one holding the grab takes it.
+			mine, may := v.window == ev.Window && v.grabbed != "", v.control
 			v.mu.Unlock()
 			if mine && may {
 				select {

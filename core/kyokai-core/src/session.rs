@@ -383,6 +383,19 @@ struct Entry {
     media: Arc<media::Queue>,
     control_tx: mpsc::Sender<Value>,
     control_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<Value>>>,
+    /// Controller side: what to do with the password once the host answers.
+    remember: Remember,
+}
+
+/// What a controller does with a session's password once the host answers
+/// its login (doc/en-us/identity-and-access.md, "Saved passwords").
+#[derive(Clone, Copy, Default)]
+pub struct Remember {
+    /// Keep the password for this host after a login it accepts.
+    pub save: bool,
+    /// The password came from the saved ones: forget it when the host
+    /// refuses it.
+    pub saved: bool,
 }
 
 /// Every session of this device, live and recently finished.
@@ -436,6 +449,7 @@ impl Sessions {
             media: Arc::default(),
             control_tx,
             control_rx: Arc::new(tokio::sync::Mutex::new(control_rx)),
+            remember: Remember::default(),
         });
         (id, stop)
     }
@@ -1039,6 +1053,11 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }
         let peer = verdict.about.unwrap_or_default().clean();
         let _ = ctx.access.pin_host(&device_id, &host.device_key, &peer);
+        let mut remember = Remember::default();
+        ctx.sessions.update(id, |e| remember = e.remember);
+        if remember.save && !password.is_empty() {
+            let _ = ctx.access.save_password(&device_id, &password);
+        }
         ctx.sessions.update(id, |e| e.peer = peer);
         Ok((ch, verdict.granted, verdict.resume))
     }
@@ -1070,6 +1089,13 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         // A resume that could not get through keeps its (unused) token.
         Err(Failure::Broken) if resume.is_some() => Outcome::Lost(resume.expect("checked")),
         Err(f) => {
+            if matches!(f, Failure::Refused(Refusal::Password)) {
+                let mut remember = Remember::default();
+                ctx.sessions.update(id, |e| remember = e.remember);
+                if remember.saved {
+                    let _ = ctx.access.forget_password(&device_id);
+                }
+            }
             ctx.sessions.end(id, Some(f));
             Outcome::Done
         }
@@ -1097,8 +1123,10 @@ pub fn reconnecting(ctx: &Ctx, id: u64) {
 
 /// Registers an outgoing session before its connection is opened, so the
 /// interface sees it at once.
-pub fn begin(ctx: &Ctx, device_id: &str) -> (u64, Arc<Notify>) {
-    ctx.sessions.open(Role::Controller, device_id)
+pub fn begin(ctx: &Ctx, device_id: &str, remember: Remember) -> (u64, Arc<Notify>) {
+    let (id, stop) = ctx.sessions.open(Role::Controller, device_id);
+    ctx.sessions.update(id, |e| e.remember = remember);
+    (id, stop)
 }
 
 /// Ends an outgoing session that found no device to talk to.
@@ -2198,10 +2226,32 @@ mod tests {
         decide: Option<Vec<Permission>>,
         want: Vec<Permission>,
     ) -> u64 {
+        attempt_remembering(
+            host,
+            controller,
+            dialed,
+            password,
+            decide,
+            want,
+            Remember::default(),
+        )
+        .await
+    }
+
+    /// `attempt_with`, doing `remember` with the password.
+    async fn attempt_remembering(
+        host: &Arc<Ctx>,
+        controller: &Arc<Ctx>,
+        dialed: &str,
+        password: &str,
+        decide: Option<Vec<Permission>>,
+        want: Vec<Permission>,
+        remember: Remember,
+    ) -> u64 {
         let (a, b) = tokio::io::duplex(1 << 16);
         let from: IpAddr = "10.126.126.2".parse().unwrap();
         tokio::spawn(serve(host.clone(), b, from));
-        let (id, stop) = begin(controller, dialed);
+        let (id, stop) = begin(controller, dialed, remember);
         let c = controller.clone();
         let (dialed_owned, password) = (
             dialed.to_owned(),
@@ -2474,6 +2524,76 @@ mod tests {
         assert_eq!(session(&controller, id)["failure"], "wrong-device");
     }
 
+    /// A password is kept only after a login the host accepts, and a kept
+    /// one the host refuses (it changed) is forgotten.
+    #[tokio::test]
+    async fn saved_passwords_are_kept_on_success_and_forgotten_when_refused() {
+        let host = device("1.0.0");
+        let controller = device("1.0.0");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let want = vec![Permission::ViewScreen];
+        let save = Remember {
+            save: true,
+            saved: false,
+        };
+        // A refused password is not kept.
+        let id = attempt_remembering(
+            &host,
+            &controller,
+            &dialed,
+            "wrong-one",
+            None,
+            want.clone(),
+            save,
+        )
+        .await;
+        assert_eq!(
+            session(&controller, id)["failure"],
+            json!({"refused": "password"})
+        );
+        assert!(controller.access.saved_password(&dialed).is_none());
+        // An accepted one is.
+        let id = attempt_remembering(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            Some(want.clone()),
+            want.clone(),
+            save,
+        )
+        .await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        assert_eq!(
+            controller.access.saved_password(&dialed).unwrap().as_str(),
+            "k7mq2xpa"
+        );
+        // The host's password changes: the kept one is refused and forgotten.
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("n3wpassw", &host.identity.public_key())
+            .unwrap();
+        let used = Remember {
+            save: false,
+            saved: true,
+        };
+        let id =
+            attempt_remembering(&host, &controller, &dialed, "k7mq2xpa", None, want, used).await;
+        assert_eq!(
+            session(&controller, id)["failure"],
+            json!({"refused": "password"})
+        );
+        assert!(controller.access.saved_password(&dialed).is_none());
+    }
+
     #[tokio::test]
     async fn a_dropped_session_resumes_without_a_new_login() {
         let host = device("1.0.0");
@@ -2488,7 +2608,7 @@ mod tests {
         let from: IpAddr = "10.126.126.2".parse().unwrap();
         let (a, b) = tokio::io::duplex(1 << 16);
         let host_side = tokio::spawn(serve(host.clone(), b, from));
-        let (id, stop) = begin(&controller, &dialed);
+        let (id, stop) = begin(&controller, &dialed, Remember::default());
         let first = tokio::spawn(connect(
             controller.clone(),
             id,
@@ -2621,7 +2741,7 @@ mod tests {
         let mut next = rng(0x2545_f491_4f6c_dd1d);
         for round in 0..200 {
             let (a, mut b) = tokio::io::duplex(1 << 16);
-            let (id, stop) = begin(&controller, "100000002");
+            let (id, stop) = begin(&controller, "100000002", Remember::default());
             let dialing = tokio::spawn(connect(
                 controller.clone(),
                 id,

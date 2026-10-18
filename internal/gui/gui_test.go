@@ -88,13 +88,21 @@ func TestViewsRender(t *testing.T) {
 		"settings":         func(a *App) { a.page, a.status.About = pageSettings, localapi.About{Name: "WINDOWS-KVM"} },
 		"licenses":         func(a *App) { a.page, a.showLicenses = pageSettings, true },
 		"network-off":      func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
+		"home-connect": func(a *App) {
+			a.status.Network.State = "online"
+			a.connect = connectForm{deviceID: "657 365 333", remember: true}
+			a.status.Recent = []localapi.RecentDevice{
+				{DeviceID: "657365333", Last: 1797400000, SavedPassword: true, About: localapi.About{Name: "Studio Mac", Maker: "Apple", Model: "Mac14,13", OS: "macos"}},
+				{DeviceID: "647222040", Last: 1797300000},
+			}
+		},
 		"home-sessions": func(a *App) {
 			a.status.Network.State = "online"
 			a.status.Permissions = &localapi.Permissions{Accessibility: true, InputMonitoring: true, Keychain: true}
 			a.status.Requests = []localapi.HostRequest{{ID: 3, DeviceID: "213559601", NewKey: true, Want: []string{localapi.PermViewScreen, localapi.PermControlInput},
 				About: localapi.About{Name: "Office laptop", Maker: "LENOVO", Model: "ThinkPad X1 Carbon", OS: "windows"}}}
 			a.status.Recent = []localapi.RecentDevice{
-				{DeviceID: "657365333", Last: 1797400000, About: localapi.About{Name: "Studio Mac", Maker: "Apple", Model: "Mac14,13", OS: "macos"}},
+				{DeviceID: "657365333", Last: 1797400000, SavedPassword: true, About: localapi.About{Name: "Studio Mac", Maker: "Apple", Model: "Mac14,13", OS: "macos"}},
 				{DeviceID: "647222040", Last: 1797300000},
 			}
 			a.status.Sessions = []localapi.SessionInfo{
@@ -429,5 +437,39 @@ func demoAISettings(keys bool) *localapi.AISettings {
 		Model:    &localapi.AIModelRef{Source: "claude", ID: "claude-opus-5-5"},
 		Approval: "flagged",
 		Keys:     map[string]bool{"claude": keys, "openrouter": keys},
+	}
+}
+
+// A viewer window with several sessions shows them as tabs, the chosen
+// one's picture below, and switching tabs shows the other session.
+func TestViewerTabsRender(t *testing.T) {
+	pic := image.NewRGBA(image.Rect(0, 0, 320, 180))
+	for i := range pic.Pix {
+		pic.Pix[i] = byte(i * 5)
+	}
+	a := &App{viewers: map[uint64]*viewer{}}
+	vw := &viewerWindow{app: a}
+	for i, title := range []string{"Office laptop · 213 559 601", "Studio Mac · 657 365 333", "647 222 040"} {
+		v := &viewer{app: a, id: uint64(i + 1), title: title, preset: 1, fpsCap: "30 fps",
+			start: videoStart{Codec: "vp9-sw", Width: 320, Height: 180}, bm: ui.NewBitmap(pic)}
+		vw.tabs = append(vw.tabs, v)
+		a.viewers[v.id] = v
+	}
+	vw.cur = 1
+	tt := ui.NewTester(vw.view, 1100, 600)
+	tt.Frame()
+	tt.Frame()
+	if dir := os.Getenv("SCREENSHOT_DIR"); dir != "" {
+		f, err := os.Create(filepath.Join(dir, "en-viewer-tabs.png"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := png.Encode(f, tt.Image()); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+	}
+	if vw.cur != 1 {
+		t.Fatalf("rendering changed the tab shown to %d", vw.cur)
 	}
 }

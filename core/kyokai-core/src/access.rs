@@ -57,6 +57,8 @@ pub enum Serve {
 
 const TRUSTED_NAME: &str = "trusted_devices";
 const KNOWN_HOSTS_NAME: &str = "known_hosts";
+/// A saved host password's secret is this prefix and the Device ID.
+const SAVED_PASSWORD_PREFIX: &str = "saved_password.";
 const PASSWORD_GRANTS_NAME: &str = "password_grants";
 /// What a correct password grants without asking until the host's user
 /// changes it: the manual session; AI tasks always ask.
@@ -459,6 +461,25 @@ impl Access {
     /// The host key pinned for a Device ID, if any (controller side).
     pub fn known_host(&self, device_id: &str) -> Option<String> {
         self.known_hosts().remove(device_id).map(|h| h.key)
+    }
+
+    /// Keeps a host's password for later connections (controller side), in
+    /// the encrypted secrets store like every other secret.
+    pub fn save_password(&self, device_id: &str, password: &str) -> Result<(), String> {
+        self.secrets
+            .set(&format!("{SAVED_PASSWORD_PREFIX}{device_id}"), password)
+    }
+
+    /// The password kept for a host, if any.
+    pub fn saved_password(&self, device_id: &str) -> Option<zeroize::Zeroizing<String>> {
+        self.secrets
+            .get(&format!("{SAVED_PASSWORD_PREFIX}{device_id}"))
+    }
+
+    /// Forgets the password kept for a host.
+    pub fn forget_password(&self, device_id: &str) -> Result<(), String> {
+        self.secrets
+            .remove(&format!("{SAVED_PASSWORD_PREFIX}{device_id}"))
     }
 
     /// Pins a host key for its Device ID, or refreshes its last connection

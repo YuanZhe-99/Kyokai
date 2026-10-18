@@ -74,6 +74,9 @@ type App struct {
 	passphrase string
 	// Open viewer windows by session id (viewer.go).
 	viewers map[uint64]*viewer
+	// The viewer windows, oldest first; a new viewer opens as a tab of the
+	// newest (viewerwin.go).
+	viewerWins []*viewerWindow
 	// keyReader starts the reader of the keys the viewers' keyboard grab
 	// takes (viewerinput.go), once.
 	keyReader sync.Once
@@ -137,8 +140,8 @@ func (a *App) setShowInCapture(p Prefs, show bool) {
 	a.setPrefs(p)
 	a.mu.Lock()
 	wins := []*mygo.Window{a.window}
-	for _, v := range a.viewers {
-		wins = append(wins, v.win)
+	for _, vw := range a.viewerWins {
+		wins = append(wins, vw.win)
 	}
 	a.mu.Unlock()
 	for _, w := range wins {

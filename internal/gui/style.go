@@ -19,6 +19,7 @@ const (
 	contentMaxW  float32 = 760
 	inputAreaH   float32 = 72  // a multi-line input of about three lines
 	aiPanelW     float32 = 320 // the viewer's AI panel
+	tabTitleMaxW float32 = 220 // a viewer tab's title
 	pointerR     float32 = 6   // the host's pointer marker in the viewer
 	avatarSize   float32 = 36  // a device's round avatar
 	logoSize     float32 = 22  // a vendor logo inside it (about 64%)

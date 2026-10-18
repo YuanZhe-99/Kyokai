@@ -289,9 +289,10 @@ impl Network {
         device_id: &str,
         password: zeroize::Zeroizing<String>,
         want: Vec<Permission>,
+        remember: session::Remember,
     ) -> Result<u64, String> {
         let node = self.node.clone().ok_or("not connected to a network")?;
-        let (id, stop) = session::begin(&self.ctx, device_id);
+        let (id, stop) = session::begin(&self.ctx, device_id, remember);
         let ctx = self.ctx.clone();
         let device_id = device_id.to_owned();
         self.rt.spawn(async move {

@@ -14,6 +14,15 @@ The host never stores or receives a password, only OPAQUE records; the OPAQUE se
 (`ServerSetup`) is created once and kept in the secrets store. A controller never learns which
 slots are set.
 
+## Saved passwords
+
+A controller may keep a host's password (Remember password on the connect form,
+`session.connect` `remember`). It is kept only after a login the host accepts, in the secrets
+store under `saved_password.<Device ID>`, encrypted like every other secret and never shown or
+returned: the status says only which recent hosts have one (`saved_password`). An empty password
+field then uses it. When the host refuses a saved password (it changed), the controller forgets it,
+and Forget password on the recent row forgets it at once (`password.forget_saved`).
+
 ## Permissions
 
 `view-screen`, `control-input`, `run-ai-task`, `approve-ai-action`, `clipboard`, `files`

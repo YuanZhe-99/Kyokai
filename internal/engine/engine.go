@@ -270,6 +270,11 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		return localapi.Response{OK: true, ID: out.ID}
 	case localapi.RequestClose:
 		return h.command("session.close", map[string]uint64{"id": req.ID})
+	case localapi.RequestForgetPassword:
+		if req.DeviceID == "" {
+			return localapi.Fail(localapi.CodeInvalid, "device ID missing")
+		}
+		return h.command("password.forget_saved", map[string]string{"device_id": req.DeviceID})
 	case localapi.RequestDecide:
 		if req.Decide == nil {
 			return localapi.Fail(localapi.CodeInvalid, "decision missing")

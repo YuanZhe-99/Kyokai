@@ -16,12 +16,16 @@ when `SCREENSHOT_DIR` is set.
   asked for in this run, its row also offers "Reopen Kyokai", since macOS counts that grant only
   after a restart. In the helper modes the card says the permissions are Kyokai Helper's, and a
   missing one offers Restart Kyokai Helper. Below it,
-  "Control another device" (Device ID, password, Connect; needs a network) and the sessions, newest
+  "Control another device" (Device ID, password, Connect; Remember password; a saved password
+  for the Device ID typed is used when the field is left empty; needs a network) and the sessions, newest
   first (to or from which device, state or why it failed, Disconnect; "Forget old identity" when a
   host's key changed). Recent devices sit under the form as rows (avatar, friendly name, Device ID,
-last connection) that fill in the Device ID; a
+last connection, "Password saved" with Forget password) that fill in the Device ID; a
   dropped session shows "reconnecting" while it resumes. A connected session that may view the
-  screen has View, which opens the viewer: its own window with the picture scaled to fit on black,
+  screen has View, which opens the viewer: a tab of the newest viewer window, which holds one tab per session
+  like a browser (a tab dragged onto another viewer window moves there; dropped outside Kyokai,
+  or with its ⧉ button, it gets a window of its own; × closes the tab, not the session), with the
+  picture scaled to fit on black,
   the host's pointer marked with a small ring, and a status line (Device ID, the display by number
   when the host has several, quality preset, frame-rate cap, size, codec, frame rate, bitrate,
   the host's measured delay; the frame-rate cap reads "30 fps"; Pointer, which shows or hides the ring and is remembered for

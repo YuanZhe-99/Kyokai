@@ -18,7 +18,8 @@
 - Secrets are zeroized when dropped; `kyokai_stop` drops them all.
 - The store holds the device key, the network settings with the network secret
   ([networking.md](networking.md)), the OPAQUE server key and the permanent password's record, the
-  trusted devices, the known hosts ([identity-and-access.md](identity-and-access.md)) and the AI
+  trusted devices, the known hosts and the hosts' saved passwords
+  ([identity-and-access.md](identity-and-access.md)) and the AI
   providers' API keys. The local API carries the network secret only from the GUI (or
   `ctl`) to the engine, never back; `ctl` reads it from the environment, not the command line. The same
   holds for the permanent password and the password typed to connect (`KYOKAI_PERMANENT_PASSWORD`,

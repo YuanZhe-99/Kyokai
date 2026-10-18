@@ -79,6 +79,9 @@ struct Connect {
     password: zeroize::Zeroizing<String>,
     #[serde(default)]
     want: Vec<access::Permission>,
+    /// Keep the password for this host after a login it accepts.
+    #[serde(default)]
+    remember: bool,
 }
 
 /// A `request.decide` answer to a host confirmation.
@@ -728,9 +731,26 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 if r.device_id == c.ctx.identity.device_id() {
                     return Err("that is this device's own ID".into());
                 }
-                let id = c.network.connect(&r.device_id, r.password, r.want)?;
+                // An empty password uses the one saved for this host, if any.
+                let saved = r
+                    .password
+                    .is_empty()
+                    .then(|| c.ctx.access.saved_password(&r.device_id))
+                    .flatten();
+                let remember = session::Remember {
+                    save: r.remember,
+                    saved: saved.is_some(),
+                };
+                let password = saved.unwrap_or(r.password);
+                let id = c
+                    .network
+                    .connect(&r.device_id, password, r.want, remember)?;
                 Ok(json!({"id": id}))
             })
+        }
+        "password.forget_saved" => {
+            let device = req.params["device_id"].as_str().ok_or("bad Device ID")?;
+            try_core(|c| c.ctx.access.forget_password(device).map(|()| json!({})))
         }
         "session.close" => {
             let id = req.params["id"].as_u64().ok_or("bad session id")?;
@@ -914,7 +934,10 @@ fn status() -> Value {
                 .access
                 .recent()
                 .into_iter()
-                .map(|(id, h)| json!({"device_id": id, "last": h.last, "about": h.about}))
+                .map(|(id, h)| {
+                    let saved = c.ctx.access.saved_password(&id).is_some();
+                    json!({"device_id": id, "last": h.last, "about": h.about, "saved_password": saved})
+                })
                 .collect::<Value>(),
             "name": c.ctx.about.lock().map(|l| l.chosen().to_owned()).unwrap_or_default(),
             "serve": c.ctx.access.serve(),

@@ -12,9 +12,9 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
@@ -92,14 +92,18 @@ var coreLib = sync.OnceValues(func() (*core.Lib, error) {
 	return core.Load(abs)
 })
 
-// viewer shows one controller session's screen in its own window. Fields
-// after mu are guarded by it; the bitmap changes only on the main thread.
+// viewer shows one controller session's screen as a tab of a viewer
+// window (viewerwin.go), which it can move between. Fields after mu are
+// guarded by it; the bitmap changes only on the main thread.
 type viewer struct {
 	app    *App
 	id     uint64
 	device string
-	win    *mygo.Window
-	conn   net.Conn
+	// title names the session's host: its friendly name and Device ID.
+	title string
+	// home is the window the tab is in now; nil once the viewer closed.
+	home atomic.Pointer[viewerWindow]
+	conn net.Conn
 	// out queues control packets (input) for the media connection's writer.
 	out chan []byte
 
@@ -141,45 +145,67 @@ type viewer struct {
 	ai viewerAI
 }
 
-// openViewer shows the viewer of a session, opening it the first time.
+// openViewer shows the viewer of a session, opening it the first time as
+// a new tab of the newest viewer window (a new window when there is none).
+// Notes: call on the main thread.
 func (a *App) openViewer(s localapi.SessionInfo) {
 	a.mu.Lock()
 	v, open := a.viewers[s.ID]
+	var vw *viewerWindow
+	if n := len(a.viewerWins); n > 0 {
+		vw = a.viewerWins[n-1]
+	}
 	a.mu.Unlock()
 	if open {
-		v.win.Focus()
+		if w := v.home.Load(); w != nil {
+			w.mu.Lock()
+			if i := slices.Index(w.tabs, v); i >= 0 {
+				w.cur = i
+			}
+			w.mu.Unlock()
+			w.retitle()
+			w.win.Focus()
+		}
 		return
 	}
-	v = &viewer{app: a, id: s.ID, device: s.DeviceID, counted: time.Now(), out: make(chan []byte, 256), preset: 1, fpsCap: "30 fps",
+	v = &viewer{app: a, id: s.ID, device: s.DeviceID, title: deviceTitle(s.Peer, s.DeviceID), counted: time.Now(), out: make(chan []byte, 256), preset: 1, fpsCap: "30 fps",
 		control: slices.Contains(s.Granted, localapi.PermControlInput),
 		ai:      viewerAI{run: slices.Contains(s.Granted, localapi.PermRunAITask), approve: slices.Contains(s.Granted, localapi.PermApproveAIAction)}}
 	if !slices.Contains(s.Granted, localapi.PermViewScreen) {
 		v.state = L.ViewerNoPicture()
 	}
-	v.win = mygo.NewWindow(mygo.WindowOptions{
-		Title: L.ViewerTitle(deviceTitle(s.Peer, s.DeviceID)), Width: 1280, Height: 760, MinWidth: 480, MinHeight: 320,
-		Content: ui.View(v.view),
-	})
-	a.mu.Lock()
-	show := a.prefs.ShowInCapture
-	a.mu.Unlock()
-	v.win.SetContentProtection(!show)
-	v.win.OnClosed(func() {
-		v.endGrab()
-		a.mu.Lock()
-		delete(a.viewers, s.ID)
-		a.mu.Unlock()
-		v.mu.Lock()
-		conn := v.conn
-		v.mu.Unlock()
-		if conn != nil {
-			conn.Close()
-		}
-	})
+	if vw == nil {
+		vw = a.newViewerWindow()
+	}
 	a.mu.Lock()
 	a.viewers[s.ID] = v
 	a.mu.Unlock()
+	vw.add(v)
 	go v.pump()
+}
+
+// close ends the viewer's stream as its tab closes: the keyboard grab, the
+// media connection and its place among the open viewers. The session goes on.
+func (v *viewer) close() {
+	v.endGrab()
+	v.home.Store(nil)
+	v.app.mu.Lock()
+	delete(v.app.viewers, v.id)
+	v.app.mu.Unlock()
+	v.mu.Lock()
+	conn := v.conn
+	v.mu.Unlock()
+	if conn != nil {
+		conn.Close()
+	}
+}
+
+// update runs fn on the main thread for the window the tab is in now, and
+// redraws it; nothing once the viewer closed.
+func (v *viewer) update(fn func()) {
+	if w := v.home.Load(); w != nil {
+		w.win.Update(fn)
+	}
 }
 
 // pump reads the session's media until the stream or the window ends,
@@ -258,7 +284,7 @@ func (v *viewer) pump() {
 		case packetDisplays:
 			var d hostDisplays
 			if json.Unmarshal(p[1:], &d) == nil {
-				v.win.Update(func() {
+				v.update(func() {
 					v.mu.Lock()
 					v.displays = d
 					v.mu.Unlock()
@@ -267,7 +293,7 @@ func (v *viewer) pump() {
 		case packetActions:
 			var a hostActions
 			if json.Unmarshal(p[1:], &a) == nil {
-				v.win.Update(func() {
+				v.update(func() {
 					v.mu.Lock()
 					v.actions = &a
 					v.mu.Unlock()
@@ -276,7 +302,7 @@ func (v *viewer) pump() {
 		case packetCursor:
 			var ptr hostPointer
 			if json.Unmarshal(p[1:], &ptr) == nil {
-				v.win.Update(func() {
+				v.update(func() {
 					v.mu.Lock()
 					v.pointer = ptr
 					v.mu.Unlock()
@@ -304,7 +330,7 @@ func (v *viewer) pump() {
 
 // begin prepares the pictures for a new stream.
 func (v *viewer) begin(s videoStart) {
-	v.win.Update(func() {
+	v.update(func() {
 		v.mu.Lock()
 		defer v.mu.Unlock()
 		v.start = s
@@ -340,7 +366,7 @@ func (v *viewer) show(dec *core.Decoder, data []byte, _ uint64) {
 	}
 	v.mu.Unlock()
 	done := make(chan struct{})
-	v.win.Update(func() {
+	v.update(func() {
 		defer close(done)
 		v.mu.Lock()
 		defer v.mu.Unlock()
@@ -355,7 +381,7 @@ func (v *viewer) show(dec *core.Decoder, data []byte, _ uint64) {
 }
 
 func (v *viewer) setState(s string) {
-	v.win.Update(func() {
+	v.update(func() {
 		v.mu.Lock()
 		v.state = s
 		v.mu.Unlock()

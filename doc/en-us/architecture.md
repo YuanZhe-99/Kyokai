@@ -70,8 +70,9 @@ allocates; panics are caught at the boundary and reported as errors. Methods: `s
 secret; includes the network status), `password.reveal`, `password.regenerate`, `network.get`
 (settings without the secret), `network.set` (`{servers, name, secret?}`; a missing secret keeps
 the stored one), `password.set_permanent` (`{password}`, null removes it), `session.connect`
-(`{device_id, password, want}`; returns the session id at once, progress shows in the status),
-`session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,
+(`{device_id, password, want, remember}`; an empty password uses the one saved for the host;
+returns the session id at once, progress shows in the status), `password.forget_saved`
+(`{device_id}`), `session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,
 `host.forget`, `identity.export` (`{passphrase}` → `{document}`), `identity.import`
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
 name; the status carries `name` and this device's `about`), `trusted.unattended` (`{key, days}`; 0
@@ -103,7 +104,7 @@ runtime statically, so nothing is resolved through the search path.
   changes.
 - Requests: `status` (with the network status), `password.reveal`, `password.regenerate`,
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
-  `password.set_permanent`, `session.connect`, `session.close`, `request.decide`, `trusted.list`,
+  `password.set_permanent`, `session.connect`, `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
   `device.set_name`, `trusted.unattended`, `system.permission` (`{permission}`, macOS), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,

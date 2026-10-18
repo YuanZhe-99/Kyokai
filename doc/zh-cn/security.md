@@ -11,7 +11,7 @@
   本次运行把机密保存在内存中（持久化状态 `denied`），权限卡片上钥匙串一行的“允许”会再次打开存储——macOS 会再次询问——并在其上重建核心。
 - 机密在释放时清零；`kyokai_stop` 会全部丢弃。
 - 存储中保存设备密钥、含网络密钥的网络设置（[networking.md](networking.md)）、OPAQUE 服务器密钥与固定密码的记录、受信任设备、
-  已知被控端（[identity-and-access.md](identity-and-access.md)）以及 AI 服务商的 API 密钥。本地 API 只把网络密钥从界面（或
+  已知被控端与为被控端保存的密码（[identity-and-access.md](identity-and-access.md)）以及 AI 服务商的 API 密钥。本地 API 只把网络密钥从界面（或
   `ctl`）传给引擎，从不回传；`ctl` 从环境变量而不是命令行读取它。固定密码与连接时输入的密码同样如此（`KYOKAI_PERMANENT_PASSWORD`、
   `KYOKAI_PASSWORD`）；核心只在该会话结束前把用户输入的密码保留在内存中，随后将其清零。
   服务商密钥同样如此传递（`ctl ai-key` 使用 `KYOKAI_AI_KEY`），且从不返回。

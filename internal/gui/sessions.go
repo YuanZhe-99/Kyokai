@@ -20,6 +20,8 @@ type connectForm struct {
 	password string
 	// ai also asks to run AI tasks on the host and approve their actions.
 	ai bool
+	// remember keeps the password for the host once it accepts the login.
+	remember bool
 }
 
 // accessForm is the Settings page's permanent password field and the
@@ -165,6 +167,14 @@ func (a *App) connectCard(c *ui.Context) {
 				a.mu.Unlock()
 			}
 		}
+		// A password saved for the Device ID typed is used when the field is
+		// left empty.
+		typed := strings.Join(strings.Fields(f.deviceID), "")
+		saved := slices.ContainsFunc(recent, func(r localapi.RecentDevice) bool { return r.DeviceID == typed && r.SavedPassword })
+		pwHint := L.ConnectPasswordOptional()
+		if saved {
+			pwHint = L.ConnectSavedPassword()
+		}
 		ui.Row(c).Gap(gap).AlignItems(ui.End).Children(func() {
 			ui.Column(c).Gap(4).Grow(1).Children(func() {
 				ui.Text(c, L.HomeDeviceID()).FontSize(sizeSmall).TextColor(t.TextMuted)
@@ -172,41 +182,64 @@ func (a *App) connectCard(c *ui.Context) {
 			})
 			ui.Column(c).Gap(4).Grow(1).Children(func() {
 				ui.Text(c, L.ConnectPassword()).FontSize(sizeSmall).TextColor(t.TextMuted)
-				edit(ui.TextInput(c.Key("conn-pw"), &f.password).Password().Placeholder(L.ConnectPasswordOptional()).FillWidth().Disabled(busy))
+				edit(ui.TextInput(c.Key("conn-pw"), &f.password).Password().Placeholder(pwHint).FillWidth().Disabled(busy))
 			})
 			// Without a password the host's user is asked to allow it.
 			label := L.ActionConnect()
-			if f.password == "" {
+			if f.password == "" && !saved {
 				label = L.ActionRequestAccess()
 			}
 			if ui.PrimaryButton(c.Key("conn-go"), label).Disabled(busy || !online).Clicked() {
 				a.startSession(f)
 			}
 		})
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			edit(ui.Switch(c.Key("conn-ai"), &f.ai).Label(L.ConnectWithAI()).Disabled(busy))
-			ui.Text(c, L.ConnectWithAI()).FontSize(sizeSmall)
+		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
+			labelled(c, func() {
+				edit(ui.Switch(c.Key("conn-ai"), &f.ai).Label(L.ConnectWithAI()).Disabled(busy))
+			}, L.ConnectWithAI())
+			labelled(c, func() {
+				edit(ui.Switch(c.Key("conn-remember"), &f.remember).Label(L.ConnectRemember()).Disabled(busy))
+			}, L.ConnectRemember())
 		})
 		if len(recent) > 0 {
 			ui.Text(c, L.ConnectRecent()).FontSize(sizeSmall).TextColor(t.TextMuted)
 			for _, r := range recent {
-				row := ui.ButtonBase(c.Key("recent-" + r.DeviceID)).FillWidth().Label(deviceTitle(r.About, r.DeviceID))
-				if row.Clicked() {
-					a.mu.Lock()
-					a.connect.deviceID = groupDigits(r.DeviceID)
-					a.mu.Unlock()
-				}
-				row.Children(func() {
-					ui.Row(c).FillWidth().Padding(6, 8).Gap(gap).AlignItems(ui.Center).Children(func() {
-						deviceAvatar(c, r.About)
-						ui.Column(c).Grow(1).Gap(2).Children(func() {
-							if r.About.Name != "" {
-								ui.Text(c, r.About.Name).Bold().Ellipsis("…").NoWrap()
-							}
-							ui.Text(c, groupDigits(r.DeviceID)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
+				line := ui.Row(c.Key("recent-line-" + r.DeviceID)).FillWidth().Gap(8).AlignItems(ui.Center)
+				line.Children(func() {
+					row := ui.ButtonBase(c.Key("recent-" + r.DeviceID)).Grow(1).Label(deviceTitle(r.About, r.DeviceID))
+					if row.Clicked() {
+						a.mu.Lock()
+						a.connect.deviceID = groupDigits(r.DeviceID)
+						// The saved password is used: nothing to type.
+						if r.SavedPassword {
+							a.connect.password = ""
+						}
+						a.mu.Unlock()
+					}
+					row.Children(func() {
+						ui.Row(c).FillWidth().Padding(6, 8).Gap(gap).AlignItems(ui.Center).Children(func() {
+							deviceAvatar(c, r.About)
+							ui.Column(c).Grow(1).Gap(2).Children(func() {
+								if r.About.Name != "" {
+									ui.Text(c, r.About.Name).Bold().Ellipsis("…").NoWrap()
+								}
+								ui.Text(c, groupDigits(r.DeviceID)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
+							})
+							ui.Column(c).Gap(2).AlignItems(ui.End).Children(func() {
+								ui.Text(c, time.Unix(r.Last, 0).Local().Format(time.DateTime)).FontSize(sizeSmall).TextColor(t.TextMuted)
+								if r.SavedPassword {
+									ui.Text(c, L.ConnectPasswordSaved()).FontSize(sizeSmall).TextColor(t.TextMuted)
+								}
+							})
 						})
-						ui.Text(c, time.Unix(r.Last, 0).Local().Format(time.DateTime)).FontSize(sizeSmall).TextColor(t.TextMuted)
 					})
+					if r.SavedPassword && ui.Button(c.Key("recent-forget-"+r.DeviceID), L.ActionForgetPassword()).Clicked() {
+						device := r.DeviceID
+						go func() {
+							_, _ = a.requestWith(localapi.Request{Type: localapi.RequestForgetPassword, DeviceID: device})
+							a.update(func() { a.setToast(L.PasswordForgotten(), false) })
+						}()
+					}
 				})
 			}
 		}
@@ -231,7 +264,7 @@ func (a *App) startSession(f connectForm) {
 	go func() {
 		_, err := a.requestWith(localapi.Request{Type: localapi.RequestConnect, Connect: &localapi.ConnectRequest{
 			DeviceID: id, Password: f.password,
-			Want: connectWant(f.ai),
+			Want: connectWant(f.ai), Remember: f.remember,
 		}})
 		a.update(func() {
 			delete(a.busy, "connect")

@@ -60,6 +60,7 @@ const (
 	RequestTrustedList        RequestType = "trusted.list"           // the trusted devices
 	RequestTrustedRemove      RequestType = "trusted.remove"         // forget a trusted device (Request.Key)
 	RequestHostForget         RequestType = "host.forget"            // forget a pinned host key (Request.DeviceID)
+	RequestForgetPassword     RequestType = "password.forget_saved"  // forget the password saved for a host (Request.DeviceID)
 	RequestIdentityExport     RequestType = "identity.export"        // an encrypted identity backup (Request.Backup.Passphrase)
 	RequestIdentityImport     RequestType = "identity.import"        // restore an identity backup (Request.Backup)
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
@@ -268,10 +269,12 @@ type PermanentPassword struct {
 // ConnectRequest asks the engine to start a session with a device.
 type ConnectRequest struct {
 	DeviceID string `json:"device_id"`
-	// Password is the host's password; empty asks the host's user without
-	// one.
+	// Password is the host's password; empty uses the one saved for the
+	// host, or else asks the host's user without one.
 	Password string   `json:"password"`
 	Want     []string `json:"want,omitempty"`
+	// Remember keeps the password for this host once it accepts the login.
+	Remember bool `json:"remember,omitempty"`
 }
 
 // Decision answers a host confirmation; Permissions are the granted ones.
@@ -365,6 +368,9 @@ type RecentDevice struct {
 	Last     int64  `json:"last"` // Unix seconds
 	// About is what the host said about itself in the last session.
 	About About `json:"about"`
+	// SavedPassword says whether a password is saved for the host (never
+	// the password).
+	SavedPassword bool `json:"saved_password,omitempty"`
 }
 
 // SessionInfo is one session of this device, live or recently finished.

@@ -13,6 +13,10 @@
 被控端从不保存、也从不接收密码，只保存 OPAQUE 记录；OPAQUE 服务器密钥（`ServerSetup`）只创建一次并保存在机密存储中。
 控制端永远无法得知哪些槽位已设置。
 
+## 保存的密码
+
+控制端可以保存被控端的密码（连接表单上的“记住密码”，`session.connect` 的 `remember`）。只有在被控端接受登录之后才保存，存放在机密存储的 `saved_password.<设备 ID>` 下，与其他机密一样加密，从不显示或返回：状态中只说明哪些最近设备保存了密码（`saved_password`）。之后密码栏留空时就使用它。被控端拒绝保存的密码（密码已更改）时，控制端会忘记它；最近设备一行上的“忘记密码”会立即忘记它（`password.forget_saved`）。
+
 ## 权限
 
 `view-screen`、`control-input`、`run-ai-task`、`approve-ai-action`、`clipboard`、`files`（通过剪贴板复制文件；`clipboard` 不包含它）。控制端请求一组权限；被控端用户授予其中

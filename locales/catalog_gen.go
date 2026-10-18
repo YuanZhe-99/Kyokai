@@ -1072,6 +1072,16 @@ func (msgs Messages) ActionForgetIdentity() string {
 	return Catalog.Format(msgs.locale, "ActionForgetIdentity", nil)
 }
 
+// ActionForgetPassword says "Forget password"
+// in the language the app shows.
+func ActionForgetPassword() string { return In(i18n.Locale()).ActionForgetPassword() }
+
+// ActionForgetPassword says "Forget password"
+// in the language of msgs.
+func (msgs Messages) ActionForgetPassword() string {
+	return Catalog.Format(msgs.locale, "ActionForgetPassword", nil)
+}
+
 // ActionHide says "Hide"
 // in the language the app shows.
 func ActionHide() string { return In(i18n.Locale()).ActionHide() }
@@ -1392,6 +1402,16 @@ func (msgs Messages) ConnectPasswordOptional() string {
 	return Catalog.Format(msgs.locale, "ConnectPasswordOptional", nil)
 }
 
+// ConnectPasswordSaved says "Password saved"
+// in the language the app shows.
+func ConnectPasswordSaved() string { return In(i18n.Locale()).ConnectPasswordSaved() }
+
+// ConnectPasswordSaved says "Password saved"
+// in the language of msgs.
+func (msgs Messages) ConnectPasswordSaved() string {
+	return Catalog.Format(msgs.locale, "ConnectPasswordSaved", nil)
+}
+
 // ConnectRecent says "Recent:"
 // in the language the app shows.
 func ConnectRecent() string { return In(i18n.Locale()).ConnectRecent() }
@@ -1400,6 +1420,26 @@ func ConnectRecent() string { return In(i18n.Locale()).ConnectRecent() }
 // in the language of msgs.
 func (msgs Messages) ConnectRecent() string {
 	return Catalog.Format(msgs.locale, "ConnectRecent", nil)
+}
+
+// ConnectRemember says "Remember password"
+// in the language the app shows.
+func ConnectRemember() string { return In(i18n.Locale()).ConnectRemember() }
+
+// ConnectRemember says "Remember password"
+// in the language of msgs.
+func (msgs Messages) ConnectRemember() string {
+	return Catalog.Format(msgs.locale, "ConnectRemember", nil)
+}
+
+// ConnectSavedPassword says "Saved password"
+// in the language the app shows.
+func ConnectSavedPassword() string { return In(i18n.Locale()).ConnectSavedPassword() }
+
+// ConnectSavedPassword says "Saved password"
+// in the language of msgs.
+func (msgs Messages) ConnectSavedPassword() string {
+	return Catalog.Format(msgs.locale, "ConnectSavedPassword", nil)
 }
 
 // ConnectTitle says "Control another device"
@@ -2080,6 +2120,16 @@ func NotifyStillRunningTitle() string { return In(i18n.Locale()).NotifyStillRunn
 // in the language of msgs.
 func (msgs Messages) NotifyStillRunningTitle() string {
 	return Catalog.Format(msgs.locale, "NotifyStillRunningTitle", nil)
+}
+
+// PasswordForgotten says "The saved password is forgotten."
+// in the language the app shows.
+func PasswordForgotten() string { return In(i18n.Locale()).PasswordForgotten() }
+
+// PasswordForgotten says "The saved password is forgotten."
+// in the language of msgs.
+func (msgs Messages) PasswordForgotten() string {
+	return Catalog.Format(msgs.locale, "PasswordForgotten", nil)
 }
 
 // PasswordGrantsHint says "A device that enters your password gets these without asking you. Anything else it asks for waits for you to allow it."
@@ -3348,6 +3398,26 @@ func ViewerPrivacy() string { return In(i18n.Locale()).ViewerPrivacy() }
 // in the language of msgs.
 func (msgs Messages) ViewerPrivacy() string {
 	return Catalog.Format(msgs.locale, "ViewerPrivacy", nil)
+}
+
+// ViewerTabClose says "Close this tab (the session goes on)"
+// in the language the app shows.
+func ViewerTabClose() string { return In(i18n.Locale()).ViewerTabClose() }
+
+// ViewerTabClose says "Close this tab (the session goes on)"
+// in the language of msgs.
+func (msgs Messages) ViewerTabClose() string {
+	return Catalog.Format(msgs.locale, "ViewerTabClose", nil)
+}
+
+// ViewerTabOut says "Open in new window"
+// in the language the app shows.
+func ViewerTabOut() string { return In(i18n.Locale()).ViewerTabOut() }
+
+// ViewerTabOut says "Open in new window"
+// in the language of msgs.
+func (msgs Messages) ViewerTabOut() string {
+	return Catalog.Format(msgs.locale, "ViewerTabOut", nil)
 }
 
 // ViewerTitle says "{device} — Kyokai"
