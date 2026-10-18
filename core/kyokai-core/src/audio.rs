@@ -273,7 +273,9 @@ mod loopback {
     /// Returns: the client, its capture service, the channels, the rate and
     /// whether samples are 32-bit floats (else 16-bit integers).
     unsafe fn open() -> Result<(IAudioClient, IAudioCaptureClient, usize, u32, bool), String> {
-        let e = |what: &str| move |err: windows::core::Error| format!("{what}: {err}");
+        fn e(what: &'static str) -> impl Fn(windows::core::Error) -> String {
+            move |err| format!("{what}: {err}")
+        }
         // SAFETY: COM calls on objects this function owns; the mix format
         // is read and then freed with CoTaskMemFree.
         unsafe {
