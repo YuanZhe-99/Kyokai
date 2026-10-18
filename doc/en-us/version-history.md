@@ -31,8 +31,10 @@
   Swap Ctrl and Cmd is on by default between a Mac and Windows; each device's viewer settings are
   remembered. The Mac grab no longer freezes other programs' keyboards. Sound: the viewer plays
   what the other computer plays (Opus 1.5.2, ScreenCaptureKit and WASAPI loopback), with a Sound
-  switch.
-- Wire protocol 9 (a 0.1.3 device connects only to 0.1.3), FFI ABI 5, local API 2.
+  switch; 10 ms low-delay packets, none while the host is silent, an adaptive buffer of 40–300 ms,
+  its own Hear sound permission (on by default) and the sound to share chosen in Settings (what the
+  computer plays, or an input such as a microphone).
+- Wire protocol 10 (a 0.1.3 device connects only to 0.1.3), FFI ABI 5, local API 2.
 - Checked (2026-10-18): MyGo v0.5.5, EasyTier v2.7.0 (commit `8b7f1f0`), RustDesk 1.5.0, vcpkg
   2026.07.29 and Rust 1.99.1 are the latest; checked, unchanged.
 

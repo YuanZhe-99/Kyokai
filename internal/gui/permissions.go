@@ -17,6 +17,7 @@ var permissionPanes = map[string]string{
 	"screen":           "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
 	"accessibility":    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
 	"input-monitoring": "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+	"microphone":       "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
 }
 
 // permissionsMissing reports whether a privacy permission Kyokai needs is

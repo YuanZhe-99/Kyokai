@@ -165,8 +165,10 @@ func (a *App) connectLoop() {
 		if err != nil {
 			a.update(func() { a.connected, a.engineErr = false, err.Error() })
 		} else {
-			// The engine captures as the person chose (it starts hidden).
+			// The engine captures as the person chose (it starts hidden, and
+			// shares what the computer plays).
 			a.sendCapture()
+			a.sendSoundSource()
 			attach, stop := context.WithCancel(a.ctx)
 			a.mu.Lock()
 			a.reattach = stop

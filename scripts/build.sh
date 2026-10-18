@@ -54,6 +54,7 @@ helper_bundle() {
 	<key>LSMinimumSystemVersion</key><string>14.0</string>
 	<key>LSUIElement</key><true/>
 	<key>NSLocalNetworkUsageDescription</key><string>Kyokai connects directly to your other devices on this network.</string>
+	<key>NSMicrophoneUsageDescription</key><string>Kyokai shares the sound of the input you choose with the devices that control this Mac.</string>
 </dict>
 </plist>
 PLIST

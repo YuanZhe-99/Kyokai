@@ -5,6 +5,7 @@ package gui
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"time"
 
@@ -64,6 +65,10 @@ type App struct {
 	asked            map[string]bool
 	// helperUpdated: this run already updated an older helper (modes.go).
 	helperUpdated bool
+	// soundDevices are the engine's input devices for Sound to share,
+	// asked once Settings shows.
+	soundDevices       []localapi.SoundDevice
+	soundDevicesLoaded bool
 
 	// Network page: the settings form (network.go).
 	net netForm
@@ -171,6 +176,46 @@ func (a *App) sendCapture() {
 	show := a.prefs.ShowInCapture
 	a.mu.Unlock()
 	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestCaptureShow, Show: &show})
+}
+
+// sendSoundSource tells the engine which sound this device shares, as the
+// preferences say. An engine of an older version refuses the request,
+// which changes nothing.
+func (a *App) sendSoundSource() {
+	a.mu.Lock()
+	source := a.prefs.SoundSource
+	a.mu.Unlock()
+	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestSoundSource, SoundSource: &source})
+}
+
+// setSoundSource keeps the sound to share and tells the engine; an input
+// device on macOS asks for the Microphone permission (the engine's, or the
+// helper's in its modes).
+func (a *App) setSoundSource(p Prefs, source string) {
+	p.SoundSource = source
+	a.setPrefs(p)
+	go a.sendSoundSource()
+	if source != "" && runtime.GOOS == "darwin" {
+		a.askPermission("microphone", false)
+	}
+}
+
+// loadSoundDevices asks the engine for its input devices, once.
+func (a *App) loadSoundDevices() {
+	a.mu.Lock()
+	if a.soundDevicesLoaded {
+		a.mu.Unlock()
+		return
+	}
+	a.soundDevicesLoaded = true
+	a.mu.Unlock()
+	go func() {
+		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestSoundDevices})
+		if err != nil || resp == nil {
+			return
+		}
+		a.update(func() { a.soundDevices = resp.SoundDevices })
+	}()
 }
 
 // SetTray hands the GUI its status icon (nil when the desktop has none).

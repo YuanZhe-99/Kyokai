@@ -7,5 +7,8 @@
 	     library unless library validation is off. -->
 	<key>com.apple.security.cs.disable-library-validation</key>
 	<true/>
+	<!-- An input device as the sound to share (the Microphone permission). -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
 </dict>
 </plist>

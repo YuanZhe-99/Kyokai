@@ -1,5 +1,5 @@
 //! Opus for the host's sound (doc/en-us/computer-use.md, "Sound"): 48 kHz
-//! stereo in 20 ms frames, through the static libopus that
+//! stereo in 10 ms frames in Opus' low-delay mode, through the static libopus that
 //! scripts/codecs.sh builds with vcpkg (linked by rustdesk-codec's build
 //! script with the video codecs).
 
@@ -10,14 +10,16 @@ use std::ptr::NonNull;
 pub const RATE: usize = 48_000;
 /// The channels of every stream: left and right.
 pub const CHANNELS: usize = 2;
-/// Frames per packet: 20 ms.
-pub const FRAME: usize = RATE / 50;
+/// Frames per packet: 10 ms.
+pub const FRAME: usize = RATE / 100;
 /// The bitrate the host encodes at, in bit/s.
 const BITRATE: i32 = 96_000;
 /// Largest packet the encoder may write.
 const MAX_PACKET: usize = 4000;
 
-const OPUS_APPLICATION_AUDIO: i32 = 2049;
+/// Opus' low-delay mode: no speech mode, 5 ms less look-ahead (as
+/// RustDesk's sound).
+const OPUS_APPLICATION_RESTRICTED_LOWDELAY: i32 = 2051;
 const OPUS_SET_BITRATE_REQUEST: i32 = 4002;
 
 unsafe extern "C" {
@@ -48,7 +50,7 @@ unsafe extern "C" {
     fn opus_decoder_destroy(st: *mut c_void);
 }
 
-/// An Opus encoder of 20 ms stereo frames.
+/// An Opus encoder of 10 ms stereo frames.
 pub struct Encoder(NonNull<c_void>);
 
 // SAFETY: an Opus encoder keeps no thread affinity; it is used by one
@@ -56,7 +58,7 @@ pub struct Encoder(NonNull<c_void>);
 unsafe impl Send for Encoder {}
 
 impl Encoder {
-    /// Opens an encoder for general sound at the host's bitrate.
+    /// Opens a low-delay encoder at the host's bitrate.
     /// Returns: why libopus refused it.
     pub fn new() -> Result<Encoder, String> {
         let mut err = 0;
@@ -65,7 +67,7 @@ impl Encoder {
             opus_encoder_create(
                 RATE as i32,
                 CHANNELS as i32,
-                OPUS_APPLICATION_AUDIO,
+                OPUS_APPLICATION_RESTRICTED_LOWDELAY,
                 &mut err,
             )
         };
@@ -81,7 +83,7 @@ impl Encoder {
     /// Returns: the packet.
     pub fn encode(&mut self, pcm: &[f32]) -> Result<Vec<u8>, String> {
         if pcm.len() != FRAME * CHANNELS {
-            return Err("an Opus frame is 20 ms of stereo".into());
+            return Err("an Opus frame is 10 ms of stereo".into());
         }
         let mut out = vec![0u8; MAX_PACKET];
         // SAFETY: `pcm` holds a whole frame and `out` MAX_PACKET bytes.

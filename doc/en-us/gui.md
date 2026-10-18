@@ -71,7 +71,9 @@ when `SCREENSHOT_DIR` is set.
   [networking.md](networking.md)). Diagnostics shows the mode in use.
 - **Settings:** General (language, appearance, open at login — off by default, hide Kyokai from
   screen capture — on by default, applied to the main window and every viewer at once and told
-  to the engine, whose macOS capture follows it, close button),
+  to the engine, whose macOS capture follows it, Sound to share — what this computer plays
+  unless an input device is chosen, a device that is gone shown as not connected, an input asking
+  macOS for the Microphone permission — close button),
   Device identity (Device ID, fingerprint; back up and restore with a passphrase through a file
   dialog; reset, after a warning), Access (permanent password: set, change or remove; Accepted passwords: Temporary,
   Permanent or Both; Connect without asking, on by default, and below it "With a correct

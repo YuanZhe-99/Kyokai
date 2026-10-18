@@ -22,7 +22,7 @@ use tokio::sync::{Notify, mpsc};
 use crate::{audio, media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
-pub const PROTOCOL: u32 = 9;
+pub const PROTOCOL: u32 = 10;
 
 /// How many frames the host sends ahead of the controller's
 /// acknowledgements: enough for the frame-rate cap over a relay's round
@@ -796,6 +796,7 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             ctx.sessions.update(id, |e| e.peer = peer);
             let video = granted.contains(&Permission::ViewScreen);
             let input = granted.contains(&Permission::ControlInput);
+            let sound = granted.contains(&Permission::HearSound);
             let clipboard = shared(&ctx, &granted);
             let ai = HostAi {
                 ai: ctx.ai.clone(),
@@ -807,9 +808,19 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 e.state = State::Connected;
                 e.granted = granted;
             });
-            let failure = run(ch, &stop, Side::Host { video, input, ai }, clipboard)
-                .await
-                .err();
+            let failure = run(
+                ch,
+                &stop,
+                Side::Host {
+                    video,
+                    sound,
+                    input,
+                    ai,
+                },
+                clipboard,
+            )
+            .await
+            .err();
             // The controller's AI task does not go on without it.
             ctx.ai.controller_left(&device_id);
             ctx.sessions.end(id, failure);
@@ -1225,10 +1236,12 @@ fn shared(ctx: &Ctx, granted: &[Permission]) -> Option<Shared> {
 
 /// What one end of an established session does besides the heartbeat.
 pub enum Side {
-    /// The host: sends video while the controller may view the screen, and
-    /// injects its input while it may control input.
+    /// The host: sends video while the controller may view the screen, its
+    /// sound while it may hear it, and injects its input while it may
+    /// control input.
     Host {
         video: bool,
+        sound: bool,
         // Read by the Windows input service; macOS input comes with the Mac pass.
         #[cfg_attr(not(windows), allow(dead_code))]
         input: bool,
@@ -1413,6 +1426,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // decodes (or after CODECS_WAIT, in H.264): the codec decides which
     // encoder it takes.
     let wants_video = matches!(side, Side::Host { video: true, .. });
+    let may_hear = matches!(side, Side::Host { sound: true, .. });
     let mut source: Option<video::Source> = None;
     // The host's sound, while the controller asks for it.
     let mut sound: Option<audio::Source> = None;
@@ -1811,10 +1825,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     // The controller echoes probes at once; the host measures them.
                     // The host starts its sound for a controller that may
-                    // view the screen and asks; it stops when asked, or
-                    // when it cannot capture (it then sends none).
+                    // hear it and asks; it stops when asked, or when it
+                    // cannot capture (it then sends none).
                     Message::Audio { on } if matches!(side, Side::Host { .. }) => {
-                        if on && wants_video {
+                        if on && may_hear {
                             if sound.is_none() {
                                 sound = audio::Source::open().ok();
                             }
@@ -3590,6 +3604,7 @@ mod tests {
         let host = device("1.0.0");
         let side = Side::Host {
             video: true,
+            sound: false,
             input: false,
             ai: HostAi {
                 ai: host.ai.clone(),
@@ -3647,6 +3662,7 @@ mod tests {
         let host = device("1.0.0");
         let side = Side::Host {
             video: false,
+            sound: false,
             input: false,
             ai: HostAi {
                 ai: host.ai.clone(),

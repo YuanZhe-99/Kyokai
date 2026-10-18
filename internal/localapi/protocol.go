@@ -71,6 +71,8 @@ const (
 	RequestPermission         RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen", "accessibility", "input-monitoring" or "keychain"; macOS)
 	RequestPasswordGrants     RequestType = "access.password_grants" // what a correct password grants without asking (Request.Grants)
 	RequestCaptureShow        RequestType = "capture.show"           // whether captures show Kyokai's windows (Request.Show); hidden until a GUI says otherwise
+	RequestSoundSource        RequestType = "sound.source"           // the sound to share (Request.SoundSource): "" what the computer plays, else an input device's id
+	RequestSoundDevices       RequestType = "sound.devices"          // the input devices that may be shared (Response.SoundDevices)
 	RequestBackground         RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
 	RequestStoreExport        RequestType = "store.export"           // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
 	RequestStoreImport        RequestType = "store.import"           // take over a store this device's other engine sealed (Request.Backup)
@@ -140,6 +142,9 @@ type Request struct {
 	// Show is RequestCaptureShow's: true lets captures see Kyokai's
 	// windows ("Hide Kyokai from capture" off).
 	Show *bool `json:"show,omitempty"`
+	// SoundSource is RequestSoundSource's: "" for what the computer
+	// plays, else an input device's id.
+	SoundSource *string `json:"sound_source,omitempty"`
 	// Background chooses Background service (true) or Follow GUI
 	// (RequestBackground).
 	Background *bool `json:"background,omitempty"`
@@ -299,10 +304,11 @@ const (
 	PermApproveAIAction = "approve-ai-action"
 	PermClipboard       = "clipboard"
 	PermFiles           = "files"
+	PermHearSound       = "hear-sound"
 )
 
 // AllPermissions in the order the interface lists them.
-var AllPermissions = []string{PermViewScreen, PermControlInput, PermRunAITask, PermApproveAIAction, PermClipboard, PermFiles}
+var AllPermissions = []string{PermViewScreen, PermControlInput, PermRunAITask, PermApproveAIAction, PermClipboard, PermFiles, PermHearSound}
 
 // Response is one line from the engine: an answer, or a pushed frame of a
 // session.
@@ -321,6 +327,8 @@ type Response struct {
 	Trusted []TrustedDevice `json:"trusted,omitempty"`
 	// Document answers RequestIdentityExport: the encrypted backup.
 	Document string `json:"document,omitempty"`
+	// SoundDevices answers RequestSoundDevices.
+	SoundDevices []SoundDevice `json:"sound_devices,omitempty"`
 	// AISettings answers the AI settings and key requests.
 	AISettings *AISettings `json:"ai_settings,omitempty"`
 	// AITasks answers RequestAITasks.
@@ -393,6 +401,13 @@ type SessionInfo struct {
 	PeerSource  string          `json:"peer_source"`
 	// Peer is what the other device said about itself after the login.
 	Peer About `json:"peer"`
+}
+
+// SoundDevice is an input device the host may share instead of what it
+// plays: its system id and name.
+type SoundDevice struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // NetworkSettings are the EasyTier network the engine joins.

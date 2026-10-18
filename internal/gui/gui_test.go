@@ -709,31 +709,49 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 	}
 }
 
-// TestLiveSound: the host's sound reaches the player as it arrives, no more
-// than soundLag ahead of what was played, and ends when closed.
+// TestLiveSound: the host's sound reaches the player as it arrives and
+// ends when closed; what waits to be heard stays within a target that grows
+// when playing runs dry while sound comes (up to 300 ms), shrinks after a
+// calm spell, and drops the oldest sound beyond it.
 func TestLiveSound(t *testing.T) {
 	var played int64
-	s := newLiveSound(func() int64 { return played })
-	s.feed([]float32{0.1, 0.2, 0.3, 0.4})
-	buf := make([]float32, 4096)
-	if n, err := s.Read(buf); n != 4 || err != nil || buf[3] != 0.4 {
+	clock := time.Unix(0, 0)
+	s := newLiveSound(func() int64 { return played }, func() time.Time { return clock })
+	packet := make([]float32, soundRate/100*soundChannels) // 10 ms
+	buf := make([]float32, 1<<16)
+	s.feed(packet)
+	if n, err := s.Read(buf); n != len(packet) || err != nil {
 		t.Fatalf("read %d %v", n, err)
 	}
-	// Far ahead of the player: what comes is left out until it catches up.
-	s.feed(make([]float32, (soundLag+10)*soundChannels))
-	s.feed([]float32{0.5, 0.5})
-	if got := len(s.buf); got != (soundLag+10)*soundChannels {
-		t.Fatalf("waiting %d samples", got)
+	// A burst: no more than the target waits; the oldest goes.
+	for range 20 {
+		s.feed(packet)
 	}
-	n, _ := s.Read(buf)
-	played += int64(n / soundChannels)
-	s.mu.Lock()
-	s.buf = s.buf[:0]
+	waiting := func() int64 { return s.handed + int64(len(s.buf)/soundChannels) - played }
+	if w := waiting(); w != soundMin {
+		t.Fatalf("waiting %d frames, want %d", w, soundMin)
+	}
+	// Playing ran dry while sound came: the target grows.
+	s.Read(buf)
 	played = s.handed
-	s.mu.Unlock()
-	s.feed([]float32{0.5, 0.5})
-	if len(s.buf) != 2 {
-		t.Fatal("sound resumes once played")
+	clock = clock.Add(20 * time.Millisecond)
+	s.feed(packet)
+	if s.target != soundMin+soundGrow {
+		t.Fatalf("target %d after running dry", s.target)
+	}
+	// After the host's silence (a long pause) it does not.
+	s.Read(buf)
+	played = s.handed
+	clock = clock.Add(time.Second)
+	s.feed(packet)
+	if s.target != soundMin+soundGrow {
+		t.Fatalf("target %d after silence", s.target)
+	}
+	// A calm spell lowers it again.
+	clock = clock.Add(soundCalm + time.Second)
+	s.feed(packet)
+	if s.target != soundMin+soundGrow-soundShrink {
+		t.Fatalf("target %d after calm", s.target)
 	}
 	done := make(chan error)
 	s.mu.Lock()

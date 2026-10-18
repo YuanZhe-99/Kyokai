@@ -32,6 +32,9 @@ type Prefs struct {
 	// KeyboardMode is the viewers' keyboard mode: "map" (also when empty),
 	// "translate" or "legacy".
 	KeyboardMode string `json:"keyboard_mode,omitempty"`
+	// SoundSource is the sound this device shares: "" for what it plays,
+	// else an input device's id (Settings, Sound to share).
+	SoundSource string `json:"sound_source,omitempty"`
 	// HidePointer hides the ring that marks the host's pointer in the
 	// viewers (for hosts whose picture shows their cursor already).
 	HidePointer bool `json:"hide_pointer,omitempty"`

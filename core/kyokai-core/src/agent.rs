@@ -345,7 +345,7 @@ impl Link {
     /// Returns: the source, or why the agent cannot capture it.
     pub fn open_audio(self: &Arc<Self>) -> Result<crate::audio::Source, String> {
         let stream = self.next_stream.fetch_add(1, Ordering::Relaxed);
-        let (tx, rx) = mpsc::channel(25);
+        let (tx, rx) = mpsc::channel(50);
         self.sounds.lock().expect("agent link").insert(stream, tx);
         if let Err(e) = self.call::<Value>("audio.open", json!({"stream": stream})) {
             self.sounds.lock().expect("agent link").remove(&stream);
@@ -363,6 +363,12 @@ impl Link {
     /// Tells the agent whether its captures show Kyokai's windows.
     pub fn show_kyokai(&self, show: bool) {
         let _ = self.send("capture.show", json!({"show": show}));
+    }
+
+    /// Tells the agent which sound to share ("" for what the computer
+    /// plays, else an input device's id).
+    pub fn sound_source(&self, source: &str) {
+        let _ = self.send("sound.source", json!({"source": source}));
     }
 
     /// A new input session in the agent.
@@ -796,6 +802,11 @@ impl Agent {
                 crate::video::set_show_kyokai(req["show"].as_bool().unwrap_or(false));
                 return Ok(None);
             }
+            "sound.source" => {
+                crate::audio::set_source(req["source"].as_str().unwrap_or_default());
+                return Ok(None);
+            }
+            "sound.devices" => json!(crate::audio::devices()),
             "input" => {
                 let Ok(e) = serde_json::from_value::<Event>(req["event"].clone()) else {
                     return Ok(Some(json!(false)));

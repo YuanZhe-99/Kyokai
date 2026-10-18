@@ -899,6 +899,19 @@ fn call(input: &[u8]) -> Result<Value, String> {
             }
             Ok(json!({}))
         }
+        "sound.source" => {
+            let source = req.params["source"].as_str().ok_or("bad sound source")?;
+            audio::set_source(source);
+            // In the helper the session agent captures: it follows too.
+            if let Some(link) = agent::link() {
+                link.sound_source(source);
+            }
+            Ok(json!({}))
+        }
+        "sound.devices" => match agent::link() {
+            Some(link) => link.call::<Value>("sound.devices", json!({})),
+            None => Ok(json!(audio::devices())),
+        },
         "permission.request" => {
             let name = req.params["name"].as_str().ok_or("bad permission")?;
             request_permission(name).map(|granted| json!({"granted": granted}))

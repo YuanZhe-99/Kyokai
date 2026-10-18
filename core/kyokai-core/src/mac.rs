@@ -34,7 +34,7 @@ use objc2_core_video::{
     CVPixelBufferGetWidth, CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags,
     CVPixelBufferUnlockBaseAddress, kCVPixelFormatType_32BGRA, kCVReturnSuccess,
 };
-use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol};
+use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol, NSString};
 use objc2_screen_capture_kit::{
     SCContentFilter, SCRunningApplication, SCShareableContent, SCStream, SCStreamConfiguration,
     SCStreamDelegate, SCStreamOutput, SCStreamOutputType,
@@ -98,8 +98,36 @@ pub fn request(name: &str) -> Result<bool, String> {
             Ok(unsafe { AXIsProcessTrustedWithOptions(Some(options.as_ref())) })
         }
         "input-monitoring" => Ok(CGRequestListenEventAccess()),
+        "microphone" => Ok(microphone()),
         _ => Err("unknown permission".into()),
     }
+}
+
+// AVFoundation, for the Microphone permission (AVCaptureDevice).
+#[link(name = "AVFoundation", kind = "framework")]
+unsafe extern "C" {}
+
+/// Whether this process may use the microphone (and other sound inputs);
+/// asks macOS when it has not been asked yet.
+/// Returns: true when granted now (an answer to the prompt comes later).
+fn microphone() -> bool {
+    let Some(class) = objc2::runtime::AnyClass::get(c"AVCaptureDevice") else {
+        return false;
+    };
+    // AVMediaTypeAudio.
+    let audio = NSString::from_str("soun");
+    // SAFETY: a class method of AVCaptureDevice taking a media type.
+    let status: isize = unsafe { msg_send![class, authorizationStatusForMediaType: &*audio] };
+    // 0: not asked yet, 3: allowed.
+    if status == 0 {
+        let done = RcBlock::new(|_: objc2::runtime::Bool| {});
+        // SAFETY: a class method taking a media type and a block that
+        // receives the answer.
+        let () = unsafe {
+            msg_send![class, requestAccessForMediaType: &*audio, completionHandler: &*done]
+        };
+    }
+    status == 3
 }
 
 /// The ids of the active displays.

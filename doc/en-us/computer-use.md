@@ -100,21 +100,32 @@ through the server (Relayed, with a hint to turn on direct connections on both d
 
 ## Sound
 
-The host sends what the computer plays to a controller that may view the screen and asks for it
-(`{"type": "audio", on}`; the viewer asks as its stream starts, and a resumed controller asks again).
-`audio.rs` captures it — on macOS through a ScreenCaptureKit stream of the main display that carries
-only sound (Kyokai's own left out; the Screen Recording permission covers it), on Windows through
-WASAPI loopback of the default output device in its own format — turns it into 48 kHz stereo
-(resampling linearly when the device runs at another rate, doubling mono) and encodes 20 ms Opus
-packets at 96 kbit/s (`opus.rs`, libopus built by vcpkg). In the helper's modes the session agent
-captures and encodes it and the link carries the packets. The packets travel as plaintexts tagged
-`0x04`, beside the video and outside its acknowledgements; a session that falls behind drops sound
-(at most half a second waits in the host, 200 ms in the controller's queue). The viewer decodes them
-in its own copy of the core (`kyokai_audio_*`) and plays them through MyGo's audio output, keeping no
-more than 150 ms ahead of what was played: a burst, or a host whose clock runs fast, loses sound
-rather than drifting behind the picture. The bar's **Sound** switch (on unless chosen, kept for each
-device) stops playing and asks the host to stop capturing. On this Mac (2026-10-18) an 8-second
-watch received 386 packets, 7.7 s of sound, with the picture.
+The host sends its sound to a controller granted `hear-sound` (its own permission, asked for and
+granted by a correct password by default) that asks for it (`{"type": "audio", on}`; the viewer asks
+as its stream starts, and a resumed controller asks again). What it shares is the host user's choice
+in Settings, **Sound to share** (the GUI's `sound_source`, sent to the engine as it attaches and when
+it changes, `sound.source`; the helper passes it to its agent; a running stream switches at once):
+what the computer plays, or one input device (`sound.devices` lists them: Core Audio's devices with
+inputs on macOS, the active capture endpoints on Windows). `audio.rs` captures what the computer
+plays on macOS through a ScreenCaptureKit stream of the main display that carries only sound
+(Kyokai's own left out; the Screen Recording permission covers it) and an input through an audio
+queue (the Microphone permission: both apps carry its usage text and the `audio-input`
+entitlement, and choosing an input asks for it); on Windows through WASAPI, loopback of the default
+output device or the input device, in their own format. It turns the sound into 48 kHz stereo
+(resampling linearly at another rate, doubling mono) and encodes 10 ms Opus packets in Opus'
+low-delay mode at 96 kbit/s (`opus.rs`, libopus built by vcpkg; as RustDesk's), and sends none after
+half a second of silence until sound returns (RustDesk's zero gate). In the helper's modes the
+session agent captures and encodes it and the link carries the packets. The packets travel as
+plaintexts tagged `0x04`, beside the video and outside its acknowledgements; a session that falls
+behind drops sound (at most half a second waits in the host, 200 ms in the controller's queue). The
+viewer decodes them in its own copy of the core (`kyokai_audio_*`) and plays them through MyGo's
+audio output with an adaptive buffer: it keeps a target ahead of what was played that starts at 40
+ms, grows by 20 ms each time playing ran dry while sound came (a pause over 300 ms is the host's
+silence, not jitter), up to 300 ms, and shrinks by 10 ms after 10 s without that; sound beyond it
+goes, oldest first, so the sound stays with the picture (RustDesk keeps up to 3 s). The bar's
+**Sound** switch (on unless chosen, kept for each device) stops playing and asks the host to stop
+capturing. On this Mac (2026-10-18) an 8-second watch received 386 packets, 7.7 s of sound, with
+the picture, and the input list named the built-in microphone.
 
 ## Input
 

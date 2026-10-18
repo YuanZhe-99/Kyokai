@@ -1,6 +1,7 @@
 //! The host's sound (doc/en-us/computer-use.md, "Sound"): what the
 //! computer plays, captured (ScreenCaptureKit on macOS, WASAPI loopback on
-//! Windows), turned into 48 kHz stereo and sent as 20 ms Opus packets. In
+//! Windows), turned into 48 kHz stereo and sent as 10 ms Opus packets, none
+//! while it is silent. In
 //! the helper's modes the session agent captures it on the user's desktop.
 
 use crate::opus;
@@ -12,7 +13,12 @@ use tokio::sync::mpsc;
 
 /// Packets waiting for the session: about half a second; newer ones are
 /// dropped beyond it.
-const QUEUE: usize = 25;
+const QUEUE: usize = 50;
+/// Silent frames sent before the host goes quiet: half a second, so the
+/// viewer plays the sound's tail out (as RustDesk's zero gate).
+const SILENT_AFTER: u32 = 50;
+/// Below this a sample counts as silence.
+const QUIET: f32 = 1e-4;
 /// The most sound kept before it is encoded: a second.
 const MOST: usize = opus::RATE * opus::CHANNELS;
 
@@ -62,6 +68,17 @@ impl Pcm {
             .ok()?;
         (p.samples.len() >= want).then(|| p.samples.drain(..want).collect())
     }
+}
+
+/// The silence gate: whether a frame goes out. After SILENT_AFTER silent
+/// frames in a row none do, until sound comes back.
+fn gate(silent: &mut u32, frame: &[f32]) -> bool {
+    if frame.iter().any(|s| s.abs() >= QUIET) {
+        *silent = 0;
+        return true;
+    }
+    *silent = silent.saturating_add(1);
+    *silent <= SILENT_AFTER
 }
 
 /// A linear resampler to 48 kHz that carries its place across calls.
@@ -117,11 +134,9 @@ pub struct Source {
 
 /// What keeps a source going and stops it when the source is dropped.
 enum Keep {
-    /// Captured here: the capture and the encoder thread's stop flag.
-    Local {
-        stop: Arc<AtomicBool>,
-        _capture: Capture,
-    },
+    /// Captured here: the encoder thread's stop flag (the thread owns the
+    /// capture).
+    Local { stop: Arc<AtomicBool> },
     /// Captured by the helper's session agent.
     Agent {
         link: Arc<crate::agent::Link>,
@@ -132,7 +147,7 @@ enum Keep {
 impl Drop for Source {
     fn drop(&mut self) {
         match &self.keep {
-            Keep::Local { stop, .. } => stop.store(true, Ordering::Relaxed),
+            Keep::Local { stop } => stop.store(true, Ordering::Relaxed),
             Keep::Agent { link, stream } => link.close_audio(*stream),
         }
     }
@@ -161,19 +176,31 @@ impl Source {
         }
     }
 
-    /// Captures and encodes the sound in this process.
+    /// Captures and encodes the sound in this process, from the source the
+    /// host's user chose; a new choice applies to it at once.
     pub fn local() -> Result<Source, String> {
         let pcm = Arc::new(Pcm::default());
-        let capture = Capture::start(pcm.clone())?;
+        let (mut generation, source) = chosen();
+        let mut capture = Some(Capture::start(pcm.clone(), &source)?);
         let mut encoder = opus::Encoder::new()?;
         let (tx, packets) = mpsc::channel(QUEUE);
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = stop.clone();
         std::thread::spawn(move || {
+            let mut silent = 0u32;
             while !stopped.load(Ordering::Relaxed) {
+                let (now, source) = chosen();
+                if now != generation {
+                    generation = now;
+                    drop(capture.take());
+                    capture = Capture::start(pcm.clone(), &source).ok();
+                }
                 let Some(frame) = pcm.take(Duration::from_millis(100)) else {
                     continue;
                 };
+                if !gate(&mut silent, &frame) {
+                    continue;
+                }
                 let Ok(packet) = encoder.encode(&frame) else {
                     continue;
                 };
@@ -185,47 +212,424 @@ impl Source {
         });
         Ok(Source {
             packets,
-            keep: Keep::Local {
-                stop,
-                _capture: capture,
-            },
+            keep: Keep::Local { stop },
         })
     }
 }
 
-#[cfg(target_os = "macos")]
-type Capture = crate::mac::AudioCapture;
+/// The sound to share, as the host's user chose it: "" for what the
+/// computer plays, or an input device's id (`devices`); and how often it
+/// was chosen, so running sources follow a change.
+static SOURCE: std::sync::Mutex<(u64, String)> = std::sync::Mutex::new((0, String::new()));
 
-#[cfg(windows)]
-type Capture = loopback::Loopback;
-
-/// No capture elsewhere.
-#[cfg(not(any(windows, target_os = "macos")))]
-struct Capture;
-
-#[cfg(not(any(windows, target_os = "macos")))]
-impl Capture {
-    fn start(_pcm: Arc<Pcm>) -> Result<Capture, String> {
-        Err("sound is not captured on this system".into())
+/// Sets the sound to share. Running sources switch to it.
+pub fn set_source(source: &str) {
+    if let Ok(mut s) = SOURCE.lock()
+        && s.1 != source
+    {
+        *s = (s.0 + 1, source.to_owned());
     }
 }
 
-/// What the default output device plays, through WASAPI loopback.
+/// The sound to share and its generation.
+fn chosen() -> (u64, String) {
+    SOURCE.lock().map(|s| s.clone()).unwrap_or_default()
+}
+
+/// An input device the host may share instead of what it plays.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Device {
+    pub id: String,
+    pub name: String,
+}
+
+/// The input devices of this computer (microphones, line inputs, capture
+/// cards), by their system ids.
+pub fn devices() -> Vec<Device> {
+    #[cfg(target_os = "macos")]
+    return input::devices();
+    #[cfg(windows)]
+    return loopback::devices();
+    #[allow(unreachable_code)]
+    Vec::new()
+}
+
+/// What captures the sound to share.
+enum Capture {
+    /// What the computer plays.
+    #[cfg(target_os = "macos")]
+    System(#[allow(dead_code)] crate::mac::AudioCapture),
+    /// An input device through an audio queue.
+    #[cfg(target_os = "macos")]
+    Device(#[allow(dead_code)] input::Input),
+    /// What the computer plays, or an input device, through WASAPI.
+    #[cfg(windows)]
+    Wasapi(#[allow(dead_code)] loopback::Loopback),
+}
+
+impl Capture {
+    /// Starts capturing `source` ("" for what the computer plays) into
+    /// `pcm`.
+    /// Returns: why it cannot (no such device, no permission).
+    fn start(pcm: Arc<Pcm>, source: &str) -> Result<Capture, String> {
+        #[cfg(target_os = "macos")]
+        return match source {
+            "" => crate::mac::AudioCapture::start(pcm).map(Capture::System),
+            id => input::Input::start(pcm, id).map(Capture::Device),
+        };
+        #[cfg(windows)]
+        return loopback::Loopback::start(pcm, source).map(Capture::Wasapi);
+        #[allow(unreachable_code)]
+        {
+            let _ = (pcm, source);
+            Err("sound is not captured on this system".into())
+        }
+    }
+}
+
+/// An input device on macOS: listed through Core Audio, captured through an
+/// audio queue, which converts it to 48 kHz stereo floats (the Microphone
+/// permission covers it).
+#[cfg(target_os = "macos")]
+mod input {
+    use super::{Device, Pcm};
+    use objc2_core_foundation::{CFRetained, CFString};
+    use std::ffi::c_void;
+    use std::ptr::NonNull;
+    use std::sync::Arc;
+
+    type AudioObjectId = u32;
+    type AudioQueueRef = *mut c_void;
+
+    #[repr(C)]
+    struct PropertyAddress {
+        selector: u32,
+        scope: u32,
+        element: u32,
+    }
+
+    #[repr(C)]
+    struct StreamDescription {
+        sample_rate: f64,
+        format_id: u32,
+        format_flags: u32,
+        bytes_per_packet: u32,
+        frames_per_packet: u32,
+        bytes_per_frame: u32,
+        channels_per_frame: u32,
+        bits_per_channel: u32,
+        reserved: u32,
+    }
+
+    #[repr(C)]
+    struct QueueBuffer {
+        capacity: u32,
+        data: *mut c_void,
+        size: u32,
+        user: *mut c_void,
+        description_capacity: u32,
+        descriptions: *mut c_void,
+        description_count: u32,
+    }
+
+    type InputCallback = unsafe extern "C" fn(
+        user: *mut c_void,
+        queue: AudioQueueRef,
+        buffer: *mut QueueBuffer,
+        start: *const c_void,
+        packets: u32,
+        descriptions: *const c_void,
+    );
+
+    #[link(name = "CoreAudio", kind = "framework")]
+    unsafe extern "C" {
+        fn AudioObjectGetPropertyDataSize(
+            object: AudioObjectId,
+            address: *const PropertyAddress,
+            qualifier_size: u32,
+            qualifier: *const c_void,
+            size: *mut u32,
+        ) -> i32;
+        fn AudioObjectGetPropertyData(
+            object: AudioObjectId,
+            address: *const PropertyAddress,
+            qualifier_size: u32,
+            qualifier: *const c_void,
+            size: *mut u32,
+            data: *mut c_void,
+        ) -> i32;
+    }
+
+    #[link(name = "AudioToolbox", kind = "framework")]
+    unsafe extern "C" {
+        fn AudioQueueNewInput(
+            format: *const StreamDescription,
+            callback: InputCallback,
+            user: *mut c_void,
+            run_loop: *const c_void,
+            run_loop_mode: *const c_void,
+            flags: u32,
+            queue: *mut AudioQueueRef,
+        ) -> i32;
+        fn AudioQueueSetProperty(
+            queue: AudioQueueRef,
+            id: u32,
+            data: *const c_void,
+            size: u32,
+        ) -> i32;
+        fn AudioQueueAllocateBuffer(
+            queue: AudioQueueRef,
+            size: u32,
+            buffer: *mut *mut QueueBuffer,
+        ) -> i32;
+        fn AudioQueueEnqueueBuffer(
+            queue: AudioQueueRef,
+            buffer: *mut QueueBuffer,
+            descriptions: u32,
+            description: *const c_void,
+        ) -> i32;
+        fn AudioQueueStart(queue: AudioQueueRef, start: *const c_void) -> i32;
+        fn AudioQueueStop(queue: AudioQueueRef, immediate: u8) -> i32;
+        fn AudioQueueDispose(queue: AudioQueueRef, immediate: u8) -> i32;
+    }
+
+    const fn code(c: &[u8; 4]) -> u32 {
+        u32::from_be_bytes(*c)
+    }
+    const SYSTEM_OBJECT: AudioObjectId = 1;
+    const DEVICES: u32 = code(b"dev#");
+    const SCOPE_GLOBAL: u32 = code(b"glob");
+    const SCOPE_INPUT: u32 = code(b"inpt");
+    const STREAM_CONFIGURATION: u32 = code(b"slay");
+    const NAME: u32 = code(b"lnam");
+    const UID: u32 = code(b"uid ");
+    const LINEAR_PCM: u32 = code(b"lpcm");
+    /// Float, packed (interleaved).
+    const FLOAT_PACKED: u32 = 1 | 8;
+    const CURRENT_DEVICE: u32 = code(b"aqcd");
+    /// Buffers in flight, 10 ms each.
+    const BUFFERS: usize = 4;
+
+    /// Reads a property's raw bytes.
+    fn property(object: AudioObjectId, selector: u32, scope: u32) -> Option<Vec<u8>> {
+        let address = PropertyAddress {
+            selector,
+            scope,
+            element: 0,
+        };
+        let mut size = 0u32;
+        // SAFETY: a valid address; `size` receives the data's size.
+        if unsafe {
+            AudioObjectGetPropertyDataSize(object, &address, 0, std::ptr::null(), &mut size)
+        } != 0
+        {
+            return None;
+        }
+        // u64s keep the bytes aligned for the structures read from them.
+        let mut data = vec![0u64; (size as usize).div_ceil(8)];
+        // SAFETY: `data` holds at least `size` bytes.
+        let status = unsafe {
+            AudioObjectGetPropertyData(
+                object,
+                &address,
+                0,
+                std::ptr::null(),
+                &mut size,
+                data.as_mut_ptr().cast(),
+            )
+        };
+        if status != 0 {
+            return None;
+        }
+        // SAFETY: the u64s are plain bytes, `size` of them written.
+        let bytes =
+            unsafe { std::slice::from_raw_parts(data.as_ptr().cast::<u8>(), size as usize) };
+        Some(bytes.to_vec())
+    }
+
+    /// Reads a string property (a +1 CFString the caller releases).
+    fn string(object: AudioObjectId, selector: u32) -> Option<String> {
+        let bytes = property(object, selector, SCOPE_GLOBAL)?;
+        let raw = usize::from_ne_bytes(bytes.get(..size_of::<usize>())?.try_into().ok()?);
+        let s = NonNull::new(raw as *mut CFString)?;
+        // SAFETY: Core Audio handed over a retained string.
+        Some(unsafe { CFRetained::from_raw(s) }.to_string())
+    }
+
+    /// The input channels of a device: the channels of its input streams.
+    fn input_channels(device: AudioObjectId) -> u32 {
+        let Some(bytes) = property(device, STREAM_CONFIGURATION, SCOPE_INPUT) else {
+            return 0;
+        };
+        // An AudioBufferList: a u32 count, then 16-byte AudioBuffers from
+        // offset 8, whose first u32 is the channels.
+        let count = bytes
+            .get(..4)
+            .map_or(0, |b| u32::from_ne_bytes(b.try_into().expect("4 bytes")));
+        (0..count as usize)
+            .filter_map(|i| bytes.get(8 + i * 16..12 + i * 16))
+            .map(|b| u32::from_ne_bytes(b.try_into().expect("4 bytes")))
+            .sum()
+    }
+
+    /// The devices with inputs, by their unique ids.
+    pub fn devices() -> Vec<Device> {
+        let Some(bytes) = property(SYSTEM_OBJECT, DEVICES, SCOPE_GLOBAL) else {
+            return Vec::new();
+        };
+        bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| u32::from_ne_bytes(*b))
+            .filter(|&d| input_channels(d) > 0)
+            .filter_map(|d| {
+                Some(Device {
+                    id: string(d, UID)?,
+                    name: string(d, NAME).unwrap_or_default(),
+                })
+            })
+            .collect()
+    }
+
+    /// An input device's sound, captured by an audio queue on its own
+    /// thread.
+    pub struct Input {
+        queue: AudioQueueRef,
+        /// The callback's target; it lives as long as the queue (freed
+        /// after the queue is disposed, see Drop).
+        pcm: *mut Arc<Pcm>,
+    }
+
+    // SAFETY: the queue is only started, then stopped and disposed (on
+    // drop); audio queues may be stopped from any thread.
+    unsafe impl Send for Input {}
+
+    /// Hands a filled buffer to the sound and gives it back to the queue.
+    unsafe extern "C" fn filled(
+        user: *mut c_void,
+        queue: AudioQueueRef,
+        buffer: *mut QueueBuffer,
+        _start: *const c_void,
+        _packets: u32,
+        _descriptions: *const c_void,
+    ) {
+        // SAFETY: `user` is the input's `Arc<Pcm>`, alive until the queue
+        // is disposed; `buffer` is one of its buffers, holding `size` bytes
+        // of interleaved stereo floats.
+        unsafe {
+            let pcm = &*(user as *const Arc<Pcm>);
+            let b = &*buffer;
+            let samples = std::slice::from_raw_parts(b.data as *const f32, b.size as usize / 4);
+            pcm.push(samples, 2, crate::opus::RATE as u32);
+            AudioQueueEnqueueBuffer(queue, buffer, 0, std::ptr::null());
+        }
+    }
+
+    impl Input {
+        /// Starts capturing the device `id` into `pcm`.
+        /// Returns: why the queue refused (no such device, no Microphone
+        /// permission).
+        pub fn start(pcm: Arc<Pcm>, id: &str) -> Result<Input, String> {
+            let format = StreamDescription {
+                sample_rate: crate::opus::RATE as f64,
+                format_id: LINEAR_PCM,
+                format_flags: FLOAT_PACKED,
+                bytes_per_packet: 8,
+                frames_per_packet: 1,
+                bytes_per_frame: 8,
+                channels_per_frame: 2,
+                bits_per_channel: 32,
+                reserved: 0,
+            };
+            let user = Box::into_raw(Box::new(pcm));
+            let mut queue: AudioQueueRef = std::ptr::null_mut();
+            // SAFETY: a valid format and callback; `user` outlives the
+            // queue; the queue runs its callbacks on its own thread.
+            let status = unsafe {
+                AudioQueueNewInput(
+                    &format,
+                    filled,
+                    user.cast(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                    0,
+                    &mut queue,
+                )
+            };
+            if status != 0 || queue.is_null() {
+                // SAFETY: no queue holds `user`.
+                drop(unsafe { Box::from_raw(user) });
+                return Err(format!("the sound input cannot open: {status}"));
+            }
+            let input = Input { queue, pcm: user };
+            let device = CFString::from_str(id);
+            let raw = CFRetained::as_ptr(&device).as_ptr() as *const c_void;
+            // SAFETY: the queue's current device is a CFString uid, passed
+            // by reference.
+            let status = unsafe {
+                AudioQueueSetProperty(
+                    queue,
+                    CURRENT_DEVICE,
+                    (&raw const raw).cast(),
+                    size_of::<*const c_void>() as u32,
+                )
+            };
+            if status != 0 {
+                return Err(format!("the sound input {id} cannot be used: {status}"));
+            }
+            let bytes = (crate::opus::FRAME * 8) as u32;
+            for _ in 0..BUFFERS {
+                let mut buffer = std::ptr::null_mut();
+                // SAFETY: the queue allocates and owns the buffer.
+                unsafe {
+                    if AudioQueueAllocateBuffer(queue, bytes, &mut buffer) == 0 {
+                        AudioQueueEnqueueBuffer(queue, buffer, 0, std::ptr::null());
+                    }
+                }
+            }
+            // SAFETY: a configured queue, started now.
+            let status = unsafe { AudioQueueStart(queue, std::ptr::null()) };
+            if status != 0 {
+                return Err(format!("the sound input cannot start: {status}"));
+            }
+            Ok(input)
+        }
+    }
+
+    impl Drop for Input {
+        fn drop(&mut self) {
+            // SAFETY: stops and disposes of the queue this input made, then
+            // frees the callback's target, which no callback uses any more.
+            unsafe {
+                AudioQueueStop(self.queue, 1);
+                AudioQueueDispose(self.queue, 1);
+                drop(Box::from_raw(self.pcm));
+            }
+        }
+    }
+}
+
+/// What the default output device plays (WASAPI loopback), or an input
+/// device, through WASAPI.
 #[cfg(windows)]
 mod loopback {
-    use super::Pcm;
+    use super::{Device, Pcm};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
+    use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
     use windows::Win32::Media::Audio::{
         AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK,
-        IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator, MMDeviceEnumerator, WAVEFORMATEX,
-        eConsole, eRender,
+        DEVICE_STATE_ACTIVE, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
+        MMDeviceEnumerator, WAVEFORMATEX, eCapture, eConsole, eRender,
     };
+    use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
     use windows::Win32::System::Com::{
         CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree,
-        CoUninitialize,
+        CoUninitialize, STGM_READ,
     };
+    use windows::core::{HSTRING, PWSTR};
 
     /// The capture thread, stopped when this is dropped.
     pub struct Loopback {
@@ -239,21 +643,23 @@ mod loopback {
     }
 
     impl Loopback {
-        /// Starts capturing the default output device into `pcm`.
-        /// Returns: why WASAPI refused (no output device).
-        pub fn start(pcm: Arc<Pcm>) -> Result<Loopback, String> {
+        /// Starts capturing `source` into `pcm`: "" for what the default
+        /// output device plays, else an input device's id.
+        /// Returns: why WASAPI refused (no such device).
+        pub fn start(pcm: Arc<Pcm>, source: &str) -> Result<Loopback, String> {
             let stop = Arc::new(AtomicBool::new(false));
             let stopped = stop.clone();
+            let source = source.to_owned();
             let (tx, rx) = std::sync::mpsc::sync_channel(1);
             std::thread::spawn(move || {
                 // SAFETY: COM is initialized for this thread and released
                 // when it ends.
                 unsafe {
                     let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-                    match open() {
+                    match open(&source) {
                         Ok((client, capture, channels, rate, float)) => {
                             let _ = tx.send(Ok(()));
-                            run(&client, &capture, channels, rate, float, &pcm, &stopped);
+                            run(&capture, channels, rate, float, &pcm, &stopped);
                             let _ = client.Stop();
                         }
                         Err(e) => {
@@ -269,21 +675,77 @@ mod loopback {
         }
     }
 
-    /// Opens the default output device's loopback stream in its own format.
+    fn e(what: &'static str) -> impl Fn(windows::core::Error) -> String {
+        move |err| format!("{what}: {err}")
+    }
+
+    /// The text of a string the system allocated, which it frees.
+    unsafe fn take_string(p: PWSTR) -> String {
+        // SAFETY: a valid, NUL-terminated string from the system, freed
+        // with CoTaskMemFree after it is read.
+        unsafe {
+            let s = p.to_string().unwrap_or_default();
+            CoTaskMemFree(Some(p.0 as *const _));
+            s
+        }
+    }
+
+    /// The active input devices, by their endpoint ids.
+    pub fn devices() -> Vec<Device> {
+        // SAFETY: COM calls on objects this function owns, on a thread it
+        // initializes for COM for the call.
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let list = (|| -> windows::core::Result<Vec<Device>> {
+                let devices: IMMDeviceEnumerator =
+                    CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
+                let all = devices.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)?;
+                let mut out = Vec::new();
+                for i in 0..all.GetCount()? {
+                    let device = all.Item(i)?;
+                    let id = take_string(device.GetId()?);
+                    let name = device
+                        .OpenPropertyStore(STGM_READ)
+                        .and_then(|store| store.GetValue(&PKEY_Device_FriendlyName))
+                        .and_then(|v| PropVariantToStringAlloc(&v))
+                        .map(|p| take_string(p))
+                        .unwrap_or_default();
+                    out.push(Device { id, name });
+                }
+                Ok(out)
+            })()
+            .unwrap_or_default();
+            CoUninitialize();
+            list
+        }
+    }
+
+    /// Opens `source`'s stream in its own format: the default output
+    /// device's loopback for "", else the input device of that id.
     /// Returns: the client, its capture service, the channels, the rate and
     /// whether samples are 32-bit floats (else 16-bit integers).
-    unsafe fn open() -> Result<(IAudioClient, IAudioCaptureClient, usize, u32, bool), String> {
-        fn e(what: &'static str) -> impl Fn(windows::core::Error) -> String {
-            move |err| format!("{what}: {err}")
-        }
+    unsafe fn open(
+        source: &str,
+    ) -> Result<(IAudioClient, IAudioCaptureClient, usize, u32, bool), String> {
         // SAFETY: COM calls on objects this function owns; the mix format
         // is read and then freed with CoTaskMemFree.
         unsafe {
             let devices: IMMDeviceEnumerator =
                 CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).map_err(e("devices"))?;
-            let device = devices
-                .GetDefaultAudioEndpoint(eRender, eConsole)
-                .map_err(e("no output device"))?;
+            let (device, flags): (IMMDevice, u32) = match source {
+                "" => (
+                    devices
+                        .GetDefaultAudioEndpoint(eRender, eConsole)
+                        .map_err(e("no output device"))?,
+                    AUDCLNT_STREAMFLAGS_LOOPBACK,
+                ),
+                id => (
+                    devices
+                        .GetDevice(&HSTRING::from(id))
+                        .map_err(e("no such sound input"))?,
+                    0,
+                ),
+            };
             let client: IAudioClient = device.Activate(CLSCTX_ALL, None).map_err(e("client"))?;
             let mix = client.GetMixFormat().map_err(e("format"))?;
             let format: WAVEFORMATEX = std::ptr::read_unaligned(mix);
@@ -292,14 +754,14 @@ mod loopback {
             let bits = format.wBitsPerSample;
             let started = client.Initialize(
                 AUDCLNT_SHAREMODE_SHARED,
-                AUDCLNT_STREAMFLAGS_LOOPBACK,
+                flags,
                 1_000_000, // 100 ms, in 100 ns units
                 0,
                 mix,
                 None,
             );
             CoTaskMemFree(Some(mix as *const _));
-            started.map_err(e("loopback"))?;
+            started.map_err(e("capture"))?;
             if channels == 0 || !(bits == 32 || bits == 16) {
                 return Err(format!(
                     "unsupported sound format: {bits}-bit, {channels} channels"
@@ -311,9 +773,8 @@ mod loopback {
         }
     }
 
-    /// Reads the loopback stream every 10 ms until stopped.
+    /// Reads the stream every 5 ms until stopped.
     unsafe fn run(
-        _client: &IAudioClient,
         capture: &IAudioCaptureClient,
         channels: usize,
         rate: u32,
@@ -323,7 +784,7 @@ mod loopback {
     ) {
         let mut samples: Vec<f32> = Vec::new();
         while !stop.load(Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(5));
             // SAFETY: the capture client's buffers are read between
             // GetBuffer and ReleaseBuffer, for the frames it reported.
             unsafe {
@@ -358,6 +819,29 @@ mod loopback {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The input devices come with their system ids (a computer may have
+    /// none, as a build machine).
+    #[test]
+    fn input_devices_are_listed_by_id() {
+        let devices = devices();
+        eprintln!("sound inputs here: {devices:?}");
+        assert!(devices.iter().all(|d| !d.id.is_empty()));
+    }
+
+    /// Silence goes out for half a second, then nothing until sound
+    /// returns.
+    #[test]
+    fn silence_stops_the_packets() {
+        let (quiet, loud) = ([0.0f32; 8], [0.0, 0.2, 0.0, 0.0]);
+        let mut silent = 0;
+        let sent = (0..SILENT_AFTER + 20)
+            .filter(|_| gate(&mut silent, &quiet))
+            .count();
+        assert_eq!(sent, SILENT_AFTER as usize);
+        assert!(gate(&mut silent, &loud), "sound goes out at once");
+        assert!(gate(&mut silent, &quiet), "and its tail after it");
+    }
 
     /// Sound at another rate comes out at 48 kHz, as long as it went in;
     /// mono is doubled; a whole frame is taken once there is one.

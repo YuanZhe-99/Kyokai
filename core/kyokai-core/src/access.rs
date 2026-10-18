@@ -25,6 +25,8 @@ pub enum Permission {
     Clipboard,
     /// Copying files through the clipboard; `Clipboard` does not include it.
     Files,
+    /// Hearing what the host plays; `ViewScreen` does not include it.
+    HearSound,
 }
 
 /// Why a host refused a controller (names cross the wire and the FFI).
@@ -87,11 +89,12 @@ impl PasswordMode {
 }
 /// What a correct password grants without asking until the host's user
 /// changes it: the manual session; AI tasks always ask.
-const DEFAULT_PASSWORD_GRANTS: [Permission; 4] = [
+const DEFAULT_PASSWORD_GRANTS: [Permission; 5] = [
     Permission::ViewScreen,
     Permission::ControlInput,
     Permission::Clipboard,
     Permission::Files,
+    Permission::HearSound,
 ];
 /// Failed logins one source address may make in `FAIL_WINDOW`.
 pub(crate) const FAILS_PER_ADDRESS: usize = 5;
@@ -682,6 +685,11 @@ mod tests {
             !a.admits_by_password("key-B", "100000002", &[ViewScreen]),
             "a new key claiming a trusted Device ID always asks"
         );
+        // Sound is granted by a correct password unless the host's user
+        // takes it out, and is its own permission.
+        assert!(a.password_grants().contains(&HearSound));
+        assert!(a.admits_by_password("key-A", "100000002", &[ViewScreen, HearSound]));
+        assert_eq!(serde_json::to_value(HearSound).unwrap(), "hear-sound");
         a.set_password_grants(vec![RunAiTask, ViewScreen, ViewScreen])
             .unwrap();
         assert_eq!(a.password_grants(), vec![ViewScreen, RunAiTask]);

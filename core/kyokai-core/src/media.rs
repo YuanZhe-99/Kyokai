@@ -200,7 +200,7 @@ const READER_GONE: Duration = Duration::from_secs(2);
 /// Frames kept for a slow reader; older ones are dropped first.
 const KEEP_FRAMES: usize = 3;
 /// Sound packets kept for a reader that fell behind: 200 ms; older ones go.
-const KEEP_SOUND: usize = 10;
+const KEEP_SOUND: usize = 20;
 
 /// Why `Queue::pop` returned nothing.
 #[derive(Debug, PartialEq, Eq)]

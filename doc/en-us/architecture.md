@@ -83,7 +83,9 @@ name; the status carries `name` and this device's `about`), `access.settings` (`
 passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
 mode), `capture.show` (`{show}`: whether captures show Kyokai's windows, as Settings' Hide Kyokai
 from capture says; macOS's capture follows it, live; the helper passes it to its agent; hidden
-until a GUI says), and for AI tasks ([computer-use.md](computer-use.md)):
+until a GUI says), `sound.source` (`{source}`: the sound to share, "" for what the computer plays or
+an input device's id; running streams switch; the helper passes it to its agent), `sound.devices`
+(→ `[{id, name}]`, the input devices; the agent's in the helper), and for AI tasks ([computer-use.md](computer-use.md)):
 `ai.settings.get`, `ai.settings.set` (`{sources?, model?: {source, id}, approval?}`; the answer adds
 `keys` per source), `ai.key.set` (`{source, key}`, null removes it; a key is never returned),
 `ai.models.list` (`{source}` → `{models}`, asks the source), `ai.task.start`
@@ -113,7 +115,7 @@ runtime statically, so nothing is resolved through the search path.
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
   `password.set_permanent`, `session.connect`, `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
-  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
+  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,
   `session.media`, `shutdown`, and the AI requests named after the core's
   methods (`ai.settings.get` … `ai.stop`, `ai.draft.set`). `session.media` (`{id}` of a live controller

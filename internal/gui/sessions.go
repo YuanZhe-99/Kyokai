@@ -198,7 +198,7 @@ func (a *App) recentAbout(device string) localapi.About {
 
 // connectWant is what a connection asks the host for.
 func connectWant(ai bool) []string {
-	want := []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard, localapi.PermFiles}
+	want := []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard, localapi.PermFiles, localapi.PermHearSound}
 	if ai {
 		want = append(want, localapi.PermRunAITask, localapi.PermApproveAIAction)
 	}
@@ -450,6 +450,8 @@ func permissionLabel(p string) string {
 		return L.PermClipboard()
 	case localapi.PermFiles:
 		return L.PermFiles()
+	case localapi.PermHearSound:
+		return L.PermHearSound()
 	}
 	return p
 }
@@ -542,7 +544,7 @@ func (a *App) accessSettings(c *ui.Context) {
 // allPermissions are the permissions in the order Settings lists them.
 var allPermissions = []string{
 	localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard,
-	localapi.PermFiles, localapi.PermRunAITask, localapi.PermApproveAIAction,
+	localapi.PermFiles, localapi.PermHearSound, localapi.PermRunAITask, localapi.PermApproveAIAction,
 }
 
 // passwordGrants is the Access card's choice of what a correct password

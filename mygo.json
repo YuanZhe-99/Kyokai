@@ -23,7 +23,8 @@
       "bin/Kyokai Helper.app": "packaging/macos/engine.entitlements"
     },
     "infoPlist": {
-      "NSLocalNetworkUsageDescription": "Kyokai connects directly to your other devices on this network."
+      "NSLocalNetworkUsageDescription": "Kyokai connects directly to your other devices on this network.",
+      "NSMicrophoneUsageDescription": "Kyokai shares the sound of the input you choose with the devices that control this Mac."
     }
   }
 }

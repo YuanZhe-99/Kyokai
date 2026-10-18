@@ -26,7 +26,8 @@ and Forget password on the recent row forgets it at once (`password.forget_saved
 ## Permissions
 
 `view-screen`, `control-input`, `run-ai-task`, `approve-ai-action`, `clipboard`, `files`
-(copying files through the clipboard; `clipboard` does not include it). A controller asks
+(copying files through the clipboard; `clipboard` does not include it), `hear-sound` (the host's
+sound; `view-screen` does not include it). A controller asks
 for a set; the host's user grants a subset; none implies another. Network membership grants none of
 them. `run-ai-task` lets a controller start AI tasks on the host, which run with the host's key, and
 steer the host's task whoever started it (the host keeps one AI record for every controller);
@@ -50,7 +51,7 @@ Permanent or Both, by default Both); "Connect without asking" (on by default) le
 password admit without confirmation, and off, every connection asks. What a password grants
 without asking is chosen there too ("With a correct password"),
 one switch per permission, kept in the secrets store: by default `view-screen`, `control-input`,
-`clipboard` and `files`; the AI permissions always ask unless turned on there.
+`clipboard`, `files` and `hear-sound` (a controller asks for these by default too); the AI permissions always ask unless turned on there.
 
 ## Host confirmation
 

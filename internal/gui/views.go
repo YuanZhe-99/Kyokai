@@ -243,6 +243,7 @@ func (a *App) generalSettings(c *ui.Context) {
 				a.setShowInCapture(p, !hide)
 			}
 		})
+		a.soundSourceRow(c, p)
 		closeIdx := 0
 		if p.CloseQuits {
 			closeIdx = 1
@@ -453,4 +454,33 @@ func (a *App) saveName(name string) {
 			}
 		})
 	}()
+}
+
+// soundSourceRow is Settings' choice of the sound this device shares with
+// the devices that control it: what it plays, or one input device.
+func (a *App) soundSourceRow(c *ui.Context, p Prefs) {
+	a.loadSoundDevices()
+	a.mu.Lock()
+	devices := a.soundDevices
+	a.mu.Unlock()
+	ids, labels := []string{""}, []string{L.SettingsSoundSystem()}
+	for _, d := range devices {
+		name := d.Name
+		if name == "" {
+			name = L.SettingsSoundUnnamed()
+		}
+		ids, labels = append(ids, d.ID), append(labels, name)
+	}
+	// A device chosen before that is gone now still shows as chosen.
+	if !slices.Contains(ids, p.SoundSource) {
+		ids, labels = append(ids, p.SoundSource), append(labels, L.SettingsSoundMissing())
+	}
+	picked := labels[slices.Index(ids, p.SoundSource)]
+	settingRow(c, "sound-source", L.SettingsSoundSource(), L.SettingsSoundSourceHint(), func() {
+		if ui.Select(c.Key("sound-source-sel"), &picked, labels).Width(260).Changed() {
+			if i := slices.Index(labels, picked); i >= 0 {
+				a.setSoundSource(p, ids[i])
+			}
+		}
+	})
 }

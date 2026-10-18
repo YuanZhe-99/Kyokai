@@ -2296,6 +2296,16 @@ func (msgs Messages) PermFiles() string {
 	return Catalog.Format(msgs.locale, "PermFiles", nil)
 }
 
+// PermHearSound says "Hear sound"
+// in the language the app shows.
+func PermHearSound() string { return In(i18n.Locale()).PermHearSound() }
+
+// PermHearSound says "Hear sound"
+// in the language of msgs.
+func (msgs Messages) PermHearSound() string {
+	return Catalog.Format(msgs.locale, "PermHearSound", nil)
+}
+
 // PermRunAITask says "Run AI tasks"
 // in the language the app shows.
 func PermRunAITask() string { return In(i18n.Locale()).PermRunAITask() }
@@ -3048,6 +3058,56 @@ func SettingsRunMode() string { return In(i18n.Locale()).SettingsRunMode() }
 // in the language of msgs.
 func (msgs Messages) SettingsRunMode() string {
 	return Catalog.Format(msgs.locale, "SettingsRunMode", nil)
+}
+
+// SettingsSoundMissing says "An input not connected now"
+// in the language the app shows.
+func SettingsSoundMissing() string { return In(i18n.Locale()).SettingsSoundMissing() }
+
+// SettingsSoundMissing says "An input not connected now"
+// in the language of msgs.
+func (msgs Messages) SettingsSoundMissing() string {
+	return Catalog.Format(msgs.locale, "SettingsSoundMissing", nil)
+}
+
+// SettingsSoundSource says "Sound to share"
+// in the language the app shows.
+func SettingsSoundSource() string { return In(i18n.Locale()).SettingsSoundSource() }
+
+// SettingsSoundSource says "Sound to share"
+// in the language of msgs.
+func (msgs Messages) SettingsSoundSource() string {
+	return Catalog.Format(msgs.locale, "SettingsSoundSource", nil)
+}
+
+// SettingsSoundSourceHint says "What devices that control this one hear: what this computer plays, or an input such as a microphone."
+// in the language the app shows.
+func SettingsSoundSourceHint() string { return In(i18n.Locale()).SettingsSoundSourceHint() }
+
+// SettingsSoundSourceHint says "What devices that control this one hear: what this computer plays, or an input such as a microphone."
+// in the language of msgs.
+func (msgs Messages) SettingsSoundSourceHint() string {
+	return Catalog.Format(msgs.locale, "SettingsSoundSourceHint", nil)
+}
+
+// SettingsSoundSystem says "What this computer plays"
+// in the language the app shows.
+func SettingsSoundSystem() string { return In(i18n.Locale()).SettingsSoundSystem() }
+
+// SettingsSoundSystem says "What this computer plays"
+// in the language of msgs.
+func (msgs Messages) SettingsSoundSystem() string {
+	return Catalog.Format(msgs.locale, "SettingsSoundSystem", nil)
+}
+
+// SettingsSoundUnnamed says "Unnamed input"
+// in the language the app shows.
+func SettingsSoundUnnamed() string { return In(i18n.Locale()).SettingsSoundUnnamed() }
+
+// SettingsSoundUnnamed says "Unnamed input"
+// in the language of msgs.
+func (msgs Messages) SettingsSoundUnnamed() string {
+	return Catalog.Format(msgs.locale, "SettingsSoundUnnamed", nil)
 }
 
 // SettingsStorage says "Storage"

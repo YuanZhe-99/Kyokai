@@ -19,7 +19,7 @@
 
 ## 权限
 
-`view-screen`、`control-input`、`run-ai-task`、`approve-ai-action`、`clipboard`、`files`（通过剪贴板复制文件；`clipboard` 不包含它）。控制端请求一组权限；被控端用户授予其中
+`view-screen`、`control-input`、`run-ai-task`、`approve-ai-action`、`clipboard`、`files`（通过剪贴板复制文件；`clipboard` 不包含它）、`hear-sound`（被控端的声音；`view-screen` 不包含它）。控制端请求一组权限；被控端用户授予其中
 的子集；任何权限都不隐含另一个。加入网络本身不授予任何权限。`run-ai-task` 允许控制端在被控端上启动 AI 任务（使用被控端的密钥运行），并控制被控端的任务，无论由谁发起（被控端为所有控制端保留同一份 AI 记录）；
 `approve-ai-action` 允许它答复该任务的批准请求（[computer-use.md](computer-use.md)）。移除受信任设备会立即撤销它：它与本机的进行中会话结束，续接令牌被丢弃。
 
@@ -35,7 +35,7 @@
 | 给出被控端不接受的那类正确密码 | 按密码错误拒绝 |
 
 哪些密码可以打开被控端，在设置、访问中选择（“接受的密码”：临时密码、固定密码或两者，默认两者）；“无需确认即可连接”（默认开启）让被接受的密码无需确认即可接入，关闭后每次连接都会询问。密码无需确认即可授予哪些权限也在那里选择（“使用正确密码时”），每个权限一个开关，保存在机密存储中：默认是 `view-screen`、
-`control-input`、`clipboard` 与 `files`；AI 权限始终需要确认，除非在那里打开。
+`control-input`、`clipboard`、`files` 与 `hear-sound`（控制端默认也请求这些）；AI 权限始终需要确认，除非在那里打开。
 
 ## 被控端确认
 

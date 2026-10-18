@@ -250,6 +250,17 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "show missing")
 		}
 		return h.command("capture.show", map[string]bool{"show": *req.Show})
+	case localapi.RequestSoundSource:
+		if req.SoundSource == nil {
+			return localapi.Fail(localapi.CodeInvalid, "source missing")
+		}
+		return h.command("sound.source", map[string]string{"source": *req.SoundSource})
+	case localapi.RequestSoundDevices:
+		var devices []localapi.SoundDevice
+		if err := h.lib.Call("sound.devices", nil, &devices); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true, SoundDevices: devices}
 	case localapi.RequestPasswordGrants:
 		if req.Grants == nil {
 			return localapi.Fail(localapi.CodeInvalid, "permissions missing")
