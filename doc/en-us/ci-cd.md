@@ -18,7 +18,7 @@ push there is checked only by the local gate.
 |---|---|---|
 | `MYGO_UPDATER_PRIVATE_KEY` | `release.yml`, `mygo build` | no signed updates are published; installed apps stay on their version |
 | `KYOKAI_SIGNING_KEY` | `release.yml` (Windows), `scripts/build.sh` | the helper's files are unsigned; an installed helper updates only with an administrator prompt |
-| `KYOKAI_MACOS_CERT_P12`, `KYOKAI_MACOS_CERT_PASSWORD` | `release.yml` (macOS) | the macOS build is ad hoc signed, so privacy grants do not survive updates; the release notes must say so |
+| `KYOKAI_MACOS_CERT_P12`, `KYOKAI_MACOS_CERT_PASSWORD` | `release.yml` (macOS): the Apple Development certificate (`.p12`, base64) and its password | the macOS build is ad hoc signed, so privacy grants and Keychain access do not survive updates, and the release notes must say so |
 
 The private halves live only in these secrets and in the maintainer's offline copy; the public
 update key is `updates.publicKey` in `mygo.json`. Generate a MyGo key pair only with

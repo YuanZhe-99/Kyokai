@@ -1,5 +1,29 @@
 # Version history
 
+## 0.1.1 (2026-10-17)
+
+The macOS release (Apple silicon, Intel), and connections reworked after RustDesk.
+
+- macOS: ScreenCaptureKit capture, CGEvent input with the keyboard modes, the privacy permissions
+  (Screen Recording, Accessibility, Input Monitoring, Keychain) asked for and shown on Home; the
+  run modes through a LaunchDaemon helper and a LaunchAgent (Kyokai Helper), installed with one
+  administrator prompt, updated by code signature, removed without one; signed with an Apple
+  Development certificate so grants and Keychain access survive updates.
+- Connections: devices only, no sessions in the interface. Home shows This device, Control another
+  device and Recent devices as cards (menu: Connect, Connect with AI, Forget password, Remove).
+  Each connection is a tab beside Home that can be dragged into its own window and back, with
+  full screen, a password field with Remember password while the host is asked, and Reconnect.
+- Access: Accepted passwords (temporary, permanent or both) and a global Connect without asking,
+  on by default, replace per-device unattended grants; with nobody at the computer only the
+  permanent password admits.
+- AI: the host keeps one AI record for every controller, and the draft of the next instruction is
+  shared live between the host and every controller. Wire protocol 6, FFI ABI 4, local API 2.
+- Fixes: a stopping engine no longer removes its successor's socket; quitting at logout works;
+  Reopen no longer starts a second copy; a store that cannot be unlocked offers Start over; crash
+  traces are written to the logs folder.
+- Release check (2026-10-17): MyGo v0.5.5, EasyTier v2.7.0 (commit `8b7f1f0`), RustDesk 1.5.0,
+  vcpkg 2026.07.29 and Rust 1.99.1 are the latest; checked, unchanged.
+
 ## 0.1.0 (2026-10-17)
 
 The first release, for Windows (x64, ARM64); macOS follows.
