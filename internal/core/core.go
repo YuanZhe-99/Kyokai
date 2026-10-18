@@ -17,7 +17,7 @@ import (
 
 // ABIVersion is the C ABI this package speaks; the library must report the
 // same one.
-const ABIVersion = 3
+const ABIVersion = 4
 
 // LibraryName is the file name of the core library on this platform.
 func LibraryName() string {
@@ -30,12 +30,28 @@ func LibraryName() string {
 	return "libkyokai_core.so"
 }
 
+// HelperBundle is the macOS bundle beside kyokai-svc that holds the core
+// library and the helper's own engine (doc/en-us/run-modes.md).
+const HelperBundle = "Kyokai Helper.app"
+
+// LibraryPath is the core library for an engine in dir: next to it, or on
+// macOS in the Kyokai Helper bundle beside it.
+func LibraryPath(dir string) string {
+	p := filepath.Join(dir, LibraryName())
+	if runtime.GOOS == "darwin" {
+		if _, err := os.Stat(p); err != nil {
+			return filepath.Join(dir, HelperBundle, "Contents", "MacOS", LibraryName())
+		}
+	}
+	return p
+}
+
 // Lib is a loaded core library.
 type Lib struct {
 	abiVersion, start, call, stop, free uintptr
 	mediaRead, mediaWrite               uintptr
 	decOpen, decDecode, decClose        uintptr
-	kbGrab, kbRead                      uintptr
+	kbGrab, kbRead, privacy             uintptr
 	mu                                  sync.Mutex // the core is one process-wide instance
 	// out receives a response's buffer. It lives in the Lib (on the heap,
 	// which never moves) rather than on a goroutine stack, which may move
@@ -112,6 +128,7 @@ func Load(path string) (*Lib, error) {
 		"kyokai_media_read": &l.mediaRead, "kyokai_media_write": &l.mediaWrite,
 		"kyokai_decoder_open": &l.decOpen, "kyokai_decoder_decode": &l.decDecode, "kyokai_decoder_close": &l.decClose,
 		"kyokai_keyboard_grab": &l.kbGrab, "kyokai_keyboard_read": &l.kbRead,
+		"kyokai_privacy_request": &l.privacy,
 	} {
 		if *dst, err = symbol(h, name); err != nil {
 			return nil, fmt.Errorf("%s: %w", name, err)
@@ -315,6 +332,21 @@ func (l *Lib) KeyboardGrab(window uintptr, mode string) error {
 		return fmt.Errorf("unknown keyboard mode %q", mode)
 	}
 	return ErrNoKeyboard
+}
+
+// PrivacyRequest asks macOS, from this process, for a privacy permission
+// ("screen", "accessibility" or "input-monitoring").
+// Returns: whether it is granted now; an error for an unknown name or a
+// system without these permissions.
+// Side effects: macOS may show its prompt, naming this app.
+func (l *Lib) PrivacyRequest(name string) (bool, error) {
+	b := []byte(name)
+	rc := int32(syscallN(l.privacy, uintptr(unsafe.Pointer(unsafe.SliceData(b))), uintptr(len(b))))
+	runtime.KeepAlive(b)
+	if rc < 0 {
+		return false, fmt.Errorf("no privacy permission %q here", name)
+	}
+	return rc == 1, nil
 }
 
 // Keyboard reads the keys the core's keyboard grab takes. Use one from one

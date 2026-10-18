@@ -41,7 +41,7 @@ use std::sync::{Arc, Mutex};
 
 /// Version of the C ABI. Hosts compare it with their own before any other
 /// call; changing an export's signature or meaning bumps it.
-pub const ABI_VERSION: u32 = 3;
+pub const ABI_VERSION: u32 = 4;
 
 /// The running core: what `kyokai_start` set up, until `kyokai_stop`.
 struct Core {
@@ -104,7 +104,8 @@ struct StartConfig {
     #[serde(default)]
     profile: String,
     /// When the engine is the privileged helper: the kyokai-svc it starts
-    /// as the session agent in the console session.
+    /// as the session agent in the console session (Windows), or the socket
+    /// its LaunchAgent connects to (macOS).
     #[serde(default)]
     agent: Option<PathBuf>,
 }
@@ -321,6 +322,37 @@ pub unsafe extern "C" fn kyokai_decoder_decode(
     result.unwrap_or(-1)
 }
 
+/// Asks macOS for a privacy permission from the calling process: the app
+/// calls it so that the system's prompt names and comes from Kyokai itself
+/// (a request from the background engine is refused without one). Needs no
+/// started core.
+/// Inputs: `name`/`len` — `screen`, `accessibility` or `input-monitoring`,
+/// borrowed for the call.
+/// Returns: 1 granted now, 0 not (yet), -1 an unknown name or a system
+/// without these permissions.
+/// Side effects: macOS may show its prompt.
+///
+/// # Safety
+/// `name` points to `len` readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kyokai_privacy_request(name: *const u8, len: usize) -> i32 {
+    if name.is_null() {
+        return -1;
+    }
+    // SAFETY: the caller guarantees `len` readable bytes at `name`.
+    let bytes = unsafe { std::slice::from_raw_parts(name, len) };
+    let Ok(name) = std::str::from_utf8(bytes) else {
+        return -1;
+    };
+    if name == "keychain" {
+        return -1;
+    }
+    match catch_unwind(|| request_permission(name)) {
+        Ok(Ok(granted)) => i32::from(granted),
+        _ => -1,
+    }
+}
+
 /// Closes a viewer decoder; an unknown handle is ignored.
 #[unsafe(no_mangle)]
 pub extern "C" fn kyokai_decoder_close(id: u64) {
@@ -471,9 +503,9 @@ fn build_on(
         version: cfg.version.clone(),
         about: std::sync::Mutex::new(about::Local::load(&cfg.state_dir)),
     });
-    #[cfg(windows)]
-    if let Some(exe) = &cfg.agent {
-        agent::start_helper(exe.clone());
+    #[cfg(any(windows, target_os = "macos"))]
+    if let Some(agent) = &cfg.agent {
+        agent::start_helper(agent.clone());
     }
     let network = net::Network::start(&secrets, ctx.clone(), cfg.agent.is_some())?;
     let suspend = power::Suspend::watch(&ctx.ai);
@@ -523,6 +555,29 @@ fn reopen_store() -> Result<bool, String> {
     if !matches!(core.persistence, store::Persistence::Denied) {
         return Ok(true);
     }
+    rebuild_on_store(&mut guard)
+}
+
+/// Starts over when the saved store cannot be unlocked (its key is gone):
+/// the old store is moved aside, untouched, and a new one with a new
+/// identity is created and kept from now on.
+/// Returns: whether the new store is kept by the OS store.
+/// Side effects: renames secrets.bin; rebuilds the core on the new store,
+/// with a new Device ID.
+fn start_over() -> Result<bool, String> {
+    let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
+    let core = guard.as_ref().ok_or("the core is not started")?;
+    if !matches!(core.persistence, store::Persistence::Unreadable) {
+        return Err("the saved identity is readable".into());
+    }
+    store::set_aside(&core.cfg.state_dir)?;
+    rebuild_on_store(&mut guard)
+}
+
+/// Opens the store again and rebuilds the core on it, unless the OS store
+/// refuses again.
+fn rebuild_on_store(guard: &mut Option<Core>) -> Result<bool, String> {
+    let core = guard.as_ref().ok_or("the core is not started")?;
     let cfg = core.cfg.clone();
     // Refused again: this run goes on with what it keeps in memory.
     let (secrets, persistence) = store::open(&cfg.state_dir, &cfg.profile);
@@ -554,6 +609,11 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 _ => Err("bad agent request".into()),
             }
         }
+        #[cfg(target_os = "macos")]
+        "agent.serve" => match req.params["socket"].as_str() {
+            Some(socket) => agent::run_agent_socket(socket).map(|()| json!({})),
+            None => Err("bad agent request".into()),
+        },
         "password.reveal" => with_core(|c| json!({"temporary": c.password.reveal()})),
         "password.regenerate" => try_core(|c| {
             c.new_password()?;
@@ -696,6 +756,11 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 Ok(json!({}))
             })
         }
+        "agent.restart" => match agent::link() {
+            Some(link) => link.restart().map(|()| json!({})),
+            None => Err("this engine has no session agent".into()),
+        },
+        "store.start_over" => start_over().map(|kept| json!({"kept": kept})),
         "permission.request" => {
             let name = req.params["name"].as_str().ok_or("bad permission")?;
             request_permission(name).map(|granted| json!({"granted": granted}))
@@ -865,10 +930,22 @@ fn status() -> Value {
 fn permissions(persistence: store::Persistence) -> Value {
     #[cfg(target_os = "macos")]
     {
-        json!(mac::permissions(!matches!(
-            persistence,
-            store::Persistence::Denied
-        )))
+        let keychain = !matches!(persistence, store::Persistence::Denied);
+        // The helper (root) captures and injects through its agent, whose
+        // own permissions count; none while no agent is connected.
+        let mut p = match agent::link() {
+            Some(link) => link
+                .call::<mac::Permissions>("permissions", json!({}))
+                .unwrap_or(mac::Permissions {
+                    screen: false,
+                    accessibility: false,
+                    input_monitoring: false,
+                    keychain,
+                }),
+            None => mac::permissions(keychain),
+        };
+        p.keychain = keychain;
+        json!(p)
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -878,7 +955,7 @@ fn permissions(persistence: store::Persistence) -> Value {
 }
 
 /// Asks the system for a permission (macOS: `screen`, `accessibility`,
-/// `keychain`).
+/// `input-monitoring`, `keychain`).
 /// Returns: whether it is granted now.
 /// Side effects: macOS may show its prompt; `keychain` opens the secrets
 /// store again and, when it opens, rebuilds the core on it.
@@ -888,7 +965,10 @@ fn request_permission(name: &str) -> Result<bool, String> {
     }
     #[cfg(target_os = "macos")]
     {
-        mac::request(name)
+        match agent::link() {
+            Some(link) => link.call("permission", json!({"name": name})),
+            None => mac::request(name),
+        }
     }
     #[cfg(not(target_os = "macos"))]
     {

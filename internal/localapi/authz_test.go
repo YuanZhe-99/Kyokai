@@ -21,6 +21,12 @@ func TestAuthorizerServesOnlyTheOwner(t *testing.T) {
 		{"helper: another user", helperAuthz, Peer{SID: "S-1-5-21-x", GroupSIDs: []string{"S-1-5-32-545"}, Known: true}, false},
 		{"helper: an administrator outside the group", helperAuthz, Peer{SID: "S-1-5-21-a", Admin: true, Known: true}, false},
 		{"helper without a group: a peer with no groups", Authorizer{OwnerSID: "S-1-5-18", OperatorSID: "S-1-5-21-op"}, Peer{SID: "S-1-5-21-x", GroupSIDs: []string{""}, Known: true}, false},
+		// The macOS helper: root owns the socket; the operator and the group by id.
+		{"mac helper: root", macHelper, Peer{UID: 0, Known: true}, true},
+		{"mac helper: the operator", macHelper, Peer{UID: 501, Groups: []uint32{20}, Known: true}, true},
+		{"mac helper: a group member", macHelper, Peer{UID: 502, Groups: []uint32{20, 600}, Known: true}, true},
+		{"mac helper: another user, even in admin", macHelper, Peer{UID: 503, Groups: []uint32{20, 80}, Known: true}, false},
+		{"mac helper without a group: gid 0 grants nothing", Authorizer{OwnerUID: 0, OperatorUID: ptr(501)}, Peer{UID: 503, Groups: []uint32{0}, Known: true}, false},
 	}
 	for _, c := range cases {
 		if got := c.a.Allows(c.p); got != c.want {
@@ -32,3 +38,9 @@ func TestAuthorizerServesOnlyTheOwner(t *testing.T) {
 // helperAuthz is the helper's authorizer in the tests: SYSTEM, an operator
 // and a group.
 var helperAuthz = Authorizer{OwnerSID: "S-1-5-18", OperatorSID: "S-1-5-21-op", GroupSID: "S-1-5-21-g"}
+
+// macHelper is the macOS helper's authorizer in the tests: root, operator
+// 501 and the kyokai group 600.
+var macHelper = Authorizer{OwnerUID: 0, OperatorUID: ptr(501), GroupGID: ptr(600)}
+
+func ptr(v uint32) *uint32 { return &v }

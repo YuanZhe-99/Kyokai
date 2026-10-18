@@ -19,7 +19,7 @@ Kyokai 沿用 Easytier-MyGo 的做法：管理员授权只在安装特权助手�
 （`localapi.MoveStore`）：用户引擎用一次性口令封存身份、受信任设备、已知被控端、固定密码、网络密钥、AI 密钥、别名与 AI 设置（`store.export`），
 助手接管它们（`store.import`），只有在助手报告相同的设备 ID 之后，用户引擎才忘记这些内容并停止（`store.clear`），因此同一身份既不会被两个引擎同时服务，
 也不会丢失。之后界面改用助手的套接字（`gui.json` 的 `helper`，按配置文件保存，因此切换过的开发配置文件也跟随助手），再次启动时也一样。随界面与后台服务之间用 `helper.background` 切换。切回时把存储反向迁移，
-并移除助手及其状态（第二次提示）。`ctl move --to SOCKET` 可在命令行中完成同样的迁移。界面退出时只停止它自己的引擎，助手继续运行。
+并移除助手及其状态：在 Windows 上需要第二次提示；在 macOS 上，本身已是 root 的助手在操作者请求时自行移除（`helper.remove`，在 launchd 重新启动交出存储的引擎期间会重试），只有失败时才回退到管理员提示。`ctl move --to SOCKET` 可在命令行中完成同样的迁移。界面退出时只停止它自己的引擎，助手继续运行。
 
 ## 助手（Windows）
 
@@ -34,6 +34,12 @@ Kyokai 沿用 Easytier-MyGo 的做法：管理员授权只在安装特权助手�
 所有本地用户都能打开，但助手只服务 SYSTEM、操作者以及本地 `kyokai` 组的成员（若管理员创建了该组）；其他任何人，包括管理员，都会被拒绝
 （[security.md](security.md)）。
 
+## 助手（macOS）
+
+应用在 `Contents/Resources/bin` 中、它自己的 `kyokai-svc` 旁边附带 `Kyokai Helper.app`：一个包（`com.yuanzhe.kyokai.helper`，没有程序坞图标），其中有核心库和助手自己的 `kyokai-svc`，因此 macOS 把代理的权限列为“Kyokai Helper”，而应用的引擎算作 Kyokai。`kyokai-svc helper install --from BIN --operator-uid N`（root，经由管理员提示 `osascript … with administrator privileges`，与 EasyTier MyGo 相同）用 `ditto` 把该包复制到 `/Library/Application Support/Kyokai`（属于 root，只有 root 可写），创建 `state`（仅 root），把操作者的 uid 记录在 `state/helper.json` 中，并加载两个 launchd 任务：守护进程 `com.yuanzhe.kyokai.helper`（以 root 身份从开机起运行 `run --host helper`，由 launchd 重新启动）和位于 `/Library/LaunchAgents` 的代理 `com.yuanzhe.kyokai.agent`（`agent --socket …`，在每个图形会话中以该用户身份运行，也在登录窗口运行）。`helper uninstall` 卸载这两个任务并删除包与套接字（`--purge`：还删除状态以及助手在系统钥匙串中的密钥）。
+
+助手把身份保存在 `state` 中，存储的密钥在系统钥匙串里。它的套接字 `ctl.sock` 所有本地用户都能打开；助手只按 uid 与 gid 服务 root、操作者以及本地 `kyokai` 组的成员（[security.md](security.md)）。
+
 ## 会话代理
 
 助手以 SYSTEM 身份运行在没有桌面的会话 0 中。它在当前的控制台会话里以 SYSTEM 身份保持运行一个自身的副本（`kyokai-svc agent`，用移到该会话的
@@ -46,6 +52,8 @@ Kyokai 沿用 Easytier-MyGo 的做法：管理员授权只在安装特权助手�
 一帧视频、一张截图）与正文组成。只有编码后的视频、输入事件、剪贴板文本、本机复制的剪贴板图片（由代理编码为 PNG）、所复制文件的路径以及 AI 的截图会在两者之间传递。
 两个进程都有特权，从不解码远程媒体，因此在助手模式下不接收来自控制端的剪贴板图片。剪贴板中的文件由助手在模拟控制台上已登录用户身份的情况下读写（[computer-use.md](computer-use.md)，没有代理时，视频退回测试图案，输入被拒绝，AI 任务则视之为被控端用户接管。
 
+在 macOS 上由 launchd 而不是助手启动代理：它连接助手文件夹中的 `agent.sock`（属于 root，因此只有 root 能占用；代理会确认对端是 root），助手只接受由屏幕前的用户或登录窗口的 root 运行的、它自己的 `kyokai-svc` 发来的连接（`LOCAL_PEERPID`、`proc_pidpath`）；较新的代理会替换较旧的。链路上的消息相同。代理以它自己的权限注入；在那里不提供阻止用户输入、隐私模式与锁定。在助手模式下，状态中的 `permissions` 是代理的权限，在那里请求的权限也由代理请求；macOS 只在授权之后启动的代理中计入新授权，因此权限卡片提供**重启 Kyokai Helper**（`helper.agent_restart`：代理退出，launchd 再次启动它）。
+
 ## 更新
 
 发布版本会为助手的文件签名：`scripts/build.sh` 在它们旁边写入 `bundle.json`（版本以及 `kyokai-svc.exe` 与 `kyokai_core.dll` 的 SHA-256）
@@ -54,14 +62,16 @@ Kyokai 沿用 Easytier-MyGo 的做法：管理员授权只在安装特权助手�
 自己的文件夹（先把正在运行的文件改名移开）并退出；服务会重新启动它。它不会再次读取用户可写的应用文件夹，因此检查之后在那里被替换的文件不会被安装。
 未签名的版本（开发版本，或没有密钥的发布版本）改为通过一次管理员提示安装。
 
+在 macOS 上由代码签名完成这件事：助手先把应用的 `Kyokai Helper.app` 复制到属于 root 的文件夹，用 `codesign --verify --deep --strict` 按已安装包的指定要求（相同的标识符与证书）检查这份副本，并确认版本不更旧，然后把它放到位并退出；launchd 重新启动守护进程，助手重新启动代理。临时签名的版本永远不满足该要求，需要管理员提示。
+
 ## 自我停用
 
 安装程序会记录应用所在的文件夹（`helper.json` 中的 `app_dir`）。当相隔一分钟的两次检查都发现那里没有应用的引擎时（应用更新替换文件不算移除），
-助手会删除自己的服务、状态与套接字，安排在下次 Windows 启动时删除自己的文件，然后退出，因此移除应用后不会留下运行中的助手。
+助手会删除自己的服务、状态与套接字，安排在下次 Windows 启动时删除自己的文件，然后退出，因此移除应用后不会留下运行中的助手。在 macOS 上它卸载代理，删除自己的 plist、文件夹与密钥，最后卸载自己。
 
 ## 当前实现
 
 Windows 上已实现助手的安装、卸载与状态命令、服务本身、它的授权以及会话代理（链路、在控制台会话中启动与跟随桌面）；链路已在进程内测试，服务与代理尚未在机器上测试。
-macOS 的助手（root LaunchDaemon）随 Mac 测试一同实现，在此之前报告“尚不可用”。助手已在 Windows ARM64 上以服务方式运行（[platform-notes.md](platform-notes.md) 的“助手”）：安装、授权、代理及其对安全桌面的采集、
+在 macOS 上，助手已在一台 macOS 27 的 MacBook Pro 上运行（[platform-notes.md](platform-notes.md) 的“macOS”）：一次提示完成安装、双向的存储迁移、代理传来的视频与一次点击、签名自更新（临时签名的包被拒绝）以及无需提示的移除；后台服务、登录窗口与自我停用尚未在那里运行。助手已在 Windows ARM64 上以服务方式运行（[platform-notes.md](platform-notes.md) 的“助手”）：安装、授权、代理及其对安全桌面的采集、
 双向的存储迁移、无人值守访问与卸载。界面中的运行方式切换与签名更新尚未在那里运行。签名自更新与自我停用已实现，其规则已经测试（检查之后被替换的文件不会被安装）；这些都尚未以服务方式运行过。只用 `kyokai-svc helper install`
 安装的助手会运行一个自己的引擎，拥有单独的设备 ID，直到有存储迁入为止。

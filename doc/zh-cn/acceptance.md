@@ -112,4 +112,4 @@ OpenAI 是规格中的服务商；Kyokai 对任何已配置的服务商运行相
 | 5 在 B 的真实桌面上运行 AI 模式，由 A 操控 | 用 Claude 已验证（Windows ↔ Windows 虚拟机）；OpenAI 等待密钥 | 平台说明：虚拟机的真实桌面（任务打开记事本并输入文字，标记的快捷键请求了批准） |
 | 6 退出时结束会话、网络与 AI，并释放资源 | 已验证（Windows） | 平台说明：应用 |
 
-macOS：整份清单等待 Mac 测试。
+macOS：采集、输入与助手已在一台 Mac 上运行（[platform-notes.md](platform-notes.md) 的“macOS”）；清单的其余部分等待 Mac 测试的剩余部分。

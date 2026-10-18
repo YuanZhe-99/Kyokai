@@ -44,6 +44,15 @@ func settingRow(c *ui.Context, key, title, hint string, control func()) {
 	})
 }
 
+// labelled puts a switch and its visible label side by side (a switch's
+// Label names it only for assistive technology).
+func labelled(c *ui.Context, control func(), label string) {
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		control()
+		ui.Text(c, label).FontSize(sizeSmall)
+	})
+}
+
 // groupDigits writes a Device ID in groups of three: "482 916 735".
 func groupDigits(id string) string {
 	out := make([]byte, 0, len(id)+len(id)/3)

@@ -34,6 +34,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | permission | 权限 |
 | approval | 批准 |
 | take over | 接管 |
+| Screen Recording / Accessibility / Input Monitoring (macOS) | 屏幕录制 / 辅助功能 / 输入监控 |
 | emergency stop | 紧急停止 |
 | input lease | 输入租约 |
 | AI task | AI 任务 |

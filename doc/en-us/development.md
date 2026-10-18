@@ -9,7 +9,8 @@
   (ARM64 and/or x64), the Windows SDK, and the component "C++ Clang Compiler for Windows" — `ring`
   needs clang on `aarch64-pc-windows-msvc`; put the installation's `VC\Tools\Llvm\ARM64\bin` on
   `PATH` (the component does not). Git for Windows provides bash and OpenSSL.
-- macOS: the Xcode command line tools; Go and rustup (Homebrew works).
+- macOS: the Xcode command line tools; Go and rustup (Homebrew works); `pkg-config`
+  (`brew install pkgconf`), which vcpkg needs for aom.
 - `protoc` for EasyTier's protocol files: `scripts/protoc.sh` downloads the pinned release
   (36.2) into `build/tools` once, checks its SHA-256 and prints its path. `scripts/build.sh` and
   `scripts/smoke.sh` use it on their own; for plain cargo commands run
@@ -91,6 +92,13 @@ another engine binary, `KYOKAI_SOCKET` at another socket. The ABI smoke test nee
 library path. `ctl network-set` takes the network secret from `KYOKAI_NETWORK_SECRET`, never from
 the command line; `ctl network` shows the settings without it. Two engines with different profiles,
 state directories and sockets on one machine see each other through the same network.
+
+On macOS, sign local builds with the release identity (`MYGO_SIGN=<identity or its SHA-1>
+scripts/build.sh`) once it is in the login keychain: ad hoc builds get a new identity each time,
+which drops the privacy grants. Start the app with `open`, not from a shell, so that macOS counts
+its engine as part of Kyokai; an engine started from a shell has no grants and sends the
+placeholder picture. `ctl watch --type T --keys meta+a,enter` types into the host as the viewer
+does.
 
 ## Spikes
 

@@ -149,8 +149,9 @@ func toEvent(ev ui.InputEvent, box ui.Rect, pw, ph int, held map[ui.Key]bool, gr
 // qualityPresets are RustDesk's image qualities, in the viewer's order.
 var qualityPresets = []string{"speed", "balanced", "best"}
 
-// fpsCaps are the frame-rate caps the viewer offers.
-var fpsCaps = []string{"15", "30", "60"}
+// fpsCaps are the frame-rate caps the viewer offers, as it shows them
+// (setQuality reads the number).
+var fpsCaps = []string{"15 fps", "30 fps", "60 fps"}
 
 // setQuality sends the viewer's quality preset and frame-rate cap to the
 // host's QoS, and whether it wants full colour (4:4:4) where both sides
@@ -210,6 +211,23 @@ func (a *App) setKeyboardMode(mode string) {
 	a.mu.Unlock()
 	p.KeyboardMode = mode
 	a.setPrefs(p)
+}
+
+// setShowPointer remembers whether the viewers mark the host's pointer.
+func (a *App) setShowPointer(show bool) {
+	a.mu.Lock()
+	p := a.prefs
+	a.mu.Unlock()
+	p.HidePointer = !show
+	a.setPrefs(p)
+}
+
+// showPointer reports whether the viewers mark the host's pointer (on
+// unless switched off).
+func (a *App) showPointer() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !a.prefs.HidePointer
 }
 
 // keyboardMode is the remembered keyboard mode (Map unless chosen).

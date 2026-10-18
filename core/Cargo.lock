@@ -2788,6 +2788,7 @@ dependencies = [
  "easytier-core",
  "ed25519-dalek 3.0.0",
  "getrandom 0.4.3",
+ "libc",
  "objc2",
  "objc2-application-services",
  "objc2-core-foundation",

@@ -32,6 +32,9 @@ type Prefs struct {
 	// KeyboardMode is the viewers' keyboard mode: "map" (also when empty),
 	// "translate" or "legacy".
 	KeyboardMode string `json:"keyboard_mode,omitempty"`
+	// HidePointer hides the ring that marks the host's pointer in the
+	// viewers (for hosts whose picture shows their cursor already).
+	HidePointer bool `json:"hide_pointer,omitempty"`
 	// AskedPermissions is the app version that last asked macOS for the
 	// privacy permissions on its own.
 	AskedPermissions string `json:"asked_permissions,omitempty"`

@@ -118,6 +118,19 @@ impl Secrets {
     }
 }
 
+/// Moves an unreadable store aside, so that the next open starts an empty
+/// one; nothing is deleted.
+/// Returns: the name the old store now has.
+pub fn set_aside(state_dir: &Path) -> Result<PathBuf, String> {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    let to = state_dir.join(format!("{FILE}.unreadable-{secs}"));
+    std::fs::rename(state_dir.join(FILE), &to).map_err(|e| e.to_string())?;
+    Ok(to)
+}
+
 /// Replaces a file through a temporary file next to it, so a crash leaves
 /// either the old or the new contents.
 pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), String> {
@@ -344,5 +357,19 @@ mod tests {
         let last = data.len() - 1;
         data[last] ^= 1;
         assert!(decrypt(&key, &data).is_none());
+    }
+
+    /// Starting over keeps an unreadable store: it is renamed, byte for
+    /// byte, and nothing is left under the store's own name.
+    #[test]
+    fn an_unreadable_store_is_set_aside_untouched() {
+        let dir = std::env::temp_dir().join(format!("kyokai-aside-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(FILE), b"sealed").unwrap();
+        let aside = set_aside(&dir).unwrap();
+        assert!(!dir.join(FILE).exists());
+        assert_eq!(std::fs::read(&aside).unwrap(), b"sealed");
+        assert!(set_aside(&dir).is_err(), "nothing left to set aside");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -41,6 +41,10 @@ type Authorizer struct {
 	// GroupSID is the `kyokai` group whose members may use the helper
 	// (Windows; empty when no administrator created the group).
 	GroupSID string
+	// OperatorUID and GroupGID are the operator and the `kyokai` group on
+	// macOS; nil when not recorded or no such group.
+	OperatorUID *uint32
+	GroupGID    *uint32
 }
 
 // Allows reports whether p is the owner, the operator or in the group. It
@@ -59,5 +63,9 @@ func (a Authorizer) Allows(p Peer) bool {
 		}
 		return a.GroupSID != "" && slices.Contains(p.GroupSIDs, a.GroupSID)
 	}
-	return p.UID == a.OwnerUID
+	switch {
+	case p.UID == a.OwnerUID, a.OperatorUID != nil && p.UID == *a.OperatorUID:
+		return true
+	}
+	return a.GroupGID != nil && slices.Contains(p.Groups, *a.GroupGID)
 }

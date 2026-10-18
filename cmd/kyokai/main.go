@@ -72,6 +72,9 @@ func main() {
 		tray := a.NewTray()
 		a.SetTray(tray)
 		w.OnClose(a.HandleClose)
+		// Quitting the app (its menu, the Dock, logging out or shutting
+		// down) quits even while closing the window only hides it.
+		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.MarkQuitting() })
 		w.OnHide(func() { a.SetVisible(false) })
 		w.OnShow(func() { a.SetVisible(true) })
 		mygo.App.OnLocaleChanged(func(string) { tray.Refresh() })

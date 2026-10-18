@@ -32,6 +32,42 @@ rust_target() {
 	esac
 }
 
+# helper_bundle writes the Info.plist and icon of Kyokai Helper.app (the
+# engine's bundle on macOS), so System Settings lists its privacy
+# permissions as "Kyokai Helper".
+helper_bundle() {
+	local contents=$1 version iconset
+	version=$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)
+	cat > "$contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key><string>com.yuanzhe.kyokai.helper</string>
+	<key>CFBundleName</key><string>Kyokai Helper</string>
+	<key>CFBundleDisplayName</key><string>Kyokai Helper</string>
+	<key>CFBundleExecutable</key><string>kyokai-svc</string>
+	<key>CFBundleIconFile</key><string>icon</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>$version</string>
+	<key>CFBundleVersion</key><string>$version</string>
+	<key>LSMinimumSystemVersion</key><string>14.0</string>
+	<key>LSUIElement</key><true/>
+	<key>NSLocalNetworkUsageDescription</key><string>Kyokai connects directly to your other devices on this network.</string>
+</dict>
+</plist>
+PLIST
+	mkdir -p "$contents/Resources"
+	iconset=$(mktemp -d)/icon.iconset
+	mkdir -p "$iconset"
+	for size in 16 32 128 256 512; do
+		sips -z $size $size resources/icon.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
+		sips -z $((size * 2)) $((size * 2)) resources/icon.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+	done
+	iconutil -c icns "$iconset" -o "$contents/Resources/icon.icns"
+	rm -rf "$(dirname "$iconset")"
+}
+
 mkdir -p resources/licenses
 # The GPL-3.0 text (for EasyTier's LGPL-3.0) and the native codec
 # libraries' licenses and patent grants (libvpx, libaom).
@@ -45,11 +81,22 @@ for t in "${targets[@]}"; do
 	goos=${t%/*}
 	goarch=${t#*/}
 	bin="resources/$goos-$goarch/bin"
-	mkdir -p "$bin"
 	case "$goos" in
 	windows) lib=kyokai_core.dll ext=.exe ;;
+	# On macOS the engine and core live in a bundle of their own, which the
+	# app starts and the helper copies (doc/en-us/run-modes.md).
 	darwin) lib=libkyokai_core.dylib ext="" ;;
 	esac
+	mkdir -p "$bin"
+	# On macOS the core lives in Kyokai Helper.app beside the engine, with
+	# the helper's own engine, so the helper's agent is listed as "Kyokai
+	# Helper" while the app's engine counts as Kyokai (doc/en-us/run-modes.md).
+	libdir=$bin
+	if [ "$goos" = darwin ]; then
+		libdir="$bin/Kyokai Helper.app/Contents/MacOS"
+		rm -f "$bin/$lib"
+		mkdir -p "$libdir"
+	fi
 	if [ -z "${CORE_PREBUILT:-}" ]; then
 		rt=$(rust_target "$t")
 		rustup target add "$rt" >/dev/null
@@ -59,10 +106,14 @@ for t in "${targets[@]}"; do
 		# libvpx and libaom, linked statically into the core.
 		scripts/codecs.sh "$t"
 		PROTOC=${PROTOC:-$(scripts/protoc.sh)} cargo build --release --manifest-path core/Cargo.toml --target "$rt"
-		cp "core/target/$rt/release/$lib" "$bin/$lib"
+		cp "core/target/$rt/release/$lib" "$libdir/$lib"
 	fi
-	test -f "$bin/$lib" || { echo "missing $bin/$lib" >&2; exit 1; }
+	test -f "$libdir/$lib" || { echo "missing $libdir/$lib" >&2; exit 1; }
 	CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w" -o "$bin/kyokai-svc$ext" ./cmd/kyokai-svc
+	if [ "$goos" = darwin ]; then
+		cp "$bin/kyokai-svc" "$libdir/kyokai-svc"
+		helper_bundle "$(dirname "$libdir")"
+	fi
 	# Release builds sign the helper's files, so an installed helper updates
 	# itself without a prompt (doc/en-us/run-modes.md, "Updates").
 	if [ "$goos" = windows ] && [ -n "${KYOKAI_SIGNING_KEY:-}" ]; then

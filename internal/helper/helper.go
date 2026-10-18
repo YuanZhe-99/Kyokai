@@ -44,15 +44,18 @@ type Status struct {
 type InstallOptions struct {
 	// From is the directory holding the app's kyokai-svc and core library.
 	From string
-	// OperatorSID is the user who installs it (Windows), who may then use
-	// the helper.
+	// OperatorSID (Windows) and OperatorUID (macOS) are the user who
+	// installs it, who may then use the helper.
 	OperatorSID string
+	OperatorUID uint32
 }
 
 // Settings is what the installer records for the helper (helper.json in
 // the state directory, administrator-only).
 type Settings struct {
-	OperatorSID string `json:"operator_sid"`
+	OperatorSID string `json:"operator_sid,omitempty"`
+	// OperatorUID is the operator on macOS.
+	OperatorUID *uint32 `json:"operator_uid,omitempty"`
 	// AppDir is the app's bin folder the helper was installed from; when
 	// the app is removed from it, the helper removes itself.
 	AppDir string `json:"app_dir,omitempty"`

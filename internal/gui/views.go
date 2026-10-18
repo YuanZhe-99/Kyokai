@@ -77,6 +77,7 @@ func (a *App) homeView(c *ui.Context) {
 	a.mu.Lock()
 	st := *a.status
 	pw, show := a.password, a.showPassword && a.passwordFor == a.status.PasswordSerial
+	startingOver := a.busy["start-over"]
 	a.mu.Unlock()
 	card(c).Children(func() {
 		ui.Text(c, L.HomeThisDevice()).FontSize(sizeHeading).Bold()
@@ -122,6 +123,14 @@ func (a *App) homeView(c *ui.Context) {
 		ui.Text(c, L.HomePasswordHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		if note := secretsNote(st.Persistence); note != "" && st.Persistence != "os-store" {
 			ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Warning)
+		}
+		if st.Persistence == "unreadable" {
+			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, L.StartOverHint()).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
+				if ui.Button(c.Key("start-over"), L.ActionStartOver()).Disabled(startingOver).Clicked() {
+					a.startOver()
+				}
+			})
 		}
 	})
 	a.permissionsCard(c, false)

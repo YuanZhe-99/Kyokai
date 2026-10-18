@@ -90,6 +90,7 @@ func TestViewsRender(t *testing.T) {
 		"network-off":      func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
 		"home-sessions": func(a *App) {
 			a.status.Network.State = "online"
+			a.status.Permissions = &localapi.Permissions{Accessibility: true, InputMonitoring: true, Keychain: true}
 			a.status.Requests = []localapi.HostRequest{{ID: 3, DeviceID: "213559601", NewKey: true, Want: []string{localapi.PermViewScreen, localapi.PermControlInput},
 				About: localapi.About{Name: "Office laptop", Maker: "LENOVO", Model: "ThinkPad X1 Carbon", OS: "windows"}}}
 			a.status.Recent = []localapi.RecentDevice{
@@ -258,7 +259,7 @@ func TestViewerRenders(t *testing.T) {
 		},
 	}
 	for name, setup := range cases {
-		v := &viewer{device: "657365333"}
+		v := &viewer{device: "657365333", preset: 1, fpsCap: "30 fps"}
 		setup(v)
 		tt := ui.NewTester(v.view, 1100, 560)
 		tt.Frame()

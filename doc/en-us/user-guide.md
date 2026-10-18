@@ -14,10 +14,12 @@ with Windows unless you switch on "Open at login".
 On macOS, open the disk image and drag Kyokai to Applications. Kyokai is signed but not notarized
 by Apple, so macOS may call the downloaded app damaged: run
 `xattr -dr com.apple.quarantine /Applications/Kyokai.app` in Terminal once, then open it.
-Kyokai asks on its first start for **Screen Recording** (so others can see this screen)
-and **Accessibility** (so they can use the mouse and keyboard). Allow both in System Settings,
-Privacy & Security, then quit and reopen Kyokai; **Privacy permissions** on Home and in Settings
-shows what is still missing and opens the right pane with **Allow…**. Allow Kyokai to use its
+Kyokai asks on its first start for **Screen Recording** (so others can see this screen),
+**Accessibility** (so they can use the mouse and keyboard) and **Input Monitoring** (so your own
+keyboard and mouse pause an AI task, and Control+Option+Shift+Esc stops it). Allow them in System
+Settings, Privacy & Security; **Privacy permissions** on Home and in Settings shows what is still
+missing and opens the right pane with **Allow…**. Screen Recording counts only after Kyokai starts
+again: click **Reopen Kyokai** on its row. Allow Kyokai to use its
 Keychain item too (**Always Allow**); if you denied it, **Allow…** on the Keychain row asks again.
 
 Kyokai keeps its secrets — this device's identity, passwords, keys — encrypted with your Windows
@@ -93,6 +95,12 @@ administrator prompt, so the other side can also see and use sign-in screens and
 prompts on this computer; Background service also lets devices you allowed to connect without
 asking in before anyone signs in. Your Device ID, trusted devices and settings move along.
 Choosing No privileges again removes the helper.
+
+On a Mac the helper sees and controls the screen as **Kyokai Helper**, which needs its own Screen
+Recording and Accessibility (Device Control and Data Access) permissions: after switching, open
+**Privacy permissions** in Settings, click **Allow…**, switch Kyokai Helper on in the pane that
+opens, then click **Restart Kyokai Helper**. Switching back to No privileges on a Mac needs no
+password.
 
 ## AI on this computer
 

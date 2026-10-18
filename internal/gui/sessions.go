@@ -41,6 +41,10 @@ func (a *App) requestsView(c *ui.Context) {
 	}
 	grants := a.grants
 	a.mu.Unlock()
+	var perms *localapi.Permissions
+	if len(reqs) > 0 {
+		perms = a.status.Permissions
+	}
 	for _, r := range reqs {
 		key := "req-" + itoa(r.ID)
 		card(c.Key(key)).Border(2, t.Accent).Children(func() {
@@ -58,6 +62,10 @@ func (a *App) requestsView(c *ui.Context) {
 				ui.Text(c, L.RequestKnown()).FontSize(sizeSmall).TextColor(t.TextMuted)
 			default:
 				ui.Text(c, L.RequestFirstTime()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			}
+			if perms != nil && (slices.Contains(r.Want, localapi.PermViewScreen) && !perms.Screen ||
+				slices.Contains(r.Want, localapi.PermControlInput) && !perms.Accessibility) {
+				ui.Text(c, L.RequestPermissionsMissing()).FontSize(sizeSmall).TextColor(t.Warning)
 			}
 			ui.Text(c, L.RequestAsks())
 			chosen, ok := grants[r.ID]
@@ -80,11 +88,44 @@ func (a *App) requestsView(c *ui.Context) {
 				})
 			}
 			ui.Row(c).Gap(gap).Children(func() {
-				if ui.Button(c.Key(key+"-allow"), L.ActionAllow()).Clicked() {
+				if ui.PrimaryButton(c.Key(key+"-allow"), L.ActionAllow()).Clicked() {
 					a.decide(r.ID, true, chosen)
 				}
 				if ui.Button(c.Key(key+"-deny"), L.ActionDeny()).Clicked() {
 					a.decide(r.ID, false, nil)
+				}
+			})
+		})
+	}
+}
+
+// hostBanner shows, on every page, each device connected to this one
+// right now, what it may do, and Disconnect, so the host's user always
+// sees who is here and can end it.
+func (a *App) hostBanner(c *ui.Context) {
+	t := c.Theme()
+	a.mu.Lock()
+	var here []localapi.SessionInfo
+	if a.connected && a.status != nil {
+		for _, s := range a.status.Sessions {
+			if s.Role == "host" && (s.State == "connected" || s.State == "reconnecting") {
+				here = append(here, s)
+			}
+		}
+	}
+	a.mu.Unlock()
+	for _, s := range here {
+		key := "here-" + itoa(s.ID)
+		card(c.Key(key)).Border(2, t.Warning).Children(func() {
+			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
+				deviceAvatar(c, s.Peer)
+				ui.Column(c).Grow(1).Gap(2).Children(func() {
+					ui.Text(c, L.HostConnected(deviceTitle(s.Peer, s.DeviceID))).Bold()
+					ui.Text(c, sessionState(s)).FontSize(sizeSmall).TextColor(t.TextMuted)
+				})
+				if ui.Button(c.Key(key+"-close"), L.ActionDisconnect()).Clicked() {
+					id := s.ID
+					go func() { _, _ = a.requestWith(localapi.Request{Type: localapi.RequestClose, ID: id}) }()
 				}
 			})
 		})
@@ -138,7 +179,7 @@ func (a *App) connectCard(c *ui.Context) {
 			if f.password == "" {
 				label = L.ActionRequestAccess()
 			}
-			if ui.Button(c.Key("conn-go"), label).Disabled(busy || !online).Clicked() {
+			if ui.PrimaryButton(c.Key("conn-go"), label).Disabled(busy || !online).Clicked() {
 				a.startSession(f)
 			}
 		})

@@ -65,12 +65,15 @@ const (
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
 	RequestNameSet            RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
 	RequestUnattended         RequestType = "trusted.unattended"     // let a trusted device in without confirmation for Request.Days (0 stops it; Request.Key)
-	RequestPermission         RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen", "accessibility" or "keychain"; macOS)
+	RequestAgentRestart       RequestType = "helper.agent_restart"   // the helper's session agent starts anew (macOS counts new privacy grants only then)
+	RequestStartOver          RequestType = "secrets.start_over"     // the saved identity cannot be unlocked: move it aside and keep a new one
+	RequestPermission         RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen", "accessibility", "input-monitoring" or "keychain"; macOS)
 	RequestPasswordGrants     RequestType = "access.password_grants" // what a correct password grants without asking (Request.Grants)
 	RequestBackground         RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
 	RequestStoreExport        RequestType = "store.export"           // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
 	RequestStoreImport        RequestType = "store.import"           // take over a store this device's other engine sealed (Request.Backup)
 	RequestStoreClear         RequestType = "store.clear"            // forget the moved store and stop: the other engine holds it now
+	RequestHelperRemove       RequestType = "helper.remove"          // the helper removes itself, its state included (macOS), after the store moved out
 	RequestHelperUpdate       RequestType = "helper.update"          // the helper installs the signed bundle in Request.From and restarts
 	RequestAIModels           RequestType = "ai.models.list"         // the models a source lists (Request.Source → Response.AIModels), only when asked
 	RequestMedia              RequestType = "session.media"          // a controller session's media (Request.ID); the connection then carries packets
@@ -466,6 +469,9 @@ type Permissions struct {
 	Screen bool `json:"screen"`
 	// Accessibility lets the engine inject input.
 	Accessibility bool `json:"accessibility"`
+	// InputMonitoring lets the engine notice the host user's own keyboard
+	// and mouse, which pause AI tasks and carry the emergency stop.
+	InputMonitoring bool `json:"input_monitoring"`
 	// Keychain: the Keychain did not refuse the secrets' key; asking for
 	// "keychain" opens the store again.
 	Keychain bool `json:"keychain"`

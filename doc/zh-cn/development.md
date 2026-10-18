@@ -7,7 +7,8 @@
 - Windows：Visual Studio 2026（或其 Build Tools），装好目标架构（ARM64 和/或 x64）的 C++ 工具、Windows SDK，以及
   “C++ Clang Compiler for Windows” 组件——`ring` 在 `aarch64-pc-windows-msvc` 上需要 clang；请把 VS 安装中的 `VC\Tools\Llvm\ARM64\bin`
   加入 `PATH`（该组件不会自动加入）。Git for Windows 提供 bash 与 OpenSSL。
-- macOS：Xcode 命令行工具；Go 与 rustup（可用 Homebrew）。
+- macOS：Xcode 命令行工具；Go 与 rustup（可用 Homebrew）；vcpkg 构建 aom 需要的 `pkg-config`
+  （`brew install pkgconf`）。
 - EasyTier 协议文件需要的 `protoc`：`scripts/protoc.sh` 把固定版本（36.2）下载到 `build/tools`（只下载一次），校验
   其 SHA-256 并输出路径。`scripts/build.sh` 与 `scripts/smoke.sh` 会自行使用它；直接运行 cargo 命令前先执行
   `export PROTOC=$(scripts/protoc.sh)`。没有 `PROTOC` 时，EasyTier 的构建会在 Windows 上下载未经校验的候选版本。
@@ -78,6 +79,8 @@ KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
 `KYOKAI_SVC` 让界面使用另一个引擎可执行文件，`KYOKAI_SOCKET` 指定另一个套接字。ABI 冒烟测试需要库的绝对路径。`ctl network-set` 从
 `KYOKAI_NETWORK_SECRET` 读取网络密钥，从不从命令行读取；`ctl network` 显示不含密钥的设置。同一台机器上使用不同
 配置、状态目录和套接字的两个引擎，可以通过同一个网络互相看到。
+
+在 macOS 上，发布用的签名身份进入登录钥匙串后，请用它为本地构建签名（`MYGO_SIGN=<身份或其 SHA-1> scripts/build.sh`）：临时签名的构建每次都是新身份，会丢失隐私授权。请用 `open` 而不是从 shell 启动应用，这样 macOS 才会把它的引擎算作 Kyokai 的一部分；从 shell 启动的引擎没有授权，只会发送占位画面。`ctl watch --type T --keys meta+a,enter` 会像查看窗口那样向被控端输入。
 
 ## 可行性验证
 

@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,7 +62,7 @@ func (a *App) runModeCard(c *ui.Context) {
 	idx := cur
 	card(c).Children(func() {
 		ui.Text(c, L.SettingsRunMode()).FontSize(sizeHeading).Bold()
-		available := runtime.GOOS == "windows"
+		available := runtime.GOOS == "windows" || runtime.GOOS == "darwin"
 		settingRow(c, "mode-choice", L.SettingsRunMode(), L.RunModeHint(), func() {
 			if ui.Segmented(c.Key("mode-seg"), &idx, L.RunModeUser(), L.RunModeFollow(), L.RunModeBackground()).
 				Disabled(busy || !available).Changed() && idx != cur {
@@ -109,7 +111,7 @@ func (a *App) updateHelper() {
 			if err == nil {
 				return nil
 			}
-			return runPrivileged("install", "--from", from, "--operator-sid", localapi.CurrentSID())
+			return runPrivileged(append([]string{"install", "--from", from}, operatorArgs()...)...)
 		}()
 		a.update(func() {
 			delete(a.busy, "mode")
@@ -159,7 +161,7 @@ func (a *App) doSwitch(from, to int) error {
 			if err != nil {
 				return err
 			}
-			if err := runPrivileged("install", "--from", filepath.Dir(bin), "--operator-sid", localapi.CurrentSID()); err != nil {
+			if err := runPrivileged(append([]string{"install", "--from", filepath.Dir(bin)}, operatorArgs()...)...); err != nil {
 				return err
 			}
 		}
@@ -182,9 +184,33 @@ func (a *App) doSwitch(from, to int) error {
 			return err
 		}
 		a.useSocket(a.userSocket, false)
-		// The helper holds nothing any more: remove it and its state.
+		// The helper holds nothing any more: remove it and its state. On
+		// macOS it removes itself (no prompt); elsewhere, or when that
+		// fails, the administrator removes it.
+		if runtime.GOOS == "darwin" && removeHelper(ctx, hlp) {
+			return nil
+		}
 		return runPrivileged("uninstall", "--purge")
 	}
+}
+
+// removeHelper asks the macOS helper to remove itself, again while it is
+// still installed: the engine that gave up the store exits and launchd
+// starts it anew, so one request may reach an engine on its way out.
+// Returns: whether the helper is gone.
+func removeHelper(ctx context.Context, hlp *localapi.Client) bool {
+	for range 20 {
+		if !helper.Inspect().Installed {
+			return true
+		}
+		_, _ = hlp.Do(ctx, localapi.Request{Type: localapi.RequestHelperRemove})
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(time.Second):
+		}
+	}
+	return !helper.Inspect().Installed
 }
 
 // useSocket points the GUI at another engine and remembers the choice.
@@ -215,15 +241,29 @@ func waitFor(ctx context.Context, c *localapi.Client) error {
 	}
 }
 
-// runPrivileged runs `kyokai-svc helper <args>` with administrator rights:
-// the one prompt of a run-mode change (UAC).
-func runPrivileged(args ...string) error {
-	if runtime.GOOS != "windows" {
-		return helper.ErrUnsupported
+// operatorArgs name this user as the helper's operator: by SID on
+// Windows, by uid on macOS (where the installer itself runs as root).
+func operatorArgs() []string {
+	if runtime.GOOS == "darwin" {
+		return []string{"--operator-uid", strconv.Itoa(os.Getuid())}
 	}
+	return []string{"--operator-sid", localapi.CurrentSID()}
+}
+
+// runPrivileged runs `kyokai-svc helper <args>` with administrator rights:
+// the one prompt of a run-mode change (UAC on Windows, the administrator
+// password on macOS).
+func runPrivileged(args ...string) error {
 	svc, err := engineBinary()
 	if err != nil {
 		return err
+	}
+	switch runtime.GOOS {
+	case "darwin":
+		return runAsAdmin(svc, args)
+	case "windows":
+	default:
+		return helper.ErrUnsupported
 	}
 	// Start-Process joins an -ArgumentList array with bare spaces, which
 	// splits paths such as "…\Programs\Kyokai\bin": pass one string that is
@@ -248,6 +288,33 @@ func runPrivileged(args ...string) error {
 		return errors.New(msg)
 	}
 	return nil
+}
+
+// runAsAdmin runs `svc helper <args>` through macOS's administrator
+// prompt (as EasyTier MyGo does).
+func runAsAdmin(svc string, args []string) error {
+	quoted := []string{shellQuote(svc), "helper"}
+	for _, a := range args {
+		quoted = append(quoted, shellQuote(a))
+	}
+	script := fmt.Sprintf("do shell script %q with administrator privileges", strings.Join(quoted, " "))
+	out, err := exec.Command("osascript", "-e", script).CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if strings.Contains(msg, "(-128)") {
+			return errors.New(L.RunModeCancelled())
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		return errors.New(msg)
+	}
+	return nil
+}
+
+// shellQuote quotes s for a POSIX shell.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // windowsArg quotes one argument for a Windows command line so that

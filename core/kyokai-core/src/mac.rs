@@ -22,8 +22,9 @@ use objc2_core_graphics::{
     CGDirectDisplayID, CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayIsMain, CGDisplayMode,
     CGError, CGEvent, CGEventField, CGEventFlags, CGEventMask, CGEventSource, CGEventSourceStateID,
     CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventTapProxy, CGEventType,
-    CGGetActiveDisplayList, CGKeyCode, CGMouseButton, CGPreflightScreenCaptureAccess,
-    CGRectMakeWithDictionaryRepresentation, CGRequestScreenCaptureAccess, CGScrollEventUnit,
+    CGGetActiveDisplayList, CGKeyCode, CGMouseButton, CGPreflightListenEventAccess,
+    CGPreflightScreenCaptureAccess, CGRectMakeWithDictionaryRepresentation,
+    CGRequestListenEventAccess, CGRequestScreenCaptureAccess, CGScrollEventUnit,
     CGWindowListCopyWindowInfo, CGWindowListOption, kCGWindowBounds, kCGWindowLayer,
     kCGWindowOwnerPID,
 };
@@ -56,12 +57,15 @@ const WAIT: Duration = Duration::from_secs(5);
 const MAX_DISPLAYS: usize = 16;
 
 /// The privacy permissions Kyokai needs here, as granted now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct Permissions {
     /// Screen Recording: capture.
     pub screen: bool,
     /// Accessibility: injecting input.
     pub accessibility: bool,
+    /// Input Monitoring: the listen-only tap that notices the host user's
+    /// own keyboard and mouse (and the emergency stop).
+    pub input_monitoring: bool,
     /// The Keychain item that keeps the secrets' key was not refused.
     pub keychain: bool,
 }
@@ -75,12 +79,13 @@ pub fn permissions(keychain: bool) -> Permissions {
         screen: CGPreflightScreenCaptureAccess(),
         // SAFETY: a plain query.
         accessibility: unsafe { AXIsProcessTrusted() },
+        input_monitoring: CGPreflightListenEventAccess(),
     }
 }
 
-/// Asks macOS for a permission (`screen` or `accessibility`): it shows its
-/// prompt, or for a permission asked before, nothing (System Settings
-/// grants it then).
+/// Asks macOS for a permission (`screen`, `accessibility` or
+/// `input-monitoring`): it shows its prompt, or for a permission asked
+/// before, nothing (System Settings grants it then).
 /// Returns: whether it is granted now.
 pub fn request(name: &str) -> Result<bool, String> {
     match name {
@@ -92,6 +97,7 @@ pub fn request(name: &str) -> Result<bool, String> {
             // SAFETY: the options dictionary maps the prompt key to a boolean.
             Ok(unsafe { AXIsProcessTrustedWithOptions(Some(options.as_ref())) })
         }
+        "input-monitoring" => Ok(CGRequestListenEventAccess()),
         _ => Err("unknown permission".into()),
     }
 }
@@ -154,6 +160,9 @@ fn pixel_size(id: CGDirectDisplayID, points: Display) -> (u32, u32) {
 /// Where the pointer is, as fractions of the main display (outside 0–1 on
 /// another display), and whether it is shown.
 pub fn pointer() -> Option<(f32, f32, bool)> {
+    if let Some(link) = crate::agent::link() {
+        return link.pointer(None);
+    }
     let main = displays().into_iter().find(|d| d.primary)?;
     pointer_in(Area {
         x: main.x,
@@ -166,6 +175,9 @@ pub fn pointer() -> Option<(f32, f32, bool)> {
 /// Where the pointer is, as fractions of `area` (points; outside 0–1
 /// elsewhere), and whether it is shown.
 pub fn pointer_in(area: Area) -> Option<(f32, f32, bool)> {
+    if let Some(link) = crate::agent::link() {
+        return link.pointer(Some(area));
+    }
     let event = CGEvent::new(None)?;
     let at = CGEvent::location(Some(&event));
     Some((
@@ -743,9 +755,11 @@ struct Press {
 
 /// The host's input on macOS: events posted through Core Graphics, tagged
 /// as Kyokai's; nothing reaches Kyokai's own windows, and whatever is held
-/// is released at the end. Needs the Accessibility permission.
-#[derive(Default)]
+/// is released at the end. Needs the Accessibility permission. In the
+/// helper (a root daemon) it sends its work to the session agent.
 pub struct Injector {
+    /// The agent's injector, when this engine is the helper.
+    remote: Option<u64>,
     area: Option<Area>,
     keys: BTreeSet<CGKeyCode>,
     buttons: BTreeSet<u8>,
@@ -755,6 +769,20 @@ pub struct Injector {
     press: Option<Press>,
     /// Wheel movement not sent yet (less than a line).
     scroll: (f32, f32),
+}
+
+impl Default for Injector {
+    fn default() -> Self {
+        Injector {
+            remote: crate::agent::link().map(|l| l.injector()),
+            area: None,
+            keys: BTreeSet::new(),
+            buttons: BTreeSet::new(),
+            at: (0.0, 0.0),
+            press: None,
+            scroll: (0.0, 0.0),
+        }
+    }
 }
 
 impl Injector {
@@ -829,6 +857,9 @@ impl Injector {
     /// Injects an event, unless it would reach a Kyokai window.
     /// Returns: whether it was injected.
     pub fn inject(&mut self, e: &Event) -> bool {
+        if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
+            return link.inject(id, e, self.area);
+        }
         if !e.valid() || self.blocked(e.guard()) {
             return false;
         }
@@ -963,6 +994,10 @@ impl Injector {
 
     /// Releases every key and button this session holds.
     pub fn release_all(&mut self) {
+        if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
+            link.release(id);
+            return;
+        }
         let keys: Vec<CGKeyCode> = self.keys.iter().rev().copied().collect();
         for k in keys {
             self.key(k, false);
@@ -981,7 +1016,10 @@ impl Injector {
 
 impl Drop for Injector {
     fn drop(&mut self) {
-        self.release_all();
+        match (self.remote, crate::agent::link()) {
+            (Some(id), Some(link)) => link.drop_injector(id),
+            _ => self.release_all(),
+        }
     }
 }
 
@@ -1069,7 +1107,8 @@ unsafe extern "C-unwind" fn tapped(
 
 impl LocalWatch {
     /// Starts the tap on a thread of its own.
-    /// Returns: an error without the Accessibility permission.
+    /// Returns: an error without the Input Monitoring (or Accessibility)
+    /// permission.
     pub fn start() -> Result<LocalWatch, String> {
         let watched = Arc::new(Watched::default());
         let (tx, rx) = sync_channel(1);
@@ -1104,7 +1143,7 @@ impl LocalWatch {
             };
             let Some(tap) = tap else {
                 let _ = tx.send(Err(
-                    "watching local input needs the Accessibility permission".to_string(),
+                    "watching local input needs the Input Monitoring permission".to_string(),
                 ));
                 return;
             };

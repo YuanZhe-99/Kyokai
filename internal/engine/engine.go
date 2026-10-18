@@ -54,6 +54,13 @@ type Options struct {
 	// Update installs the signed bundle in a folder into the helper and
 	// restarts it (helper.update); nil outside the helper.
 	Update func(from string) error
+	// Remove removes the helper itself, its identity included, once the
+	// store has moved out (helper.remove); nil where removing needs the
+	// administrator (Windows) and outside the helper.
+	Remove func() error
+	// AgentSocket is where the helper's session agent connects (macOS,
+	// where launchd starts the agent); empty elsewhere.
+	AgentSocket string
 }
 
 // DefaultStateDir is %APPDATA%\Kyokai on Windows and
@@ -100,13 +107,17 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	cfg := core.Config{Version: opts.Version, StateDir: opts.StateDir, Profile: opts.Profile}
 	if opts.Helper != nil {
-		// The helper starts its own copy of kyokai-svc as the session agent.
+		// The helper starts its own copy of kyokai-svc as the session agent
+		// (Windows), or its LaunchAgent connects to a socket (macOS).
 		exe, err := os.Executable()
 		if err != nil {
 			ln.Close()
 			return err
 		}
 		cfg.Agent = exe
+		if opts.AgentSocket != "" {
+			cfg.Agent = opts.AgentSocket
+		}
 	}
 	st, err := lib.Start(cfg)
 	if err != nil {
@@ -135,7 +146,7 @@ func Run(ctx context.Context, opts Options) error {
 		}()
 	}
 
-	h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}, runMode: runMode, stateDir: opts.StateDir, update: opts.Update}
+	h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}, runMode: runMode, stateDir: opts.StateDir, update: opts.Update, remove: opts.Remove}
 	if runMode == "helper" {
 		var m struct {
 			Background bool `json:"background"`
@@ -162,6 +173,8 @@ type handler struct {
 	served string
 	// update is Options.Update.
 	update func(from string) error
+	// remove removes the helper itself (macOS); nil elsewhere.
+	remove func() error
 
 	mu       sync.Mutex
 	sessions map[chan struct{}]bool // each is poked when the status changes
@@ -208,6 +221,10 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "name missing")
 		}
 		return h.command("device.set_name", map[string]string{"name": *req.Name})
+	case localapi.RequestAgentRestart:
+		return h.command("agent.restart", nil)
+	case localapi.RequestStartOver:
+		return h.command("store.start_over", nil)
 	case localapi.RequestUnattended:
 		if req.Key == "" || req.Days < 0 {
 			return localapi.Fail(localapi.CodeInvalid, "device key and days needed")
@@ -287,6 +304,14 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "only the helper updates itself")
 		}
 		if err := h.update(req.From); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true}
+	case localapi.RequestHelperRemove:
+		if h.remove == nil {
+			return localapi.Fail(localapi.CodeInvalid, "this helper cannot remove itself")
+		}
+		if err := h.remove(); err != nil {
 			return localapi.Fail(localapi.CodeInvalid, "%v", err)
 		}
 		return localapi.Response{OK: true}

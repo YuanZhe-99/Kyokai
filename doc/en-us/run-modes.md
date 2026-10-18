@@ -27,7 +27,10 @@ reports the same Device ID does the user engine forget them and stop (`store.cle
 identity is never served twice and never lost. The GUI then uses the helper's socket (`gui.json`
 `helper`, saved per profile, so a development profile that switched follows the helper too), also
 when it starts again. Follow GUI and Background service switch with `helper.background`. Going back moves the
-store the other way and removes the helper and its state (a second prompt). `ctl move --to SOCKET`
+store the other way and removes the helper and its state: on Windows with a second prompt; on
+macOS the helper, root already, removes itself when its operator asks (`helper.remove`, retried
+while launchd restarts the engine that gave up the store), with the administrator prompt only as
+the fallback. `ctl move --to SOCKET`
 does the same move from the command line. When the GUI quits, only its own engine stops; the
 helper keeps running.
 
@@ -49,6 +52,25 @@ SYSTEM). Its socket `%ProgramData%\Kyokai\ctl.sock` can be opened by every local
 helper serves only SYSTEM, the operator and members of a local `kyokai` group (when an
 administrator created it); anyone else, an administrator included, is refused
 ([security.md](security.md)).
+
+## The helper (macOS)
+
+The app ships `Kyokai Helper.app` in `Contents/Resources/bin`, beside its own `kyokai-svc`: a
+bundle (`com.yuanzhe.kyokai.helper`, no Dock icon) holding the core library and the helper's own
+`kyokai-svc`, so that macOS lists the agent's permissions as "Kyokai Helper" while the app's
+engine counts as Kyokai. `kyokai-svc helper install --from BIN --operator-uid N` (root, through
+the administrator prompt `osascript … with administrator privileges`, as EasyTier MyGo does)
+copies the bundle with `ditto` into `/Library/Application Support/Kyokai`, owned by root and
+writable by root only, creates `state` (root only), records the operator's uid in
+`state/helper.json`, and loads two launchd jobs: the daemon `com.yuanzhe.kyokai.helper`
+(`run --host helper` as root, from boot, restarted by launchd) and the agent
+`com.yuanzhe.kyokai.agent` in `/Library/LaunchAgents` (`agent --socket …`, in every graphical
+session as its user and at the login window). `helper uninstall` unloads both and deletes the
+bundle and sockets (`--purge`: also the state and the helper's key in the System keychain).
+
+The helper keeps its identity in `state` with the store's key in the System keychain. Its
+socket `ctl.sock` can be opened by every local user; the helper serves only root, the operator
+and members of a local `kyokai` group, by uid and gid ([security.md](security.md)).
 
 ## The session agent
 
@@ -73,6 +95,16 @@ and written by the helper while it impersonates the console's signed-in user
 ([computer-use.md](computer-use.md), "Files"). Without an agent, video falls back
 to the test pattern, input is refused, and an AI task reads it as the host user taking over.
 
+On macOS launchd starts the agent, not the helper: it connects to `agent.sock` in the helper's
+folder (root-owned, so only root can hold it; the agent checks that the peer is root), and the
+helper takes a connection only from its own `kyokai-svc` (`LOCAL_PEERPID`, `proc_pidpath`) run by
+the user at the screen or by root at the login window; the newest agent replaces an older one.
+The link's messages are the same. The agent injects with its own permissions; blocking the
+user's input, privacy mode and locking are not offered there. The status's `permissions` are the
+agent's in the helper modes, and a permission asked for there is asked by the agent; macOS counts
+a new grant only in an agent started after it, so the permissions card offers **Restart Kyokai
+Helper** (`helper.agent_restart`: the agent exits and launchd starts it again).
+
 ## Updates
 
 Release builds sign the helper's files: `scripts/build.sh` writes `bundle.json` (the version and the
@@ -85,19 +117,29 @@ and exits; the service restarts it. It never reads the user-writable app folder 
 swapped there after the check is not installed. An unsigned build (development, or a release
 without the key) is installed with one administrator prompt instead.
 
+On macOS the code signature does this: the helper copies the app's `Kyokai Helper.app` into a
+root-owned folder first, checks that copy with `codesign --verify --deep --strict` against the
+installed bundle's designated requirement (the same identifier and certificate) and that its
+version is not older, then puts it in place and exits; launchd restarts the daemon and the helper
+restarts the agent. An ad hoc signed build never satisfies the requirement and needs the prompt.
+
 ## Self-disable
 
 The installer records the app's folder (`app_dir` in `helper.json`). When the app's engine is
 missing there at two checks a minute apart (an app update replacing its files is not a removal),
 the helper deletes its service, its state and its socket, schedules its own files for deletion at
-the next restart of Windows and exits, so removing the app leaves no running helper.
+the next restart of Windows and exits, so removing the app leaves no running helper. On macOS it
+unloads the agent, deletes its plists, folder and key and unloads itself last.
 
 ## Current implementation
 
 The helper's install, uninstall and status commands, the service, its authorization and the
 session agent (its link, start in the console session and desktop following) are implemented on
-Windows; the link is tested in-process, the service and the agent not yet on a machine. The macOS
-helper (a root LaunchDaemon) comes with the Mac pass and reports "not available yet" until then.
+Windows; the link is tested in-process, the service and the agent not yet on a machine. On macOS
+the helper ran on a MacBook Pro with macOS 27 ([platform-notes.md](platform-notes.md), "macOS"):
+install with one prompt, the store move both ways, the agent's video and a click, the signed
+self-update (an ad hoc bundle refused) and removal without a prompt; Background service, the login
+window and self-disable have not run there yet.
 The helper ran as a service on Windows ARM64 ([platform-notes.md](platform-notes.md), "The
 helper"): install, authorization, the agent with capture of and a click on the secure desktop,
 the store move both ways, unattended access, uninstall and self-disable. The run-mode switch in

@@ -48,6 +48,13 @@ var SocketPath = filepath.Join(root, "ctl.sock")
 // elevated token; the service runs as SYSTEM).
 func Elevated() bool { return windows.GetCurrentProcessToken().IsElevated() }
 
+// AgentSocket is unused on Windows, where the helper starts its agent and
+// they talk over named pipes.
+const AgentSocket = ""
+
+// GroupGID is unused on Windows, where the group is a SID.
+func GroupGID() (uint32, bool) { return 0, false }
+
 // GroupSID is the SID of the local `kyokai` group, or "" when no
 // administrator created it.
 func GroupSID() string {

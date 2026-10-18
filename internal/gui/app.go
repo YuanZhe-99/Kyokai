@@ -56,8 +56,10 @@ type App struct {
 	passwordFor  uint64 // the serial the fetched password belongs to
 	showPassword bool
 	// permissionsAsked: this run already looked at the privacy
-	// permissions (permissions.go).
+	// permissions (permissions.go); screenAsked: this run asked for Screen
+	// Recording, which counts only after a restart.
 	permissionsAsked bool
+	screenAsked      bool
 
 	// Network page: the settings form (network.go).
 	net netForm
@@ -198,6 +200,25 @@ func (a *App) Quit() {
 	mygo.App.Quit()
 }
 
+// relaunch quits the app and starts it again.
+// Side effects: ends the engine connection first, so that nothing starts
+// the engine again, then stops the engine, so that the new app's engine
+// takes its socket; only then does MyGo quit and start the app anew.
+func (a *App) relaunch() {
+	a.MarkQuitting()
+	a.cancel()
+	a.engine.stop(a.userSocket)
+	mygo.App.Relaunch()
+}
+
+// MarkQuitting records that the app is quitting, so that closing its window
+// no longer hides it into the tray.
+func (a *App) MarkQuitting() {
+	a.mu.Lock()
+	a.quitting = true
+	a.mu.Unlock()
+}
+
 // HandleClose hides the window into the tray unless the user chose that
 // closing quits (or there is no tray).
 func (a *App) HandleClose(e *mygo.CloseEvent) {
@@ -256,6 +277,7 @@ func (a *App) View(c *ui.Context) {
 			a.sidebar(c)
 			ui.Scroll(c).Grow(1).Fill().Padding(24).Gap(gap).Children(func() {
 				a.requestsView(c)
+				a.hostBanner(c)
 				a.aiBanner(c)
 				switch pg {
 				case pageNetwork:

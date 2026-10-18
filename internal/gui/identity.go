@@ -121,3 +121,21 @@ func (a *App) identityRequest(req localapi.Request, then func(*localapi.Response
 		}
 	})
 }
+
+// startOver gives up the saved identity that cannot be unlocked: the engine
+// moves it aside, untouched, and keeps a new identity from now on.
+// Side effects: a new Device ID; the network reconnects with it.
+func (a *App) startOver() {
+	a.update(func() { a.busy["start-over"] = true })
+	go func() {
+		_, err := a.request(localapi.RequestStartOver)
+		a.update(func() {
+			delete(a.busy, "start-over")
+			if err != nil {
+				a.setToast(err.Error(), true)
+			} else {
+				a.setToast(L.StartOverDone(), false)
+			}
+		})
+	}()
+}

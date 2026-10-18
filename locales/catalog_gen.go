@@ -1132,6 +1132,16 @@ func (msgs Messages) ActionRemove() string {
 	return Catalog.Format(msgs.locale, "ActionRemove", nil)
 }
 
+// ActionReopen says "Reopen Kyokai"
+// in the language the app shows.
+func ActionReopen() string { return In(i18n.Locale()).ActionReopen() }
+
+// ActionReopen says "Reopen Kyokai"
+// in the language of msgs.
+func (msgs Messages) ActionReopen() string {
+	return Catalog.Format(msgs.locale, "ActionReopen", nil)
+}
+
 // ActionRequestAccess says "Ask to connect"
 // in the language the app shows.
 func ActionRequestAccess() string { return In(i18n.Locale()).ActionRequestAccess() }
@@ -1150,6 +1160,16 @@ func ActionReset() string { return In(i18n.Locale()).ActionReset() }
 // in the language of msgs.
 func (msgs Messages) ActionReset() string {
 	return Catalog.Format(msgs.locale, "ActionReset", nil)
+}
+
+// ActionRestartHelper says "Restart Kyokai Helper"
+// in the language the app shows.
+func ActionRestartHelper() string { return In(i18n.Locale()).ActionRestartHelper() }
+
+// ActionRestartHelper says "Restart Kyokai Helper"
+// in the language of msgs.
+func (msgs Messages) ActionRestartHelper() string {
+	return Catalog.Format(msgs.locale, "ActionRestartHelper", nil)
 }
 
 // ActionRestore says "Restore…"
@@ -1190,6 +1210,16 @@ func ActionShow() string { return In(i18n.Locale()).ActionShow() }
 // in the language of msgs.
 func (msgs Messages) ActionShow() string {
 	return Catalog.Format(msgs.locale, "ActionShow", nil)
+}
+
+// ActionStartOver says "Start over"
+// in the language the app shows.
+func ActionStartOver() string { return In(i18n.Locale()).ActionStartOver() }
+
+// ActionStartOver says "Start over"
+// in the language of msgs.
+func (msgs Messages) ActionStartOver() string {
+	return Catalog.Format(msgs.locale, "ActionStartOver", nil)
 }
 
 // ActionView says "View"
@@ -1582,6 +1612,16 @@ func (msgs Messages) FailWrongDevice() string {
 	return Catalog.Format(msgs.locale, "FailWrongDevice", nil)
 }
 
+// HelperRestarted says "Kyokai Helper restarted with the permissions allowed so far."
+// in the language the app shows.
+func HelperRestarted() string { return In(i18n.Locale()).HelperRestarted() }
+
+// HelperRestarted says "Kyokai Helper restarted with the permissions allowed so far."
+// in the language of msgs.
+func (msgs Messages) HelperRestarted() string {
+	return Catalog.Format(msgs.locale, "HelperRestarted", nil)
+}
+
 // HomeDeviceID says "Device ID"
 // in the language the app shows.
 func HomeDeviceID() string { return In(i18n.Locale()).HomeDeviceID() }
@@ -1620,6 +1660,16 @@ func HomeThisDevice() string { return In(i18n.Locale()).HomeThisDevice() }
 // in the language of msgs.
 func (msgs Messages) HomeThisDevice() string {
 	return Catalog.Format(msgs.locale, "HomeThisDevice", nil)
+}
+
+// HostConnected says "{device} is connected to this device"
+// in the language the app shows.
+func HostConnected(device string) string { return In(i18n.Locale()).HostConnected(device) }
+
+// HostConnected says "{device} is connected to this device"
+// in the language of msgs.
+func (msgs Messages) HostConnected(device string) string {
+	return Catalog.Format(msgs.locale, "HostConnected", map[string]any{"device": device})
 }
 
 // IdentityFingerprint says "Fingerprint"
@@ -2202,6 +2252,26 @@ func (msgs Messages) PermissionGranted() string {
 	return Catalog.Format(msgs.locale, "PermissionGranted", nil)
 }
 
+// PermissionInputMonitoring says "Input Monitoring"
+// in the language the app shows.
+func PermissionInputMonitoring() string { return In(i18n.Locale()).PermissionInputMonitoring() }
+
+// PermissionInputMonitoring says "Input Monitoring"
+// in the language of msgs.
+func (msgs Messages) PermissionInputMonitoring() string {
+	return Catalog.Format(msgs.locale, "PermissionInputMonitoring", nil)
+}
+
+// PermissionInputMonitoringHint says "Lets Kyokai notice when you use your own keyboard and mouse, so that an AI task pauses and Control+Option+Shift+Esc s…"
+// in the language the app shows.
+func PermissionInputMonitoringHint() string { return In(i18n.Locale()).PermissionInputMonitoringHint() }
+
+// PermissionInputMonitoringHint says "Lets Kyokai notice when you use your own keyboard and mouse, so that an AI task pauses and Control+Option+Shift+Esc s…"
+// in the language of msgs.
+func (msgs Messages) PermissionInputMonitoringHint() string {
+	return Catalog.Format(msgs.locale, "PermissionInputMonitoringHint", nil)
+}
+
 // PermissionKeychain says "Keychain"
 // in the language the app shows.
 func PermissionKeychain() string { return In(i18n.Locale()).PermissionKeychain() }
@@ -2232,14 +2302,24 @@ func (msgs Messages) PermissionScreen() string {
 	return Catalog.Format(msgs.locale, "PermissionScreen", nil)
 }
 
-// PermissionScreenHint says "Lets other devices and AI tasks see this screen. After allowing it, quit and reopen Kyokai."
+// PermissionScreenHint says "Lets other devices and AI tasks see this screen. After allowing it, reopen Kyokai."
 // in the language the app shows.
 func PermissionScreenHint() string { return In(i18n.Locale()).PermissionScreenHint() }
 
-// PermissionScreenHint says "Lets other devices and AI tasks see this screen. After allowing it, quit and reopen Kyokai."
+// PermissionScreenHint says "Lets other devices and AI tasks see this screen. After allowing it, reopen Kyokai."
 // in the language of msgs.
 func (msgs Messages) PermissionScreenHint() string {
 	return Catalog.Format(msgs.locale, "PermissionScreenHint", nil)
+}
+
+// PermissionsHelperHint says "In this run mode the helper captures and controls this Mac: allow these for Kyokai Helper, then restart it here."
+// in the language the app shows.
+func PermissionsHelperHint() string { return In(i18n.Locale()).PermissionsHelperHint() }
+
+// PermissionsHelperHint says "In this run mode the helper captures and controls this Mac: allow these for Kyokai Helper, then restart it here."
+// in the language of msgs.
+func (msgs Messages) PermissionsHelperHint() string {
+	return Catalog.Format(msgs.locale, "PermissionsHelperHint", nil)
 }
 
 // PermissionsHint says "macOS asks you before an app may record the screen or control the computer. Without these, other devices see a placeh…"
@@ -2370,6 +2450,16 @@ func RequestNotify() string { return In(i18n.Locale()).RequestNotify() }
 // in the language of msgs.
 func (msgs Messages) RequestNotify() string {
 	return Catalog.Format(msgs.locale, "RequestNotify", nil)
+}
+
+// RequestPermissionsMissing says "macOS hasn't allowed Kyokai to record this screen or use the mouse and keyboard yet, so this device can't do all it a…"
+// in the language the app shows.
+func RequestPermissionsMissing() string { return In(i18n.Locale()).RequestPermissionsMissing() }
+
+// RequestPermissionsMissing says "macOS hasn't allowed Kyokai to record this screen or use the mouse and keyboard yet, so this device can't do all it a…"
+// in the language of msgs.
+func (msgs Messages) RequestPermissionsMissing() string {
+	return Catalog.Format(msgs.locale, "RequestPermissionsMissing", nil)
 }
 
 // RequestTitle says "{device} wants to connect"
@@ -2876,6 +2966,26 @@ func (msgs Messages) SettingsTheme() string {
 	return Catalog.Format(msgs.locale, "SettingsTheme", nil)
 }
 
+// StartOverDone says "This device has a new identity, kept from now on."
+// in the language the app shows.
+func StartOverDone() string { return In(i18n.Locale()).StartOverDone() }
+
+// StartOverDone says "This device has a new identity, kept from now on."
+// in the language of msgs.
+func (msgs Messages) StartOverDone() string {
+	return Catalog.Format(msgs.locale, "StartOverDone", nil)
+}
+
+// StartOverHint says "Without a backup it cannot come back. Start over to keep a new identity from now on; the old file stays aside, untouc…"
+// in the language the app shows.
+func StartOverHint() string { return In(i18n.Locale()).StartOverHint() }
+
+// StartOverHint says "Without a backup it cannot come back. Start over to keep a new identity from now on; the old file stays aside, untouc…"
+// in the language of msgs.
+func (msgs Messages) StartOverHint() string {
+	return Catalog.Format(msgs.locale, "StartOverHint", nil)
+}
+
 // StorageLocation says "Data folder"
 // in the language the app shows.
 func StorageLocation() string { return In(i18n.Locale()).StorageLocation() }
@@ -3070,11 +3180,21 @@ func (msgs Messages) ViewerAIHostApproves() string {
 	return Catalog.Format(msgs.locale, "ViewerAIHostApproves", nil)
 }
 
-// ViewerAITitle says "AI on this device"
+// ViewerAIPanel says "AI"
+// in the language the app shows.
+func ViewerAIPanel() string { return In(i18n.Locale()).ViewerAIPanel() }
+
+// ViewerAIPanel says "AI"
+// in the language of msgs.
+func (msgs Messages) ViewerAIPanel() string {
+	return Catalog.Format(msgs.locale, "ViewerAIPanel", nil)
+}
+
+// ViewerAITitle says "AI on the other computer"
 // in the language the app shows.
 func ViewerAITitle() string { return In(i18n.Locale()).ViewerAITitle() }
 
-// ViewerAITitle says "AI on this device"
+// ViewerAITitle says "AI on the other computer"
 // in the language of msgs.
 func (msgs Messages) ViewerAITitle() string {
 	return Catalog.Format(msgs.locale, "ViewerAITitle", nil)
@@ -3198,6 +3318,26 @@ func ViewerNoPicture() string { return In(i18n.Locale()).ViewerNoPicture() }
 // in the language of msgs.
 func (msgs Messages) ViewerNoPicture() string {
 	return Catalog.Format(msgs.locale, "ViewerNoPicture", nil)
+}
+
+// ViewerPointer says "Pointer"
+// in the language the app shows.
+func ViewerPointer() string { return In(i18n.Locale()).ViewerPointer() }
+
+// ViewerPointer says "Pointer"
+// in the language of msgs.
+func (msgs Messages) ViewerPointer() string {
+	return Catalog.Format(msgs.locale, "ViewerPointer", nil)
+}
+
+// ViewerPointerHint says "Marks where their pointer is, for computers whose picture leaves it out."
+// in the language the app shows.
+func ViewerPointerHint() string { return In(i18n.Locale()).ViewerPointerHint() }
+
+// ViewerPointerHint says "Marks where their pointer is, for computers whose picture leaves it out."
+// in the language of msgs.
+func (msgs Messages) ViewerPointerHint() string {
+	return Catalog.Format(msgs.locale, "ViewerPointerHint", nil)
 }
 
 // ViewerPrivacy says "Privacy mode (their screen goes black)"

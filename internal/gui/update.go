@@ -103,10 +103,7 @@ func (a *App) installApp() {
 			})
 			return // connectLoop starts the engine again
 		}
-		a.mu.Lock()
-		a.quitting = true
-		a.mu.Unlock()
-		mygo.App.Relaunch()
+		a.relaunch()
 	}()
 }
 

@@ -3,14 +3,14 @@
 //	kyokai-svc run --host user [--socket P] [--state-dir D] [--core LIB]
 //	               [--parent-pid N | --lifeline-fd N]
 //	kyokai-svc run --host helper      (the KyokaiHelper service; doc/en-us/run-modes.md)
-//	kyokai-svc helper install [--from DIR] [--operator-sid SID] | uninstall [--purge] | status
-//	kyokai-svc agent --down PIPE --up PIPE --helper-pid N   (started by the helper)
+//	kyokai-svc helper install [--from DIR] [--operator-sid SID | --operator-uid N] | uninstall [--purge] | status
+//	kyokai-svc agent --down PIPE --up PIPE --helper-pid N | --socket PATH   (started for the helper)
 //	kyokai-svc ctl status | password | regenerate | shutdown | network | trusted [--socket P]
 //	kyokai-svc ctl network-set --server URL [--server URL…] --name N [--direct=true|false]
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--want P,P…]
-//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T] [--click X,Y] [--action A,A…] [--display N]
+//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T] [--click X,Y] [--type T] [--keys K,K…] [--action A,A…] [--display N]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID | unattended --key K [--days N]
 //	kyokai-svc ctl password-grants --grant P,P…   (what a correct password grants without asking; empty: none)
@@ -111,7 +111,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		opts.CoreLib, opts.ParentPID, opts.Profile = filepath.Join(filepath.Dir(exe), core.LibraryName()), 0, ""
+		opts.CoreLib, opts.ParentPID, opts.Profile = core.LibraryPath(filepath.Dir(exe)), 0, ""
 		run := func(ctx context.Context) error { return runHelper(ctx, opts) }
 		if handled, err := asService(run); handled || err != nil {
 			return err
@@ -132,7 +132,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		opts.CoreLib = filepath.Join(filepath.Dir(exe), core.LibraryName())
+		opts.CoreLib = core.LibraryPath(filepath.Dir(exe))
 	}
 	if *lifeline >= 0 {
 		opts.Lifeline = os.NewFile(uintptr(*lifeline), "lifeline")
@@ -179,6 +179,8 @@ func ctl(args []string) error {
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
 	fpsCap := fs.Int("fps", 0, "watch: ask for a frame-rate cap first")
 	click := fs.String("click", "", "watch: click at X,Y (fractions of the picture) after 2 s")
+	typed := fs.String("type", "", "watch: type this text after 3 s, as the viewer's text input")
+	keys := fs.String("keys", "", "watch: press these keys by name after 3 s, after --type (e.g. meta+a,backspace,enter)")
 	display := fs.Int("display", -1, "watch: show the host's display N (0 first) from the start")
 	actions := fs.String("action", "", "watch: session actions to send, 4 s apart from 2 s on (lock, ctrl-alt-del, block, unblock, privacy-on, privacy-off)")
 	source := fs.String("source", "", "ai-key, ai-models: the AI source's id")
@@ -203,7 +205,7 @@ func ctl(args []string) error {
 		return err
 	}
 	if cmd == "watch" {
-		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *text, *click, *actions, *display)
+		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *text, *click, *typed, *keys, *actions, *display)
 	}
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
@@ -431,6 +433,9 @@ func printStatus(s *localapi.Status) {
 	fmt.Printf("version %s (ABI %d), run mode %s\ndevice ID %s\nfingerprint %s\nstate %s (secrets: %s)\npermanent password %v\npassword grants %s\n",
 		s.Version, s.ABI, s.RunMode, s.DeviceID, s.Fingerprint, s.StateDir, s.Persistence, s.PermanentPassword, strings.Join(s.PasswordGrants, ","))
 	fmt.Printf("name %q (chosen %q), %s %s, %s\n", s.About.Name, s.Name, s.About.Maker, s.About.Model, s.About.OS)
+	if p := s.Permissions; p != nil {
+		fmt.Printf("permissions screen %v, accessibility %v, input monitoring %v, keychain %v\n", p.Screen, p.Accessibility, p.InputMonitoring, p.Keychain)
+	}
 	n := s.Network
 	fmt.Printf("network %s", n.State)
 	if n.Error != "" {
@@ -468,7 +473,7 @@ func printStatus(s *localapi.Status) {
 // viewer's decoder) and saves the last picture; with a text it first asks
 // the host's AI to do it (the viewer's AI panel); with actions it sends them
 // as the viewer's action bar does and prints the host's reports.
-func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, aiText, click, actions string, display int) error {
+func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, aiText, click, typed, keys, actions string, display int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), d+10*time.Second)
 	defer cancel()
 	conn, err := localapi.NewClient(socket).Media(ctx, id)
@@ -485,7 +490,7 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 		if err != nil {
 			return err
 		}
-		if lib, err = core.Load(filepath.Join(filepath.Dir(exe), core.LibraryName())); err != nil {
+		if lib, err = core.Load(core.LibraryPath(filepath.Dir(exe))); err != nil {
 			return err
 		}
 	}
@@ -512,6 +517,35 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 				body, _ := json.Marshal(map[string]any{"type": "input", "event": map[string]any{"kind": "pointer", "action": action, "button": 0, "x": x, "y": y}})
 				_ = localapi.WritePacket(conn, append([]byte{3}, body...))
 				time.Sleep(80 * time.Millisecond)
+			}
+		}()
+	}
+	if typed != "" || keys != "" {
+		// Text, then named keys with their modifiers (ctrl, alt, shift,
+		// meta), each pressed and released, as the viewer's Legacy keyboard
+		// sends them.
+		send := func(ev map[string]any) {
+			body, _ := json.Marshal(map[string]any{"type": "input", "event": ev})
+			_ = localapi.WritePacket(conn, append([]byte{3}, body...))
+			time.Sleep(60 * time.Millisecond)
+		}
+		go func() {
+			time.Sleep(3 * time.Second)
+			if typed != "" {
+				send(map[string]any{"kind": "text", "text": typed})
+			}
+			for k := range strings.SplitSeq(keys, ",") {
+				if k == "" {
+					continue
+				}
+				parts := strings.Split(k, "+")
+				mods := map[string]bool{}
+				for _, m := range parts[:len(parts)-1] {
+					mods[m] = true
+				}
+				for _, down := range []bool{true, false} {
+					send(map[string]any{"kind": "key", "key": parts[len(parts)-1], "down": down, "mods": mods})
+				}
 			}
 		}()
 	}
@@ -543,6 +577,7 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	var dec *core.Decoder
 	var pic *image.RGBA
 	frames, bytes, pictures := 0, 0, 0
+	var decodeErr error
 	printedDisplays := map[byte]bool{}
 	start := time.Now()
 	for {
@@ -579,7 +614,10 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 			frames++
 			bytes += len(p) - 10
 			if dec != nil {
-				if _, _, ok, err := dec.Decode(p[10:], pic.Pix); err == nil && ok {
+				switch _, _, ok, err := dec.Decode(p[10:], pic.Pix); {
+				case err != nil && decodeErr == nil:
+					decodeErr = err
+				case err == nil && ok:
 					pictures++
 				}
 			}
@@ -590,6 +628,9 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	if dec != nil {
 		dec.Close()
 		fmt.Printf("%d pictures decoded\n", pictures)
+		if decodeErr != nil {
+			fmt.Printf("first decoding error: %v\n", decodeErr)
+		}
 		if pictures > 0 {
 			f, err := os.Create(snapshot)
 			if err != nil {

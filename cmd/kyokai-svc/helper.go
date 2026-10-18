@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/engine"
@@ -18,7 +19,7 @@ import (
 // helperCmd installs, removes or reports the privileged helper
 // (doc/en-us/run-modes.md).
 //
-//	kyokai-svc helper install [--from DIR] [--operator-sid SID]   (administrator)
+//	kyokai-svc helper install [--from DIR] [--operator-sid SID | --operator-uid N]   (administrator)
 //	kyokai-svc helper uninstall [--purge]                          (administrator)
 //	kyokai-svc helper status
 func helperCmd(args []string) error {
@@ -31,12 +32,13 @@ func helperCmd(args []string) error {
 		return err
 	}
 	from := fs.String("from", filepath.Dir(exe), "install: the folder holding kyokai-svc and the core library")
-	operator := fs.String("operator-sid", localapi.CurrentSID(), "install: the user who may use the helper")
+	operator := fs.String("operator-sid", localapi.CurrentSID(), "install: the user who may use the helper (Windows)")
+	operatorUID := fs.Uint("operator-uid", uint(os.Getuid()), "install: the user who may use the helper (macOS)")
 	purge := fs.Bool("purge", false, "uninstall: also delete the helper's identity and trusted devices")
 	fs.Parse(args[1:])
 	switch args[0] {
 	case "install":
-		if err := helper.Install(helper.InstallOptions{From: *from, OperatorSID: *operator}); err != nil {
+		if err := helper.Install(helper.InstallOptions{From: *from, OperatorSID: *operator, OperatorUID: uint32(*operatorUID)}); err != nil {
 			return err
 		}
 		fmt.Println("helper installed")
@@ -63,12 +65,32 @@ func runHelper(ctx context.Context, opts engine.Options) error {
 	}
 	opts.Socket, opts.StateDir = helper.SocketPath, helper.StateDir
 	opts.Helper = &localapi.Authorizer{
+		OwnerUID:    uint32(os.Getuid()),
 		OwnerSID:    localapi.CurrentSID(),
 		OperatorSID: s.OperatorSID,
 		GroupSID:    helper.GroupSID(),
+		OperatorUID: s.OperatorUID,
+	}
+	if gid, ok := helper.GroupGID(); ok {
+		opts.Helper.GroupGID = &gid
 	}
 	opts.Logf = engine.Logger(filepath.Join(opts.StateDir, "logs", "engine.log"))
 	opts.Update = func(from string) error { return helper.SelfUpdate(from, version.Version) }
+	if runtime.GOOS == "darwin" {
+		opts.AgentSocket = helper.AgentSocket
+		// Removing privileges needs no administrator: the helper, root
+		// already, removes itself when its operator asks.
+		opts.Remove = func() error {
+			go func() {
+				time.Sleep(time.Second) // the reply goes out first
+				if err := helper.Retire(); err != nil {
+					opts.Logf("removing the helper: %v", err)
+				}
+				os.Exit(0)
+			}()
+			return nil
+		}
+	}
 	go watchApp(ctx, opts.Logf)
 	return engine.Run(ctx, opts)
 }

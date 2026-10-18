@@ -14,7 +14,7 @@ macOS targets need a Mac. `CORE_PREBUILT=1` uses core libraries already placed i
 | Platform | Files |
 |---|---|
 | Windows (x64, ARM64) | `Kyokai.exe` with `bin/kyokai-svc.exe`, `bin/kyokai_core.dll` and `licenses/`; a per-user NSIS installer (`%LOCALAPPDATA%\Programs\Kyokai`, no administrator rights); a portable zip |
-| macOS (Apple silicon, Intel) | `Kyokai.app` (the engine and the core in `Contents/Resources/bin`) and a `.dmg` |
+| macOS (Apple silicon, Intel) | `Kyokai.app` with `Contents/Resources/bin/kyokai-svc` (the app's engine) and `bin/Kyokai Helper.app` (the core library and the helper's own engine, [run-modes.md](run-modes.md)), and a `.dmg` |
 | Both | with `MYGO_UPDATER_PRIVATE_KEY`: the signed update archive, deltas and `update-<target>.json` |
 
 Built files under `resources/<goos>-<goarch>/` and `resources/licenses/` are not committed.
@@ -24,11 +24,15 @@ Built files under `resources/<goos>-<goarch>/` and `resources/licenses/` are not
 - **Updates:** Ed25519 (MyGo updater); the archive covers the whole app, the core library
   included.
 - **macOS code signing:** release builds use the self-signed "Kyokai Code Signing" certificate,
-  imported into a temporary keychain and trusted for code signing on the runner. A stable identity
-  keeps Screen Recording, Accessibility and Keychain grants across updates; Gatekeeper still asks
-  "Open Anyway" on first launch. The hardened runtime that a real identity turns on would refuse
+  imported into a temporary keychain and trusted for code signing on the runner (locally:
+  `MYGO_SIGN` names it). A stable identity keeps the Screen Recording, Accessibility and Input
+  Monitoring grants across builds and updates (checked on macOS 27); Gatekeeper still asks "Open
+  Anyway" on first launch. The Keychain does not follow it: for code without a Team ID macOS ties
+  an item's access to the exact binary, so each new build of `kyokai-svc` asks once more for the
+  Keychain (Always Allow covers that build only). The hardened runtime that a real identity turns on would refuse
   the Team-ID-less core library, so `packaging/macos/app.entitlements` and
-  `packaging/macos/engine.entitlements` (`macos.helperEntitlements` for `bin/kyokai-svc`) disable
+  `packaging/macos/engine.entitlements` (`macos.helperEntitlements` for `bin/kyokai-svc` and
+  `bin/Kyokai Helper.app`) disable
   library validation. Without the certificate the app is ad hoc signed.
 - **Windows:** not code signed; SmartScreen warns on first launch. With `KYOKAI_SIGNING_KEY` the
   `bin` folder also holds `bundle.json` and `bundle.sig`, which an installed helper checks before it

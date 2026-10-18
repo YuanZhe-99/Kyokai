@@ -23,10 +23,19 @@ const (
 type viewerAI struct {
 	// run and approve are the session's run-ai-task and approve-ai-action.
 	run, approve bool
-	task         *localapi.AITask
-	err          string
-	draft        string
-	reply        string
+	// hidden collapses the panel; one waiting for approval shows anyway.
+	hidden bool
+	task   *localapi.AITask
+	err    string
+	draft  string
+	reply  string
+}
+
+// aiShown reports whether the panel shows: the session may run AI tasks,
+// and the person has not collapsed it unless a step waits for approval,
+// which is never hidden.
+func (st viewerAI) aiShown() bool {
+	return st.run && (!st.hidden || st.task != nil && st.task.State == "approval")
 }
 
 // aiPacket takes an AI packet from the host into the panel.

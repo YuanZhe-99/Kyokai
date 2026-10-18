@@ -114,4 +114,5 @@ Kyokai runs the same flow with any configured provider, and the live runs so far
 | 5 AI mode on B's real desktop, steered from A | Verified with Claude (Windows ↔ Windows VM); OpenAI waits for a key | platform notes: The VM's real desktop (the task opened Notepad and typed, a flagged shortcut asked for approval) |
 | 6 Exit ends sessions, networking and AI, releases resources | Verified (Windows) | platform notes: App |
 
-macOS: the whole list waits for the Mac pass.
+macOS: capture, input and the helper ran on one Mac ([platform-notes.md](platform-notes.md),
+"macOS"); the list waits for the rest of the Mac pass.

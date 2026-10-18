@@ -47,7 +47,7 @@
 
 | 导出 | 作用 |
 |---|---|
-| `kyokai_abi_version() -> u32` | ABI 版本（3）；不一致时宿主拒绝加载 |
+| `kyokai_abi_version() -> u32` | ABI 版本（4）；不一致时宿主拒绝加载 |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | 以 `{version, state_dir, profile}` 启动核心 |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | 应答 `{method, params}` |
 | `kyokai_free(ptr, len)` | 释放响应缓冲区 |
@@ -59,18 +59,19 @@
 | `kyokai_decoder_close(id)` | 释放解码器 |
 | `kyokai_keyboard_grab(window, mode, len) -> i32` | 以 `map` 或 `translate` 模式为查看窗口（其原生句柄）抓取键盘，或以 `off` 结束抓取：0，-1 未知模式或没有窗口，-2 此处不可用（目前仅限 Windows）。不需要已启动的核心 |
 | `kyokai_keyboard_read(*event, timeout_ms) -> i32` | 等待抓取到的下一个按键，并写入调用方的 `{window: usize, code: u32, down, caps, num: u8, pad: u8}`：1 有按键，0 超时，-2 不可用 |
+| `kyokai_privacy_request(name, len) -> i32` | 在调用进程中向 macOS 请求 `screen`、`accessibility` 或 `input-monitoring`（由应用调用，因此提示属于应用本身）：1 已授权，0 尚未授权，-1 名称未知或本系统没有该权限。无需已启动的核心 |
 
 响应是核心分配的缓冲区中的 `{"ok": true, "result": …}` 或 `{"ok": false, "error": "…"}`；panic 在边界处捕获并作为错误返回。
 方法：`status`（从不含机密；包含网络状态）、`password.reveal`、`password.regenerate`、`network.get`（不含密钥的设置）、
 `network.set`（`{servers, name, secret?}`；缺少密钥时保留已存的密钥）、`password.set_permanent`（`{password}`，null 表示移除）、
 `session.connect`（`{device_id, password, want}`；立即返回会话 id，进度见状态）、`session.close`、`request.decide`
 （`{id, allow, permissions}`）、`trusted.list`、`trusted.remove`、`host.forget`、`identity.export`（`{passphrase}` → `{document}`）、`identity.import`
-（`{document, passphrase}`）、`identity.reset`、`device.set_name`（`{name}`；"" 表示使用电脑的名称；状态中带有 `name` 与本机的 `about`）、`trusted.unattended`（`{key, days}`；0 表示停止）、`permission.request`（`{name}`：macOS 上的 `screen`、`accessibility` 或 `keychain` → `{granted}`；`keychain` 会重新打开存储，打开后重建核心）、`store.export`（`{passphrase}` → `{document}`）、`store.import`（`{document, passphrase}`）、`store.clear`（切换运行方式时使用，[run-modes.md](run-modes.md)）、`host.serve`（`{serve}`：`all`、`unattended` 或 `none`，由引擎依据运行方式设定），以及 AI 任务的方法（[computer-use.md](computer-use.md)）：`ai.settings.get`、
+（`{document, passphrase}`）、`identity.reset`、`device.set_name`（`{name}`；"" 表示使用电脑的名称；状态中带有 `name` 与本机的 `about`）、`trusted.unattended`（`{key, days}`；0 表示停止）、`permission.request`（`{name}`：macOS 上的 `screen`、`accessibility`、`input-monitoring` 或 `keychain` → `{granted}`；`keychain` 会重新打开存储，打开后重建核心；在助手中由代理请求）、`store.start_over`（已保存的存储无法解锁：把它移到一旁，在新存储上重建核心 → `{kept}`）、`agent.restart`（助手的会话代理退出，由其监管者再次启动）、`store.export`（`{passphrase}` → `{document}`）、`store.import`（`{document, passphrase}`）、`store.clear`（切换运行方式时使用，[run-modes.md](run-modes.md)）、`host.serve`（`{serve}`：`all`、`unattended` 或 `none`，由引擎依据运行方式设定），以及 AI 任务的方法（[computer-use.md](computer-use.md)）：`ai.settings.get`、
 `ai.settings.set`（`{sources?, model?: {source, id}, approval?}`；答复按来源附上 `keys`）、`ai.key.set`（`{source, key}`，null 表示移除；密钥从不返回）、
 `ai.models.list`（`{source}` → `{models}`，向来源查询）、
 `ai.task.start`（`{key, instruction}` → `{id}`；key 使其幂等）、`ai.task.reply`（`{id, text}`）、`ai.task.pause`、`ai.task.resume`、
 `ai.task.cancel`（`{id}`）、`ai.task.decide`（`{id, approve}`）、`ai.tasks`（最新的在前）、`ai.history.clear`、`ai.stop`（取消所有任务）。
-状态中还包含 `permanent_password`、`permissions`（macOS 上为 `{screen, accessibility, keychain}`，其他系统为 null）、`password_grants`（正确密码无需确认即可授予的权限；用 `access.password_grants` `{grants}` 设置）、`requests`（待处理的被控端确认，各带 `password`：控制端是否给出了密码）、`sessions`、`recent`（连接过的被控端，最新的在前）以及
+状态中还包含 `permanent_password`、`permissions`（macOS 上为 `{screen, accessibility, input_monitoring, keychain}`，在助手中为代理的权限；其他系统为 null）、`password_grants`（正确密码无需确认即可授予的权限；用 `access.password_grants` `{grants}` 设置）、`requests`（待处理的被控端确认，各带 `password`：控制端是否给出了密码）、`sessions`、`recent`（连接过的被控端，最新的在前）以及
 `ai`（进行中的任务及其状态与来源，或 null）。Go 绑定把传给核心的响应槽放在堆内存中，从不放在
 goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows 上以绝对路径、
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` 加载该库，并静态链接 C 运行时，
@@ -83,7 +84,7 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
   请求，`session.attach` 除外：它保持连接，状态变化时收到推送。
 - 请求：`status`（含网络状态）、`password.reveal`、`password.regenerate`、`network.get`、`network.set`（被拒绝的设置
   以 `invalid` 和原因答复）、`password.set_permanent`、`session.connect`、`session.close`、`request.decide`、`trusted.list`、
-  `trusted.remove`、`host.forget`、`identity.export`、`identity.import`、`identity.reset`、`device.set_name`、`trusted.unattended`、`system.permission`（`{permission}`，macOS）、`helper.background`（仅助手）、`store.export`、`store.import`、`store.clear`（之后停止引擎）、`session.attach`、`session.media`、`shutdown`，以及与核心方法同名的 AI 请求（`ai.settings.get` … `ai.stop`）。`session.media`（某个进行中的控制端会话的 `{id}`）先答复 OK，
+  `trusted.remove`、`host.forget`、`identity.export`、`identity.import`、`identity.reset`、`device.set_name`、`trusted.unattended`、`system.permission`（`{permission}`，macOS）、`secrets.start_over`、`helper.background`、`helper.agent_restart` 与 `helper.remove`（仅助手；`helper.remove` 用于 macOS，在存储迁出之后）、`store.export`、`store.import`、`store.clear`（之后停止引擎）、`session.attach`、`session.media`、`shutdown`，以及与核心方法同名的 AI 请求（`ai.settings.get` … `ai.stop`）。`session.media`（某个进行中的控制端会话的 `{id}`）先答复 OK，
   之后双向传输带长度前缀的包：引擎发出视频、统计与被控端的 AI 任务，界面发出控制与 AI 消息；界面首先请求关键帧。状态包含待处理的被控端确认与会话；机密只朝引擎方向传递
   （网络密钥、固定密码、用户输入的密码、服务商的 API 密钥）。会话在每个改变状态的命令之后、以及网络状态变化时收到状态。
 - 授权来自操作系统的对端凭据（macOS 为 `LOCAL_PEERCRED`；Windows 为 `SIO_AF_UNIX_GETPEERPID` 与进程令牌的 SID），

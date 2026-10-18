@@ -65,3 +65,5 @@ objc2-core-media = "0.3.2"
 objc2-core-video = "0.3.2"
 objc2-screen-capture-kit = "0.3.2"
 objc2-application-services = "0.3.2"
+# The helper's socket to its session agent: the peer's process and user.
+libc = "0.2.190"

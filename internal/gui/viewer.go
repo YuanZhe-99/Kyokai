@@ -85,7 +85,7 @@ var coreLib = sync.OnceValues(func() (*core.Lib, error) {
 	if err != nil {
 		return nil, err
 	}
-	abs, err := filepath.Abs(filepath.Join(filepath.Dir(svc), core.LibraryName()))
+	abs, err := filepath.Abs(core.LibraryPath(filepath.Dir(svc)))
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func (a *App) openViewer(s localapi.SessionInfo) {
 		v.win.Focus()
 		return
 	}
-	v = &viewer{app: a, id: s.ID, device: s.DeviceID, counted: time.Now(), out: make(chan []byte, 256), preset: 1, fpsCap: "30",
+	v = &viewer{app: a, id: s.ID, device: s.DeviceID, counted: time.Now(), out: make(chan []byte, 256), preset: 1, fpsCap: "30 fps",
 		control: slices.Contains(s.Granted, localapi.PermControlInput),
 		ai:      viewerAI{run: slices.Contains(s.Granted, localapi.PermRunAITask), approve: slices.Contains(s.Granted, localapi.PermApproveAIAction)}}
 	if !slices.Contains(s.Granted, localapi.PermViewScreen) {
@@ -367,19 +367,23 @@ func (v *viewer) setState(s string) {
 func (v *viewer) view(c *ui.Context) {
 	v.mu.Lock()
 	bm, state, start, fps, kbps, host := v.bm, v.state, v.start, v.fps, v.kbps, v.host
-	preset, fpsCap, full, withAI, ptr, displays, actions := v.preset, v.fpsCap, v.full, v.ai.run, v.pointer, v.displays, v.actions
+	preset, fpsCap, full, withAI, ptr, displays, actions := v.preset, v.fpsCap, v.full, v.ai.aiShown(), v.pointer, v.displays, v.actions
 	v.mu.Unlock()
+	showPtr := v.app == nil || v.app.showPointer()
+	if !showPtr {
+		ptr.Visible = false
+	}
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
+		if actions != nil {
+			v.actionBar(c, *actions)
+		}
 		ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
 			v.picture(c, bm, state, start, ptr)
 			if withAI {
 				v.aiPanel(c)
 			}
 		})
-		if actions != nil {
-			v.actionBar(c, *actions)
-		}
-		v.statusBar(c, start, fps, kbps, host, preset, fpsCap, full, displays)
+		v.statusBar(c, start, fps, kbps, host, preset, fpsCap, full, displays, showPtr)
 	})
 }
 
@@ -435,21 +439,25 @@ func (v *viewer) actionBar(c *ui.Context, a hostActions) {
 			action("ctrl-alt-del")
 		}
 		blocked := a.Blocked
-		if ui.Switch(c.Key("act-block"), &blocked).Label(L.ViewerBlockInput()).Disabled(a.Privacy).Changed() {
-			if blocked {
-				action("block")
-			} else {
-				action("unblock")
+		labelled(c, func() {
+			if ui.Switch(c.Key("act-block"), &blocked).Label(L.ViewerBlockInput()).Disabled(a.Privacy).Changed() {
+				if blocked {
+					action("block")
+				} else {
+					action("unblock")
+				}
 			}
-		}
+		}, L.ViewerBlockInput())
 		privacy := a.Privacy
-		if ui.Switch(c.Key("act-privacy"), &privacy).Label(L.ViewerPrivacy()).Changed() {
-			if privacy {
-				action("privacy-on")
-			} else {
-				action("privacy-off")
+		labelled(c, func() {
+			if ui.Switch(c.Key("act-privacy"), &privacy).Label(L.ViewerPrivacy()).Changed() {
+				if privacy {
+					action("privacy-on")
+				} else {
+					action("privacy-off")
+				}
 			}
-		}
+		}, L.ViewerPrivacy())
 		if grabsKeyboard {
 			ui.Row(c).Grow(1)
 			ui.Text(c, L.ViewerKeyboard()).FontSize(sizeSmall).TextColor(t.TextMuted)
@@ -464,7 +472,7 @@ func (v *viewer) actionBar(c *ui.Context, a hostActions) {
 
 // statusBar is the Device ID, the quality controls and the stream's
 // numbers.
-func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, host hostStats, preset int, fpsCap string, full bool, displays hostDisplays) {
+func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, host hostStats, preset int, fpsCap string, full bool, displays hostDisplays, showPtr bool) {
 	t := c.Theme()
 	ui.Row(c).FillWidth().Padding(6, 12).Gap(16).AlignItems(ui.Center).Background(t.Surface).Children(func() {
 		ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).Grow(1)
@@ -482,12 +490,14 @@ func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, h
 		if ui.Segmented(c.Key("quality"), &preset, L.QualitySpeed(), L.QualityBalanced(), L.QualityBest()).Changed() {
 			v.setQuality(preset, fpsCap, full)
 		}
-		if ui.Select(c.Key("fps"), &fpsCap, fpsCaps).Width(90).Changed() {
+		if ui.Select(c.Key("fps"), &fpsCap, fpsCaps).Width(100).Changed() {
 			v.setQuality(preset, fpsCap, full)
 		}
-		if ui.Switch(c.Key("full-colour"), &full).Label(L.QualityFullColour()).Changed() {
-			v.setQuality(preset, fpsCap, full)
-		}
+		labelled(c, func() {
+			if ui.Switch(c.Key("full-colour"), &full).Label(L.QualityFullColour()).Changed() {
+				v.setQuality(preset, fpsCap, full)
+			}
+		}, L.QualityFullColour())
 		if start.Width > 0 {
 			codec := start.Codec
 			if start.I444 {
@@ -495,6 +505,30 @@ func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, h
 			}
 			ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s · %d ms", start.Width, start.Height, codec, fps, kbps, host.DelayMS)).
 				FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
+		}
+		if v.app != nil {
+			labelled(c, func() {
+				if ui.Switch(c.Key("pointer-marker"), &showPtr).Label(L.ViewerPointer()).Tooltip(L.ViewerPointerHint()).Changed() {
+					v.app.setShowPointer(showPtr)
+				}
+			}, L.ViewerPointer())
+		}
+		v.mu.Lock()
+		canAI, shown := v.ai.run, !v.ai.hidden
+		v.mu.Unlock()
+		if canAI {
+			labelled(c, func() {
+				if ui.Switch(c.Key("ai-panel"), &shown).Label(L.ViewerAIPanel()).Changed() {
+					v.mu.Lock()
+					v.ai.hidden = !shown
+					v.mu.Unlock()
+				}
+			}, L.ViewerAIPanel())
+		}
+		// Ends the session itself, not only this window's stream.
+		if ui.Button(c.Key("disconnect"), L.ActionDisconnect()).Clicked() {
+			id := v.id
+			go func() { _, _ = v.app.requestWith(localapi.Request{Type: localapi.RequestClose, ID: id}) }()
 		}
 	})
 }

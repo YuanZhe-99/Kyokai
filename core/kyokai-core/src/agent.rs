@@ -13,8 +13,10 @@
 //! Video, input, the pointer, the clipboard and the AI's desktop check
 //! [`link`] and send their work through it when it is set.
 //!
-//! The helper runs on Windows only until the Mac pass; elsewhere the link
-//! is never set and most of this module has no caller.
+//! On macOS the helper is a root LaunchDaemon and the agent a LaunchAgent
+//! in the signed-in user's session (and at the login window); they meet on
+//! a Unix socket instead of the two pipes. Elsewhere the link is never set
+//! and most of this module has no caller.
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use crate::ai::desktop::Frame;
@@ -211,11 +213,22 @@ impl Link {
     }
 
     /// Sends a request and decodes its JSON reply.
-    fn call<T: for<'de> Deserialize<'de>>(&self, op: &str, params: Value) -> Result<T, String> {
+    pub(crate) fn call<T: for<'de> Deserialize<'de>>(
+        &self,
+        op: &str,
+        params: Value,
+    ) -> Result<T, String> {
         match self.request(op, params)? {
             Reply::Json(r) => serde_json::from_value(r?).map_err(|e| e.to_string()),
             Reply::Screen(_) => Err("unexpected screenshot".into()),
         }
+    }
+
+    /// Asks the agent to exit, so that its supervisor (the helper on
+    /// Windows, launchd on macOS) starts it anew: macOS counts a privacy
+    /// grant only in a process started after it.
+    pub fn restart(&self) -> Result<(), String> {
+        self.send("exit", json!({}))
     }
 
     /// The agent's displays (empty without an agent).
@@ -539,12 +552,46 @@ struct Agent {
 #[cfg(windows)]
 type Injector = crate::input::Injector;
 
-/// Off Windows there is nothing to inject into yet.
-#[cfg(not(windows))]
+/// The agent's input on macOS: injection only; blocking the user's input,
+/// privacy mode and locking are not offered there.
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct Injector(crate::input::Injector);
+
+#[cfg(target_os = "macos")]
+impl Injector {
+    fn set_area(&mut self, area: Option<Area>) {
+        self.0.set_area(area);
+    }
+    fn inject(&mut self, e: &Event) -> bool {
+        self.0.inject(e)
+    }
+    fn release_all(&mut self) {
+        self.0.release_all();
+    }
+    fn block_input(&mut self, _: bool) -> bool {
+        false
+    }
+    fn input_blocked(&self) -> bool {
+        false
+    }
+    fn lock_screen(&self) -> bool {
+        false
+    }
+    fn privacy(&mut self, _: bool) -> bool {
+        false
+    }
+    fn privacy_on(&self) -> bool {
+        false
+    }
+}
+
+/// Elsewhere there is nothing to inject into yet.
+#[cfg(not(any(windows, target_os = "macos")))]
 #[derive(Default)]
 struct Injector {}
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 impl Injector {
     fn set_area(&mut self, _: Option<Area>) {}
     fn inject(&mut self, _: &Event) -> bool {
@@ -681,6 +728,16 @@ impl Agent {
                     .is_some_and(|i| i.privacy_on())
             ),
             "lock" => json!(Injector::default().lock_screen()),
+            // Its supervisor starts it again (Link::restart).
+            "exit" => std::process::exit(0),
+            // The privacy permissions of this process (macOS: the agent's
+            // own, as "Kyokai Helper").
+            #[cfg(target_os = "macos")]
+            "permissions" => json!(crate::mac::permissions(true)),
+            #[cfg(target_os = "macos")]
+            "permission" => json!(crate::mac::request(
+                req["name"].as_str().unwrap_or_default()
+            )?),
             "pointer" => json!(match area {
                 Some(a) => crate::input::pointer_in(a),
                 None => crate::input::pointer(),
@@ -768,6 +825,9 @@ impl Agent {
 /// Moves this thread to the desktop that receives input now (the user's,
 /// the UAC secure desktop or the lock screen), when this process is the
 /// agent.
+#[cfg(target_os = "macos")]
+pub use mac_impl::{run_agent_socket, start_helper};
+
 #[cfg(windows)]
 pub fn follow_input_desktop() {
     if is_agent() {
@@ -1215,6 +1275,126 @@ mod windows_impl {
         }
         let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
         String::from_utf16_lossy(&buf[..n])
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod mac_impl {
+    //! The link over a Unix socket (doc/en-us/run-modes.md, "The session
+    //! agent"): the helper listens in its root-owned folder and takes a
+    //! connection only from its own engine binary, run by the user at the
+    //! screen or at the login window; the agent connects only to a socket
+    //! held by root. The newest agent replaces an older one.
+    use super::{LINK, Link, serve};
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::io::AsRawFd;
+    use std::os::unix::net::{UnixListener, UnixStream};
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    /// How long the agent waits before trying the helper again.
+    const RETRY: Duration = Duration::from_secs(2);
+
+    /// Sets the link and accepts the session agent on `socket`.
+    /// Side effects: binds the socket (readable and writable by everyone:
+    /// each connection is checked) on a thread of its own.
+    pub fn start_helper(socket: PathBuf) {
+        let link = Arc::new(Link::new());
+        if LINK.set(link.clone()).is_err() {
+            return;
+        }
+        std::thread::spawn(move || {
+            if let Err(e) = accept(&link, &socket) {
+                eprintln!("kyokai: session agent socket: {e}");
+            }
+        });
+    }
+
+    fn accept(link: &Arc<Link>, socket: &Path) -> Result<(), String> {
+        let _ = std::fs::remove_file(socket);
+        let listener = UnixListener::bind(socket).map_err(|e| e.to_string())?;
+        std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o666))
+            .map_err(|e| e.to_string())?;
+        let own = std::env::current_exe().map_err(|e| e.to_string())?;
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { continue };
+            if !is_own_agent(&stream, &own) {
+                continue;
+            }
+            let Ok(input) = stream.try_clone() else {
+                continue;
+            };
+            link.attach(Box::new(input), Box::new(stream));
+        }
+        Ok(())
+    }
+
+    /// Whether the peer runs this engine's own binary as the user at the
+    /// screen, or as root at the login window.
+    fn is_own_agent(stream: &UnixStream, own: &Path) -> bool {
+        let fd = stream.as_raw_fd();
+        let (mut uid, mut gid) = (0, 0);
+        // SAFETY: getpeereid writes two ids for a connected socket.
+        if unsafe { libc::getpeereid(fd, &mut uid, &mut gid) } != 0 {
+            return false;
+        }
+        let mut pid: libc::pid_t = 0;
+        let mut len = std::mem::size_of::<libc::pid_t>() as libc::socklen_t;
+        // SAFETY: LOCAL_PEERPID writes the peer's pid into `pid`, whose size
+        // `len` gives.
+        let ok = unsafe {
+            libc::getsockopt(
+                fd,
+                libc::SOL_LOCAL,
+                libc::LOCAL_PEERPID,
+                (&mut pid as *mut libc::pid_t).cast(),
+                &mut len,
+            )
+        } == 0;
+        if !ok || pid <= 0 {
+            return false;
+        }
+        let mut buf = [0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+        // SAFETY: proc_pidpath writes at most `buf.len()` bytes of the
+        // pid's executable path.
+        let n = unsafe { libc::proc_pidpath(pid, buf.as_mut_ptr().cast(), buf.len() as u32) };
+        if n <= 0 {
+            return false;
+        }
+        let path = Path::new(std::ffi::OsStr::from_bytes(&buf[..n as usize]));
+        let console = console_uid();
+        path == own && (uid == 0 || Some(uid) == console)
+    }
+
+    /// The user signed in at the screen (the owner of /dev/console).
+    fn console_uid() -> Option<u32> {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata("/dev/console")
+            .ok()
+            .map(|m| m.uid())
+            .filter(|&u| u != 0)
+    }
+
+    /// The agent's life: connects to the helper's socket, held by root, and
+    /// serves it until it goes, then tries again.
+    pub fn run_agent_socket(socket: &str) -> Result<(), String> {
+        loop {
+            if let Ok(stream) = UnixStream::connect(socket)
+                && held_by_root(&stream)
+                && let Ok(input) = stream.try_clone()
+            {
+                serve(Box::new(input), Box::new(stream));
+            }
+            std::thread::sleep(RETRY);
+        }
+    }
+
+    fn held_by_root(stream: &UnixStream) -> bool {
+        let (mut uid, mut gid) = (1, 1);
+        // SAFETY: getpeereid writes two ids for a connected socket.
+        unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) == 0 && uid == 0 }
     }
 }
 

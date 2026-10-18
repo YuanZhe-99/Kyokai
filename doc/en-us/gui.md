@@ -8,9 +8,14 @@ when `SCREENSHOT_DIR` is set.
 
 - **Sidebar:** Home, Network, AI, Settings.
 - **Home:** "This device" — the Device ID in groups of three with Copy; the temporary password,
-  masked until Show, with Copy and New password; a note when secrets are not persisted. On macOS,
-  while Screen Recording, Accessibility or the Keychain is missing, "Privacy permissions" with Allow for each
-  (Settings always shows it there). Below it,
+  masked until Show, with Copy and New password; a note when secrets are not persisted, and
+  when the saved identity cannot be unlocked, Start over (the old store moved aside, a new
+  identity kept from then on; `secrets.start_over`). On macOS,
+  while Screen Recording, Accessibility, Input Monitoring or the Keychain is missing, "Privacy
+  permissions" with Allow for each (Settings always shows it there); once Screen Recording was
+  asked for in this run, its row also offers "Reopen Kyokai", since macOS counts that grant only
+  after a restart. In the helper modes the card says the permissions are Kyokai Helper's, and a
+  missing one offers Restart Kyokai Helper. Below it,
   "Control another device" (Device ID, password, Connect; needs a network) and the sessions, newest
   first (to or from which device, state or why it failed, Disconnect; "Forget old identity" when a
   host's key changed). Recent devices sit under the form as rows (avatar, friendly name, Device ID,
@@ -19,11 +24,15 @@ last connection) that fill in the Device ID; a
   screen has View, which opens the viewer: its own window with the picture scaled to fit on black,
   the host's pointer marked with a small ring, and a status line (Device ID, the display by number
   when the host has several, quality preset, frame-rate cap, size, codec, frame rate, bitrate,
-  the host's measured delay) — with `control-input`, a bar above it with Lock screen,
-  Ctrl+Alt+Del (helper modes), the Block their keyboard and mouse and Privacy mode switches and, on Windows, the keyboard mode (Map, Translate, Legacy; remembered for every viewer); closing it stops the stream, not
+  the host's measured delay; the frame-rate cap reads "30 fps"; Pointer, which shows or hides the ring and is remembered for
+  every viewer; Disconnect, which ends the session) — with `control-input`, a bar
+  at the top of the window with Lock screen,
+  Ctrl+Alt+Del (helper modes), the Block their keyboard and mouse and Privacy mode switches (each
+  with its label beside it) and, on Windows, the keyboard mode (Map, Translate, Legacy; remembered for every viewer); closing it stops the stream, not
   the session. With `control-input`, the mouse, the wheel and the keyboard on the picture go to the
-  host ([computer-use.md](computer-use.md)). With `run-ai-task` the viewer has an AI panel at its
-  side: an instruction and Start, then the host's task as the AI page shows it (state, the model's
+  host ([computer-use.md](computer-use.md)). With `run-ai-task` the viewer has an AI panel ("AI on the other computer") at its
+  side, which the AI switch in the status line collapses (a step waiting for approval shows it
+  anyway): an instruction and Start, then the host's task as the AI page shows it (state, the model's
   text, its latest actions, Pause or Resume and Stop, a reply when it is done); its approvals have
   Allow and Deny with `approve-ai-action`, otherwise a note that the host's user approves. Such a
   session has View even without `view-screen`. Connecting asks for viewing, input, the
@@ -32,7 +41,11 @@ last connection) that fill in the Device ID; a
 - **Confirmations:** a controller waiting for this host's user shows at the top of every page with
   its Device ID, whether it is known or a new key claiming a known ID, a warning when it gave no
   password, and a switch per requested
-  permission, with Allow and Deny; a notification and the window coming forward announce it.
+  permission, with Allow (the primary button) and Deny; on macOS a warning when Screen Recording or
+  Accessibility is missing for what it asks; a notification and the window coming forward announce
+  it.
+- **Connected here:** while another device is connected to this one (or resuming), a card at the
+  top of every page names it, says what it may do, and has Disconnect.
 - **AI:** the task card — a new task's instruction and Start (with a note when the provider has no
   key), or the task in progress: its state in words (working, waiting for approval, paused and
   why, done, stopped), the model's latest text and progress note, its latest actions in words
@@ -62,7 +75,7 @@ last connection) that fill in the Device ID; a
   `internal/gui/assets/logos/SOURCES.md` (see [packaging.md](packaging.md), "Vendor logos").
 - **Run mode** (Settings): No privileges / Follow Kyokai / Background service, a note on the one
   administrator prompt and what moves along; switching runs in the background with a toast
-  ([run-modes.md](run-modes.md)). Diagnostics shows the mode in use.
+  ([run-modes.md](run-modes.md)); Windows and macOS. Diagnostics shows the mode in use.
 - **Settings:** General (language, appearance, open at login — off by default, hide Kyokai from
   screen capture — on by default, applied to the main window and every viewer at once, close
   button),
@@ -102,7 +115,8 @@ last connection) that fill in the Device ID; a
   Kyokai, Quit Kyokai. It never shows the password.
 - Kyokai's windows are excluded from screen capture, so neither a viewer nor an AI task sees them.
 - Closing the window hides it to the tray and says so the first time; without a tray, or with
-  "Quit" chosen for the close button, closing quits.
+  "Quit" chosen for the close button, closing quits. Quitting the app itself (its menu, the Dock,
+  logging out or shutting down) always quits.
 
 ## Languages
 

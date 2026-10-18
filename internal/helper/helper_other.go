@@ -1,18 +1,20 @@
-//go:build !windows
+//go:build !windows && !darwin
 
 package helper
 
-// The macOS helper (a root LaunchDaemon) comes with the Mac pass; until
-// then these report ErrUnsupported.
+// Other systems have no helper backend yet; these report ErrUnsupported.
 
-// BinDir, StateDir and SocketPath are empty without a backend.
-var BinDir, StateDir, SocketPath string
+// BinDir, StateDir, SocketPath and AgentSocket are empty without a backend.
+var BinDir, StateDir, SocketPath, AgentSocket string
 
 // Elevated reports false without a backend.
 func Elevated() bool { return false }
 
 // GroupSID is empty outside Windows.
 func GroupSID() string { return "" }
+
+// GroupGID reports no group without a backend.
+func GroupGID() (uint32, bool) { return 0, false }
 
 // Install is not available yet.
 func Install(InstallOptions) error { return ErrUnsupported }

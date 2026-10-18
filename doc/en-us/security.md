@@ -6,10 +6,12 @@
   nonce, associated data `kyokai/secrets/v1`) in `secrets.bin`, written atomically.
 - The 32-byte master key comes from the operating system: on Windows a DPAPI blob for the current
   user (`master.key`), on macOS a generic password in the login Keychain (service
-  `com.yuanzhe.kyokai`, account `master-key` or `master-key.<profile>`).
+  `com.yuanzhe.kyokai`, account `master-key` or `master-key.<profile>`; the macOS helper, as root,
+  in the System keychain, deleted with its state).
 - Without a working OS store nothing is persisted: secrets live in memory for that run and the
   interface says the Device ID will change. A store that exists but cannot be decrypted is never
-  overwritten; that run uses a temporary identity and says so. On macOS a new Keychain item is
+  overwritten; that run uses a temporary identity and says so, and Start over moves it aside
+  (`secrets.bin.unreadable-<time>`, kept) for a new store and identity kept from then on. On macOS a new Keychain item is
   created only when there is none: when the user denies access to the existing one, nothing is
   replaced, the run keeps secrets in memory (persistence `denied`), and Allow on the Keychain row of
   the permissions card opens the store again — macOS asks again — and rebuilds the core on it.
