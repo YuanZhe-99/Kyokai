@@ -3246,6 +3246,36 @@ func (msgs Messages) ViewerBlockInput() string {
 	return Catalog.Format(msgs.locale, "ViewerBlockInput", nil)
 }
 
+// ViewerCodecAuto says "Auto"
+// in the language the app shows.
+func ViewerCodecAuto() string { return In(i18n.Locale()).ViewerCodecAuto() }
+
+// ViewerCodecAuto says "Auto"
+// in the language of msgs.
+func (msgs Messages) ViewerCodecAuto() string {
+	return Catalog.Format(msgs.locale, "ViewerCodecAuto", nil)
+}
+
+// ViewerCodecHint says "The video codec. Auto lets the other computer choose; the list shows what both computers support."
+// in the language the app shows.
+func ViewerCodecHint() string { return In(i18n.Locale()).ViewerCodecHint() }
+
+// ViewerCodecHint says "The video codec. Auto lets the other computer choose; the list shows what both computers support."
+// in the language of msgs.
+func (msgs Messages) ViewerCodecHint() string {
+	return Catalog.Format(msgs.locale, "ViewerCodecHint", nil)
+}
+
+// ViewerCodecSoftware says "{codec} (software)"
+// in the language the app shows.
+func ViewerCodecSoftware(codec string) string { return In(i18n.Locale()).ViewerCodecSoftware(codec) }
+
+// ViewerCodecSoftware says "{codec} (software)"
+// in the language of msgs.
+func (msgs Messages) ViewerCodecSoftware(codec string) string {
+	return Catalog.Format(msgs.locale, "ViewerCodecSoftware", map[string]any{"codec": codec})
+}
+
 // ViewerCtrlAltDel says "Ctrl+Alt+Del"
 // in the language the app shows.
 func ViewerCtrlAltDel() string { return In(i18n.Locale()).ViewerCtrlAltDel() }
@@ -3446,6 +3476,16 @@ func (msgs Messages) ViewerReconnect() string {
 	return Catalog.Format(msgs.locale, "ViewerReconnect", nil)
 }
 
+// ViewerRelayedHint says "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices."
+// in the language the app shows.
+func ViewerRelayedHint() string { return In(i18n.Locale()).ViewerRelayedHint() }
+
+// ViewerRelayedHint says "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices."
+// in the language of msgs.
+func (msgs Messages) ViewerRelayedHint() string {
+	return Catalog.Format(msgs.locale, "ViewerRelayedHint", nil)
+}
+
 // ViewerTabClose says "Close this tab (the session goes on)"
 // in the language the app shows.
 func ViewerTabClose() string { return In(i18n.Locale()).ViewerTabClose() }
@@ -3464,6 +3504,18 @@ func ViewerTabOut() string { return In(i18n.Locale()).ViewerTabOut() }
 // in the language of msgs.
 func (msgs Messages) ViewerTabOut() string {
 	return Catalog.Format(msgs.locale, "ViewerTabOut", nil)
+}
+
+// ViewerTimes says "The other computer takes {encode} ms to encode, the network {network} ms; this one takes {decode} ms to decode and {d…"
+// in the language the app shows.
+func ViewerTimes(encode int, network int, decode int, draw int, fps int, target int) string {
+	return In(i18n.Locale()).ViewerTimes(encode, network, decode, draw, fps, target)
+}
+
+// ViewerTimes says "The other computer takes {encode} ms to encode, the network {network} ms; this one takes {decode} ms to decode and {d…"
+// in the language of msgs.
+func (msgs Messages) ViewerTimes(encode int, network int, decode int, draw int, fps int, target int) string {
+	return Catalog.Format(msgs.locale, "ViewerTimes", map[string]any{"encode": encode, "network": network, "decode": decode, "draw": draw, "fps": fps, "target": target})
 }
 
 // ViewerTitle says "{device} — Kyokai"

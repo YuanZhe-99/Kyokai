@@ -244,6 +244,11 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "permission missing")
 		}
 		return h.command("permission.request", map[string]string{"name": req.Permission})
+	case localapi.RequestCaptureShow:
+		if req.Show == nil {
+			return localapi.Fail(localapi.CodeInvalid, "show missing")
+		}
+		return h.command("capture.show", map[string]bool{"show": *req.Show})
 	case localapi.RequestPasswordGrants:
 		if req.Grants == nil {
 			return localapi.Fail(localapi.CodeInvalid, "permissions missing")

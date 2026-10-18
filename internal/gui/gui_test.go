@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"bytes"
 	"encoding/json"
 	"image"
 	"image/png"
@@ -305,6 +306,12 @@ func TestViewerInputMapping(t *testing.T) {
 		{"press on the bar", ui.InputEvent{Kind: ui.InputPointerDown, X: 400, Y: 20}, "", nil},
 		{"release on the bar still goes", ui.InputEvent{Kind: ui.InputPointerUp, X: 400, Y: 20}, "", &inputEvent{Kind: "pointer", Action: "up", X: 0.5, Y: 0}},
 		{"right button", ui.InputEvent{Kind: ui.InputPointerDown, Button: 1, X: 0, Y: 75}, "", &inputEvent{Kind: "pointer", Action: "down", Button: 1, X: 0, Y: 0}},
+		// MyGo reports a move with no button held as button -1: the pointer
+		// follows it (it used to be dropped, so the pointer moved on clicks only).
+		{"hover moves the pointer", ui.InputEvent{Kind: ui.InputPointerMove, Button: -1, X: 200, Y: 300}, "", &inputEvent{Kind: "pointer", Action: "move", X: 0.25, Y: 0.5}},
+		{"a drag keeps its button", ui.InputEvent{Kind: ui.InputPointerMove, Button: 0, X: 400, Y: 300}, "", &inputEvent{Kind: "pointer", Action: "move", X: 0.5, Y: 0.5}},
+		{"hover on the bar", ui.InputEvent{Kind: ui.InputPointerMove, Button: -1, X: 400, Y: 20}, "", nil},
+		{"no button pressed is no press", ui.InputEvent{Kind: ui.InputPointerDown, Button: -1, X: 400, Y: 300}, "", nil},
 		{"letter types as text", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyA}, "", nil},
 		{"text", ui.InputEvent{Kind: ui.InputText, Text: "é"}, "", &inputEvent{Kind: "text", Text: "é"}},
 		{"shortcut goes as a key", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyC, Mods: ui.Ctrl}, "",
@@ -332,6 +339,75 @@ func TestViewerInputMapping(t *testing.T) {
 		if c.want != nil && !reflect.DeepEqual(got, *c.want) {
 			t.Errorf("%s: %+v, want %+v", c.name, got, *c.want)
 		}
+	}
+}
+
+// TestPointerMovesCoalesce: moves wait as one pending move, the newest
+// replacing the older, and any other event sends the pending move first.
+func TestPointerMovesCoalesce(t *testing.T) {
+	v := &viewer{out: make(chan []byte, 8), moved: make(chan struct{}, 1)}
+	move := func(x float32) inputEvent { return inputEvent{Kind: "pointer", Action: "move", X: x, Y: 0.5} }
+	v.queue(move(0.1))
+	v.queue(move(0.2))
+	if len(v.out) != 0 || v.move == nil || v.move.X != 0.2 {
+		t.Fatalf("pending %+v, queued %d", v.move, len(v.out))
+	}
+	press := inputEvent{Kind: "pointer", Action: "down", X: 0.3, Y: 0.5}
+	v.queue(press)
+	if v.move != nil || len(v.out) != 2 {
+		t.Fatalf("pending %+v, queued %d", v.move, len(v.out))
+	}
+	for _, want := range []inputEvent{move(0.2), press} {
+		if got, wantP := <-v.out, controlPacket(want); !bytes.Equal(got, wantP) {
+			t.Errorf("sent %s, want %s", got, wantP)
+		}
+	}
+	// The writer sends a pending move, then nothing more for it.
+	v.queue(move(0.4))
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() { v.writer(&buf, done); close(stopped) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		v.mu.Lock()
+		sent := v.move == nil
+		v.mu.Unlock()
+		if sent || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(done)
+	<-stopped
+	p, err := localapi.ReadPacket(&buf, nil)
+	if err != nil || !bytes.Equal(p, controlPacket(move(0.4))) {
+		t.Fatalf("wrote %s (%v)", p, err)
+	}
+}
+
+// TestCodecChoice: the viewer names codecs as people know them (never by
+// their wire names), and a (re)started stream tells the host the bar's
+// quality and codec.
+func TestCodecChoice(t *testing.T) {
+	for name, want := range map[string]string{"h264": "H.264", "hevc": "HEVC", "vp9": "VP9", "av1": "AV1", "vp8": "VP8"} {
+		if got := codecLabel(name); got != want {
+			t.Errorf("%s: %q, want %q", name, got, want)
+		}
+	}
+	// libvpx's VP9 is told apart from the system's, in the person's language.
+	if sw := codecLabel("vp9-sw"); !strings.Contains(sw, "VP9") || sw == "VP9" {
+		t.Errorf("vp9-sw: %q", sw)
+	}
+	v := &viewer{preset: 2, fpsCap: "60 fps", full: true, codec: "auto"}
+	got := v.choicePackets()
+	if len(got) != 1 || !strings.Contains(string(got[0]), `"fps":60`) || !strings.Contains(string(got[0]), `"preset":"best"`) || !strings.Contains(string(got[0]), `"i444":true`) {
+		t.Fatalf("auto: %q", got)
+	}
+	v.codec = "av1"
+	got = v.choicePackets()
+	if len(got) != 2 || string(got[1][1:]) != `{"codec":"av1","type":"codec"}` {
+		t.Fatalf("av1: %q", got)
 	}
 }
 

@@ -17,7 +17,8 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   `Key` 值（没有小键盘键、CapsLock、NumLock、PrintScreen、F13–F24、媒体键）；修饰键只有位掩码（不分左右）；
   Windows 丢弃未映射的键，并且总把 `WM_SYSKEYDOWN`（Alt、F10、Alt+F4）交给 `DefWindowProc`；X1/X2 在抬起时以
   `KeyBack`/`KeyForward` 到达；macOS 把 Control 加单击变成右键、忽略 CapsLock、菜单快捷键（Cmd+Q/W/H/C/V）优先；
-  没有指针锁定，也没有底层钩子。
+  没有指针锁定，也没有底层钩子。没有按住按键时的指针移动带 `Button` −1（按住按键拖动时带该按键），所以只放行
+  按键 0–2 的过滤会丢掉所有悬停移动（Kyokai 在 0.1.3 之前就是如此）。
 - **应用的窗口。** 多窗口、全屏、位置尺寸、置顶、`SetContentProtection`，以及 `NativeHandle()`（HWND / NSWindow）。
 - **应用服务。** 托盘（菜单、图标）、通知（Windows 上为气泡）、剪贴板（文本、HTML、PNG 图片；没有变化事件）、
   对话框、外部打开、按应用名称区分的单实例锁、登录时启动、电源事件（锁定/解锁、空闲时间）、`App.Path`
@@ -76,6 +77,10 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
 
 - **公共服务器。** 不属于网络 N 的公共服务器以 `PublicServer_…` 节点身份加入 N，始终中继 RPC，除非另行配置也会中继数据；
   N 中的节点会对所有可达但未直连的节点尝试 UDP 打洞。
+- **直接连接。** 直连器只能连上列出了监听的对端：对 `0.0.0.0` 监听，它会依次尝试对端的各个网卡地址和公网地址，
+  优先 `default_protocol` 的协议，其次 UDP。没有监听时只剩打洞，而打洞需要共用的路由器把设备的数据包转回它自己的
+  网络，所以同一局域网中的两台设备走了中继（2026-10-18 所见）。配置的监听必须能绑定，否则实例的 `start()` 失败；
+  `disable_p2p` 会双向停止直接连接（对端会遵守对方的这一标志）。
 - **实测（S1，Windows ARM64，`spikes/s1-easytier`）。** 两个内嵌节点加一个原版 v2.7.0 `easytier-core`（也以外部网络公共服务器方式）：
   路由带有 `inst_id` 与 hostname；`data_plane_tcp_bind/connect` 经 tcp、udp、ws、quic、wg 连接器双向可用，`accept()` 给出对端虚拟地址；
   `tcp_whitelist` 拦截其他端口（表现为连接超时）且不影响出站；十次停止/启动无泄漏；无需管理员、无 TUN、无 `wintun`/`Packet.dll`。
@@ -180,4 +185,10 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
 
 - **macOS：** 自 Sequoia 起，不经系统选择器采集屏幕的应用每月需要重新确认；可以免除此事的
   “Persistent Content Capture” entitlement 需要 Apple 批准。隐私授权跟随代码签名：ad-hoc 签名每次构建都会变化。
+  连接本地网络中设备的进程需要“本地网络”权限（为该进程所属的应用询问一次；root 守护进程不会被询问）。
+  ScreenCaptureKit 通过内容过滤器排除窗口；窗口的共享类型并不决定 Kyokai 自己的采集能看到什么。
+- **VideoToolbox：** 所有 Mac 都有 H.264；HEVC 的编码与解码由 Apple 芯片的媒体引擎完成；`VTCopyVideoEncoderList`
+  列出硬件编码器，`VTIsHardwareDecodeSupported` 说明硬件解码器。会话使用带长度前缀的单元，参数集放在格式描述里；
+  不带异步标志的解压会话会在 `DecodeFrame` 返回前调用输出回调，`CompleteFrames` 会等到某一时间之前的帧完成。
+  Kyokai 交给它 NV12 并取回 NV12，所以颜色不取决于由哪一方的系统转换（始终是 BT.601 有限范围）。
 - **Windows：** 普通用户进程只能采集和控制普通桌面；提权窗口（UIPI）、UAC 安全桌面与锁屏需要 SYSTEM 进程。

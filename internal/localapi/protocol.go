@@ -70,6 +70,7 @@ const (
 	RequestStartOver          RequestType = "secrets.start_over"     // the saved identity cannot be unlocked: move it aside and keep a new one
 	RequestPermission         RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen", "accessibility", "input-monitoring" or "keychain"; macOS)
 	RequestPasswordGrants     RequestType = "access.password_grants" // what a correct password grants without asking (Request.Grants)
+	RequestCaptureShow        RequestType = "capture.show"           // whether captures show Kyokai's windows (Request.Show); hidden until a GUI says otherwise
 	RequestBackground         RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
 	RequestStoreExport        RequestType = "store.export"           // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
 	RequestStoreImport        RequestType = "store.import"           // take over a store this device's other engine sealed (Request.Backup)
@@ -136,6 +137,9 @@ type Request struct {
 	Permission string `json:"permission,omitempty"`
 	// Grants are the permissions of RequestPasswordGrants (empty: none).
 	Grants *[]string `json:"grants,omitempty"`
+	// Show is RequestCaptureShow's: true lets captures see Kyokai's
+	// windows ("Hide Kyokai from capture" off).
+	Show *bool `json:"show,omitempty"`
 	// Background chooses Background service (true) or Follow GUI
 	// (RequestBackground).
 	Background *bool `json:"background,omitempty"`

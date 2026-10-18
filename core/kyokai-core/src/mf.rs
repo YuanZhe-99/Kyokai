@@ -68,6 +68,33 @@ pub fn decodable() -> Vec<Codec> {
         .clone()
 }
 
+/// The codecs this computer has an encoder for, in hardware or software
+/// (looked up once per process; an encoder found may still fail to open).
+pub fn encodable() -> Vec<Codec> {
+    static FOUND: std::sync::OnceLock<Vec<Codec>> = std::sync::OnceLock::new();
+    FOUND
+        .get_or_init(|| {
+            if startup().is_err() {
+                return Vec::new();
+            }
+            Codec::ALL
+                .into_iter()
+                .filter(|c| {
+                    [true, false].into_iter().any(|hardware| {
+                        !transforms(
+                            MFT_CATEGORY_VIDEO_ENCODER,
+                            hardware,
+                            MFVideoFormat_NV12,
+                            c.subtype(),
+                        )
+                        .is_empty()
+                    })
+                })
+                .collect()
+        })
+        .clone()
+}
+
 /// An encoded access unit and whether it is a key frame.
 pub type Unit = (Vec<u8>, bool);
 /// A decoded picture: width, height, row stride and NV12 bytes.

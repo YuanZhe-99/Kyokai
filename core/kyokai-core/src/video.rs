@@ -16,6 +16,49 @@ pub fn fit(width: u32, height: u32, max_w: u32, max_h: u32) -> (u32, u32) {
     (even(width as f64 * scale), even(height as f64 * scale))
 }
 
+/// A captured BGRA picture: top-down rows of `stride` bytes.
+#[derive(Clone, Copy)]
+pub struct Picture<'a> {
+    pub bgra: &'a [u8],
+    pub width: usize,
+    pub height: usize,
+    pub stride: usize,
+}
+
+/// Where each output column's and row's nearest source pixel is, for one
+/// size pair: computed when the sizes change, so that scaling costs no
+/// division per pixel.
+#[derive(Default)]
+struct Nearest {
+    /// Source width, height and stride; output width and height.
+    size: (usize, usize, usize, usize, usize),
+    /// Byte offset in its row of each output column's source pixel.
+    cols: Vec<usize>,
+    /// Byte offset of each output row's source row.
+    rows: Vec<usize>,
+}
+
+impl Nearest {
+    /// The offsets for `src` shown as `out_w`×`out_h`.
+    fn offsets(&mut self, src: &Picture<'_>, out_w: usize, out_h: usize) -> (&[usize], &[usize]) {
+        let size = (src.width, src.height, src.stride, out_w, out_h);
+        if self.size != size {
+            self.size = size;
+            self.cols = (0..out_w).map(|x| x * src.width / out_w * 4).collect();
+            self.rows = (0..out_h)
+                .map(|y| y * src.height / out_h * src.stride)
+                .collect();
+        }
+        (&self.cols, &self.rows)
+    }
+}
+
+thread_local! {
+    /// The scaling offsets of this thread's stream: a capture thread
+    /// converts one stream, whose size seldom changes.
+    static NEAREST: std::cell::RefCell<Nearest> = std::cell::RefCell::default();
+}
+
 /// Converts a BGRA picture (`stride` bytes per row) into NV12 of
 /// `out_w`×`out_h`, scaling with the nearest pixel.
 /// Notes: `nv12` is resized to out_w × out_h × 3/2; no allocation once it
@@ -30,35 +73,74 @@ pub fn bgra_to_nv12(
     nv12: &mut Vec<u8>,
 ) {
     nv12.resize(out_w * out_h * 3 / 2, 0);
-    let (y_plane, uv_plane) = nv12.split_at_mut(out_w * out_h);
-    let src = |x: usize, y: usize| {
-        let sx = x * width / out_w;
-        let sy = y * height / out_h;
-        let i = sy * stride + sx * 4;
-        (bgra[i + 2] as i32, bgra[i + 1] as i32, bgra[i] as i32)
+    let (y, uv) = nv12.split_at_mut(out_w * out_h);
+    let src = Picture {
+        bgra,
+        width,
+        height,
+        stride,
     };
-    for y in 0..out_h {
-        let row = &mut y_plane[y * out_w..(y + 1) * out_w];
-        for (x, px) in row.iter_mut().enumerate() {
-            let (r, g, b) = src(x, y);
-            *px = luma(r, g, b);
-        }
-    }
-    for y in 0..out_h / 2 {
-        for x in 0..out_w / 2 {
-            // The average of the 2×2 block's corners.
-            let (mut r, mut g, mut b) = (0, 0, 0);
-            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                let p = src(x * 2 + dx, y * 2 + dy);
-                r += p.0;
-                g += p.1;
-                b += p.2;
+    bgra_to_nv12_planes(src, out_w, out_h, y, out_w, uv, out_w);
+}
+
+/// Converts a BGRA picture into NV12 planes of `out_w`×`out_h`: `y`, and
+/// `uv` with U and V interleaved, each `*_stride` bytes per row, scaling
+/// with the nearest pixel; a 2×2 block's chroma is the average of its four
+/// pixels.
+/// Notes: an unscaled picture goes row by row without offsets; nothing
+/// allocates once the sizes settled.
+pub fn bgra_to_nv12_planes(
+    src: Picture<'_>,
+    out_w: usize,
+    out_h: usize,
+    y: &mut [u8],
+    y_stride: usize,
+    uv: &mut [u8],
+    uv_stride: usize,
+) {
+    let same = src.width == out_w && src.height == out_h;
+    NEAREST.with_borrow_mut(|near| {
+        let (cols, rows) = near.offsets(&src, out_w, out_h);
+        for (oy, &row) in rows.iter().enumerate() {
+            let from = &src.bgra[row..];
+            let line = &mut y[oy * y_stride..][..out_w];
+            if same {
+                for (px, out) in from[..out_w * 4].as_chunks::<4>().0.iter().zip(line) {
+                    *out = luma(px[2].into(), px[1].into(), px[0].into());
+                }
+            } else {
+                for (out, &c) in line.iter_mut().zip(cols) {
+                    *out = luma(from[c + 2].into(), from[c + 1].into(), from[c].into());
+                }
             }
-            let (r, g, b) = (r / 4, g / 4, b / 4);
-            let i = y * out_w + x * 2;
-            (uv_plane[i], uv_plane[i + 1]) = chroma_of(r, g, b);
         }
-    }
+        for cy in 0..out_h / 2 {
+            let (a, b) = (&src.bgra[rows[2 * cy]..], &src.bgra[rows[2 * cy + 1]..]);
+            let line = &mut uv[cy * uv_stride..][..out_w / 2 * 2];
+            if same {
+                let pairs = a[..out_w / 2 * 8]
+                    .as_chunks::<8>()
+                    .0
+                    .iter()
+                    .zip(b[..out_w / 2 * 8].as_chunks::<8>().0);
+                for ((pa, pb), out) in pairs.zip(line.as_chunks_mut::<2>().0) {
+                    let avg = |i: usize| {
+                        (pa[i] as i32 + pa[i + 4] as i32 + pb[i] as i32 + pb[i + 4] as i32) / 4
+                    };
+                    (out[0], out[1]) = chroma_of(avg(2), avg(1), avg(0));
+                }
+            } else {
+                for (cx, out) in line.as_chunks_mut::<2>().0.iter_mut().enumerate() {
+                    let (c0, c1) = (cols[2 * cx], cols[2 * cx + 1]);
+                    let avg = |i: usize| {
+                        (a[c0 + i] as i32 + a[c1 + i] as i32 + b[c0 + i] as i32 + b[c1 + i] as i32)
+                            / 4
+                    };
+                    (out[0], out[1]) = chroma_of(avg(2), avg(1), avg(0));
+                }
+            }
+        }
+    });
 }
 
 /// BT.601 limited-range luma of an RGB pixel.
@@ -96,38 +178,62 @@ pub fn bgra_to_planar(
     };
     let [ys, us, vs] = [layout.stride[0], layout.stride[1], layout.stride[2]];
     out.resize(layout.v + vs * ch, 0);
-    let src = |x: usize, y: usize| {
-        let sx = x.min(out_w - 1) * width / out_w;
-        let sy = y.min(out_h - 1) * height / out_h;
-        let i = sy * stride + sx * 4;
-        (bgra[i + 2] as i32, bgra[i + 1] as i32, bgra[i] as i32)
+    let src = Picture {
+        bgra,
+        width,
+        height,
+        stride,
     };
-    for y in 0..out_h {
-        for x in 0..out_w {
-            let (r, g, b) = src(x, y);
-            out[y * ys + x] = luma(r, g, b);
+    NEAREST.with_borrow_mut(|near| {
+        let (cols, rows) = near.offsets(&src, out_w, out_h);
+        let px = |x: usize, y: usize| {
+            let i = rows[y.min(out_h - 1)] + cols[x.min(out_w - 1)];
+            (bgra[i + 2] as i32, bgra[i + 1] as i32, bgra[i] as i32)
+        };
+        let (luma_plane, chroma) = out.split_at_mut(layout.u);
+        for (y, &row) in rows.iter().enumerate() {
+            let from = &bgra[row..];
+            for (o, &c) in luma_plane[y * ys..][..out_w].iter_mut().zip(cols) {
+                *o = luma(from[c + 2].into(), from[c + 1].into(), from[c].into());
+            }
         }
-    }
-    for y in 0..ch {
-        for x in 0..cw {
-            let (r, g, b) = if i444 {
-                src(x, y)
-            } else {
-                // The average of the 2×2 block's corners.
-                let (mut r, mut g, mut b) = (0, 0, 0);
-                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                    let p = src(x * 2 + dx, y * 2 + dy);
-                    r += p.0;
-                    g += p.1;
-                    b += p.2;
-                }
-                (r / 4, g / 4, b / 4)
-            };
-            let (u, v) = chroma_of(r, g, b);
-            out[layout.u + y * us + x] = u;
-            out[layout.v + y * vs + x] = v;
+        let (u_plane, v_plane) = chroma.split_at_mut(layout.v - layout.u);
+        for y in 0..ch {
+            let (u_line, v_line) = (&mut u_plane[y * us..][..cw], &mut v_plane[y * vs..][..cw]);
+            for (x, (u, v)) in u_line.iter_mut().zip(v_line).enumerate() {
+                let (r, g, b) = if i444 {
+                    px(x, y)
+                } else {
+                    // The average of the 2×2 block's corners.
+                    let (mut r, mut g, mut b) = (0, 0, 0);
+                    for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                        let p = px(x * 2 + dx, y * 2 + dy);
+                        r += p.0;
+                        g += p.1;
+                        b += p.2;
+                    }
+                    (r / 4, g / 4, b / 4)
+                };
+                (*u, *v) = chroma_of(r, g, b);
+            }
         }
-    }
+    });
+}
+
+/// The chroma terms of a BT.601 limited-range U, V pair, shared by the
+/// pixels the pair covers.
+#[inline(always)]
+fn chroma_terms(u: u8, v: u8) -> (i32, i32, i32) {
+    let (d, e) = (u as i32 - 128, v as i32 - 128);
+    (409 * e, -100 * d - 208 * e, 516 * d)
+}
+
+/// The RGBA pixel of a luma sample with its chroma terms.
+#[inline(always)]
+fn pixel(y: u8, (r, g, b): (i32, i32, i32)) -> [u8; 4] {
+    let c = 298 * (y as i32 - 16) + 128;
+    let clip = |v: i32| (v >> 8).clamp(0, 255) as u8;
+    [clip(c + r), clip(c + g), clip(c + b), 255]
 }
 
 /// Converts planar YUV (I420, or I444 with `i444`; planes Y, U, V with
@@ -141,30 +247,37 @@ pub fn planar_to_rgba(
     rgba: &mut Vec<u8>,
 ) {
     rgba.resize(width * height * 4, 0);
-    let shift = usize::from(!i444);
-    for y in 0..height {
-        let (yr, ur, vr) = (
-            &planes[0][y * strides[0]..],
-            &planes[1][(y >> shift) * strides[1]..],
-            &planes[2][(y >> shift) * strides[2]..],
-        );
-        for x in 0..width {
-            let o = (y * width + x) * 4;
-            rgba[o..o + 4].copy_from_slice(&rgb(yr[x], ur[x >> shift], vr[x >> shift]));
+    if width == 0 {
+        return;
+    }
+    for (y, line) in rgba.chunks_exact_mut(width * 4).enumerate() {
+        let cy = if i444 { y } else { y / 2 };
+        let luma_row = &planes[0][y * strides[0]..][..width];
+        let (ur, vr) = (&planes[1][cy * strides[1]..], &planes[2][cy * strides[2]..]);
+        if i444 {
+            let pixels = line.as_chunks_mut::<4>().0.iter_mut();
+            for (((out, &l), &u), &v) in pixels.zip(luma_row).zip(ur).zip(vr) {
+                *out = pixel(l, chroma_terms(u, v));
+            }
+        } else {
+            let pairs = width / 2;
+            let whole = line[..pairs * 8]
+                .as_chunks_mut::<8>()
+                .0
+                .iter_mut()
+                .zip(luma_row.as_chunks::<2>().0)
+                .zip(ur.iter().zip(vr));
+            for ((out, l), (&u, &v)) in whole {
+                let t = chroma_terms(u, v);
+                out[..4].copy_from_slice(&pixel(l[0], t));
+                out[4..].copy_from_slice(&pixel(l[1], t));
+            }
+            if width % 2 == 1 {
+                let t = chroma_terms(ur[pairs], vr[pairs]);
+                line[pairs * 8..].copy_from_slice(&pixel(luma_row[width - 1], t));
+            }
         }
     }
-}
-
-/// The RGBA pixel of a BT.601 limited-range YUV sample.
-fn rgb(y: u8, u: u8, v: u8) -> [u8; 4] {
-    let clip = |v: i32| v.clamp(0, 255) as u8;
-    let (c, d, e) = (y as i32 - 16, u as i32 - 128, v as i32 - 128);
-    [
-        clip((298 * c + 409 * e + 128) >> 8),
-        clip((298 * c - 100 * d - 208 * e + 128) >> 8),
-        clip((298 * c + 516 * d + 128) >> 8),
-        255,
-    ]
 }
 
 /// Converts NV12 (`stride` bytes per luma row; chroma follows the luma
@@ -177,13 +290,43 @@ pub fn nv12_to_rgba(
     rows: usize,
     rgba: &mut Vec<u8>,
 ) {
+    let (y, uv) = nv12.split_at(stride * rows);
+    nv12_planes_to_rgba(y, stride, uv, stride, width, height, rgba);
+}
+
+/// Converts NV12 planes (`y`, and `uv` with U and V interleaved, with their
+/// strides) into RGBA of width×height.
+pub fn nv12_planes_to_rgba(
+    y: &[u8],
+    y_stride: usize,
+    uv: &[u8],
+    uv_stride: usize,
+    width: usize,
+    height: usize,
+    rgba: &mut Vec<u8>,
+) {
     rgba.resize(width * height * 4, 0);
-    let chroma = &nv12[stride * rows..];
-    for y in 0..height {
-        for x in 0..width {
-            let ci = (y / 2) * stride + (x & !1);
-            let o = (y * width + x) * 4;
-            rgba[o..o + 4].copy_from_slice(&rgb(nv12[y * stride + x], chroma[ci], chroma[ci + 1]));
+    if width == 0 {
+        return;
+    }
+    let pairs = width / 2;
+    for (row, line) in rgba.chunks_exact_mut(width * 4).enumerate() {
+        let luma_row = &y[row * y_stride..][..width];
+        let chroma = &uv[row / 2 * uv_stride..][..width.div_ceil(2) * 2];
+        let whole = line[..pairs * 8]
+            .as_chunks_mut::<8>()
+            .0
+            .iter_mut()
+            .zip(luma_row.as_chunks::<2>().0)
+            .zip(chroma.as_chunks::<2>().0);
+        for ((out, l), c) in whole {
+            let t = chroma_terms(c[0], c[1]);
+            out[..4].copy_from_slice(&pixel(l[0], t));
+            out[4..].copy_from_slice(&pixel(l[1], t));
+        }
+        if width % 2 == 1 {
+            let t = chroma_terms(chroma[pairs * 2], chroma[pairs * 2 + 1]);
+            line[pairs * 8..].copy_from_slice(&pixel(luma_row[width - 1], t));
         }
     }
 }
@@ -204,9 +347,33 @@ pub(crate) const MAX_SIZE: (u32, u32) = (1920, 1080);
 /// Starting target bitrate (RustDesk's QoS adapts it later).
 const BITRATE: u32 = 4_000_000;
 
-/// One encoded frame: flags (media::KEY_FRAME), presentation time in µs,
-/// bytes.
-pub type Encoded = (u8, u64, Vec<u8>);
+/// One encoded frame.
+pub struct Encoded {
+    /// media::KEY_FRAME when it decodes on its own.
+    pub flags: u8,
+    /// Presentation time in µs.
+    pub pts: u64,
+    pub data: Vec<u8>,
+    /// From taking the captured picture to its encoded frame (conversion
+    /// and encoding), in µs: what the host adds to the delay.
+    pub took_us: u32,
+}
+
+/// Whether captures show Kyokai's own windows: the host user turned "Hide
+/// Kyokai from capture" off. Hidden until the GUI says otherwise. macOS's
+/// capture filter follows it (live); on Windows the GUI keeps its windows
+/// out by display affinity.
+static SHOW_KYOKAI: AtomicBool = AtomicBool::new(false);
+
+/// Whether captures show Kyokai's own windows (SHOW_KYOKAI).
+pub fn show_kyokai() -> bool {
+    SHOW_KYOKAI.load(Ordering::Relaxed)
+}
+
+/// Sets whether captures show Kyokai's own windows; running streams follow.
+pub fn set_show_kyokai(show: bool) {
+    SHOW_KYOKAI.store(show, Ordering::Relaxed);
+}
 
 /// A way the host may send its video: a codec name and full colour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -227,11 +394,13 @@ impl Choice {
 }
 
 /// The codecs a host tries, best first: the system's (Media Foundation on
-/// Windows) before the software ones; H.264 first unless `choose` is told
-/// the host has a free hardware HEVC encoder.
+/// Windows, VideoToolbox on macOS) before the software ones; H.264 first
+/// unless `choose` is told the host has a free hardware HEVC encoder.
 #[cfg(windows)]
 const ORDER: [&str; 6] = ["h264", "hevc", "vp9", "vp9-sw", "av1", "vp8"];
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+const ORDER: [&str; 5] = ["h264", "hevc", "vp9-sw", "av1", "vp8"];
+#[cfg(not(any(windows, target_os = "macos")))]
 const ORDER: [&str; 3] = ["vp9-sw", "av1", "vp8"];
 
 /// The ways a host tries to send, best first, from what the controller
@@ -283,6 +452,40 @@ pub fn choose(
     out
 }
 
+/// The codecs this host encodes, by name: the system's (the encoders Media
+/// Foundation has registered, VideoToolbox's) and the software ones.
+pub fn encodable() -> Vec<&'static str> {
+    #[cfg(windows)]
+    let mut list: Vec<&'static str> = crate::mf::encodable().iter().map(|c| c.name()).collect();
+    #[cfg(target_os = "macos")]
+    let mut list: Vec<&'static str> = crate::vt::encodable().iter().map(|c| c.name()).collect();
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let mut list = Vec::new();
+    list.extend(crate::soft::Codec::ALL.iter().map(|c| c.name()));
+    list
+}
+
+/// The codecs a viewer may choose from: what this host encodes
+/// (`encodes`) that the controller decodes (`decode`), in the host's
+/// order.
+pub fn offer(decode: &[String], encodes: &[&str]) -> Vec<&'static str> {
+    ORDER
+        .into_iter()
+        .filter(|c| encodes.contains(c) && decode.iter().any(|d| d == c))
+        .collect()
+}
+
+/// Puts the choices of the viewer's `codec` first (its full-colour one
+/// before its plain one) and keeps the others after them in their order;
+/// None (Auto) keeps the order as it is.
+pub fn prefer(mut choices: Vec<Choice>, codec: Option<&str>) -> Vec<Choice> {
+    if let Some(codec) = codec {
+        // A stable sort: the chosen codec's entries move up, nothing else moves.
+        choices.sort_by_key(|c| c.codec != codec);
+    }
+    choices
+}
+
 /// Whether this host has a free hardware HEVC encoder (`choose`'s
 /// `hevc_first`).
 pub fn hevc_hardware() -> bool {
@@ -290,22 +493,31 @@ pub fn hevc_hardware() -> bool {
     {
         crate::mf::hardware_free(crate::mf::Codec::Hevc)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        crate::vt::hevc_hardware()
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         false
     }
 }
 
 /// The codecs this controller decodes, by name, and those it decodes in
-/// full colour: the system's (Media Foundation, checked once) and the
-/// software ones (always).
+/// full colour: the system's (Media Foundation, checked once; VideoToolbox)
+/// and the software ones (always).
 pub fn decodable() -> (Vec<String>, Vec<String>) {
     #[cfg(windows)]
     let mut decode: Vec<String> = crate::mf::decodable()
         .iter()
         .map(|c| c.name().to_string())
         .collect();
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    let mut decode: Vec<String> = crate::vt::decodable()
+        .iter()
+        .map(|c| c.name().to_string())
+        .collect();
+    #[cfg(not(any(windows, target_os = "macos")))]
     let mut decode = Vec::new();
     let soft = crate::soft::Codec::ALL;
     decode.extend(soft.iter().map(|c| c.name().to_string()));
@@ -383,9 +595,11 @@ impl Source {
             fps: AtomicU32::new(FPS),
             bitrate: AtomicU32::new(BITRATE),
         });
-        let (tx, frames) = mpsc::channel(2);
-        // In the helper modes the session agent captures and encodes.
+        // One frame waits for the session at most: the capture loop takes a
+        // picture only once there is room (`capture::start`). Frames from
+        // the helper's agent arrive as it captures, so they get one more.
         let link = crate::agent::link();
+        let (tx, frames) = mpsc::channel(if link.is_some() { 2 } else { 1 });
         if let Some(link) = link
             && let Some((start, shown)) = link.open_video(
                 display,
@@ -476,11 +690,12 @@ fn test_pattern(tx: mpsc::Sender<Encoded>, stop: Arc<AtomicBool>) -> VideoStart 
         let t0 = Instant::now();
         while !stop.load(Ordering::Relaxed) {
             std::thread::sleep(Duration::from_secs(1) / media::TestPattern::FPS);
-            let frame = (
-                media::KEY_FRAME,
-                t0.elapsed().as_micros() as u64,
-                pattern.next_frame(),
-            );
+            let frame = Encoded {
+                flags: media::KEY_FRAME,
+                pts: t0.elapsed().as_micros() as u64,
+                data: pattern.next_frame(),
+                took_us: 0,
+            };
             // The newest frame wins: a full channel drops this one.
             if let Err(mpsc::error::TrySendError::Closed(_)) = tx.try_send(frame) {
                 break;
@@ -526,6 +741,9 @@ mod capture {
     /// How long the capture thread waits before opening the display again
     /// after it was lost.
     const REOPEN_AFTER: Duration = Duration::from_millis(500);
+    /// How often the capture thread looks again for room while the session
+    /// is still sending the last frame.
+    const ROOM_WAIT: Duration = Duration::from_millis(2);
 
     /// The stream's encoder with the picture it encodes next.
     enum Encoder {
@@ -537,8 +755,12 @@ mod capture {
             width: usize,
             height: usize,
         },
-        /// libvpx or libaom, fed planar YUV.
-        Soft(crate::soft::Encoder),
+        /// libvpx or libaom, fed planar YUV (boxed: it is far larger than
+        /// the system encoders' handles).
+        Soft(Box<crate::soft::Encoder>),
+        /// VideoToolbox, fed NV12 in buffers of its own.
+        #[cfg(target_os = "macos")]
+        Vt(crate::vt::Encoder),
     }
 
     impl Encoder {
@@ -546,7 +768,7 @@ mod capture {
         fn open(choice: Choice, width: u32, height: u32) -> Result<Encoder, String> {
             if let Some(c) = crate::soft::Codec::from_name(choice.codec) {
                 return crate::soft::Encoder::new(c, width, height, FPS, BITRATE, choice.i444)
-                    .map(Encoder::Soft);
+                    .map(|e| Encoder::Soft(Box::new(e)));
             }
             #[cfg(windows)]
             {
@@ -558,8 +780,11 @@ mod capture {
                     height: height as usize,
                 })
             }
-            #[cfg(not(windows))]
-            Err("unknown codec".into())
+            #[cfg(target_os = "macos")]
+            {
+                let c = crate::vt::Codec::from_name(choice.codec).ok_or("unknown codec")?;
+                crate::vt::Encoder::new(c, width, height, FPS, BITRATE).map(Encoder::Vt)
+            }
         }
 
         /// Whether the stream is in full colour.
@@ -578,6 +803,8 @@ mod capture {
                     ..
                 } => bgra_to_nv12(bgra, width, height, stride, *w, *h, nv12),
                 Encoder::Soft(e) => e.picture(bgra, width, height, stride),
+                #[cfg(target_os = "macos")]
+                Encoder::Vt(e) => e.picture(bgra, width, height, stride),
             }
         }
 
@@ -587,6 +814,8 @@ mod capture {
                 #[cfg(windows)]
                 Encoder::Mf { nv12, .. } => !nv12.is_empty(),
                 Encoder::Soft(e) => e.has_picture(),
+                #[cfg(target_os = "macos")]
+                Encoder::Vt(e) => e.has_picture(),
             }
         }
 
@@ -596,6 +825,8 @@ mod capture {
                 #[cfg(windows)]
                 Encoder::Mf { enc, nv12, .. } => enc.encode(nv12, key),
                 Encoder::Soft(e) => e.encode(key),
+                #[cfg(target_os = "macos")]
+                Encoder::Vt(e) => e.encode(key),
             }
         }
 
@@ -605,6 +836,8 @@ mod capture {
                 #[cfg(windows)]
                 Encoder::Mf { enc, .. } => enc.set_bitrate(bitrate),
                 Encoder::Soft(e) => e.set_bitrate(bitrate),
+                #[cfg(target_os = "macos")]
+                Encoder::Vt(e) => e.set_bitrate(bitrate),
             }
         }
     }
@@ -657,6 +890,17 @@ mod capture {
                     capturer = G::open(display).ok().map(|(c, _, _)| c);
                     continue;
                 };
+                // Room for the frame first: a picture is taken only when the
+                // session can send it, so what goes out is the newest picture
+                // rather than one that waited behind the network.
+                let permit = match tx.try_reserve() {
+                    Ok(permit) => permit,
+                    Err(mpsc::error::TrySendError::Full(())) => {
+                        std::thread::sleep(ROOM_WAIT);
+                        continue;
+                    }
+                    Err(mpsc::error::TrySendError::Closed(())) => return,
+                };
                 let begun = Instant::now();
                 let period = Duration::from_secs(1) / targets.fps.load(Ordering::Relaxed).max(1);
                 let wanted_rate = targets.bitrate.load(Ordering::Relaxed);
@@ -667,7 +911,9 @@ mod capture {
                 let wanted = key.swap(false, Ordering::Relaxed);
                 // Unchanged screens time out: nothing is encoded or sent,
                 // unless a key frame was asked for.
+                let mut taken = None;
                 let got = cap.frame(period, &mut |bgra, width, height, stride| {
+                    taken = Some(Instant::now());
                     encoder.picture(bgra, width, height, stride)
                 });
                 match got {
@@ -691,6 +937,7 @@ mod capture {
                         continue;
                     }
                 }
+                let taken = taken.unwrap_or_else(Instant::now);
                 let Ok(units) = encoder.encode(wanted) else {
                     break;
                 };
@@ -700,11 +947,21 @@ mod capture {
                     0
                 };
                 let pts = t0.elapsed().as_micros() as u64;
-                for (unit, is_key) in units {
-                    let flags = if is_key { media::KEY_FRAME } else { 0 };
-                    // Waits while the session is busy sending: capture runs
-                    // at the speed the network takes frames.
-                    if tx.blocking_send((flags, pts, unit)).is_err() {
+                let took_us = taken.elapsed().as_micros().min(u32::MAX as u128) as u32;
+                let mut frames = units.into_iter().map(|(data, is_key)| Encoded {
+                    flags: if is_key { media::KEY_FRAME } else { 0 },
+                    pts,
+                    data,
+                    took_us,
+                });
+                match frames.next() {
+                    Some(f) => permit.send(f),
+                    None => drop(permit),
+                }
+                // More than one unit (an encoder that held frames): the rest
+                // wait for the session in turn.
+                for f in frames {
+                    if tx.blocking_send(f).is_err() {
                         return;
                     }
                 }
@@ -842,7 +1099,7 @@ mod screen_tests {
         ] {
             let key = Arc::new(AtomicBool::new(true));
             let stop = Arc::new(AtomicBool::new(false));
-            let (tx, mut rx) = mpsc::channel(2);
+            let (tx, mut rx) = mpsc::channel(1);
             let start = match capture::start::<screen::Dxgi>(
                 tx,
                 key,
@@ -860,7 +1117,7 @@ mod screen_tests {
             eprintln!("stream {start:?}");
             assert_eq!(start.i444, choice.i444);
             let first = rx.blocking_recv().expect("a first frame");
-            assert_eq!(first.0 & media::KEY_FRAME, media::KEY_FRAME);
+            assert_eq!(first.flags & media::KEY_FRAME, media::KEY_FRAME);
             stop.store(true, Ordering::Relaxed);
         }
     }
@@ -949,7 +1206,34 @@ mod tests {
             // A controller that names none gets H.264.
             (&[], &[], false, &["h264"]),
         ];
-        #[cfg(not(windows))]
+        // VideoToolbox's H.264 and HEVC go before the software codecs.
+        #[cfg(target_os = "macos")]
+        let cases: &[Case] = &[
+            (
+                &all,
+                &full,
+                false,
+                &["h264", "hevc", "vp9-sw", "av1", "vp8"],
+            ),
+            (
+                &all,
+                &full,
+                true,
+                &[
+                    "vp9-sw+444",
+                    "av1+444",
+                    "h264",
+                    "hevc",
+                    "vp9-sw",
+                    "av1",
+                    "vp8",
+                ],
+            ),
+            (&["h264"], &[], false, &["h264"]),
+            // Media Foundation's VP9 is not a Mac's.
+            (&["vp9", "vp8"], &[], false, &["vp8"]),
+        ];
+        #[cfg(not(any(windows, target_os = "macos")))]
         let cases: &[Case] = &[
             (&all, &full, false, &["vp9-sw", "av1", "vp8"]),
             (
@@ -969,6 +1253,30 @@ mod tests {
         }
         // A free hardware HEVC encoder puts HEVC before H.264 (full colour
         // stays first).
+        #[cfg(target_os = "macos")]
+        let cases: &[Case] = &[
+            (
+                &all,
+                &full,
+                false,
+                &["hevc", "h264", "vp9-sw", "av1", "vp8"],
+            ),
+            (
+                &all,
+                &full,
+                true,
+                &[
+                    "vp9-sw+444",
+                    "av1+444",
+                    "hevc",
+                    "h264",
+                    "vp9-sw",
+                    "av1",
+                    "vp8",
+                ],
+            ),
+            (&["h264", "vp8"], &[], false, &["h264", "vp8"]),
+        ];
         #[cfg(windows)]
         let cases: &[Case] = &[
             (
@@ -1005,6 +1313,53 @@ mod tests {
     }
 
     #[test]
+    fn the_viewer_s_codec_goes_first() {
+        let names = |v: &[Choice]| {
+            v.iter()
+                .map(|c| format!("{}{}", c.codec, if c.i444 { "+444" } else { "" }))
+                .collect::<Vec<_>>()
+        };
+        let c = |codec, i444| Choice { codec, i444 };
+        let order = vec![
+            c("vp9-sw", true),
+            c("av1", true),
+            c("h264", false),
+            c("vp9-sw", false),
+            c("av1", false),
+        ];
+        let cases: &[(Option<&str>, &[&str])] = &[
+            // Auto keeps the host's order.
+            (None, &["vp9-sw+444", "av1+444", "h264", "vp9-sw", "av1"]),
+            // A codec without full colour goes first, as it is.
+            (
+                Some("h264"),
+                &["h264", "vp9-sw+444", "av1+444", "vp9-sw", "av1"],
+            ),
+            // A codec with full colour: in full colour first, then plain.
+            (
+                Some("av1"),
+                &["av1+444", "av1", "vp9-sw+444", "h264", "vp9-sw"],
+            ),
+            // A name the host does not send changes nothing.
+            (
+                Some("h266"),
+                &["vp9-sw+444", "av1+444", "h264", "vp9-sw", "av1"],
+            ),
+        ];
+        for (codec, want) in cases {
+            assert_eq!(names(&prefer(order.clone(), *codec)), *want, "{codec:?}");
+        }
+        // The offer: what both sides do, in the host's order.
+        let decode: Vec<String> = ["vp8", "av1", "h264"].map(String::from).to_vec();
+        assert_eq!(
+            offer(&decode, &["h264", "vp9-sw", "av1", "vp8"]),
+            ["h264", "av1", "vp8"]
+        );
+        assert_eq!(offer(&decode, &["vp9-sw"]), Vec::<&str>::new());
+        assert!(encodable().contains(&"vp9-sw"));
+    }
+
+    #[test]
     fn this_build_decodes_every_software_codec() {
         let (decode, i444) = decodable();
         for c in ["vp9-sw", "av1", "vp8"] {
@@ -1019,6 +1374,199 @@ mod tests {
         assert_eq!(fit(1280, 720, 1920, 1080), (1280, 720));
         assert_eq!(fit(2560, 1600, 1920, 1080), (1728, 1080));
         assert_eq!(fit(1366, 769, 1920, 1080), (1366, 768));
+    }
+
+    /// The conversions as they were first written, a pixel at a time: the
+    /// faster ones must give the same bytes.
+    mod reference {
+        use super::super::{chroma_of, luma};
+
+        pub fn bgra_to_nv12(
+            bgra: &[u8],
+            w: usize,
+            h: usize,
+            stride: usize,
+            ow: usize,
+            oh: usize,
+        ) -> Vec<u8> {
+            let mut nv12 = vec![0u8; ow * oh * 3 / 2];
+            let src = |x: usize, y: usize| {
+                let i = (y * h / oh) * stride + (x * w / ow) * 4;
+                (bgra[i + 2] as i32, bgra[i + 1] as i32, bgra[i] as i32)
+            };
+            for y in 0..oh {
+                for x in 0..ow {
+                    let (r, g, b) = src(x, y);
+                    nv12[y * ow + x] = luma(r, g, b);
+                }
+            }
+            for y in 0..oh / 2 {
+                for x in 0..ow / 2 {
+                    let (mut r, mut g, mut b) = (0, 0, 0);
+                    for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                        let p = src(x * 2 + dx, y * 2 + dy);
+                        (r, g, b) = (r + p.0, g + p.1, b + p.2);
+                    }
+                    let i = ow * oh + y * ow + x * 2;
+                    (nv12[i], nv12[i + 1]) = chroma_of(r / 4, g / 4, b / 4);
+                }
+            }
+            nv12
+        }
+
+        pub fn rgb(y: u8, u: u8, v: u8) -> [u8; 4] {
+            let clip = |v: i32| v.clamp(0, 255) as u8;
+            let (c, d, e) = (y as i32 - 16, u as i32 - 128, v as i32 - 128);
+            [
+                clip((298 * c + 409 * e + 128) >> 8),
+                clip((298 * c - 100 * d - 208 * e + 128) >> 8),
+                clip((298 * c + 516 * d + 128) >> 8),
+                255,
+            ]
+        }
+
+        pub fn nv12_to_rgba(
+            nv12: &[u8],
+            w: usize,
+            h: usize,
+            stride: usize,
+            rows: usize,
+        ) -> Vec<u8> {
+            let chroma = &nv12[stride * rows..];
+            let mut rgba = vec![0u8; w * h * 4];
+            for y in 0..h {
+                for x in 0..w {
+                    let ci = (y / 2) * stride + (x & !1);
+                    let o = (y * w + x) * 4;
+                    rgba[o..o + 4].copy_from_slice(&rgb(
+                        nv12[y * stride + x],
+                        chroma[ci],
+                        chroma[ci + 1],
+                    ));
+                }
+            }
+            rgba
+        }
+    }
+
+    /// Bytes that look like nothing in particular, the same every run.
+    fn noise(len: usize, seed: u32) -> Vec<u8> {
+        let mut x = seed.wrapping_mul(2_654_435_761).max(1);
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                x as u8
+            })
+            .collect()
+    }
+
+    #[test]
+    fn faster_conversions_give_the_same_bytes() {
+        // (source width, height, stride padding; output width, height):
+        // unscaled, halved, an odd scale, and a padded source.
+        let sizes = [
+            (64, 36, 0, 64, 36),
+            (64, 36, 0, 32, 18),
+            (97, 55, 0, 50, 28),
+            (320, 180, 16, 214, 120),
+            (40, 30, 8, 40, 30),
+        ];
+        for (n, (w, h, pad, ow, oh)) in sizes.into_iter().enumerate() {
+            let stride = w * 4 + pad;
+            let bgra = noise(stride * h, n as u32 + 1);
+            let mut nv12 = Vec::new();
+            bgra_to_nv12(&bgra, w, h, stride, ow, oh, &mut nv12);
+            assert_eq!(
+                nv12,
+                reference::bgra_to_nv12(&bgra, w, h, stride, ow, oh),
+                "{w}×{h} → {ow}×{oh}"
+            );
+            // And back, with a padded stride and rows as decoders give.
+            let (stride, rows) = (ow + 32, oh + 8);
+            let mut padded = vec![0u8; stride * rows * 3 / 2];
+            for y in 0..oh {
+                padded[y * stride..][..ow].copy_from_slice(&nv12[y * ow..][..ow]);
+            }
+            for y in 0..oh / 2 {
+                padded[stride * rows + y * stride..][..ow]
+                    .copy_from_slice(&nv12[ow * oh + y * ow..][..ow]);
+            }
+            let mut rgba = Vec::new();
+            nv12_to_rgba(&padded, ow, oh, stride, rows, &mut rgba);
+            assert_eq!(
+                rgba,
+                reference::nv12_to_rgba(&padded, ow, oh, stride, rows),
+                "{ow}×{oh} back"
+            );
+        }
+        // Planar YUV, 4:2:0 and 4:4:4, against the per-pixel formula.
+        for i444 in [false, true] {
+            let (w, h) = (34, 20);
+            let (cw, ch) = if i444 { (w, h) } else { (w / 2, h / 2) };
+            let (y, u, v) = (noise(w * h, 7), noise(cw * ch, 8), noise(cw * ch, 9));
+            let mut rgba = Vec::new();
+            planar_to_rgba([&y, &u, &v], [w, cw, cw], w, h, i444, &mut rgba);
+            for (i, px) in rgba.chunks(4).enumerate() {
+                let (x, row) = (i % w, i / w);
+                let c = if i444 {
+                    row * cw + x
+                } else {
+                    row / 2 * cw + x / 2
+                };
+                assert_eq!(
+                    px,
+                    reference::rgb(y[row * w + x], u[c], v[c]),
+                    "pixel {x},{row}"
+                );
+            }
+        }
+    }
+
+    /// How long the conversions take for a 1080p stream (run with
+    /// `--ignored --nocapture`, in release).
+    #[test]
+    #[ignore]
+    fn conversion_speed_at_1080p() {
+        let time = |name: &str, f: &mut dyn FnMut()| {
+            f();
+            let t = Instant::now();
+            for _ in 0..20 {
+                f();
+            }
+            eprintln!(
+                "{name}: {:.2} ms",
+                t.elapsed().as_secs_f64() * 1000.0 / 20.0
+            );
+        };
+        let bgra = noise(1920 * 1080 * 4, 1);
+        let big = noise(3840 * 2160 * 4, 2);
+        let mut nv12 = Vec::new();
+        time("BGRA → NV12, 1080p, a pixel at a time", &mut || {
+            nv12 = reference::bgra_to_nv12(&bgra, 1920, 1080, 1920 * 4, 1920, 1080)
+        });
+        time("BGRA → NV12, 1080p", &mut || {
+            bgra_to_nv12(&bgra, 1920, 1080, 1920 * 4, 1920, 1080, &mut nv12)
+        });
+        time("BGRA → NV12, 4K scaled to 1080p", &mut || {
+            bgra_to_nv12(&big, 3840, 2160, 3840 * 4, 1920, 1080, &mut nv12)
+        });
+        let mut rgba = Vec::new();
+        time("NV12 → RGBA, 1080p, a pixel at a time", &mut || {
+            rgba = reference::nv12_to_rgba(&nv12, 1920, 1080, 1920, 1080)
+        });
+        time("NV12 → RGBA, 1080p", &mut || {
+            nv12_to_rgba(&nv12, 1920, 1080, 1920, 1080, &mut rgba)
+        });
+        let (y, u, v) = (
+            noise(1920 * 1080, 3),
+            noise(960 * 540, 4),
+            noise(960 * 540, 5),
+        );
+        time("I420 → RGBA, 1080p", &mut || {
+            planar_to_rgba([&y, &u, &v], [1920, 960, 960], 1920, 1080, false, &mut rgba)
+        });
     }
 
     #[test]

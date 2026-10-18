@@ -43,6 +43,9 @@ pub mod packet {
     pub const ACTIONS: u8 = 9;
     /// engine → GUI: `{text}` JSON, the host's shared AI draft.
     pub const AI_DRAFT: u8 = 10;
+    /// engine → GUI: `{codecs}` JSON, what the host can send that this
+    /// controller decodes, for the viewer's codec choice.
+    pub const CODECS: u8 = 11;
 }
 
 /// What a video stream carries, sent before its first frame.
@@ -145,11 +148,22 @@ impl Reassembler {
     }
 }
 
-/// The controller's media for its GUI: packets waiting to be read, newest
-/// frames kept when the reader falls behind.
+/// The controller's media for its GUI: packets waiting to be read; a
+/// reader that falls behind loses the stale frames and goes on from the
+/// next key frame.
 pub struct Queue {
-    inner: Mutex<(VecDeque<Vec<u8>>, bool)>,
+    inner: Mutex<Inner>,
     ready: Condvar,
+}
+
+/// A queue's packets and state.
+#[derive(Default)]
+struct Inner {
+    packets: VecDeque<Vec<u8>>,
+    closed: bool,
+    /// Frames were dropped for a slow reader: the frames up to the next
+    /// key frame cannot be decoded without them, so they are left out too.
+    skipping: bool,
 }
 
 /// Frames kept for a slow reader; older ones are dropped first.
@@ -165,46 +179,64 @@ pub enum Empty {
 impl Default for Queue {
     fn default() -> Self {
         Queue {
-            inner: Mutex::new((VecDeque::new(), false)),
+            inner: Mutex::default(),
             ready: Condvar::new(),
         }
     }
 }
 
 impl Queue {
-    /// Adds a packet; frames beyond KEEP_FRAMES push out the oldest frame,
-    /// and a newer stats, AI task or pointer packet replaces one still
-    /// waiting.
+    /// Adds a packet. A newer stats, AI task, pointer, displays, actions or
+    /// codecs packet replaces one still waiting. A frame that finds
+    /// KEEP_FRAMES waiting finds a reader that fell behind: they all go, and
+    /// so does every frame up to the next key frame (`waiting_for_key`); a
+    /// key frame is kept.
     pub fn push(&self, packet: Vec<u8>) {
         let Ok(mut q) = self.inner.lock() else {
             return;
         };
-        if q.1 {
+        if q.closed {
             return;
         }
-        if let Some(
-            &kind @ (packet::STATS
-            | packet::AI_TASK
-            | packet::CURSOR
-            | packet::DISPLAYS
-            | packet::ACTIONS),
-        ) = packet.first()
-        {
-            q.0.retain(|p| p.first() != Some(&kind));
-        }
-        if packet.first() == Some(&packet::FRAME) {
-            let frames =
-                q.0.iter()
+        match packet.first() {
+            Some(
+                &kind @ (packet::STATS
+                | packet::AI_TASK
+                | packet::CURSOR
+                | packet::DISPLAYS
+                | packet::ACTIONS
+                | packet::CODECS),
+            ) => q.packets.retain(|p| p.first() != Some(&kind)),
+            Some(&packet::FRAME) => {
+                let key = packet.get(1).is_some_and(|f| f & KEY_FRAME != 0);
+                if key {
+                    q.skipping = false;
+                } else if q.skipping {
+                    return;
+                }
+                let frames = q
+                    .packets
+                    .iter()
                     .filter(|p| p.first() == Some(&packet::FRAME))
                     .count();
-            if frames >= KEEP_FRAMES
-                && let Some(i) = q.0.iter().position(|p| p.first() == Some(&packet::FRAME))
-            {
-                q.0.remove(i);
+                if frames >= KEEP_FRAMES {
+                    q.packets.retain(|p| p.first() != Some(&packet::FRAME));
+                    if !key {
+                        q.skipping = true;
+                        return;
+                    }
+                }
             }
+            _ => {}
         }
-        q.0.push_back(packet);
+        q.packets.push_back(packet);
         self.ready.notify_one();
+    }
+
+    /// Whether frames are left out until the next key frame, which the
+    /// session then asks the host for.
+    pub fn waiting_for_key(&self) -> bool {
+        self.inner.lock().is_ok_and(|q| q.skipping)
     }
 
     /// Waits up to `timeout` for the next packet.
@@ -212,10 +244,10 @@ impl Queue {
         let deadline = Instant::now() + timeout;
         let mut q = self.inner.lock().map_err(|_| Empty::Closed)?;
         loop {
-            if let Some(p) = q.0.pop_front() {
+            if let Some(p) = q.packets.pop_front() {
                 return Ok(p);
             }
-            if q.1 {
+            if q.closed {
                 return Err(Empty::Closed);
             }
             let now = Instant::now();
@@ -233,7 +265,7 @@ impl Queue {
     /// Ends the stream: readers see Closed once the queue is drained.
     pub fn close(&self) {
         if let Ok(mut q) = self.inner.lock() {
-            q.1 = true;
+            q.closed = true;
         }
         self.ready.notify_all();
     }
@@ -325,18 +357,45 @@ mod tests {
         );
     }
 
+    /// Regression: a slow reader lost the oldest frame and decoded the next
+    /// ones without it, which smeared the picture until a key frame.
     #[test]
-    fn the_queue_keeps_the_newest_frames_and_reports_closing() {
+    fn a_slow_reader_goes_on_from_the_next_key_frame() {
+        let q = Queue::default();
+        let frame = |n: u8, key: bool| vec![packet::FRAME, if key { KEY_FRAME } else { 0 }, n];
+        q.push(vec![packet::VIDEO_START]);
+        q.push(frame(0, true));
+        q.push(frame(1, false));
+        q.push(frame(2, false));
+        assert!(!q.waiting_for_key());
+        // A fourth frame finds the reader behind: the waiting frames go, and
+        // so do the frames until a key frame.
+        q.push(frame(3, false));
+        assert!(q.waiting_for_key());
+        q.push(frame(4, false));
+        q.push(frame(5, true));
+        assert!(!q.waiting_for_key());
+        q.push(frame(6, false));
+        // A full queue keeps a key frame (it decodes on its own).
+        q.push(frame(7, false));
+        q.push(frame(8, true));
+        let got: Vec<Vec<u8>> = std::iter::from_fn(|| q.pop(Duration::ZERO).ok()).collect();
+        assert_eq!(got, vec![vec![packet::VIDEO_START], frame(8, true)]);
+        assert!(!q.waiting_for_key());
+    }
+
+    #[test]
+    fn the_queue_reports_closing_after_it_drained() {
         let q = Queue::default();
         q.push(vec![packet::VIDEO_START]);
-        for i in 0..5u8 {
-            q.push(vec![packet::FRAME, i]);
-        }
-        assert_eq!(q.pop(Duration::ZERO).unwrap(), vec![packet::VIDEO_START]);
-        assert_eq!(q.pop(Duration::ZERO).unwrap(), vec![packet::FRAME, 2]);
+        q.push(vec![packet::FRAME, KEY_FRAME, 1]);
         q.close();
-        assert_eq!(q.pop(Duration::ZERO).unwrap(), vec![packet::FRAME, 3]);
-        assert_eq!(q.pop(Duration::ZERO).unwrap(), vec![packet::FRAME, 4]);
+        q.push(vec![packet::FRAME, 0, 2]);
+        assert_eq!(q.pop(Duration::ZERO).unwrap(), vec![packet::VIDEO_START]);
+        assert_eq!(
+            q.pop(Duration::ZERO).unwrap(),
+            vec![packet::FRAME, KEY_FRAME, 1]
+        );
         assert_eq!(q.pop(Duration::ZERO), Err(Empty::Closed));
         let open = Queue::default();
         assert_eq!(open.pop(Duration::from_millis(10)), Err(Empty::Timeout));

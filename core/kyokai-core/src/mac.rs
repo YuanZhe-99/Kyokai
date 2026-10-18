@@ -350,14 +350,60 @@ impl Output {
     }
 }
 
-/// A display through a ScreenCaptureKit stream, without Kyokai's windows
-/// and without the pointer (the viewer draws it).
+/// A display through a ScreenCaptureKit stream, without the pointer (the
+/// viewer draws it) and without Kyokai's windows unless the host user lets
+/// capture see them.
 pub struct Capture {
     stream: Retained<SCStream>,
     _output: Retained<Output>,
     shared: Arc<Shared>,
     /// The last picture taken.
     seen: u64,
+    /// The display captured.
+    display: CGDirectDisplayID,
+    /// Whether the stream's filter shows Kyokai's windows.
+    show: bool,
+}
+
+/// Whether captures leave an application's windows out: Kyokai's own (this
+/// process or the app, by its bundle) while the host user hides them.
+fn left_out(pid: i32, bundle: &str, own: i32, show_kyokai: bool) -> bool {
+    !show_kyokai && (pid == own || bundle == BUNDLE_ID)
+}
+
+/// The filter of a display's stream: the display without the applications
+/// `left_out` names.
+/// Returns: an error without the Screen Recording permission.
+fn filter(id: CGDirectDisplayID, show_kyokai: bool) -> Result<Retained<SCContentFilter>, String> {
+    let content = shareable()?;
+    // SAFETY: plain reads of the snapshot.
+    let display = unsafe { content.displays() }
+        .iter()
+        .find(|d| unsafe { d.displayID() } == id)
+        .ok_or("the display cannot be captured")?;
+    let own = std::process::id() as i32;
+    // SAFETY: plain reads of the snapshot.
+    let hidden: Vec<Retained<SCRunningApplication>> = unsafe { content.applications() }
+        .iter()
+        .filter(|a| unsafe {
+            left_out(
+                a.processID(),
+                &a.bundleIdentifier().to_string(),
+                own,
+                show_kyokai,
+            )
+        })
+        .collect();
+    // SAFETY: a filter of a display of the snapshot, without those
+    // applications' windows.
+    Ok(unsafe {
+        SCContentFilter::initWithDisplay_excludingApplications_exceptingWindows(
+            SCContentFilter::alloc(),
+            &display,
+            &NSArray::from_retained_slice(&hidden),
+            &NSArray::new(),
+        )
+    })
 }
 
 impl Grab for Capture {
@@ -378,30 +424,8 @@ impl Capture {
     /// Returns: an error without the Screen Recording permission.
     fn start(want: Display, w: u32, h: u32) -> Result<Capture, String> {
         let id = display_id(want).ok_or("the display is gone")?;
-        let content = shareable()?;
-        // SAFETY: plain reads of the snapshot.
-        let display = unsafe { content.displays() }
-            .iter()
-            .find(|d| unsafe { d.displayID() } == id)
-            .ok_or("the display cannot be captured")?;
-        let own = std::process::id() as i32;
-        // SAFETY: plain reads of the snapshot.
-        let kyokai: Vec<Retained<SCRunningApplication>> = unsafe { content.applications() }
-            .iter()
-            .filter(|a| unsafe {
-                a.processID() == own || a.bundleIdentifier().to_string() == BUNDLE_ID
-            })
-            .collect();
-        // SAFETY: a filter of a display of the snapshot, without those
-        // applications' windows.
-        let filter = unsafe {
-            SCContentFilter::initWithDisplay_excludingApplications_exceptingWindows(
-                SCContentFilter::alloc(),
-                &display,
-                &NSArray::from_retained_slice(&kyokai),
-                &NSArray::new(),
-            )
-        };
+        let show = crate::video::show_kyokai();
+        let filter = filter(id, show)?;
         // SAFETY: plain setters of a new configuration.
         let config = unsafe {
             let config = SCStreamConfiguration::new();
@@ -448,11 +472,28 @@ impl Capture {
             _output: output,
             shared,
             seen: 0,
+            display: id,
+            show,
         })
     }
 
     /// Waits up to `timeout` for a picture newer than the last one taken.
+    /// Side effects: when the host user changed whether capture sees
+    /// Kyokai's windows, the stream takes the new filter first (one try per
+    /// change).
     fn next(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got {
+        let show = crate::video::show_kyokai();
+        if show != self.show {
+            self.show = show;
+            if let Ok(f) = filter(self.display, show) {
+                // SAFETY: the stream this capture started takes a filter of
+                // the same display.
+                let _ = finished(|done| unsafe {
+                    self.stream
+                        .updateContentFilter_completionHandler(&f, Some(done))
+                });
+            }
+        }
         let seen = self.seen;
         let Ok(latest) = self.shared.latest.lock() else {
             return Got::Lost;
@@ -1268,6 +1309,27 @@ impl Desktop for Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Kyokai's windows (this process, the app) are left out of capture
+    /// while the host user hides them, and only theirs.
+    #[test]
+    fn capture_leaves_out_kyokai_only_while_hidden() {
+        let own = 4242;
+        let cases = [
+            (own, "", false, true),
+            (17, BUNDLE_ID, false, true),
+            (17, "com.apple.finder", false, false),
+            (own, "", true, false),
+            (17, BUNDLE_ID, true, false),
+        ];
+        for (pid, bundle, show, out) in cases {
+            assert_eq!(
+                left_out(pid, bundle, own, show),
+                out,
+                "{pid} {bundle} {show}"
+            );
+        }
+    }
 
     #[test]
     fn named_keys_and_scan_codes_reach_the_same_mac_keys() {

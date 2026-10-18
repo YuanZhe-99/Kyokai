@@ -78,6 +78,11 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | key frame | 关键帧 |
 | tile (HEVC picture partition) | 图块 |
 | patent grant | 专利授权 |
+| codec choice / codec offer | 编码选择 / 编码清单 |
+| direct (path) | 直连 |
+| listener | 监听 |
+| parameter set (H.264, HEVC) | 参数集 |
+| media engine (Apple silicon) | 媒体引擎 |
 
 ## 6. 审阅清单
 

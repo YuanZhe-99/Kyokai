@@ -6,7 +6,7 @@ import "strings"
 // Version is the product version. mygo.json must carry the same value
 // (checked by TestManifestMatches); release tags are "v" + Version. The Rust
 // core has no version of its own: its hosts pass this one when they start it.
-const Version = "0.1.2"
+const Version = "0.1.3"
 
 // Older reports whether version a ("0.1.0", "v0.1.2") is older than b.
 func Older(a, b string) bool {

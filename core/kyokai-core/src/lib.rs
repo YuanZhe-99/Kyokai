@@ -10,6 +10,7 @@ mod about;
 mod access;
 mod agent;
 mod ai;
+mod annexb;
 mod auth;
 mod backup;
 mod clipboard;
@@ -32,6 +33,8 @@ mod session;
 mod soft;
 mod store;
 mod video;
+#[cfg(target_os = "macos")]
+mod vt;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -225,7 +228,10 @@ pub unsafe extern "C" fn kyokai_media_read(
 /// (`media::packet::CONTROL` + JSON) for the host.
 /// Inputs: `ptr`/`len` — the packet, borrowed for the call.
 /// Returns: 0; -1 for a malformed packet; -2 when there is no such session
-/// or it is not taking messages (full or ended).
+/// or it ended; -3 when a pointer move was left out because the session is
+/// behind.
+/// Notes: any message but a pointer move waits until the session takes it,
+/// so it blocks while the session is behind; call it outside a Tokio runtime.
 ///
 /// # Safety
 /// `ptr` points to `len` readable bytes.
@@ -248,9 +254,24 @@ pub unsafe extern "C" fn kyokai_media_write(session: u64, ptr: *const u8, len: u
             .ok()
             .and_then(|c| c.as_ref()?.ctx.sessions.media(session))
             .map(|(_, tx)| tx);
+        // A pointer move may be left out when the session is behind (a
+        // newer one follows); any other message waits for room, so a click
+        // or a key is never lost. The caller is the engine's media thread,
+        // outside any runtime.
+        let hover = msg["type"] == "input"
+            && msg["event"]["kind"] == "pointer"
+            && msg["event"]["action"] == "move";
         match sender {
-            Some(tx) if tx.try_send(msg).is_ok() => 0,
-            _ => -2,
+            None => -2,
+            Some(tx) if hover => match tx.try_send(msg) {
+                Ok(()) => 0,
+                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => -3,
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => -2,
+            },
+            Some(tx) => match tx.blocking_send(msg) {
+                Ok(()) => 0,
+                Err(_) => -2,
+            },
         }
     })
     .unwrap_or(-2)
@@ -781,6 +802,15 @@ fn call(input: &[u8]) -> Result<Value, String> {
             None => Err("this engine has no session agent".into()),
         },
         "store.start_over" => start_over().map(|kept| json!({"kept": kept})),
+        "capture.show" => {
+            let show = req.params["show"].as_bool().ok_or("bad capture setting")?;
+            video::set_show_kyokai(show);
+            // In the helper the session agent captures: it follows too.
+            if let Some(link) = agent::link() {
+                link.show_kyokai(show);
+            }
+            Ok(json!({}))
+        }
         "permission.request" => {
             let name = req.params["name"].as_str().ok_or("bad permission")?;
             request_permission(name).map(|granted| json!({"granted": granted}))

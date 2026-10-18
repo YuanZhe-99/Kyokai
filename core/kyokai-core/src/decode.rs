@@ -21,6 +21,9 @@ enum Decoder {
         height: u32,
         nv12: Vec<u8>,
     },
+    /// VideoToolbox's H.264 and HEVC.
+    #[cfg(target_os = "macos")]
+    Vt(crate::vt::Decoder),
 }
 
 /// A decoder kept between calls.
@@ -28,7 +31,7 @@ struct Kept(Decoder);
 
 // SAFETY: the Media Foundation decoder is created in the multithreaded
 // apartment, whose objects may be called from any of its threads; libvpx
-// and libaom decoders keep no thread affinity; the GUI
+// and libaom decoders and VideoToolbox sessions keep no thread affinity; the GUI
 // drives each decoder from one goroutine at a time (locked to an OS thread
 // it initialized), and the map's lock serializes every call.
 unsafe impl Send for Kept {}
@@ -63,6 +66,10 @@ pub fn open(start: &[u8]) -> Result<u64, String> {
             height: s.height,
             nv12: Vec::new(),
         },
+        #[cfg(target_os = "macos")]
+        name if crate::vt::Codec::from_name(name).is_some() => Decoder::Vt(
+            crate::vt::Decoder::new(crate::vt::Codec::from_name(name).expect("checked")),
+        ),
         other => return Err(format!("no decoder for {other}")),
     };
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -116,6 +123,8 @@ pub fn decode(id: u64, frame: &[u8], rgba: &mut Vec<u8>) -> Result<Option<(u32, 
             );
             Ok(Some((w, h)))
         }
+        #[cfg(target_os = "macos")]
+        Decoder::Vt(dec) => dec.decode(frame, rgba),
     }
 }
 

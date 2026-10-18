@@ -68,8 +68,8 @@ when `SCREENSHOT_DIR` is set.
   administrator prompt and what moves along; switching runs in the background with a toast
   ([run-modes.md](run-modes.md)); Windows and macOS. Diagnostics shows the mode in use.
 - **Settings:** General (language, appearance, open at login — off by default, hide Kyokai from
-  screen capture — on by default, applied to the main window and every viewer at once, close
-  button),
+  screen capture — on by default, applied to the main window and every viewer at once and told
+  to the engine, whose macOS capture follows it, close button),
   Device identity (Device ID, fingerprint; back up and restore with a passphrase through a file
   dialog; reset, after a warning), Access (permanent password: set, change or remove; Accepted passwords: Temporary,
   Permanent or Both; Connect without asking, on by default, and below it "With a correct
@@ -94,12 +94,15 @@ when `SCREENSHOT_DIR` is set.
   tab (×) disconnects. A tab dragged onto another Kyokai window's tabs moves there; dropped
   outside Kyokai, or with its ⧉, it gets a window of its own, which closes with its last tab;
   closing such a window disconnects its tabs. Keys grabbed for a window go to the tab shown.
-- The picture is scaled to fit on black, the host's pointer marked with a small ring, and a status
-  line: the Device ID, the display by number when the host has several, quality preset,
-  frame-rate cap ("30 fps"), Full colour, size, codec, frame rate, bitrate and the host's measured
-  delay — or, for the test pattern of a host that may not record its screen, "this is a
-  placeholder picture" — Pointer (shows or hides the ring, remembered for every viewer), AI
-  (collapses the AI panel) and Full screen. With `control-input`, a bar at the top with Lock
+- The picture is scaled to fit on black, the host's pointer marked with a small ring that follows
+  the mouse, and a status line: the Device ID, the display by number when the host has several,
+  quality preset, frame-rate cap ("30 fps"), Codec (Auto and what both computers do, when there is
+  a choice), Full colour, Direct or Relayed (Relayed with a hint to turn on direct connections on
+  both devices), size, codec, frame rate, bitrate and the host's measured delay, whose tooltip
+  shows where the time goes (the host's encoding, the network, this computer's decoding and
+  drawing, the frame rate against the host's target) — or, for the test pattern of a host that may
+  not record its screen, "this is a placeholder picture" — Pointer (shows or hides the ring,
+  remembered for every viewer), AI (collapses the AI panel) and Full screen. With `control-input`, a bar at the top with Lock
   screen, Ctrl+Alt+Del (helper modes), the Block their keyboard and mouse and Privacy mode
   switches (each with its label beside it) and, on Windows, the keyboard mode (Map, Translate,
   Legacy; remembered for every viewer); the mouse, the wheel and the keyboard on the picture go to
@@ -136,7 +139,8 @@ when `SCREENSHOT_DIR` is set.
 
 - Menu: the Device ID (disabled), Stop AI task while one is in progress (the emergency stop), Show
   Kyokai, Quit Kyokai. It never shows the password.
-- Kyokai's windows are excluded from screen capture, so neither a viewer nor an AI task sees them.
+- Kyokai's windows are excluded from screen capture, so neither a viewer nor an AI task sees them,
+  unless Settings' Hide Kyokai from capture is off.
 - Closing the window hides it to the tray and says so the first time; without a tray, or with
   "Quit" chosen for the close button, closing quits. Quitting the app itself (its menu, the Dock,
   logging out or shutting down) always quits.

@@ -1,7 +1,6 @@
 package gui
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,6 +32,7 @@ const (
 	packetCursor     byte = 7
 	packetDisplays   byte = 8
 	packetActions    byte = 9
+	packetCodecs     byte = 11
 )
 
 // hostActions are the session actions the host offers (media ACTIONS),
@@ -48,6 +48,8 @@ type hostStats struct {
 	DelayMS int `json:"delay_ms"`
 	FPS     int `json:"fps"`
 	Bitrate int `json:"bitrate"`
+	// EncodeMS is how long the host takes from a picture to its frame.
+	EncodeMS int `json:"encode_ms"`
 }
 
 // hostPointer is where the host's pointer is (media CURSOR), as fractions
@@ -112,29 +114,43 @@ type viewer struct {
 	conn net.Conn
 	// out queues control packets (input) for the media connection's writer.
 	out chan []byte
+	// moved wakes the writer for a pending pointer move (viewerinput.go).
+	moved chan struct{}
 
-	mu      sync.Mutex
-	start   videoStart
-	bm      *ui.Bitmap
-	imgs    [2]*image.RGBA // the one on screen and the one being filled
-	front   int
+	mu    sync.Mutex
+	start videoStart
+	bm    *ui.Bitmap
+	// The stream's pictures: the one the bitmap shows (-1: none of them,
+	// as a new stream starts), the newest decoded one waiting for the main
+	// thread (-1: none), and the third, which the next frame decodes into.
+	imgs    [3]*image.RGBA
+	shown   int
+	ready   int
+	readyAt time.Time
 	state   string // "", or why nothing shows (ended, unsupported)
-	fps     float64
-	kbps    float64
-	frames  int
-	bytes   int
-	counted time.Time
-	host    hostStats
+	// The last second's frame rate, bitrate, and decode and draw times;
+	// the counts and sums of the second going on.
+	fps, kbps, decodeMS, drawMS float64
+	frames, drawn, bytes        int
+	decoding, drawing           time.Duration
+	counted                     time.Time
+	host                        hostStats
 	// The viewer's quality choice: preset index (speed, balanced, best),
 	// frame-rate cap and full colour (4:4:4).
 	preset int
 	fpsCap string
 	full   bool
+	// The codecs the host offers ({codecs}, media CODECS) and the viewer's
+	// choice among them ("auto" or a codec's name).
+	offer []string
+	codec string
 	// Input: the picture element's box, whether this session may control
 	// input, and the keys sent down.
 	box     ui.Rect
 	control bool
 	held    map[ui.Key]bool
+	// The newest pointer move the writer has not sent yet.
+	move *inputEvent
 	// The keyboard grab (viewerinput.go): the mode the core grabs keys in for
 	// this window ("" for none), whether the core refused to, and the
 	// window's native handle the grab is for.
@@ -195,7 +211,7 @@ func (a *App) connectDevice(device string, about localapi.About, want []string) 
 // newViewer makes a device's connection, not yet dialed, and registers it.
 func (a *App) newViewer(device string, about localapi.About, want []string) *viewer {
 	v := &viewer{app: a, device: device, title: deviceTitle(about, device), want: want,
-		counted: time.Now(), out: make(chan []byte, 256), preset: 1, fpsCap: "30 fps"}
+		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto"}
 	a.mu.Lock()
 	a.viewers[device] = v
 	a.mu.Unlock()
@@ -368,22 +384,15 @@ func (v *viewer) pump() {
 	v.mu.Unlock()
 	defer conn.Close()
 	_ = localapi.WritePacket(conn, append([]byte{packetControl}, `{"type":"key-frame"}`...))
+	// The host follows what the bar shows, also for a new session.
+	for _, p := range v.choicePackets() {
+		_ = localapi.WritePacket(conn, p)
+	}
 	// The writer stops with the pump; v.out stays open, so a late input
 	// event never sends on a closed channel.
 	done := make(chan struct{})
 	defer close(done)
-	go func() {
-		for {
-			select {
-			case p := <-v.out:
-				if localapi.WritePacket(conn, p) != nil {
-					return
-				}
-			case <-done:
-				return
-			}
-		}
-	}()
+	go v.writer(conn, done)
 	var buf []byte
 	for {
 		p, err := localapi.ReadPacket(conn, buf)
@@ -401,13 +410,22 @@ func (v *viewer) pump() {
 			if json.Unmarshal(p[1:], &s) != nil || s.Width <= 0 || s.Height <= 0 || s.Width > 16384 || s.Height > 16384 {
 				continue
 			}
+			// The same stream described again (a key frame was asked
+			// for): a new group of pictures, which the decoder takes as
+			// it is, without a blank picture between.
+			v.mu.Lock()
+			same := dec != nil && v.start == s
+			v.mu.Unlock()
+			if same {
+				continue
+			}
 			if dec != nil {
 				dec.Close()
 				dec = nil
 			}
 			d, err := lib.OpenDecoder(p[1:])
 			if err != nil {
-				v.setState(L.ViewerUnsupported(s.Codec))
+				v.setState(L.ViewerUnsupported(codecLabel(s.Codec)))
 				continue
 			}
 			dec = d
@@ -418,6 +436,17 @@ func (v *viewer) pump() {
 				v.update(func() {
 					v.mu.Lock()
 					v.displays = d
+					v.mu.Unlock()
+				})
+			}
+		case packetCodecs:
+			var o struct {
+				Codecs []string `json:"codecs"`
+			}
+			if json.Unmarshal(p[1:], &o) == nil {
+				v.update(func() {
+					v.mu.Lock()
+					v.offer = o.Codecs
 					v.mu.Unlock()
 				})
 			}
@@ -453,62 +482,78 @@ func (v *viewer) pump() {
 				continue
 			}
 			if dec != nil {
-				v.show(dec, p[10:], binary.BigEndian.Uint64(p[2:10]))
+				v.show(dec, p[10:])
 			}
 		}
 	}
 }
 
-// begin prepares the pictures for a new stream.
+// begin prepares the pictures for a new stream, at once on the pump's
+// goroutine, so the stream's first frame (its key frame) finds them; the
+// bitmap keeps the old picture until the first new one is shown.
 func (v *viewer) begin(s videoStart) {
-	v.update(func() {
-		v.mu.Lock()
-		defer v.mu.Unlock()
-		v.start = s
-		v.state = ""
-		r := image.Rect(0, 0, s.Width, s.Height)
-		v.imgs = [2]*image.RGBA{image.NewRGBA(r), image.NewRGBA(r)}
-		v.bm = ui.NewBitmap(v.imgs[0])
-		v.front = 0
-	})
+	r := image.Rect(0, 0, s.Width, s.Height)
+	imgs := [3]*image.RGBA{image.NewRGBA(r), image.NewRGBA(r), image.NewRGBA(r)}
+	v.mu.Lock()
+	v.start, v.imgs, v.shown, v.ready = s, imgs, -1, -1
+	v.mu.Unlock()
+	v.setState("")
 }
 
-// show decodes one frame into the hidden picture, then swaps it in on the
-// main thread. Frames the decoder holds (or cannot decode) show nothing.
-func (v *viewer) show(dec *core.Decoder, data []byte, _ uint64) {
+// show decodes one frame into the picture neither shown nor waiting, which
+// becomes the waiting one, and has the main thread show the newest one
+// waiting: decoding never waits for drawing, and a picture not drawn yet
+// gives way to a newer one. Frames the decoder holds (or cannot decode)
+// show nothing.
+// Notes: the bitmap takes a picture without a copy, so the one shown is
+// never decoded into.
+func (v *viewer) show(dec *core.Decoder, data []byte) {
 	v.mu.Lock()
-	if v.bm == nil {
-		v.mu.Unlock()
-		return
+	free := 0
+	for free == v.shown || free == v.ready {
+		free++
 	}
-	back := v.imgs[1-v.front]
+	pic := v.imgs[free]
 	v.bytes += len(data)
 	v.mu.Unlock()
-	w, h, ok, err := dec.Decode(data, back.Pix)
-	if err != nil || !ok || w != back.Rect.Dx() || h != back.Rect.Dy() {
+	if pic == nil {
 		return
 	}
+	began := time.Now()
+	w, h, ok, err := dec.Decode(data, pic.Pix)
+	if err != nil || !ok || w != pic.Rect.Dx() || h != pic.Rect.Dy() {
+		return
+	}
+	decoded := time.Now()
 	v.mu.Lock()
 	v.frames++
-	if el := time.Since(v.counted); el >= time.Second {
+	v.decoding += decoded.Sub(began)
+	v.ready, v.readyAt = free, decoded
+	if el := decoded.Sub(v.counted); el >= time.Second {
 		v.fps = float64(v.frames) / el.Seconds()
 		v.kbps = float64(v.bytes) * 8 / 1000 / el.Seconds()
-		v.frames, v.bytes, v.counted = 0, 0, time.Now()
+		v.decodeMS = v.decoding.Seconds() * 1000 / float64(max(v.frames, 1))
+		v.drawMS = v.drawing.Seconds() * 1000 / float64(max(v.drawn, 1))
+		v.frames, v.drawn, v.bytes, v.counted = 0, 0, 0, decoded
+		v.decoding, v.drawing = 0, 0
 	}
 	v.mu.Unlock()
-	done := make(chan struct{})
 	v.update(func() {
-		defer close(done)
 		v.mu.Lock()
 		defer v.mu.Unlock()
-		if v.bm == nil {
-			return
+		if v.ready < 0 {
+			return // a newer update showed it already
 		}
-		v.bm.Update(back)
-		v.front = 1 - v.front
+		img := v.imgs[v.ready]
+		if v.bm == nil {
+			v.bm = ui.NewBitmap(img)
+		} else {
+			v.bm.Update(img)
+		}
+		v.drawing += time.Since(v.readyAt)
+		v.drawn++
+		v.shown, v.ready = v.ready, -1
 	})
-	// The hidden picture is reused only after the bitmap took this one.
-	<-done
 }
 
 func (v *viewer) setState(s string) {
@@ -530,12 +575,17 @@ func (v *viewer) view(c *ui.Context) {
 		return
 	}
 	v.mu.Lock()
-	bm, state, start, fps, kbps, host := v.bm, v.state, v.start, v.fps, v.kbps, v.host
-	preset, fpsCap, full, withAI, ptr, displays, actions := v.preset, v.fpsCap, v.full, v.ai.aiShown(), v.pointer, v.displays, v.actions
+	bm, state, start := v.bm, v.state, v.start
+	withAI, ptr, actions := v.ai.aiShown(), v.pointer, v.actions
+	b := bar{start: start, fps: v.fps, kbps: v.kbps, decodeMS: v.decodeMS, drawMS: v.drawMS, host: v.host,
+		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec}
 	v.mu.Unlock()
-	showPtr := v.app == nil || v.app.showPointer()
-	if !showPtr {
+	b.showPtr = v.app == nil || v.app.showPointer()
+	if !b.showPtr {
 		ptr.Visible = false
+	}
+	if v.app != nil {
+		b.path = v.app.pathTo(v.device)
 	}
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
 		if actions != nil {
@@ -547,7 +597,7 @@ func (v *viewer) view(c *ui.Context) {
 				v.aiPanel(c)
 			}
 		})
-		v.statusBar(c, start, fps, kbps, host, preset, fpsCap, full, displays, showPtr)
+		v.statusBar(c, b)
 	})
 }
 
@@ -709,10 +759,44 @@ func (v *viewer) actionBar(c *ui.Context, a hostActions) {
 	})
 }
 
+// bar is what the status bar shows: the stream and its numbers, the
+// viewer's choices, and the network's path to the device.
+type bar struct {
+	start                       videoStart
+	fps, kbps, decodeMS, drawMS float64
+	host                        hostStats
+	preset                      int
+	fpsCap                      string
+	full, showPtr               bool
+	displays                    hostDisplays
+	offer                       []string
+	codec                       string
+	// path is the device's entry in the network status ("" Path when the
+	// network lists no route to it).
+	path localapi.NetworkDevice
+}
+
+// pathTo is how the network reaches a device now: direct or through the
+// relay, with its latency.
+func (a *App) pathTo(device string) localapi.NetworkDevice {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.status == nil {
+		return localapi.NetworkDevice{}
+	}
+	for _, d := range a.status.Network.Devices {
+		if d.DeviceID == device {
+			return d
+		}
+	}
+	return localapi.NetworkDevice{}
+}
+
 // statusBar is the Device ID, the quality controls and the stream's
-// numbers.
-func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, host hostStats, preset int, fpsCap string, full bool, displays hostDisplays, showPtr bool) {
+// numbers, with the path to the device and where the time goes.
+func (v *viewer) statusBar(c *ui.Context, b bar) {
 	t := c.Theme()
+	start, fps, kbps, host, preset, fpsCap, full, displays, showPtr, offer, codec := b.start, b.fps, b.kbps, b.host, b.preset, b.fpsCap, b.full, b.displays, b.showPtr, b.offer, b.codec
 	ui.Row(c).FillWidth().Padding(6, 12).Gap(16).AlignItems(ui.Center).Background(t.Surface).Children(func() {
 		ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).Grow(1)
 		if n := len(displays.List); n > 1 {
@@ -732,6 +816,19 @@ func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, h
 		if ui.Select(c.Key("fps"), &fpsCap, fpsCaps).Width(100).Changed() {
 			v.setQuality(preset, fpsCap, full)
 		}
+		if len(offer) > 1 {
+			names := append([]string{"auto"}, offer...)
+			labels := make([]string, len(names))
+			for i, n := range names {
+				labels[i] = codecLabel(n)
+			}
+			picked := codecLabel(codec)
+			if ui.Select(c.Key("codec"), &picked, labels).Width(150).Tooltip(L.ViewerCodecHint()).Changed() {
+				if i := slices.Index(labels, picked); i >= 0 {
+					v.setCodec(names[i])
+				}
+			}
+		}
 		labelled(c, func() {
 			if ui.Switch(c.Key("full-colour"), &full).Label(L.QualityFullColour()).Changed() {
 				v.setQuality(preset, fpsCap, full)
@@ -741,12 +838,19 @@ func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, h
 			// The host sends its test pattern: it may not record its screen.
 			ui.Text(c, L.ViewerPlaceholder()).FontSize(sizeSmall).TextColor(t.Warning)
 		} else if start.Width > 0 {
-			codec := start.Codec
+			codec := codecLabel(start.Codec)
 			if start.I444 {
 				codec += " 4:4:4"
 			}
+			switch b.path.Path {
+			case "direct":
+				ui.Text(c, L.PathDirect()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			case "relay":
+				ui.Text(c, L.PathRelay()).FontSize(sizeSmall).TextColor(t.Warning).Tooltip(L.ViewerRelayedHint())
+			}
 			ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s · %d ms", start.Width, start.Height, codec, fps, kbps, host.DelayMS)).
-				FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
+				FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted).
+				Tooltip(L.ViewerTimes(host.EncodeMS, host.DelayMS, int(b.decodeMS+0.5), int(b.drawMS+0.5), int(fps+0.5), host.FPS))
 		}
 		if v.app != nil {
 			labelled(c, func() {

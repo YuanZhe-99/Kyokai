@@ -1,5 +1,25 @@
 # Version history
 
+## 0.1.3 (2026-10-18)
+
+- The viewer: the other computer's pointer follows the mouse (moves without a button held were
+  dropped, so the pointer moved only on clicks), reported 60 times a second; a Codec choice (Auto
+  and what both computers do); Direct or Relayed; and a tooltip on the numbers with where the
+  time goes (the host's encoding, the network, this computer's decoding and drawing).
+- macOS: H.264 and HEVC in hardware through VideoToolbox, on a Mac host and in a Mac viewer, so
+  sessions with a Mac no longer fall back to software VP9; Hide Kyokai from capture now decides
+  what Kyokai's own capture and the AI's screenshots see, live.
+- Networking: with Try direct connections on, the node listens (TCP and UDP, port 47311–47320),
+  so devices on the same network connect directly instead of through the server's relay; with it
+  off, no direct connection is made either way.
+- Lower delay: pixel conversion four to five times faster; a picture is taken only when the session
+  can send it; a viewer that falls behind goes on from the next key frame instead of decoding
+  broken pictures; decoding no longer waits for drawing; the stream's first picture is no longer
+  lost when the viewer opens. Clicks and keys are never dropped behind pointer moves.
+- Wire protocol 7 (a 0.1.3 device connects only to 0.1.3), FFI ABI 4, local API 2.
+- Checked (2026-10-18): MyGo v0.5.5, EasyTier v2.7.0 (commit `8b7f1f0`), RustDesk 1.5.0, vcpkg
+  2026.07.29 and Rust 1.99.1 are the latest; checked, unchanged.
+
 ## 0.1.2 (2026-10-18)
 
 - macOS: the Dock icon is shown only while a Kyokai window is open; with only the menu bar icon

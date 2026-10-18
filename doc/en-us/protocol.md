@@ -2,7 +2,7 @@
 
 A controller reaches a host's engine over the EasyTier data plane: TCP to the host's virtual IPv4
 address, port 47310 ([networking.md](networking.md)). EasyTier is an untrusted pipe, so the session
-is authenticated and encrypted end to end on top of it. The protocol version is 6 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes and files on the clipboard, 5 asking without a password, 6 the host's one AI record and the shared draft).
+is authenticated and encrypted end to end on top of it. The protocol version is 7 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes and files on the clipboard, 5 asking without a password, 6 the host's one AI record and the shared draft, 7 the codec offer and the viewer's codec, and the host's encode time in its stats).
 
 ## Framing
 
@@ -70,14 +70,21 @@ chunk index and count (u16 each), flags (bit 0: key frame) and the presentation 
 microseconds (u64), all big-endian, then a part of the frame. A frame is split into as many chunks
 as it needs and put back together on the other side; a chunk of a newer frame drops an unfinished
 older one (latest frame wins), and frames over 64 MiB are dropped. As the session starts the
-controller sends `{"type": "codecs", decode, i444}`: the codecs it decodes (`h264`, `hevc` and
-`vp9` through Media Foundation, `vp9-sw`, `av1` and `vp8` in software) and those it decodes in
-full colour (`vp9-sw`, `av1`; a field older builds leave out). Before its first frame the host
+controller sends `{"type": "codecs", decode, i444}`: the codecs it decodes (`h264` and `hevc`
+through Media Foundation or VideoToolbox, `vp9` through Media Foundation, `vp9-sw`, `av1` and `vp8`
+in software) and those it decodes in
+full colour (`vp9-sw`, `av1`; a field older builds leave out). The host answers with
+`{"type": "codec-offer", codecs}`: what it can send that the controller decodes, in its order; the
+controller may choose one with `{"type": "codec", codec}` (`auto`, or a name of the offer; another
+name changes nothing), and a resumed controller sends its viewer's `quality` and `codec` again
+before its `codecs`. Before its first frame the host
 sends `{"type": "video-start", codec, width, height, i444}` (`i444` only when true); the controller may send `{"type":
-"key-frame"}` (the host then describes the stream again and sends a key frame) and, with
-`control-input`, `{"type": "input", event}`. While it sends video the host sends `{"type":
+"key-frame"}` (the host then describes the stream again and sends a key frame) — its GUI's first
+request, and the controller's own while its queue leaves frames out (at most once a second) — and,
+with `control-input`, `{"type": "input", event}`. While it sends video the host sends `{"type":
 "test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":
-"stats", delay_ms, fps, bitrate}` ([computer-use.md](computer-use.md)); the controller may set
+"stats", delay_ms, fps, bitrate, encode_ms}` (`encode_ms`: the last second's frames' average from
+picture to frame) ([computer-use.md](computer-use.md)); the controller may set
 the quality with `{"type": "quality", preset, fps, i444}`, where `i444` asks for full colour
 (4:4:4) where both sides do it. With more than one display the host also sends `{"type": "displays", list, current}` (each
 display's place and size, the primary first) and the controller may ask for another with

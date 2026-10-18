@@ -24,6 +24,11 @@ const SECRET_NAME: &str = "network";
 /// The only port Kyokai uses inside the virtual network; the data plane's
 /// whitelists drop everything else.
 pub const KYOKAI_PORT: u16 = 47_310;
+/// The ports the node may listen on for direct connections (TCP and UDP,
+/// the first free one): with direct connections on, devices on the same
+/// network reach each other by their local addresses, which hole punching
+/// through a shared router often cannot.
+const LISTEN_PORTS: std::ops::RangeInclusive<u16> = 47_311..=47_320;
 /// Namespace of instance ids: `instance_id = UUIDv5(KYOKAI_NS, device id)`.
 const KYOKAI_NS: Uuid = Uuid::from_u128(0x6b796f6b_6169_4e00_8000_000000005331);
 /// Server URL schemes the minimal EasyTier build connects with.
@@ -218,7 +223,8 @@ impl Network {
         // EasyTier builds its peer manager on the current Tokio runtime.
         let _rt = self.rt.enter();
         let direct = self.settings.direct || self.always_direct;
-        let node = match config(&self.settings, &self.device_id, direct)
+        let listen = if direct { free_port() } else { None };
+        let node = match config(&self.settings, &self.device_id, direct, listen)
             .and_then(create_native_instance)
         {
             Ok(node) => node,
@@ -415,10 +421,28 @@ pub fn instance_id(device_id: &str) -> Uuid {
     Uuid::new_v5(&KYOKAI_NS, device_id.as_bytes())
 }
 
-/// Builds the node's configuration: no TUN, DHCP, no listeners, data plane
-/// whitelists that admit only Kyokai's port, and without `direct` no hole
-/// punching or UPnP (nothing that waits for unsolicited packets).
-fn config(s: &Settings, device_id: &str, direct: bool) -> anyhow::Result<TomlConfig> {
+/// A port of LISTEN_PORTS free for both TCP and UDP on every IPv4 address,
+/// or None: EasyTier refuses to start when a listener it was given cannot
+/// bind, so a second engine on this computer runs without one.
+fn free_port() -> Option<u16> {
+    LISTEN_PORTS.into_iter().find(|&port| {
+        std::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok()
+            && std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok()
+    })
+}
+
+/// Builds the node's configuration: no TUN, DHCP, data plane whitelists that
+/// admit only Kyokai's port. With `direct`, hole punching, UPnP and direct
+/// connections, preferring UDP, and listeners on `listen` (TCP and UDP) so
+/// that devices on the same network connect directly; without it nothing
+/// listens or waits for unsolicited packets, and no direct connection is
+/// made either way (`disable_p2p`), so traffic goes through the server.
+fn config(
+    s: &Settings,
+    device_id: &str,
+    direct: bool,
+    listen: Option<u16>,
+) -> anyhow::Result<TomlConfig> {
     // JSON string literals are valid TOML basic strings, which keeps user
     // input from changing the document's structure.
     let q = |v: &str| serde_json::to_string(v).unwrap_or_default();
@@ -433,7 +457,7 @@ instance_name = "kyokai"
 instance_id = "{id}"
 hostname = "Kyokai-{device_id}"
 dhcp = true
-listeners = []
+listeners = [{listeners}]
 tcp_whitelist = ["{KYOKAI_PORT}"]
 udp_whitelist = ["{KYOKAI_PORT}"]
 {stun}
@@ -444,12 +468,19 @@ network_secret = {secret}
 {peers}
 [flags]
 no_tun = true
+disable_p2p = {off}
+default_protocol = "{protocol}"
 disable_udp_hole_punching = {off}
 disable_tcp_hole_punching = {off}
 disable_sym_hole_punching = {off}
 disable_upnp = {off}
 "#,
         off = !direct,
+        protocol = if direct { "udp" } else { "tcp" },
+        listeners = match listen.filter(|_| direct) {
+            Some(port) => format!(r#""tcp://0.0.0.0:{port}", "udp://0.0.0.0:{port}""#),
+            None => String::new(),
+        },
         // STUN only serves hole punching; its UDP sockets on every address
         // would make Windows Firewall ask too.
         stun = if direct {
@@ -554,7 +585,7 @@ mod tests {
         use easytier_core::config::toml::ConfigLoader;
         let name = "n\"\nnetwork_secret = \"x";
         let s = settings(&["tcp://a:1"], name, "p\"w\\");
-        let cfg = config(&s, "100000002", false).unwrap();
+        let cfg = config(&s, "100000002", false, None).unwrap();
         let identity = cfg.get_network_identity();
         assert_eq!(identity.network_name, name);
         assert_eq!(identity.network_secret.as_deref(), Some("p\"w\\"));
@@ -574,20 +605,52 @@ mod tests {
         use easytier_core::config::toml::ConfigLoader;
         let s = settings(&["tcp://a:1"], "n", "p");
         for direct in [false, true] {
-            let f = config(&s, "100000002", direct).unwrap().get_flags();
-            // Off: nothing waits for unsolicited packets, so no firewall prompt.
+            let cfg = config(&s, "100000002", direct, Some(47_311)).unwrap();
+            let f = cfg.get_flags();
+            // Off: nothing waits for unsolicited packets, so no firewall
+            // prompt, and no direct connection either way.
             assert_eq!(f.disable_udp_hole_punching, !direct);
             assert_eq!(f.disable_tcp_hole_punching, !direct);
             assert_eq!(f.disable_sym_hole_punching, !direct);
             assert_eq!(f.disable_upnp, !direct);
-            let stun = config(&s, "100000002", direct).unwrap().get_stun_servers();
+            assert_eq!(f.disable_p2p, !direct);
+            assert_eq!(f.default_protocol, if direct { "udp" } else { "tcp" });
+            let stun = cfg.get_stun_servers();
             assert_eq!(
                 stun.is_some_and(|v| v.is_empty()),
                 !direct,
                 "no STUN without direct paths"
             );
+            // On: devices on the same network reach the listeners directly.
+            let listeners: Vec<String> = cfg
+                .get_listeners()
+                .unwrap_or_default()
+                .iter()
+                .map(|u| u.to_string())
+                .collect();
+            let want: &[&str] = if direct {
+                &["tcp://0.0.0.0:47311", "udp://0.0.0.0:47311"]
+            } else {
+                &[]
+            };
+            assert_eq!(listeners, want);
             assert!(f.no_tun);
         }
+        // No free port: direct paths without a listener.
+        let cfg = config(&s, "100000002", true, None).unwrap();
+        assert!(cfg.get_listeners().unwrap_or_default().is_empty());
+    }
+
+    /// The port check finds a port of the range, and skips one taken.
+    #[test]
+    fn a_taken_listen_port_is_skipped() {
+        let Some(first) = free_port() else {
+            return eprintln!("skipped: no port of the range is free");
+        };
+        let _held = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, first)).unwrap();
+        let next = free_port();
+        assert_ne!(next, Some(first));
+        assert!(next.is_none_or(|p| LISTEN_PORTS.contains(&p)));
     }
 
     #[test]

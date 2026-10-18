@@ -1,7 +1,7 @@
 # 线路协议
 
 控制端经由 EasyTier 数据面连接被控端的引擎：TCP 连到被控端的虚拟 IPv4 地址、端口 47310（[networking.md](networking.md)）。
-EasyTier 是不可信的通道，所以会话在它之上做端到端的认证与加密。协议版本为 6（版本 2 加入了 AI 与剪贴板消息，版本 3 加入了会话操作，版本 4 加入了键盘模式的扫描码按键事件与剪贴板中的文件，版本 5 加入了不使用密码的请求，版本 6 加入了被控端唯一的 AI 记录与共享草稿）。
+EasyTier 是不可信的通道，所以会话在它之上做端到端的认证与加密。协议版本为 7（版本 2 加入了 AI 与剪贴板消息，版本 3 加入了会话操作，版本 4 加入了键盘模式的扫描码按键事件与剪贴板中的文件，版本 5 加入了不使用密码的请求，版本 6 加入了被控端唯一的 AI 记录与共享草稿，版本 7 加入了编码清单与查看者的编码，以及被控端统计信息中的编码时间）。
 
 ## 分帧
 
@@ -54,11 +54,14 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 
 以字节 `0x01` 开头的明文是媒体分片，而不是 JSON：帧号（u32）、分片序号与分片数（各 u16）、标志（第 0 位：关键帧）以及以微秒计的
 显示时间（u64），均为大端，之后是帧的一部分。一帧按需拆成若干分片，在另一端重新拼合；较新帧的分片会丢弃尚未拼完的旧帧
-（最新帧优先），超过 64 MiB 的帧会被丢弃。会话开始时，控制端发送 `{"type": "codecs", decode, i444}`：它能解码的编解码器（经 Media Foundation 的 `h264`、`hevc` 与
-`vp9`，软件的 `vp9-sw`、`av1` 与 `vp8`），以及其中能以全彩解码的（`vp9-sw`、`av1`；旧版本不带此字段）。
+（最新帧优先），超过 64 MiB 的帧会被丢弃。会话开始时，控制端发送 `{"type": "codecs", decode, i444}`：它能解码的编解码器（经 Media Foundation 或 VideoToolbox 的
+`h264` 与 `hevc`，经 Media Foundation 的 `vp9`，软件的 `vp9-sw`、`av1` 与 `vp8`），以及其中能以全彩解码的（`vp9-sw`、`av1`；旧版本不带此字段）。
+被控端回复 `{"type": "codec-offer", codecs}`：它能发送且控制端能解码的编码，按它的顺序；控制端可以用 `{"type": "codec", codec}`
+选择其中之一（`auto`，或清单中的名称；其他名称不改变任何东西），恢复的控制端会在发送其 `codecs` 之前再次发送查看者的 `quality` 与 `codec`。
 被控端在第一帧之前发送 `{"type": "video-start", codec, width, height, i444}`（`i444` 仅在为真时出现）；控制端可以发送
-`{"type": "key-frame"}`（被控端随后重新描述视频流并发送关键帧），在拥有 `control-input` 时还可发送 `{"type": "input", event}`。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
-回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate}`（[computer-use.md](computer-use.md)）；控制端可用
+`{"type": "key-frame"}`（被控端随后重新描述视频流并发送关键帧）——即其界面的第一次请求，以及控制端在其队列丢弃帧期间自己的请求
+（最多每秒一次）——在拥有 `control-input` 时还可发送 `{"type": "input", event}`。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
+回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate, encode_ms}`（`encode_ms`：上一秒各帧从画面到编码完成的平均时间）（[computer-use.md](computer-use.md)）；控制端可用
 `{"type": "quality", preset, fps, i444}` 设置画质，其中 `i444` 表示在双方都支持时要求全彩（4:4:4）。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用
 `{"type": "display", index}` 请求另一个显示器。发送视频期间，被控端还会在指针移动时发送 `{"type": "cursor", x, y, visible}`，即以画面比例表示的指针位置。拥有 `control-input` 时，被控端在会话开始时发送
 `{"type": "actions", ctrl_alt_del, blocked, privacy}`（阻止或隐私模式变化时也会发送），控制端可以发送 `{"type": "action", action}`，其值为 `lock`、`ctrl-alt-del`、`block`、`unblock`、

@@ -18,11 +18,17 @@ this file when the plan is complete.
 
 | Item | Scope | Done when |
 |---|---|---|
+| Pointer follows the mouse (0.1.3) | hover moves reach the host, coalesced in the viewer; the host reports its pointer every 16 ms | the ring follows a hover in a real session |
+| Direct LAN connections (0.1.3) | with direct connections on, the node listens on TCP and UDP 47311 and prefers UDP; with them off it sets `disable_p2p` | two devices on one LAN show Direct |
+| macOS capture switch (0.1.3) | "Hide Kyokai from capture" reaches the engine (and the helper's agent); the ScreenCaptureKit filter follows it, live | off shows Kyokai's windows in this Mac's video, on hides them |
+| VideoToolbox (0.1.3) | H.264 and HEVC encoding and decoding on macOS, interoperating with Media Foundation | Mac↔Mac and Mac↔Windows stream in hardware |
+| Codec choice (0.1.3) | the host offers what it can send; the viewer picks Auto or one codec (protocol 7) | each offered codec chosen in a real session |
+| Latency and frame rate (0.1.3) | faster pixel conversion; no stale or broken frames in the queues; the path and per-stage times in the viewer | on the LAN the frame-rate cap holds while a window is dragged; times recorded in platform-notes |
 | Shared AI record and draft | the host keeps one AI record that every controller sees and may steer with its permissions (done in the core); the AI prompt draft is shared live: what one controller or the host's user types reaches the host, which passes it to every other controller and its own AI page | two controllers and the host see the same task and the same draft, recorded in platform-notes |
 | macOS crash | the Mac app crashed once when a connection request came in; on 2026-10-17 requests on this Mac raised the confirmation without a crash, and no crash report was found | cause found from the crashing Mac's logs and fixed, or not seen again over the macOS pass |
-| macOS pass | done on one Mac (platform-notes): capture, permissions, input and keyboard as host, Follow Kyokai. Left: VideoToolbox H.264 / HEVC (hosts send software VP9 now), the clipboard, Background service and the login-window agent, the helper's self-disable, sleep notifications, a Mac as controller of another machine through the viewer window, a Mac host from another machine | the acceptance record's rows hold on macOS, both directions Mac ↔ Windows |
+| macOS pass | done on one Mac (platform-notes): capture, permissions, input and keyboard as host, Follow Kyokai. Left: the clipboard, Background service and the login-window agent, the helper's self-disable, sleep notifications, a Mac as controller of another machine through the viewer window, a Mac host from another machine | the acceptance record's rows hold on macOS, both directions Mac ↔ Windows |
 | OpenAI live run | the Responses adapter against the real API (fixtures and fakes only so far) | a task on a real desktop, recorded in platform-notes |
-| Viewer controls (RustDesk parity) | original size and full screen; Custom quality (quality and frame rate); codec preference (Auto / each codec) and a hardware-codec switch, which also lets a session exercise libvpx and libaom between two machines; remote cursor shown or not; per-session clipboard on/off; lock after the session ends; direct-vs-relay shown in the viewer | each control in the viewer, carried by the protocol where the host decides |
+| Viewer controls (RustDesk parity) | original size; Custom quality (quality and frame rate); a hardware-codec switch; per-session clipboard on/off; lock after the session ends | each control in the viewer, carried by the protocol where the host decides |
 | Runs still to see | the keyboard modes on a real keyboard; the GDI fallback on a machine without desktop duplication; the agent's display power request in the helper modes; a real sleep and wake (the test VM has no sleep state); a mixed-DPI setup | recorded in platform-notes |
 
 ## Decided

@@ -12,8 +12,8 @@ device, no administrator right and no custom coordination server.
 | Hostname | `Kyokai-<Device ID>` |
 | TUN | none (`no_tun`); traffic uses EasyTier's in-process data plane (smoltcp) |
 | Address | IPv4 from the network's DHCP |
-| Listeners | none |
-| Direct paths | off by default: no UDP, TCP or symmetric hole punching, no UPnP and no STUN, so the node opens only its outbound connection to the server and Windows Firewall does not ask (the NAT type then reads "unknown"); traffic goes through the server's relay. On with "Try direct connections" (`direct`), and always in the helper (see below) |
+| Listeners | none, or with direct paths TCP and UDP on every address at the first port of 47311–47320 free for both (none when all are taken, as by other engines on the computer) |
+| Direct paths | off by default: no UDP, TCP or symmetric hole punching, no UPnP, no STUN and no direct connection either way (`disable_p2p`; peers honour it), so the node opens only its outbound connection to the server and Windows Firewall does not ask (the NAT type then reads "unknown"); traffic goes through the server's relay. On with "Try direct connections" (`direct`), and always in the helper (see below): hole punching, UPnP, the listeners and direct connections, preferring UDP (`default_protocol`) |
 | Data plane whitelists | TCP and UDP port 47310 only; everything else from the network is dropped |
 | Runtime | a two-thread Tokio runtime owned by the core |
 
@@ -37,10 +37,18 @@ rules from earlier answers). STUN, which finds the NAT type for punching, does t
 start (two short-lived UDP sockets on every address, seen on this machine). So in No privileges
 the node starts with `disable_udp_hole_punching`, `disable_tcp_hole_punching`,
 `disable_sym_hole_punching`, `disable_upnp` and empty `stun_servers` and `stun_servers_v6`; it then
-holds only its TCP connection to the server, and sessions use the server's relay. The Network page's **Try direct connections**
-(`direct` in the settings, kept with them) turns punching on, accepting that Windows may ask. The
-helper always punches: its installer adds an inbound allow rule (`Kyokai helper`) for its own
-`kyokai-svc.exe`, removed with it ([run-modes.md](run-modes.md)).
+holds only its TCP connection to the server, and sessions use the server's relay; with
+`disable_p2p` it makes no direct connection to a peer that listens either, and no peer makes one
+to it. The Network page's **Try direct connections** (`direct` in the settings, kept with them)
+turns punching on and has the node listen, accepting that Windows may ask. EasyTier's direct
+connector reaches only peers that listen: it tries each of their interface addresses and their
+public address. Hole punching alone needs the shared router to send a device's packets back into
+its own network, which many do not, so two devices on one LAN went through the server's relay
+until they listened (seen 2026-10-18). Each device needs direct connections on: a device that has
+them off neither listens nor connects directly. On macOS the first direct connection on the local
+network asks for Kyokai's Local Network permission (not in the helper, a root daemon). The
+helper always punches and listens: its installer adds an inbound allow rule (`Kyokai helper`)
+for its own `kyokai-svc.exe`, removed with it ([run-modes.md](run-modes.md)).
 
 ## Status
 

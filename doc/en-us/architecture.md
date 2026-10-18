@@ -37,7 +37,7 @@ described in [run-modes.md](run-modes.md).
 | `internal/core` | purego binding to the Rust core |
 | `internal/fsutil` | Atomic writes and JSON documents |
 | `internal/version` | The single product version |
-| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and codecs (`video`, `mf` for Media Foundation, `soft` for libvpx and libaom), the input service (`input`), the viewer's keyboard grab (`keyboard`), AI tasks (`ai`: the providers, the task runtime, the desktop it drives) |
+| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and codecs (`video`, `mf` for Media Foundation, `vt` for VideoToolbox, `soft` for libvpx and libaom, `annexb` for the H.264 and HEVC framing), the input service (`input`), the viewer's keyboard grab (`keyboard`), AI tasks (`ai`: the providers, the task runtime, the desktop it drives) |
 | `core/third_party/rustdesk-codec` | RustDesk's libvpx and libaom codecs, vendored, with the static libraries vcpkg builds ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-dxgi` | RustDesk's DXGI and GDI screen capture, vendored ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-qos` | RustDesk's video QoS, vendored |
@@ -57,7 +57,7 @@ integers and pointers only:
 | `kyokai_free(ptr, len)` | Frees a response buffer |
 | `kyokai_stop()` | Drops the core's state, including its in-memory secrets |
 | `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | Waits for a controller session's next media packet and copies it into the caller's buffer; -1 timeout, -2 ended, -3 too large |
-| `kyokai_media_write(session, ptr, len) -> i32` | Passes a control packet from the GUI (input, key-frame request) to the session |
+| `kyokai_media_write(session, ptr, len) -> i32` | Passes a control packet from the GUI (input, key-frame request) to the session: 0, -1 malformed, -2 ended; a pointer move may be left out while the session is behind (-3), anything else waits until the session takes it |
 | `kyokai_decoder_open(json, len) -> u64` | Opens a viewer decoder for a stream (`{codec, width, height}`); 0 when the codec is not available. Needs no started core |
 | `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | Decodes one frame into the caller's RGBA buffer: 1 picture, 0 needs more input, -1 error, -3 too large |
 | `kyokai_decoder_close(id)` | Releases a decoder |
@@ -77,7 +77,9 @@ returns the session id at once, progress shows in the status), `password.forget_
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
 name; the status carries `name` and this device's `about`), `access.settings` (`{password_mode?: temporary|permanent|both, without_asking?}`), `permission.request` (`{name}`: `screen`, `accessibility`, `input-monitoring` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens; in the helper the agent asks), `store.start_over` (the saved store cannot be unlocked: it is moved aside and the core rebuilt on a new one → `{kept}`), `agent.restart` (the helper's session agent exits and its supervisor starts it again), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
 passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
-mode), and for AI tasks ([computer-use.md](computer-use.md)):
+mode), `capture.show` (`{show}`: whether captures show Kyokai's windows, as Settings' Hide Kyokai
+from capture says; macOS's capture follows it, live; the helper passes it to its agent; hidden
+until a GUI says), and for AI tasks ([computer-use.md](computer-use.md)):
 `ai.settings.get`, `ai.settings.set` (`{sources?, model?: {source, id}, approval?}`; the answer adds
 `keys` per source), `ai.key.set` (`{source, key}`, null removes it; a key is never returned),
 `ai.models.list` (`{source}` → `{models}`, asks the source), `ai.task.start`
@@ -99,19 +101,19 @@ runtime statically, so nothing is resolved through the search path.
 
 - Transport: an AF_UNIX socket (also on Windows) at `%TEMP%\kyokai\engine.sock` or
   `$TMPDIR/kyokai-<uid>/engine.sock` (`engine-<profile>.sock` for a profile; `KYOKAI_SOCKET`
-  overrides); newline-delimited JSON with a `version` field (1). One request per connection,
+  overrides); newline-delimited JSON with a `version` field (2). One request per connection,
   except `session.attach`, which keeps its connection and receives the status whenever it
   changes.
 - Requests: `status` (with the network status), `password.reveal`, `password.regenerate`,
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
   `password.set_permanent`, `session.connect`, `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
-  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
+  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,
   `session.media`, `shutdown`, and the AI requests named after the core's
   methods (`ai.settings.get` … `ai.stop`, `ai.draft.set`). `session.media` (`{id}` of a live controller
-  session) answers OK and then carries length-prefixed packets both ways: video, stats and the
-  host's AI task from the engine, control and AI messages from the GUI; the GUI asks for a key frame first. The status includes the open host
+  session) answers OK and then carries length-prefixed packets both ways: video, stats, the
+  host's codec offer and its AI task from the engine, control and AI messages from the GUI; the GUI asks for a key frame first. The status includes the open host
   confirmations and the sessions; secrets travel only towards the engine (the network secret, the
   permanent password, a typed password, a provider's API key). A session receives the status after every command that changes it
   and whenever the network's status moves.

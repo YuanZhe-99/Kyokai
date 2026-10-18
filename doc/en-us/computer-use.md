@@ -8,13 +8,14 @@ control, Phase 4 AI tasks).
 | Stage | Where | What |
 |---|---|---|
 | Capture | host engine | one display — the primary unless the viewer chose another — through RustDesk's DXGI desktop duplication (`core/third_party/rustdesk-dxgi`), or its GDI capturer where duplication cannot open the display or DXGI lists none (no GPU output, some virtual machines and remote sessions); a still screen yields no frame (GDI compares each picture with the last) |
-| Scale and convert | host engine | BGRA into NV12 for Media Foundation, or planar I420 (I444 in full colour) for libvpx and libaom — BT.601, limited range — scaled down to fit 1920×1080, sides even |
+| Scale and convert | host engine | BGRA into NV12 for Media Foundation and VideoToolbox, or planar I420 (I444 in full colour) for libvpx and libaom — BT.601, limited range — scaled down to fit 1920×1080, sides even, by the nearest pixel (each column's and row's source found once per size; an unscaled picture goes row by row) |
 | Encode | host engine | H.264 through Media Foundation: the GPU's encoder (an asynchronous transform, fed system-memory NV12 when it asks for input) if it produces output within its first 30 black frames — one per process, shut down when its stream ends; other streams use the software encoder — else Microsoft's synchronous software encoder; low latency (set before the media types; the first output follows the first frame), CBR 4 Mbit/s, no B-frames, a key frame every 4 seconds and on request; 30 fps |
+| Encode (macOS) | host engine | H.264 and HEVC through VideoToolbox (`core/kyokai-core/src/vt.rs`): real time, no frame reordering, low-latency rate control where the encoder has it, the average bitrate with at most one and a half times that in any second (a picture after a still screen stays small), a key frame every 4 seconds and on request; NV12 from the session's pixel buffer pool in, Annex B out with the parameter sets before each key frame, as Media Foundation's encoders give it (`annexb.rs`) |
 | Encode (software) | host engine | VP9 (`vp9-sw`) and VP8 through libvpx, AV1 through libaom — RustDesk's wrappers (`core/third_party/rustdesk-codec`) and settings: real-time, CBR at RustDesk's quality ratio of the base bitrate, a key frame every 4 seconds and on request; VP9 profile 1 and AV1 profile 1 carry 4:4:4 |
-| Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); the producer waits while the session is busy, so capture runs at the speed the network takes |
-| Forward | controller engine | the session's media queue (newest 3 frames kept) → `session.media` on the local API |
-| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for `h264`, `hevc` and `vp9` in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9; HEVC on the GPU through Direct3D 11), NV12 into RGBA, cropped to the stream's size; libvpx or libaom for `vp9-sw`, `vp8` and `av1`, I420 or I444 into RGBA |
-| Show | GUI | the viewer window's bitmap, two pictures alternating |
+| Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); one frame waits for the session at most: the capture loop takes a picture only once the session has room for its frame, so what goes out is the newest picture, not one that waited behind the network. Frames from the helper's session agent arrive as it captures and get one more place; one that finds none is left out with the frames after it until a key frame, which the agent is asked for |
+| Forward | controller engine | the session's media queue → `session.media` on the local API; a GUI that is 3 frames behind loses the frames waiting and the frames after them until a key frame (a frame without the ones before it cannot be decoded), which the controller asks the host for, again each second until it comes |
+| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for `h264`, `hevc` and `vp9` in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9; HEVC on the GPU through Direct3D 11), NV12 into RGBA, cropped to the stream's size; on macOS VideoToolbox for `h264` and `hevc` (NV12 out, into RGBA the same way); libvpx or libaom for `vp9-sw`, `vp8` and `av1`, I420 or I444 into RGBA |
+| Show | GUI | the viewer window's bitmap from three pictures: the one shown, the newest decoded one waiting for the main thread, and the one the next frame is decoded into; decoding never waits for drawing, a picture not drawn yet gives way to a newer one, and the pictures of a new stream are ready before its first frame |
 
 While a frame waits inside the encoder, the host repeats the last picture so it comes out even when
 the screen stays still. A host that cannot capture (no interactive desktop, such as a service or an
@@ -29,22 +30,36 @@ right) with the stream, and the viewer offers them by number; choosing one resta
 and moves input and the pointer there. AI tasks always use the primary display.
 
 Desktop duplication leaves the pointer out of the picture, so the host reports where its pointer
-is — at most 20 times a second, when it moves or hides — and the viewer marks it with a small ring
+is — at most 60 times a second, when it moves or hides — and the viewer marks it with a small ring
 that lets clicks through.
 
 The controller says which codecs it decodes, and which of them in full colour, as the session
 starts; the host waits up to a second for that before it starts the video. It tries, in order,
-H.264, HEVC and VP9 through Media Foundation (Windows hosts), then VP9, AV1 and VP8 in software,
-and sends in the first one the controller decodes whose encoder opens — so a host or controller
-without Media Foundation's codecs (Windows N) falls back to software VP9. HEVC goes before H.264
-when the host has a free hardware HEVC encoder as the controller's codecs arrive (checked in the
-engine's process and kept for the session; an encoder that then fails its trial falls back to the
-software HEVC encoder). The HEVC and VP9 encoders and decoders of Media Foundation come from the
+H.264, HEVC and VP9 through Media Foundation (Windows hosts) or H.264 and HEVC through
+VideoToolbox (macOS hosts), then VP9, AV1 and VP8 in software, and sends in the first one the
+controller decodes whose encoder opens — so a host or controller without the system's codecs
+(Windows N) falls back to software VP9. HEVC goes before H.264 when the host has a free hardware
+HEVC encoder as the controller's codecs arrive (Media Foundation's, checked in the engine's
+process and kept for the session, or the Mac's media engine; a Windows encoder that then fails
+its trial falls back to the software HEVC encoder). A Mac controller decodes H.264, and HEVC
+where its media engine does, through VideoToolbox; both platforms' streams are Annex B, so a Mac
+decodes a Windows host's stream and the other way round. The HEVC and VP9 encoders and decoders of Media Foundation come from the
 GPU or the Store's video extensions. A controller decodes HEVC on its GPU only (Direct3D 11) and
 offers it only when its GPU has an HEVC decoder: Qualcomm's hardware HEVC encoder splits pictures
 wider than 1024 pixels into uneven tile columns, and the HEVC Video Extension's software decoder
 accepts such streams but never outputs a picture. A controller that names no codecs (an older
 build) gets H.264.
+
+**Codec choice.** After the controller's codecs the host offers what it can send that the
+controller decodes (`codec-offer`, in the host's order): the codecs it has an encoder for — Media
+Foundation's registered encoders, VideoToolbox's and the software ones. The viewer's status bar
+lists them under Codec, Auto first (H.264, HEVC, VP9, VP9 (software), AV1, VP8; the stats name the
+codec in use the same way). A chosen codec goes first in the host's order, in full colour first
+when Full colour is on and the codec carries it, and the others stay behind it, so a codec whose
+encoder does not open falls back as before; the video restarts only when the first choice
+changes. The viewer sends its quality and codec as its stream starts, and the controller's engine
+keeps them and sends them again, before its codecs, when the session resumes, so the host opens
+the video as the viewer chose (they are settings, not input).
 
 **Full colour (4:4:4).** The viewer's status bar has a Full colour switch. When it is on and the
 controller decodes software VP9 or AV1 in 4:4:4 (every current build does), the host puts those
@@ -72,13 +87,20 @@ Sharper (1.5) — a frame-rate cap of 15, 30 or 60, and the Full colour switch; 
 `{"type": "quality", preset, fps, i444}` and set that viewer's image quality and custom frame
 rate in the QoS, and whether it gets full colour (above).
 
+With the stats the host reports how long its frames took from picture to frame (`encode_ms`, the
+average of the last second's). The tooltip of the viewer's numbers shows that, the network delay
+(the probe), the viewer's own decode and draw times and the frame rate against the host's target.
+Beside the numbers the bar says whether the network reaches the device directly (Direct) or
+through the server (Relayed, with a hint to turn on direct connections on both devices,
+[networking.md](networking.md)).
+
 ## Input
 
 The viewer sends input only for a session granted `control-input`; the host checks it again.
 
 | Event | Sent as |
 |---|---|
-| pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses on the bars around it are dropped, releases always sent |
+| pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses and moves on the bars around it are dropped, releases always sent; a move with no button held goes with button 0 (the host knows what it holds). The viewer sends the newest move at most every 8 ms, and any other event sends a waiting move first; the controller's engine may leave out a move while the session is behind (a newer one follows), and every other event waits for the session |
 | scroll | `{kind: "scroll", dx, dy}` in lines (touchpad pixels ÷ 40); positive `dy` moves the content down |
 | a key, in Map or Translate mode | `{kind: "scan", code, down, caps, num}`: the key's scan code as Windows numbers it (the set-1 code, 0xE0xx for extended keys, 0xE11D for Pause) with the controller's CapsLock and NumLock ([Keyboard modes](#keyboard-modes)) |
 | text | `{kind: "text", text}`: typed as Unicode characters, so the controller's layout and dead keys decide (Translate and Legacy) |
@@ -307,13 +329,13 @@ continues it until the engine stops.
 |---|---|
 | Permissions | Screen Recording for capture, Accessibility for input, Input Monitoring for the local-input watch, and the Keychain item of the secrets store ([security.md](security.md)); the engine reports them (`permissions` in the status); the GUI asks for them on its first start per version and through Allow on its permissions card — the privacy permissions in its own process (`kyokai_privacy_request`), so that a prompt belongs to the app, whose grant covers the engine (macOS counts the engine as part of it), and the Keychain through the engine (`permission.request` `keychain`). macOS 27 shows no prompt for either process: Allow opens the pane, where Kyokai is switched on (Accessibility's pane is called Device Control and Data Access there), which also opens the pane in System Settings. A Screen Recording grant counts once Kyokai restarts, which the card's Reopen Kyokai does (it stops the engine first) |
 | Displays | Core Graphics' active displays in points, the unit of its global coordinates (a Retina display is half its pixels); the main display is the primary |
-| Capture | a ScreenCaptureKit stream of the display at its pixel size scaled to fit 1920×1080, BGRA, without the pointer (the viewer draws it from the pointer messages) and without the windows of Kyokai's processes and app (always, whatever the capture setting says); an unchanged screen sends no picture; without the permission the host sends the test pattern |
-| Encode | the software codecs (`vp9-sw`, `av1`, `vp8`) until VideoToolbox lands |
+| Capture | a ScreenCaptureKit stream of the display at its pixel size scaled to fit 1920×1080, BGRA, without the pointer (the viewer draws it from the pointer messages) and, while Settings' Hide Kyokai from capture is on (the default), without the windows of Kyokai's processes and app: the GUI tells the engine the setting as it attaches and whenever it changes (`capture.show`; in the helper modes the helper passes it to its agent), a running stream takes the new filter at once, and AI screenshots follow it too; an unchanged screen sends no picture; without the permission the host sends the test pattern |
+| Encode | VideoToolbox's H.264 and HEVC (above), then the software codecs (`vp9-sw`, `av1`, `vp8`) |
+| Decode | the viewer decodes `h264` and `hevc` through VideoToolbox and the software codecs through libvpx and libaom |
 | Input | Core Graphics events posted at the HID level and tagged as Kyokai's: pointer events in points with click counts for double and triple clicks, wheel notches as lines, named keys and modifiers (`ctrl` → Control, `alt` → Option, `meta` → Command) with the held modifiers' flags, text as Unicode, scan codes through a table to Mac key codes (Caps Lock follows the controller's; a Mac has no NumLock). The guard looks up the owner of the window under the point (or the frontmost normal window for keys) and drops events for this engine or the app that started it |
 | Local input | a listen-only event tap (Input Monitoring) notes the host user's presses and moves, skips Kyokai's tagged events and watches for Ctrl+Option+Shift+Esc |
 | AI tasks | the main display at full resolution through a short ScreenCaptureKit stream per screenshot, the same input and watch |
 
 ## Not yet
 
-VideoToolbox (H.264 and HEVC), the session actions and the privileged helper on macOS come with the
-Mac pass (PLAN.md).
+The session actions on macOS come with the Mac pass (PLAN.md).

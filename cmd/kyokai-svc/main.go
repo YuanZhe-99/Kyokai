@@ -15,6 +15,7 @@
 //	kyokai-svc ctl untrust --key K | forget --device ID | access [--mode temporary|permanent|both] [--without-asking=true|false]
 //	kyokai-svc ctl password-grants --grant P,P…   (what a correct password grants without asking; empty: none)
 //	kyokai-svc ctl background [--on]     (the helper: Background service or Follow GUI)
+//	kyokai-svc ctl capture-show [--on]   (captures show Kyokai's windows, or hide them)
 //	kyokai-svc ctl move --to SOCKET       (moves the whole store to another engine of this device, which stops this one)
 //	kyokai-svc ctl helper-update --from DIR (the helper installs the signed bundle in DIR)
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
@@ -174,7 +175,7 @@ func ctl(args []string) error {
 	to := fs.String("to", "", "move: the socket of the engine that takes over this device's store")
 	mode := fs.String("mode", "", "access: which passwords open this host (temporary, permanent, both)")
 	withoutAsking := fs.String("without-asking", "", "access: whether an accepted password admits without asking (true, false)")
-	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached)")
+	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached); capture-show: captures show Kyokai's windows")
 	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
@@ -211,7 +212,7 @@ func ctl(args []string) error {
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
-		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "helper-update": localapi.RequestHelperUpdate,
+		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "capture-show": localapi.RequestCaptureShow, "helper-update": localapi.RequestHelperUpdate,
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
@@ -243,6 +244,8 @@ func ctl(args []string) error {
 		req.Grants = &g
 	case "background":
 		req.Background = on
+	case "capture-show":
+		req.Show = on
 	case "helper-update":
 		req.From = *from
 	case "network-set":

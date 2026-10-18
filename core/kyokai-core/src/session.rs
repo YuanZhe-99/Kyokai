@@ -22,7 +22,7 @@ use tokio::sync::{Notify, mpsc};
 use crate::{media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
-pub const PROTOCOL: u32 = 6;
+pub const PROTOCOL: u32 = 7;
 const PATTERN: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
@@ -130,11 +130,15 @@ enum Message {
         #[serde(default)]
         i444: bool,
     },
-    /// host → controller: what QoS measured and chose, for the viewer.
+    /// host → controller: what QoS measured and chose, for the viewer, and
+    /// how long the host took from a picture to its frame (the average of
+    /// the last second's frames).
     Stats {
         delay_ms: u32,
         fps: u32,
         bitrate: u32,
+        #[serde(default)]
+        encode_ms: u32,
     },
     /// controller → host (`run-ai-task`): start an AI task on the host; the
     /// key makes a repeated start (after a reconnect) start one task.
@@ -213,6 +217,15 @@ enum Message {
         decode: Vec<String>,
         #[serde(default)]
         i444: Vec<String>,
+    },
+    /// host → controller, after `codecs`: what the host can send that the
+    /// controller decodes, in the host's order, for the viewer to choose.
+    CodecOffer {
+        codecs: Vec<String>,
+    },
+    /// controller → host: the viewer's codec, `auto` or one of the offer.
+    Codec {
+        codec: String,
     },
     /// host → controller, with video: where the host's pointer is, as
     /// fractions of the picture, and whether it shows there.
@@ -313,8 +326,13 @@ fn shown(displays: &[video::Display], s: &video::Source) -> Option<Message> {
     })
 }
 
-/// How often the host looks where its pointer is (with video).
-const POINTER_EVERY: Duration = Duration::from_millis(50);
+/// How often the host looks where its pointer is (with video); it reports
+/// only a change, so the viewer's ring follows a moving pointer smoothly.
+const POINTER_EVERY: Duration = Duration::from_millis(16);
+
+/// How often a controller whose GUI lost frames asks the host for a key
+/// frame at most.
+const KEY_AGAIN: Duration = Duration::from_secs(1);
 
 /// How often the host looks for changes of a controller's AI task.
 const AI_SYNC: Duration = Duration::from_millis(400);
@@ -388,8 +406,19 @@ struct Entry {
     media: Arc<media::Queue>,
     control_tx: mpsc::Sender<Value>,
     control_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<Value>>>,
+    /// Controller side: the viewer's latest choices, for a resumed session.
+    choices: Arc<Mutex<Choices>>,
     /// Controller side: what to do with the password once the host answers.
     remember: Remember,
+}
+
+/// A viewer's latest quality and codec messages: sent again when its
+/// session resumes, since the host starts each connection with defaults.
+/// They are settings, not input: nothing is replayed that acts.
+#[derive(Default)]
+pub struct Choices {
+    quality: Option<Value>,
+    codec: Option<Value>,
 }
 
 /// What a controller does with a session's password once the host answers
@@ -454,6 +483,7 @@ impl Sessions {
             media: Arc::default(),
             control_tx,
             control_rx: Arc::new(tokio::sync::Mutex::new(control_rx)),
+            choices: Arc::default(),
             remember: Remember::default(),
         });
         (id, stop)
@@ -505,6 +535,7 @@ impl Sessions {
         Some(Side::Controller {
             queue: e.media.clone(),
             control: e.control_rx.clone(),
+            choices: e.choices.clone(),
         })
     }
 
@@ -1171,10 +1202,12 @@ pub enum Side {
         ai: HostAi,
     },
     /// The controller: puts media into the queue its GUI drains, and sends
-    /// the GUI's control messages (input, key-frame requests) to the host.
+    /// the GUI's control messages (input, key-frame requests) to the host;
+    /// `choices` are the viewer's latest quality and codec.
     Controller {
         queue: Arc<media::Queue>,
         control: Arc<tokio::sync::Mutex<mpsc::Receiver<Value>>>,
+        choices: Arc<Mutex<Choices>>,
     },
 }
 
@@ -1362,8 +1395,24 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     } else {
         Vec::new()
     };
-    // A controller says which codecs it decodes before anything else.
-    if matches!(side, Side::Controller { .. }) {
+    // A controller says which codecs it decodes before anything else;
+    // a resumed one first gives the viewer's quality and codec again, so
+    // the host opens the video as the viewer chose.
+    if let Side::Controller { choices, .. } = &side {
+        let again: Vec<Value> = choices
+            .lock()
+            .map(|c| {
+                [c.quality.clone(), c.codec.clone()]
+                    .into_iter()
+                    .flatten()
+                    .collect()
+            })
+            .unwrap_or_default();
+        for m in again {
+            if let Ok(m) = serde_json::from_value::<Message>(m) {
+                seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+            }
+        }
         let (decode, i444) = tokio::task::spawn_blocking(video::decodable)
             .await
             .unwrap_or_default();
@@ -1375,9 +1424,17 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         )
         .await?;
     }
-    let (queue, control) = match &side {
-        Side::Controller { queue, control } => (Some(queue.clone()), Some(control.clone())),
-        Side::Host { .. } => (None, None),
+    let (queue, control, choices) = match &side {
+        Side::Controller {
+            queue,
+            control,
+            choices,
+        } => (
+            Some(queue.clone()),
+            Some(control.clone()),
+            Some(choices.clone()),
+        ),
+        Side::Host { .. } => (None, None, None),
     };
     let host_ai = match &side {
         Side::Host { ai, .. } if ai.run || ai.approve => Some(ai),
@@ -1419,6 +1476,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut decodes: (Vec<String>, Vec<String>) = Default::default();
     let mut hevc_first = false;
     let mut full_colour = false;
+    // The viewer's codec (None: Auto).
+    let mut preferred: Option<String> = None;
     let mut chosen: Vec<video::Choice> = Vec::new();
     if wants_video {
         qos.on_connection_open(QOS_VIEWER);
@@ -1428,6 +1487,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut probe_sent: Option<Instant> = None;
     let mut last_delay = 0u32;
     let mut sent_this_second = 0usize;
+    // The microseconds this second's frames took from picture to frame.
+    let mut took_this_second = 0u64;
+    // When this controller last asked for a key frame after its queue left
+    // frames out.
+    let mut key_asked: Option<Instant> = None;
     let mut heard = Instant::now();
     let mut plain = vec![0u8; MAX_FRAME];
     // Whether this session holds the block or privacy mode; checked every
@@ -1564,17 +1628,19 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Some(t) => qos.user_delay_response_elapsed(QOS_VIEWER, t.elapsed().as_millis()),
                 }
                 qos.update_display_data(QOS_DISPLAY, sent_this_second);
+                let encode_ms = (took_this_second / sent_this_second.max(1) as u64 / 1000) as u32;
                 sent_this_second = 0;
+                took_this_second = 0;
                 let fps = qos.fps();
                 let kbps = (base_kbps as f32 * qos.ratio()) as u32;
                 qos.store_bitrate(kbps);
                 if let Some(s) = &source {
                     s.set_targets(fps, kbps.saturating_mul(1000));
                 }
-                let stats = Message::Stats { delay_ms: last_delay, fps, bitrate: kbps.saturating_mul(1000) };
+                let stats = Message::Stats { delay_ms: last_delay, fps, bitrate: kbps.saturating_mul(1000), encode_ms };
                 seal_json(&mut noise, &mut buf, &mut wr, &stats).await?;
             }
-            Some((flags, pts, data)) = async {
+            Some(f) = async {
                 match source.as_mut() {
                     Some(s) => s.frames.recv().await,
                     None => std::future::pending().await,
@@ -1582,7 +1648,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             } => {
                 frame_no = frame_no.wrapping_add(1);
                 sent_this_second += 1;
-                for chunk in media::chunks(frame_no, flags, pts, &data, MAX_PLAINTEXT) {
+                took_this_second += u64::from(f.took_us);
+                for chunk in media::chunks(frame_no, f.flags, f.pts, &f.data, MAX_PLAINTEXT) {
                     seal(&mut noise, &mut buf, &mut wr, &chunk).await?;
                 }
             }
@@ -1593,7 +1660,17 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 // Only messages a GUI may send pass on to the host.
-                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. })) = serde_json::from_value::<Message>(msg) {
+                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::Codec { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. })) = serde_json::from_value::<Message>(msg) {
+                    // The viewer's latest choices, for a resumed session.
+                    if let (Some(c), Ok(v)) = (&choices, serde_json::to_value(&m))
+                        && let Ok(mut c) = c.lock()
+                    {
+                        match m {
+                            Message::Quality { .. } => c.quality = Some(v),
+                            Message::Codec { .. } => c.codec = Some(v),
+                            _ => {}
+                        }
+                    }
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
                 }
             }
@@ -1610,6 +1687,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         packet.extend_from_slice(&f.pts_us.to_be_bytes());
                         packet.extend_from_slice(&f.data);
                         q.push(packet);
+                        // The GUI fell behind and lost frames: the host starts
+                        // a new group of pictures (asked again each second
+                        // until it comes).
+                        if q.waiting_for_key() && key_asked.is_none_or(|t| t.elapsed() >= KEY_AGAIN) {
+                            key_asked = Some(Instant::now());
+                            seal_json(&mut noise, &mut buf, &mut wr, &Message::KeyFrame).await?;
+                        }
                     }
                     continue;
                 }
@@ -1636,7 +1720,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         // changes the codec or its chroma.
                         if i444 != full_colour {
                             full_colour = i444;
-                            let c = video::choose(&decodes.0, &decodes.1, full_colour, hevc_first);
+                            let c = video::prefer(video::choose(&decodes.0, &decodes.1, full_colour, hevc_first), preferred.as_deref());
                             if wants_video && source.is_some() && c != chosen {
                                 chosen = c;
                                 reopen!(source.as_ref().and_then(|s| s.display));
@@ -1665,10 +1749,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             qos.user_network_delay(QOS_VIEWER, last_delay);
                         }
                     }
-                    Message::Stats { delay_ms, fps, bitrate } => {
+                    Message::Stats { delay_ms, fps, bitrate, encode_ms } => {
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::STATS];
-                            packet.extend(serde_json::to_vec(&json!({"delay_ms": delay_ms, "fps": fps, "bitrate": bitrate})).map_err(|_| Failure::Broken)?);
+                            packet.extend(serde_json::to_vec(&json!({"delay_ms": delay_ms, "fps": fps, "bitrate": bitrate, "encode_ms": encode_ms})).map_err(|_| Failure::Broken)?);
                             q.push(packet);
                         }
                     }
@@ -1772,10 +1856,37 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::Codecs { decode, i444 } => {
                         decodes = (decode, i444);
                         hevc_first = video::hevc_hardware();
-                        let c = video::choose(&decodes.0, &decodes.1, full_colour, hevc_first);
+                        let c = video::prefer(video::choose(&decodes.0, &decodes.1, full_colour, hevc_first), preferred.as_deref());
+                        if wants_video {
+                            let codecs = video::offer(&decodes.0, &video::encodable()).iter().map(|c| c.to_string()).collect();
+                            seal_json(&mut noise, &mut buf, &mut wr, &Message::CodecOffer { codecs }).await?;
+                        }
                         if wants_video && (source.is_none() || c != chosen) {
                             chosen = c;
                             reopen!(source.as_ref().and_then(|s| s.display));
+                        }
+                    }
+                    // The viewer picks a codec of the offer, or Auto (a name
+                    // the host does not send changes nothing); the video
+                    // restarts when that changes which one goes first. A
+                    // resumed session's choice comes before the codecs.
+                    Message::Codec { codec } => {
+                        preferred = (codec != "auto").then_some(codec);
+                        if wants_video && !decodes.0.is_empty() {
+                            let c = video::prefer(video::choose(&decodes.0, &decodes.1, full_colour, hevc_first), preferred.as_deref());
+                            let first_changed = c.first() != chosen.first();
+                            chosen = c;
+                            if source.is_some() && first_changed {
+                                reopen!(source.as_ref().and_then(|s| s.display));
+                            }
+                        }
+                    }
+                    // A controller shows what the host can send.
+                    Message::CodecOffer { codecs } => {
+                        if let Some(q) = &queue {
+                            let mut packet = vec![media::packet::CODECS];
+                            packet.extend(serde_json::to_vec(&json!({"codecs": codecs})).map_err(|_| Failure::Broken)?);
+                            q.push(packet);
                         }
                     }
                     Message::Displays { list, current } => {
@@ -2502,7 +2613,13 @@ mod tests {
         // Video flows: the stream description, then whole frames: the screen
         // through H.264 where this machine can capture, else the test pattern.
         let (queue, _) = controller.sessions.media(id).unwrap();
-        let start = queue.pop(Duration::from_secs(5)).unwrap();
+        // The host's codec offer comes first.
+        let start = loop {
+            let p = queue.pop(Duration::from_secs(5)).unwrap();
+            if p[0] != media::packet::CODECS {
+                break p;
+            }
+        };
         assert_eq!(start[0], media::packet::VIDEO_START);
         let v: media::VideoStart = serde_json::from_slice(&start[1..]).unwrap();
         // The host's QoS stats and pointer arrive between frames; the test
@@ -2719,6 +2836,117 @@ mod tests {
         until("connected").await;
         assert_eq!(session(&controller, id)["granted"], json!(["view-screen"]));
         assert_eq!(host.access.pending(), json!([]));
+    }
+
+    /// Waits for the next media packet of `kind`, skipping the others.
+    fn next_packet(queue: &media::Queue, kind: u8, what: &str) -> Value {
+        let until = Instant::now() + Duration::from_secs(8);
+        while Instant::now() < until {
+            if let Ok(p) = queue.pop(Duration::from_millis(200))
+                && p[0] == kind
+            {
+                return serde_json::from_slice(&p[1..]).unwrap_or(Value::Null);
+            }
+        }
+        panic!("no {what} from the host");
+    }
+
+    // Multithreaded: the test waits for media with a blocking pop.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_viewer_s_choices_reach_the_host_and_survive_a_resume() {
+        let host = device("1.0.0");
+        let controller = device("1.0.0");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let from: IpAddr = "10.126.126.3".parse().unwrap();
+        let (a, b) = tokio::io::duplex(1 << 20);
+        let host_side = tokio::spawn(serve(host.clone(), b, from));
+        let (id, stop) = begin(&controller, &dialed, Remember::default());
+        let first = tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop.clone(),
+            a,
+            dialed.clone(),
+            zeroize::Zeroizing::new("k7mq2xpa".into()),
+            vec![Permission::ViewScreen],
+            None,
+        ));
+        for _ in 0..200 {
+            if let Some(q) = host
+                .access
+                .pending()
+                .as_array()
+                .and_then(|a| a.first().cloned())
+            {
+                let id = q["id"].as_u64().unwrap();
+                host.access
+                    .decide(id, Some(vec![Permission::ViewScreen]))
+                    .unwrap();
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let (queue, control) = controller.sessions.media(id).unwrap();
+        // The host offers what it can send: the software codecs at least.
+        let offer = next_packet(&queue, media::packet::CODECS, "codec offer");
+        let codecs: Vec<String> = serde_json::from_value(offer["codecs"].clone()).unwrap();
+        assert!(codecs.iter().any(|c| c == "vp9-sw"), "{codecs:?}");
+        // A frame-rate cap of 5 shows in the host's stats (it starts at 15).
+        control
+            .try_send(json!({"type": "quality", "preset": "balanced", "fps": 5, "i444": false}))
+            .unwrap();
+        let capped = |queue: &media::Queue| {
+            let until = Instant::now() + Duration::from_secs(8);
+            while Instant::now() < until {
+                let stats = next_packet(queue, media::packet::STATS, "stats");
+                if stats["fps"] == 5 {
+                    return true;
+                }
+            }
+            false
+        };
+        assert!(capped(&queue), "the cap never reached the host");
+        // Choosing a codec restarts the video in it (the test pattern where
+        // this machine cannot capture).
+        control
+            .try_send(json!({"type": "codec", "codec": "vp8"}))
+            .unwrap();
+        let start = next_packet(&queue, media::packet::VIDEO_START, "restarted video");
+        assert!(
+            matches!(start["codec"].as_str(), Some("vp8" | "raw-rgba")),
+            "{start}"
+        );
+        // The connection drops and resumes: the host gets the choices again
+        // before the video starts.
+        host_side.abort();
+        let Outcome::Lost(token) = first.await.unwrap() else {
+            panic!("a dropped session should be resumable");
+        };
+        while queue.pop(Duration::from_millis(50)).is_ok() {}
+        let (a, b) = tokio::io::duplex(1 << 20);
+        tokio::spawn(serve(host.clone(), b, from));
+        tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop,
+            a,
+            dialed,
+            zeroize::Zeroizing::new("not the password".into()),
+            vec![Permission::ViewScreen],
+            Some(token),
+        ));
+        let start = next_packet(&queue, media::packet::VIDEO_START, "resumed video");
+        assert!(
+            matches!(start["codec"].as_str(), Some("vp8" | "raw-rgba")),
+            "{start}"
+        );
+        assert!(capped(&queue), "a resumed session lost the viewer's cap");
     }
 
     /// A small xorshift generator: the fuzz rounds are random but repeatable.

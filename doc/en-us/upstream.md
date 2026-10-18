@@ -23,7 +23,8 @@ when they run; anything not listed here is not assumed.
   Windows drops unmapped keys and always passes `WM_SYSKEYDOWN` (Alt, F10, Alt+F4) to
   `DefWindowProc`; X1/X2 arrive as `KeyBack`/`KeyForward` on release; macOS turns Control-click
   into a right click, ignores CapsLock and lets menu shortcuts (Cmd+Q/W/H/C/V) win; no pointer lock,
-  no low-level hooks.
+  no low-level hooks. A pointer move with no button held comes with `Button` −1 (a drag with the
+  button held), so a filter on buttons 0–2 drops every hover move (Kyokai's did until 0.1.3).
 - **Windows of the app.** Several windows, full screen, bounds, always-on-top,
   `SetContentProtection`, and `NativeHandle()` (HWND / NSWindow).
 - **App services.** Tray (menu, icon), notifications (balloons on Windows), clipboard (text,
@@ -100,6 +101,13 @@ when they run; anything not listed here is not assumed.
 - **Public servers.** A public server outside network N joins it as a `PublicServer_…` peer,
   always relays RPC and relays data unless it is configured not to; nodes of N try UDP hole
   punching toward every reachable peer they are not directly connected to.
+- **Direct connections.** The direct connector reaches only a peer that lists a listener: for a
+  `0.0.0.0` listener it tries each of the peer's interface addresses and its public address,
+  preferring `default_protocol`'s scheme, then UDP. Without listeners only hole punching remains,
+  which needs the shared router to send a device's packets back into its own network, so two
+  devices on one LAN went through the relay (seen 2026-10-18). A configured listener must bind,
+  or the instance's `start()` fails; `disable_p2p` stops direct connections both ways (a peer
+  honours the other's flag).
 - **Measured (S1, Windows ARM64, `spikes/s1-easytier`).** Two embedded nodes and a stock v2.7.0
   `easytier-core` (also as a foreign-network public server): routes carry `inst_id` and hostname;
   `data_plane_tcp_bind/connect` works both ways over tcp, udp, ws, quic and wg connectors and
@@ -233,5 +241,16 @@ Verified against Anthropic's computer use documentation and API reference on 202
 - **macOS:** since Sequoia, apps that capture the screen without the system picker are asked to
   re-confirm monthly; the "Persistent Content Capture" entitlement that avoids it needs Apple's
   approval. Privacy grants follow the code signature: an ad-hoc signature changes with every build.
+  A process that connects to devices on the local network needs the Local Network permission
+  (asked once, for the app the process belongs to; root daemons are not asked). ScreenCaptureKit
+  leaves windows out by its content filter; a window's sharing type does not decide what
+  Kyokai's own capture sees.
+- **VideoToolbox:** H.264 on every Mac, HEVC encoding and decoding in Apple silicon's media
+  engine; `VTCopyVideoEncoderList` names the hardware encoders and `VTIsHardwareDecodeSupported`
+  the hardware decoders. Sessions work in length-prefixed units with the parameter sets in a
+  format description; a decompression session without the asynchronous flag calls its output
+  callback before `DecodeFrame` returns, and `CompleteFrames` waits for the frames up to a time.
+  Kyokai gives it NV12 and takes NV12 back, so colours do not depend on which system converts
+  (BT.601 limited range throughout).
 - **Windows:** a normal user process captures and controls the normal desktop only; elevated
   windows (UIPI), the UAC secure desktop and the lock screen need a SYSTEM process.

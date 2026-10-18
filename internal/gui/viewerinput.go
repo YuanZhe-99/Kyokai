@@ -3,12 +3,15 @@ package gui
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"runtime"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
+	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
 // inputEvent is one event for the host's input service (the core's
@@ -109,10 +112,16 @@ func toEvent(ev ui.InputEvent, box ui.Rect, pw, ph int, held map[ui.Key]bool, gr
 		if !inside && ev.Kind != ui.InputPointerUp {
 			return inputEvent{}, false
 		}
-		if ev.Button < 0 || ev.Button > 2 {
+		button := ev.Button
+		// A move with no button held (-1) moves the pointer; the host
+		// knows which buttons it holds.
+		if ev.Kind == ui.InputPointerMove && button < 0 {
+			button = 0
+		}
+		if button < 0 || button > 2 {
 			return inputEvent{}, false
 		}
-		return inputEvent{Kind: "pointer", Action: action, Button: ev.Button, X: x, Y: y}, true
+		return inputEvent{Kind: "pointer", Action: action, Button: button, X: x, Y: y}, true
 	case ui.InputScroll:
 		dx, dy := ev.DX, ev.DY
 		if ev.Precise {
@@ -169,6 +178,55 @@ func (v *viewer) setQuality(preset int, fpsCap string, full bool) {
 	}
 }
 
+// setCodec sends the viewer's codec choice ("auto" or one the host
+// offered); the host restarts the video in it.
+func (v *viewer) setCodec(codec string) {
+	v.mu.Lock()
+	v.codec = codec
+	v.mu.Unlock()
+	v.sendControl(map[string]any{"type": "codec", "codec": codec})
+}
+
+// choicePackets are the viewer's quality and codec choices as control
+// packets, for a stream that (re)starts: the host starts each session
+// with its defaults.
+func (v *viewer) choicePackets() [][]byte {
+	v.mu.Lock()
+	preset, fpsCap, full, codec := v.preset, v.fpsCap, v.full, v.codec
+	v.mu.Unlock()
+	fps := 30
+	_, _ = fmt.Sscan(fpsCap, &fps)
+	quality, _ := json.Marshal(map[string]any{"type": "quality", "preset": qualityPresets[min(max(preset, 0), 2)], "fps": fps, "i444": full})
+	out := [][]byte{append([]byte{packetControl}, quality...)}
+	if codec != "" && codec != "auto" {
+		body, _ := json.Marshal(map[string]any{"type": "codec", "codec": codec})
+		out = append(out, append([]byte{packetControl}, body...))
+	}
+	return out
+}
+
+// codecLabel is how the viewer names a codec: Auto, the codec's usual
+// name, and "(software)" for libvpx's VP9 beside the system's.
+func codecLabel(name string) string {
+	switch name {
+	case "auto", "":
+		return L.ViewerCodecAuto()
+	case "h264":
+		return "H.264"
+	case "hevc":
+		return "HEVC"
+	case "vp9":
+		return "VP9"
+	case "vp9-sw":
+		return L.ViewerCodecSoftware("VP9")
+	case "av1":
+		return "AV1"
+	case "vp8":
+		return "VP8"
+	}
+	return name
+}
+
 // controlPacket wraps an input event as a media control packet.
 func controlPacket(e inputEvent) []byte {
 	body, _ := json.Marshal(map[string]any{"type": "input", "event": e})
@@ -187,13 +245,83 @@ func (v *viewer) sendInput(ev ui.InputEvent) bool {
 	if !may || !ok {
 		return false
 	}
-	// One writer keeps packets whole and in order; a full queue drops the
-	// event rather than stall the window.
-	select {
-	case v.out <- controlPacket(e):
-	default:
-	}
+	v.queue(e)
 	return true
+}
+
+// moveEvery is how often the writer sends the pointer's newest move at
+// most; the moves between are left out.
+const moveEvery = 8 * time.Millisecond
+
+// queue passes one input event to the media connection's writer. A move
+// becomes the pending one (a newer move replaces it before it is sent);
+// any other event sends the pending move first, so the order holds.
+// Notes: a full queue drops the event rather than stall the window.
+func (v *viewer) queue(e inputEvent) {
+	v.mu.Lock()
+	if e.Kind == "pointer" && e.Action == "move" {
+		v.move = &e
+		v.mu.Unlock()
+		select {
+		case v.moved <- struct{}{}:
+		default:
+		}
+		return
+	}
+	pending := v.move
+	v.move = nil
+	v.mu.Unlock()
+	for _, p := range []*inputEvent{pending, &e} {
+		if p == nil {
+			continue
+		}
+		select {
+		case v.out <- controlPacket(*p):
+		default:
+		}
+	}
+}
+
+// writer is the media connection's one writer, which keeps packets whole
+// and in order: the queued packets, and the pending move at most every
+// moveEvery, until done closes or a write fails.
+func (v *viewer) writer(w io.Writer, done <-chan struct{}) {
+	var last time.Time
+	var later <-chan time.Time
+	sendMove := func() error {
+		v.mu.Lock()
+		m := v.move
+		v.move = nil
+		v.mu.Unlock()
+		if m == nil {
+			return nil
+		}
+		last = time.Now()
+		return localapi.WritePacket(w, controlPacket(*m))
+	}
+	for {
+		var err error
+		select {
+		case p := <-v.out:
+			err = localapi.WritePacket(w, p)
+		case <-v.moved:
+			if wait := moveEvery - time.Since(last); wait > 0 {
+				if later == nil {
+					later = time.After(wait)
+				}
+				continue
+			}
+			err = sendMove()
+		case <-later:
+			later = nil
+			err = sendMove()
+		case <-done:
+			return
+		}
+		if err != nil {
+			return
+		}
+	}
 }
 
 // keyboardModes are RustDesk's keyboard modes, in the viewer's order.
@@ -325,10 +453,7 @@ func (a *App) readKeys(lib *core.Lib) {
 			mine, may := v.window == ev.Window && v.grabbed != "", v.control
 			v.mu.Unlock()
 			if mine && may {
-				select {
-				case v.out <- controlPacket(scanEvent(ev)):
-				default:
-				}
+				v.queue(scanEvent(ev))
 				break
 			}
 		}

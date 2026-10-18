@@ -531,6 +531,16 @@
   "ViewerAIPanel": "AI",
   "ViewerAITitle": "AI on the other computer",
   "ViewerBlockInput": "Block their keyboard and mouse",
+  "ViewerCodecAuto": "Auto",
+  "ViewerCodecHint": "The video codec. Auto lets the other computer choose; the list shows what both computers support.",
+  "ViewerCodecSoftware": "{codec} (software)",
+  "@ViewerCodecSoftware": {
+    "placeholders": {
+      "codec": {
+        "type": "String"
+      }
+    }
+  },
   "ViewerCtrlAltDel": "Ctrl+Alt+Del",
   "ViewerDisplay": "Display",
   "ViewerEnded": "The session ended.",
@@ -551,8 +561,32 @@
   "ViewerPointerHint": "Marks where their pointer is, for computers whose picture leaves it out.",
   "ViewerPrivacy": "Privacy mode (their screen goes black)",
   "ViewerReconnect": "Reconnect",
+  "ViewerRelayedHint": "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices.",
   "ViewerTabClose": "Close this tab (the session goes on)",
   "ViewerTabOut": "Open in new window",
+  "ViewerTimes": "The other computer takes {encode} ms to encode, the network {network} ms; this one takes {decode} ms to decode and {draw} ms to draw. {fps} frames a second, up to {target}.",
+  "@ViewerTimes": {
+    "placeholders": {
+      "encode": {
+        "type": "int"
+      },
+      "network": {
+        "type": "int"
+      },
+      "decode": {
+        "type": "int"
+      },
+      "draw": {
+        "type": "int"
+      },
+      "fps": {
+        "type": "int"
+      },
+      "target": {
+        "type": "int"
+      }
+    }
+  },
   "ViewerTitle": "{device} — Kyokai",
   "@ViewerTitle": {
     "placeholders": {

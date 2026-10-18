@@ -6,7 +6,7 @@ Kyokai is a cross-platform Computer Use application that enables people and AI a
 with computers across devices. It combines secure peer-to-peer connectivity, direct human control,
 and host-side AI execution in one unified experience.
 
-> **Status:** 0.1.1: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
+> **Status:** 0.1.3: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
 > connections, manual control, AI tasks and the optional privileged helper work on both; more
 > viewer controls and the remaining macOS checks follow. See [PLAN.md](PLAN.md), the
 > [platform notes](doc/en-us/platform-notes.md) (what was verified where) and the
@@ -19,13 +19,13 @@ and host-side AI execution in one unified experience.
 | Persistent Device ID backed by a cryptographic device key, with a friendly name and backup | done |
 | Temporary and permanent host passwords (accept either or both), connect without asking, saved passwords, trusted devices, unattended access | done |
 | Connect by Device ID + password over a standard EasyTier network, no IP addresses; recent devices and connections as tabs that tear out into windows | done |
-| Manual Computer Use: the host's screen (H.264, HEVC, VP9 through Media Foundation; VP8, VP9 and AV1 in software; full colour 4:4:4; adaptive quality), mouse, RustDesk's keyboard modes, clipboard text, images and files, monitors, the remote pointer | done (Windows); macOS: capture, input and keyboard |
+| Manual Computer Use: the host's screen (H.264, HEVC, VP9 through Media Foundation; H.264 and HEVC through VideoToolbox; VP8, VP9 and AV1 in software; full colour 4:4:4; adaptive quality), mouse, RustDesk's keyboard modes, clipboard text, images and files, monitors, the remote pointer | done (Windows); macOS: capture, VideoToolbox, input and keyboard |
 | Session actions: lock the screen, Ctrl+Alt+Del, block the host's input, privacy mode | done (Windows): run on a test VM, Ctrl+Alt+Del in the helper mode |
 | AI Computer Use with Claude, OpenAI or any of 20+ provider templates and custom OpenAI-compatible servers, executed on the host with its own key; one AI record and a shared draft for every controller | done; Claude verified live on Windows |
 | Human take-over, pause, cancel, emergency stop; tasks pause at sleep | done |
 | Optional privileged helper for UAC prompts, the lock screen and unattended access | done (Windows); macOS: install, update and removal |
-| Viewer controls: full screen, pointer ring, collapsible AI panel | done |
-| Viewer controls: original size, codec preference, per-session clipboard switch | planned |
+| Viewer controls: full screen, pointer ring, collapsible AI panel, codec choice, direct or relayed, where the time goes | done |
+| Viewer controls: original size, per-session clipboard switch | planned |
 | English, Simplified Chinese, Traditional Chinese, Japanese | done |
 
 ## AI Computer Use

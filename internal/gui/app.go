@@ -38,6 +38,8 @@ type App struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	engine     engineChild
+	// captureMu keeps the capture setting's sends in order (sendCapture).
+	captureMu sync.Mutex
 
 	mu       sync.Mutex
 	window   *mygo.Window
@@ -138,7 +140,7 @@ func (a *App) SetWindow(w *mygo.Window) {
 // setShowInCapture saves whether capture may see Kyokai's windows and
 // applies it to the main window and every open viewer at once.
 // Side effects: writes the preferences; changes the windows' display
-// affinity. Call it on the main thread.
+// affinity; tells the engine (sendCapture). Call it on the main thread.
 func (a *App) setShowInCapture(p Prefs, show bool) {
 	p.ShowInCapture = show
 	a.setPrefs(p)
@@ -153,6 +155,20 @@ func (a *App) setShowInCapture(p Prefs, show bool) {
 			w.SetContentProtection(!show)
 		}
 	}
+	go a.sendCapture()
+}
+
+// sendCapture tells the engine whether its captures show Kyokai's windows,
+// as the preferences say: macOS's capture filter follows it (on Windows the
+// windows' display affinity does the job). An engine of an older version
+// refuses the request, which changes nothing.
+func (a *App) sendCapture() {
+	a.captureMu.Lock()
+	defer a.captureMu.Unlock()
+	a.mu.Lock()
+	show := a.prefs.ShowInCapture
+	a.mu.Unlock()
+	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestCaptureShow, Show: &show})
 }
 
 // SetTray hands the GUI its status icon (nil when the desktop has none).

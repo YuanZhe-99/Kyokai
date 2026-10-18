@@ -20,7 +20,7 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use crate::ai::desktop::Frame;
-use crate::input::{Area, Event, LocalInput};
+use crate::input::{Area, Event, LocalInput, PointerAction};
 use crate::media::VideoStart;
 use crate::video::{Choice, Display, Encoded, Targets};
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,8 @@ use tokio::sync::mpsc;
 
 /// Message kinds on the pipes, after a u32 little-endian length.
 const JSON: u8 = 0;
-/// A video frame: stream u32, flags u8, presentation time u64, bytes.
+/// A video frame: stream u32, flags u8, presentation time u64, capture to
+/// frame in µs u32, bytes.
 const VIDEO: u8 = 1;
 /// A screenshot reply: request id u64, width u32, height u32, BGRA.
 const SCREEN: u8 = 2;
@@ -99,6 +100,9 @@ enum Reply {
 /// A video stream the agent produces for one session.
 struct Stream {
     tx: mpsc::Sender<Encoded>,
+    /// A frame did not fit while the session was busy: the frames up to
+    /// the next key frame cannot be decoded without it and are left out.
+    skipping: bool,
 }
 
 /// The helper's end: calls into the agent and the video it streams.
@@ -127,6 +131,8 @@ impl Link {
     /// video stream ends.
     fn attach(self: &Arc<Self>, input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
         *self.out.lock().expect("agent link") = Some(BufWriter::new(out));
+        // A new agent captures as the host user chose.
+        self.show_kyokai(crate::video::show_kyokai());
         let link = self.clone();
         std::thread::spawn(move || {
             let mut input = input;
@@ -157,13 +163,35 @@ impl Link {
                     let _ = w.send(Reply::Json(reply));
                 }
             }
-            VIDEO if body.len() >= 13 => {
+            VIDEO if body.len() >= 17 => {
                 let stream = u32::from_le_bytes(body[0..4].try_into().expect("4 bytes"));
                 let flags = body[4];
                 let pts = u64::from_le_bytes(body[5..13].try_into().expect("8 bytes"));
-                if let Some(s) = self.streams.lock().expect("agent link").get(&stream) {
-                    // The newest frame wins: a full channel drops this one.
-                    let _ = s.tx.try_send((flags, pts, body[13..].to_vec()));
+                let took_us = u32::from_le_bytes(body[13..17].try_into().expect("4 bytes"));
+                let key = flags & crate::media::KEY_FRAME != 0;
+                let mut ask = false;
+                if let Some(s) = self.streams.lock().expect("agent link").get_mut(&stream)
+                    && (key || !s.skipping)
+                {
+                    let frame = Encoded {
+                        flags,
+                        pts,
+                        data: body[17..].to_vec(),
+                        took_us,
+                    };
+                    // A full channel drops this frame, and the ones after it
+                    // until a key frame, which the agent is asked for.
+                    match s.tx.try_send(frame) {
+                        Ok(()) => s.skipping = false,
+                        Err(mpsc::error::TrySendError::Full(_)) => {
+                            ask = !s.skipping;
+                            s.skipping = true;
+                        }
+                        Err(mpsc::error::TrySendError::Closed(_)) => {}
+                    }
+                }
+                if ask {
+                    let _ = self.send("video.key", json!({"stream": stream}));
                 }
             }
             SCREEN if body.len() >= 16 => {
@@ -251,10 +279,13 @@ impl Link {
         stop: Arc<AtomicBool>,
     ) -> Option<(VideoStart, Option<Display>)> {
         let stream = self.next_stream.fetch_add(1, Ordering::Relaxed);
-        self.streams
-            .lock()
-            .expect("agent link")
-            .insert(stream, Stream { tx });
+        self.streams.lock().expect("agent link").insert(
+            stream,
+            Stream {
+                tx,
+                skipping: false,
+            },
+        );
         #[derive(Deserialize)]
         struct Opened {
             start: VideoStart,
@@ -297,6 +328,11 @@ impl Link {
         Some((opened.start, opened.display))
     }
 
+    /// Tells the agent whether its captures show Kyokai's windows.
+    pub fn show_kyokai(&self, show: bool) {
+        let _ = self.send("capture.show", json!({"show": show}));
+    }
+
     /// A new input session in the agent.
     pub fn injector(&self) -> u64 {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
@@ -305,10 +341,22 @@ impl Link {
     }
 
     /// Injects an event through the agent's injector `id`.
-    /// Returns: whether it was injected (false without an agent).
+    /// Returns: whether it was injected (false without an agent); for a
+    /// pointer move, whether it was sent.
+    /// Notes: a pointer move does not wait for the agent's answer, so the
+    /// moves of a hand on the viewer never hold up the session.
     pub fn inject(&self, id: u64, e: &Event, area: Option<Area>) -> bool {
-        self.call("input", json!({"injector": id, "event": e, "area": area}))
-            .unwrap_or(false)
+        let params = json!({"injector": id, "event": e, "area": area});
+        if matches!(
+            e,
+            Event::Pointer {
+                action: PointerAction::Move,
+                ..
+            }
+        ) {
+            return self.send("input", params).is_ok();
+        }
+        self.call("input", params).unwrap_or(false)
     }
 
     /// Releases what injector `id` holds.
@@ -646,11 +694,16 @@ impl Agent {
                 let mut frames = std::mem::replace(&mut source.frames, empty);
                 let out = self.out.clone();
                 std::thread::spawn(move || {
-                    while let Some((flags, pts, bytes)) = frames.blocking_recv() {
-                        let head =
-                            [&stream.to_le_bytes()[..], &[flags], &pts.to_le_bytes()].concat();
+                    while let Some(f) = frames.blocking_recv() {
+                        let head = [
+                            &stream.to_le_bytes()[..],
+                            &[f.flags],
+                            &f.pts.to_le_bytes(),
+                            &f.took_us.to_le_bytes(),
+                        ]
+                        .concat();
                         let mut w = out.lock().expect("agent out");
-                        if write_message(&mut *w, VIDEO, &[&head, &bytes]).is_err() {
+                        if write_message(&mut *w, VIDEO, &[&head, &f.data]).is_err() {
                             break;
                         }
                     }
@@ -683,6 +736,10 @@ impl Agent {
             }
             "input.open" => {
                 self.injectors.insert(injector, Injector::default());
+                return Ok(None);
+            }
+            "capture.show" => {
+                crate::video::set_show_kyokai(req["show"].as_bool().unwrap_or(false));
                 return Ok(None);
             }
             "input" => {
@@ -1449,7 +1506,7 @@ mod tests {
             assert_eq!((start.codec.as_str(), start.i444), ("vp9-sw", true));
         }
         let frame = rx.blocking_recv().expect("a frame through the agent");
-        assert!(!frame.2.is_empty());
+        assert!(!frame.data.is_empty());
         stop.store(true, Ordering::Relaxed);
         // The stream ends: the link forgets it and its frames stop.
         let t0 = Instant::now();

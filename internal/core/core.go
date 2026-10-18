@@ -209,6 +209,9 @@ var (
 	ErrMediaTimeout = errors.New("no media within the timeout")
 	ErrMediaEnded   = errors.New("the session's media ended")
 	ErrMediaTooBig  = errors.New("media packet larger than the buffer")
+	// ErrMediaBehind: the session is behind and left a pointer move out (a
+	// newer one follows); the session goes on.
+	ErrMediaBehind = errors.New("the session is behind; the pointer move was left out")
 )
 
 // MediaRead waits up to timeout for the next media packet of a controller
@@ -238,6 +241,8 @@ func (l *Lib) MediaRead(session uint64, buf []byte, timeout time.Duration) (int,
 
 // MediaWrite passes one packet from the GUI (a control message) to a
 // controller session.
+// Returns: nil, ErrMediaEnded, or ErrMediaBehind for a pointer move left out.
+// Notes: any packet but a pointer move waits until the session takes it.
 func (l *Lib) MediaWrite(session uint64, packet []byte) error {
 	if len(packet) == 0 {
 		return errors.New("empty media packet")
@@ -249,6 +254,8 @@ func (l *Lib) MediaWrite(session uint64, packet []byte) error {
 		return nil
 	case -1:
 		return errors.New("malformed media packet")
+	case -3:
+		return ErrMediaBehind
 	}
 	return ErrMediaEnded
 }
