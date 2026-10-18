@@ -11,7 +11,8 @@ when `SCREENSHOT_DIR` is set.
 - **Sidebar:** Kyokai's mark and name, then Home, Network, AI and Settings, each with its icon
   (original line drawings in `internal/gui/assets/icons`), left-aligned.
 - **Home**, laid out as RustDesk's: on the left "This device" — the Device ID in groups of three
-  with Copy; the temporary password, masked until Show, with Copy and New password; a note when
+  with Copy; the temporary password, masked until Show, with Copy and New password (when only
+  the permanent password is accepted, a line saying so instead, or a warning that none is set); a note when
   secrets are not persisted, and when the saved identity cannot be unlocked, Start over (the old
   store moved aside, a new identity kept from then on; `secrets.start_over`). On the right
   "Control another device": a Device ID, Options (also ask to run AI tasks there) and Connect

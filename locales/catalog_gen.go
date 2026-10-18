@@ -1662,6 +1662,26 @@ func (msgs Messages) HomePasswordHint() string {
 	return Catalog.Format(msgs.locale, "HomePasswordHint", nil)
 }
 
+// HomePermanentMissing says "No permanent password is set, so no password opens this device. Set one in Settings › Access."
+// in the language the app shows.
+func HomePermanentMissing() string { return In(i18n.Locale()).HomePermanentMissing() }
+
+// HomePermanentMissing says "No permanent password is set, so no password opens this device. Set one in Settings › Access."
+// in the language of msgs.
+func (msgs Messages) HomePermanentMissing() string {
+	return Catalog.Format(msgs.locale, "HomePermanentMissing", nil)
+}
+
+// HomePermanentOnly says "Only the permanent password opens this device. Change it in Settings › Access."
+// in the language the app shows.
+func HomePermanentOnly() string { return In(i18n.Locale()).HomePermanentOnly() }
+
+// HomePermanentOnly says "Only the permanent password opens this device. Change it in Settings › Access."
+// in the language of msgs.
+func (msgs Messages) HomePermanentOnly() string {
+	return Catalog.Format(msgs.locale, "HomePermanentOnly", nil)
+}
+
 // HomeTemporaryPassword says "Temporary password"
 // in the language the app shows.
 func HomeTemporaryPassword() string { return In(i18n.Locale()).HomeTemporaryPassword() }

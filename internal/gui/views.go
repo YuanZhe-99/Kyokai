@@ -104,37 +104,47 @@ func (a *App) homeView(c *ui.Context) {
 			})
 			ui.Text(c, groupDigits(st.DeviceID)).FontSize(sizeDeviceID).Bold().FontFeatures("tnum").NoWrap().Selectable()
 			ui.Divider(c)
-			ui.Text(c, L.HomeTemporaryPassword()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			shown := strings.Repeat("•", 8)
-			if show {
-				shown = pw
-			}
-			ui.Text(c, shown).FontSize(sizeTitle).FontFeatures("tnum").Selectable()
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				label := L.ActionShow()
+			// With only the permanent password accepted, the temporary one opens
+			// nothing and is not shown.
+			if st.PasswordMode == "permanent" {
+				if st.PermanentPassword {
+					ui.Text(c, L.HomePermanentOnly()).FontSize(sizeSmall).TextColor(t.TextMuted)
+				} else {
+					ui.Text(c, L.HomePermanentMissing()).FontSize(sizeSmall).TextColor(t.Warning)
+				}
+			} else {
+				ui.Text(c, L.HomeTemporaryPassword()).FontSize(sizeSmall).TextColor(t.TextMuted)
+				shown := strings.Repeat("•", 8)
 				if show {
-					label = L.ActionHide()
+					shown = pw
 				}
-				if ui.Button(c.Key("show-pw"), label).Clicked() {
+				ui.Text(c, shown).FontSize(sizeTitle).FontFeatures("tnum").Selectable()
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					label := L.ActionShow()
 					if show {
-						a.mu.Lock()
-						a.showPassword = false
-						a.mu.Unlock()
-					} else {
-						a.revealPassword(func(string) { a.showPassword = true })
+						label = L.ActionHide()
 					}
-				}
-				if ui.Button(c.Key("copy-pw"), L.ActionCopy()).Clicked() {
-					a.revealPassword(func(p string) {
-						mygo.Clipboard.WriteText(p)
-						a.setToast(L.Copied(), false)
-					})
-				}
-				if ui.Button(c.Key("new-pw"), L.ActionNewPassword()).Clicked() {
-					go func() { _, _ = a.request(localapi.RequestPasswordRegenerate) }()
-				}
-			})
-			ui.Text(c, L.HomePasswordHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+					if ui.Button(c.Key("show-pw"), label).Clicked() {
+						if show {
+							a.mu.Lock()
+							a.showPassword = false
+							a.mu.Unlock()
+						} else {
+							a.revealPassword(func(string) { a.showPassword = true })
+						}
+					}
+					if ui.Button(c.Key("copy-pw"), L.ActionCopy()).Clicked() {
+						a.revealPassword(func(p string) {
+							mygo.Clipboard.WriteText(p)
+							a.setToast(L.Copied(), false)
+						})
+					}
+					if ui.Button(c.Key("new-pw"), L.ActionNewPassword()).Clicked() {
+						go func() { _, _ = a.request(localapi.RequestPasswordRegenerate) }()
+					}
+				})
+				ui.Text(c, L.HomePasswordHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			}
 			if note := secretsNote(st.Persistence); note != "" && st.Persistence != "os-store" {
 				ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Warning)
 			}

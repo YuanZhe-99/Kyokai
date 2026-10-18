@@ -79,15 +79,17 @@ func demoApp(t *testing.T) *App {
 func TestViewsRender(t *testing.T) {
 	dir := os.Getenv("SCREENSHOT_DIR")
 	pages := map[string]func(a *App){
-		"home":             func(a *App) {},
-		"home-password":    func(a *App) { a.password, a.passwordFor, a.showPassword = "k7mq2xpa", 7, true },
-		"home-memory":      func(a *App) { a.status.Persistence = "memory-only" },
-		"home-permissions": func(a *App) { a.status.Permissions = &localapi.Permissions{Accessibility: true} },
-		"starting":         func(a *App) { a.connected, a.status = false, nil },
-		"engine-down":      func(a *App) { a.connected, a.status, a.engineErr = false, nil, "kyokai-svc not found" },
-		"settings":         func(a *App) { a.page, a.status.About = pageSettings, localapi.About{Name: "WINDOWS-KVM"} },
-		"licenses":         func(a *App) { a.page, a.showLicenses = pageSettings, true },
-		"network-off":      func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
+		"home":                func(a *App) {},
+		"home-password":       func(a *App) { a.password, a.passwordFor, a.showPassword = "k7mq2xpa", 7, true },
+		"home-memory":         func(a *App) { a.status.Persistence = "memory-only" },
+		"home-permanent-only": func(a *App) { a.status.PasswordMode, a.status.PermanentPassword = "permanent", true },
+		"home-permanent-none": func(a *App) { a.status.PasswordMode = "permanent" },
+		"home-permissions":    func(a *App) { a.status.Permissions = &localapi.Permissions{Accessibility: true} },
+		"starting":            func(a *App) { a.connected, a.status = false, nil },
+		"engine-down":         func(a *App) { a.connected, a.status, a.engineErr = false, nil, "kyokai-svc not found" },
+		"settings":            func(a *App) { a.page, a.status.About = pageSettings, localapi.About{Name: "WINDOWS-KVM"} },
+		"licenses":            func(a *App) { a.page, a.showLicenses = pageSettings, true },
+		"network-off":         func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
 		"home-connect": func(a *App) {
 			a.status.Network.State = "online"
 			a.connect = connectForm{deviceID: "657 365 333"}

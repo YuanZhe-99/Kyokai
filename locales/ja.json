@@ -162,6 +162,8 @@
   "HelperRestarted": "Kyokai Helper を再起動しました。これまでに許可した権限が使われます。",
   "HomeDeviceID": "デバイス ID",
   "HomePasswordHint": "Kyokai を起動するたび、または求めたときに変わります。",
+  "HomePermanentMissing": "固定パスワードが設定されていないため、どのパスワードでも接続できません。設定 › アクセスで設定してください。",
+  "HomePermanentOnly": "このデバイスには固定パスワードでのみ接続できます。設定 › アクセスで変更できます。",
   "HomeTemporaryPassword": "一時パスワード",
   "HomeThisDevice": "このデバイス",
   "HostConnected": "{device} がこのデバイスに接続しています",

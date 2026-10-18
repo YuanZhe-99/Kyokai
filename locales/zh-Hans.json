@@ -162,6 +162,8 @@
   "HelperRestarted": "Kyokai Helper 已重启，现已使用目前允许的权限。",
   "HomeDeviceID": "设备 ID",
   "HomePasswordHint": "每次启动 Kyokai 或你要求时都会更换。",
+  "HomePermanentMissing": "尚未设置固定密码，因此任何密码都无法打开本设备。请在设置 › 访问中设置。",
+  "HomePermanentOnly": "只有固定密码可以打开本设备。可在设置 › 访问中更改。",
   "HomeTemporaryPassword": "临时密码",
   "HomeThisDevice": "本机",
   "HostConnected": "{device} 已连接到这台设备",

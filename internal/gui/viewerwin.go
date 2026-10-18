@@ -285,7 +285,7 @@ func (vw *viewerWindow) tabBar(c *ui.Context, tabs []*viewer, cur int, home bool
 			})
 			tab.Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, v.title).FontSize(sizeSmall).NoWrap().Ellipsis("…").MaxWidth(tabTitleMaxW)
+					ui.Text(c, v.title).FontSize(sizeSmall).SingleLine().MaxWidth(tabTitleMaxW)
 					if (vw.main || len(tabs) > 1) && tabIcon(c, "tab-out-"+device, "⧉", L.ViewerTabOut()) {
 						vw.app.moveTab(device, nil)
 					}

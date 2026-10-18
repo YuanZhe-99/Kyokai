@@ -328,6 +328,8 @@
   "HelperRestarted": "Kyokai Helper restarted with the permissions allowed so far.",
   "HomeDeviceID": "Device ID",
   "HomePasswordHint": "Changes every time Kyokai starts, or when you ask for a new one.",
+  "HomePermanentMissing": "No permanent password is set, so no password opens this device. Set one in Settings › Access.",
+  "HomePermanentOnly": "Only the permanent password opens this device. Change it in Settings › Access.",
   "HomeTemporaryPassword": "Temporary password",
   "HomeThisDevice": "This device",
   "HostConnected": "{device} is connected to this device",

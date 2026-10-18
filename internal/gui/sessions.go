@@ -296,7 +296,7 @@ func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
 					if name == "" {
 						name = groupDigits(r.id)
 					}
-					ui.Text(c, name).Bold().Ellipsis("…").NoWrap().MaxWidth(deviceCardW - 24 - avatarSize - 48)
+					ui.Text(c, name).Bold().SingleLine().MaxWidth(deviceCardW - 24 - avatarSize - 48)
 					if r.about.Name != "" {
 						ui.Text(c, groupDigits(r.id)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
 					}
@@ -330,7 +330,7 @@ func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
 				}
 				ui.Box(c).Width(onlineDot).Height(onlineDot).Radius(onlineDot / 2).Background(dot)
 				// The card's width less its padding, the dot and the gap.
-				ui.Text(c, state).FontSize(sizeSmall).TextColor(col).Ellipsis("…").NoWrap().MaxWidth(deviceCardW - 24 - onlineDot - 6).Tooltip(state)
+				ui.Text(c, state).FontSize(sizeSmall).TextColor(col).SingleLine().MaxWidth(deviceCardW - 24 - onlineDot - 6).Tooltip(state)
 			})
 			if r.saved {
 				ui.Text(c, L.ConnectPasswordSaved()).FontSize(sizeSmall).TextColor(t.TextMuted)
