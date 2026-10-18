@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	"github.com/YuanZhe-99/Kyokai/internal/version"
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
@@ -120,7 +121,7 @@ func (a *App) hostBanner(c *ui.Context) {
 				deviceAvatar(c, s.Peer)
 				ui.Column(c).Grow(1).Gap(2).Children(func() {
 					ui.Text(c, L.HostConnected(deviceTitle(s.Peer, s.DeviceID))).Bold()
-					ui.Text(c, sessionState(s)).FontSize(sizeSmall).TextColor(t.TextMuted)
+					ui.Text(c, sessionState(s, a.engineVersion())).FontSize(sizeSmall).TextColor(t.TextMuted)
 				})
 				if ui.Button(c.Key(key+"-close"), L.ActionDisconnect()).Clicked() {
 					id := s.ID
@@ -277,9 +278,9 @@ func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
 			state, col = L.NetworkOnline(), t.Success
 		case "closed":
 		case "failed":
-			state, col = failureText(s.Failure), t.Danger
+			state, col = failureText(*s, a.engineVersion()), t.Danger
 		default:
-			state = sessionState(*s)
+			state = sessionState(*s, a.engineVersion())
 		}
 	}
 	keyChanged := r.session != nil && r.session.State == "failed" && string(r.session.Failure) == `"key-changed"`
@@ -364,8 +365,19 @@ func (a *App) removeDevice(device string) {
 	}()
 }
 
-// sessionState words a session's state, permissions or failure.
-func sessionState(s localapi.SessionInfo) string {
+// engineVersion is the attached engine's version ("" before it attaches).
+func (a *App) engineVersion() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.status == nil {
+		return ""
+	}
+	return a.status.Version
+}
+
+// sessionState words a session's state, permissions or failure; engine is
+// the attached engine's version.
+func sessionState(s localapi.SessionInfo, engine string) string {
 	switch s.State {
 	case "connecting":
 		return L.SessionConnecting()
@@ -385,11 +397,14 @@ func sessionState(s localapi.SessionInfo) string {
 	case "closed":
 		return L.SessionClosed()
 	}
-	return failureText(s.Failure)
+	return failureText(s, engine)
 }
 
-// failureText words why a session failed.
-func failureText(raw json.RawMessage) string {
+// failureText words why a session failed. A version mismatch names the side
+// that differs: this device's engine (an older helper) when it is not this
+// app's version, else the other device's version when it is known.
+func failureText(s localapi.SessionInfo, engine string) string {
+	raw := s.Failure
 	var name string
 	var refused struct {
 		Refused string `json:"refused"`
@@ -419,6 +434,12 @@ func failureText(raw json.RawMessage) string {
 	case "key-changed":
 		return L.FailKeyChanged()
 	case "incompatible":
+		switch {
+		case engine != "" && engine != version.Version:
+			return L.FailHelperOutdated(engine, version.Version)
+		case s.PeerVersion != "":
+			return L.FailIncompatibleVersion(s.PeerVersion, version.Version)
+		}
 		return L.FailIncompatible()
 	}
 	return L.FailBroken()

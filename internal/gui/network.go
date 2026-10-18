@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
@@ -35,6 +36,13 @@ func (a *App) networkStatus(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	n := a.status.Network
+	// What a device said about itself in its last session here (verified
+	// then); a device never connected to shows only its Device ID.
+	known := map[string]localapi.About{}
+	for _, r := range a.status.Recent {
+		known[r.DeviceID] = r.About
+	}
+	online := n.State == "online"
 	a.mu.Unlock()
 	card(c).Children(func() {
 		ui.Text(c, L.NetworkTitle()).FontSize(sizeHeading).Bold()
@@ -67,14 +75,27 @@ func (a *App) networkStatus(c *ui.Context) {
 			ui.Text(c, L.NetworkNoDevices()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		}
 		for _, d := range n.Devices {
+			about := known[d.DeviceID]
 			ui.Row(c.Key("dev-" + d.DeviceID)).Gap(16).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, groupDigits(d.DeviceID)).FontFeatures("tnum").Selectable().Grow(1)
+				ui.Column(c).Grow(1).Gap(2).Children(func() {
+					if about.Name != "" {
+						ui.Text(c, about.Name).Bold().SingleLine()
+					}
+					ui.Text(c, groupDigits(d.DeviceID)).FontFeatures("tnum").Selectable()
+				})
 				path := L.PathRelay()
 				if d.Path == "direct" {
 					path = L.PathDirect()
 				}
 				ui.Text(c, path).FontSize(sizeSmall).TextColor(t.TextMuted)
 				ui.Text(c, L.LatencyMS(d.LatencyMS)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
+				if ui.Button(c.Key("dev-copy-"+d.DeviceID), L.ActionCopy()).Clicked() {
+					mygo.Clipboard.WriteText(d.DeviceID)
+					a.update(func() { a.setToast(L.Copied(), false) })
+				}
+				if ui.Button(c.Key("dev-connect-"+d.DeviceID), L.ActionConnect()).Disabled(!online).Clicked() {
+					a.connectDevice(d.DeviceID, about, nil)
+				}
 			})
 		}
 		ui.Text(c, L.NetworkDevicesHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
@@ -128,14 +149,6 @@ func (a *App) networkSettings(c *ui.Context) {
 		if f.weakSecret {
 			ui.Text(c, L.NetworkSecretWeak()).FontSize(sizeSmall).TextColor(t.Warning)
 		}
-		helperMode := a.currentMode() != modeUser
-		directHint := L.NetworkDirectHint()
-		if helperMode {
-			directHint = L.NetworkDirectHelper()
-		}
-		settingRow(c, "net-direct", L.NetworkDirect(), directHint, func() {
-			edit(ui.Switch(c.Key("net-direct-sw"), &f.direct).Label(L.NetworkDirect()).Disabled(busy || helperMode))
-		})
 		ui.Row(c).Gap(gap).Children(func() {
 			if ui.Button(c.Key("net-save"), L.ActionSave()).Disabled(busy).Clicked() {
 				a.saveNetwork(f, false)
@@ -168,12 +181,13 @@ func (a *App) loadNetwork() {
 	}()
 }
 
-// saveNetwork sends the form to the engine; leave clears the servers and
+// saveNetwork sends the form to the engine (the servers, name and secret;
+// the stored direct choice stays); leave clears the servers and
 // the name, which turns the node off.
 // Side effects: the engine stores the settings and reconnects.
 func (a *App) saveNetwork(f netForm, leave bool) {
-	direct := f.direct
-	ns := &localapi.NetworkSettings{Servers: serverLines(f.servers), Name: strings.TrimSpace(f.name), Direct: &direct}
+	// Direct connections are set in Settings, Run mode (setDirect).
+	ns := &localapi.NetworkSettings{Servers: serverLines(f.servers), Name: strings.TrimSpace(f.name)}
 	if leave {
 		ns.Servers, ns.Name = nil, ""
 	} else if f.secret != "" {
@@ -200,6 +214,35 @@ func (a *App) saveNetwork(f netForm, leave bool) {
 					a.setToast(L.NetworkSaved(), false)
 				}
 			}
+		})
+	}()
+}
+
+// setDirect turns direct connections on or off at once, with the servers
+// and name as stored: a switch that looks on must be on. Unsaved edits of the
+// other fields stay in the form.
+// Side effects: the engine stores the setting and restarts its node.
+func (a *App) setDirect(on bool) {
+	a.mu.Lock()
+	a.busy["network"] = true
+	a.net.direct = on
+	a.mu.Unlock()
+	go func() {
+		stored, err := a.requestWith(localapi.Request{Type: localapi.RequestNetworkGet})
+		var resp *localapi.Response
+		if err == nil && stored.Network != nil {
+			ns := &localapi.NetworkSettings{Servers: stored.Network.Servers, Name: stored.Network.Name, Direct: &on}
+			resp, err = a.requestWith(localapi.Request{Type: localapi.RequestNetworkSet, Network: ns})
+		}
+		a.update(func() {
+			delete(a.busy, "network")
+			if err != nil || resp == nil || resp.Network == nil {
+				a.net.direct = !on
+				a.setToast(L.EngineDown(), true)
+				return
+			}
+			a.net.direct = resp.Network.Direct != nil && *resp.Network.Direct
+			a.setToast(L.NetworkSaved(), false)
 		})
 	}()
 }

@@ -51,11 +51,11 @@ when `SCREENSHOT_DIR` is set.
   and a notification announces it. A controller's task shows "Started from" its Device ID, and
   while it works every other page shows a banner with Review and Stop.
 - **Network:** the node's live status (connected, connecting, or why it could not connect; the
-  virtual address; the NAT type in plain words) and the Kyokai devices it routes to (Device ID,
-  direct or relayed, latency), with a note that announced Device IDs are not proof; then the
-  settings form: servers (one URL per line), network name, and a write-only secret field (empty
-  keeps the stored secret; a weak secret is flagged), Try direct connections (off by default;
-  on and fixed in the helper modes, [networking.md](networking.md)), Save and Leave network. Refused settings show
+  virtual address; the NAT type in plain words) and the Kyokai devices it routes to (the name a
+  device gave in its last session here, if any, its Device ID, direct or relayed, latency, Copy
+  and Connect), with a note that announced Device IDs are not proof; then the settings form:
+  servers (one URL per line), network name, and a write-only secret field (empty keeps the stored
+  secret; a weak secret is flagged), Save and Leave network, which apply to these fields only. Refused settings show
   the engine's reason.
 - **Device names:** wherever a device appears (a confirmation, Recent, the connection tabs, trusted
   devices, the viewer's title) its friendly name goes beside the Device ID, never instead of it,
@@ -66,7 +66,9 @@ when `SCREENSHOT_DIR` is set.
   `internal/gui/assets/logos/SOURCES.md` (see [packaging.md](packaging.md), "Vendor logos").
 - **Run mode** (Settings): No privileges / Follow Kyokai / Background service, a note on the one
   administrator prompt and what moves along; switching runs in the background with a toast
-  ([run-modes.md](run-modes.md)); Windows and macOS. Diagnostics shows the mode in use.
+  ([run-modes.md](run-modes.md)); Windows and macOS. Below it Try direct connections (off by
+  default; on and fixed in the helper modes; applied as it is switched,
+  [networking.md](networking.md)). Diagnostics shows the mode in use.
 - **Settings:** General (language, appearance, open at login — off by default, hide Kyokai from
   screen capture — on by default, applied to the main window and every viewer at once and told
   to the engine, whose macOS capture follows it, close button),
@@ -96,11 +98,12 @@ when `SCREENSHOT_DIR` is set.
   closing such a window disconnects its tabs. Keys grabbed for a window go to the tab shown.
 - The picture is scaled to fit on black, the host's pointer marked with a small ring that follows
   the mouse, and a status line: the Device ID, the display by number when the host has several,
-  quality preset, frame-rate cap ("30 fps"), Codec (Auto and what both computers do, when there is
-  a choice), Full colour, Direct or Relayed (Relayed with a hint to turn on direct connections on
+  quality preset, frame-rate cap ("30 fps"), Codec (Auto and what both computers do, by codec name
+  only, when there is a choice), Full colour, Direct or Relayed (Relayed with a hint to turn on direct connections on
   both devices), size, codec, frame rate, bitrate and the host's measured delay, whose tooltip
-  shows where the time goes (the host's encoding, the network, this computer's decoding and
-  drawing, the frame rate against the host's target) — or, for the test pattern of a host that may
+  shows what encodes and what decodes, each in hardware or software as it reports, and where the
+  time goes (the host's encoding, the network, this computer's decoding and drawing, the frame
+  rate against the host's target) — or, for the test pattern of a host that may
   not record its screen, "this is a placeholder picture" — Pointer (shows or hides the ring,
   remembered for every viewer), AI (collapses the AI panel) and Full screen. With `control-input`, a bar at the top with Lock
   screen, Ctrl+Alt+Del (helper modes), the Block their keyboard and mouse and Privacy mode

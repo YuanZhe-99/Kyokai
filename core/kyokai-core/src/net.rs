@@ -435,8 +435,9 @@ fn free_port() -> Option<u16> {
 /// admit only Kyokai's port. With `direct`, hole punching, UPnP and direct
 /// connections, preferring UDP, and listeners on `listen` (TCP and UDP) so
 /// that devices on the same network connect directly; without it nothing
-/// listens or waits for unsolicited packets, and no direct connection is
-/// made either way (`disable_p2p`), so traffic goes through the server.
+/// listens or waits for unsolicited packets, but the node still dials a
+/// device that listens (TCP first, an outgoing connection no firewall asks
+/// about), so a device with direct connections on reaches it directly too.
 fn config(
     s: &Settings,
     device_id: &str,
@@ -468,7 +469,6 @@ network_secret = {secret}
 {peers}
 [flags]
 no_tun = true
-disable_p2p = {off}
 default_protocol = "{protocol}"
 disable_udp_hole_punching = {off}
 disable_tcp_hole_punching = {off}
@@ -608,12 +608,13 @@ mod tests {
             let cfg = config(&s, "100000002", direct, Some(47_311)).unwrap();
             let f = cfg.get_flags();
             // Off: nothing waits for unsolicited packets, so no firewall
-            // prompt, and no direct connection either way.
+            // prompt; the node still dials a device that listens (regression:
+            // with disable_p2p a device left off kept a LAN peer on the relay).
             assert_eq!(f.disable_udp_hole_punching, !direct);
             assert_eq!(f.disable_tcp_hole_punching, !direct);
             assert_eq!(f.disable_sym_hole_punching, !direct);
             assert_eq!(f.disable_upnp, !direct);
-            assert_eq!(f.disable_p2p, !direct);
+            assert!(!f.disable_p2p);
             assert_eq!(f.default_protocol, if direct { "udp" } else { "tcp" });
             let stun = cfg.get_stun_servers();
             assert_eq!(

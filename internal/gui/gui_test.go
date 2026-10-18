@@ -20,6 +20,8 @@ import (
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	"github.com/YuanZhe-99/Kyokai/internal/version"
+	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
 // TestCaptureDefault protects the default posture: without a choice saved
@@ -390,14 +392,25 @@ func TestPointerMovesCoalesce(t *testing.T) {
 // their wire names), and a (re)started stream tells the host the bar's
 // quality and codec.
 func TestCodecChoice(t *testing.T) {
-	for name, want := range map[string]string{"h264": "H.264", "hevc": "HEVC", "vp9": "VP9", "av1": "AV1", "vp8": "VP8"} {
+	for name, want := range map[string]string{"h264": "H.264", "hevc": "HEVC", "vp9": "VP9", "vp9-sw": "VP9", "av1": "AV1", "vp8": "VP8"} {
 		if got := codecLabel(name); got != want {
 			t.Errorf("%s: %q, want %q", name, got, want)
 		}
 	}
-	// libvpx's VP9 is told apart from the system's, in the person's language.
-	if sw := codecLabel("vp9-sw"); !strings.Contains(sw, "VP9") || sw == "VP9" {
-		t.Errorf("vp9-sw: %q", sw)
+	// The choice names codecs only: VP9 once, the host's better one.
+	names, labels := codecChoices([]string{"hevc", "vp9", "vp9-sw", "av1"})
+	if !slices.Equal(names, []string{"auto", "hevc", "vp9", "av1"}) || !slices.Equal(labels[1:], []string{"HEVC", "VP9", "AV1"}) {
+		t.Errorf("choices %q %q", names, labels)
+	}
+	// Hardware or software is said as each side reports it.
+	for i, want := range map[codecImpl]string{
+		{"videotoolbox", true}: L.ViewerImplHardware("VideoToolbox"),
+		{"libaom", false}:      L.ViewerImplSoftware("libaom"),
+		{"", false}:            L.ViewerImplUnknown(),
+	} {
+		if got := implLabel(i); got != want {
+			t.Errorf("%v: %q, want %q", i, got, want)
+		}
 	}
 	v := &viewer{preset: 2, fpsCap: "60 fps", full: true, codec: "auto"}
 	got := v.choicePackets()
@@ -566,5 +579,50 @@ func TestConnectionTabsRender(t *testing.T) {
 			t.Fatal(err)
 		}
 		f.Close()
+	}
+}
+
+// TestIncompatibleNamesTheOutdatedSide: a version mismatch blames this
+// device's older helper when its engine is not this app's version, and
+// names the other device's version when it is known.
+func TestIncompatibleNamesTheOutdatedSide(t *testing.T) {
+	failed := localapi.SessionInfo{State: "failed", Failure: json.RawMessage(`"incompatible"`)}
+	withPeer := failed
+	withPeer.PeerVersion = "0.1.2"
+	for _, tc := range []struct {
+		name   string
+		s      localapi.SessionInfo
+		engine string
+		want   string
+	}{
+		{"older helper", withPeer, "0.1.1", L.FailHelperOutdated("0.1.1", version.Version)},
+		{"other device", withPeer, version.Version, L.FailIncompatibleVersion("0.1.2", version.Version)},
+		{"unknown", failed, version.Version, L.FailIncompatible()},
+		{"not attached", failed, "", L.FailIncompatible()},
+	} {
+		if got := sessionState(tc.s, tc.engine); got != tc.want {
+			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestViewerPictureTakesText: macOS makes text of keys only for a focused
+// element that takes text, and the viewer sends letters as that text.
+func TestViewerPictureTakesText(t *testing.T) {
+	pic := image.NewRGBA(image.Rect(0, 0, 320, 180))
+	v := &viewer{device: "657365333", preset: 1, fpsCap: "30 fps", control: true, app: &App{}}
+	v.phase.State = "connected"
+	v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
+	tt := ui.NewTester(v.view, 1100, 560)
+	tt.Frame()
+	tt.Frame()
+	v.mu.Lock()
+	box := v.box
+	v.mu.Unlock()
+	tt.SetFocused(true)
+	tt.ClickAt(box.X+box.W/2, box.Y+box.H/2)
+	tt.Frame()
+	if active, _ := tt.TextInputActive(); !active {
+		t.Fatal("the focused picture does not take text")
 	}
 }

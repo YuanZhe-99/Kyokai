@@ -79,6 +79,8 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | tile (HEVC picture partition) | 图块 |
 | patent grant | 专利授权 |
 | codec choice / codec offer | 编码选择 / 编码清单 |
+| frame acknowledgement | 帧确认 |
+| in hardware / in software (an encoder, a decoder) | 硬件 / 软件 |
 | direct (path) | 直连 |
 | listener | 监听 |
 | parameter set (H.264, HEVC) | 参数集 |

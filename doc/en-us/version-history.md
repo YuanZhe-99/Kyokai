@@ -16,7 +16,16 @@
   can send it; a viewer that falls behind goes on from the next key frame instead of decoding
   broken pictures; decoding no longer waits for drawing; the stream's first picture is no longer
   lost when the viewer opens. Clicks and keys are never dropped behind pointer moves.
-- Wire protocol 7 (a 0.1.3 device connects only to 0.1.3), FFI ABI 4, local API 2.
+- Found with the test builds: an older helper is updated by the app itself, without a prompt,
+  from a signed build (an app update left it behind, so its device could not reach updated ones),
+  and a version mismatch names the side that differs; the host stays at most 3 frames ahead of the
+  viewer's acknowledgements (on a slow relay seconds of video queued in the transport, 9.9 s at
+  1 fps); a device with direct connections off still dials a LAN peer that listens, and the switch
+  moved to Settings, Run mode, applied at once; the Network page's devices have their name, Copy
+  and Connect; keys reach the host from a Mac's viewer (macOS gave the picture no text); the Codec
+  choice names codecs only, and the viewer's details say what encodes and decodes, in hardware or
+  software; a Mac host asks for the hardware encoder first.
+- Wire protocol 8 (a 0.1.3 device connects only to 0.1.3), FFI ABI 5, local API 2.
 - Checked (2026-10-18): MyGo v0.5.5, EasyTier v2.7.0 (commit `8b7f1f0`), RustDesk 1.5.0, vcpkg
   2026.07.29 and Rust 1.99.1 are the latest; checked, unchanged.
 

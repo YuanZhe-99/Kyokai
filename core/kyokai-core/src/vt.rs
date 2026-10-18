@@ -28,17 +28,19 @@ use objc2_core_video::{
 use objc2_video_toolbox::{
     VTCompressionSession, VTCopyVideoEncoderList, VTDecodeFrameFlags, VTDecodeInfoFlags,
     VTDecompressionOutputCallbackRecord, VTDecompressionSession, VTEncodeInfoFlags,
-    VTIsHardwareDecodeSupported, VTSessionSetProperty,
+    VTIsHardwareDecodeSupported, VTSessionCopyProperty, VTSessionSetProperty,
     kVTCompressionPropertyKey_AllowFrameReordering, kVTCompressionPropertyKey_AverageBitRate,
     kVTCompressionPropertyKey_DataRateLimits, kVTCompressionPropertyKey_ExpectedFrameRate,
     kVTCompressionPropertyKey_MaxKeyFrameInterval,
     kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
     kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality,
     kVTCompressionPropertyKey_ProfileLevel, kVTCompressionPropertyKey_RealTime,
+    kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder,
     kVTEncodeFrameOptionKey_ForceKeyFrame, kVTProfileLevel_H264_High_AutoLevel,
     kVTProfileLevel_HEVC_Main_AutoLevel, kVTVideoEncoderList_CodecType,
     kVTVideoEncoderList_IsHardwareAccelerated,
     kVTVideoEncoderSpecification_EnableLowLatencyRateControl,
+    kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder,
 };
 use std::ffi::c_void;
 use std::ptr::NonNull;
@@ -167,6 +169,18 @@ fn nv12_attributes(size: Option<(u32, u32)>) -> CFRetained<CFDictionary<CFString
 }
 
 /// Sets a session property; one the encoder does not have is left alone.
+/// Reads a property of a VideoToolbox session.
+/// Returns: its value, or None when the session does not have it.
+fn property(session: &CFType, key: &CFString) -> Option<CFRetained<CFType>> {
+    let mut value: *const CFType = std::ptr::null();
+    // SAFETY: a VideoToolbox session and a key of its properties; the out
+    // pointer receives a retained value or stays null.
+    let status = unsafe { VTSessionCopyProperty(session, key, None, (&raw mut value).cast()) };
+    let value = NonNull::new(value.cast_mut()).filter(|_| status == 0)?;
+    // SAFETY: the copy function handed over a +1 reference.
+    Some(unsafe { CFRetained::from_raw(value) })
+}
+
 fn set(session: &CFType, key: &CFString, value: &CFType) {
     // SAFETY: a VideoToolbox session, a key of its properties and a value
     // of the key's type.
@@ -225,15 +239,17 @@ pub struct Encoder {
     n: i64,
     /// The picture to encode next, from the session's pool.
     picture: Option<CFRetained<CVPixelBuffer>>,
+    /// Whether the session had to be on the hardware encoder.
+    hardware: bool,
 }
 
 impl Encoder {
     /// Opens an encoder for `width`×`height` NV12 pictures.
     /// Inputs: `bitrate` in bit/s; `fps` is the rate the encoder plans for.
     /// Returns: the encoder, or why VideoToolbox refused it.
-    /// Notes: real time, no frame reordering, and low-latency rate control
-    /// where the encoder offers it; a key frame every 4 seconds and on
-    /// request.
+    /// Notes: the hardware encoder where there is one, with low-latency rate
+    /// control where it offers it; real time, no frame reordering; a key
+    /// frame every 4 seconds and on request.
     pub fn new(
         codec: Codec,
         width: u32,
@@ -246,8 +262,19 @@ impl Encoder {
             units: Mutex::default(),
         });
         let source = nv12_attributes(Some((width, height)));
-        let session = Self::create(codec, width, height, &source, &out, true)
-            .or_else(|_| Self::create(codec, width, height, &source, &out, false))?;
+        // The hardware encoder, with low-latency rate control if it takes
+        // it, then without; any encoder where there is no hardware. Only a
+        // session that had to be hardware is said to be: the low-latency
+        // encoder (rtvc) runs on the hardware but the encoder list calls it
+        // software, and the session does not say.
+        let (session, hardware) = [(true, true), (true, false), (false, false)]
+            .into_iter()
+            .find_map(|(hardware, low_latency)| {
+                Self::create(codec, width, height, &source, &out, hardware, low_latency)
+                    .ok()
+                    .map(|s| (s, hardware))
+            })
+            .ok_or_else(|| format!("VideoToolbox has no {} encoder here", codec.name()))?;
         let fps = fps.max(1) as i32;
         // SAFETY: immutable constants of the framework.
         unsafe {
@@ -295,6 +322,7 @@ impl Encoder {
             fps,
             n: 0,
             picture: None,
+            hardware,
         };
         enc.set_bitrate(bitrate);
         // SAFETY: a plain call on the session; it allocates the encoder's
@@ -303,19 +331,35 @@ impl Encoder {
         Ok(enc)
     }
 
-    /// Creates the compression session, with low-latency rate control when
-    /// `low_latency`.
+    /// Whether the session encodes in hardware: it was created to be.
+    pub fn hardware(&self) -> bool {
+        self.hardware
+    }
+
+    /// Creates the compression session: only on the hardware encoder when
+    /// `hardware`, with low-latency rate control when `low_latency`.
     fn create(
         codec: Codec,
         width: u32,
         height: u32,
         source: &CFDictionary<CFString, CFNumber>,
         out: &Encoded,
+        hardware: bool,
         low_latency: bool,
     ) -> Result<CFRetained<VTCompressionSession>, String> {
-        // SAFETY: an immutable constant of the framework.
-        let key = unsafe { kVTVideoEncoderSpecification_EnableLowLatencyRateControl };
-        let spec = low_latency.then(|| CFDictionary::from_slices(&[key], &[CFBoolean::new(true)]));
+        // SAFETY: immutable constants of the framework.
+        let (require, latency) = unsafe {
+            (
+                kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder,
+                kVTVideoEncoderSpecification_EnableLowLatencyRateControl,
+            )
+        };
+        let keys: Vec<&CFString> = [(hardware, require), (low_latency, latency)]
+            .into_iter()
+            .filter_map(|(on, key)| on.then_some(key))
+            .collect();
+        let on = CFBoolean::new(true);
+        let spec = CFDictionary::from_slices(&keys, &vec![on; keys.len()]);
         let mut session: *mut VTCompressionSession = std::ptr::null_mut();
         // SAFETY: valid dictionaries; the callback's refcon is `out`, which
         // the encoder keeps until the session is invalidated; the out
@@ -326,7 +370,7 @@ impl Encoder {
                 width as i32,
                 height as i32,
                 codec.video_type(),
-                spec.as_deref().map(|d| d.as_ref()),
+                Some(spec.as_ref()),
                 Some(source.as_ref()),
                 None,
                 Some(encoded),
@@ -586,6 +630,19 @@ impl Decoder {
             out: Box::new(Decoded(Mutex::new(None))),
             sample: Vec::new(),
         }
+    }
+
+    /// Whether the session decodes in hardware, as it reports; false before
+    /// the first key frame opened it.
+    pub fn hardware(&self) -> bool {
+        self.session.as_ref().is_some_and(|s| {
+            // SAFETY: an immutable constant of the framework.
+            property(s, unsafe {
+                kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder
+            })
+            .and_then(|v| v.downcast::<CFBoolean>().ok())
+            .is_some_and(|b| b.as_bool())
+        })
     }
 
     /// Decodes one Annex B frame into `rgba` (resized to width×height×4).
@@ -867,6 +924,16 @@ mod tests {
                     }
                 }
                 assert!(shown >= 9, "{codec:?} {w}×{h}: {shown} of 10 pictures");
+                // The sessions say how they run: an encoder listed in
+                // hardware is used in hardware.
+                eprintln!(
+                    "{codec:?} {w}×{h}: encodes in hardware {}, decodes in hardware {}",
+                    enc.hardware(),
+                    dec.hardware()
+                );
+                if codec == Codec::Hevc {
+                    assert_eq!(enc.hardware(), hevc_hardware());
+                }
                 let corner = &rgba[..4];
                 assert!(
                     corner[..3].iter().all(|c| (*c as i32 - 90).abs() < 12),

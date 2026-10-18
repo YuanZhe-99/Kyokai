@@ -51,7 +51,7 @@ integers and pointers only:
 
 | Export | Does |
 |---|---|
-| `kyokai_abi_version() -> u32` | ABI version (4); hosts refuse a mismatch |
+| `kyokai_abi_version() -> u32` | ABI version (5); hosts refuse a mismatch |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | Starts the core with `{version, state_dir, profile}` |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | Answers `{method, params}` |
 | `kyokai_free(ptr, len)` | Frees a response buffer |
@@ -60,6 +60,7 @@ integers and pointers only:
 | `kyokai_media_write(session, ptr, len) -> i32` | Passes a control packet from the GUI (input, key-frame request) to the session: 0, -1 malformed, -2 ended; a pointer move may be left out while the session is behind (-3), anything else waits until the session takes it |
 | `kyokai_decoder_open(json, len) -> u64` | Opens a viewer decoder for a stream (`{codec, width, height}`); 0 when the codec is not available. Needs no started core |
 | `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | Decodes one frame into the caller's RGBA buffer: 1 picture, 0 needs more input, -1 error, -3 too large |
+| `kyokai_decoder_info(id, out, cap) -> i32` | Writes `{decoder, hardware}` JSON into the caller's buffer: which decoder it is (`videotoolbox`, `media-foundation`, `libvpx`, `libaom`) and whether it decodes in hardware, as it reports; the length, -1 unknown handle, -3 too large |
 | `kyokai_decoder_close(id)` | Releases a decoder |
 | `kyokai_keyboard_grab(window, mode, len) -> i32` | Grabs the keyboard for a viewer window (its native handle) in mode `map` or `translate`, or ends its grab with `off`: 0, -1 unknown mode or no window, -2 not available here (Windows only so far). Needs no started core |
 | `kyokai_keyboard_read(*event, timeout_ms) -> i32` | Waits for the next key the grab took and writes it into the caller's `{window: usize, code: u32, down, caps, num: u8, pad: u8}`: 1 a key, 0 timeout, -2 not available |

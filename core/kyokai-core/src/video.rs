@@ -787,6 +787,18 @@ mod capture {
             }
         }
 
+        /// Which encoder this is, by name, and whether it runs in hardware,
+        /// as it reports (a system encoder may fall back to software).
+        fn kind(&self) -> (&'static str, bool) {
+            match self {
+                #[cfg(windows)]
+                Encoder::Mf { enc, .. } => ("media-foundation", enc.hardware()),
+                Encoder::Soft(e) => (e.library(), false),
+                #[cfg(target_os = "macos")]
+                Encoder::Vt(e) => ("videotoolbox", e.hardware()),
+            }
+        }
+
         /// Whether the stream is in full colour.
         fn i444(&self) -> bool {
             matches!(self, Encoder::Soft(e) if e.i444())
@@ -868,11 +880,14 @@ mod capture {
                     return;
                 }
             };
+            let (name, hardware) = encoder.kind();
             let _ = ready_tx.send(Ok(VideoStart {
                 codec: choice.codec.into(),
                 width: w,
                 height: h,
                 i444: encoder.i444(),
+                encoder: name.into(),
+                hardware,
             }));
             let t0 = Instant::now();
             let mut bitrate = BITRATE;

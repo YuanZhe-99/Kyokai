@@ -41,10 +41,11 @@ Devices find each other through an EasyTier network. On the **Network** page ent
 your network gave you, and save. The page then shows the network's state, this device's address
 and the Kyokai devices it can reach, directly or through a relay. A device's announced ID is only a
 hint: who a device is gets proven when you connect. **Leave network** disconnects. Connections go
-through the server unless you switch on **Try direct connections**, which is faster where both
-networks allow it; Windows may then ask to let Kyokai through its firewall, and a Mac to let it
-find devices on the local network. Turn it on on both devices: two computers on the same network
-then connect directly to each other.
+through the server unless you switch on **Try direct connections** (Settings, Run mode; it applies
+at once), which is faster where both networks allow it; Windows may then ask to let Kyokai through
+its firewall, and a Mac to let it find devices on the local network. On one network it is enough on
+one of the two computers; turn it on on both for computers on different networks. Each device in
+the list has Copy and Connect.
 
 ## Control another device
 
@@ -167,7 +168,7 @@ warning and can choose **Forget old identity**.
 - "The Kyokai engine is not running.": its background part stopped; the reason is shown, and Kyokai
   starts it again. Logs are in the folder that Settings, Diagnostics, opens.
 - The network shows an error: check the server addresses, the name and the secret.
-- The other device is reached through a relay: turn on **Try direct connections** on both
-  devices; if it stays relayed, the networks block direct paths: it works, a little slower.
+- The other device is reached through a relay: turn on **Try direct connections** (Settings, Run
+  mode) on both devices; if it stays relayed, the networks block direct paths: it works, a little slower.
 - An AI task stops with an error: the reason (an unaccepted key, a provider that did not answer)
   is shown with the task.

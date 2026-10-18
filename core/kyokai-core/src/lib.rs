@@ -44,7 +44,7 @@ use std::sync::{Arc, Mutex};
 
 /// Version of the C ABI. Hosts compare it with their own before any other
 /// call; changing an export's signature or meaning bumps it.
-pub const ABI_VERSION: u32 = 4;
+pub const ABI_VERSION: u32 = 5;
 
 /// The running core: what `kyokai_start` set up, until `kyokai_stop`.
 struct Core {
@@ -375,6 +375,33 @@ pub unsafe extern "C" fn kyokai_privacy_request(name: *const u8, len: usize) -> 
         Ok(Ok(granted)) => i32::from(granted),
         _ => -1,
     }
+}
+
+/// Describes a viewer decoder as `{"decoder": name, "hardware": bool}`
+/// JSON written into `out`: which decoder it is and whether it decodes in
+/// hardware, as it reports (a VideoToolbox decoder knows once its first key
+/// frame opened it).
+/// Inputs: `out`/`cap` — memory the caller owns.
+/// Returns: the length written; -1 for an unknown handle; -3 when it does
+/// not fit `cap`.
+///
+/// # Safety
+/// `out` is valid for `cap` bytes of writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kyokai_decoder_info(id: u64, out: *mut u8, cap: usize) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    let Ok(Some((decoder, hardware))) = catch_unwind(|| decode::info(id)) else {
+        return -1;
+    };
+    let json = serde_json::json!({"decoder": decoder, "hardware": hardware}).to_string();
+    if json.len() > cap {
+        return -3;
+    }
+    // SAFETY: `out` has `cap >= json.len()` writable bytes, per the contract.
+    unsafe { std::ptr::copy_nonoverlapping(json.as_ptr(), out, json.len()) };
+    json.len() as i32
 }
 
 /// Closes a viewer decoder; an unknown handle is ignored.

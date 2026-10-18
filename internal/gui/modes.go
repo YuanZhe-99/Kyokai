@@ -77,6 +77,27 @@ func (a *App) runModeCard(c *ui.Context) {
 			note = L.RunModeSwitching()
 		}
 		ui.Text(c, note).FontSize(sizeSmall).TextColor(t.TextMuted)
+		// Direct connections open this computer to the network, so they sit
+		// with the run mode; the helper always tries them. The switch
+		// applies at once.
+		a.mu.Lock()
+		net, netBusy := a.net, a.busy["network"]
+		a.mu.Unlock()
+		if !net.loaded && !netBusy {
+			a.loadNetwork()
+		}
+		helperMode := cur != modeUser
+		directHint := L.NetworkDirectHint()
+		if helperMode {
+			directHint = L.NetworkDirectHelper()
+		}
+		direct := net.direct || helperMode
+		settingRow(c, "net-direct", L.NetworkDirect(), directHint, func() {
+			if ui.Switch(c.Key("net-direct-sw"), &direct).Label(L.NetworkDirect()).
+				Disabled(busy || netBusy || helperMode || !net.loaded).Changed() {
+				a.setDirect(direct)
+			}
+		})
 		// A helper older than the app is updated on request: from a signed
 		// build without a prompt, from an unsigned one with one.
 		a.mu.Lock()
@@ -95,24 +116,59 @@ func (a *App) runModeCard(c *ui.Context) {
 	})
 }
 
+// helperChanged updates, once per run and without a prompt, a helper older
+// than this app: an app update replaces the app's files but not the
+// helper's, and an engine of another version cannot reach updated devices.
+// It waits while a session is open, since the helper restarts.
+// Notes: the caller holds a.mu.
+func (a *App) helperChanged(st *localapi.Status) {
+	if a.helperUpdated || st.RunMode != "helper" || !version.Older(st.Version, version.Version) {
+		return
+	}
+	for _, s := range st.Sessions {
+		if s.State != "closed" && s.State != "failed" {
+			return
+		}
+	}
+	a.helperUpdated = true
+	a.busy["mode"] = true
+	go func() {
+		err := a.signedHelperUpdate()
+		a.update(func() {
+			delete(a.busy, "mode")
+			if err == nil {
+				a.setToast(L.RunModeUpdated(), false)
+			}
+		})
+	}()
+}
+
+// signedHelperUpdate asks the helper to install this app's signed files.
+// Side effects: the helper restarts on success; an unsigned build is refused.
+func (a *App) signedHelperUpdate() error {
+	bin, err := engineBinary()
+	if err != nil {
+		return err
+	}
+	_, err = localapi.NewClient(helper.SocketPath).Do(a.ctx, localapi.Request{Type: localapi.RequestHelperUpdate, From: filepath.Dir(bin)})
+	return err
+}
+
 // updateHelper brings the helper to this app's version.
 // Side effects: the helper installs the app's signed files and restarts;
 // an unsigned build is installed with one administrator prompt instead.
 func (a *App) updateHelper() {
 	a.update(func() { a.busy["mode"] = true })
 	go func() {
-		err := func() error {
-			bin, err := engineBinary()
-			if err != nil {
-				return err
+		err := a.signedHelperUpdate()
+		if err != nil {
+			bin, berr := engineBinary()
+			if berr != nil {
+				err = berr
+			} else {
+				err = runPrivileged(append([]string{"install", "--from", filepath.Dir(bin)}, operatorArgs()...)...)
 			}
-			from := filepath.Dir(bin)
-			_, err = localapi.NewClient(helper.SocketPath).Do(a.ctx, localapi.Request{Type: localapi.RequestHelperUpdate, From: from})
-			if err == nil {
-				return nil
-			}
-			return runPrivileged(append([]string{"install", "--from", from}, operatorArgs()...)...)
-		}()
+		}
 		a.update(func() {
 			delete(a.busy, "mode")
 			if err != nil {

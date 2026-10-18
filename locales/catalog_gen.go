@@ -1562,6 +1562,18 @@ func (msgs Messages) FailDenied() string {
 	return Catalog.Format(msgs.locale, "FailDenied", nil)
 }
 
+// FailHelperOutdated says "Kyokai Helper on this device is {helper}, older than this app ({app}). Update it in Settings, Run mode, then reconnect."
+// in the language the app shows.
+func FailHelperOutdated(helper string, app string) string {
+	return In(i18n.Locale()).FailHelperOutdated(helper, app)
+}
+
+// FailHelperOutdated says "Kyokai Helper on this device is {helper}, older than this app ({app}). Update it in Settings, Run mode, then reconnect."
+// in the language of msgs.
+func (msgs Messages) FailHelperOutdated(helper string, app string) string {
+	return Catalog.Format(msgs.locale, "FailHelperOutdated", map[string]any{"helper": helper, "app": app})
+}
+
 // FailIncompatible says "That device runs an incompatible version of Kyokai."
 // in the language the app shows.
 func FailIncompatible() string { return In(i18n.Locale()).FailIncompatible() }
@@ -1570,6 +1582,18 @@ func FailIncompatible() string { return In(i18n.Locale()).FailIncompatible() }
 // in the language of msgs.
 func (msgs Messages) FailIncompatible() string {
 	return Catalog.Format(msgs.locale, "FailIncompatible", nil)
+}
+
+// FailIncompatibleVersion says "That device runs Kyokai {peer} and this one runs {app}: install the same version on both."
+// in the language the app shows.
+func FailIncompatibleVersion(peer string, app string) string {
+	return In(i18n.Locale()).FailIncompatibleVersion(peer, app)
+}
+
+// FailIncompatibleVersion says "That device runs Kyokai {peer} and this one runs {app}: install the same version on both."
+// in the language of msgs.
+func (msgs Messages) FailIncompatibleVersion(peer string, app string) string {
+	return Catalog.Format(msgs.locale, "FailIncompatibleVersion", map[string]any{"peer": peer, "app": app})
 }
 
 // FailKeyChanged says "That device's identity changed since you last connected. If you expected this, forget the old identity and connect ag…"
@@ -3266,16 +3290,6 @@ func (msgs Messages) ViewerCodecHint() string {
 	return Catalog.Format(msgs.locale, "ViewerCodecHint", nil)
 }
 
-// ViewerCodecSoftware says "{codec} (software)"
-// in the language the app shows.
-func ViewerCodecSoftware(codec string) string { return In(i18n.Locale()).ViewerCodecSoftware(codec) }
-
-// ViewerCodecSoftware says "{codec} (software)"
-// in the language of msgs.
-func (msgs Messages) ViewerCodecSoftware(codec string) string {
-	return Catalog.Format(msgs.locale, "ViewerCodecSoftware", map[string]any{"codec": codec})
-}
-
 // ViewerCtrlAltDel says "Ctrl+Alt+Del"
 // in the language the app shows.
 func ViewerCtrlAltDel() string { return In(i18n.Locale()).ViewerCtrlAltDel() }
@@ -3286,6 +3300,18 @@ func (msgs Messages) ViewerCtrlAltDel() string {
 	return Catalog.Format(msgs.locale, "ViewerCtrlAltDel", nil)
 }
 
+// ViewerDecoding says "Decoding (this computer): {codec}, {impl}"
+// in the language the app shows.
+func ViewerDecoding(codec string, impl string) string {
+	return In(i18n.Locale()).ViewerDecoding(codec, impl)
+}
+
+// ViewerDecoding says "Decoding (this computer): {codec}, {impl}"
+// in the language of msgs.
+func (msgs Messages) ViewerDecoding(codec string, impl string) string {
+	return Catalog.Format(msgs.locale, "ViewerDecoding", map[string]any{"codec": codec, "impl": impl})
+}
+
 // ViewerDisplay says "Display"
 // in the language the app shows.
 func ViewerDisplay() string { return In(i18n.Locale()).ViewerDisplay() }
@@ -3294,6 +3320,18 @@ func ViewerDisplay() string { return In(i18n.Locale()).ViewerDisplay() }
 // in the language of msgs.
 func (msgs Messages) ViewerDisplay() string {
 	return Catalog.Format(msgs.locale, "ViewerDisplay", nil)
+}
+
+// ViewerEncoding says "Encoding (the other computer): {codec}, {impl}"
+// in the language the app shows.
+func ViewerEncoding(codec string, impl string) string {
+	return In(i18n.Locale()).ViewerEncoding(codec, impl)
+}
+
+// ViewerEncoding says "Encoding (the other computer): {codec}, {impl}"
+// in the language of msgs.
+func (msgs Messages) ViewerEncoding(codec string, impl string) string {
+	return Catalog.Format(msgs.locale, "ViewerEncoding", map[string]any{"codec": codec, "impl": impl})
 }
 
 // ViewerEnded says "The session ended."
@@ -3324,6 +3362,36 @@ func ViewerFullScreen() string { return In(i18n.Locale()).ViewerFullScreen() }
 // in the language of msgs.
 func (msgs Messages) ViewerFullScreen() string {
 	return Catalog.Format(msgs.locale, "ViewerFullScreen", nil)
+}
+
+// ViewerImplHardware says "{name} in hardware"
+// in the language the app shows.
+func ViewerImplHardware(name string) string { return In(i18n.Locale()).ViewerImplHardware(name) }
+
+// ViewerImplHardware says "{name} in hardware"
+// in the language of msgs.
+func (msgs Messages) ViewerImplHardware(name string) string {
+	return Catalog.Format(msgs.locale, "ViewerImplHardware", map[string]any{"name": name})
+}
+
+// ViewerImplSoftware says "{name} in software"
+// in the language the app shows.
+func ViewerImplSoftware(name string) string { return In(i18n.Locale()).ViewerImplSoftware(name) }
+
+// ViewerImplSoftware says "{name} in software"
+// in the language of msgs.
+func (msgs Messages) ViewerImplSoftware(name string) string {
+	return Catalog.Format(msgs.locale, "ViewerImplSoftware", map[string]any{"name": name})
+}
+
+// ViewerImplUnknown says "not known yet"
+// in the language the app shows.
+func ViewerImplUnknown() string { return In(i18n.Locale()).ViewerImplUnknown() }
+
+// ViewerImplUnknown says "not known yet"
+// in the language of msgs.
+func (msgs Messages) ViewerImplUnknown() string {
+	return Catalog.Format(msgs.locale, "ViewerImplUnknown", nil)
 }
 
 // ViewerKeyboard says "Keyboard"

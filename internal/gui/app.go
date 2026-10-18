@@ -62,6 +62,8 @@ type App struct {
 	// asked for, which macOS counts only in an engine started afterwards.
 	permissionsAsked bool
 	asked            map[string]bool
+	// helperUpdated: this run already updated an older helper (modes.go).
+	helperUpdated bool
 
 	// Network page: the settings form (network.go).
 	net netForm

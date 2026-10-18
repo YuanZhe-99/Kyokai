@@ -188,6 +188,7 @@ func (a *App) connectLoop() {
 						a.ai.draft = st.AIDraft
 					}
 					a.permissionsChanged(st)
+					a.helperChanged(st)
 					a.status, a.connected, a.engineErr = st, true, ""
 				})
 				// The connections' tabs follow the sessions (main thread).

@@ -49,7 +49,7 @@ pub mod packet {
 }
 
 /// What a video stream carries, sent before its first frame.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VideoStart {
     /// `raw-rgba` (the test pattern) or a codec name.
     pub codec: String,
@@ -58,6 +58,13 @@ pub struct VideoStart {
     /// Full colour (4:4:4); left out when false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub i444: bool,
+    /// The host's encoder: `videotoolbox`, `media-foundation`, `libvpx` or
+    /// `libaom` (empty for the test pattern), and whether it runs in
+    /// hardware, as the encoder itself reports.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub encoder: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hardware: bool,
 }
 
 /// Splits one frame into chunks that each fit one Noise message.
@@ -91,6 +98,18 @@ pub struct Frame {
     pub flags: u8,
     pub pts_us: u64,
     pub data: Vec<u8>,
+}
+
+/// Reads a media chunk's frame number when it is the frame's last chunk.
+/// Returns: the frame number, or None for any other chunk or a malformed one.
+pub fn last_chunk(chunk: &[u8]) -> Option<u32> {
+    if chunk.len() < HEADER || chunk[0] != CHUNK_TAG {
+        return None;
+    }
+    let index = u16::from_be_bytes([chunk[5], chunk[6]]);
+    let count = u16::from_be_bytes([chunk[7], chunk[8]]);
+    (index.checked_add(1) == Some(count))
+        .then(|| u32::from_be_bytes([chunk[1], chunk[2], chunk[3], chunk[4]]))
 }
 
 /// Collects one frame at a time; a chunk of a newer frame drops the
@@ -316,7 +335,7 @@ impl TestPattern {
             codec: "raw-rgba".into(),
             width: self.width,
             height: self.height,
-            i444: false,
+            ..VideoStart::default()
         }
     }
 
@@ -352,6 +371,18 @@ impl TestPattern {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_frame_s_last_chunk_is_acknowledged() {
+        let data = vec![7u8; 150_000];
+        let parts = chunks(9, 0, 1, &data, 65_000);
+        assert_eq!(parts.len(), 3);
+        let seen: Vec<_> = parts.iter().map(|c| last_chunk(c)).collect();
+        assert_eq!(seen, [None, None, Some(9)]);
+        assert_eq!(last_chunk(&chunks(4, 0, 1, b"x", 65_000)[0]), Some(4));
+        assert_eq!(last_chunk(&[CHUNK_TAG, 0, 0]), None);
+        assert_eq!(last_chunk(b"{\"type\":\"ping\"}"), None);
+    }
 
     #[test]
     fn frames_survive_chunking_and_newer_frames_win() {

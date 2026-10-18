@@ -17,7 +17,7 @@ import (
 
 // ABIVersion is the C ABI this package speaks; the library must report the
 // same one.
-const ABIVersion = 4
+const ABIVersion = 5
 
 // LibraryName is the file name of the core library on this platform.
 func LibraryName() string {
@@ -48,11 +48,11 @@ func LibraryPath(dir string) string {
 
 // Lib is a loaded core library.
 type Lib struct {
-	abiVersion, start, call, stop, free uintptr
-	mediaRead, mediaWrite               uintptr
-	decOpen, decDecode, decClose        uintptr
-	kbGrab, kbRead, privacy             uintptr
-	mu                                  sync.Mutex // the core is one process-wide instance
+	abiVersion, start, call, stop, free   uintptr
+	mediaRead, mediaWrite                 uintptr
+	decOpen, decDecode, decClose, decInfo uintptr
+	kbGrab, kbRead, privacy               uintptr
+	mu                                    sync.Mutex // the core is one process-wide instance
 	// out receives a response's buffer. It lives in the Lib (on the heap,
 	// which never moves) rather than on a goroutine stack, which may move
 	// between converting its address to a uintptr and the C call. Guarded
@@ -133,6 +133,7 @@ func Load(path string) (*Lib, error) {
 		"kyokai_stop": &l.stop, "kyokai_free": &l.free,
 		"kyokai_media_read": &l.mediaRead, "kyokai_media_write": &l.mediaWrite,
 		"kyokai_decoder_open": &l.decOpen, "kyokai_decoder_decode": &l.decDecode, "kyokai_decoder_close": &l.decClose,
+		"kyokai_decoder_info":  &l.decInfo,
 		"kyokai_keyboard_grab": &l.kbGrab, "kyokai_keyboard_read": &l.kbRead,
 		"kyokai_privacy_request": &l.privacy,
 	} {
@@ -265,9 +266,11 @@ func (l *Lib) MediaWrite(session uint64, packet []byte) error {
 type Decoder struct {
 	l  *Lib
 	id uint64
-	// size receives the picture's width and height. It lives in the Decoder
-	// (a heap object, which never moves) rather than on a goroutine stack.
+	// size receives the picture's width and height, and info the decoder's
+	// description. They live in the Decoder (a heap object, which never
+	// moves) rather than on a goroutine stack.
 	size [2]uint32
+	info [128]byte
 }
 
 // OpenDecoder opens a viewer decoder for a stream (the media VideoStart
@@ -307,6 +310,26 @@ func (d *Decoder) Decode(frame, out []byte) (int, int, bool, error) {
 		return 0, 0, false, errors.New("picture larger than the buffer")
 	}
 	return 0, 0, false, errors.New("the frame could not be decoded")
+}
+
+// Info says which decoder this is ("videotoolbox", "media-foundation",
+// "libvpx", "libaom"; "" for the test pattern) and whether it decodes in
+// hardware, as the decoder reports. A VideoToolbox decoder knows once its
+// first key frame opened it.
+func (d *Decoder) Info() (name string, hardware bool, err error) {
+	n := int32(syscallN(d.l.decInfo, uintptr(d.id), uintptr(unsafe.Pointer(&d.info[0])), uintptr(len(d.info))))
+	runtime.KeepAlive(d)
+	if n < 0 {
+		return "", false, errors.New("no such decoder")
+	}
+	var v struct {
+		Decoder  string `json:"decoder"`
+		Hardware bool   `json:"hardware"`
+	}
+	if err := json.Unmarshal(d.info[:n], &v); err != nil {
+		return "", false, err
+	}
+	return v.Decoder, v.Hardware, nil
 }
 
 // Close releases the decoder.

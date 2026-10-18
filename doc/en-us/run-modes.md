@@ -117,6 +117,12 @@ and exits; the service restarts it. It never reads the user-writable app folder 
 swapped there after the check is not installed. An unsigned build (development, or a release
 without the key) is installed with one administrator prompt instead.
 
+An app update replaces the app's files, not the helper's, and a helper of another version cannot
+reach devices that run the new one. So the GUI, the first time it attaches to an older helper while
+no session is open, asks for this signed update itself, without a prompt; it never falls back to
+the administrator prompt on its own. A connection refused for a version mismatch says which side
+differs: this device's older helper, or the other device's version.
+
 On macOS the code signature does this: the helper copies the app's `Kyokai Helper.app` into a
 root-owned folder first, checks that copy with `codesign --verify --deep --strict` against the
 installed bundle's designated requirement (the same identifier and certificate) and that its

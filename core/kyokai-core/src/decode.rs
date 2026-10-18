@@ -128,6 +128,22 @@ pub fn decode(id: u64, frame: &[u8], rgba: &mut Vec<u8>) -> Result<Option<(u32, 
     }
 }
 
+/// Which decoder a handle is, by name (`videotoolbox`, `media-foundation`,
+/// `libvpx`, `libaom`; empty for the test pattern), and whether it decodes
+/// in hardware, as it reports.
+/// Returns: None for an unknown handle.
+pub fn info(id: u64) -> Option<(&'static str, bool)> {
+    let all = DECODERS.lock().ok()?;
+    Some(match &all.as_ref()?.get(&id)?.0 {
+        Decoder::Raw { .. } => ("", false),
+        Decoder::Soft(dec) => (dec.library(), false),
+        #[cfg(windows)]
+        Decoder::Mf { dec, .. } => ("media-foundation", dec.hardware()),
+        #[cfg(target_os = "macos")]
+        Decoder::Vt(dec) => ("videotoolbox", dec.hardware()),
+    })
+}
+
 /// Closes a decoder.
 pub fn close(id: u64) {
     if let Ok(mut all) = DECODERS.lock()
@@ -158,10 +174,13 @@ mod tests {
 
     #[test]
     fn software_streams_open_on_every_platform() {
-        for codec in ["vp9-sw", "av1", "vp8"] {
+        for (codec, library) in [("vp9-sw", "libvpx"), ("av1", "libaom"), ("vp8", "libvpx")] {
             let start = format!(r#"{{"codec":"{codec}","width":320,"height":192,"i444":true}}"#);
             let id = open(start.as_bytes()).unwrap_or_else(|e| panic!("{codec}: {e}"));
+            // Software decoders say so, by library.
+            assert_eq!(info(id), Some((library, false)), "{codec}");
             close(id);
+            assert_eq!(info(id), None);
         }
     }
 }

@@ -318,7 +318,29 @@
   "FailBroken": "The connection broke.",
   "FailBusy": "The other device has too many open requests. Try again shortly.",
   "FailDenied": "The other device declined.",
+  "FailHelperOutdated": "Kyokai Helper on this device is {helper}, older than this app ({app}). Update it in Settings, Run mode, then reconnect.",
+  "@FailHelperOutdated": {
+    "placeholders": {
+      "helper": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "FailIncompatible": "That device runs an incompatible version of Kyokai.",
+  "FailIncompatibleVersion": "That device runs Kyokai {peer} and this one runs {app}: install the same version on both.",
+  "@FailIncompatibleVersion": {
+    "placeholders": {
+      "peer": {
+        "type": "String"
+      },
+      "app": {
+        "type": "String"
+      }
+    }
+  },
   "FailKeyChanged": "That device's identity changed since you last connected. If you expected this, forget the old identity and connect again.",
   "FailPassword": "Wrong password.",
   "FailRateLimited": "Too many attempts. Try again later.",
@@ -533,19 +555,50 @@
   "ViewerBlockInput": "Block their keyboard and mouse",
   "ViewerCodecAuto": "Auto",
   "ViewerCodecHint": "The video codec. Auto lets the other computer choose; the list shows what both computers support.",
-  "ViewerCodecSoftware": "{codec} (software)",
-  "@ViewerCodecSoftware": {
+  "ViewerCtrlAltDel": "Ctrl+Alt+Del",
+  "ViewerDecoding": "Decoding (this computer): {codec}, {impl}",
+  "@ViewerDecoding": {
     "placeholders": {
       "codec": {
+        "type": "String"
+      },
+      "impl": {
         "type": "String"
       }
     }
   },
-  "ViewerCtrlAltDel": "Ctrl+Alt+Del",
   "ViewerDisplay": "Display",
+  "ViewerEncoding": "Encoding (the other computer): {codec}, {impl}",
+  "@ViewerEncoding": {
+    "placeholders": {
+      "codec": {
+        "type": "String"
+      },
+      "impl": {
+        "type": "String"
+      }
+    }
+  },
   "ViewerEnded": "The session ended.",
   "ViewerExitFullScreen": "Exit full screen",
   "ViewerFullScreen": "Full screen",
+  "ViewerImplHardware": "{name} in hardware",
+  "@ViewerImplHardware": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ViewerImplSoftware": "{name} in software",
+  "@ViewerImplSoftware": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "ViewerImplUnknown": "not known yet",
   "ViewerKeyboard": "Keyboard",
   "ViewerKeyboardHint": "Map sends each key by its place on the keyboard, and the other computer's layout decides what it types. Translate types with your layout and input method. Legacy sends only the keys this window receives.",
   "ViewerKeyboardLegacy": "Legacy",

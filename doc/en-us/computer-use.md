@@ -10,11 +10,11 @@ control, Phase 4 AI tasks).
 | Capture | host engine | one display — the primary unless the viewer chose another — through RustDesk's DXGI desktop duplication (`core/third_party/rustdesk-dxgi`), or its GDI capturer where duplication cannot open the display or DXGI lists none (no GPU output, some virtual machines and remote sessions); a still screen yields no frame (GDI compares each picture with the last) |
 | Scale and convert | host engine | BGRA into NV12 for Media Foundation and VideoToolbox, or planar I420 (I444 in full colour) for libvpx and libaom — BT.601, limited range — scaled down to fit 1920×1080, sides even, by the nearest pixel (each column's and row's source found once per size; an unscaled picture goes row by row) |
 | Encode | host engine | H.264 through Media Foundation: the GPU's encoder (an asynchronous transform, fed system-memory NV12 when it asks for input) if it produces output within its first 30 black frames — one per process, shut down when its stream ends; other streams use the software encoder — else Microsoft's synchronous software encoder; low latency (set before the media types; the first output follows the first frame), CBR 4 Mbit/s, no B-frames, a key frame every 4 seconds and on request; 30 fps |
-| Encode (macOS) | host engine | H.264 and HEVC through VideoToolbox (`core/kyokai-core/src/vt.rs`): real time, no frame reordering, low-latency rate control where the encoder has it, the average bitrate with at most one and a half times that in any second (a picture after a still screen stays small), a key frame every 4 seconds and on request; NV12 from the session's pixel buffer pool in, Annex B out with the parameter sets before each key frame, as Media Foundation's encoders give it (`annexb.rs`) |
+| Encode (macOS) | host engine | H.264 and HEVC through VideoToolbox (`core/kyokai-core/src/vt.rs`): the hardware encoder required, with low-latency rate control where it takes it (its low-latency encoder, `rtvc`, runs on the hardware though VideoToolbox's encoder list calls it software: 1080p takes 8 ms a frame on an M1 either way, 2 ms of it CPU for our own conversion, 2026-10-18), then without, then any encoder where there is no hardware; real time, no frame reordering, the average bitrate with at most one and a half times that in any second (a picture after a still screen stays small), a key frame every 4 seconds and on request; NV12 from the session's pixel buffer pool in, Annex B out with the parameter sets before each key frame, as Media Foundation's encoders give it (`annexb.rs`) |
 | Encode (software) | host engine | VP9 (`vp9-sw`) and VP8 through libvpx, AV1 through libaom — RustDesk's wrappers (`core/third_party/rustdesk-codec`) and settings: real-time, CBR at RustDesk's quality ratio of the base bitrate, a key frame every 4 seconds and on request; VP9 profile 1 and AV1 profile 1 carry 4:4:4 |
-| Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); one frame waits for the session at most: the capture loop takes a picture only once the session has room for its frame, so what goes out is the newest picture, not one that waited behind the network. Frames from the helper's session agent arrive as it captures and get one more place; one that finds none is left out with the frames after it until a key frame, which the agent is asked for |
+| Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); one frame waits for the session at most: the capture loop takes a picture only once the session has room for its frame, so what goes out is the newest picture, not one that waited behind the network. The host keeps at most 3 frames ahead of the controller's acknowledgements (`received`, sent as each frame's last chunk arrives), so on a slow path (a relay passing a few hundred kbit/s) the frames wait at the capture rather than in the transport's buffers, and the picture and the delay probe stay a round trip behind, not seconds. Frames from the helper's session agent arrive as it captures and get one more place; one that finds none is left out with the frames after it until a key frame, which the agent is asked for |
 | Forward | controller engine | the session's media queue → `session.media` on the local API; a GUI that is 3 frames behind loses the frames waiting and the frames after them until a key frame (a frame without the ones before it cannot be decoded), which the controller asks the host for, again each second until it comes |
-| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for `h264`, `hevc` and `vp9` in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9; HEVC on the GPU through Direct3D 11), NV12 into RGBA, cropped to the stream's size; on macOS VideoToolbox for `h264` and `hevc` (NV12 out, into RGBA the same way); libvpx or libaom for `vp9-sw`, `vp8` and `av1`, I420 or I444 into RGBA |
+| Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for `h264`, `hevc` and `vp9` in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9; HEVC on the GPU through Direct3D 11), NV12 into RGBA, cropped to the stream's size; on macOS VideoToolbox for `h264` and `hevc` (NV12 out, into RGBA the same way); libvpx or libaom for `vp9-sw`, `vp8` and `av1`, I420 or I444 into RGBA. Media Foundation decodes HEVC on the GPU and H.264 and VP9 in software (they get no Direct3D device); each decoder says which it is and whether it runs in hardware (`kyokai_decoder_info`) |
 | Show | GUI | the viewer window's bitmap from three pictures: the one shown, the newest decoded one waiting for the main thread, and the one the next frame is decoded into; decoding never waits for drawing, a picture not drawn yet gives way to a newer one, and the pictures of a new stream are ready before its first frame |
 
 While a frame waits inside the encoder, the host repeats the last picture so it comes out even when
@@ -53,8 +53,9 @@ build) gets H.264.
 **Codec choice.** After the controller's codecs the host offers what it can send that the
 controller decodes (`codec-offer`, in the host's order): the codecs it has an encoder for — Media
 Foundation's registered encoders, VideoToolbox's and the software ones. The viewer's status bar
-lists them under Codec, Auto first (H.264, HEVC, VP9, VP9 (software), AV1, VP8; the stats name the
-codec in use the same way). A chosen codec goes first in the host's order, in full colour first
+lists them under Codec by name only, Auto first (H.264, HEVC, VP9, AV1, VP8; a host offering VP9 from
+Media Foundation and libvpx is asked for its first, the better one; the stats name the codec in use
+the same way). A chosen codec goes first in the host's order, in full colour first
 when Full colour is on and the codec carries it, and the others stay behind it, so a codec whose
 encoder does not open falls back as before; the video restarts only when the first choice
 changes. The viewer sends its quality and codec as its stream starts, and the controller's engine
@@ -88,8 +89,11 @@ Sharper (1.5) — a frame-rate cap of 15, 30 or 60, and the Full colour switch; 
 rate in the QoS, and whether it gets full colour (above).
 
 With the stats the host reports how long its frames took from picture to frame (`encode_ms`, the
-average of the last second's). The tooltip of the viewer's numbers shows that, the network delay
-(the probe), the viewer's own decode and draw times and the frame rate against the host's target.
+average of the last second's), and its stream description names its encoder and whether it runs in
+hardware (`encoder`, `hardware`, as the encoder reports). The tooltip of the viewer's numbers shows
+what encodes on the host and what decodes here (for example "HEVC, VideoToolbox in hardware"; AV1
+is always libaom in software), the host's encode time, the network delay (the probe), the viewer's
+own decode and draw times and the frame rate against the host's target.
 Beside the numbers the bar says whether the network reaches the device directly (Direct) or
 through the server (Relayed, with a hint to turn on direct connections on both devices,
 [networking.md](networking.md)).
@@ -122,7 +126,9 @@ Whatever a session holds is released when it ends. Malformed events are dropped 
 
 The viewer offers RustDesk's three keyboard modes; its bar chooses one for every viewer and Kyokai
 remembers it (Map unless chosen). Map and Translate need the controller to grab the keyboard, which
-only Windows controllers do so far; elsewhere every viewer works in Legacy mode.
+only Windows controllers do so far; elsewhere every viewer works in Legacy mode. The picture takes
+text while it has the focus: macOS makes text of keys only for an element that does, and Legacy
+sends letters as that text (with it missing, no letter reached the host from a Mac).
 
 | Mode | On the controller | On the host |
 |---|---|---|

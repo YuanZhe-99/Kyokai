@@ -138,6 +138,14 @@ impl Encoder {
         self.i444
     }
 
+    /// The library that encodes: `libvpx` or `libaom`.
+    pub fn library(&self) -> &'static str {
+        match self.inner {
+            Inner::Vpx(_) => "libvpx",
+            Inner::Aom(_) => "libaom",
+        }
+    }
+
     /// Converts a captured BGRA picture (`stride` bytes per row) into the
     /// next picture to encode, scaled to the stream's size.
     pub fn picture(&mut self, bgra: &[u8], width: usize, height: usize, stride: usize) {
@@ -194,6 +202,14 @@ pub enum Decoder {
 }
 
 impl Decoder {
+    /// The library that decodes: `libvpx` or `libaom`.
+    pub fn library(&self) -> &'static str {
+        match self {
+            Decoder::Vpx(_) => "libvpx",
+            Decoder::Aom(_) => "libaom",
+        }
+    }
+
     /// Opens a decoder for `codec`.
     pub fn new(codec: Codec) -> Result<Decoder, String> {
         Ok(match codec {

@@ -79,6 +79,17 @@ type videoStart struct {
 	Width  int    `json:"width"`
 	Height int    `json:"height"`
 	I444   bool   `json:"i444"`
+	// Encoder is the host's encoder and Hardware whether it runs in
+	// hardware, as the encoder reports.
+	Encoder  string `json:"encoder"`
+	Hardware bool   `json:"hardware"`
+}
+
+// codecImpl is which encoder or decoder handles a stream ("" unknown) and
+// whether it runs in hardware.
+type codecImpl struct {
+	name     string
+	hardware bool
 }
 
 // coreLib loads the core library into the GUI once, for the viewers'
@@ -147,6 +158,9 @@ type viewer struct {
 	// choice among them ("auto" or a codec's name).
 	offer []string
 	codec string
+	// decoder is this computer's decoder of the stream, as it reports
+	// after its first picture.
+	decoder codecImpl
 	// Input: the picture element's box, whether this session may control
 	// input, and the keys sent down.
 	box     ui.Rect
@@ -492,9 +506,19 @@ func (v *viewer) pump() {
 			if fresh && p[1]&keyFrame == 0 {
 				continue
 			}
+			first := fresh
 			fresh = false
 			if dec != nil {
 				v.show(dec, p[10:])
+				// The decoder knows how it decodes once it has a key frame.
+				if first {
+					name, hw, _ := dec.Info()
+					v.update(func() {
+						v.mu.Lock()
+						v.decoder = codecImpl{name, hw}
+						v.mu.Unlock()
+					})
+				}
 			}
 		}
 	}
@@ -507,7 +531,7 @@ func (v *viewer) begin(s videoStart) {
 	r := image.Rect(0, 0, s.Width, s.Height)
 	imgs := [3]*image.RGBA{image.NewRGBA(r), image.NewRGBA(r), image.NewRGBA(r)}
 	v.mu.Lock()
-	v.start, v.imgs, v.shown, v.ready = s, imgs, -1, -1
+	v.start, v.imgs, v.shown, v.ready, v.decoder = s, imgs, -1, -1, codecImpl{}
 	v.mu.Unlock()
 	v.setState("")
 }
@@ -590,7 +614,7 @@ func (v *viewer) view(c *ui.Context) {
 	bm, state, start := v.bm, v.state, v.start
 	withAI, ptr, actions := v.ai.aiShown(), v.pointer, v.actions
 	b := bar{start: start, fps: v.fps, kbps: v.kbps, decodeMS: v.decodeMS, drawMS: v.drawMS, host: v.host,
-		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec}
+		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec, decoder: v.decoder}
 	v.mu.Unlock()
 	b.showPtr = v.app == nil || v.app.showPointer()
 	if !b.showPtr {
@@ -621,6 +645,10 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 	v.mu.Lock()
 	pw, remember, note := v.password, v.remember, v.state
 	v.mu.Unlock()
+	engine := ""
+	if v.app != nil {
+		engine = v.app.engineVersion()
+	}
 	edit := func(e ui.Element) {
 		if e.Changed() {
 			v.mu.Lock()
@@ -639,7 +667,7 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 			case "", "connecting", "reconnecting":
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Spinner(c)
-					ui.Text(c, sessionState(phase)).TextColor(t.TextMuted)
+					ui.Text(c, sessionState(phase, engine)).TextColor(t.TextMuted)
 				})
 			case "confirming":
 				waiting = true
@@ -651,7 +679,7 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 				ended = true
 				text := note
 				if text == "" {
-					text = sessionState(phase)
+					text = sessionState(phase, engine)
 				}
 				ui.Text(c, text).TextColor(t.Danger)
 			}
@@ -705,7 +733,12 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 				ui.Text(c, L.ViewerWaiting()).TextColor(ui.Hex("#ffffff"))
 			})
 		default:
-			img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().HandleInput(v.sendInput)
+			// The picture takes text: macOS turns keys into text (and input
+			// methods compose) only for an element that does, and Legacy
+			// mode sends letters as that text (regression: no key reached a
+			// Mac's host from a Mac). Candidate windows open at its corner.
+			img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().
+				TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(v.sendInput)
 			focused = img.Focused()
 			box := img.LayoutBounds()
 			v.mu.Lock()
@@ -783,6 +816,7 @@ type bar struct {
 	displays                    hostDisplays
 	offer                       []string
 	codec                       string
+	decoder                     codecImpl
 	// path is the device's entry in the network status ("" Path when the
 	// network lists no route to it).
 	path localapi.NetworkDevice
@@ -828,12 +862,7 @@ func (v *viewer) statusBar(c *ui.Context, b bar) {
 		if ui.Select(c.Key("fps"), &fpsCap, fpsCaps).Width(100).Changed() {
 			v.setQuality(preset, fpsCap, full)
 		}
-		if len(offer) > 1 {
-			names := append([]string{"auto"}, offer...)
-			labels := make([]string, len(names))
-			for i, n := range names {
-				labels[i] = codecLabel(n)
-			}
+		if names, labels := codecChoices(offer); len(names) > 2 {
 			picked := codecLabel(codec)
 			if ui.Select(c.Key("codec"), &picked, labels).Width(150).Tooltip(L.ViewerCodecHint()).Changed() {
 				if i := slices.Index(labels, picked); i >= 0 {
@@ -862,7 +891,9 @@ func (v *viewer) statusBar(c *ui.Context, b bar) {
 			}
 			ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s · %d ms", start.Width, start.Height, codec, fps, kbps, host.DelayMS)).
 				FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted).
-				Tooltip(L.ViewerTimes(host.EncodeMS, host.DelayMS, int(b.decodeMS+0.5), int(b.drawMS+0.5), int(fps+0.5), host.FPS))
+				Tooltip(L.ViewerEncoding(codec, implLabel(codecImpl{start.Encoder, start.Hardware})) + "\n" +
+					L.ViewerDecoding(codec, implLabel(b.decoder)) + "\n" +
+					L.ViewerTimes(host.EncodeMS, host.DelayMS, int(b.decodeMS+0.5), int(b.drawMS+0.5), int(fps+0.5), host.FPS))
 		}
 		if v.app != nil {
 			labelled(c, func() {

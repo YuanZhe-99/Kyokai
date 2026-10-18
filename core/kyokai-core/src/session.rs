@@ -22,7 +22,13 @@ use tokio::sync::{Notify, mpsc};
 use crate::{media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
-pub const PROTOCOL: u32 = 7;
+pub const PROTOCOL: u32 = 8;
+
+/// How many frames the host sends ahead of the controller's
+/// acknowledgements: enough for the frame-rate cap over a relay's round
+/// trip, few enough that a slow path delays the picture by a few frames,
+/// not seconds.
+const IN_FLIGHT: u32 = 3;
 const PATTERN: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
@@ -111,6 +117,12 @@ enum Message {
     VideoStart(media::VideoStart),
     /// controller → host: send a key frame next.
     KeyFrame,
+    /// controller → host: every chunk of this frame (and of the ones
+    /// before it) arrived; the host keeps at most `IN_FLIGHT` frames
+    /// unacknowledged.
+    Received {
+        frame: u32,
+    },
     /// controller → host: one input event (Phase 3 step 3.5).
     Input {
         event: Value,
@@ -973,6 +985,15 @@ pub enum Outcome {
     Lost(zeroize::Zeroizing<String>),
 }
 
+/// Reports whether a peer's unauthenticated version string looks like a
+/// version ("0.1.3", "1.0.0-beta.1"), so nothing else reaches the interface.
+fn is_version(v: &str) -> bool {
+    (1..=24).contains(&v.len())
+        && v.starts_with(|c: char| c.is_ascii_digit())
+        && v.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+}
+
 /// Connects to a host as the controller, over a stream already open to it.
 /// Inputs: the Device ID that was dialed, the password the person typed (empty
 /// asks the host's user without one), the
@@ -1001,6 +1022,12 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         let n = hs.read_message(&frame, &mut buf)?;
         let host: HostHello = serde_json::from_slice(&buf[..n]).map_err(|_| Failure::Broken)?;
         if host.protocol != PROTOCOL {
+            // Not yet authenticated: kept only when it reads as a version,
+            // so the controller can say which version the host runs.
+            if is_version(&host.version) {
+                ctx.sessions
+                    .update(id, |e| e.peer_version = host.version.clone());
+            }
             return Err(Failure::Incompatible);
         }
         let host_key = verify_static(&host.device_key, &host.signature, hs.get_remote_static())?;
@@ -1463,6 +1490,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut reassembler = media::Reassembler::default();
     let mut parts = Parts::default();
     let mut frame_no: u32 = 0;
+    // The newest frame the controller acknowledged: frames wait at the
+    // capture (which keeps only the newest picture) instead of piling up in
+    // the transport's buffers on a slow path.
+    let mut acked: u32 = 0;
     let mut ping = tokio::time::interval(PING_EVERY);
     // RustDesk's QoS on the host: one probe a second, frames counted per
     // second, frame rate and bitrate applied to the source.
@@ -1646,7 +1677,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Some(s) => s.frames.recv().await,
                     None => std::future::pending().await,
                 }
-            } => {
+            }, if frame_no.wrapping_sub(acked) < IN_FLIGHT => {
                 frame_no = frame_no.wrapping_add(1);
                 sent_this_second += 1;
                 took_this_second += u64::from(f.took_us);
@@ -1681,6 +1712,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 let n = noise.read_message(&frame, &mut plain)?;
                 let plain = &plain[..n];
                 if plain.first() == Some(&media::CHUNK_TAG) {
+                    if let Some(frame) = media::last_chunk(plain) {
+                        seal_json(&mut noise, &mut buf, &mut wr, &Message::Received { frame }).await?;
+                    }
                     if let (Some(q), Some(f)) = (&queue, reassembler.push(plain)) {
                         let mut packet = Vec::with_capacity(10 + f.data.len());
                         packet.push(media::packet::FRAME);
@@ -1738,6 +1772,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         }
                         if (1..=video::MAX_FPS).contains(&fps) {
                             qos.user_custom_fps(QOS_VIEWER, fps);
+                        }
+                    }
+                    // Only a frame sent and not yet acknowledged moves the mark.
+                    Message::Received { frame } => {
+                        if frame_no.wrapping_sub(frame) < frame_no.wrapping_sub(acked) {
+                            acked = frame;
                         }
                     }
                     // The controller echoes probes at once; the host measures them.
@@ -1988,6 +2028,21 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_version_from_an_incompatible_host_is_kept() {
+        for (v, ok) in [
+            ("0.1.2", true),
+            ("1.0.0-beta.1", true),
+            ("", false),
+            ("v0.1.2", false),
+            ("0.1.2 please update", false),
+            ("0.1.2\nnext", false),
+            ("1234567890123456789012345", false),
+        ] {
+            assert_eq!(is_version(v), ok, "{v:?}");
+        }
+    }
     use crate::ai::fake;
     use crate::store::Secrets;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -3447,6 +3502,75 @@ mod tests {
             buf: vec![0u8; MAX_FRAME],
         };
         (channel(a, i), channel(b, r))
+    }
+
+    /// Reads a raw channel for `wait` and counts the frames whose last chunk
+    /// arrived. Returns: the count and the newest frame's number.
+    async fn raw_frames(
+        ch: &mut Channel<tokio::io::DuplexStream>,
+        wait: Duration,
+    ) -> (usize, Option<u32>) {
+        let until = Instant::now() + wait;
+        let (mut count, mut newest) = (0, None);
+        let mut plain = vec![0u8; MAX_FRAME];
+        while let Some(left) = until.checked_duration_since(Instant::now()) {
+            let Ok(Ok(frame)) = tokio::time::timeout(left, read_frame(&mut ch.stream)).await else {
+                break;
+            };
+            let n = ch.noise.read_message(&frame, &mut plain).unwrap();
+            if let Some(no) = media::last_chunk(&plain[..n]) {
+                count += 1;
+                newest = Some(no);
+            }
+        }
+        (count, newest)
+    }
+
+    /// Regression: on a slow relay the host kept writing frames into the
+    /// transport, seconds of video queued ahead of the picture and of the
+    /// delay probe. It sends at most IN_FLIGHT frames ahead of the
+    /// controller's acknowledgements.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_host_sends_only_a_few_frames_ahead_of_the_acknowledgements() {
+        let (host_end, mut peer) = raw_channels();
+        let stop = Arc::new(Notify::new());
+        let host = device("1.0.0");
+        let side = Side::Host {
+            video: true,
+            input: false,
+            ai: HostAi {
+                ai: host.ai.clone(),
+                peer: "123456789".into(),
+                run: false,
+                approve: false,
+            },
+        };
+        let stopped = stop.clone();
+        let task = tokio::spawn(async move { run(host_end, &stopped, side, None).await });
+        // No codec this host encodes: the 30 fps test pattern.
+        peer.send(&Message::Codecs {
+            decode: vec!["none".into()],
+            i444: vec![],
+        })
+        .await
+        .unwrap();
+        let (count, newest) = raw_frames(&mut peer, Duration::from_millis(800)).await;
+        assert_eq!(count, IN_FLIGHT as usize, "frames without acknowledgements");
+        // An acknowledgement of a frame never sent moves nothing.
+        peer.send(&Message::Received { frame: 1000 }).await.unwrap();
+        assert_eq!(raw_frames(&mut peer, Duration::from_millis(300)).await.0, 0);
+        peer.send(&Message::Received {
+            frame: newest.unwrap(),
+        })
+        .await
+        .unwrap();
+        let (count, _) = raw_frames(&mut peer, Duration::from_millis(500)).await;
+        assert_eq!(
+            count, IN_FLIGHT as usize,
+            "frames after one acknowledgement"
+        );
+        stop.notify_one();
+        let _ = task.await;
     }
 
     /// Reads from a raw channel until a message of `kind` arrives.

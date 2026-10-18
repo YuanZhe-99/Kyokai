@@ -323,6 +323,11 @@ impl Encoder {
         Encoder::open(t, codec, width, height, fps, bitrate, false)
     }
 
+    /// Whether this is the GPU's encoder (the software one otherwise).
+    pub fn hardware(&self) -> bool {
+        self.events.is_some()
+    }
+
     /// Encodes black frames until an output comes, as a trial.
     fn works(&mut self) -> bool {
         let black = vec![16u8; (self.width * self.height) as usize]
@@ -660,6 +665,8 @@ pub struct Decoder {
     /// The decoded picture's size and row stride, once known.
     format: Option<(u32, u32, u32)>,
     n: i64,
+    /// Whether it decodes on the GPU (it was given a Direct3D device).
+    gpu: bool,
 }
 
 impl Decoder {
@@ -705,6 +712,7 @@ impl Decoder {
             t,
             format: None,
             n: 0,
+            gpu: codec == Codec::Hevc,
         };
         d.pick_output()
             .map_err(|e| format!("{} decoder: {e}", codec.name()))?;
@@ -714,6 +722,12 @@ impl Decoder {
             let _ = d.t.ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
         }
         Ok(d)
+    }
+
+    /// Whether it decodes on the GPU: HEVC does; H.264 and VP9 get no
+    /// Direct3D device, so their transforms decode in software.
+    pub fn hardware(&self) -> bool {
+        self.gpu
     }
 
     /// Chooses NV12 output and reads the picture's size and stride.

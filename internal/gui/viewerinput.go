@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -215,16 +216,42 @@ func codecLabel(name string) string {
 		return "H.264"
 	case "hevc":
 		return "HEVC"
-	case "vp9":
+	case "vp9", "vp9-sw":
 		return "VP9"
-	case "vp9-sw":
-		return L.ViewerCodecSoftware("VP9")
 	case "av1":
 		return "AV1"
 	case "vp8":
 		return "VP8"
 	}
 	return name
+}
+
+// codecChoices are the Codec choice's entries: Auto, then one per codec of
+// the host's offer, by name only (doc/en-us/gui.md); a host offering VP9
+// twice (Media Foundation and libvpx) is asked for the first, its better one.
+// Returns: the wire names and the labels shown, in the same order.
+func codecChoices(offer []string) (names, labels []string) {
+	names, labels = []string{"auto"}, []string{codecLabel("auto")}
+	for _, n := range offer {
+		if l := codecLabel(n); !slices.Contains(labels, l) {
+			names, labels = append(names, n), append(labels, l)
+		}
+	}
+	return names, labels
+}
+
+// implLabel words which encoder or decoder handles a stream and whether in
+// hardware or software, as it reported.
+func implLabel(i codecImpl) string {
+	name := map[string]string{"videotoolbox": "VideoToolbox", "media-foundation": "Media Foundation",
+		"libvpx": "libvpx", "libaom": "libaom"}[i.name]
+	switch {
+	case name == "":
+		return L.ViewerImplUnknown()
+	case i.hardware:
+		return L.ViewerImplHardware(name)
+	}
+	return L.ViewerImplSoftware(name)
 }
 
 // controlPacket wraps an input event as a media control packet.
