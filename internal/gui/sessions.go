@@ -17,11 +17,8 @@ import (
 // connectForm is the Home page's "connect to another device" form.
 type connectForm struct {
 	deviceID string
-	password string
 	// ai also asks to run AI tasks on the host and approve their actions.
 	ai bool
-	// remember keeps the password for the host once it accepts the login.
-	remember bool
 }
 
 // accessForm is the Settings page's permanent password field and the
@@ -148,102 +145,54 @@ func (a *App) decide(id uint64, allow bool, granted []string) {
 	}()
 }
 
-// connectCard is Home's form for controlling another device.
+// connectCard is Home's "Control another device": a Device ID, Connect
+// and its options. The password is asked for in the connection's tab
+// when the device wants one.
 func (a *App) connectCard(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
-	f, busy, online := a.connect, a.busy["connect"], a.status.Network.State == "online"
-	recent := a.status.Recent
+	f, online := a.connect, a.status.Network.State == "online"
 	a.mu.Unlock()
 	card(c).Children(func() {
 		ui.Text(c, L.ConnectTitle()).FontSize(sizeHeading).Bold()
-		if !online {
-			ui.Text(c, L.ConnectNeedsNetwork()).FontSize(sizeSmall).TextColor(t.TextMuted)
+		id := ui.TextInput(c.Key("conn-id"), &f.deviceID).Placeholder("482 916 735").FillWidth().FontSize(sizeTitle).FontFeatures("tnum")
+		if id.Changed() {
+			a.mu.Lock()
+			a.connect.deviceID = f.deviceID
+			a.mu.Unlock()
 		}
-		edit := func(e ui.Element) {
-			if e.Changed() {
-				a.mu.Lock()
-				a.connect = f
-				a.mu.Unlock()
+		device := strings.Join(strings.Fields(f.deviceID), "")
+		ready := online && len(device) == 9
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			if !online {
+				ui.Text(c, L.ConnectNeedsNetwork()).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
+			} else {
+				ui.Row(c).Grow(1)
 			}
-		}
-		// A password saved for the Device ID typed is used when the field is
-		// left empty.
-		typed := strings.Join(strings.Fields(f.deviceID), "")
-		saved := slices.ContainsFunc(recent, func(r localapi.RecentDevice) bool { return r.DeviceID == typed && r.SavedPassword })
-		pwHint := L.ConnectPasswordOptional()
-		if saved {
-			pwHint = L.ConnectSavedPassword()
-		}
-		ui.Row(c).Gap(gap).AlignItems(ui.End).Children(func() {
-			ui.Column(c).Gap(4).Grow(1).Children(func() {
-				ui.Text(c, L.HomeDeviceID()).FontSize(sizeSmall).TextColor(t.TextMuted)
-				edit(ui.TextInput(c.Key("conn-id"), &f.deviceID).Placeholder("482 916 735").FillWidth().Disabled(busy))
-			})
-			ui.Column(c).Gap(4).Grow(1).Children(func() {
-				ui.Text(c, L.ConnectPassword()).FontSize(sizeSmall).TextColor(t.TextMuted)
-				edit(ui.TextInput(c.Key("conn-pw"), &f.password).Password().Placeholder(pwHint).FillWidth().Disabled(busy))
-			})
-			// Without a password the host's user is asked to allow it.
-			label := L.ActionConnect()
-			if f.password == "" && !saved {
-				label = L.ActionRequestAccess()
-			}
-			if ui.PrimaryButton(c.Key("conn-go"), label).Disabled(busy || !online).Clicked() {
-				a.startSession(f)
+			ui.MenuButton(c.Key("conn-options"), L.ConnectOptions(), func(m *ui.Menu) {
+				if m.Item(L.ConnectWithAI()).Checked(f.ai).Chosen() {
+					a.mu.Lock()
+					a.connect.ai = !f.ai
+					a.mu.Unlock()
+				}
+			}).Label(L.ConnectOptions()).Tooltip(L.ConnectOptions())
+			if ui.PrimaryButton(c.Key("conn-go"), L.ActionConnect()).Disabled(!ready).Clicked() {
+				a.connectDevice(device, a.recentAbout(device), connectWant(f.ai))
 			}
 		})
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
-			labelled(c, func() {
-				edit(ui.Switch(c.Key("conn-ai"), &f.ai).Label(L.ConnectWithAI()).Disabled(busy))
-			}, L.ConnectWithAI())
-			labelled(c, func() {
-				edit(ui.Switch(c.Key("conn-remember"), &f.remember).Label(L.ConnectRemember()).Disabled(busy))
-			}, L.ConnectRemember())
-		})
-		if len(recent) > 0 {
-			ui.Text(c, L.ConnectRecent()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			for _, r := range recent {
-				line := ui.Row(c.Key("recent-line-" + r.DeviceID)).FillWidth().Gap(8).AlignItems(ui.Center)
-				line.Children(func() {
-					row := ui.ButtonBase(c.Key("recent-" + r.DeviceID)).Grow(1).Label(deviceTitle(r.About, r.DeviceID))
-					if row.Clicked() {
-						a.mu.Lock()
-						a.connect.deviceID = groupDigits(r.DeviceID)
-						// The saved password is used: nothing to type.
-						if r.SavedPassword {
-							a.connect.password = ""
-						}
-						a.mu.Unlock()
-					}
-					row.Children(func() {
-						ui.Row(c).FillWidth().Padding(6, 8).Gap(gap).AlignItems(ui.Center).Children(func() {
-							deviceAvatar(c, r.About)
-							ui.Column(c).Grow(1).Gap(2).Children(func() {
-								if r.About.Name != "" {
-									ui.Text(c, r.About.Name).Bold().Ellipsis("…").NoWrap()
-								}
-								ui.Text(c, groupDigits(r.DeviceID)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
-							})
-							ui.Column(c).Gap(2).AlignItems(ui.End).Children(func() {
-								ui.Text(c, time.Unix(r.Last, 0).Local().Format(time.DateTime)).FontSize(sizeSmall).TextColor(t.TextMuted)
-								if r.SavedPassword {
-									ui.Text(c, L.ConnectPasswordSaved()).FontSize(sizeSmall).TextColor(t.TextMuted)
-								}
-							})
-						})
-					})
-					if r.SavedPassword && ui.Button(c.Key("recent-forget-"+r.DeviceID), L.ActionForgetPassword()).Clicked() {
-						device := r.DeviceID
-						go func() {
-							_, _ = a.requestWith(localapi.Request{Type: localapi.RequestForgetPassword, DeviceID: device})
-							a.update(func() { a.setToast(L.PasswordForgotten(), false) })
-						}()
-					}
-				})
-			}
-		}
 	})
+}
+
+// recentAbout is what a recent device said about itself, if anything.
+func (a *App) recentAbout(device string) localapi.About {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, r := range a.status.Recent {
+		if r.DeviceID == device {
+			return r.About
+		}
+	}
+	return localapi.About{}
 }
 
 // connectWant is what a connection asks the host for.
@@ -255,79 +204,163 @@ func connectWant(ai bool) []string {
 	return want
 }
 
-// startSession asks the engine to connect; progress shows in the sessions.
-func (a *App) startSession(f connectForm) {
-	id := strings.Join(strings.Fields(f.deviceID), "")
+// deviceRow is one device on Home: what it said about itself and its
+// connection from here, if any.
+type deviceRow struct {
+	id    string
+	about localapi.About
+	last  int64
+	saved bool
+	// session is the newest connection to it in the engine's list, or nil.
+	session *localapi.SessionInfo
+}
+
+// deviceRows are the devices this one connected to, newest first, with
+// the ones being connected to for the first time.
+func deviceRows(st *localapi.Status) []deviceRow {
+	var rows []deviceRow
+	index := map[string]int{}
+	for _, r := range st.Recent {
+		index[r.DeviceID] = len(rows)
+		rows = append(rows, deviceRow{id: r.DeviceID, about: r.About, last: r.Last, saved: r.SavedPassword})
+	}
+	for _, s := range st.Sessions {
+		if s.Role != "controller" {
+			continue
+		}
+		i, ok := index[s.DeviceID]
+		if !ok {
+			index[s.DeviceID] = len(rows)
+			rows = append(rows, deviceRow{id: s.DeviceID, about: s.Peer})
+			i = len(rows) - 1
+		}
+		if cur := rows[i].session; cur == nil || s.ID > cur.ID {
+			s := s
+			rows[i].session = &s
+		}
+	}
+	return rows
+}
+
+// devicesCard is Home's recent devices, one card each as RustDesk shows
+// them: a click connects (or shows its tab), its menu connects with AI,
+// forgets its password or old identity, or removes it.
+func (a *App) devicesCard(c *ui.Context) {
+	t := c.Theme()
 	a.mu.Lock()
-	a.busy["connect"] = true
+	rows := deviceRows(a.status)
+	online := map[string]bool{}
+	for _, d := range a.status.Network.Devices {
+		online[d.DeviceID] = true
+	}
 	a.mu.Unlock()
-	go func() {
-		_, err := a.requestWith(localapi.Request{Type: localapi.RequestConnect, Connect: &localapi.ConnectRequest{
-			DeviceID: id, Password: f.password,
-			Want: connectWant(f.ai), Remember: f.remember,
-		}})
-		a.update(func() {
-			delete(a.busy, "connect")
-			var refused *localapi.RequestError
-			switch {
-			case errors.As(err, &refused):
-				a.setToast(refused.Message, true)
-			case err != nil:
-				a.setToast(L.EngineDown(), true)
-			default:
-				a.connect.password = ""
+	if len(rows) == 0 {
+		return
+	}
+	ui.Text(c, L.ConnectRecent()).FontSize(sizeHeading).Bold()
+	ui.Row(c).FillWidth().Wrap().Gap(gap).AlignItems(ui.Start).Children(func() {
+		for _, r := range rows {
+			a.deviceCard(c, t, r, online[r.id])
+		}
+	})
+}
+
+// deviceCard is one device's card.
+func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
+	state, col := L.DeviceLast(time.Unix(r.last, 0).Local().Format(time.DateTime)), t.TextMuted
+	if r.last == 0 {
+		state = ""
+	}
+	if s := r.session; s != nil {
+		switch s.State {
+		case "connected":
+			state, col = L.NetworkOnline(), t.Success
+		case "closed":
+		case "failed":
+			state, col = failureText(s.Failure), t.Danger
+		default:
+			state = sessionState(*s)
+		}
+	}
+	keyChanged := r.session != nil && r.session.State == "failed" && string(r.session.Failure) == `"key-changed"`
+	box := ui.ButtonBase(c.Key("device-"+r.id)).Width(deviceCardW).Radius(cardRadius).Background(t.Surface).Border(1, t.Border).Label(deviceTitle(r.about, r.id))
+	if box.Clicked() {
+		a.connectDevice(r.id, r.about, nil)
+	}
+	box.Children(func() {
+		ui.Column(c).FillWidth().Padding(12).Gap(8).Children(func() {
+			ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
+				deviceAvatar(c, r.about)
+				ui.Column(c).Grow(1).Gap(2).Children(func() {
+					name := r.about.Name
+					if name == "" {
+						name = groupDigits(r.id)
+					}
+					ui.Text(c, name).Bold().Ellipsis("…").NoWrap()
+					if r.about.Name != "" {
+						ui.Text(c, groupDigits(r.id)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
+					}
+				})
+				more := ui.ButtonBase(c.Key("device-menu-"+r.id)).Padding(2, 8).Radius(6).Label(L.DeviceMenu()).Tooltip(L.DeviceMenu())
+				more.Children(func() { ui.Text(c, "⋯").TextColor(t.TextMuted) })
+				more.Menu(func(m *ui.Menu) {
+					if m.Item(L.ActionConnect()).Chosen() {
+						a.connectDevice(r.id, r.about, nil)
+					}
+					if m.Item(L.ActionConnectAI()).Chosen() {
+						a.connectDevice(r.id, r.about, connectWant(true))
+					}
+					m.Separator()
+					if r.saved && m.Item(L.ActionForgetPassword()).Chosen() {
+						a.forgetPassword(r.id)
+					}
+					if keyChanged && m.Item(L.ActionForgetIdentity()).Chosen() {
+						device := r.id
+						go func() { _, _ = a.requestWith(localapi.Request{Type: localapi.RequestHostForget, DeviceID: device}) }()
+					}
+					if m.Item(L.ActionRemove()).Chosen() {
+						a.removeDevice(r.id)
+					}
+				})
+			})
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				dot := t.TextMuted.Alpha(0.5)
+				if online {
+					dot = t.Success
+				}
+				ui.Box(c).Width(onlineDot).Height(onlineDot).Radius(onlineDot / 2).Background(dot)
+				ui.Text(c, state).FontSize(sizeSmall).TextColor(col).Ellipsis("…").NoWrap().Grow(1)
+			})
+			if r.saved {
+				ui.Text(c, L.ConnectPasswordSaved()).FontSize(sizeSmall).TextColor(t.TextMuted)
 			}
 		})
+	})
+}
+
+// forgetPassword forgets the password saved for a device.
+func (a *App) forgetPassword(device string) {
+	go func() {
+		_, _ = a.requestWith(localapi.Request{Type: localapi.RequestForgetPassword, DeviceID: device})
+		a.update(func() { a.setToast(L.PasswordForgotten(), false) })
 	}()
 }
 
-// sessionsCard lists this device's sessions, live and recently finished.
-func (a *App) sessionsCard(c *ui.Context) {
-	t := c.Theme()
-	a.mu.Lock()
-	list := slices.Clone(a.status.Sessions)
-	a.mu.Unlock()
-	if len(list) == 0 {
-		return
-	}
-	slices.Reverse(list) // newest first
-	card(c).Children(func() {
-		ui.Text(c, L.SessionsTitle()).FontSize(sizeHeading).Bold()
-		for _, s := range list {
-			ui.Row(c.Key("sess-" + itoa(s.ID))).Gap(16).AlignItems(ui.Center).Children(func() {
-				deviceAvatar(c, s.Peer)
-				ui.Column(c).Grow(1).Gap(2).Children(func() {
-					title := L.SessionControlling(deviceTitle(s.Peer, s.DeviceID))
-					if s.Role == "host" {
-						title = L.SessionControlledBy(deviceTitle(s.Peer, s.DeviceID))
-					}
-					ui.Text(c, title)
-					detail, col := sessionState(s), t.TextMuted
-					if s.State == "failed" {
-						col = t.Danger
-					}
-					ui.Text(c, detail).FontSize(sizeSmall).TextColor(col)
-				})
-				if s.State == "failed" && s.Role == "controller" && string(s.Failure) == `"key-changed"` {
-					if ui.Button(c.Key("sess-forget-"+itoa(s.ID)), L.ActionForgetIdentity()).Clicked() {
-						device := s.DeviceID
-						go func() { _, _ = a.requestWith(localapi.Request{Type: localapi.RequestHostForget, DeviceID: device}) }()
-					}
-				}
-				if s.Role == "controller" && s.State == "connected" && (slices.Contains(s.Granted, localapi.PermViewScreen) || slices.Contains(s.Granted, localapi.PermRunAITask)) {
-					if ui.Button(c.Key("sess-view-"+itoa(s.ID)), L.ActionView()).Clicked() {
-						a.openViewer(s)
-					}
-				}
-				if s.State == "connected" || s.State == "connecting" || s.State == "confirming" || s.State == "reconnecting" {
-					if ui.Button(c.Key("sess-close-"+itoa(s.ID)), L.ActionDisconnect()).Clicked() {
-						id := s.ID
-						go func() { _, _ = a.requestWith(localapi.Request{Type: localapi.RequestClose, ID: id}) }()
-					}
-				}
-			})
+// removeDevice takes a device off Home: its connection ends, and its
+// pinned key and saved password are forgotten.
+// Notes: call on the main thread.
+func (a *App) removeDevice(device string) {
+	if v := a.viewerFor(device); v != nil {
+		if w := v.home.Load(); w != nil {
+			w.closeTab(v)
+		} else {
+			v.disconnect()
 		}
-	})
+	}
+	go func() {
+		_, _ = a.requestWith(localapi.Request{Type: localapi.RequestForgetPassword, DeviceID: device})
+		_, _ = a.requestWith(localapi.Request{Type: localapi.RequestHostForget, DeviceID: device})
+	}()
 }
 
 // sessionState words a session's state, permissions or failure.

@@ -890,6 +890,10 @@ fn call(input: &[u8]) -> Result<Value, String> {
         }
         "ai.tasks" => with_core(|c| c.ctx.ai.tasks()),
         "ai.history.clear" => try_core(|c| c.ctx.ai.clear().map(|()| json!({}))),
+        "ai.draft.set" => {
+            let text = req.params["text"].as_str().ok_or("bad draft")?;
+            try_core(|c| c.ctx.ai.set_draft(text).map(|()| json!({})))
+        }
         "ai.stop" => with_core(|c| {
             c.ctx.ai.stop_all();
             json!({})
@@ -927,6 +931,7 @@ fn status() -> Value {
             "password_grants": c.ctx.access.password_grants(),
             "permissions": permissions(c.persistence),
             "ai": c.ctx.ai.active(),
+            "ai_draft": c.ctx.ai.draft().1,
             "requests": c.ctx.access.pending(),
             "sessions": c.ctx.sessions.list(),
             "recent": c

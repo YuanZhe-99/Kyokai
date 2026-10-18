@@ -25,24 +25,35 @@ func (a *App) sidebar(c *ui.Context) {
 	a.mu.Lock()
 	pg := a.page
 	a.mu.Unlock()
-	ui.Column(c).Width(sidebarW).FillHeight().Background(t.Surface).Padding(16, 8).Gap(4).Children(func() {
-		ui.Text(c, "Kyokai").FontSize(sizeTitle).Bold().PaddingX(10).PaddingY(6)
-		link := func(key, label string, p page) {
-			row := ui.ButtonBase(c.Key("nav-"+key)).Padding(8, 10).Radius(8).FillWidth().Label(label)
+	ui.Column(c).Width(sidebarW).FillHeight().Background(t.Surface).Padding(12, 8).Gap(2).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).PaddingX(8).PaddingY(4).Children(func() {
+			ui.Icon(c, appMark).FontSize(navIconSize + 4).TextColor(t.Accent)
+			ui.Text(c, "Kyokai").FontSize(sizeHeading).Bold()
+		})
+		ui.Column(c).Height(gap)
+		link := func(key, label string, icon *ui.SVG, p page) {
+			row := ui.ButtonBase(c.Key("nav-"+key)).Padding(7, 8).Radius(8).FillWidth().Label(label)
+			fg := t.TextMuted
 			if pg == p {
 				row.Background(t.Accent.Alpha(0.14))
+				fg = t.Text
 			}
-			row.Children(func() { ui.Text(c, label) })
+			row.Children(func() {
+				ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, icon).FontSize(navIconSize).TextColor(fg)
+					ui.Text(c, label).TextColor(fg)
+				})
+			})
 			if row.Clicked() {
 				a.mu.Lock()
 				a.page = p
 				a.mu.Unlock()
 			}
 		}
-		link("home", L.NavHome(), pageHome)
-		link("network", L.NavNetwork(), pageNetwork)
-		link("ai", L.NavAI(), pageAI)
-		link("settings", L.NavSettings(), pageSettings)
+		link("home", L.NavHome(), navHome, pageHome)
+		link("network", L.NavNetwork(), navNetwork, pageNetwork)
+		link("ai", L.NavAI(), navAI, pageAI)
+		link("settings", L.NavSettings(), navSettings, pageSettings)
 	})
 }
 
@@ -79,63 +90,67 @@ func (a *App) homeView(c *ui.Context) {
 	pw, show := a.password, a.showPassword && a.passwordFor == a.status.PasswordSerial
 	startingOver := a.busy["start-over"]
 	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.HomeThisDevice()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.HomeDeviceID()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, groupDigits(st.DeviceID)).FontSize(sizeDeviceID).Bold().FontFeatures("tnum").Selectable()
-			if ui.Button(c.Key("copy-id"), L.ActionCopy()).Clicked() {
-				mygo.Clipboard.WriteText(st.DeviceID)
-				a.update(func() { a.setToast(L.Copied(), false) })
-			}
-		})
-		ui.Divider(c)
-		ui.Text(c, L.HomeTemporaryPassword()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
+	// This device on the left, the device to control on the right, as
+	// RustDesk lays them out; recent devices below.
+	ui.Row(c).FillWidth().MaxWidth(contentMaxW).Gap(gap).AlignItems(ui.Stretch).Children(func() {
+		card(c).Width(thisDeviceW).Children(func() {
+			ui.Text(c, L.HomeThisDevice()).FontSize(sizeHeading).Bold()
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				ui.Text(c, L.HomeDeviceID()).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
+				if ui.Button(c.Key("copy-id"), L.ActionCopy()).Clicked() {
+					mygo.Clipboard.WriteText(st.DeviceID)
+					a.update(func() { a.setToast(L.Copied(), false) })
+				}
+			})
+			ui.Text(c, groupDigits(st.DeviceID)).FontSize(sizeDeviceID).Bold().FontFeatures("tnum").NoWrap().Selectable()
+			ui.Divider(c)
+			ui.Text(c, L.HomeTemporaryPassword()).FontSize(sizeSmall).TextColor(t.TextMuted)
 			shown := strings.Repeat("•", 8)
 			if show {
 				shown = pw
 			}
-			ui.Text(c, shown).FontSize(sizeTitle).FontFeatures("tnum").Selectable().Grow(1)
-			label := L.ActionShow()
-			if show {
-				label = L.ActionHide()
-			}
-			if ui.Button(c.Key("show-pw"), label).Clicked() {
+			ui.Text(c, shown).FontSize(sizeTitle).FontFeatures("tnum").Selectable()
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				label := L.ActionShow()
 				if show {
-					a.mu.Lock()
-					a.showPassword = false
-					a.mu.Unlock()
-				} else {
-					a.revealPassword(func(string) { a.showPassword = true })
+					label = L.ActionHide()
 				}
-			}
-			if ui.Button(c.Key("copy-pw"), L.ActionCopy()).Clicked() {
-				a.revealPassword(func(p string) {
-					mygo.Clipboard.WriteText(p)
-					a.setToast(L.Copied(), false)
-				})
-			}
-			if ui.Button(c.Key("new-pw"), L.ActionNewPassword()).Clicked() {
-				go func() { _, _ = a.request(localapi.RequestPasswordRegenerate) }()
-			}
-		})
-		ui.Text(c, L.HomePasswordHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		if note := secretsNote(st.Persistence); note != "" && st.Persistence != "os-store" {
-			ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Warning)
-		}
-		if st.Persistence == "unreadable" {
-			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, L.StartOverHint()).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
-				if ui.Button(c.Key("start-over"), L.ActionStartOver()).Disabled(startingOver).Clicked() {
-					a.startOver()
+				if ui.Button(c.Key("show-pw"), label).Clicked() {
+					if show {
+						a.mu.Lock()
+						a.showPassword = false
+						a.mu.Unlock()
+					} else {
+						a.revealPassword(func(string) { a.showPassword = true })
+					}
+				}
+				if ui.Button(c.Key("copy-pw"), L.ActionCopy()).Clicked() {
+					a.revealPassword(func(p string) {
+						mygo.Clipboard.WriteText(p)
+						a.setToast(L.Copied(), false)
+					})
+				}
+				if ui.Button(c.Key("new-pw"), L.ActionNewPassword()).Clicked() {
+					go func() { _, _ = a.request(localapi.RequestPasswordRegenerate) }()
 				}
 			})
-		}
+			ui.Text(c, L.HomePasswordHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			if note := secretsNote(st.Persistence); note != "" && st.Persistence != "os-store" {
+				ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Warning)
+			}
+			if st.Persistence == "unreadable" {
+				ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, L.StartOverHint()).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
+					if ui.Button(c.Key("start-over"), L.ActionStartOver()).Disabled(startingOver).Clicked() {
+						a.startOver()
+					}
+				})
+			}
+		})
+		ui.Column(c).Grow(1).Children(func() { a.connectCard(c) })
 	})
 	a.permissionsCard(c, false)
-	a.connectCard(c)
-	a.sessionsCard(c)
+	a.devicesCard(c)
 }
 
 func secretsNote(p string) string {

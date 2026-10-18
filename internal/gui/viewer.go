@@ -3,6 +3,7 @@ package gui
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"net"
@@ -92,15 +93,20 @@ var coreLib = sync.OnceValues(func() (*core.Lib, error) {
 	return core.Load(abs)
 })
 
-// viewer shows one controller session's screen as a tab of a viewer
-// window (viewerwin.go), which it can move between. Fields after mu are
-// guarded by it; the bitmap changes only on the main thread.
+// viewer is the connection to one device, shown as a tab of a viewer
+// window (viewerwin.go), which it can move between: from Connecting…,
+// through waiting for the device's user (with a password field), to its
+// screen, and when it ends why, with Reconnect. Fields after mu are guarded
+// by it; the bitmap changes only on the main thread.
 type viewer struct {
 	app    *App
-	id     uint64
 	device string
-	// title names the session's host: its friendly name and Device ID.
+	// sid is the session the connection is now; a reconnect makes another.
+	sid atomic.Uint64
+	// title names the device: its friendly name and Device ID.
 	title string
+	// want is what the connection asks the device for.
+	want []string
 	// home is the window the tab is in now; nil once the viewer closed.
 	home atomic.Pointer[viewerWindow]
 	conn net.Conn
@@ -143,45 +149,163 @@ type viewer struct {
 	actions *hostActions
 	// The AI panel (viewerai.go).
 	ai viewerAI
+	// The connection's progress as the engine reports it, and whether the
+	// stream is running (pump).
+	phase   localapi.SessionInfo
+	pumping bool
+	// The tab's password field while the device waits or refused, and
+	// whether to remember what is typed there.
+	password string
+	remember bool
 }
 
-// openViewer shows the viewer of a session, opening it the first time as
-// a new tab of the newest viewer window (a new window when there is none).
-// Notes: call on the main thread.
-func (a *App) openViewer(s localapi.SessionInfo) {
+// session is the connection's current session id (0 before the first).
+func (v *viewer) session() uint64 { return v.sid.Load() }
+
+// viewerFor is the connection to a device, or nil.
+func (a *App) viewerFor(device string) *viewer {
 	a.mu.Lock()
-	v, open := a.viewers[s.ID]
-	var vw *viewerWindow
-	if n := len(a.viewerWins); n > 0 {
-		vw = a.viewerWins[n-1]
+	defer a.mu.Unlock()
+	return a.viewers[device]
+}
+
+// connectDevice opens the connection to a device as a tab of the main
+// window, or shows its tab when it is open; a connection that ended
+// connects again. want is what to ask for (nil: viewing, input, the
+// clipboard and files).
+// Notes: call on the main thread; one connection per device.
+func (a *App) connectDevice(device string, about localapi.About, want []string) {
+	if want == nil {
+		want = connectWant(false)
 	}
-	a.mu.Unlock()
-	if open {
+	if v := a.viewerFor(device); v != nil {
 		if w := v.home.Load(); w != nil {
-			w.mu.Lock()
-			if i := slices.Index(w.tabs, v); i >= 0 {
-				w.cur = i
-			}
-			w.mu.Unlock()
-			w.retitle()
-			w.win.Focus()
+			w.show(v)
+		}
+		if !v.live() {
+			v.redial("", false)
 		}
 		return
 	}
-	v = &viewer{app: a, id: s.ID, device: s.DeviceID, title: deviceTitle(s.Peer, s.DeviceID), counted: time.Now(), out: make(chan []byte, 256), preset: 1, fpsCap: "30 fps",
-		control: slices.Contains(s.Granted, localapi.PermControlInput),
-		ai:      viewerAI{run: slices.Contains(s.Granted, localapi.PermRunAITask), approve: slices.Contains(s.Granted, localapi.PermApproveAIAction)}}
-	if !slices.Contains(s.Granted, localapi.PermViewScreen) {
-		v.state = L.ViewerNoPicture()
-	}
-	if vw == nil {
-		vw = a.newViewerWindow()
-	}
+	v := a.newViewer(device, about, want)
+	a.main.add(v)
+	v.redial("", false)
+}
+
+// newViewer makes a device's connection, not yet dialed, and registers it.
+func (a *App) newViewer(device string, about localapi.About, want []string) *viewer {
+	v := &viewer{app: a, device: device, title: deviceTitle(about, device), want: want,
+		counted: time.Now(), out: make(chan []byte, 256), preset: 1, fpsCap: "30 fps"}
 	a.mu.Lock()
-	a.viewers[s.ID] = v
+	a.viewers[device] = v
 	a.mu.Unlock()
-	vw.add(v)
-	go v.pump()
+	return v
+}
+
+// live reports whether the connection is under way or connected (not
+// ended or failed).
+func (v *viewer) live() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	switch v.phase.State {
+	case "", "closed", "failed":
+		return v.pumping
+	}
+	return true
+}
+
+// redial connects to the device anew: with a password typed in the tab,
+// else the saved one (if any), else asking the device's user. A session
+// still waiting is given up first, so the device has one at a time.
+// Side effects: the tab follows the new session.
+func (v *viewer) redial(password string, remember bool) {
+	old := v.session()
+	v.mu.Lock()
+	v.phase = localapi.SessionInfo{State: "connecting", DeviceID: v.device}
+	v.state, v.bm, v.start, v.password = "", nil, videoStart{}, ""
+	want := v.want
+	v.mu.Unlock()
+	go func() {
+		if old != 0 {
+			_, _ = v.app.requestWith(localapi.Request{Type: localapi.RequestClose, ID: old})
+		}
+		resp, err := v.app.requestWith(localapi.Request{Type: localapi.RequestConnect, Connect: &localapi.ConnectRequest{
+			DeviceID: v.device, Password: password, Want: want, Remember: remember,
+		}})
+		v.update(func() {
+			if err != nil {
+				var refused *localapi.RequestError
+				msg := L.EngineDown()
+				if errors.As(err, &refused) {
+					msg = refused.Message
+				}
+				v.mu.Lock()
+				v.phase = localapi.SessionInfo{State: "failed", DeviceID: v.device}
+				v.state = msg
+				v.mu.Unlock()
+				return
+			}
+			v.sid.Store(resp.ID)
+		})
+	}()
+}
+
+// syncViewers follows the engine's sessions in the tabs: each connection
+// takes its session's progress, starts its stream once connected, and a
+// connection made elsewhere (another window, ctl) gets a tab of its own.
+// Notes: call on the main thread.
+func (a *App) syncViewers() {
+	a.mu.Lock()
+	var sessions []localapi.SessionInfo
+	if a.status != nil {
+		sessions = a.status.Sessions
+	}
+	a.mu.Unlock()
+	for _, s := range sessions {
+		if s.Role != "controller" {
+			continue
+		}
+		v := a.viewerFor(s.DeviceID)
+		if v == nil {
+			if s.State != "connected" {
+				continue
+			}
+			v = a.newViewer(s.DeviceID, s.Peer, s.Granted)
+			v.sid.Store(s.ID)
+			a.main.add(v)
+		}
+		if v.session() != s.ID {
+			// An older session of the device, or another made elsewhere
+			// while this connection is not live: follow the live one.
+			if v.live() || s.State != "connected" {
+				continue
+			}
+			v.sid.Store(s.ID)
+		}
+		v.mu.Lock()
+		v.phase = s
+		if s.Peer.Name != "" {
+			v.title = deviceTitle(s.Peer, s.DeviceID)
+		}
+		start := s.State == "connected" && !v.pumping
+		if start {
+			v.pumping = true
+			v.control = slices.Contains(s.Granted, localapi.PermControlInput)
+			v.ai.run = slices.Contains(s.Granted, localapi.PermRunAITask)
+			v.ai.approve = slices.Contains(s.Granted, localapi.PermApproveAIAction)
+			v.state = ""
+			if !slices.Contains(s.Granted, localapi.PermViewScreen) {
+				v.state = L.ViewerNoPicture()
+			}
+		}
+		v.mu.Unlock()
+		if start {
+			if w := v.home.Load(); w != nil {
+				w.retitle()
+			}
+			go v.pump()
+		}
+	}
 }
 
 // close ends the viewer's stream as its tab closes: the keyboard grab, the
@@ -190,7 +314,9 @@ func (v *viewer) close() {
 	v.endGrab()
 	v.home.Store(nil)
 	v.app.mu.Lock()
-	delete(v.app.viewers, v.id)
+	if v.app.viewers[v.device] == v {
+		delete(v.app.viewers, v.device)
+	}
 	v.app.mu.Unlock()
 	v.mu.Lock()
 	conn := v.conn
@@ -227,7 +353,12 @@ func (v *viewer) pump() {
 			dec.Close()
 		}
 	}()
-	conn, err := localapi.NewClient(v.app.socket).Media(v.app.ctx, v.id)
+	defer func() {
+		v.mu.Lock()
+		v.pumping = false
+		v.mu.Unlock()
+	}()
+	conn, err := localapi.NewClient(v.app.socket).Media(v.app.ctx, v.session())
 	if err != nil {
 		v.setState(L.ViewerEnded())
 		return
@@ -392,6 +523,13 @@ func (v *viewer) setState(s string) {
 // the session may run AI tasks, and a status line.
 func (v *viewer) view(c *ui.Context) {
 	v.mu.Lock()
+	phase, pumping := v.phase, v.pumping
+	v.mu.Unlock()
+	if !pumping && phase.State != "connected" {
+		v.connectPanel(c, phase)
+		return
+	}
+	v.mu.Lock()
 	bm, state, start, fps, kbps, host := v.bm, v.state, v.start, v.fps, v.kbps, v.host
 	preset, fpsCap, full, withAI, ptr, displays, actions := v.preset, v.fpsCap, v.full, v.ai.aiShown(), v.pointer, v.displays, v.actions
 	v.mu.Unlock()
@@ -410,6 +548,81 @@ func (v *viewer) view(c *ui.Context) {
 			}
 		})
 		v.statusBar(c, start, fps, kbps, host, preset, fpsCap, full, displays, showPtr)
+	})
+}
+
+// connectPanel is the tab before and after the picture: connecting,
+// waiting for the device's user (or its password), why it ended, and
+// Reconnect.
+func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
+	t := c.Theme()
+	v.mu.Lock()
+	pw, remember, note := v.password, v.remember, v.state
+	v.mu.Unlock()
+	edit := func(e ui.Element) {
+		if e.Changed() {
+			v.mu.Lock()
+			v.password, v.remember = pw, remember
+			v.mu.Unlock()
+		}
+	}
+	ui.Column(c).Fill().Background(t.Background).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+		card(c).Width(connectPanelW).Children(func() {
+			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
+				deviceAvatar(c, phase.Peer)
+				ui.Text(c, v.title).FontSize(sizeHeading).Bold()
+			})
+			waiting, ended := false, false
+			switch phase.State {
+			case "", "connecting", "reconnecting":
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Spinner(c)
+					ui.Text(c, sessionState(phase)).TextColor(t.TextMuted)
+				})
+			case "confirming":
+				waiting = true
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Spinner(c)
+					ui.Text(c, L.SessionConfirmingThere()).TextColor(t.TextMuted)
+				})
+			default:
+				ended = true
+				text := note
+				if text == "" {
+					text = sessionState(phase)
+				}
+				ui.Text(c, text).TextColor(t.Danger)
+			}
+			if !waiting && !ended {
+				return
+			}
+			label := L.ViewerPasswordHint()
+			if ended {
+				label = L.ViewerPasswordAgain()
+			}
+			ui.Text(c, label).FontSize(sizeSmall).TextColor(t.TextMuted)
+			submit := false
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				in := ui.TextInput(c.Key("tab-pw"), &pw).Password().Grow(1)
+				edit(in)
+				if in.Submitted() && pw != "" {
+					submit = true
+				}
+				label := L.ActionConnect()
+				if ended && pw == "" {
+					label = L.ViewerReconnect()
+				}
+				if ui.PrimaryButton(c.Key("tab-go"), label).Disabled(waiting && pw == "").Clicked() {
+					submit = true
+				}
+			})
+			labelled(c, func() {
+				edit(ui.Switch(c.Key("tab-remember"), &remember).Label(L.ConnectRemember()))
+			}, L.ConnectRemember())
+			if submit {
+				v.redial(pw, remember)
+			}
+		})
 	})
 }
 
@@ -551,10 +764,15 @@ func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, h
 				}
 			}, L.ViewerAIPanel())
 		}
-		// Ends the session itself, not only this window's stream.
-		if ui.Button(c.Key("disconnect"), L.ActionDisconnect()).Clicked() {
-			id := v.id
-			go func() { _, _ = v.app.requestWith(localapi.Request{Type: localapi.RequestClose, ID: id}) }()
+		if w := v.home.Load(); w != nil {
+			full := w.fullScreen()
+			label := L.ViewerFullScreen()
+			if full {
+				label = L.ViewerExitFullScreen()
+			}
+			if ui.Button(c.Key("full-screen"), label).Clicked() {
+				w.win.SetFullScreen(!full)
+			}
 		}
 	})
 }

@@ -183,6 +183,13 @@ func (a *App) connectLoop() {
 					a.permissionsChanged(st)
 					a.status, a.connected, a.engineErr = st, true, ""
 				})
+				// The connections' tabs follow the sessions (main thread).
+				a.mu.Lock()
+				w := a.window
+				a.mu.Unlock()
+				if w != nil {
+					w.Update(a.syncViewers)
+				}
 				return nil
 			})
 			stop()

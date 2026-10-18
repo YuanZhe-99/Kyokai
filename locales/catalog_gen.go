@@ -1032,6 +1032,16 @@ func (msgs Messages) ActionConnect() string {
 	return Catalog.Format(msgs.locale, "ActionConnect", nil)
 }
 
+// ActionConnectAI says "Connect with AI"
+// in the language the app shows.
+func ActionConnectAI() string { return In(i18n.Locale()).ActionConnectAI() }
+
+// ActionConnectAI says "Connect with AI"
+// in the language of msgs.
+func (msgs Messages) ActionConnectAI() string {
+	return Catalog.Format(msgs.locale, "ActionConnectAI", nil)
+}
+
 // ActionCopy says "Copy"
 // in the language the app shows.
 func ActionCopy() string { return In(i18n.Locale()).ActionCopy() }
@@ -1382,6 +1392,16 @@ func (msgs Messages) ConnectNeedsNetwork() string {
 	return Catalog.Format(msgs.locale, "ConnectNeedsNetwork", nil)
 }
 
+// ConnectOptions says "Options"
+// in the language the app shows.
+func ConnectOptions() string { return In(i18n.Locale()).ConnectOptions() }
+
+// ConnectOptions says "Options"
+// in the language of msgs.
+func (msgs Messages) ConnectOptions() string {
+	return Catalog.Format(msgs.locale, "ConnectOptions", nil)
+}
+
 // ConnectPassword says "Password"
 // in the language the app shows.
 func ConnectPassword() string { return In(i18n.Locale()).ConnectPassword() }
@@ -1470,6 +1490,26 @@ func Copied() string { return In(i18n.Locale()).Copied() }
 // in the language of msgs.
 func (msgs Messages) Copied() string {
 	return Catalog.Format(msgs.locale, "Copied", nil)
+}
+
+// DeviceLast says "Last connected {time}"
+// in the language the app shows.
+func DeviceLast(time_ string) string { return In(i18n.Locale()).DeviceLast(time_) }
+
+// DeviceLast says "Last connected {time}"
+// in the language of msgs.
+func (msgs Messages) DeviceLast(time_ string) string {
+	return Catalog.Format(msgs.locale, "DeviceLast", map[string]any{"time": time_})
+}
+
+// DeviceMenu says "More"
+// in the language the app shows.
+func DeviceMenu() string { return In(i18n.Locale()).DeviceMenu() }
+
+// DeviceMenu says "More"
+// in the language of msgs.
+func (msgs Messages) DeviceMenu() string {
+	return Catalog.Format(msgs.locale, "DeviceMenu", nil)
 }
 
 // DiagEngine says "Engine"
@@ -3290,6 +3330,26 @@ func (msgs Messages) ViewerEnded() string {
 	return Catalog.Format(msgs.locale, "ViewerEnded", nil)
 }
 
+// ViewerExitFullScreen says "Exit full screen"
+// in the language the app shows.
+func ViewerExitFullScreen() string { return In(i18n.Locale()).ViewerExitFullScreen() }
+
+// ViewerExitFullScreen says "Exit full screen"
+// in the language of msgs.
+func (msgs Messages) ViewerExitFullScreen() string {
+	return Catalog.Format(msgs.locale, "ViewerExitFullScreen", nil)
+}
+
+// ViewerFullScreen says "Full screen"
+// in the language the app shows.
+func ViewerFullScreen() string { return In(i18n.Locale()).ViewerFullScreen() }
+
+// ViewerFullScreen says "Full screen"
+// in the language of msgs.
+func (msgs Messages) ViewerFullScreen() string {
+	return Catalog.Format(msgs.locale, "ViewerFullScreen", nil)
+}
+
 // ViewerKeyboard says "Keyboard"
 // in the language the app shows.
 func ViewerKeyboard() string { return In(i18n.Locale()).ViewerKeyboard() }
@@ -3370,6 +3430,26 @@ func (msgs Messages) ViewerNoPicture() string {
 	return Catalog.Format(msgs.locale, "ViewerNoPicture", nil)
 }
 
+// ViewerPasswordAgain says "Enter its password:"
+// in the language the app shows.
+func ViewerPasswordAgain() string { return In(i18n.Locale()).ViewerPasswordAgain() }
+
+// ViewerPasswordAgain says "Enter its password:"
+// in the language of msgs.
+func (msgs Messages) ViewerPasswordAgain() string {
+	return Catalog.Format(msgs.locale, "ViewerPasswordAgain", nil)
+}
+
+// ViewerPasswordHint says "Or enter its password:"
+// in the language the app shows.
+func ViewerPasswordHint() string { return In(i18n.Locale()).ViewerPasswordHint() }
+
+// ViewerPasswordHint says "Or enter its password:"
+// in the language of msgs.
+func (msgs Messages) ViewerPasswordHint() string {
+	return Catalog.Format(msgs.locale, "ViewerPasswordHint", nil)
+}
+
 // ViewerPointer says "Pointer"
 // in the language the app shows.
 func ViewerPointer() string { return In(i18n.Locale()).ViewerPointer() }
@@ -3398,6 +3478,16 @@ func ViewerPrivacy() string { return In(i18n.Locale()).ViewerPrivacy() }
 // in the language of msgs.
 func (msgs Messages) ViewerPrivacy() string {
 	return Catalog.Format(msgs.locale, "ViewerPrivacy", nil)
+}
+
+// ViewerReconnect says "Reconnect"
+// in the language the app shows.
+func ViewerReconnect() string { return In(i18n.Locale()).ViewerReconnect() }
+
+// ViewerReconnect says "Reconnect"
+// in the language of msgs.
+func (msgs Messages) ViewerReconnect() string {
+	return Catalog.Format(msgs.locale, "ViewerReconnect", nil)
 }
 
 // ViewerTabClose says "Close this tab (the session goes on)"

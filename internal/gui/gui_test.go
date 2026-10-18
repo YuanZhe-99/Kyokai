@@ -90,7 +90,7 @@ func TestViewsRender(t *testing.T) {
 		"network-off":      func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
 		"home-connect": func(a *App) {
 			a.status.Network.State = "online"
-			a.connect = connectForm{deviceID: "657 365 333", remember: true}
+			a.connect = connectForm{deviceID: "657 365 333"}
 			a.status.Recent = []localapi.RecentDevice{
 				{DeviceID: "657365333", Last: 1797400000, SavedPassword: true, About: localapi.About{Name: "Studio Mac", Maker: "Apple", Model: "Mac14,13", OS: "macos"}},
 				{DeviceID: "647222040", Last: 1797300000},
@@ -440,27 +440,47 @@ func demoAISettings(keys bool) *localapi.AISettings {
 	}
 }
 
-// A viewer window with several sessions shows them as tabs, the chosen
-// one's picture below, and switching tabs shows the other session.
-func TestViewerTabsRender(t *testing.T) {
+// The main window shows Home with the connections as tabs after it; a
+// connection's tab shows its picture, and one still waiting for the
+// device's user shows the password field.
+func TestConnectionTabsRender(t *testing.T) {
 	pic := image.NewRGBA(image.Rect(0, 0, 320, 180))
 	for i := range pic.Pix {
 		pic.Pix[i] = byte(i * 5)
 	}
-	a := &App{viewers: map[uint64]*viewer{}}
-	vw := &viewerWindow{app: a}
-	for i, title := range []string{"Office laptop · 213 559 601", "Studio Mac · 657 365 333", "647 222 040"} {
-		v := &viewer{app: a, id: uint64(i + 1), title: title, preset: 1, fpsCap: "30 fps",
-			start: videoStart{Codec: "vp9-sw", Width: 320, Height: 180}, bm: ui.NewBitmap(pic)}
+	a := &App{viewers: map[string]*viewer{}, busy: map[string]bool{}}
+	a.status = &localapi.Status{DeviceID: "482916735", Persistence: "os-store", Network: localapi.NetworkStatus{State: "online"}}
+	vw := &viewerWindow{app: a, main: true}
+	a.main = vw
+	for i, c := range []struct{ title, device, state string }{
+		{"Office laptop · 213 559 601", "213559601", "connected"},
+		{"Studio Mac · 657 365 333", "657365333", "confirming"},
+		{"647 222 040", "647222040", "failed"},
+	} {
+		v := &viewer{app: a, device: c.device, title: c.title, preset: 1, fpsCap: "30 fps",
+			start: videoStart{Codec: "vp9-sw", Width: 320, Height: 180}, bm: ui.NewBitmap(pic),
+			phase: localapi.SessionInfo{ID: uint64(i + 1), DeviceID: c.device, State: c.state, Failure: []byte(`{"refused":"password"}`)}}
+		v.pumping = c.state == "connected"
 		vw.tabs = append(vw.tabs, v)
-		a.viewers[v.id] = v
+		a.viewers[c.device] = v
 	}
-	vw.cur = 1
-	tt := ui.NewTester(vw.view, 1100, 600)
-	tt.Frame()
-	tt.Frame()
-	if dir := os.Getenv("SCREENSHOT_DIR"); dir != "" {
-		f, err := os.Create(filepath.Join(dir, "en-viewer-tabs.png"))
+	dir := os.Getenv("SCREENSHOT_DIR")
+	for _, shot := range []struct {
+		name string
+		cur  int
+		home bool
+	}{{"tabs-home", 0, true}, {"tabs-picture", 0, false}, {"tabs-waiting", 1, false}, {"tabs-failed", 2, false}} {
+		vw.cur, vw.home = shot.cur, shot.home
+		tt := ui.NewTester(vw.view, 1100, 640)
+		tt.Frame()
+		tt.Frame()
+		if vw.cur != shot.cur || vw.home != shot.home {
+			t.Fatalf("%s: rendering changed the tab shown", shot.name)
+		}
+		if dir == "" {
+			continue
+		}
+		f, err := os.Create(filepath.Join(dir, "en-"+shot.name+".png"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -468,8 +488,5 @@ func TestViewerTabsRender(t *testing.T) {
 			t.Fatal(err)
 		}
 		f.Close()
-	}
-	if vw.cur != 1 {
-		t.Fatalf("rendering changed the tab shown to %d", vw.cur)
 	}
 }

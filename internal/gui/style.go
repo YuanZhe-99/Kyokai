@@ -1,28 +1,58 @@
 package gui
 
 import (
+	_ "embed"
+
 	"github.com/egoist/mygo/ui"
+)
+
+// The sidebar's icons: original line drawings in one style (24×24,
+// stroke 2), drawn in the text colour.
+var (
+	//go:embed assets/icons/home.svg
+	homeSVG []byte
+	//go:embed assets/icons/network.svg
+	networkSVG []byte
+	//go:embed assets/icons/ai.svg
+	aiSVG []byte
+	//go:embed assets/icons/settings.svg
+	settingsSVG []byte
+	//go:embed assets/icons/mark.svg
+	markSVG []byte
+
+	navHome     = ui.MustParseSVG(homeSVG)
+	navNetwork  = ui.MustParseSVG(networkSVG)
+	navAI       = ui.MustParseSVG(aiSVG)
+	navSettings = ui.MustParseSVG(settingsSVG)
+	// appMark is the app's mark (a ring split by a boundary) for the
+	// sidebar's title.
+	appMark = ui.MustParseSVG(markSVG)
 )
 
 // Layout and type scale (doc/en-us/gui.md: body 14, titles 20–24, nothing
 // below 12).
 const (
-	sizeSmall    float32 = 12
-	sizeBody     float32 = 14
-	sizeHeading  float32 = 16
-	sizeTitle    float32 = 22
-	sizeDeviceID float32 = 34
-	sidebarW     float32 = 200
-	cardRadius   float32 = 12
-	cardPad      float32 = 16
-	gap          float32 = 12
-	contentMaxW  float32 = 760
-	inputAreaH   float32 = 72  // a multi-line input of about three lines
-	aiPanelW     float32 = 320 // the viewer's AI panel
-	tabTitleMaxW float32 = 220 // a viewer tab's title
-	pointerR     float32 = 6   // the host's pointer marker in the viewer
-	avatarSize   float32 = 36  // a device's round avatar
-	logoSize     float32 = 22  // a vendor logo inside it (about 64%)
+	sizeSmall     float32 = 12
+	sizeBody      float32 = 14
+	sizeHeading   float32 = 16
+	sizeTitle     float32 = 22
+	sizeDeviceID  float32 = 34
+	sidebarW      float32 = 168
+	navIconSize   float32 = 16 // the sidebar's icons
+	cardRadius    float32 = 12
+	cardPad       float32 = 16
+	gap           float32 = 12
+	contentMaxW   float32 = 760
+	inputAreaH    float32 = 72  // a multi-line input of about three lines
+	aiPanelW      float32 = 320 // the viewer's AI panel
+	tabTitleMaxW  float32 = 220 // a viewer tab's title
+	thisDeviceW   float32 = 300 // Home's This device column
+	deviceCardW   float32 = 236 // a recent device's card on Home
+	onlineDot     float32 = 8   // a device's online dot
+	connectPanelW float32 = 420 // a connection tab's panel before the picture
+	pointerR      float32 = 6   // the host's pointer marker in the viewer
+	avatarSize    float32 = 36  // a device's round avatar
+	logoSize      float32 = 22  // a vendor logo inside it (about 64%)
 )
 
 // card is a rounded panel.

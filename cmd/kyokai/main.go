@@ -63,7 +63,7 @@ func main() {
 			MinHeight: 520,
 			StateKey:  "main",
 			Hidden:    hidden,
-			Content:   ui.View(a.View),
+			Content:   ui.View(a.MainView),
 		})
 		// Kyokai's windows stay out of every capture (the viewer's video and
 		// the AI's screenshots) unless Settings says otherwise.
@@ -72,6 +72,7 @@ func main() {
 		tray := a.NewTray()
 		a.SetTray(tray)
 		w.OnClose(a.HandleClose)
+		a.WatchMainFullScreen()
 		// Quitting the app (its menu, the Dock, logging out or shutting
 		// down) quits even while closing the window only hides it.
 		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.MarkQuitting() })

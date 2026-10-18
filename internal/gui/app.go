@@ -73,10 +73,12 @@ type App struct {
 	// Identity backup passphrase (identity.go), write-only.
 	passphrase string
 	// Open viewer windows by session id (viewer.go).
-	viewers map[uint64]*viewer
+	viewers map[string]*viewer
 	// The viewer windows, oldest first; a new viewer opens as a tab of the
 	// newest (viewerwin.go).
 	viewerWins []*viewerWindow
+	// main is the main window as a holder of tabs, Home first.
+	main *viewerWindow
 	// keyReader starts the reader of the keys the viewers' keyboard grab
 	// takes (viewerinput.go), once.
 	keyReader sync.Once
@@ -103,8 +105,9 @@ func New(profile, stateDir, socket string) *App {
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &App{
 		profile: profile, stateDir: stateDir, socket: socket, userSocket: socket, ctx: ctx, cancel: cancel,
-		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{}, viewers: map[uint64]*viewer{},
+		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{}, viewers: map[string]*viewer{},
 	}
+	a.main = &viewerWindow{app: a, main: true, home: true}
 	a.socket = startSocket(a.prefs.Helper, helper.Inspect().Installed, socket)
 	return a
 }
@@ -126,6 +129,7 @@ func startSocket(helperMode, installed bool, own string) string {
 func (a *App) SetWindow(w *mygo.Window) {
 	a.mu.Lock()
 	a.window = w
+	a.main.win = w
 	show := a.prefs.ShowInCapture
 	a.mu.Unlock()
 	w.SetContentProtection(!show)
@@ -269,7 +273,14 @@ func (a *App) setToast(msg string, isErr bool) {
 	time.AfterFunc(4*time.Second+100*time.Millisecond, func() { a.update(func() {}) })
 }
 
-// View is the whole window.
+// WatchMainFullScreen keeps the main window's full-screen state, which
+// hides its tabs. Notes: call once, after SetWindow.
+func (a *App) WatchMainFullScreen() { a.main.watchFullScreen() }
+
+// MainView is the main window: Home and the connections' tabs.
+func (a *App) MainView(c *ui.Context) { a.main.view(c) }
+
+// View is Home: the sidebar and the page chosen.
 func (a *App) View(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()

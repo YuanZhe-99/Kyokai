@@ -22,7 +22,7 @@ use tokio::sync::{Notify, mpsc};
 use crate::{media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
-pub const PROTOCOL: u32 = 5;
+pub const PROTOCOL: u32 = 6;
 const PATTERN: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
@@ -164,6 +164,11 @@ enum Message {
     /// host → controller: why an AI request was refused.
     AiError {
         error: String,
+    },
+    /// either way (`run-ai-task`): the shared draft of the next instruction,
+    /// as typed on any side; the host passes it to every controller.
+    AiDraft {
+        text: String,
     },
     /// either way (`clipboard`): text copied on the sender's side.
     Clipboard {
@@ -1177,9 +1182,10 @@ pub struct HostAi {
     ai: Arc<crate::ai::Ai>,
     /// The controller's Device ID: the origin of the tasks it starts.
     peer: String,
-    /// `run-ai-task`: start and steer its own tasks.
+    /// `run-ai-task`: start tasks and steer the host's task, whoever
+    /// started it (one record for every controller).
     run: bool,
-    /// `approve-ai-action`: answer its own tasks' approvals.
+    /// `approve-ai-action`: answer the host's task's approvals.
     approve: bool,
 }
 
@@ -1193,23 +1199,14 @@ impl HostAi {
                 .ai
                 .start(&key, &instruction, Some(&self.peer))
                 .map(|_| ()),
-            Message::AiCommand { id, command, text } if self.run => {
-                if !self.ai.started_by(id, &self.peer) {
-                    return Err(not_allowed());
-                }
-                match command {
-                    Steer::Pause => self.ai.pause(id, crate::ai::Pause::Controller),
-                    Steer::Resume => self.ai.resume(id),
-                    Steer::Cancel => self.ai.cancel(id),
-                    Steer::Reply => self.ai.reply(id, &text),
-                }
-            }
-            Message::AiDecide { id, approve } if self.approve => {
-                if !self.ai.started_by(id, &self.peer) {
-                    return Err(not_allowed());
-                }
-                self.ai.decide(id, approve)
-            }
+            Message::AiCommand { id, command, text } if self.run => match command {
+                Steer::Pause => self.ai.pause(id, crate::ai::Pause::Controller),
+                Steer::Resume => self.ai.resume(id),
+                Steer::Cancel => self.ai.cancel(id),
+                Steer::Reply => self.ai.reply(id, &text),
+            },
+            Message::AiDecide { id, approve } if self.approve => self.ai.decide(id, approve),
+            Message::AiDraft { text } if self.run => self.ai.set_draft(&text),
             _ => Err(not_allowed()),
         }
     }
@@ -1398,6 +1395,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut pointer_tick = tokio::time::interval(POINTER_EVERY);
     let mut pointer_sent: Option<((i32, i32), bool)> = None;
     let mut ai_sent: Option<Value> = None;
+    // The serial of the shared draft this controller has (host side).
+    let mut draft_sent: u64 = 0;
     let mut control = match &control {
         Some(c) => Some(c.lock().await),
         None => None,
@@ -1463,14 +1462,21 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 return Ok(());
             }
             _ = ai_sync.tick(), if host_ai.is_some() => {
-                // The controller's task as it is now; sent again after a
-                // reconnect, never replayed as commands.
+                // The host's task as it is now, the same for every
+                // controller; sent again after a reconnect, never replayed
+                // as commands.
                 let h = host_ai.expect("checked");
-                let now = h.ai.latest_for(&h.peer);
+                let now = h.ai.latest();
                 if now.is_some() && now != ai_sent {
                     let task = now.clone().expect("checked");
                     seal_json(&mut noise, &mut buf, &mut wr, &Message::AiTask { task }).await?;
                     ai_sent = now;
+                }
+                // The shared draft, as anyone typed it last.
+                let (serial, text) = h.ai.draft();
+                if serial != draft_sent {
+                    seal_json(&mut noise, &mut buf, &mut wr, &Message::AiDraft { text }).await?;
+                    draft_sent = serial;
                 }
             }
             Some(item) = async {
@@ -1585,7 +1591,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 // Only messages a GUI may send pass on to the host.
-                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. })) = serde_json::from_value::<Message>(msg) {
+                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. })) = serde_json::from_value::<Message>(msg) {
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
                 }
             }
@@ -1665,7 +1671,15 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         }
                     }
                     Message::Bye => return Ok(()),
-                    m @ (Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. }) => {
+                    // A controller shows the host's shared draft.
+                    Message::AiDraft { text } if matches!(side, Side::Controller { .. }) => {
+                        if let Some(q) = &queue {
+                            let mut packet = vec![media::packet::AI_DRAFT];
+                            packet.extend(serde_json::to_vec(&json!({"text": text})).map_err(|_| Failure::Broken)?);
+                            q.push(packet);
+                        }
+                    }
+                    m @ (Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. }) => {
                         // Only a host answers AI requests.
                         if let Side::Host { ai, .. } = &side
                             && let Err(error) = ai.handle(m)
@@ -2380,14 +2394,42 @@ mod tests {
             1,
             "one task for one key"
         );
-        // A task the host's own user starts is not the controller's to steer.
+        // The host keeps one AI record: a task its own user starts shows
+        // to the controller too, which may stop it.
         let own = rig.ai.start("host", "Something else", None).unwrap();
+        let shown = ai_packet(&queue, "the host user's task", |k, t| {
+            k == media::packet::AI_TASK && t["id"] == own
+        });
+        assert!(shown["origin"].is_null(), "started here: {shown}");
         control
             .try_send(json!({"type": "ai-command", "id": own, "command": "cancel"}))
             .unwrap();
-        ai_packet(&queue, "refusal", |k, _| k == media::packet::AI_ERROR);
-        assert_ne!(rig.task(own)["state"], "cancelled");
-        rig.ai.cancel(own).unwrap();
+        ai_packet(&queue, "the host user's task, stopped", |k, t| {
+            k == media::packet::AI_TASK && t["id"] == own && t["state"] == "cancelled"
+        });
+        // The draft of the next instruction is shared: the controller's
+        // reaches the host, the host's (or another controller's) reaches it.
+        control
+            .try_send(json!({"type": "ai-draft", "text": "Rename the"}))
+            .unwrap();
+        let until = Instant::now() + Duration::from_secs(10);
+        while rig.ai.draft().1 != "Rename the" {
+            assert!(Instant::now() < until, "the host never got the draft");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        rig.ai.set_draft("Rename the report").unwrap();
+        let until = Instant::now() + Duration::from_secs(10);
+        loop {
+            assert!(Instant::now() < until, "the controller never got the draft");
+            let Ok(p) = queue.pop(Duration::from_millis(200)) else {
+                continue;
+            };
+            if p[0] == media::packet::AI_DRAFT
+                && serde_json::from_slice::<Value>(&p[1..]).unwrap()["text"] == "Rename the report"
+            {
+                break;
+            }
+        }
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

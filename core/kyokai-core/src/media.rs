@@ -41,6 +41,8 @@ pub mod packet {
     /// engine → GUI: the session actions the host offers
     /// `{ctrl_alt_del, blocked, privacy}` JSON.
     pub const ACTIONS: u8 = 9;
+    /// engine → GUI: `{text}` JSON, the host's shared AI draft.
+    pub const AI_DRAFT: u8 = 10;
 }
 
 /// What a video stream carries, sent before its first frame.

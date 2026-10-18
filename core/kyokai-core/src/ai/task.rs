@@ -351,6 +351,9 @@ struct Shared {
     open_desktop: OpenDesktop,
     /// Provider URLs replaced by a local server in tests.
     url: Option<String>,
+    /// The instruction being written, shared by the host's user and every
+    /// controller: its text and a serial that changes with it.
+    draft: Mutex<(u64, String)>,
 }
 
 /// The host's AI runtime, owned by the core.
@@ -391,6 +394,7 @@ impl Ai {
                 dir: dir.to_path_buf(),
                 open_desktop,
                 url,
+                draft: Mutex::new((0, String::new())),
             }),
             client: Arc::new(Client::new()?),
             rt: Some(rt),
@@ -499,6 +503,24 @@ impl Ai {
     /// same key returns the first task; `origin` — the Device ID of the
     /// controller that asked, None for the host's own user.
     /// Returns: the task's id.
+    /// Replaces the shared draft of the next instruction.
+    /// Returns: an error for a draft longer than an instruction may be.
+    pub fn set_draft(&self, text: &str) -> Result<(), String> {
+        if text.len() > MAX_INSTRUCTION {
+            return Err("the instruction is too long".into());
+        }
+        let mut d = self.shared.draft.lock().expect("draft");
+        if d.1 != text {
+            *d = (d.0 + 1, text.to_owned());
+        }
+        Ok(())
+    }
+
+    /// The shared draft and its serial.
+    pub fn draft(&self) -> (u64, String) {
+        self.shared.draft.lock().expect("draft").clone()
+    }
+
     pub fn start(&self, key: &str, instruction: &str, origin: Option<&str>) -> Result<u64, String> {
         let instruction = instruction.trim();
         if instruction.is_empty() || instruction.len() > MAX_INSTRUCTION {
@@ -549,6 +571,8 @@ impl Ai {
             id
         };
         self.spawn(id);
+        // The draft became this task.
+        let _ = self.set_draft("");
         Ok(id)
     }
 
@@ -648,22 +672,12 @@ impl Ai {
             .any(|t| matches!(t.state, State::Running | State::Approval))
     }
 
-    /// Whether a controller started the task (and so may steer it).
-    pub fn started_by(&self, id: u64, device_id: &str) -> bool {
+    /// The newest task, whoever started it (the host's user or a
+    /// controller), as sessions show it: one record for every controller,
+    /// with its latest steps and progress notes only.
+    pub fn latest(&self) -> Option<Value> {
         let tasks = self.shared.tasks.lock().expect("tasks");
-        tasks
-            .iter()
-            .any(|t| t.id == id && t.origin.as_deref() == Some(device_id))
-    }
-
-    /// The newest task a controller started, as the session shows it: the
-    /// task with its latest steps and progress notes only.
-    pub fn latest_for(&self, device_id: &str) -> Option<Value> {
-        let tasks = self.shared.tasks.lock().expect("tasks");
-        let t = tasks
-            .iter()
-            .rev()
-            .find(|t| t.origin.as_deref() == Some(device_id))?;
+        let t = tasks.iter().next_back()?;
         let mut v = json!(t);
         let trim = |v: &mut Value, keep: usize| {
             if let Some(a) = v.as_array_mut() {
