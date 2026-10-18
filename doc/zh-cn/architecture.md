@@ -34,7 +34,7 @@
 | `internal/core` | 通过 purego 绑定 Rust 核心 |
 | `internal/fsutil` | 原子写入与 JSON 文档 |
 | `internal/version` | 唯一的产品版本 |
-| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`）、屏幕采集与编解码器（`video`；Media Foundation 为 `mf`，VideoToolbox 为 `vt`，libvpx 与 libaom 为 `soft`，H.264 与 HEVC 的封装格式为 `annexb`）、输入服务（`input`）、查看窗口的键盘抓取（`keyboard`）、AI 任务（`ai`：服务商、任务运行时及其驱动的桌面） |
+| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`）、屏幕采集与编解码器（`video`；Media Foundation 为 `mf`，VideoToolbox 为 `vt`，libvpx 与 libaom 为 `soft`，H.264 与 HEVC 的封装格式为 `annexb`）、被控端的声音（`audio`、`opus`）、输入服务（`input`）、查看窗口的键盘抓取（`keyboard`）、AI 任务（`ai`：服务商、任务运行时及其驱动的桌面） |
 | `core/third_party/rustdesk-codec` | 复用的 RustDesk libvpx 与 libaom 编解码器，以及 vcpkg 构建的静态库（[computer-use.md](computer-use.md)） |
 | `core/third_party/rustdesk-dxgi` | 复用的 RustDesk DXGI 与 GDI 屏幕采集（[computer-use.md](computer-use.md)） |
 | `core/third_party/rustdesk-qos` | 复用的 RustDesk 视频 QoS |
@@ -58,6 +58,9 @@
 | `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | 把一帧解码到调用方的 RGBA 缓冲区：1 有画面，0 需要更多输入，-1 错误，-3 过大 |
 | `kyokai_decoder_info(id, out, cap) -> i32` | 把 `{decoder, hardware}` JSON 写入调用方的缓冲区：它是哪个解码器（`videotoolbox`、`media-foundation`、`libvpx`、`libaom`）以及是否用硬件解码，由解码器自己报告；返回长度，-1 未知句柄，-3 放不下 |
 | `kyokai_decoder_close(id)` | 释放解码器 |
+| `kyokai_audio_open() -> u64` | 打开被控端声音（Opus）的解码器；无法打开时为 0。不需要已启动的核心 |
+| `kyokai_audio_decode(id, packet, len, out, cap) -> i32` | 把一个 Opus 数据包解码到调用方的浮点缓冲区，为 48 kHz 交错立体声：返回写入的帧数，-1 错误，-3 放不下 |
+| `kyokai_audio_close(id)` | 释放声音解码器 |
 | `kyokai_keyboard_grab(window, mode, len) -> i32` | 以 `map` 或 `translate` 模式为查看窗口（其原生句柄）抓取键盘，或以 `off` 结束抓取：0，-1 未知模式或没有窗口，-2 此处不可用（没有钩子；在 macOS 上，事件监听需要应用的“辅助功能”权限）。不需要已启动的核心 |
 | `kyokai_keyboard_read(*event, timeout_ms) -> i32` | 等待抓取到的下一个按键，并写入调用方的 `{window: usize, code: u32, down, caps, num: u8, pad: u8}`：1 有按键，0 超时，-2 不可用 |
 | `kyokai_privacy_request(name, len) -> i32` | 在调用进程中向 macOS 请求 `screen`、`accessibility` 或 `input-monitoring`（由应用调用，因此提示属于应用本身）：1 已授权，0 尚未授权，-1 名称未知或本系统没有该权限。无需已启动的核心 |

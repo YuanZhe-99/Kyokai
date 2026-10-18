@@ -11,6 +11,10 @@ use std::time::{Duration, Instant};
 /// First plaintext byte of a media chunk (JSON control messages start with
 /// `{`).
 pub const CHUNK_TAG: u8 = 0x01;
+
+/// A plaintext that starts with this byte is one Opus packet of the
+/// host's sound (the rest of it).
+pub const AUDIO_TAG: u8 = 0x04;
 /// Chunk header: tag, frame number (u32), chunk index and count (u16 each),
 /// flags (u8), presentation time in microseconds (u64).
 const HEADER: usize = 1 + 4 + 2 + 2 + 1 + 8;
@@ -46,6 +50,8 @@ pub mod packet {
     /// engine → GUI: `{codecs}` JSON, what the host can send that this
     /// controller decodes, for the viewer's codec choice.
     pub const CODECS: u8 = 11;
+    /// engine → GUI: one Opus packet of the host's sound.
+    pub const AUDIO: u8 = 12;
 }
 
 /// What a video stream carries, sent before its first frame.
@@ -193,6 +199,8 @@ const READER_GONE: Duration = Duration::from_secs(2);
 
 /// Frames kept for a slow reader; older ones are dropped first.
 const KEEP_FRAMES: usize = 3;
+/// Sound packets kept for a reader that fell behind: 200 ms; older ones go.
+const KEEP_SOUND: usize = 10;
 
 /// Why `Queue::pop` returned nothing.
 #[derive(Debug, PartialEq, Eq)]
@@ -243,6 +251,21 @@ impl Queue {
                 | packet::ACTIONS
                 | packet::CODECS),
             ) => q.packets.retain(|p| p.first() != Some(&kind)),
+            Some(&packet::AUDIO) => {
+                let waiting = q
+                    .packets
+                    .iter()
+                    .filter(|p| p.first() == Some(&packet::AUDIO))
+                    .count();
+                if waiting >= KEEP_SOUND
+                    && let Some(i) = q
+                        .packets
+                        .iter()
+                        .position(|p| p.first() == Some(&packet::AUDIO))
+                {
+                    q.packets.remove(i);
+                }
+            }
             Some(&packet::FRAME) => {
                 let key = packet.get(1).is_some_and(|f| f & KEY_FRAME != 0);
                 if key {
@@ -371,6 +394,24 @@ impl TestPattern {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Sound waits at most KEEP_SOUND packets for a slow reader, the oldest
+    /// going first, and never makes video frames go.
+    #[test]
+    fn sound_waits_at_most_200_ms() {
+        let q = Queue::default();
+        q.push(vec![packet::FRAME, KEY_FRAME, 0]);
+        for i in 0..(KEEP_SOUND as u8 + 5) {
+            q.push(vec![packet::AUDIO, i]);
+        }
+        let mut got = Vec::new();
+        while let Ok(p) = q.pop(Duration::ZERO) {
+            got.push(p);
+        }
+        assert_eq!(got[0][0], packet::FRAME);
+        let sound: Vec<u8> = got[1..].iter().map(|p| p[1]).collect();
+        assert_eq!(sound, (5..KEEP_SOUND as u8 + 5).collect::<Vec<_>>());
+    }
 
     #[test]
     fn only_a_frame_s_last_chunk_is_acknowledged() {

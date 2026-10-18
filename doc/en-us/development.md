@@ -10,7 +10,8 @@
   needs clang on `aarch64-pc-windows-msvc`; put the installation's `VC\Tools\Llvm\ARM64\bin` on
   `PATH` (the component does not). Git for Windows provides bash and OpenSSL.
 - macOS: the Xcode command line tools; Go and rustup (Homebrew works); `pkg-config`
-  (`brew install pkgconf`), which vcpkg needs for aom.
+  (`brew install pkgconf`), which vcpkg needs for aom, and `nasm` (`brew install nasm`), which
+  aom's x64 build needs on an Apple silicon Mac.
 - `protoc` for EasyTier's protocol files: `scripts/protoc.sh` downloads the pinned release
   (36.2) into `build/tools` once, checks its SHA-256 and prints its path. `scripts/build.sh` and
   `scripts/smoke.sh` use it on their own; for plain cargo commands run
@@ -20,8 +21,8 @@
   builds only once clang is installed.
 - `cargo-about` (`cargo install cargo-about --locked --features cli`) for the license file that
   `scripts/build.sh` puts into every package.
-- libvpx 1.16.0 and libaom 3.13.3, linked statically into the core: `scripts/codecs.sh` builds
-  them with vcpkg in manifest mode (`core/vcpkg.json`, the registry pinned in
+- libvpx 1.16.0, libaom 3.13.3 and Opus 1.5.2, linked statically into the core: `scripts/codecs.sh`
+  builds them with vcpkg in manifest mode (`core/vcpkg.json`, the registry pinned in
   `core/vcpkg-configuration.json`, overlay triplets in `core/vcpkg-triplets`) into
   `core/vcpkg_installed/<triplet>` (not committed); run it once per target before cargo, and
   again when the vcpkg pin moves. It uses `VCPKG_ROOT` when set, else the vcpkg that ships with

@@ -1,7 +1,8 @@
 // Kyokai's build script for the vendored RustDesk codecs (AGPL-3.0, like
 // RustDesk). It replaces scrap's build.rs: the bindings are generated ahead
 // of time (generated/, see doc/en-us/development.md), so this only links
-// the static libvpx and libaom that scripts/codecs.sh builds with vcpkg.
+// the static libvpx, libaom and Opus (the core's sound) that scripts/codecs.sh
+// builds with vcpkg.
 
 use std::env;
 use std::path::PathBuf;
@@ -33,7 +34,7 @@ fn main() {
     };
     let lib = dir.join("lib");
     let windows = env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows");
-    for name in ["vpx", "aom"] {
+    for name in ["vpx", "aom", "opus"] {
         let file = if windows {
             lib.join(format!("{name}.lib"))
         } else {

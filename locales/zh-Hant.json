@@ -351,6 +351,8 @@
   "ViewerPrivacy": "隱私模式（對方螢幕變黑）",
   "ViewerReconnect": "重新連線",
   "ViewerRelayedHint": "連線經由伺服器中轉。若要更快，請在兩台裝置上都開啟「嘗試直接連線」（網路）。",
+  "ViewerSound": "聲音",
+  "ViewerSoundHint": "播放對方電腦正在播放的聲音。依裝置記住。",
   "ViewerSwapKeys": "交換 Ctrl 與 Cmd",
   "ViewerSwapKeysHint": "一台電腦上的 Ctrl 在另一台上作為 Cmd（Windows 鍵），反之亦然，因此 Mac 上的 Cmd+C 在 Windows 上也是複製。Mac 與 Windows 之間預設開啟；依裝置記住。",
   "ViewerTabClose": "關閉此分頁（工作階段繼續）",

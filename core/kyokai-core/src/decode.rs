@@ -144,6 +144,41 @@ pub fn info(id: u64) -> Option<(&'static str, bool)> {
     })
 }
 
+/// The viewer's sound decoders (Opus), by handle.
+static SOUNDS: Mutex<Option<HashMap<u64, crate::opus::Decoder>>> = Mutex::new(None);
+
+/// Opens a decoder of the host's sound.
+/// Returns: its handle, or why libopus refused it.
+pub fn audio_open() -> Result<u64, String> {
+    let d = crate::opus::Decoder::new()?;
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    SOUNDS
+        .lock()
+        .map_err(|_| "decoders poisoned")?
+        .get_or_insert_with(HashMap::new)
+        .insert(id, d);
+    Ok(id)
+}
+
+/// Decodes one Opus packet into `pcm` (interleaved stereo at 48 kHz).
+/// Returns: the frames decoded.
+pub fn audio_decode(id: u64, packet: &[u8], pcm: &mut Vec<f32>) -> Result<usize, String> {
+    let mut all = SOUNDS.lock().map_err(|_| "decoders poisoned")?;
+    all.as_mut()
+        .and_then(|m| m.get_mut(&id))
+        .ok_or("no such decoder")?
+        .decode(packet, pcm)
+}
+
+/// Closes a sound decoder.
+pub fn audio_close(id: u64) {
+    if let Ok(mut all) = SOUNDS.lock()
+        && let Some(m) = all.as_mut()
+    {
+        m.remove(&id);
+    }
+}
+
 /// Closes a decoder.
 pub fn close(id: u64) {
     if let Ok(mut all) = DECODERS.lock()

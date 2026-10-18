@@ -8,13 +8,13 @@
   “C++ Clang Compiler for Windows” 组件——`ring` 在 `aarch64-pc-windows-msvc` 上需要 clang；请把 VS 安装中的 `VC\Tools\Llvm\ARM64\bin`
   加入 `PATH`（该组件不会自动加入）。Git for Windows 提供 bash 与 OpenSSL。
 - macOS：Xcode 命令行工具；Go 与 rustup（可用 Homebrew）；vcpkg 构建 aom 需要的 `pkg-config`
-  （`brew install pkgconf`）。
+  （`brew install pkgconf`），以及在 Apple 芯片的 Mac 上构建 aom 的 x64 版本需要的 `nasm`（`brew install nasm`）。
 - EasyTier 协议文件需要的 `protoc`：`scripts/protoc.sh` 把固定版本（36.2）下载到 `build/tools`（只下载一次），校验
   其 SHA-256 并输出路径。`scripts/build.sh` 与 `scripts/smoke.sh` 会自行使用它；直接运行 cargo 命令前先执行
   `export PROTOC=$(scripts/protoc.sh)`。没有 `PROTOC` 时，EasyTier 的构建会在 Windows 上下载未经校验的候选版本。
 - 依赖检查用 `cargo-deny`（`cargo install cargo-deny --locked`）；在 Windows ARM64 上要装好 clang 才能构建。
 - `scripts/build.sh` 放入每个安装包的许可证文件需要 `cargo-about`（`cargo install cargo-about --locked --features cli`）。
-- libvpx 1.16.0 与 libaom 3.13.3 静态链接进核心：`scripts/codecs.sh` 以清单模式用 vcpkg 构建它们（`core/vcpkg.json`，
+- libvpx 1.16.0、libaom 3.13.3 与 Opus 1.5.2 静态链接进核心：`scripts/codecs.sh` 以清单模式用 vcpkg 构建它们（`core/vcpkg.json`，
   注册表固定在 `core/vcpkg-configuration.json`，覆盖三元组在 `core/vcpkg-triplets`），装到
   `core/vcpkg_installed/<triplet>`（不提交）；每个目标在 cargo 之前运行一次，vcpkg 固定版本变动后再运行。它优先用
   `VCPKG_ROOT`，否则在 Windows 上用 Visual Studio 2026 自带的 vcpkg（“vcpkg package manager” 组件，在其安装目录中只读），

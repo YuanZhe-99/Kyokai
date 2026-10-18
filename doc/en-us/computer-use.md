@@ -98,6 +98,24 @@ Beside the numbers the bar says whether the network reaches the device directly 
 through the server (Relayed, with a hint to turn on direct connections on both devices,
 [networking.md](networking.md)).
 
+## Sound
+
+The host sends what the computer plays to a controller that may view the screen and asks for it
+(`{"type": "audio", on}`; the viewer asks as its stream starts, and a resumed controller asks again).
+`audio.rs` captures it — on macOS through a ScreenCaptureKit stream of the main display that carries
+only sound (Kyokai's own left out; the Screen Recording permission covers it), on Windows through
+WASAPI loopback of the default output device in its own format — turns it into 48 kHz stereo
+(resampling linearly when the device runs at another rate, doubling mono) and encodes 20 ms Opus
+packets at 96 kbit/s (`opus.rs`, libopus built by vcpkg). In the helper's modes the session agent
+captures and encodes it and the link carries the packets. The packets travel as plaintexts tagged
+`0x04`, beside the video and outside its acknowledgements; a session that falls behind drops sound
+(at most half a second waits in the host, 200 ms in the controller's queue). The viewer decodes them
+in its own copy of the core (`kyokai_audio_*`) and plays them through MyGo's audio output, keeping no
+more than 150 ms ahead of what was played: a burst, or a host whose clock runs fast, loses sound
+rather than drifting behind the picture. The bar's **Sound** switch (on unless chosen, kept for each
+device) stops playing and asks the host to stop capturing. On this Mac (2026-10-18) an 8-second
+watch received 386 packets, 7.7 s of sound, with the picture.
+
 ## Input
 
 The viewer sends input only for a session granted `control-input`; the host checks it again.

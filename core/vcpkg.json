@@ -1,15 +1,21 @@
 {
   "name": "kyokai-core",
   "version-string": "0",
-  "description": "Native libraries of Kyokai's core: libvpx (VP8 / VP9) and libaom (AV1), static (doc/en-us/development.md).",
+  "description": "Native libraries of Kyokai's core: libvpx (VP8 / VP9), libaom (AV1) and Opus (sound), static (doc/en-us/development.md).",
   "dependencies": [
     {
       "name": "libvpx",
       "default-features": false,
-      "features": ["realtime"]
+      "features": [
+        "realtime"
+      ]
     },
     {
       "name": "aom",
+      "default-features": false
+    },
+    {
+      "name": "opus",
       "default-features": false
     }
   ]

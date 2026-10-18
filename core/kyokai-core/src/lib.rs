@@ -11,6 +11,7 @@ mod access;
 mod agent;
 mod ai;
 mod annexb;
+mod audio;
 mod auth;
 mod backup;
 mod clipboard;
@@ -25,6 +26,7 @@ mod media;
 #[cfg(windows)]
 mod mf;
 mod net;
+mod opus;
 mod password;
 mod power;
 #[cfg(windows)]
@@ -402,6 +404,63 @@ pub unsafe extern "C" fn kyokai_decoder_info(id: u64, out: *mut u8, cap: usize) 
     // SAFETY: `out` has `cap >= json.len()` writable bytes, per the contract.
     unsafe { std::ptr::copy_nonoverlapping(json.as_ptr(), out, json.len()) };
     json.len() as i32
+}
+
+/// Opens a decoder of the host's sound (Opus, 48 kHz stereo). Needs no
+/// started core.
+/// Returns: its handle, or 0 when it cannot be opened.
+#[unsafe(no_mangle)]
+pub extern "C" fn kyokai_audio_open() -> u64 {
+    catch_unwind(|| decode::audio_open().unwrap_or(0)).unwrap_or(0)
+}
+
+thread_local! {
+    /// The calling thread's sound buffer, reused between packets.
+    static SOUND: std::cell::RefCell<Vec<f32>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Decodes one packet of the host's sound into `out` as interleaved stereo
+/// 32-bit floats at 48 kHz.
+/// Inputs: `packet`/`len` — the Opus packet, borrowed; `out`/`cap` — room
+/// for `cap` floats the caller owns.
+/// Returns: the frames written (2 floats each); -1 on an error; -3 when
+/// they do not fit `cap`.
+///
+/// # Safety
+/// `packet` points to `len` readable bytes; `out` is valid for `cap` floats
+/// of writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kyokai_audio_decode(
+    id: u64,
+    packet: *const u8,
+    len: usize,
+    out: *mut f32,
+    cap: usize,
+) -> i32 {
+    if packet.is_null() || out.is_null() {
+        return -1;
+    }
+    // SAFETY: the caller guarantees `len` readable bytes at `packet`.
+    let packet = unsafe { std::slice::from_raw_parts(packet, len) };
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        SOUND.with_borrow_mut(|pcm| match decode::audio_decode(id, packet, pcm) {
+            Ok(_) if pcm.len() > cap => -3,
+            Ok(frames) => {
+                // SAFETY: `out` has `cap >= pcm.len()` writable floats, per
+                // the contract.
+                unsafe { std::ptr::copy_nonoverlapping(pcm.as_ptr(), out, pcm.len()) };
+                frames as i32
+            }
+            Err(_) => -1,
+        })
+    }));
+    result.unwrap_or(-1)
+}
+
+/// Closes a sound decoder; an unknown handle is ignored.
+#[unsafe(no_mangle)]
+pub extern "C" fn kyokai_audio_close(id: u64) {
+    let _ = catch_unwind(|| decode::audio_close(id));
 }
 
 /// Closes a viewer decoder; an unknown handle is ignored.

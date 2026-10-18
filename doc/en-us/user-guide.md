@@ -85,8 +85,9 @@ decides what it types and shortcuts such as the Windows key, Alt+Tab or Cmd+Tab 
 viewer window receives. On a Mac, Map and Translate need **Accessibility** for Kyokai in System
 Settings, Privacy & Security. Between a Mac and Windows, **Swap Ctrl and Cmd** (on by default) makes
 your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. Keys go there only
-while the picture has the focus: click it first. Quality, frame rate, codec and the swap are
-remembered for each device. While you are connected the other computer does not go to
+while the picture has the focus: click it first. You hear what the other computer plays; **Sound**
+in the status bar turns it off. Quality, frame rate, codec, sound and the swap are remembered for
+each device. While you are connected the other computer does not go to
 sleep by itself. Closing the tab (×) disconnects; when a connection ends, its tab says why and offers
 **Reconnect**. A connection that drops reconnects by itself for a minute without asking again.
 **Remove** in a device's menu takes it off Recent and forgets its saved password.

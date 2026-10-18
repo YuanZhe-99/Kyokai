@@ -3564,6 +3564,26 @@ func (msgs Messages) ViewerRelayedHint() string {
 	return Catalog.Format(msgs.locale, "ViewerRelayedHint", nil)
 }
 
+// ViewerSound says "Sound"
+// in the language the app shows.
+func ViewerSound() string { return In(i18n.Locale()).ViewerSound() }
+
+// ViewerSound says "Sound"
+// in the language of msgs.
+func (msgs Messages) ViewerSound() string {
+	return Catalog.Format(msgs.locale, "ViewerSound", nil)
+}
+
+// ViewerSoundHint says "Plays what the other computer plays. Remembered for this device."
+// in the language the app shows.
+func ViewerSoundHint() string { return In(i18n.Locale()).ViewerSoundHint() }
+
+// ViewerSoundHint says "Plays what the other computer plays. Remembered for this device."
+// in the language of msgs.
+func (msgs Messages) ViewerSoundHint() string {
+	return Catalog.Format(msgs.locale, "ViewerSoundHint", nil)
+}
+
 // ViewerSwapKeys says "Swap Ctrl and Cmd"
 // in the language the app shows.
 func ViewerSwapKeys() string { return In(i18n.Locale()).ViewerSwapKeys() }

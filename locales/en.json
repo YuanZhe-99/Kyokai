@@ -616,6 +616,8 @@
   "ViewerPrivacy": "Privacy mode (their screen goes black)",
   "ViewerReconnect": "Reconnect",
   "ViewerRelayedHint": "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices.",
+  "ViewerSound": "Sound",
+  "ViewerSoundHint": "Plays what the other computer plays. Remembered for this device.",
   "ViewerSwapKeys": "Swap Ctrl and Cmd",
   "ViewerSwapKeysHint": "Ctrl on one computer acts as Cmd (the Windows key) on the other, and back, so Cmd+C on a Mac copies on Windows. On by default between a Mac and Windows; remembered for this device.",
   "ViewerTabClose": "Close this tab (the session goes on)",

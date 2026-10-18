@@ -2,7 +2,7 @@
 
 A controller reaches a host's engine over the EasyTier data plane: TCP to the host's virtual IPv4
 address, port 47310 ([networking.md](networking.md)). EasyTier is an untrusted pipe, so the session
-is authenticated and encrypted end to end on top of it. The protocol version is 8 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes and files on the clipboard, 5 asking without a password, 6 the host's one AI record and the shared draft, 7 the codec offer and the viewer's codec, and the host's encode time in its stats, 8 the frame acknowledgements and the encoder in the stream description).
+is authenticated and encrypted end to end on top of it. The protocol version is 9 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes and files on the clipboard, 5 asking without a password, 6 the host's one AI record and the shared draft, 7 the codec offer and the viewer's codec, and the host's encode time in its stats, 8 the frame acknowledgements and the encoder in the stream description, 9 the host's sound).
 
 ## Framing
 
@@ -75,8 +75,11 @@ through Media Foundation or VideoToolbox, `vp9` through Media Foundation, `vp9-s
 in software) and those it decodes in
 full colour (`vp9-sw`, `av1`; a field older builds leave out). The host answers with
 `{"type": "codec-offer", codecs}`: what it can send that the controller decodes, in its order; the
-controller may choose one with `{"type": "codec", codec}` (`auto`, or a name of the offer; another
-name changes nothing), and a resumed controller sends its viewer's `quality` and `codec` again
+controller may choose one with `{"type": "codec", codec}`, and asks for the host's sound with
+`{"type": "audio", on}` (the host sends it only to a controller that may view the screen, as
+plaintexts that start with byte `0x04` followed by one 20 ms Opus packet of 48 kHz stereo,
+[computer-use.md](computer-use.md), "Sound") (`auto`, or a name of the offer; another
+name changes nothing), and a resumed controller sends its viewer's `quality`, `codec` and `audio` again
 before its `codecs`. Before its first frame the host
 sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer than 3 are unacknowledged, and takes only an acknowledgement of a frame it sent and that was not acknowledged. The controller may send `{"type":
 "key-frame"}` (the host then describes the stream, its displays and the codec offer again and

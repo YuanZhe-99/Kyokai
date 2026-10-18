@@ -70,7 +70,7 @@ PLIST
 
 mkdir -p resources/licenses
 # The GPL-3.0 text (for EasyTier's LGPL-3.0) and the native codec
-# libraries' licenses and patent grants (libvpx, libaom).
+# libraries' licenses and patent grants (libvpx, libaom, Opus).
 cp LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/*.txt resources/licenses/
 # Every Rust crate in the core with its license text (EasyTier's LGPL-3.0
 # among them; LGPL-3.0 also asks for the GPL-3.0 text, copied above).

@@ -44,7 +44,8 @@ type Prefs struct {
 
 // ViewerPrefs are the settings a device's viewer opens with: the quality
 // preset (0 Faster, 1 Balanced, 2 Sharper), the frame-rate cap ("30 fps"),
-// full colour, the codec ("auto" or a codec's name) and whether Ctrl and
+// full colour, the codec ("auto" or a codec's name), whether the host's
+// sound is muted, and whether Ctrl and
 // Cmd (the Windows key) are swapped (nil: the default, swapped between a
 // Mac and Windows).
 type ViewerPrefs struct {
@@ -53,6 +54,8 @@ type ViewerPrefs struct {
 	Full   bool   `json:"full,omitempty"`
 	Codec  string `json:"codec,omitempty"`
 	Swap   *bool  `json:"swap,omitempty"`
+	// Mute: the host's sound is not played.
+	Mute bool `json:"mute,omitempty"`
 }
 
 func defaultPrefs() Prefs { return Prefs{Theme: "system", CheckAppUpdates: true} }

@@ -33,6 +33,7 @@ const (
 	packetDisplays   byte = 8
 	packetActions    byte = 9
 	packetCodecs     byte = 11
+	packetAudio      byte = 12
 )
 
 // keyFrame flags a frame that decodes on its own (media::KEY_FRAME).
@@ -164,6 +165,8 @@ type viewer struct {
 	// swap exchanges Ctrl and Cmd (the Windows key) in what is sent; nil
 	// follows swapDefault.
 	swap *bool
+	// mute: the host's sound is not played (and not asked for).
+	mute bool
 	// Input: the picture element's box, whether this session may control
 	// input, and the keys sent down.
 	box     ui.Rect
@@ -234,7 +237,7 @@ func (a *App) newViewer(device string, about localapi.About, want []string) *vie
 		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto"}
 	// The settings chosen for this device last time.
 	if vp, ok := a.viewerPrefs(device); ok {
-		v.preset, v.full, v.swap = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap
+		v.preset, v.full, v.swap, v.mute = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap, vp.Mute
 		if slices.Contains(fpsCaps, vp.FPS) {
 			v.fpsCap = vp.FPS
 		}
@@ -396,9 +399,14 @@ func (v *viewer) pump() {
 	var dec *core.Decoder
 	// fresh: the decoder has not had a key frame yet.
 	fresh := false
+	// The host's sound, played while the viewer has it on.
+	var snd *viewerSound
 	defer func() {
 		if dec != nil {
 			dec.Close()
+		}
+		if snd != nil {
+			snd.close()
 		}
 	}()
 	defer func() {
@@ -490,6 +498,20 @@ func (v *viewer) pump() {
 					v.actions = &a
 					v.mu.Unlock()
 				})
+			}
+		case packetAudio:
+			v.mu.Lock()
+			mute := v.mute
+			v.mu.Unlock()
+			switch {
+			case mute && snd != nil:
+				snd.close()
+				snd = nil
+			case !mute && snd == nil:
+				snd, _ = openSound(lib)
+			}
+			if snd != nil && len(p) > 1 {
+				snd.packet(p[1:])
 			}
 		case packetCursor:
 			var ptr hostPointer
@@ -929,6 +951,14 @@ func (v *viewer) statusBar(c *ui.Context, b bar) {
 					L.ViewerDecoding(codec, implLabel(b.decoder)) + "\n" +
 					L.ViewerTimes(host.EncodeMS, host.DelayMS, int(b.decodeMS+0.5), int(b.drawMS+0.5), int(fps+0.5), host.FPS))
 		}
+		v.mu.Lock()
+		soundOn := !v.mute
+		v.mu.Unlock()
+		labelled(c, func() {
+			if ui.Switch(c.Key("sound"), &soundOn).Label(L.ViewerSound()).Tooltip(L.ViewerSoundHint()).Changed() {
+				v.setSound(soundOn)
+			}
+		}, L.ViewerSound())
 		if v.app != nil {
 			labelled(c, func() {
 				if ui.Switch(c.Key("pointer-marker"), &showPtr).Label(L.ViewerPointer()).Tooltip(L.ViewerPointerHint()).Changed() {

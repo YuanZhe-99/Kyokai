@@ -37,7 +37,7 @@ described in [run-modes.md](run-modes.md).
 | `internal/core` | purego binding to the Rust core |
 | `internal/fsutil` | Atomic writes and JSON documents |
 | `internal/version` | The single product version |
-| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and codecs (`video`, `mf` for Media Foundation, `vt` for VideoToolbox, `soft` for libvpx and libaom, `annexb` for the H.264 and HEVC framing), the input service (`input`), the viewer's keyboard grab (`keyboard`), AI tasks (`ai`: the providers, the task runtime, the desktop it drives) |
+| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and codecs (`video`, `mf` for Media Foundation, `vt` for VideoToolbox, `soft` for libvpx and libaom, `annexb` for the H.264 and HEVC framing), the host's sound (`audio`, `opus`), the input service (`input`), the viewer's keyboard grab (`keyboard`), AI tasks (`ai`: the providers, the task runtime, the desktop it drives) |
 | `core/third_party/rustdesk-codec` | RustDesk's libvpx and libaom codecs, vendored, with the static libraries vcpkg builds ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-dxgi` | RustDesk's DXGI and GDI screen capture, vendored ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-qos` | RustDesk's video QoS, vendored |
@@ -62,6 +62,9 @@ integers and pointers only:
 | `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | Decodes one frame into the caller's RGBA buffer: 1 picture, 0 needs more input, -1 error, -3 too large |
 | `kyokai_decoder_info(id, out, cap) -> i32` | Writes `{decoder, hardware}` JSON into the caller's buffer: which decoder it is (`videotoolbox`, `media-foundation`, `libvpx`, `libaom`) and whether it decodes in hardware, as it reports; the length, -1 unknown handle, -3 too large |
 | `kyokai_decoder_close(id)` | Releases a decoder |
+| `kyokai_audio_open() -> u64` | Opens a decoder of the host's sound (Opus); 0 when it cannot. Needs no started core |
+| `kyokai_audio_decode(id, packet, len, out, cap) -> i32` | Decodes one Opus packet into the caller's float buffer as interleaved stereo at 48 kHz: the frames written, -1 error, -3 too large |
+| `kyokai_audio_close(id)` | Releases a sound decoder |
 | `kyokai_keyboard_grab(window, mode, len) -> i32` | Grabs the keyboard for a viewer window (its native handle) in mode `map` or `translate`, or ends its grab with `off`: 0, -1 unknown mode or no window, -2 not available here (no hook; on macOS, an event tap needs the app's Accessibility permission). Needs no started core |
 | `kyokai_keyboard_read(*event, timeout_ms) -> i32` | Waits for the next key the grab took and writes it into the caller's `{window: usize, code: u32, down, caps, num: u8, pad: u8}`: 1 a key, 0 timeout, -2 not available |
 | `kyokai_privacy_request(name, len) -> i32` | Asks macOS, from the calling process, for `screen`, `accessibility` or `input-monitoring` (the app calls it, so a prompt is the app's own): 1 granted, 0 not yet, -1 unknown name or no such permission here. Needs no started core |

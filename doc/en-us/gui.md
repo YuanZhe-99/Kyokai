@@ -104,7 +104,7 @@ when `SCREENSHOT_DIR` is set.
   shows what encodes and what decodes, each in hardware or software as it reports, and where the
   time goes (the host's encoding, the network, this computer's decoding and drawing, the frame
   rate against the host's target) — or, for the test pattern of a host that may
-  not record its screen, "this is a placeholder picture" — Pointer (shows or hides the ring,
+  not record its screen, "this is a placeholder picture" — Sound (plays the host's sound; on unless chosen, kept for each device), Pointer (shows or hides the ring,
   remembered for every viewer), AI (collapses the AI panel) and Full screen. With `control-input`, a bar at the top with Lock
   screen, Ctrl+Alt+Del (helper modes), the Block their keyboard and mouse and Privacy mode
   switches (each with its label beside it), on Windows and macOS the keyboard mode (Map, Translate,

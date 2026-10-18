@@ -51,6 +51,7 @@ type Lib struct {
 	abiVersion, start, call, stop, free   uintptr
 	mediaRead, mediaWrite                 uintptr
 	decOpen, decDecode, decClose, decInfo uintptr
+	audOpen, audDecode, audClose          uintptr
 	kbGrab, kbRead, privacy               uintptr
 	mu                                    sync.Mutex // the core is one process-wide instance
 	// out receives a response's buffer. It lives in the Lib (on the heap,
@@ -133,7 +134,8 @@ func Load(path string) (*Lib, error) {
 		"kyokai_stop": &l.stop, "kyokai_free": &l.free,
 		"kyokai_media_read": &l.mediaRead, "kyokai_media_write": &l.mediaWrite,
 		"kyokai_decoder_open": &l.decOpen, "kyokai_decoder_decode": &l.decDecode, "kyokai_decoder_close": &l.decClose,
-		"kyokai_decoder_info":  &l.decInfo,
+		"kyokai_decoder_info": &l.decInfo,
+		"kyokai_audio_open":   &l.audOpen, "kyokai_audio_decode": &l.audDecode, "kyokai_audio_close": &l.audClose,
 		"kyokai_keyboard_grab": &l.kbGrab, "kyokai_keyboard_read": &l.kbRead,
 		"kyokai_privacy_request": &l.privacy,
 	} {
@@ -335,6 +337,47 @@ func (d *Decoder) Info() (name string, hardware bool, err error) {
 // Close releases the decoder.
 func (d *Decoder) Close() {
 	syscallN(d.l.decClose, uintptr(d.id))
+}
+
+// AudioDecoder decodes the host's sound (Opus) in the core.
+type AudioDecoder struct {
+	l  *Lib
+	id uint64
+}
+
+// OpenAudio opens a decoder of the host's sound. It needs no started core.
+func (l *Lib) OpenAudio() (*AudioDecoder, error) {
+	id := uint64(syscallN(l.audOpen))
+	if id == 0 {
+		return nil, errors.New("no sound decoder")
+	}
+	return &AudioDecoder{l: l, id: id}, nil
+}
+
+// Decode decodes one packet into out as interleaved stereo float samples
+// at 48 kHz.
+// Returns: the frames written (two samples each).
+func (d *AudioDecoder) Decode(packet []byte, out []float32) (int, error) {
+	if len(packet) == 0 || len(out) == 0 {
+		return 0, errors.New("empty packet or buffer")
+	}
+	n := int32(syscallN(d.l.audDecode, uintptr(d.id),
+		uintptr(unsafe.Pointer(unsafe.SliceData(packet))), uintptr(len(packet)),
+		uintptr(unsafe.Pointer(unsafe.SliceData(out))), uintptr(len(out))))
+	runtime.KeepAlive(packet)
+	runtime.KeepAlive(out)
+	switch {
+	case n >= 0:
+		return int(n), nil
+	case n == -3:
+		return 0, errors.New("sound larger than the buffer")
+	}
+	return 0, errors.New("the packet could not be decoded")
+}
+
+// Close releases the decoder.
+func (d *AudioDecoder) Close() {
+	syscallN(d.l.audClose, uintptr(d.id))
 }
 
 // ErrNoKeyboard reports that the core cannot grab the keyboard here (no

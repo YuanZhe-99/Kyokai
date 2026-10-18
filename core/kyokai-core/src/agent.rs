@@ -39,6 +39,8 @@ const JSON: u8 = 0;
 const VIDEO: u8 = 1;
 /// A screenshot reply: request id u64, width u32, height u32, BGRA.
 const SCREEN: u8 = 2;
+/// A sound packet: stream u32, Opus bytes.
+const AUDIO: u8 = 3;
 
 /// Longest message accepted (a 4K BGRA screenshot is 33 MB).
 const MAX_MESSAGE: usize = 64 << 20;
@@ -111,6 +113,8 @@ pub struct Link {
     next: AtomicU64,
     waiting: Mutex<HashMap<u64, std_mpsc::Sender<Reply>>>,
     streams: Mutex<HashMap<u32, Stream>>,
+    /// The sound streams, by the same numbering as the video's.
+    sounds: Mutex<HashMap<u32, mpsc::Sender<Vec<u8>>>>,
     next_stream: AtomicU32,
 }
 
@@ -121,6 +125,7 @@ impl Link {
             next: AtomicU64::new(1),
             waiting: Mutex::default(),
             streams: Mutex::default(),
+            sounds: Mutex::default(),
             next_stream: AtomicU32::new(1),
         }
     }
@@ -142,6 +147,7 @@ impl Link {
             *link.out.lock().expect("agent link") = None;
             link.waiting.lock().expect("agent link").clear();
             link.streams.lock().expect("agent link").clear();
+            link.sounds.lock().expect("agent link").clear();
         });
     }
 
@@ -192,6 +198,13 @@ impl Link {
                 }
                 if ask {
                     let _ = self.send("video.key", json!({"stream": stream}));
+                }
+            }
+            AUDIO if body.len() >= 4 => {
+                let stream = u32::from_le_bytes(body[0..4].try_into().expect("4 bytes"));
+                if let Some(tx) = self.sounds.lock().expect("agent link").get(&stream) {
+                    // A session that falls behind loses sound, not time.
+                    let _ = tx.try_send(body[4..].to_vec());
                 }
             }
             SCREEN if body.len() >= 16 => {
@@ -326,6 +339,25 @@ impl Link {
             link.streams.lock().expect("agent link").remove(&stream);
         });
         Some((opened.start, opened.display))
+    }
+
+    /// Starts the computer's sound in the agent for one session.
+    /// Returns: the source, or why the agent cannot capture it.
+    pub fn open_audio(self: &Arc<Self>) -> Result<crate::audio::Source, String> {
+        let stream = self.next_stream.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = mpsc::channel(25);
+        self.sounds.lock().expect("agent link").insert(stream, tx);
+        if let Err(e) = self.call::<Value>("audio.open", json!({"stream": stream})) {
+            self.sounds.lock().expect("agent link").remove(&stream);
+            return Err(e);
+        }
+        Ok(crate::audio::Source::from_agent(rx, self.clone(), stream))
+    }
+
+    /// Stops a sound stream the agent captures.
+    pub fn close_audio(&self, stream: u32) {
+        self.sounds.lock().expect("agent link").remove(&stream);
+        let _ = self.send("audio.close", json!({"stream": stream}));
     }
 
     /// Tells the agent whether its captures show Kyokai's windows.
@@ -556,6 +588,7 @@ pub fn serve(input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
     let mut agent = Agent {
         out: out.clone(),
         sources: HashMap::new(),
+        sounds: HashMap::new(),
         injectors: HashMap::new(),
         clipboard: None,
         desks: HashMap::new(),
@@ -589,6 +622,7 @@ pub fn serve(input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
 struct Agent {
     out: Arc<Mutex<BufWriter<Box<dyn Write + Send>>>>,
     sources: HashMap<u32, crate::video::Source>,
+    sounds: HashMap<u32, crate::audio::Source>,
     injectors: HashMap<u64, Injector>,
     clipboard: Option<Box<dyn crate::clipboard::Clipboard>>,
     desks: HashMap<u64, Box<dyn crate::ai::desktop::Desktop>>,
@@ -732,6 +766,26 @@ impl Agent {
                 if self.sources.is_empty() {
                     self.awake = None;
                 }
+                return Ok(None);
+            }
+            "audio.open" => {
+                let mut source = crate::audio::Source::local()?;
+                let (_, empty) = mpsc::channel(1);
+                let mut packets = std::mem::replace(&mut source.packets, empty);
+                let out = self.out.clone();
+                std::thread::spawn(move || {
+                    while let Some(p) = packets.blocking_recv() {
+                        let mut w = out.lock().expect("agent out");
+                        if write_message(&mut *w, AUDIO, &[&stream.to_le_bytes(), &p]).is_err() {
+                            break;
+                        }
+                    }
+                });
+                self.sounds.insert(stream, source);
+                json!({})
+            }
+            "audio.close" => {
+                self.sounds.remove(&stream);
                 return Ok(None);
             }
             "input.open" => {

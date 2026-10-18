@@ -197,9 +197,19 @@ func (v *viewer) keepSettings() {
 		return
 	}
 	v.mu.Lock()
-	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap}
+	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap, Mute: v.mute}
 	v.mu.Unlock()
 	v.app.setViewerPrefs(v.device, vp)
+}
+
+// setSound plays the host's sound or not; the host captures it only while
+// asked.
+func (v *viewer) setSound(on bool) {
+	v.mu.Lock()
+	v.mute = !on
+	v.mu.Unlock()
+	v.keepSettings()
+	v.sendControl(map[string]any{"type": "audio", "on": on})
 }
 
 // setSwap swaps Ctrl and Cmd (the Windows key) in what this viewer sends,
@@ -281,7 +291,7 @@ func commandEvents(command string) []inputEvent {
 // with its defaults.
 func (v *viewer) choicePackets() [][]byte {
 	v.mu.Lock()
-	preset, fpsCap, full, codec := v.preset, v.fpsCap, v.full, v.codec
+	preset, fpsCap, full, codec, mute := v.preset, v.fpsCap, v.full, v.codec, v.mute
 	v.mu.Unlock()
 	fps := 30
 	_, _ = fmt.Sscan(fpsCap, &fps)
@@ -291,7 +301,8 @@ func (v *viewer) choicePackets() [][]byte {
 		body, _ := json.Marshal(map[string]any{"type": "codec", "codec": codec})
 		out = append(out, append([]byte{packetControl}, body...))
 	}
-	return out
+	sound, _ := json.Marshal(map[string]any{"type": "audio", "on": !mute})
+	return append(out, append([]byte{packetControl}, sound...))
 }
 
 // codecLabel is how the viewer names a codec: Auto, the codec's usual
@@ -361,7 +372,7 @@ func (v *viewer) sendInput(ev ui.InputEvent) bool {
 	// A Mac's menu takes Cmd+C and the like before the picture sees the
 	// keys: they come back as the menu's commands (Legacy mode; a grab
 	// takes the keys first).
-	if ev.Kind == ui.InputCommand && grabbed == "" {
+	if ev.Kind == ui.InputCommand && grabbed == "" && runtime.GOOS == "darwin" {
 		es := commandEvents(ev.Text)
 		for _, c := range es {
 			if may {

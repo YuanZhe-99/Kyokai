@@ -525,6 +525,149 @@ impl Drop for Capture {
     }
 }
 
+define_class!(
+    // SAFETY: NSObject has no subclassing requirements, and `SoundOutput`
+    // has no Drop logic beyond its ivars.
+    #[unsafe(super(NSObject))]
+    #[name = "KyokaiSoundOutput"]
+    #[ivars = Arc<crate::audio::Pcm>]
+    /// Receives a stream's sound.
+    struct SoundOutput;
+
+    unsafe impl NSObjectProtocol for SoundOutput {}
+
+    unsafe impl SCStreamOutput for SoundOutput {
+        #[unsafe(method(stream:didOutputSampleBuffer:ofType:))]
+        fn stream_did_output(
+            &self,
+            _stream: &SCStream,
+            sample: &CMSampleBuffer,
+            kind: SCStreamOutputType,
+        ) {
+            if kind == SCStreamOutputType::Audio {
+                take_sound(sample, self.ivars());
+            }
+        }
+    }
+);
+
+impl SoundOutput {
+    fn new(pcm: Arc<crate::audio::Pcm>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(pcm);
+        // SAFETY: NSObject's init on a freshly allocated object.
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+/// Copies one buffer of a sound stream into `pcm`: 32-bit floats at 48 kHz,
+/// the channels one after the other (or interleaved), as the stream's
+/// configuration asks.
+fn take_sound(sample: &CMSampleBuffer, pcm: &crate::audio::Pcm) {
+    // SAFETY: plain reads of a valid sample buffer.
+    let (frames, block) = unsafe { (sample.num_samples().max(0) as usize, sample.data_buffer()) };
+    let Some(block) = block else {
+        return;
+    };
+    // SAFETY: a plain read of the block buffer.
+    let len = unsafe { block.data_length() };
+    if frames == 0 || len % (frames * 4) != 0 {
+        return;
+    }
+    let channels = len / (frames * 4);
+    let mut raw = vec![0f32; frames * channels];
+    // SAFETY: `raw` holds `len` bytes.
+    if unsafe { block.copy_data_bytes(0, len, NonNull::new(raw.as_mut_ptr().cast()).expect("vec")) }
+        != 0
+    {
+        return;
+    }
+    // ScreenCaptureKit gives each channel's samples in turn.
+    let interleaved: Vec<f32> = (0..frames)
+        .flat_map(|i| (0..channels).map(move |c| (i, c)))
+        .map(|(i, c)| raw[c * frames + i])
+        .collect();
+    pcm.push(&interleaved, channels, crate::opus::RATE as u32);
+}
+
+/// What the computer plays, through a ScreenCaptureKit stream of the main
+/// display that carries only sound (Kyokai's own left out).
+pub struct AudioCapture {
+    stream: Retained<SCStream>,
+    _output: Retained<SoundOutput>,
+}
+
+// SAFETY: the capture is only started and then stopped (on drop), never
+// used from two threads at once; ScreenCaptureKit streams may be stopped
+// from any thread, and the output object is touched only by the stream's
+// own queue.
+unsafe impl Send for AudioCapture {}
+
+impl AudioCapture {
+    /// Starts capturing the computer's sound into `pcm`.
+    /// Returns: an error without the Screen Recording permission.
+    pub fn start(pcm: Arc<crate::audio::Pcm>) -> Result<AudioCapture, String> {
+        let main = active()
+            .into_iter()
+            .find(|&id| CGDisplayIsMain(id))
+            .ok_or("no display")?;
+        let filter = filter(main, false)?;
+        // SAFETY: plain setters of a new configuration: sound at 48 kHz in
+        // stereo, and the smallest, slowest picture the stream must carry.
+        let config = unsafe {
+            let config = SCStreamConfiguration::new();
+            config.setCapturesAudio(true);
+            config.setExcludesCurrentProcessAudio(true);
+            config.setSampleRate(crate::opus::RATE as isize);
+            config.setChannelCount(crate::opus::CHANNELS as isize);
+            config.setWidth(2);
+            config.setHeight(2);
+            config.setMinimumFrameInterval(CMTime {
+                value: 1,
+                timescale: 1,
+                flags: CMTimeFlags::Valid,
+                epoch: 0,
+            });
+            config
+        };
+        let output = SoundOutput::new(pcm);
+        // SAFETY: no delegate; `AudioCapture` holds the output for the
+        // stream's life.
+        let stream = unsafe {
+            SCStream::initWithFilter_configuration_delegate(
+                SCStream::alloc(),
+                &filter,
+                &config,
+                None,
+            )
+        };
+        let queue = DispatchQueue::new("com.yuanzhe.kyokai.sound", None);
+        // SAFETY: the output lives as long as the stream (both in
+        // `AudioCapture`); the serial queue runs its callbacks.
+        unsafe {
+            stream.addStreamOutput_type_sampleHandlerQueue_error(
+                ProtocolObject::from_ref(&*output),
+                SCStreamOutputType::Audio,
+                Some(&queue),
+            )
+        }
+        .map_err(|e| e.localizedDescription().to_string())?;
+        // SAFETY: the handler is a block of the expected signature.
+        finished(|done| unsafe { stream.startCaptureWithCompletionHandler(Some(done)) })?;
+        Ok(AudioCapture {
+            stream,
+            _output: output,
+        })
+    }
+}
+
+impl Drop for AudioCapture {
+    fn drop(&mut self) {
+        // SAFETY: stops the stream this capture started; nothing waits for
+        // the answer.
+        unsafe { self.stream.stopCaptureWithCompletionHandler(None) };
+    }
+}
+
 /// Where a fraction of `area` lies in global coordinates (points).
 fn point_in(area: Area, fx: f32, fy: f32) -> CGPoint {
     CGPoint {

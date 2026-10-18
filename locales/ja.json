@@ -351,6 +351,8 @@
   "ViewerPrivacy": "プライバシーモード（相手の画面を黒くする）",
   "ViewerReconnect": "再接続",
   "ViewerRelayedHint": "接続はサーバーを経由しています。より速くするには、両方のデバイスで「直接接続を試す」（ネットワーク）をオンにしてください。",
+  "ViewerSound": "サウンド",
+  "ViewerSoundHint": "相手のコンピュータが再生している音を再生します。このデバイスごとに記憶します。",
   "ViewerSwapKeys": "Ctrl と Cmd を入れ替え",
   "ViewerSwapKeysHint": "一方のコンピュータの Ctrl をもう一方では Cmd（Windows キー）として扱い、その逆も同様です。Mac の Cmd+C は Windows でもコピーになります。Mac と Windows の間では既定でオン。このデバイスごとに記憶します。",
   "ViewerTabClose": "このタブを閉じる（セッションは続きます）",

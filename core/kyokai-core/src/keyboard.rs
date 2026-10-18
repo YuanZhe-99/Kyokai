@@ -642,6 +642,9 @@ mod windows_impl {
         queue: VecDeque<KeyEvent>,
         /// The hook thread, while one runs.
         thread: Option<u32>,
+        /// When the GUI last asked for a key: keys are taken only while it
+        /// reads them, so none are lost when its reader is gone.
+        read: Option<std::time::Instant>,
     }
 
     impl State {
@@ -717,9 +720,15 @@ mod windows_impl {
         mode.is_some()
     }
 
+    /// How long after the GUI last asked for a key the hook still takes keys.
+    const READER_GONE: Duration = Duration::from_secs(3);
+
     /// Waits up to `timeout` for the next key taken for a viewer.
     pub fn next(timeout: Duration) -> Option<KeyEvent> {
-        let guard = STATE.lock().ok()?;
+        let mut guard = STATE.lock().ok()?;
+        if let Some(st) = guard.as_mut() {
+            st.read = Some(std::time::Instant::now());
+        }
         let (mut guard, _) = READY
             .wait_timeout_while(guard, timeout, |st| {
                 st.as_ref().is_none_or(|st| st.queue.is_empty())
@@ -845,6 +854,10 @@ mod windows_impl {
         }
         // Another program's injected keys stay the controller's.
         if info.flags.0 & LLKHF_INJECTED.0 != 0 {
+            return false;
+        }
+        // Nobody reads the keys (the GUI's reader ended): take none.
+        if st.read.is_none_or(|t| t.elapsed() > READER_GONE) {
             return false;
         }
         let caps = st.caps;

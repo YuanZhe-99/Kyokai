@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"image"
 	"image/png"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -414,13 +415,13 @@ func TestCodecChoice(t *testing.T) {
 	}
 	v := &viewer{preset: 2, fpsCap: "60 fps", full: true, codec: "auto"}
 	got := v.choicePackets()
-	if len(got) != 1 || !strings.Contains(string(got[0]), `"fps":60`) || !strings.Contains(string(got[0]), `"preset":"best"`) || !strings.Contains(string(got[0]), `"i444":true`) {
+	if len(got) != 2 || !strings.Contains(string(got[0]), `"fps":60`) || !strings.Contains(string(got[0]), `"preset":"best"`) || !strings.Contains(string(got[0]), `"i444":true`) || string(got[1][1:]) != `{"on":true,"type":"audio"}` {
 		t.Fatalf("auto: %q", got)
 	}
-	v.codec = "av1"
+	v.codec, v.mute = "av1", true
 	got = v.choicePackets()
-	if len(got) != 2 || string(got[1][1:]) != `{"codec":"av1","type":"codec"}` {
-		t.Fatalf("av1: %q", got)
+	if len(got) != 3 || string(got[1][1:]) != `{"codec":"av1","type":"codec"}` || string(got[2][1:]) != `{"on":false,"type":"audio"}` {
+		t.Fatalf("av1, muted: %q", got)
 	}
 }
 
@@ -705,5 +706,42 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 	}
 	if p := loadPrefs(a.stateDir); p.Viewers["482916735"].Codec != "av1" {
 		t.Errorf("gui.json %+v", p.Viewers)
+	}
+}
+
+// TestLiveSound: the host's sound reaches the player as it arrives, no more
+// than soundLag ahead of what was played, and ends when closed.
+func TestLiveSound(t *testing.T) {
+	var played int64
+	s := newLiveSound(func() int64 { return played })
+	s.feed([]float32{0.1, 0.2, 0.3, 0.4})
+	buf := make([]float32, 4096)
+	if n, err := s.Read(buf); n != 4 || err != nil || buf[3] != 0.4 {
+		t.Fatalf("read %d %v", n, err)
+	}
+	// Far ahead of the player: what comes is left out until it catches up.
+	s.feed(make([]float32, (soundLag+10)*soundChannels))
+	s.feed([]float32{0.5, 0.5})
+	if got := len(s.buf); got != (soundLag+10)*soundChannels {
+		t.Fatalf("waiting %d samples", got)
+	}
+	n, _ := s.Read(buf)
+	played += int64(n / soundChannels)
+	s.mu.Lock()
+	s.buf = s.buf[:0]
+	played = s.handed
+	s.mu.Unlock()
+	s.feed([]float32{0.5, 0.5})
+	if len(s.buf) != 2 {
+		t.Fatal("sound resumes once played")
+	}
+	done := make(chan error)
+	s.mu.Lock()
+	s.buf = s.buf[:0]
+	s.mu.Unlock()
+	go func() { _, err := s.Read(buf); done <- err }()
+	s.close()
+	if err := <-done; err != io.EOF {
+		t.Fatalf("closed: %v", err)
 	}
 }

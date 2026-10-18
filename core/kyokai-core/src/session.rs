@@ -19,10 +19,10 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{Notify, mpsc};
 
-use crate::{media, video};
+use crate::{audio, media, video};
 
 /// Version of the wire protocol; a mismatch closes the connection.
-pub const PROTOCOL: u32 = 8;
+pub const PROTOCOL: u32 = 9;
 
 /// How many frames the host sends ahead of the controller's
 /// acknowledgements: enough for the frame-rate cap over a relay's round
@@ -239,6 +239,11 @@ enum Message {
     Codec {
         codec: String,
     },
+    /// controller → host: whether the viewer plays the host's sound; the
+    /// host captures it only while asked and the screen may be viewed.
+    Audio {
+        on: bool,
+    },
     /// host → controller, with video: where the host's pointer is, as
     /// fractions of the picture, and whether it shows there.
     Cursor {
@@ -431,6 +436,7 @@ struct Entry {
 pub struct Choices {
     quality: Option<Value>,
     codec: Option<Value>,
+    audio: Option<Value>,
 }
 
 /// What a controller does with a session's password once the host answers
@@ -1408,6 +1414,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // encoder it takes.
     let wants_video = matches!(side, Side::Host { video: true, .. });
     let mut source: Option<video::Source> = None;
+    // The host's sound, while the controller asks for it.
+    let mut sound: Option<audio::Source> = None;
     let video_wait = tokio::time::sleep(CODECS_WAIT);
     tokio::pin!(video_wait);
     // The host's input service; dropping it releases what it holds.
@@ -1429,7 +1437,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         let again: Vec<Value> = choices
             .lock()
             .map(|c| {
-                [c.quality.clone(), c.codec.clone()]
+                [c.quality.clone(), c.codec.clone(), c.audio.clone()]
                     .into_iter()
                     .flatten()
                     .collect()
@@ -1620,6 +1628,17 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                 }
             }
+            Some(p) = async {
+                match sound.as_mut() {
+                    Some(s) => s.packets.recv().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                let mut packet = Vec::with_capacity(1 + p.len());
+                packet.push(media::AUDIO_TAG);
+                packet.extend_from_slice(&p);
+                seal(&mut noise, &mut buf, &mut wr, &packet).await?;
+            }
             _ = &mut video_wait, if wants_video && source.is_none() => {
                 // A controller that names no codecs gets H.264.
                 chosen = video::choose(&[], &[], false, false);
@@ -1692,7 +1711,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
             } => {
                 // Only messages a GUI may send pass on to the host.
-                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::Codec { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. })) = serde_json::from_value::<Message>(msg) {
+                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::Codec { .. } | Message::Audio { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. })) = serde_json::from_value::<Message>(msg) {
                     // The viewer's latest choices, for a resumed session.
                     if let (Some(c), Ok(v)) = (&choices, serde_json::to_value(&m))
                         && let Ok(mut c) = c.lock()
@@ -1700,6 +1719,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         match m {
                             Message::Quality { .. } => c.quality = Some(v),
                             Message::Codec { .. } => c.codec = Some(v),
+                            Message::Audio { .. } => c.audio = Some(v),
                             _ => {}
                         }
                     }
@@ -1729,6 +1749,15 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             key_asked = Some(Instant::now());
                             seal_json(&mut noise, &mut buf, &mut wr, &Message::KeyFrame).await?;
                         }
+                    }
+                    continue;
+                }
+                if plain.first() == Some(&media::AUDIO_TAG) {
+                    if let Some(q) = &queue {
+                        let mut packet = Vec::with_capacity(plain.len());
+                        packet.push(media::packet::AUDIO);
+                        packet.extend_from_slice(&plain[1..]);
+                        q.push(packet);
                     }
                     continue;
                 }
@@ -1781,6 +1810,19 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         }
                     }
                     // The controller echoes probes at once; the host measures them.
+                    // The host starts its sound for a controller that may
+                    // view the screen and asks; it stops when asked, or
+                    // when it cannot capture (it then sends none).
+                    Message::Audio { on } if matches!(side, Side::Host { .. }) => {
+                        if on && wants_video {
+                            if sound.is_none() {
+                                sound = audio::Source::open().ok();
+                            }
+                        } else {
+                            sound = None;
+                        }
+                    }
+                    Message::Audio { .. } => {}
                     Message::TestDelay { reply: false } => {
                         seal_json(&mut noise, &mut buf, &mut wr, &Message::TestDelay { reply: true }).await?;
                     }
@@ -2028,6 +2070,17 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The viewer's sound request crosses as `{"type": "audio", on}`.
+    #[test]
+    fn the_sound_request_crosses_by_name() {
+        let m: Message = serde_json::from_str(r#"{"type":"audio","on":false}"#).unwrap();
+        assert!(matches!(m, Message::Audio { on: false }));
+        assert_eq!(
+            serde_json::to_value(Message::Audio { on: true }).unwrap(),
+            json!({"type": "audio", "on": true})
+        );
+    }
 
     #[test]
     fn only_a_version_from_an_incompatible_host_is_kept() {

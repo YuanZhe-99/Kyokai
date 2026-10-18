@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds the core's native codec libraries (libvpx, libaom) with vcpkg in
+# Builds the core's native codec libraries (libvpx, libaom, Opus) with vcpkg in
 # manifest mode (core/vcpkg.json), static, into
 # core/vcpkg_installed/<triplet> (one tree per triplet: manifest mode keeps
 # an install tree to exactly one target).

@@ -503,6 +503,10 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	if err := localapi.WritePacket(conn, append([]byte{3}, `{"type":"key-frame"}`...)); err != nil {
 		return err
 	}
+	// The host's sound too, counted below.
+	if err := localapi.WritePacket(conn, append([]byte{3}, `{"type":"audio","on":true}`...)); err != nil {
+		return err
+	}
 	if quality != "" || fpsCap > 0 {
 		body, _ := json.Marshal(map[string]any{"type": "quality", "preset": quality, "fps": fpsCap})
 		if err := localapi.WritePacket(conn, append([]byte{3}, body...)); err != nil {
@@ -589,7 +593,7 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	var pic *image.RGBA
 	// fresh: the decoder has not had a key frame yet.
 	fresh := false
-	frames, bytes, pictures := 0, 0, 0
+	frames, bytes, pictures, sounds := 0, 0, 0, 0
 	var decodeErr error
 	printedDisplays := map[byte]bool{}
 	start := time.Now()
@@ -624,6 +628,8 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 			fmt.Printf("%s %s\n", map[byte]string{7: "pointer", 8: "displays"}[p[0]], p[1:])
 		case len(p) > 0 && p[0] == 9:
 			fmt.Printf("%s actions %s\n", time.Now().Format("15:04:05"), p[1:])
+		case len(p) > 1 && p[0] == 12:
+			sounds++
 		case len(p) > 0 && p[0] == 11:
 			fmt.Printf("codecs %s\n", p[1:])
 		case len(p) >= 10 && p[0] == 2:
@@ -646,6 +652,7 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	}
 	el := time.Since(start).Seconds()
 	fmt.Printf("%d frames in %.1f s: %.1f fps, %.0f kbit/s\n", frames, el, float64(frames)/el, float64(bytes)*8/1000/el)
+	fmt.Printf("%d sound packets (%.0f ms)\n", sounds, float64(sounds)*20)
 	if dec != nil {
 		dec.Close()
 		fmt.Printf("%d pictures decoded\n", pictures)
