@@ -141,6 +141,21 @@ pub struct Mods {
 const MAX_TEXT: usize = 4096;
 
 impl Event {
+    /// The modifiers a host holds through this event, by name (`Key` and
+    /// `Text`): a key's own while it is down, none after its release or
+    /// while text is typed (regression: a shortcut's modifiers stayed down
+    /// and came with the letters typed next).
+    /// Returns: None for events that leave the modifiers alone.
+    pub fn mods_held(&self) -> Option<Mods> {
+        match self {
+            Event::Key {
+                down: true, mods, ..
+            } => Some(*mods),
+            Event::Key { down: false, .. } | Event::Text { .. } => Some(Mods::default()),
+            _ => None,
+        }
+    }
+
     /// Checks an event at the protocol boundary.
     pub fn valid(&self) -> bool {
         match self {
@@ -509,21 +524,27 @@ mod windows_impl {
                     }
                     send(&batch);
                 }
-                Event::Key { key, down, mods } => {
+                // A key brings its modifiers and lets them go with its
+                // release (regression: they stayed down after a shortcut,
+                // so the text typed next came with Ctrl or Win).
+                Event::Key { key, down, .. } => {
                     let code = vk(key).expect("valid");
                     let mut batch = Vec::new();
+                    let held = e.mods_held().unwrap_or_default();
                     if *down {
-                        self.sync_mods(mods, &mut batch);
+                        self.sync_mods(&held, &mut batch);
                         batch.push(keyboard(code, false));
                         self.keys.insert(code);
                     } else {
                         batch.push(keyboard(code, true));
                         self.keys.remove(&code);
+                        self.sync_mods(&held, &mut batch);
                     }
                     send(&batch);
                 }
                 Event::Text { text } => {
                     let mut batch = Vec::new();
+                    self.sync_mods(&e.mods_held().unwrap_or_default(), &mut batch);
                     for unit in text.encode_utf16() {
                         batch.push(unicode(unit, false));
                         batch.push(unicode(unit, true));
@@ -1016,6 +1037,36 @@ pub fn is_kyokai(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression: a shortcut's modifiers stayed down on the host, so the
+    /// letters typed after Ctrl+C came with Ctrl.
+    #[test]
+    fn a_key_s_modifiers_go_with_its_release() {
+        let ctrl = Mods {
+            ctrl: true,
+            ..Mods::default()
+        };
+        let key = |down| Event::Key {
+            key: "c".into(),
+            down,
+            mods: ctrl,
+        };
+        assert_eq!(key(true).mods_held(), Some(ctrl));
+        assert_eq!(key(false).mods_held(), Some(Mods::default()));
+        let text = Event::Text { text: "x".into() };
+        assert_eq!(text.mods_held(), Some(Mods::default()));
+        let scan = Event::Scan {
+            code: 0x1D,
+            down: true,
+            caps: false,
+            num: false,
+        };
+        assert_eq!(
+            scan.mods_held(),
+            None,
+            "keys by position bring no modifiers"
+        );
+    }
 
     #[test]
     fn pointer_positions_land_on_the_shown_display() {

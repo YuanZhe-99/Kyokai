@@ -125,10 +125,24 @@ Whatever a session holds is released when it ends. Malformed events are dropped 
 ### Keyboard modes
 
 The viewer offers RustDesk's three keyboard modes; its bar chooses one for every viewer and Kyokai
-remembers it (Map unless chosen). Map and Translate need the controller to grab the keyboard, which
-only Windows controllers do so far; elsewhere every viewer works in Legacy mode. The picture takes
-text while it has the focus: macOS makes text of keys only for an element that does, and Legacy
-sends letters as that text (with it missing, no letter reached the host from a Mac).
+remembers it (Map unless chosen). Map and Translate need the controller to grab the keyboard: a
+low-level hook on Windows, an event tap on macOS (as RustDesk's grab does there; it needs Kyokai's
+Accessibility permission on the controlling Mac, and without it the viewer works in Legacy mode and
+says so). A Mac's tap takes the keys going to Kyokai while a viewer grabs, by their Mac key codes
+turned into the PC scan codes the host maps back (Command is the Windows key); keys no scan code
+names (Fn, the media keys) stay the Mac's, and Caps Lock, which a Mac reports only as it toggles,
+goes as a press and a release. The picture takes text while it has the focus: macOS makes text of
+keys only for an element that does, and Legacy sends letters as that text (with it missing, no
+letter reached the host from a Mac). In Legacy mode a Mac's menu takes Cmd+C, X, V, A, Z and
+Shift+Cmd+Z before the window sees them; their edit commands are sent as those shortcuts again.
+
+**Swap Ctrl and Cmd** (in the bar where a Mac is on either side, kept for each device) exchanges
+Ctrl and Cmd, the Windows key, in what the viewer sends: in a key's modifiers and in the left and
+right keys sent by position. It is on unless chosen between a Mac and Windows, so Cmd+C on a Mac
+copies on Windows and Ctrl+C on Windows copies on a Mac (RustDesk has the same switch, off by
+default). A key sent by name brings its modifiers on the host and releases them with it, and none
+are held while text is typed (they stayed down after a shortcut, so the letters typed next came
+with Ctrl or Cmd).
 
 | Mode | On the controller | On the host |
 |---|---|---|

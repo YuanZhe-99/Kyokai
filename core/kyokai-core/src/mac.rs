@@ -613,6 +613,26 @@ pub fn keycode(name: &str) -> Option<CGKeyCode> {
     })
 }
 
+/// The PC scan code of a Mac key code: `scan_keycode` read backwards, for
+/// the keys a Mac viewer's grab takes.
+/// Returns: None for a key no PC scan code names (Fn, the media keys).
+pub fn keycode_scan(code: CGKeyCode) -> Option<u32> {
+    static TABLE: std::sync::OnceLock<std::collections::HashMap<CGKeyCode, u32>> =
+        std::sync::OnceLock::new();
+    TABLE
+        .get_or_init(|| {
+            let mut t = std::collections::HashMap::new();
+            for scan in (0x01..=0xFF).chain(0xE001..=0xE0FF).chain([0xE11D]) {
+                if let Some(k) = scan_keycode(scan) {
+                    t.entry(k).or_insert(scan);
+                }
+            }
+            t
+        })
+        .get(&code)
+        .copied()
+}
+
 /// The Mac key code of a PC scan code (set 1, `0xE0..` extended), as the
 /// viewer's Map mode sends them.
 /// Returns: None for a key a Mac keyboard lacks (NumLock, ScrollLock).
@@ -700,7 +720,7 @@ const BUTTONS: [CGMouseButton; 3] = [
 ];
 
 /// The modifier flag a modifier key sets.
-fn modifier_flag(code: CGKeyCode) -> Option<CGEventFlags> {
+pub(crate) fn modifier_flag(code: CGKeyCode) -> Option<CGEventFlags> {
     Some(match code {
         0x38 | 0x3C => CGEventFlags::MaskShift,
         0x3B | 0x3E => CGEventFlags::MaskControl,
@@ -984,16 +1004,24 @@ impl Injector {
                     ));
                 }
             }
-            Event::Key { key, down, mods } => {
+            // A key brings its modifiers and lets them go with its release
+            // (regression: they stayed down after a shortcut, so the
+            // letters typed next came with Command or Control).
+            Event::Key { key, down, .. } => {
                 let Some(code) = keycode(key) else {
                     return false;
                 };
+                let held = e.mods_held().unwrap_or_default();
                 if *down {
-                    self.sync_mods(mods);
+                    self.sync_mods(&held);
+                    self.key(code, true);
+                } else {
+                    self.key(code, false);
+                    self.sync_mods(&held);
                 }
-                self.key(code, *down);
             }
             Event::Text { text } => {
+                self.sync_mods(&e.mods_held().unwrap_or_default());
                 let units: Vec<u16> = text.encode_utf16().collect();
                 for chunk in units.chunks(TEXT_CHUNK) {
                     for down in [true, false] {
@@ -1065,7 +1093,7 @@ impl Drop for Injector {
 }
 
 /// Whether Caps Lock is on.
-fn caps_lock() -> bool {
+pub(crate) fn caps_lock() -> bool {
     CGEventSource::flags_state(CGEventSourceStateID::HIDSystemState)
         .contains(CGEventFlags::MaskAlphaShift)
 }
@@ -1309,6 +1337,23 @@ impl Desktop for Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every key the Map table names comes back to its scan code, so a Mac
+    /// viewer sends what a Mac host turns into the same key.
+    #[test]
+    fn mac_key_codes_and_scan_codes_round_trip() {
+        for scan in (0x01..=0xFF).chain(0xE001..=0xE0FF).chain([0xE11D]) {
+            if let Some(k) = scan_keycode(scan) {
+                assert_eq!(keycode_scan(k), Some(scan), "{scan:#x} → {k:#x}");
+            }
+        }
+        assert_eq!(
+            keycode_scan(0x37),
+            Some(0xE05B),
+            "Command is the Windows key"
+        );
+        assert_eq!(keycode_scan(0x3F), None, "Fn has no scan code");
+    }
 
     /// Kyokai's windows (this process, the app) are left out of capture
     /// while the host user hides them, and only theirs.

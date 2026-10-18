@@ -38,6 +38,21 @@ type Prefs struct {
 	// AskedPermissions is the app version that last asked macOS for the
 	// privacy permissions on its own.
 	AskedPermissions string `json:"asked_permissions,omitempty"`
+	// Viewers are the viewer settings chosen for each device, by Device ID.
+	Viewers map[string]ViewerPrefs `json:"viewers,omitempty"`
+}
+
+// ViewerPrefs are the settings a device's viewer opens with: the quality
+// preset (0 Faster, 1 Balanced, 2 Sharper), the frame-rate cap ("30 fps"),
+// full colour, the codec ("auto" or a codec's name) and whether Ctrl and
+// Cmd (the Windows key) are swapped (nil: the default, swapped between a
+// Mac and Windows).
+type ViewerPrefs struct {
+	Preset int    `json:"preset"`
+	FPS    string `json:"fps,omitempty"`
+	Full   bool   `json:"full,omitempty"`
+	Codec  string `json:"codec,omitempty"`
+	Swap   *bool  `json:"swap,omitempty"`
 }
 
 func defaultPrefs() Prefs { return Prefs{Theme: "system", CheckAppUpdates: true} }
@@ -64,6 +79,29 @@ func (a *App) LanguagePref() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.prefs.Language
+}
+
+// viewerPrefs are the settings remembered for a device's viewer, if any.
+func (a *App) viewerPrefs(device string) (ViewerPrefs, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	vp, ok := a.prefs.Viewers[device]
+	return vp, ok
+}
+
+// setViewerPrefs remembers a device's viewer settings.
+// Side effects: writes gui.json.
+func (a *App) setViewerPrefs(device string, vp ViewerPrefs) {
+	a.mu.Lock()
+	p := a.prefs
+	a.mu.Unlock()
+	viewers := make(map[string]ViewerPrefs, len(p.Viewers)+1)
+	for k, v := range p.Viewers {
+		viewers[k] = v
+	}
+	viewers[device] = vp
+	p.Viewers = viewers
+	a.setPrefs(p)
 }
 
 // setPrefs stores new prefs (caller does not hold a.mu).

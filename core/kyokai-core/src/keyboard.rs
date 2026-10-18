@@ -4,8 +4,10 @@
 //! RustDesk's Map and Translate modes. Legacy mode grabs nothing and leaves
 //! keys to the GUI toolkit.
 //!
-//! The hook exists on Windows only so far (macOS comes with the Mac pass).
-#![cfg_attr(not(windows), allow(dead_code))]
+//! Windows takes the keys with a low-level keyboard hook, macOS with an
+//! event tap (it needs Kyokai's Accessibility permission); both route them
+//! through `Grab`.
+#![cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 
 use std::collections::BTreeSet;
 
@@ -71,6 +73,7 @@ const RIGHT_ALT: u32 = 0xE038;
 /// layout makes its own.
 /// Notes: the hook reports NumLock as extended 0x45 and Pause as plain
 /// 0x45; Windows' own numbering is the other way round from the hook's.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn scan_code(
     vk: u32,
     scan: u32,
@@ -184,21 +187,388 @@ impl Grab {
     }
 }
 
+#[cfg(target_os = "macos")]
+pub use mac_impl::{grab, next};
 #[cfg(windows)]
 pub use windows_impl::{grab, next};
 
-/// Grabs the keyboard for a viewer window. Not available yet off Windows.
+/// Grabs the keyboard for a viewer window. Not available here.
 /// Returns: false.
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn grab(_window: usize, _mode: Option<Mode>) -> bool {
     false
 }
 
-/// The next key taken for a viewer. Not available yet off Windows.
+/// The next key taken for a viewer. Not available here.
 /// Returns: None.
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn next(_timeout: std::time::Duration) -> Option<KeyEvent> {
     None
+}
+
+/// The keyboard grab on macOS: an event tap that takes the keys going to
+/// Kyokai while a viewer grabs, as RustDesk's grab does there.
+#[cfg(target_os = "macos")]
+mod mac_impl {
+    use super::*;
+    use crate::input::INJECTED_TAG;
+    use objc2_core_foundation::{CFMachPort, CFRetained, CFRunLoop, kCFRunLoopCommonModes};
+    use objc2_core_graphics::{
+        CGEvent, CGEventField, CGEventFlags, CGEventMask, CGEventTapLocation, CGEventTapOptions,
+        CGEventTapPlacement, CGEventTapProxy, CGEventType,
+    };
+    use std::collections::{HashMap, VecDeque};
+    use std::ffi::c_void;
+    use std::ptr::NonNull;
+    use std::sync::atomic::{AtomicPtr, Ordering};
+    use std::sync::{Condvar, Mutex};
+    use std::time::Duration;
+
+    /// Most keys waiting for the GUI; newer ones are dropped beyond it.
+    const QUEUE: usize = 1024;
+    /// Caps Lock's Mac key code.
+    const CAPS_LOCK: u16 = 0x39;
+
+    /// The tap's run loop, stopped from the thread that ends the last grab.
+    struct Loop(CFRetained<CFRunLoop>);
+
+    // SAFETY: CFRunLoopStop may be called from any thread.
+    unsafe impl Send for Loop {}
+
+    /// The grab's state, shared by the tap's thread and the GUI's calls.
+    #[derive(Default)]
+    struct State {
+        /// The viewer windows that grab, by native handle, and the one
+        /// that grabbed last: the window in front (a viewer grabs only
+        /// while its picture has the focus in the key window).
+        windows: HashMap<usize, Grab>,
+        front: Option<usize>,
+        /// The controller's Caps Lock (a Mac has no NumLock).
+        caps: bool,
+        queue: VecDeque<KeyEvent>,
+        run_loop: Option<Loop>,
+    }
+
+    impl State {
+        fn push(&mut self, window: usize, code: u32, down: bool) {
+            if self.queue.len() < QUEUE {
+                self.queue.push_back(KeyEvent {
+                    window,
+                    code,
+                    down: down as u8,
+                    caps: self.caps as u8,
+                    num: 0,
+                    _pad: 0,
+                });
+                READY.notify_all();
+            }
+        }
+
+        /// Queues the release of every key a window's grab sent down.
+        fn release(&mut self, window: usize) {
+            if let Some(g) = self.windows.get_mut(&window) {
+                let sent = std::mem::take(&mut g.sent);
+                for code in sent {
+                    self.push(window, code, false);
+                }
+            }
+        }
+    }
+
+    static STATE: Mutex<Option<State>> = Mutex::new(None);
+    static READY: Condvar = Condvar::new();
+    /// The tap, to switch it on again when macOS turned it off.
+    static TAP: AtomicPtr<CFMachPort> = AtomicPtr::new(std::ptr::null_mut());
+
+    /// Grabs the keyboard for a viewer window in a mode, or ends its grab
+    /// (`mode` None).
+    /// Returns: whether the tap runs for it (false without the
+    /// Accessibility permission, or for an ended grab).
+    /// Side effects: starts the tap on a thread of its own with the first
+    /// grab and stops it with the last; queues the release of the keys a
+    /// window's grab held when its grab ends or changes mode.
+    pub fn grab(window: usize, mode: Option<Mode>) -> bool {
+        let Ok(mut guard) = STATE.lock() else {
+            return false;
+        };
+        let st = guard.get_or_insert_with(State::default);
+        st.caps = crate::mac::caps_lock();
+        if st
+            .windows
+            .get(&window)
+            .is_some_and(|g| Some(g.mode) != mode)
+        {
+            st.release(window);
+            st.windows.remove(&window);
+        }
+        match mode {
+            Some(mode) => {
+                st.windows.entry(window).or_insert_with(|| Grab::new(mode));
+                st.front = Some(window);
+            }
+            None if st.front == Some(window) => st.front = None,
+            None => {}
+        }
+        match (st.windows.is_empty(), st.run_loop.is_some()) {
+            (true, true) => {
+                if let Some(l) = st.run_loop.take() {
+                    l.0.stop();
+                }
+            }
+            (false, false) => match start() {
+                Some(l) => st.run_loop = Some(l),
+                None => {
+                    st.windows.clear();
+                    st.front = None;
+                    return false;
+                }
+            },
+            _ => {}
+        }
+        mode.is_some()
+    }
+
+    /// Waits up to `timeout` for the next key taken for a viewer.
+    pub fn next(timeout: Duration) -> Option<KeyEvent> {
+        let guard = STATE.lock().ok()?;
+        let (mut guard, _) = READY
+            .wait_timeout_while(guard, timeout, |st| {
+                st.as_ref().is_none_or(|st| st.queue.is_empty())
+            })
+            .ok()?;
+        guard.as_mut()?.queue.pop_front()
+    }
+
+    /// Starts the tap on a thread of its own.
+    /// Returns: its run loop, or None when macOS refused the tap (no
+    /// Accessibility permission).
+    fn start() -> Option<Loop> {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let mask: CGEventMask = [
+                CGEventType::KeyDown,
+                CGEventType::KeyUp,
+                CGEventType::FlagsChanged,
+            ]
+            .iter()
+            .fold(0, |m, t| m | 1 << t.0);
+            // SAFETY: `tapped` matches the callback type and keeps no
+            // pointer from `info`.
+            let tap = unsafe {
+                CGEvent::tap_create(
+                    CGEventTapLocation::SessionEventTap,
+                    CGEventTapPlacement::HeadInsertEventTap,
+                    CGEventTapOptions::Default,
+                    mask,
+                    Some(tapped),
+                    std::ptr::null_mut(),
+                )
+            };
+            let Some(tap) = tap else {
+                let _ = tx.send(None);
+                return;
+            };
+            let (Some(source), Some(run_loop)) = (
+                CFMachPort::new_run_loop_source(None, Some(&tap), 0),
+                CFRunLoop::current(),
+            ) else {
+                let _ = tx.send(None);
+                return;
+            };
+            TAP.store(CFRetained::as_ptr(&tap).as_ptr(), Ordering::Release);
+            // SAFETY: an immutable constant of the framework.
+            run_loop.add_source(Some(&source), unsafe { kCFRunLoopCommonModes });
+            CGEvent::tap_enable(&tap, true);
+            let _ = tx.send(Some(Loop(run_loop)));
+            CFRunLoop::run();
+            TAP.store(std::ptr::null_mut(), Ordering::Release);
+        });
+        rx.recv().ok().flatten()
+    }
+
+    /// Whether a key event types a character on the controller's layout:
+    /// text comes with it, and neither Command nor Control is held (they
+    /// make shortcuts).
+    fn types(e: &CGEvent) -> bool {
+        if CGEvent::flags(Some(e)).intersects(CGEventFlags::MaskCommand | CGEventFlags::MaskControl)
+        {
+            return false;
+        }
+        let mut text = [0u16; 4];
+        let mut n = 0;
+        // SAFETY: `text` holds 4 units and `n` receives the count.
+        unsafe { CGEvent::keyboard_get_unicode_string(Some(e), 4, &mut n, text.as_mut_ptr()) };
+        n > 0 && text[0] >= 0x20 && text[0] != 0x7F
+    }
+
+    /// The tap's callback: takes the keys of the viewer in front.
+    unsafe extern "C-unwind" fn tapped(
+        _proxy: CGEventTapProxy,
+        kind: CGEventType,
+        event: NonNull<CGEvent>,
+        _info: *mut c_void,
+    ) -> *mut CGEvent {
+        if kind == CGEventType::TapDisabledByTimeout || kind == CGEventType::TapDisabledByUserInput
+        {
+            // SAFETY: the tap lives as long as its thread's run loop runs.
+            if let Some(tap) = unsafe { TAP.load(Ordering::Acquire).as_ref() } {
+                CGEvent::tap_enable(tap, true);
+            }
+            return event.as_ptr();
+        }
+        // SAFETY: the event is valid for the callback.
+        let e = unsafe { event.as_ref() };
+        match route(kind, e) {
+            true => std::ptr::null_mut(),
+            false => event.as_ptr(),
+        }
+    }
+
+    /// Handles one key event in the tap.
+    /// Returns: whether to swallow it.
+    fn route(kind: CGEventType, e: &CGEvent) -> bool {
+        // Kyokai's own injected keys (a host on this Mac) stay as they are.
+        if CGEvent::integer_value_field(Some(e), CGEventField::EventSourceUserData)
+            == INJECTED_TAG as i64
+        {
+            return false;
+        }
+        let Ok(mut guard) = STATE.lock() else {
+            return false;
+        };
+        let Some(st) = guard.as_mut() else {
+            return false;
+        };
+        let Some(window) = st.front else {
+            return false;
+        };
+        // Keys for another program (Kyokai left the front before its
+        // viewer said so) are its own; what the viewer held is let go.
+        let target = CGEvent::integer_value_field(Some(e), CGEventField::EventTargetUnixProcessID);
+        if target != 0 && target != std::process::id() as i64 {
+            st.release(window);
+            return false;
+        }
+        let keycode =
+            CGEvent::integer_value_field(Some(e), CGEventField::KeyboardEventKeycode) as u16;
+        // Keys no scan code names (Fn, the media keys) stay this Mac's.
+        let Some(code) = crate::mac::keycode_scan(keycode) else {
+            return false;
+        };
+        let flags = CGEvent::flags(Some(e));
+        // Caps Lock reports only its toggles: it is sent as a press and a
+        // release, and passes to this Mac too.
+        if kind == CGEventType::FlagsChanged && keycode == CAPS_LOCK {
+            st.caps = flags.contains(CGEventFlags::MaskAlphaShift);
+            for down in [true, false] {
+                st.push(window, 0x3A, down);
+            }
+            return false;
+        }
+        let down = match kind {
+            CGEventType::KeyDown => true,
+            CGEventType::KeyUp => false,
+            CGEventType::FlagsChanged => match crate::mac::modifier_flag(keycode) {
+                Some(flag) => flags.contains(flag),
+                None => return false,
+            },
+            _ => return false,
+        };
+        let Some(grab) = st.windows.get_mut(&window) else {
+            return false;
+        };
+        let verdict = grab.route(Some(code), down, || types(e));
+        if let Some((code, down)) = verdict.send {
+            st.push(window, code, down);
+        }
+        verdict.swallow
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use objc2_core_foundation::CFRetained;
+
+        /// A key event as the tap would see it, never posted.
+        fn key(
+            kind: CGEventType,
+            code: u16,
+            flags: CGEventFlags,
+            text: &str,
+        ) -> CFRetained<CGEvent> {
+            let e = CGEvent::new_keyboard_event(None, code, kind != CGEventType::KeyUp).unwrap();
+            CGEvent::set_type(Some(&e), kind);
+            CGEvent::set_flags(Some(&e), flags);
+            let units: Vec<u16> = text.encode_utf16().collect();
+            // SAFETY: `units` holds `units.len()` UTF-16 units.
+            unsafe {
+                CGEvent::keyboard_set_unicode_string(Some(&e), units.len() as _, units.as_ptr())
+            };
+            e
+        }
+
+        /// The tap's routing of Mac key events: in Map mode Cmd and the
+        /// shortcut's key go to the host by scan code and stay off this
+        /// Mac; in Translate mode a key that types stays this Mac's (its
+        /// text follows), while Cmd shortcuts still go; keys no scan code
+        /// names pass.
+        #[test]
+        fn mac_keys_reach_the_viewer_by_scan_code() {
+            let route_in = |mode: Mode, events: &[(CGEventType, u16, CGEventFlags, &str)]| {
+                *STATE.lock().unwrap() = Some(State {
+                    windows: HashMap::from([(7, Grab::new(mode))]),
+                    front: Some(7),
+                    ..State::default()
+                });
+                let swallowed: Vec<bool> = events
+                    .iter()
+                    .map(|(kind, code, flags, text)| route(*kind, &key(*kind, *code, *flags, text)))
+                    .collect();
+                let sent: Vec<(u32, bool)> = STATE
+                    .lock()
+                    .unwrap()
+                    .take()
+                    .unwrap()
+                    .queue
+                    .iter()
+                    .map(|k| (k.code, k.down != 0))
+                    .collect();
+                (swallowed, sent)
+            };
+            let cmd = CGEventFlags::MaskCommand;
+            let none = CGEventFlags::empty();
+            let copy = [
+                (CGEventType::FlagsChanged, 0x37, cmd, ""),
+                (CGEventType::KeyDown, 0x08, cmd, "c"),
+                (CGEventType::KeyUp, 0x08, cmd, "c"),
+                (CGEventType::FlagsChanged, 0x37, none, ""),
+            ];
+            let (swallowed, sent) = route_in(Mode::Map, &copy);
+            assert_eq!(swallowed, [true; 4]);
+            assert_eq!(
+                sent,
+                [(0xE05B, true), (0x2E, true), (0x2E, false), (0xE05B, false)]
+            );
+            let (swallowed, sent) = route_in(Mode::Translate, &copy);
+            assert_eq!(swallowed, [true; 4], "Translate sends shortcuts too");
+            assert_eq!(sent.len(), 4);
+            let typed = [
+                (CGEventType::KeyDown, 0x00, none, "a"),
+                (CGEventType::KeyUp, 0x00, none, "a"),
+            ];
+            let (swallowed, sent) = route_in(Mode::Translate, &typed);
+            assert_eq!((swallowed, sent), (vec![false, false], vec![]));
+            let (swallowed, sent) = route_in(Mode::Map, &typed);
+            assert_eq!(
+                (swallowed, sent),
+                (vec![true, true], vec![(0x1E, true), (0x1E, false)])
+            );
+            // Fn has no scan code: it stays this Mac's.
+            let (swallowed, sent) =
+                route_in(Mode::Map, &[(CGEventType::FlagsChanged, 0x3F, none, "")]);
+            assert_eq!((swallowed, sent), (vec![false], vec![]));
+        }
+    }
 }
 
 #[cfg(windows)]

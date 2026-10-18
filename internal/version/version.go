@@ -1,12 +1,32 @@
 // Package version holds the single product version shared by every binary.
 package version
 
-import "strings"
+import (
+	"runtime/debug"
+	"strings"
+	"sync"
+)
 
 // Version is the product version. mygo.json must carry the same value
 // (checked by TestManifestMatches); release tags are "v" + Version. The Rust
 // core has no version of its own: its hosts pass this one when they start it.
 const Version = "0.1.3"
+
+// Build identifies this build within its version: the commit it was built
+// from ("" without that record, a build outside the repository). Two builds
+// of one version differ by it, as the test builds of a release do.
+var Build = sync.OnceValue(func() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	for _, s := range info.Settings {
+		if s.Key == "vcs.revision" {
+			return s.Value
+		}
+	}
+	return ""
+})
 
 // Older reports whether version a ("0.1.0", "v0.1.2") is older than b.
 func Older(a, b string) bool {

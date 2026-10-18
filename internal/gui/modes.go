@@ -98,16 +98,10 @@ func (a *App) runModeCard(c *ui.Context) {
 				a.setDirect(direct)
 			}
 		})
-		// A helper older than the app is updated on request: from a signed
+		// A helper behind the app is updated on request too: from a signed
 		// build without a prompt, from an unsigned one with one.
-		a.mu.Lock()
-		helperVersion := ""
-		if a.status != nil && a.status.RunMode == "helper" {
-			helperVersion = a.status.Version
-		}
-		a.mu.Unlock()
-		if helperVersion != "" && helperVersion != version.Version {
-			settingRow(c, "mode-update", L.RunModeOutdated(helperVersion, version.Version), "", func() {
+		if behind := a.outdatedHelper(); behind.helper != "" {
+			settingRow(c, "mode-update", L.RunModeOutdated(behind.helper, behind.app), "", func() {
 				if ui.Button(c.Key("mode-update-btn"), L.RunModeUpdate()).Disabled(busy).Clicked() {
 					a.updateHelper()
 				}
@@ -116,13 +110,49 @@ func (a *App) runModeCard(c *ui.Context) {
 	})
 }
 
-// helperChanged updates, once per run and without a prompt, a helper older
-// than this app: an app update replaces the app's files but not the
-// helper's, and an engine of another version cannot reach updated devices.
+// helperBehind reports whether the attached engine is a helper behind this
+// app: an older version, or the same version from another build (a test
+// build; its wire protocol may differ). A newer helper is left alone.
+// Inputs: build is this app's build (version.Build).
+func helperBehind(st *localapi.Status, build string) bool {
+	if st == nil || st.RunMode != "helper" || version.Older(version.Version, st.Version) {
+		return false
+	}
+	return version.Older(st.Version, version.Version) || build != "" && st.Build != build
+}
+
+// helperGap is a helper behind this app and the app, as people read them:
+// versions, with their builds when the versions are the same. Empty when
+// the helper is not behind.
+type helperGap struct{ helper, app string }
+
+// outdatedHelper is the attached helper's gap to this app, if it is behind.
+func (a *App) outdatedHelper() helperGap {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !helperBehind(a.status, version.Build()) {
+		return helperGap{}
+	}
+	if a.status.Version != version.Version {
+		return helperGap{a.status.Version, version.Version}
+	}
+	short := func(b string) string {
+		if len(b) > 7 {
+			b = b[:7]
+		}
+		return b
+	}
+	return helperGap{a.status.Version + " (" + short(a.status.Build) + ")", version.Version + " (" + short(version.Build()) + ")"}
+}
+
+// helperChanged updates, once per run and without a prompt, a helper
+// behind this app (helperBehind): an app update replaces the app's files but
+// not the helper's, and an engine of another build may not reach updated
+// devices.
 // It waits while a session is open, since the helper restarts.
 // Notes: the caller holds a.mu.
 func (a *App) helperChanged(st *localapi.Status) {
-	if a.helperUpdated || st.RunMode != "helper" || !version.Older(st.Version, version.Version) {
+	if a.helperUpdated || !helperBehind(st, version.Build()) {
 		return
 	}
 	for _, s := range st.Sessions {

@@ -583,25 +583,53 @@ func TestConnectionTabsRender(t *testing.T) {
 }
 
 // TestIncompatibleNamesTheOutdatedSide: a version mismatch blames this
-// device's older helper when its engine is not this app's version, and
-// names the other device's version when it is known.
+// device's helper when it is behind the app, and names the other device's
+// version when it is known.
 func TestIncompatibleNamesTheOutdatedSide(t *testing.T) {
 	failed := localapi.SessionInfo{State: "failed", Failure: json.RawMessage(`"incompatible"`)}
 	withPeer := failed
 	withPeer.PeerVersion = "0.1.2"
+	old := helperGap{"0.1.1", version.Version}
 	for _, tc := range []struct {
 		name   string
 		s      localapi.SessionInfo
-		engine string
+		behind helperGap
 		want   string
 	}{
-		{"older helper", withPeer, "0.1.1", L.FailHelperOutdated("0.1.1", version.Version)},
-		{"other device", withPeer, version.Version, L.FailIncompatibleVersion("0.1.2", version.Version)},
-		{"unknown", failed, version.Version, L.FailIncompatible()},
-		{"not attached", failed, "", L.FailIncompatible()},
+		{"older helper", withPeer, old, L.FailHelperOutdated("0.1.1", version.Version)},
+		{"other device", withPeer, helperGap{}, L.FailIncompatibleVersion("0.1.2", version.Version)},
+		{"unknown", failed, helperGap{}, L.FailIncompatible()},
 	} {
-		if got := sessionState(tc.s, tc.engine); got != tc.want {
+		if got := sessionState(tc.s, tc.behind); got != tc.want {
 			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestHelperBehind: a helper of an older version, or of the same version
+// from another build (a test build, possibly another wire protocol), is
+// updated; a newer one, the same build, or the app's own engine is not.
+func TestHelperBehind(t *testing.T) {
+	helper := func(v, build string) *localapi.Status {
+		return &localapi.Status{RunMode: "helper", Version: v, Build: build}
+	}
+	for _, tc := range []struct {
+		name  string
+		st    *localapi.Status
+		build string
+		want  bool
+	}{
+		{"older version", helper("0.1.1", "a"), "b", true},
+		{"same version, other build", helper(version.Version, "a"), "b", true},
+		{"same version, build not reported", helper(version.Version, ""), "b", true},
+		{"same build", helper(version.Version, "b"), "b", false},
+		{"app without a build record", helper(version.Version, "a"), "", false},
+		{"newer helper", helper("99.0.0", "a"), "b", false},
+		{"own engine", &localapi.Status{RunMode: "user", Version: "0.1.1"}, "b", false},
+		{"not attached", nil, "b", false},
+	} {
+		if got := helperBehind(tc.st, tc.build); got != tc.want {
+			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }
@@ -624,5 +652,58 @@ func TestViewerPictureTakesText(t *testing.T) {
 	tt.Frame()
 	if active, _ := tt.TextInputActive(); !active {
 		t.Fatal("the focused picture does not take text")
+	}
+}
+
+// TestKeyboardAcrossSystems: Ctrl and Cmd are swapped by default between a
+// Mac and Windows only, in modifiers and keys sent by position; a Mac
+// menu's edit commands come back as Cmd shortcuts.
+func TestKeyboardAcrossSystems(t *testing.T) {
+	for _, tc := range []struct {
+		mine, peer string
+		want       bool
+	}{
+		{"darwin", "windows", true}, {"windows", "macos", true},
+		{"darwin", "macos", false}, {"windows", "windows", false}, {"darwin", "", false},
+	} {
+		if got := swapDefault(tc.mine, tc.peer); got != tc.want {
+			t.Errorf("%s → %s: %v", tc.mine, tc.peer, got)
+		}
+	}
+	key := swapCtrlMeta(inputEvent{Kind: "key", Key: "c", Down: true, Mods: &inputMods{Meta: true, Shift: true}})
+	if !key.Mods.Ctrl || key.Mods.Meta || !key.Mods.Shift {
+		t.Errorf("mods %+v", *key.Mods)
+	}
+	for from, to := range map[uint32]uint32{0x1D: 0xE05B, 0xE05B: 0x1D, 0xE01D: 0xE05C, 0xE05C: 0xE01D, 0x2E: 0x2E} {
+		if got := swapCtrlMeta(inputEvent{Kind: "scan", Code: from}).Code; got != to {
+			t.Errorf("scan %#x → %#x, want %#x", from, got, to)
+		}
+	}
+	got := commandEvents("redo")
+	if len(got) != 2 || got[0].Key != "z" || !got[0].Down || got[1].Down || !got[0].Mods.Meta || !got[0].Mods.Shift {
+		t.Errorf("redo %+v", got)
+	}
+	if commandEvents("bold") != nil {
+		t.Error("a command without a shortcut sends nothing")
+	}
+}
+
+// TestViewerSettingsPerDevice: a device's viewer opens with the settings
+// chosen for it last time; another device with the defaults.
+func TestViewerSettingsPerDevice(t *testing.T) {
+	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
+	v := a.newViewer("482916735", localapi.About{}, nil)
+	v.setQuality(2, "60 fps", true)
+	v.setCodec("av1")
+	v.setSwap(false)
+	again := a.newViewer("482916735", localapi.About{}, nil)
+	if again.preset != 2 || again.fpsCap != "60 fps" || !again.full || again.codec != "av1" || again.swap == nil || *again.swap {
+		t.Errorf("reopened %d %q %v %q %v", again.preset, again.fpsCap, again.full, again.codec, again.swap)
+	}
+	if other := a.newViewer("123456789", localapi.About{}, nil); other.preset != 1 || other.codec != "auto" || other.swap != nil {
+		t.Errorf("another device %d %q", other.preset, other.codec)
+	}
+	if p := loadPrefs(a.stateDir); p.Viewers["482916735"].Codec != "av1" {
+		t.Errorf("gui.json %+v", p.Viewers)
 	}
 }

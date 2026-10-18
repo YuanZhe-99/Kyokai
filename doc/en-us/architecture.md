@@ -62,7 +62,7 @@ integers and pointers only:
 | `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | Decodes one frame into the caller's RGBA buffer: 1 picture, 0 needs more input, -1 error, -3 too large |
 | `kyokai_decoder_info(id, out, cap) -> i32` | Writes `{decoder, hardware}` JSON into the caller's buffer: which decoder it is (`videotoolbox`, `media-foundation`, `libvpx`, `libaom`) and whether it decodes in hardware, as it reports; the length, -1 unknown handle, -3 too large |
 | `kyokai_decoder_close(id)` | Releases a decoder |
-| `kyokai_keyboard_grab(window, mode, len) -> i32` | Grabs the keyboard for a viewer window (its native handle) in mode `map` or `translate`, or ends its grab with `off`: 0, -1 unknown mode or no window, -2 not available here (Windows only so far). Needs no started core |
+| `kyokai_keyboard_grab(window, mode, len) -> i32` | Grabs the keyboard for a viewer window (its native handle) in mode `map` or `translate`, or ends its grab with `off`: 0, -1 unknown mode or no window, -2 not available here (no hook; on macOS, an event tap needs the app's Accessibility permission). Needs no started core |
 | `kyokai_keyboard_read(*event, timeout_ms) -> i32` | Waits for the next key the grab took and writes it into the caller's `{window: usize, code: u32, down, caps, num: u8, pad: u8}`: 1 a key, 0 timeout, -2 not available |
 | `kyokai_privacy_request(name, len) -> i32` | Asks macOS, from the calling process, for `screen`, `accessibility` or `input-monitoring` (the app calls it, so a prompt is the app's own): 1 granted, 0 not yet, -1 unknown name or no such permission here. Needs no started core |
 
@@ -105,7 +105,8 @@ runtime statically, so nothing is resolved through the search path.
   overrides); newline-delimited JSON with a `version` field (2). One request per connection,
   except `session.attach`, which keeps its connection and receives the status whenever it
   changes.
-- Requests: `status` (with the network status), `password.reveal`, `password.regenerate`,
+- Requests: `status` (with the network status and `build`, the commit the engine was built from,
+  which tells two builds of one version apart), `password.reveal`, `password.regenerate`,
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
   `password.set_permanent`, `session.connect`, `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,

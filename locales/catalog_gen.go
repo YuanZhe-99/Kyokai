@@ -3434,6 +3434,16 @@ func (msgs Messages) ViewerKeyboardMap() string {
 	return Catalog.Format(msgs.locale, "ViewerKeyboardMap", nil)
 }
 
+// ViewerKeyboardNoGrab says "Allow Accessibility for Kyokai in System Settings to send every key, then reopen this connection."
+// in the language the app shows.
+func ViewerKeyboardNoGrab() string { return In(i18n.Locale()).ViewerKeyboardNoGrab() }
+
+// ViewerKeyboardNoGrab says "Allow Accessibility for Kyokai in System Settings to send every key, then reopen this connection."
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardNoGrab() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardNoGrab", nil)
+}
+
 // ViewerKeyboardTranslate says "Translate"
 // in the language the app shows.
 func ViewerKeyboardTranslate() string { return In(i18n.Locale()).ViewerKeyboardTranslate() }
@@ -3552,6 +3562,26 @@ func ViewerRelayedHint() string { return In(i18n.Locale()).ViewerRelayedHint() }
 // in the language of msgs.
 func (msgs Messages) ViewerRelayedHint() string {
 	return Catalog.Format(msgs.locale, "ViewerRelayedHint", nil)
+}
+
+// ViewerSwapKeys says "Swap Ctrl and Cmd"
+// in the language the app shows.
+func ViewerSwapKeys() string { return In(i18n.Locale()).ViewerSwapKeys() }
+
+// ViewerSwapKeys says "Swap Ctrl and Cmd"
+// in the language of msgs.
+func (msgs Messages) ViewerSwapKeys() string {
+	return Catalog.Format(msgs.locale, "ViewerSwapKeys", nil)
+}
+
+// ViewerSwapKeysHint says "Ctrl on one computer acts as Cmd (the Windows key) on the other, and back, so Cmd+C on a Mac copies on Windows. On by…"
+// in the language the app shows.
+func ViewerSwapKeysHint() string { return In(i18n.Locale()).ViewerSwapKeysHint() }
+
+// ViewerSwapKeysHint says "Ctrl on one computer acts as Cmd (the Windows key) on the other, and back, so Cmd+C on a Mac copies on Windows. On by…"
+// in the language of msgs.
+func (msgs Messages) ViewerSwapKeysHint() string {
+	return Catalog.Format(msgs.locale, "ViewerSwapKeysHint", nil)
 }
 
 // ViewerTabClose says "Close this tab (the session goes on)"

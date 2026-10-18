@@ -121,7 +121,7 @@ func (a *App) hostBanner(c *ui.Context) {
 				deviceAvatar(c, s.Peer)
 				ui.Column(c).Grow(1).Gap(2).Children(func() {
 					ui.Text(c, L.HostConnected(deviceTitle(s.Peer, s.DeviceID))).Bold()
-					ui.Text(c, sessionState(s, a.engineVersion())).FontSize(sizeSmall).TextColor(t.TextMuted)
+					ui.Text(c, sessionState(s, a.outdatedHelper())).FontSize(sizeSmall).TextColor(t.TextMuted)
 				})
 				if ui.Button(c.Key(key+"-close"), L.ActionDisconnect()).Clicked() {
 					id := s.ID
@@ -278,9 +278,9 @@ func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
 			state, col = L.NetworkOnline(), t.Success
 		case "closed":
 		case "failed":
-			state, col = failureText(*s, a.engineVersion()), t.Danger
+			state, col = failureText(*s, a.outdatedHelper()), t.Danger
 		default:
-			state = sessionState(*s, a.engineVersion())
+			state = sessionState(*s, a.outdatedHelper())
 		}
 	}
 	keyChanged := r.session != nil && r.session.State == "failed" && string(r.session.Failure) == `"key-changed"`
@@ -365,19 +365,9 @@ func (a *App) removeDevice(device string) {
 	}()
 }
 
-// engineVersion is the attached engine's version ("" before it attaches).
-func (a *App) engineVersion() string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.status == nil {
-		return ""
-	}
-	return a.status.Version
-}
-
-// sessionState words a session's state, permissions or failure; engine is
-// the attached engine's version.
-func sessionState(s localapi.SessionInfo, engine string) string {
+// sessionState words a session's state, permissions or failure; behind is
+// the attached helper's gap to this app, if any (outdatedHelper).
+func sessionState(s localapi.SessionInfo, behind helperGap) string {
 	switch s.State {
 	case "connecting":
 		return L.SessionConnecting()
@@ -397,13 +387,13 @@ func sessionState(s localapi.SessionInfo, engine string) string {
 	case "closed":
 		return L.SessionClosed()
 	}
-	return failureText(s, engine)
+	return failureText(s, behind)
 }
 
 // failureText words why a session failed. A version mismatch names the side
-// that differs: this device's engine (an older helper) when it is not this
-// app's version, else the other device's version when it is known.
-func failureText(s localapi.SessionInfo, engine string) string {
+// that differs: this device's helper when it is behind this app, else the
+// other device's version when it is known.
+func failureText(s localapi.SessionInfo, behind helperGap) string {
 	raw := s.Failure
 	var name string
 	var refused struct {
@@ -435,8 +425,8 @@ func failureText(s localapi.SessionInfo, engine string) string {
 		return L.FailKeyChanged()
 	case "incompatible":
 		switch {
-		case engine != "" && engine != version.Version:
-			return L.FailHelperOutdated(engine, version.Version)
+		case behind.helper != "":
+			return L.FailHelperOutdated(behind.helper, behind.app)
 		case s.PeerVersion != "":
 			return L.FailIncompatibleVersion(s.PeerVersion, version.Version)
 		}

@@ -161,6 +161,9 @@ type viewer struct {
 	// decoder is this computer's decoder of the stream, as it reports
 	// after its first picture.
 	decoder codecImpl
+	// swap exchanges Ctrl and Cmd (the Windows key) in what is sent; nil
+	// follows swapDefault.
+	swap *bool
 	// Input: the picture element's box, whether this session may control
 	// input, and the keys sent down.
 	box     ui.Rect
@@ -229,6 +232,16 @@ func (a *App) connectDevice(device string, about localapi.About, want []string) 
 func (a *App) newViewer(device string, about localapi.About, want []string) *viewer {
 	v := &viewer{app: a, device: device, title: deviceTitle(about, device), want: want,
 		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto"}
+	// The settings chosen for this device last time.
+	if vp, ok := a.viewerPrefs(device); ok {
+		v.preset, v.full, v.swap = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap
+		if slices.Contains(fpsCaps, vp.FPS) {
+			v.fpsCap = vp.FPS
+		}
+		if vp.Codec != "" {
+			v.codec = vp.Codec
+		}
+	}
 	a.mu.Lock()
 	a.viewers[device] = v
 	a.mu.Unlock()
@@ -645,9 +658,9 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 	v.mu.Lock()
 	pw, remember, note := v.password, v.remember, v.state
 	v.mu.Unlock()
-	engine := ""
+	var behind helperGap
 	if v.app != nil {
-		engine = v.app.engineVersion()
+		behind = v.app.outdatedHelper()
 	}
 	edit := func(e ui.Element) {
 		if e.Changed() {
@@ -667,7 +680,7 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 			case "", "connecting", "reconnecting":
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Spinner(c)
-					ui.Text(c, sessionState(phase, engine)).TextColor(t.TextMuted)
+					ui.Text(c, sessionState(phase, behind)).TextColor(t.TextMuted)
 				})
 			case "confirming":
 				waiting = true
@@ -679,7 +692,7 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 				ended = true
 				text := note
 				if text == "" {
-					text = sessionState(phase, engine)
+					text = sessionState(phase, behind)
 				}
 				ui.Text(c, text).TextColor(t.Danger)
 			}
@@ -800,6 +813,25 @@ func (v *viewer) actionBar(c *ui.Context, a hostActions) {
 				Tooltip(L.ViewerKeyboardHint()).Changed() {
 				v.app.setKeyboardMode(keyboardModes[mode])
 			}
+			// macOS refuses the tap without Kyokai's Accessibility
+			// permission: the viewer works in Legacy mode meanwhile.
+			v.mu.Lock()
+			refused := v.noGrab
+			v.mu.Unlock()
+			if refused && runtime.GOOS == "darwin" {
+				ui.Text(c, L.ViewerKeyboardNoGrab()).FontSize(sizeSmall).TextColor(t.Warning)
+			}
+		}
+		// Ctrl and Cmd matter where a Mac is on either side.
+		v.mu.Lock()
+		swap, peerOS := v.swapping(), v.phase.Peer.OS
+		v.mu.Unlock()
+		if runtime.GOOS == "darwin" || peerOS == "macos" {
+			labelled(c, func() {
+				if ui.Switch(c.Key("swap-keys"), &swap).Label(L.ViewerSwapKeys()).Tooltip(L.ViewerSwapKeysHint()).Changed() {
+					v.setSwap(swap)
+				}
+			}, L.ViewerSwapKeys())
 		}
 	})
 }

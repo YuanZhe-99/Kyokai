@@ -415,7 +415,7 @@ pub extern "C" fn kyokai_decoder_close(id: u64) {
 /// Inputs: `window` — the viewer's native window handle; `mode`/`len` — the
 /// mode's name (`map`, `translate`, `off`), borrowed for the call.
 /// Returns: 0; -1 for an unknown mode or no window; -2 when the keyboard cannot be
-/// grabbed here (no hook, or not Windows yet).
+/// grabbed here (no hook; on macOS, no Accessibility permission).
 ///
 /// # Safety
 /// `mode` points to `len` readable bytes.

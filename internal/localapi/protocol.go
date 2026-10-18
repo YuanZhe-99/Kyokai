@@ -434,7 +434,9 @@ type NetworkDevice struct {
 // Status is the engine's state: product and ABI version, the device
 // identity and how secrets are kept. It never holds a secret.
 type Status struct {
-	Version     string `json:"version"`
+	Version string `json:"version"`
+	// Build is the engine's build within its version (version.Build).
+	Build       string `json:"build,omitempty"`
 	ABI         int    `json:"abi"`
 	DeviceID    string `json:"device_id"`
 	Fingerprint string `json:"fingerprint"`

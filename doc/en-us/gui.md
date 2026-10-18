@@ -107,9 +107,12 @@ when `SCREENSHOT_DIR` is set.
   not record its screen, "this is a placeholder picture" — Pointer (shows or hides the ring,
   remembered for every viewer), AI (collapses the AI panel) and Full screen. With `control-input`, a bar at the top with Lock
   screen, Ctrl+Alt+Del (helper modes), the Block their keyboard and mouse and Privacy mode
-  switches (each with its label beside it) and, on Windows, the keyboard mode (Map, Translate,
-  Legacy; remembered for every viewer); the mouse, the wheel and the keyboard on the picture go to
-  the host ([computer-use.md](computer-use.md)).
+  switches (each with its label beside it), on Windows and macOS the keyboard mode (Map, Translate,
+  Legacy; remembered for every viewer; on a Mac without Kyokai's Accessibility permission a hint
+  to allow it), and Swap Ctrl and Cmd where a Mac is on either side; the mouse, the wheel and the
+  keyboard on the picture go to the host ([computer-use.md](computer-use.md)). The quality preset,
+  frame-rate cap, Full colour, Codec and Swap Ctrl and Cmd are kept for each device (`viewers` in
+  `gui.json`): a device's viewer opens with the settings chosen for it last.
 - With `run-ai-task` the tab has an AI panel, "AI on the other computer", which the AI switch
   collapses (a step waiting for approval shows it anyway). It shows the host's one AI record,
   the same for every controller whoever started the task (state, the model's text, its latest

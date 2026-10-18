@@ -78,11 +78,15 @@ Click the picture to use the mouse and keyboard there; Kyokai's own windows on t
 input. The bar above it can **Lock screen**, send **Ctrl+Alt+Del** (when the other computer runs
 Kyokai as a helper) and **Block their keyboard and mouse** while you work, or turn on **Privacy mode**, which also
 blacks out their screen while you still see it; its user can always lift both with
-Ctrl+Alt+Shift+Esc or Ctrl+Alt+Del. On Windows the bar also chooses how your keyboard reaches the
-other computer: **Map** (the default) sends each key by its place, so the other computer's layout
-decides what it types and shortcuts such as the Windows key or Alt+Tab go there too; **Translate**
-types with your own layout and input method; **Legacy** sends only the keys the viewer window
-receives. Keys go there only while the picture has the focus: click it first. While you are connected the other computer does not go to
+Ctrl+Alt+Shift+Esc or Ctrl+Alt+Del. The bar also chooses how your keyboard reaches the other
+computer: **Map** (the default) sends each key by its place, so the other computer's layout
+decides what it types and shortcuts such as the Windows key, Alt+Tab or Cmd+Tab go there too;
+**Translate** types with your own layout and input method; **Legacy** sends only the keys the
+viewer window receives. On a Mac, Map and Translate need **Accessibility** for Kyokai in System
+Settings, Privacy & Security. Between a Mac and Windows, **Swap Ctrl and Cmd** (on by default) makes
+your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. Keys go there only
+while the picture has the focus: click it first. Quality, frame rate, codec and the swap are
+remembered for each device. While you are connected the other computer does not go to
 sleep by itself. Closing the tab (×) disconnects; when a connection ends, its tab says why and offers
 **Reconnect**. A connection that drops reconnects by itself for a minute without asking again.
 **Remove** in a device's menu takes it off Recent and forgets its saved password.

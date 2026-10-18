@@ -170,6 +170,7 @@ func (v *viewer) setQuality(preset int, fpsCap string, full bool) {
 	v.mu.Lock()
 	v.preset, v.fpsCap, v.full = preset, fpsCap, full
 	v.mu.Unlock()
+	v.keepSettings()
 	fps := 30
 	_, _ = fmt.Sscan(fpsCap, &fps)
 	body, _ := json.Marshal(map[string]any{"type": "quality", "preset": qualityPresets[min(max(preset, 0), 2)], "fps": fps, "i444": full})
@@ -185,7 +186,94 @@ func (v *viewer) setCodec(codec string) {
 	v.mu.Lock()
 	v.codec = codec
 	v.mu.Unlock()
+	v.keepSettings()
 	v.sendControl(map[string]any{"type": "codec", "codec": codec})
+}
+
+// keepSettings keeps this viewer's settings for its device.
+// Side effects: writes gui.json.
+func (v *viewer) keepSettings() {
+	if v.app == nil {
+		return
+	}
+	v.mu.Lock()
+	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap}
+	v.mu.Unlock()
+	v.app.setViewerPrefs(v.device, vp)
+}
+
+// setSwap swaps Ctrl and Cmd (the Windows key) in what this viewer sends,
+// or not.
+func (v *viewer) setSwap(on bool) {
+	v.mu.Lock()
+	v.swap = &on
+	v.mu.Unlock()
+	v.keepSettings()
+}
+
+// swapping is whether this viewer swaps Ctrl and Cmd now: as chosen, else
+// by the two systems.
+// Notes: the caller holds v.mu.
+func (v *viewer) swapping() bool {
+	if v.swap != nil {
+		return *v.swap
+	}
+	return swapDefault(runtime.GOOS, v.phase.Peer.OS)
+}
+
+// swapDefault is whether Ctrl and Cmd are swapped unless chosen: between a
+// Mac and Windows, so each person's shortcuts do on the other computer what
+// they do on their own (Cmd+C copies on Windows, Ctrl+C on a Mac).
+// Inputs: the controller's and the host's systems (GOOS names and the
+// About OS names: "darwin" or "macos", "windows").
+func swapDefault(mine, peer string) bool {
+	mac := func(os string) bool { return os == "darwin" || os == "macos" }
+	return mac(mine) && peer == "windows" || mine == "windows" && mac(peer)
+}
+
+// swapCtrlMeta exchanges Ctrl and Cmd (the Windows key) in a key event:
+// in its modifiers, and the left and right keys sent by position.
+func swapCtrlMeta(e inputEvent) inputEvent {
+	if e.Mods != nil {
+		m := *e.Mods
+		m.Ctrl, m.Meta = m.Meta, m.Ctrl
+		e.Mods = &m
+	}
+	if e.Kind == "scan" {
+		switch e.Code {
+		case 0x1D:
+			e.Code = 0xE05B
+		case 0xE05B:
+			e.Code = 0x1D
+		case 0xE01D:
+			e.Code = 0xE05C
+		case 0xE05C:
+			e.Code = 0xE01D
+		}
+	}
+	return e
+}
+
+// commandKeys are the Cmd shortcuts behind the edit commands a Mac's menu
+// takes before the window sees the keys (Legacy mode): the key, and Shift.
+var commandKeys = map[string]struct {
+	key   string
+	shift bool
+}{
+	"copy": {"c", false}, "cut": {"x", false}, "paste": {"v", false}, "pasteAndMatchStyle": {"v", false},
+	"selectAll": {"a", false}, "undo": {"z", false}, "redo": {"z", true},
+}
+
+// commandEvents turns an edit command of the menu back into its Cmd
+// shortcut, pressed and released.
+// Returns: nothing for another command.
+func commandEvents(command string) []inputEvent {
+	k, ok := commandKeys[command]
+	if !ok {
+		return nil
+	}
+	mods := &inputMods{Meta: true, Shift: k.shift}
+	return []inputEvent{{Kind: "key", Key: k.key, Down: true, Mods: mods}, {Kind: "key", Key: k.key, Down: false, Mods: mods}}
 }
 
 // choicePackets are the viewer's quality and codec choices as control
@@ -267,8 +355,21 @@ func (v *viewer) sendInput(ev ui.InputEvent) bool {
 	if v.held == nil {
 		v.held = map[ui.Key]bool{}
 	}
+	grabbed := v.grabbed
 	e, ok := toEvent(ev, box, start.Width, start.Height, v.held, v.grabbed)
 	v.mu.Unlock()
+	// A Mac's menu takes Cmd+C and the like before the picture sees the
+	// keys: they come back as the menu's commands (Legacy mode; a grab
+	// takes the keys first).
+	if ev.Kind == ui.InputCommand && grabbed == "" {
+		es := commandEvents(ev.Text)
+		for _, c := range es {
+			if may {
+				v.queue(c)
+			}
+		}
+		return len(es) > 0
+	}
 	if !may || !ok {
 		return false
 	}
@@ -297,6 +398,9 @@ func (v *viewer) queue(e inputEvent) {
 	}
 	pending := v.move
 	v.move = nil
+	if v.swapping() {
+		e = swapCtrlMeta(e)
+	}
 	v.mu.Unlock()
 	for _, p := range []*inputEvent{pending, &e} {
 		if p == nil {
@@ -355,8 +459,9 @@ func (v *viewer) writer(w io.Writer, done <-chan struct{}) {
 var keyboardModes = []string{"map", "translate", "legacy"}
 
 // grabsKeyboard is whether the core can grab the keyboard here (Map and
-// Translate); elsewhere every viewer works in Legacy mode.
-const grabsKeyboard = runtime.GOOS == "windows"
+// Translate: a hook on Windows, an event tap on macOS); elsewhere every
+// viewer works in Legacy mode.
+const grabsKeyboard = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
 
 // setKeyboardMode remembers the viewers' keyboard mode; each viewer grabs
 // in it the next time its picture has the focus.

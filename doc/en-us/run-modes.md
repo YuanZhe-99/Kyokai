@@ -118,8 +118,9 @@ swapped there after the check is not installed. An unsigned build (development, 
 without the key) is installed with one administrator prompt instead.
 
 An app update replaces the app's files, not the helper's, and a helper of another version cannot
-reach devices that run the new one. So the GUI, the first time it attaches to an older helper while
-no session is open, asks for this signed update itself, without a prompt; it never falls back to
+reach devices that run the new one. So the GUI, the first time it attaches to a helper behind it while
+no session is open (an older version, or the same version from another build: the status's
+`build`, so a test build's helper follows too), asks for this signed update itself, without a prompt; it never falls back to
 the administrator prompt on its own. A connection refused for a version mismatch says which side
 differs: this device's older helper, or the other device's version.
 
