@@ -94,6 +94,10 @@ type Status struct {
 	// PasswordGrants are the permissions a correct password grants without
 	// asking.
 	PasswordGrants []string `json:"password_grants"`
+	// PasswordMode and WithoutAsking are the access settings
+	// (access.settings).
+	PasswordMode  string `json:"password_mode"`
+	WithoutAsking bool   `json:"without_asking"`
 	// Permissions are the system's privacy permissions (macOS), or null;
 	// decoded by the host.
 	Permissions json.RawMessage `json:"permissions"`
@@ -103,6 +107,8 @@ type Status struct {
 	Recent   json.RawMessage `json:"recent"`
 	// AI is the task in progress or null.
 	AI json.RawMessage `json:"ai"`
+	// AIDraft is the shared draft of the next AI instruction.
+	AIDraft string `json:"ai_draft"`
 	// Name is the chosen friendly name; About is decoded by the host.
 	Name  string          `json:"name"`
 	About json.RawMessage `json:"about"`

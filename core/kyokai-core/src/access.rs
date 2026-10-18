@@ -4,7 +4,7 @@
 //! known hosts (pinned host keys on the controller side).
 
 use crate::about::About;
-use crate::auth::Slots;
+use crate::auth::{Slot, Slots};
 use crate::store::Secrets;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -60,6 +60,31 @@ const KNOWN_HOSTS_NAME: &str = "known_hosts";
 /// A saved host password's secret is this prefix and the Device ID.
 const SAVED_PASSWORD_PREFIX: &str = "saved_password.";
 const PASSWORD_GRANTS_NAME: &str = "password_grants";
+const PASSWORD_MODE_NAME: &str = "password_mode";
+const WITHOUT_ASKING_NAME: &str = "connect_without_asking";
+
+/// Which of the host's passwords open it (Settings, Access, "Accepted
+/// passwords").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PasswordMode {
+    Temporary,
+    Permanent,
+    #[default]
+    Both,
+}
+
+impl PasswordMode {
+    /// Whether a login that opened `slot` counts.
+    pub fn accepts(self, slot: Slot) -> bool {
+        matches!(
+            (self, slot),
+            (PasswordMode::Both, _)
+                | (PasswordMode::Temporary, Slot::Temporary)
+                | (PasswordMode::Permanent, Slot::Permanent)
+        )
+    }
+}
 /// What a correct password grants without asking until the host's user
 /// changes it: the manual session; AI tasks always ask.
 const DEFAULT_PASSWORD_GRANTS: [Permission; 4] = [
@@ -98,10 +123,6 @@ pub struct Trusted {
     /// What the controller last said about itself.
     #[serde(default)]
     pub about: About,
-    /// Until when (Unix seconds) the device may connect without
-    /// confirmation, with its permanent password; None: always asks.
-    #[serde(default)]
-    pub unattended_until: Option<u64>,
 }
 
 /// The host user's answer to a confirmation: the granted permissions, or
@@ -197,25 +218,55 @@ impl Access {
         }
     }
 
-    /// The permissions a trusted controller may have without confirmation
-    /// now: those last granted, within `want`, while its grant lasts.
-    /// Returns: None without a valid unattended grant.
-    pub fn unattended(&self, key: &str, want: &[Permission]) -> Option<Vec<Permission>> {
-        let t = self.trusted().remove(key)?;
-        if !t.unattended_until.is_some_and(|until| until > unix_now()) {
-            return None;
-        }
-        Some(t.granted.into_iter().filter(|p| want.contains(p)).collect())
+    /// Which passwords open this host.
+    pub fn password_mode(&self) -> PasswordMode {
+        self.secrets
+            .get(PASSWORD_MODE_NAME)
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
     }
 
-    /// Gives a trusted device an unattended grant for `days` (0 takes it
-    /// away).
+    /// Sets which passwords open this host.
     /// Side effects: rewrites the secrets store.
-    pub fn set_unattended(&self, key: &str, days: u64) -> Result<(), String> {
-        let mut all = self.trusted();
-        let t = all.get_mut(key).ok_or("not a trusted device")?;
-        t.unattended_until = (days > 0).then(|| unix_now() + days.min(365) * 86_400);
-        self.store(TRUSTED_NAME, &all)
+    pub fn set_password_mode(&self, mode: PasswordMode) -> Result<(), String> {
+        self.store(PASSWORD_MODE_NAME, &mode)
+    }
+
+    /// Whether an accepted password admits without the host user's
+    /// confirmation (on unless the host user turned it off).
+    pub fn without_asking(&self) -> bool {
+        self.secrets
+            .get(WITHOUT_ASKING_NAME)
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or(true)
+    }
+
+    /// Sets whether an accepted password admits without confirmation.
+    /// Side effects: rewrites the secrets store.
+    pub fn set_without_asking(&self, on: bool) -> Result<(), String> {
+        self.store(WITHOUT_ASKING_NAME, &on)
+    }
+
+    /// What the permanent password admits with nobody at the computer
+    /// (unattended): what a password grants, within `want`; None when
+    /// Connect without asking is off, for a new key claiming a trusted
+    /// Device ID, or when nothing wanted is a password grant.
+    pub fn unattended(
+        &self,
+        key: &str,
+        device_id: &str,
+        want: &[Permission],
+    ) -> Option<Vec<Permission>> {
+        if !self.without_asking() || self.claims_other_key(key, device_id) {
+            return None;
+        }
+        let grants = self.password_grants();
+        let granted: Vec<Permission> = want
+            .iter()
+            .copied()
+            .filter(|p| grants.contains(p))
+            .collect();
+        (!granted.is_empty()).then_some(granted)
     }
 
     /// The permissions a correct password grants without asking.
@@ -235,11 +286,14 @@ impl Access {
     }
 
     /// Whether a controller that proved a password is admitted without
-    /// asking: everything it wants is a password grant, and its key is not a
-    /// new one claiming a Device ID the host trusts under another key.
+    /// asking: Connect without asking is on, everything it wants is a
+    /// password grant, and its key is not a new one claiming a Device ID
+    /// the host trusts under another key.
     pub fn admits_by_password(&self, key: &str, device_id: &str, want: &[Permission]) -> bool {
         let grants = self.password_grants();
-        want.iter().all(|p| grants.contains(p)) && !self.claims_other_key(key, device_id)
+        self.without_asking()
+            && want.iter().all(|p| grants.contains(p))
+            && !self.claims_other_key(key, device_id)
     }
 
     /// Whether `key` is new and its Device ID is trusted under another key
@@ -401,7 +455,6 @@ impl Access {
             last: now,
             granted: Vec::new(),
             about: About::default(),
-            unattended_until: None,
         });
         entry.about = about.clone();
         entry.last = now;

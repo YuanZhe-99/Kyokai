@@ -42,6 +42,8 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | OpenAI-compatible | OpenAI 兼容 |
 | provider | 服务商 |
 | unattended access | 无人值守访问 |
+| Accepted passwords / Connect without asking | 接受的密码 / 无需确认即可连接 |
+| connection (to a device) | 连接 |
 | engine | 引擎 |
 | privileged helper | 特权助手 |
 | run mode | 运行方式 |

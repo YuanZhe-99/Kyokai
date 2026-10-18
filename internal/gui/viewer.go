@@ -439,7 +439,7 @@ func (v *viewer) pump() {
 					v.mu.Unlock()
 				})
 			}
-		case packetAITask, packetAIError:
+		case packetAITask, packetAIError, packetAIDraft:
 			v.aiPacket(p[0], p[1:])
 		case packetStats:
 			var s hostStats
@@ -737,7 +737,10 @@ func (v *viewer) statusBar(c *ui.Context, start videoStart, fps, kbps float64, h
 				v.setQuality(preset, fpsCap, full)
 			}
 		}, L.QualityFullColour())
-		if start.Width > 0 {
+		if start.Codec == "raw-rgba" {
+			// The host sends its test pattern: it may not record its screen.
+			ui.Text(c, L.ViewerPlaceholder()).FontSize(sizeSmall).TextColor(t.Warning)
+		} else if start.Width > 0 {
 			codec := start.Codec
 			if start.I444 {
 				codec += " 4:4:4"

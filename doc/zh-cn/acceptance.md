@@ -21,7 +21,7 @@ OpenAI 是规格中的服务商；Kyokai 对任何已配置的服务商运行相
 | 临时密码可用 | 已验证（Windows） | 平台说明：会话 |
 | 刷新临时密码后旧密码失效 | 已验证（Windows） | 平台说明：引擎（`smoke.sh user` 会重新生成）；旧记录在内存中被替换 |
 | 固定密码可用 | 已验证（Windows） | 平台说明：会话 |
-| 临时密码与固定密码可分别启用 | 已测试 | 两个 OPAQUE 槽位；`unattended_grants_need_the_permanent_password_and_follow_whom_the_host_serves` |
+| 临时密码与固定密码可分别启用 | 已测试 | 两个 OPAQUE 槽位；`connect_without_asking_and_the_accepted_passwords_decide_admission` |
 | 拒绝错误密码 | 已验证（Windows） | 平台说明：会话；`refusals_are_named` |
 | 多次失败会被限速 | 已测试 | `an_address_is_blocked_after_five_failures_and_pinned_keys_skip_the_backoff` |
 | 可撤销受信任设备 | 已测试 | `revoking_a_device_ends_its_sessions_and_its_resumes` |

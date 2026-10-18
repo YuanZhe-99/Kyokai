@@ -65,7 +65,7 @@ const (
 	RequestIdentityImport     RequestType = "identity.import"        // restore an identity backup (Request.Backup)
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
 	RequestNameSet            RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
-	RequestUnattended         RequestType = "trusted.unattended"     // let a trusted device in without confirmation for Request.Days (0 stops it; Request.Key)
+	RequestAccessSettings     RequestType = "access.settings"        // which passwords open this host (Request.PasswordMode) and whether a password admits without asking (Request.WithoutAsking)
 	RequestAgentRestart       RequestType = "helper.agent_restart"   // the helper's session agent starts anew (macOS counts new privacy grants only then)
 	RequestStartOver          RequestType = "secrets.start_over"     // the saved identity cannot be unlocked: move it aside and keep a new one
 	RequestPermission         RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen", "accessibility", "input-monitoring" or "keychain"; macOS)
@@ -83,6 +83,7 @@ const (
 	RequestAISettingsSet      RequestType = "ai.settings.set"        // change the AI settings (Request.AISettings)
 	RequestAIKeySet           RequestType = "ai.key.set"             // store or remove a provider key (Request.AIKey)
 	RequestAITaskStart        RequestType = "ai.task.start"          // start an AI task (Request.AITask)
+	RequestAIDraft            RequestType = "ai.draft.set"           // the shared draft of the next instruction (Request.AITask.Text)
 	RequestAITaskReply        RequestType = "ai.task.reply"          // continue a finished task (Request.ID, Request.AITask.Text)
 	RequestAITaskPause        RequestType = "ai.task.pause"          // pause a task (Request.ID)
 	RequestAITaskResume       RequestType = "ai.task.resume"         // resume a paused task (Request.ID)
@@ -127,8 +128,10 @@ type Request struct {
 	// From is the app folder whose signed bundle RequestHelperUpdate
 	// installs.
 	From string `json:"from,omitempty"`
-	// Days is how long RequestUnattended lets the device in (0 stops it).
-	Days int `json:"days,omitempty"`
+	// PasswordMode ("temporary", "permanent", "both") and WithoutAsking
+	// are RequestAccessSettings' (empty or nil: unchanged).
+	PasswordMode  string `json:"password_mode,omitempty"`
+	WithoutAsking *bool  `json:"without_asking,omitempty"`
 	// Permission names what RequestPermission asks the system for.
 	Permission string `json:"permission,omitempty"`
 	// Grants are the permissions of RequestPasswordGrants (empty: none).
@@ -331,9 +334,6 @@ type TrustedDevice struct {
 	Granted  []string `json:"granted"`
 	// About is what the controller last said about itself.
 	About About `json:"about"`
-	// UnattendedUntil (Unix seconds) is when its unattended grant ends;
-	// nil: it is always asked about.
-	UnattendedUntil *int64 `json:"unattended_until,omitempty"`
 }
 
 // About is what a device says about itself after a login: a friendly
@@ -452,10 +452,15 @@ type Status struct {
 	// asking.
 	// Permissions are the system's privacy permissions where it has them
 	// (macOS), nil elsewhere.
-	Permissions    *Permissions  `json:"permissions,omitempty"`
-	PasswordGrants []string      `json:"password_grants"`
-	Requests       []HostRequest `json:"requests"`
-	Sessions       []SessionInfo `json:"sessions"`
+	Permissions    *Permissions `json:"permissions,omitempty"`
+	PasswordGrants []string     `json:"password_grants"`
+	// PasswordMode is which passwords open this host ("temporary",
+	// "permanent", "both"); WithoutAsking whether an accepted password
+	// admits without confirmation.
+	PasswordMode  string        `json:"password_mode"`
+	WithoutAsking bool          `json:"without_asking"`
+	Requests      []HostRequest `json:"requests"`
+	Sessions      []SessionInfo `json:"sessions"`
 	// Recent are the hosts this device connected to, newest first.
 	Recent []RecentDevice `json:"recent"`
 	// Name is the friendly name chosen here ("" follows the computer's
@@ -463,7 +468,10 @@ type Status struct {
 	Name  string `json:"name"`
 	About About  `json:"about"`
 	// AI is the AI task in progress, nil when there is none.
-	AI      *AIActive `json:"ai,omitempty"`
+	AI *AIActive `json:"ai,omitempty"`
+	// AIDraft is the shared draft of the next AI instruction, as anyone
+	// (this device's user or a controller) typed it last.
+	AIDraft string    `json:"ai_draft,omitempty"`
 	Started time.Time `json:"started"`
 }
 

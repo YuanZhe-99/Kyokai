@@ -226,11 +226,18 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		return h.command("agent.restart", nil)
 	case localapi.RequestStartOver:
 		return h.command("store.start_over", nil)
-	case localapi.RequestUnattended:
-		if req.Key == "" || req.Days < 0 {
-			return localapi.Fail(localapi.CodeInvalid, "device key and days needed")
+	case localapi.RequestAccessSettings:
+		if req.PasswordMode == "" && req.WithoutAsking == nil {
+			return localapi.Fail(localapi.CodeInvalid, "nothing to change")
 		}
-		return h.command("trusted.unattended", map[string]any{"key": req.Key, "days": req.Days})
+		params := map[string]any{}
+		if req.PasswordMode != "" {
+			params["password_mode"] = req.PasswordMode
+		}
+		if req.WithoutAsking != nil {
+			params["without_asking"] = *req.WithoutAsking
+		}
+		return h.command("access.settings", params)
 	case localapi.RequestPermission:
 		if req.Permission == "" {
 			return localapi.Fail(localapi.CodeInvalid, "permission missing")
@@ -366,6 +373,11 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "%v", err)
 		}
 		return localapi.Response{OK: true, AIModels: out.Models}
+	case localapi.RequestAIDraft:
+		if req.AITask == nil {
+			return localapi.Fail(localapi.CodeInvalid, "draft missing")
+		}
+		return h.command("ai.draft.set", map[string]string{"text": req.AITask.Text})
 	case localapi.RequestAITaskStart:
 		if req.AITask == nil {
 			return localapi.Fail(localapi.CodeInvalid, "AI task missing")
@@ -571,7 +583,7 @@ func (h *handler) status() (*localapi.Status, error) {
 		Version: st.Version, ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: h.runMode, Background: h.isBackground(), Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
-		PasswordGrants: st.PasswordGrants, Permissions: permissions,
+		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, AIDraft: st.AIDraft, Permissions: permissions,
 		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
 		Name: st.Name, About: about,
 	}, nil

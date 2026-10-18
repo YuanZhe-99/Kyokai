@@ -1162,16 +1162,6 @@ func (msgs Messages) ActionReopen() string {
 	return Catalog.Format(msgs.locale, "ActionReopen", nil)
 }
 
-// ActionRequestAccess says "Ask to connect"
-// in the language the app shows.
-func ActionRequestAccess() string { return In(i18n.Locale()).ActionRequestAccess() }
-
-// ActionRequestAccess says "Ask to connect"
-// in the language of msgs.
-func (msgs Messages) ActionRequestAccess() string {
-	return Catalog.Format(msgs.locale, "ActionRequestAccess", nil)
-}
-
 // ActionReset says "Reset…"
 // in the language the app shows.
 func ActionReset() string { return In(i18n.Locale()).ActionReset() }
@@ -1202,16 +1192,6 @@ func (msgs Messages) ActionRestore() string {
 	return Catalog.Format(msgs.locale, "ActionRestore", nil)
 }
 
-// ActionRetry says "Retry"
-// in the language the app shows.
-func ActionRetry() string { return In(i18n.Locale()).ActionRetry() }
-
-// ActionRetry says "Retry"
-// in the language of msgs.
-func (msgs Messages) ActionRetry() string {
-	return Catalog.Format(msgs.locale, "ActionRetry", nil)
-}
-
 // ActionSave says "Save"
 // in the language the app shows.
 func ActionSave() string { return In(i18n.Locale()).ActionSave() }
@@ -1240,16 +1220,6 @@ func ActionStartOver() string { return In(i18n.Locale()).ActionStartOver() }
 // in the language of msgs.
 func (msgs Messages) ActionStartOver() string {
 	return Catalog.Format(msgs.locale, "ActionStartOver", nil)
-}
-
-// ActionView says "View"
-// in the language the app shows.
-func ActionView() string { return In(i18n.Locale()).ActionView() }
-
-// ActionView says "View"
-// in the language of msgs.
-func (msgs Messages) ActionView() string {
-	return Catalog.Format(msgs.locale, "ActionView", nil)
 }
 
 // AppUpToDate says "Kyokai is up to date."
@@ -1402,26 +1372,6 @@ func (msgs Messages) ConnectOptions() string {
 	return Catalog.Format(msgs.locale, "ConnectOptions", nil)
 }
 
-// ConnectPassword says "Password"
-// in the language the app shows.
-func ConnectPassword() string { return In(i18n.Locale()).ConnectPassword() }
-
-// ConnectPassword says "Password"
-// in the language of msgs.
-func (msgs Messages) ConnectPassword() string {
-	return Catalog.Format(msgs.locale, "ConnectPassword", nil)
-}
-
-// ConnectPasswordOptional says "Leave empty to ask"
-// in the language the app shows.
-func ConnectPasswordOptional() string { return In(i18n.Locale()).ConnectPasswordOptional() }
-
-// ConnectPasswordOptional says "Leave empty to ask"
-// in the language of msgs.
-func (msgs Messages) ConnectPasswordOptional() string {
-	return Catalog.Format(msgs.locale, "ConnectPasswordOptional", nil)
-}
-
 // ConnectPasswordSaved says "Password saved"
 // in the language the app shows.
 func ConnectPasswordSaved() string { return In(i18n.Locale()).ConnectPasswordSaved() }
@@ -1432,11 +1382,11 @@ func (msgs Messages) ConnectPasswordSaved() string {
 	return Catalog.Format(msgs.locale, "ConnectPasswordSaved", nil)
 }
 
-// ConnectRecent says "Recent:"
+// ConnectRecent says "Recent"
 // in the language the app shows.
 func ConnectRecent() string { return In(i18n.Locale()).ConnectRecent() }
 
-// ConnectRecent says "Recent:"
+// ConnectRecent says "Recent"
 // in the language of msgs.
 func (msgs Messages) ConnectRecent() string {
 	return Catalog.Format(msgs.locale, "ConnectRecent", nil)
@@ -1450,16 +1400,6 @@ func ConnectRemember() string { return In(i18n.Locale()).ConnectRemember() }
 // in the language of msgs.
 func (msgs Messages) ConnectRemember() string {
 	return Catalog.Format(msgs.locale, "ConnectRemember", nil)
-}
-
-// ConnectSavedPassword says "Saved password"
-// in the language the app shows.
-func ConnectSavedPassword() string { return In(i18n.Locale()).ConnectSavedPassword() }
-
-// ConnectSavedPassword says "Saved password"
-// in the language of msgs.
-func (msgs Messages) ConnectSavedPassword() string {
-	return Catalog.Format(msgs.locale, "ConnectSavedPassword", nil)
 }
 
 // ConnectTitle says "Control another device"
@@ -2192,6 +2132,66 @@ func (msgs Messages) PasswordGrantsTitle() string {
 	return Catalog.Format(msgs.locale, "PasswordGrantsTitle", nil)
 }
 
+// PasswordModeBoth says "Both"
+// in the language the app shows.
+func PasswordModeBoth() string { return In(i18n.Locale()).PasswordModeBoth() }
+
+// PasswordModeBoth says "Both"
+// in the language of msgs.
+func (msgs Messages) PasswordModeBoth() string {
+	return Catalog.Format(msgs.locale, "PasswordModeBoth", nil)
+}
+
+// PasswordModeHint says "Which passwords other devices can connect with."
+// in the language the app shows.
+func PasswordModeHint() string { return In(i18n.Locale()).PasswordModeHint() }
+
+// PasswordModeHint says "Which passwords other devices can connect with."
+// in the language of msgs.
+func (msgs Messages) PasswordModeHint() string {
+	return Catalog.Format(msgs.locale, "PasswordModeHint", nil)
+}
+
+// PasswordModeNeedsPermanent says "No permanent password is set yet: set one above, or no password opens this device."
+// in the language the app shows.
+func PasswordModeNeedsPermanent() string { return In(i18n.Locale()).PasswordModeNeedsPermanent() }
+
+// PasswordModeNeedsPermanent says "No permanent password is set yet: set one above, or no password opens this device."
+// in the language of msgs.
+func (msgs Messages) PasswordModeNeedsPermanent() string {
+	return Catalog.Format(msgs.locale, "PasswordModeNeedsPermanent", nil)
+}
+
+// PasswordModePermanent says "Permanent"
+// in the language the app shows.
+func PasswordModePermanent() string { return In(i18n.Locale()).PasswordModePermanent() }
+
+// PasswordModePermanent says "Permanent"
+// in the language of msgs.
+func (msgs Messages) PasswordModePermanent() string {
+	return Catalog.Format(msgs.locale, "PasswordModePermanent", nil)
+}
+
+// PasswordModeTemporary says "Temporary"
+// in the language the app shows.
+func PasswordModeTemporary() string { return In(i18n.Locale()).PasswordModeTemporary() }
+
+// PasswordModeTemporary says "Temporary"
+// in the language of msgs.
+func (msgs Messages) PasswordModeTemporary() string {
+	return Catalog.Format(msgs.locale, "PasswordModeTemporary", nil)
+}
+
+// PasswordModeTitle says "Accepted passwords"
+// in the language the app shows.
+func PasswordModeTitle() string { return In(i18n.Locale()).PasswordModeTitle() }
+
+// PasswordModeTitle says "Accepted passwords"
+// in the language of msgs.
+func (msgs Messages) PasswordModeTitle() string {
+	return Catalog.Format(msgs.locale, "PasswordModeTitle", nil)
+}
+
 // PathDirect says "Direct"
 // in the language the app shows.
 func PathDirect() string { return In(i18n.Locale()).PathDirect() }
@@ -2662,11 +2662,11 @@ func (msgs Messages) RunModeNoHelper() string {
 	return Catalog.Format(msgs.locale, "RunModeNoHelper", nil)
 }
 
-// RunModeNote says "Follow Kyokai and Background service install a helper once, after one administrator prompt; Background service also l…"
+// RunModeNote says "Follow Kyokai and Background service install a helper once, after one administrator prompt; with Background service t…"
 // in the language the app shows.
 func RunModeNote() string { return In(i18n.Locale()).RunModeNote() }
 
-// RunModeNote says "Follow Kyokai and Background service install a helper once, after one administrator prompt; Background service also l…"
+// RunModeNote says "Follow Kyokai and Background service install a helper once, after one administrator prompt; with Background service t…"
 // in the language of msgs.
 func (msgs Messages) RunModeNote() string {
 	return Catalog.Format(msgs.locale, "RunModeNote", nil)
@@ -2826,26 +2826,6 @@ func (msgs Messages) SessionConnecting() string {
 	return Catalog.Format(msgs.locale, "SessionConnecting", nil)
 }
 
-// SessionControlledBy says "From {device}"
-// in the language the app shows.
-func SessionControlledBy(device string) string { return In(i18n.Locale()).SessionControlledBy(device) }
-
-// SessionControlledBy says "From {device}"
-// in the language of msgs.
-func (msgs Messages) SessionControlledBy(device string) string {
-	return Catalog.Format(msgs.locale, "SessionControlledBy", map[string]any{"device": device})
-}
-
-// SessionControlling says "To {device}"
-// in the language the app shows.
-func SessionControlling(device string) string { return In(i18n.Locale()).SessionControlling(device) }
-
-// SessionControlling says "To {device}"
-// in the language of msgs.
-func (msgs Messages) SessionControlling(device string) string {
-	return Catalog.Format(msgs.locale, "SessionControlling", map[string]any{"device": device})
-}
-
 // SessionReconnecting says "Connection lost — reconnecting…"
 // in the language the app shows.
 func SessionReconnecting() string { return In(i18n.Locale()).SessionReconnecting() }
@@ -2854,16 +2834,6 @@ func SessionReconnecting() string { return In(i18n.Locale()).SessionReconnecting
 // in the language of msgs.
 func (msgs Messages) SessionReconnecting() string {
 	return Catalog.Format(msgs.locale, "SessionReconnecting", nil)
-}
-
-// SessionsTitle says "Sessions"
-// in the language the app shows.
-func SessionsTitle() string { return In(i18n.Locale()).SessionsTitle() }
-
-// SessionsTitle says "Sessions"
-// in the language of msgs.
-func (msgs Messages) SessionsTitle() string {
-	return Catalog.Format(msgs.locale, "SessionsTitle", nil)
 }
 
 // SettingsAbout says "About"
@@ -3206,50 +3176,6 @@ func (msgs Messages) TrustedTitle() string {
 	return Catalog.Format(msgs.locale, "TrustedTitle", nil)
 }
 
-// TrustedUnattended says "Connect without asking"
-// in the language the app shows.
-func TrustedUnattended() string { return In(i18n.Locale()).TrustedUnattended() }
-
-// TrustedUnattended says "Connect without asking"
-// in the language of msgs.
-func (msgs Messages) TrustedUnattended() string {
-	return Catalog.Format(msgs.locale, "TrustedUnattended", nil)
-}
-
-// TrustedUnattendedHint says "For 30 days this device gets in with the permanent password alone, so it can reach this computer when nobody is here."
-// in the language the app shows.
-func TrustedUnattendedHint() string { return In(i18n.Locale()).TrustedUnattendedHint() }
-
-// TrustedUnattendedHint says "For 30 days this device gets in with the permanent password alone, so it can reach this computer when nobody is here."
-// in the language of msgs.
-func (msgs Messages) TrustedUnattendedHint() string {
-	return Catalog.Format(msgs.locale, "TrustedUnattendedHint", nil)
-}
-
-// TrustedUnattendedNeedsPermanent says "Set a permanent password first."
-// in the language the app shows.
-func TrustedUnattendedNeedsPermanent() string {
-	return In(i18n.Locale()).TrustedUnattendedNeedsPermanent()
-}
-
-// TrustedUnattendedNeedsPermanent says "Set a permanent password first."
-// in the language of msgs.
-func (msgs Messages) TrustedUnattendedNeedsPermanent() string {
-	return Catalog.Format(msgs.locale, "TrustedUnattendedNeedsPermanent", nil)
-}
-
-// TrustedUnattendedUntil says "Connects without asking until {time}"
-// in the language the app shows.
-func TrustedUnattendedUntil(time_ string) string {
-	return In(i18n.Locale()).TrustedUnattendedUntil(time_)
-}
-
-// TrustedUnattendedUntil says "Connects without asking until {time}"
-// in the language of msgs.
-func (msgs Messages) TrustedUnattendedUntil(time_ string) string {
-	return Catalog.Format(msgs.locale, "TrustedUnattendedUntil", map[string]any{"time": time_})
-}
-
 // ViewerAIHint says "The task runs on the other computer with its own AI provider. Your input in the picture pauses it."
 // in the language the app shows.
 func ViewerAIHint() string { return In(i18n.Locale()).ViewerAIHint() }
@@ -3450,6 +3376,16 @@ func (msgs Messages) ViewerPasswordHint() string {
 	return Catalog.Format(msgs.locale, "ViewerPasswordHint", nil)
 }
 
+// ViewerPlaceholder says "The other device can't record its screen yet: this is a placeholder picture."
+// in the language the app shows.
+func ViewerPlaceholder() string { return In(i18n.Locale()).ViewerPlaceholder() }
+
+// ViewerPlaceholder says "The other device can't record its screen yet: this is a placeholder picture."
+// in the language of msgs.
+func (msgs Messages) ViewerPlaceholder() string {
+	return Catalog.Format(msgs.locale, "ViewerPlaceholder", nil)
+}
+
 // ViewerPointer says "Pointer"
 // in the language the app shows.
 func ViewerPointer() string { return In(i18n.Locale()).ViewerPointer() }
@@ -3538,4 +3474,24 @@ func ViewerWaiting() string { return In(i18n.Locale()).ViewerWaiting() }
 // in the language of msgs.
 func (msgs Messages) ViewerWaiting() string {
 	return Catalog.Format(msgs.locale, "ViewerWaiting", nil)
+}
+
+// WithoutAskingHint says "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Back…"
+// in the language the app shows.
+func WithoutAskingHint() string { return In(i18n.Locale()).WithoutAskingHint() }
+
+// WithoutAskingHint says "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Back…"
+// in the language of msgs.
+func (msgs Messages) WithoutAskingHint() string {
+	return Catalog.Format(msgs.locale, "WithoutAskingHint", nil)
+}
+
+// WithoutAskingTitle says "Connect without asking"
+// in the language the app shows.
+func WithoutAskingTitle() string { return In(i18n.Locale()).WithoutAskingTitle() }
+
+// WithoutAskingTitle says "Connect without asking"
+// in the language of msgs.
+func (msgs Messages) WithoutAskingTitle() string {
+	return Catalog.Format(msgs.locale, "WithoutAskingTitle", nil)
 }

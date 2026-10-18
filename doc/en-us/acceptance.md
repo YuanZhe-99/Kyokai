@@ -23,7 +23,7 @@ Kyokai runs the same flow with any configured provider, and the live runs so far
 | Temporary password works | Verified (Windows) | platform notes: Sessions |
 | Refreshing the temporary password invalidates the old one | Verified (Windows) | platform notes: Engine (`smoke.sh user` regenerates); the old record is replaced in memory |
 | Permanent password works | Verified (Windows) | platform notes: Sessions |
-| Temporary and permanent passwords independently enabled | Tested | the two OPAQUE slots; `unattended_grants_need_the_permanent_password_and_follow_whom_the_host_serves` |
+| Temporary and permanent passwords independently enabled | Tested | the two OPAQUE slots; `connect_without_asking_and_the_accepted_passwords_decide_admission` |
 | Invalid passwords rejected | Verified (Windows) | platform notes: Sessions; `refusals_are_named` |
 | Repeated failures rate-limited | Tested | `an_address_is_blocked_after_five_failures_and_pinned_keys_skip_the_backoff` |
 | Trusted devices can be revoked | Tested | `revoking_a_device_ends_its_sessions_and_its_resumes` |

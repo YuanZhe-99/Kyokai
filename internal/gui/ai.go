@@ -30,11 +30,14 @@ type aiState struct {
 	// is the one picked to add.
 	edit     *aiEdit
 	template string
-	draft    string // the next task's instruction
-	reply    string // a reply to the latest finished task
-	tasks    []localapi.AITask
-	loaded   bool
-	polling  bool
+	draft    string // the next task's instruction, shared through the engine
+	// draftAt is when this user last typed in it, so that a draft typed
+	// elsewhere does not replace what is being typed here.
+	draftAt time.Time
+	reply   string // a reply to the latest finished task
+	tasks   []localapi.AITask
+	loaded  bool
+	polling bool
 }
 
 // aiView is the AI page: the task in progress (or a new one), the provider
@@ -92,8 +95,12 @@ func (a *App) aiTaskCard(c *ui.Context) {
 		ui.Text(c, L.AINewTask()).Bold()
 		if ui.TextArea(c.Key("ai-draft"), &draft).FillWidth().MinHeight(inputAreaH).Disabled(busy).Changed() {
 			a.mu.Lock()
-			a.ai.draft = draft
+			a.ai.draft, a.ai.draftAt = draft, time.Now()
 			a.mu.Unlock()
+			text := draft
+			go func() {
+				_, _ = a.requestWith(localapi.Request{Type: localapi.RequestAIDraft, AITask: &localapi.AITaskRequest{Text: text}})
+			}()
 		}
 		ready := aiReady(s)
 		if s != nil && !ready && s.Model != nil && aiSource(s, s.Model.Source) != nil {

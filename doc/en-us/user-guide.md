@@ -46,12 +46,15 @@ networks allow it; Windows may then ask to let Kyokai through its firewall.
 
 ## Control another device
 
-Under **Control another device** on Home, enter the other device's Device ID and its password and
-choose **Connect**. By default you ask to see the screen, use the mouse and keyboard, share the
-clipboard and copy files; switch on **Also ask to run AI tasks there** to ask for the AI permissions as well. With
+Under **Control another device** on Home, enter the other device's Device ID and choose
+**Connect**, or click a device under **Recent** (a green dot means it is on your network). By
+default you ask to see the screen, use the mouse and keyboard, share the clipboard and copy files;
+**Options** › **Also ask to run AI tasks there**, or **Connect with AI** in a device's ⋯ menu, asks
+for the AI permissions as well. The connection opens as a tab next to Home. While the other
+computer's user is asked, the tab offers to enter its password instead; with **Remember password**
+it is kept (encrypted) for next time, and **Forget password** in the device's menu forgets it. With
 the right password you are in at once with what the other computer lets a password grant; for
-anything more its user is asked. Leave the password empty and choose **Ask to connect** to ask its
-user without one. The other computer's user chooses what to allow:
+anything more its user is asked. The other computer's user chooses what to allow:
 
 | Permission | Lets you |
 |---|---|
@@ -62,7 +65,9 @@ user without one. The other computer's user chooses what to allow:
 | Run AI tasks | give the other computer's AI a task and steer it |
 | Approve AI actions | answer the approvals of those tasks |
 
-Once connected, **View** opens the other screen in its own window. The bar below the picture sets
+Once connected, the tab shows the other screen. Drag the tab out of the window (or click its ⧉)
+for a window of its own, and onto another Kyokai window to move it there; **Full screen** fills the
+display. The bar below the picture sets
 the quality (**Faster**, **Balanced**, **Sharper**) and a frame-rate cap. Click the picture to use
 the mouse and keyboard there; Kyokai's own windows on the other computer never receive your
 input. The bar above it can **Lock screen**, send **Ctrl+Alt+Del** (when the other computer runs
@@ -73,8 +78,9 @@ other computer: **Map** (the default) sends each key by its place, so the other 
 decides what it types and shortcuts such as the Windows key or Alt+Tab go there too; **Translate**
 types with your own layout and input method; **Legacy** sends only the keys the viewer window
 receives. Keys go there only while the picture has the focus: click it first. While you are connected the other computer does not go to
-sleep by itself. **Disconnect** ends the session; closing the window only stops the picture. A session that
-drops reconnects by itself for a minute without asking again.
+sleep by itself. Closing the tab (×) disconnects; when a connection ends, its tab says why and offers
+**Reconnect**. A connection that drops reconnects by itself for a minute without asking again.
+**Remove** in a device's menu takes it off Recent and forgets its saved password.
 
 ## Let someone control this device
 
@@ -83,8 +89,11 @@ allows (by default seeing the screen, the mouse and keyboard, the clipboard and 
 tasks). Otherwise — they ask for more, ask without a password, or a known Device ID arrives with a
 new key — a request appears at the top of every page with their Device ID, a warning in the last
 two cases, and a switch for each permission they asked for. Choose what to allow, then **Allow**, or **Deny**. Devices you allowed are listed in Settings,
-Access; **Remove** revokes one at once and ends its sessions. **Connect without asking** lets that
-device in for 30 days with the permanent password alone, for a computer nobody sits at. Your own use
+Access; **Remove** revokes one at once and ends its connections. There, **Accepted passwords**
+chooses which passwords let a device in (**Temporary**, **Permanent** or **Both**), and **Connect
+without asking** (on by default) lets a correct password in without asking you; switched off, you
+are always asked. With nobody at the computer (Background service), only the permanent password
+gets in. Your own use
 of the keyboard and mouse always wins over theirs and over any AI.
 
 ## Run Kyokai as a helper
@@ -124,8 +133,10 @@ off **Hide Kyokai from screen capture** in Settings; the AI then sees Kyokai's w
 
 ## AI on another computer
 
-In a session with **Run AI tasks**, the viewer has an AI panel: describe the task and start it. It
-runs on the other computer with that computer's provider and key, and the panel follows it. With
+With **Run AI tasks**, the connection's tab has an AI panel (hide it with the **AI** switch): describe
+the task and start it. It runs on the other computer with that computer's provider and key, and
+the panel follows it. Everyone connected to that computer sees the same task and the same draft as
+it is typed, and so does its own AI page. With
 **Approve AI actions** you can answer its approvals; the other computer's user can always answer
 them too, and sees a banner while your task works there, with **Stop** at hand.
 

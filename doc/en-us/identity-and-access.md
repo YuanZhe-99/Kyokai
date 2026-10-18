@@ -28,8 +28,9 @@ and Forget password on the recent row forgets it at once (`password.forget_saved
 `view-screen`, `control-input`, `run-ai-task`, `approve-ai-action`, `clipboard`, `files`
 (copying files through the clipboard; `clipboard` does not include it). A controller asks
 for a set; the host's user grants a subset; none implies another. Network membership grants none of
-them. `run-ai-task` lets a controller start and steer its own AI tasks on the host, which run with
-the host's key; `approve-ai-action` lets it answer their approvals
+them. `run-ai-task` lets a controller start AI tasks on the host, which run with the host's key, and
+steer the host's task whoever started it (the host keeps one AI record for every controller);
+`approve-ai-action` lets it answer that task's approvals
 ([computer-use.md](computer-use.md)). Removing a trusted device revokes it at once: its live
 sessions with this host end and its resume tokens are dropped.
 
@@ -37,13 +38,17 @@ sessions with this host end and its resume tokens are dropped.
 
 | The controller | The host |
 |---|---|
-| gives a correct password and asks only for what a password grants | admits it at once with what it asked for |
+| gives a correct, accepted password and asks only for what a password grants | admits it at once with what it asked for (while Connect without asking is on) |
 | gives a correct password and asks for more | asks its user |
 | gives a correct password with a new key claiming a Device ID trusted under another key | asks its user |
 | asks without a password | asks its user; a denial or no answer counts as a failed login |
-| has an unattended grant and gives the permanent password | admits it at once (see below) |
+| gives the permanent password with nobody at the computer | admits it with what a password grants (see Unattended access) |
+| gives a correct password of a kind the host does not accept | refuses it as a wrong password |
 
-What a password grants without asking is chosen in Settings, Access ("With a correct password"),
+Which passwords open the host is chosen in Settings, Access ("Accepted passwords": Temporary,
+Permanent or Both, by default Both); "Connect without asking" (on by default) lets an accepted
+password admit without confirmation, and off, every connection asks. What a password grants
+without asking is chosen there too ("With a correct password"),
 one switch per permission, kept in the secrets store: by default `view-screen`, `control-input`,
 `clipboard` and `files`; the AI permissions always ask unless turned on there.
 
@@ -87,18 +92,18 @@ sessions end and the network reconnects. Network settings are not part of the id
 
 ## Unattended access
 
-The host's user can let a trusted device connect without confirmation for 30 days (Settings,
-Access: "Connect without asking"; at most 365 days through the local API). Such a login needs the
-device's pinned key **and** the permanent password (the temporary one always asks), gets the
-permissions last granted to that device within what it asks for, and stops once the grant
-expires or is switched off. Off by default. Without an unattended grant, only a password within the
-password grants skips the confirmation (see Admission).
+With nobody at the computer — a Background service helper without a GUI attached — the permanent
+password admits a device without confirmation while Connect without asking is on, with what a
+password grants within what it asks for; the temporary password, a request without a password and
+a new key claiming a trusted Device ID find nobody to ask. Background service is itself chosen
+explicitly (the helper is installed with an administrator prompt), so a computer is unattended
+only when its user set it up so.
 
 Whom the host serves depends on its run mode ([run-modes.md](run-modes.md)): everyone in No
 privileges and while a GUI is attached to the helper; without a GUI, a Background service helper
-serves only unattended grants and a Follow GUI helper no one (its host sessions end). A login that
-nobody can confirm is refused at once with `absent`, before the password check when no one is
-served; the password grants apply only while everyone is served.
+serves only the permanent password and a Follow GUI helper no one (its host sessions end). A login
+that nobody can confirm is refused at once with `absent`, before the password check when no one is
+served.
 
 ## Rate limits
 

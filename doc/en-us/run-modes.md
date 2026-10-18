@@ -9,11 +9,11 @@ privileged helper is installed, and never when the GUI starts. The GUI never run
 |---|---|---|---|
 | No privileges (default) | none | user-level child of the GUI | the logged-in user's normal desktop |
 | Follow GUI | the helper, installed once | in the helper, serving sessions while a GUI is attached | Windows: elevated windows, the UAC secure desktop, the lock screen |
-| Background service | the same helper | in the helper from boot | reachable before login, for unattended grants only |
+| Background service | the same helper | in the helper from boot | reachable before login, with the permanent password only |
 
 The helper keeps its mode in `state\mode.json` (`helper.background`). While a GUI is attached (an
-open status stream) it serves everyone; without one, Background service serves only unattended
-grants and Follow GUI no one, ending its host sessions ([identity-and-access.md](identity-and-access.md),
+open status stream) it serves everyone; without one, Background service serves only the
+permanent password (while Connect without asking is on) and Follow GUI no one, ending its host sessions ([identity-and-access.md](identity-and-access.md),
 "Unattended access").
 
 ## Switching

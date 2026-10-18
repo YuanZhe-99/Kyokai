@@ -257,15 +257,12 @@
   "ActionOpenFolder": "Open folder",
   "ActionRemove": "Remove",
   "ActionReopen": "Reopen Kyokai",
-  "ActionRequestAccess": "Ask to connect",
   "ActionReset": "Reset…",
   "ActionRestartHelper": "Restart Kyokai Helper",
   "ActionRestore": "Restore…",
-  "ActionRetry": "Retry",
   "ActionSave": "Save",
   "ActionShow": "Show",
   "ActionStartOver": "Start over",
-  "ActionView": "View",
   "AppUpToDate": "Kyokai is up to date.",
   "AppUpdateAvailable": "Version {version} is available.",
   "@AppUpdateAvailable": {
@@ -295,12 +292,9 @@
   "CloseQuit": "Quit",
   "ConnectNeedsNetwork": "Join a network on the Network page first.",
   "ConnectOptions": "Options",
-  "ConnectPassword": "Password",
-  "ConnectPasswordOptional": "Leave empty to ask",
   "ConnectPasswordSaved": "Password saved",
-  "ConnectRecent": "Recent:",
+  "ConnectRecent": "Recent",
   "ConnectRemember": "Remember password",
-  "ConnectSavedPassword": "Saved password",
   "ConnectTitle": "Control another device",
   "ConnectWithAI": "Also ask to run AI tasks there",
   "Copied": "Copied",
@@ -388,6 +382,12 @@
   "PasswordForgotten": "The saved password is forgotten.",
   "PasswordGrantsHint": "A device that enters your password gets these without asking you. Anything else it asks for waits for you to allow it.",
   "PasswordGrantsTitle": "With a correct password",
+  "PasswordModeBoth": "Both",
+  "PasswordModeHint": "Which passwords other devices can connect with.",
+  "PasswordModeNeedsPermanent": "No permanent password is set yet: set one above, or no password opens this device.",
+  "PasswordModePermanent": "Permanent",
+  "PasswordModeTemporary": "Temporary",
+  "PasswordModeTitle": "Accepted passwords",
   "PathDirect": "Direct",
   "PathRelay": "Relayed",
   "PermApproveAIAction": "Approve AI actions",
@@ -442,7 +442,7 @@
   "RunModeFollow": "Follow Kyokai",
   "RunModeHint": "Where this device runs: in Kyokai itself, or in a helper that can also show and operate sign-in and administrator prompts.",
   "RunModeNoHelper": "The helper did not start.",
-  "RunModeNote": "Follow Kyokai and Background service install a helper once, after one administrator prompt; Background service also lets devices you allowed without asking in before anyone signs in. Your Device ID, trusted devices and settings move with it.",
+  "RunModeNote": "Follow Kyokai and Background service install a helper once, after one administrator prompt; with Background service the permanent password also lets a device in before anyone signs in (while Connect without asking is on). Your Device ID, trusted devices and settings move with it.",
   "RunModeOutdated": "The helper is {helper}; this app is {app}.",
   "@RunModeOutdated": {
     "placeholders": {
@@ -475,24 +475,7 @@
     }
   },
   "SessionConnecting": "Connecting…",
-  "SessionControlledBy": "From {device}",
-  "@SessionControlledBy": {
-    "placeholders": {
-      "device": {
-        "type": "String"
-      }
-    }
-  },
-  "SessionControlling": "To {device}",
-  "@SessionControlling": {
-    "placeholders": {
-      "device": {
-        "type": "String"
-      }
-    }
-  },
   "SessionReconnecting": "Connection lost — reconnecting…",
-  "SessionsTitle": "Sessions",
   "SettingsAbout": "About",
   "SettingsAccess": "Access",
   "SettingsCheckAppUpdates": "Check for updates daily",
@@ -541,17 +524,6 @@
   },
   "TrustedNone": "None yet.",
   "TrustedTitle": "Trusted devices",
-  "TrustedUnattended": "Connect without asking",
-  "TrustedUnattendedHint": "For 30 days this device gets in with the permanent password alone, so it can reach this computer when nobody is here.",
-  "TrustedUnattendedNeedsPermanent": "Set a permanent password first.",
-  "TrustedUnattendedUntil": "Connects without asking until {time}",
-  "@TrustedUnattendedUntil": {
-    "placeholders": {
-      "time": {
-        "type": "String"
-      }
-    }
-  },
   "ViewerAIHint": "The task runs on the other computer with its own AI provider. Your input in the picture pauses it.",
   "ViewerAIHostApproves": "The other computer's user approves this step.",
   "ViewerAIPanel": "AI",
@@ -572,6 +544,7 @@
   "ViewerNoPicture": "This session does not show the screen.",
   "ViewerPasswordAgain": "Enter its password:",
   "ViewerPasswordHint": "Or enter its password:",
+  "ViewerPlaceholder": "The other device can't record its screen yet: this is a placeholder picture.",
   "ViewerPointer": "Pointer",
   "ViewerPointerHint": "Marks where their pointer is, for computers whose picture leaves it out.",
   "ViewerPrivacy": "Privacy mode (their screen goes black)",
@@ -594,5 +567,7 @@
       }
     }
   },
-  "ViewerWaiting": "Waiting for the picture…"
+  "ViewerWaiting": "Waiting for the picture…",
+  "WithoutAskingHint": "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Background service), only the permanent password does. Off: you are always asked.",
+  "WithoutAskingTitle": "Connect without asking"
 }

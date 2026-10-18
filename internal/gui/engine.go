@@ -180,6 +180,11 @@ func (a *App) connectLoop() {
 						go a.Focus()
 					}
 					a.aiStatusChanged(a.status, st)
+					// The shared draft as typed elsewhere, unless this user
+					// is typing.
+					if (a.status == nil || a.status.AIDraft != st.AIDraft) && time.Since(a.ai.draftAt) > draftQuiet {
+						a.ai.draft = st.AIDraft
+					}
 					a.permissionsChanged(st)
 					a.status, a.connected, a.engineErr = st, true, ""
 				})

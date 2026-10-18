@@ -75,8 +75,7 @@ returns the session id at once, progress shows in the status), `password.forget_
 (`{device_id}`), `session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,
 `host.forget`, `identity.export` (`{passphrase}` → `{document}`), `identity.import`
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
-name; the status carries `name` and this device's `about`), `trusted.unattended` (`{key, days}`; 0
-stops it), `permission.request` (`{name}`: `screen`, `accessibility`, `input-monitoring` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens; in the helper the agent asks), `store.start_over` (the saved store cannot be unlocked: it is moved aside and the core rebuilt on a new one → `{kept}`), `agent.restart` (the helper's session agent exits and its supervisor starts it again), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
+name; the status carries `name` and this device's `about`), `access.settings` (`{password_mode?: temporary|permanent|both, without_asking?}`), `permission.request` (`{name}`: `screen`, `accessibility`, `input-monitoring` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens; in the helper the agent asks), `store.start_over` (the saved store cannot be unlocked: it is moved aside and the core rebuilt on a new one → `{kept}`), `agent.restart` (the helper's session agent exits and its supervisor starts it again), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
 passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
 mode), and for AI tasks ([computer-use.md](computer-use.md)):
 `ai.settings.get`, `ai.settings.set` (`{sources?, model?: {source, id}, approval?}`; the answer adds
@@ -84,8 +83,9 @@ mode), and for AI tasks ([computer-use.md](computer-use.md)):
 `ai.models.list` (`{source}` → `{models}`, asks the source), `ai.task.start`
 (`{key, instruction}` → `{id}`; the key makes it idempotent), `ai.task.reply` (`{id, text}`),
 `ai.task.pause`, `ai.task.resume`, `ai.task.cancel` (`{id}`), `ai.task.decide` (`{id, approve}`),
-`ai.tasks` (newest first), `ai.history.clear`, `ai.stop` (cancels every task). The status also
+`ai.tasks` (newest first), `ai.draft.set` (`{text}`: the shared draft of the next instruction), `ai.history.clear`, `ai.stop` (cancels every task). The status also
 carries `permanent_password`, `permissions` (macOS: `{screen, accessibility, input_monitoring, keychain}`, the agent's in the helper; null elsewhere),
+`password_mode` and `without_asking` (the access settings), `ai_draft` (the shared draft),
 `password_grants` (what a correct password grants without asking;
 set with `access.password_grants` `{grants}`), `requests` (open host confirmations, each with
 `password`: whether the controller gave one), `sessions`, `recent` (hosts
@@ -106,10 +106,10 @@ runtime statically, so nothing is resolved through the search path.
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
   `password.set_permanent`, `session.connect`, `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
-  `device.set_name`, `trusted.unattended`, `system.permission` (`{permission}`, macOS), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
+  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,
   `session.media`, `shutdown`, and the AI requests named after the core's
-  methods (`ai.settings.get` … `ai.stop`). `session.media` (`{id}` of a live controller
+  methods (`ai.settings.get` … `ai.stop`, `ai.draft.set`). `session.media` (`{id}` of a live controller
   session) answers OK and then carries length-prefixed packets both ways: video, stats and the
   host's AI task from the engine, control and AI messages from the GUI; the GUI asks for a key frame first. The status includes the open host
   confirmations and the sessions; secrets travel only towards the engine (the network secret, the

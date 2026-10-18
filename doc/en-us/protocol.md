@@ -2,7 +2,7 @@
 
 A controller reaches a host's engine over the EasyTier data plane: TCP to the host's virtual IPv4
 address, port 47310 ([networking.md](networking.md)). EasyTier is an untrusted pipe, so the session
-is authenticated and encrypted end to end on top of it. The protocol version is 5 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes and files on the clipboard, 5 asking without a password).
+is authenticated and encrypted end to end on top of it. The protocol version is 6 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes and files on the clipboard, 5 asking without a password, 6 the host's one AI record and the shared draft).
 
 ## Framing
 
@@ -103,15 +103,16 @@ controller may view the screen: its screen in the codec chosen from `codecs`, or
 | Message | Direction | Needs | Does |
 |---|---|---|---|
 | `{"type": "ai-start", key, instruction}` | controller → host | `run-ai-task` | starts a task on the host for this controller; a repeated key starts one task |
-| `{"type": "ai-command", id, command, text}` | controller → host | `run-ai-task` | `pause`, `resume`, `cancel` or `reply` (with `text`) for a task this controller started |
-| `{"type": "ai-decide", id, approve}` | controller → host | `approve-ai-action` | answers the approval of a task this controller started |
-| `{"type": "ai-task", task}` | host → controller | — | the newest task this controller started, whenever it changes and when a session (re)starts; its latest 20 actions and 3 progress notes |
+| `{"type": "ai-command", id, command, text}` | controller → host | `run-ai-task` | `pause`, `resume`, `cancel` or `reply` (with `text`) for the host's task, whoever started it |
+| `{"type": "ai-decide", id, approve}` | controller → host | `approve-ai-action` | answers the approval of the host's task |
+| `{"type": "ai-draft", text}` | either way | `run-ai-task` (controller → host) | the draft of the next instruction: a controller's reaches the host, which passes the shared draft (as anyone typed it last) to every controller |
+| `{"type": "ai-task", task}` | host → controller | — | the host's newest task, the same for every controller whoever started it, whenever it changes and when a session (re)starts; its latest 20 actions and 3 progress notes |
 | `{"type": "ai-error", error}` | host → controller | — | why a request was refused |
 
 Commands are never sent again after a reconnect; the host sends the current task instead. Input
 from a controller with `control-input` pauses a task that holds the desktop (a take-over) before it
 is injected; pointer moves alone are dropped while a task acts. The controller's engine passes
-`ai-task` and `ai-error` to its GUI as media packets 5 and 6; a newer task replaces one still
+`ai-task`, `ai-error` and `ai-draft` to its GUI as media packets 5, 6 and 10; a newer task replaces one still
 waiting, like the stats (packet 4).
 
 ## Decoders

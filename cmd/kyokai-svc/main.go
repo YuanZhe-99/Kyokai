@@ -12,7 +12,7 @@
 //	kyokai-svc ctl connect --device ID [--want P,P…]
 //	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--text T] [--click X,Y] [--type T] [--keys K,K…] [--action A,A…] [--display N]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
-//	kyokai-svc ctl untrust --key K | forget --device ID | unattended --key K [--days N]
+//	kyokai-svc ctl untrust --key K | forget --device ID | access [--mode temporary|permanent|both] [--without-asking=true|false]
 //	kyokai-svc ctl password-grants --grant P,P…   (what a correct password grants without asking; empty: none)
 //	kyokai-svc ctl background [--on]     (the helper: Background service or Follow GUI)
 //	kyokai-svc ctl move --to SOCKET       (moves the whole store to another engine of this device, which stops this one)
@@ -172,7 +172,8 @@ func ctl(args []string) error {
 	yes := fs.Bool("yes", false, "reset-identity: confirm a new Device ID")
 	from := fs.String("from", "", "helper-update: the app folder holding the signed bundle")
 	to := fs.String("to", "", "move: the socket of the engine that takes over this device's store")
-	days := fs.Int("days", 30, "unattended: how long the device may connect without confirmation (0 stops it)")
+	mode := fs.String("mode", "", "access: which passwords open this host (temporary, permanent, both)")
+	withoutAsking := fs.String("without-asking", "", "access: whether an accepted password admits without asking (true, false)")
 	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached)")
 	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
@@ -210,7 +211,7 @@ func ctl(args []string) error {
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
-		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "unattended": localapi.RequestUnattended, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "helper-update": localapi.RequestHelperUpdate,
+		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "helper-update": localapi.RequestHelperUpdate,
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
@@ -231,8 +232,12 @@ func ctl(args []string) error {
 	switch cmd {
 	case "name-set":
 		req.Name = name
-	case "unattended":
-		req.Days = *days
+	case "access":
+		req.PasswordMode = *mode
+		if *withoutAsking != "" {
+			on := *withoutAsking == "true"
+			req.WithoutAsking = &on
+		}
 	case "password-grants":
 		g := append([]string{}, list(*grant)...) // never null: empty grants nothing
 		req.Grants = &g
@@ -381,11 +386,7 @@ func ctl(args []string) error {
 		}
 	case req.Type == localapi.RequestTrustedList:
 		for _, t := range resp.Trusted {
-			until := "asks"
-			if t.UnattendedUntil != nil {
-				until = "unattended until " + time.Unix(*t.UnattendedUntil, 0).Format(time.DateTime)
-			}
-			fmt.Printf("%s %q  %s  %s  %s\n", t.DeviceID, t.About.Name, strings.Join(t.Granted, ","), until, t.Key)
+			fmt.Printf("%s %q  %s  %s\n", t.DeviceID, t.About.Name, strings.Join(t.Granted, ","), t.Key)
 		}
 	default:
 		fmt.Println("ok")

@@ -183,7 +183,9 @@ them.
 
 A task runs on the host, with the host's provider key, on the host's primary display. The host's
 user starts it on the AI page (or with `kyokai-svc ctl ai-start`). A controller granted
-`run-ai-task` starts and steers its own tasks from the viewer's AI panel
+`run-ai-task` starts tasks and steers the host's task, whoever started it (the host keeps one AI
+record for every controller), from the viewer's AI panel, where the draft of the next instruction
+is shared live with the host's AI page and every other controller
 ([protocol.md](protocol.md), "AI tasks"); with `approve-ai-action` it also answers their approvals,
 which the host's user can always answer too. One task holds the desktop at a time, and starting
 twice with one idempotency key starts one task.

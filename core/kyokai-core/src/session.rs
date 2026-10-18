@@ -846,6 +846,8 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
                 }
                 _ => None,
             };
+            // A password of a kind the host does not accept counts as wrong.
+            let opened = opened.filter(|s| ctx.access.password_mode().accepts(*s));
             let Some(slot) = opened else {
                 ctx.access.failed(from);
                 let _ = ch.send(&refuse(Refusal::Password)).await;
@@ -860,10 +862,10 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     let mut want = client.want.clone();
     want.sort();
     want.dedup();
-    // An unattended grant: a pinned key and the permanent password, while
-    // the grant lasts, need no confirmation.
-    let unattended = (slot == Some(Slot::Permanent))
-        .then(|| ctx.access.unattended(&key_b64, &want))
+    // Nobody at the computer (Background service): the permanent password
+    // admits while Connect without asking is on.
+    let unattended = (slot == Some(Slot::Permanent) && ctx.access.serve() != Serve::All)
+        .then(|| ctx.access.unattended(&key_b64, &device_id, &want))
         .flatten();
     if unattended.is_none() && ctx.access.serve() != Serve::All {
         let _ = ch.send(&refuse(Refusal::Absent)).await;
@@ -1922,7 +1924,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn unattended_grants_need_the_permanent_password_and_follow_whom_the_host_serves() {
+    async fn connect_without_asking_and_the_accepted_passwords_decide_admission() {
         let host = device("1.0.0");
         let controller = device("1.0.1");
         {
@@ -1933,64 +1935,68 @@ mod tests {
                 .set_permanent(host.access.secrets(), Some("long-lived-pw"), &key)
                 .unwrap();
         }
+        // What a password grants without asking (the test devices grant
+        // nothing by default).
+        host.access
+            .set_password_grants(vec![Permission::ViewScreen])
+            .unwrap();
         let dialed = host.identity.device_id();
         let view = vec![Permission::ViewScreen];
-        // The first session is confirmed; then the host grants 30 days.
-        let id = attempt(&host, &controller, &dialed, "k7mq2xpa", Some(view.clone())).await;
-        assert_eq!(session(&controller, id)["state"], "connected");
-        controller.sessions.close(id).unwrap();
-        let key = host.access.trusted().into_keys().next().unwrap();
-        host.access.set_unattended(&key, 30).unwrap();
-        let fresh = |c: &Arc<Ctx>| {
-            // Each attempt below looks at the newest session only.
-            let list = c.sessions.list();
-            list.as_array().unwrap().last().unwrap().clone()
+        let try_pw = |pw: &'static str, decide: Option<Vec<Permission>>| {
+            let (host, controller, dialed, view) = (
+                host.clone(),
+                controller.clone(),
+                dialed.clone(),
+                view.clone(),
+            );
+            async move {
+                let id = attempt_with(&host, &controller, &dialed, pw, decide, view).await;
+                let s = session(&controller, id);
+                if s["state"] == "connected" {
+                    controller.sessions.close(id).unwrap();
+                }
+                s
+            }
         };
-        // Permanent password: in at once, no confirmation, even when only
-        // unattended grants are served.
+        // Nobody at the computer (Background service): the permanent
+        // password admits, Connect without asking being on by default,
+        // with what a password grants; the temporary one finds nobody.
         host.access.set_serve(Serve::Unattended);
-        let id = attempt_with(
-            &host,
-            &controller,
-            &dialed,
-            "long-lived-pw",
-            None,
-            view.clone(),
-        )
-        .await;
+        let s = try_pw("long-lived-pw", None).await;
+        assert_eq!(s["state"], "connected", "{s}");
+        assert_eq!(s["granted"], json!(["view-screen"]));
         assert_eq!(
-            session(&controller, id)["state"],
-            "connected",
-            "{}",
-            fresh(&controller)
-        );
-        assert_eq!(session(&controller, id)["granted"], json!(["view-screen"]));
-        controller.sessions.close(id).unwrap();
-        // The temporary password needs someone to confirm: nobody is there.
-        let id = attempt_with(&host, &controller, &dialed, "k7mq2xpa", None, view.clone()).await;
-        assert_eq!(
-            session(&controller, id)["failure"],
+            try_pw("k7mq2xpa", None).await["failure"],
             json!({"refused": "absent"})
         );
-        // A host that serves no one refuses even the unattended grant.
-        host.access.set_serve(Serve::None);
-        let id = attempt_with(
-            &host,
-            &controller,
-            &dialed,
-            "long-lived-pw",
-            None,
-            view.clone(),
-        )
-        .await;
+        // Turned off, even the permanent password finds nobody to ask.
+        host.access.set_without_asking(false).unwrap();
         assert_eq!(
-            session(&controller, id)["failure"],
+            try_pw("long-lived-pw", None).await["failure"],
             json!({"refused": "absent"})
         );
-        // An expired or withdrawn grant asks again.
+        // With someone there, a correct password asks (and is denied here).
         host.access.set_serve(Serve::All);
-        host.access.set_unattended(&key, 0).unwrap();
-        assert!(host.access.unattended(&key, &view).is_none());
+        assert_eq!(
+            try_pw("k7mq2xpa", None).await["failure"],
+            json!({"refused": "denied"})
+        );
+        // Only the permanent password accepted: the temporary one is wrong.
+        host.access.set_without_asking(true).unwrap();
+        host.access
+            .set_password_mode(crate::access::PasswordMode::Permanent)
+            .unwrap();
+        assert_eq!(
+            try_pw("k7mq2xpa", None).await["failure"],
+            json!({"refused": "password"})
+        );
+        assert_eq!(try_pw("long-lived-pw", None).await["state"], "connected");
+        // A host that serves no one refuses even the permanent password.
+        host.access.set_serve(Serve::None);
+        assert_eq!(
+            try_pw("long-lived-pw", None).await["failure"],
+            json!({"refused": "absent"})
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

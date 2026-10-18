@@ -16,10 +16,16 @@ import (
 const (
 	packetAITask  byte = 5
 	packetAIError byte = 6
+	packetAIDraft byte = 10
 )
 
+// draftQuiet is how long after typing a draft typed elsewhere is not shown
+// over what is being typed.
+const draftQuiet = time.Second
+
 // viewerAI is the viewer's AI panel state (guarded by viewer.mu): the task
-// this controller started on the host, as the host last reported it.
+// on the host — one record for every controller, whoever started it —
+// as the host last reported it, and the shared draft of the next one.
 type viewerAI struct {
 	// run and approve are the session's run-ai-task and approve-ai-action.
 	run, approve bool
@@ -28,7 +34,9 @@ type viewerAI struct {
 	task   *localapi.AITask
 	err    string
 	draft  string
-	reply  string
+	// draftAt is when this viewer's user last typed the draft.
+	draftAt time.Time
+	reply   string
 }
 
 // aiShown reports whether the panel shows: the session may run AI tasks,
@@ -49,6 +57,17 @@ func (v *viewer) aiPacket(kind byte, body []byte) {
 			v.ai.task, v.ai.err = &task, ""
 			v.mu.Unlock()
 		})
+	case kind == packetAIDraft:
+		var d struct{ Text string }
+		if json.Unmarshal(body, &d) == nil {
+			v.update(func() {
+				v.mu.Lock()
+				if time.Since(v.ai.draftAt) > draftQuiet {
+					v.ai.draft = d.Text
+				}
+				v.mu.Unlock()
+			})
+		}
 	case kind == packetAIError && json.Unmarshal(body, &refused) == nil:
 		v.update(func() {
 			v.mu.Lock()
@@ -112,8 +131,10 @@ func (v *viewer) aiPanel(c *ui.Context) {
 		draft := st.draft
 		if ui.TextArea(c.Key("v-ai-draft"), &draft).FillWidth().MinHeight(inputAreaH).Changed() {
 			v.mu.Lock()
-			v.ai.draft = draft
+			v.ai.draft, v.ai.draftAt = draft, time.Now()
 			v.mu.Unlock()
+			// Shared through the host with its user and other controllers.
+			v.sendControl(map[string]any{"type": "ai-draft", "text": draft})
 		}
 		ui.Row(c).Children(func() {
 			if ui.Button(c.Key("v-ai-start"), L.AIActionStart()).Disabled(strings.TrimSpace(draft) == "").Clicked() {

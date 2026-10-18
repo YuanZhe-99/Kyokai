@@ -267,7 +267,7 @@ func (a *App) devicesCard(c *ui.Context) {
 
 // deviceCard is one device's card.
 func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
-	state, col := L.DeviceLast(time.Unix(r.last, 0).Local().Format(time.DateTime)), t.TextMuted
+	state, col := L.DeviceLast(time.Unix(r.last, 0).Local().Format("2006-01-02 15:04")), t.TextMuted
 	if r.last == 0 {
 		state = ""
 	}
@@ -296,7 +296,7 @@ func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
 					if name == "" {
 						name = groupDigits(r.id)
 					}
-					ui.Text(c, name).Bold().Ellipsis("…").NoWrap()
+					ui.Text(c, name).Bold().Ellipsis("…").NoWrap().MaxWidth(deviceCardW - 24 - avatarSize - 48)
 					if r.about.Name != "" {
 						ui.Text(c, groupDigits(r.id)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
 					}
@@ -323,13 +323,14 @@ func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
 					}
 				})
 			})
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 				dot := t.TextMuted.Alpha(0.5)
 				if online {
 					dot = t.Success
 				}
 				ui.Box(c).Width(onlineDot).Height(onlineDot).Radius(onlineDot / 2).Background(dot)
-				ui.Text(c, state).FontSize(sizeSmall).TextColor(col).Ellipsis("…").NoWrap().Grow(1)
+				// The card's width less its padding, the dot and the gap.
+				ui.Text(c, state).FontSize(sizeSmall).TextColor(col).Ellipsis("…").NoWrap().MaxWidth(deviceCardW - 24 - onlineDot - 6).Tooltip(state)
 			})
 			if r.saved {
 				ui.Text(c, L.ConnectPasswordSaved()).FontSize(sizeSmall).TextColor(t.TextMuted)
@@ -442,6 +443,32 @@ func permissionLabel(p string) string {
 	return p
 }
 
+// passwordModes are the accepted passwords' choices, in the order shown.
+var passwordModes = []string{"temporary", "permanent", "both"}
+
+// acceptSettings is how this host accepts a connection: which passwords
+// open it and whether an accepted password admits without asking.
+func (a *App) acceptSettings(c *ui.Context, mode string, without, hasPermanent, busy bool) {
+	idx := slices.Index(passwordModes, mode)
+	if idx < 0 {
+		idx = 2
+	}
+	settingRow(c, "pw-mode", L.PasswordModeTitle(), L.PasswordModeHint(), func() {
+		if ui.Segmented(c.Key("pw-mode-seg"), &idx, L.PasswordModeTemporary(), L.PasswordModePermanent(), L.PasswordModeBoth()).Disabled(busy).Changed() {
+			a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, PasswordMode: passwordModes[idx]}, nil)
+		}
+	})
+	if passwordModes[idx] == "permanent" && !hasPermanent {
+		ui.Text(c, L.PasswordModeNeedsPermanent()).FontSize(sizeSmall).TextColor(c.Theme().Warning)
+	}
+	settingRow(c, "without-asking", L.WithoutAskingTitle(), L.WithoutAskingHint(), func() {
+		if ui.Switch(c.Key("without-asking-sw"), &without).Label(L.WithoutAskingTitle()).Disabled(busy).Changed() {
+			on := without
+			a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, WithoutAsking: &on}, nil)
+		}
+	})
+}
+
 // accessSettings is Settings' card for the permanent password and the
 // trusted devices.
 func (a *App) accessSettings(c *ui.Context) {
@@ -449,6 +476,7 @@ func (a *App) accessSettings(c *ui.Context) {
 	a.mu.Lock()
 	f, busy, hasPermanent := a.access, a.busy["access"], a.status.PermanentPassword
 	grants := slices.Clone(a.status.PasswordGrants)
+	mode, without := a.status.PasswordMode, a.status.WithoutAsking
 	a.mu.Unlock()
 	if !f.loaded && !busy {
 		a.loadTrusted()
@@ -479,7 +507,10 @@ func (a *App) accessSettings(c *ui.Context) {
 			}
 		})
 		ui.Divider(c)
-		a.passwordGrants(c, grants, busy)
+		a.acceptSettings(c, mode, without, hasPermanent, busy)
+		if without {
+			a.passwordGrants(c, grants, busy)
+		}
 		ui.Divider(c)
 		ui.Text(c, L.TrustedTitle())
 		ui.Text(c, L.TrustedHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
@@ -488,27 +519,7 @@ func (a *App) accessSettings(c *ui.Context) {
 		}
 		for _, d := range f.trusted {
 			hint := L.TrustedLast(time.Unix(d.Last, 0).Local().Format(time.DateTime))
-			if d.UnattendedUntil != nil {
-				hint = L.TrustedUnattendedUntil(time.Unix(*d.UnattendedUntil, 0).Local().Format(time.DateTime))
-			}
 			settingRow(c, "trust-"+d.Key, deviceTitle(d.About, d.DeviceID), hint, func() {
-				on := d.UnattendedUntil != nil
-				sw := ui.Switch(c.Key("trust-un-"+d.Key), &on).Label(L.TrustedUnattended()).Disabled(busy || !hasPermanent && !on)
-				if !hasPermanent && !on {
-					sw.Tooltip(L.TrustedUnattendedNeedsPermanent())
-				} else {
-					sw.Tooltip(L.TrustedUnattendedHint())
-				}
-				if sw.Changed() {
-					days := 0
-					if on {
-						days = 30
-					}
-					a.accessCommand(localapi.Request{Type: localapi.RequestUnattended, Key: d.Key, Days: days}, func() {
-						a.access.loaded = false // fetch the list again
-					})
-				}
-				ui.Text(c, L.TrustedUnattended()).FontSize(sizeSmall)
 				if ui.Button(c.Key("trust-rm-"+d.Key), L.ActionRemove()).Disabled(busy).Clicked() {
 					a.untrust(d.Key)
 				}

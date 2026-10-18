@@ -791,10 +791,23 @@ fn call(input: &[u8]) -> Result<Value, String> {
                     .map_err(|e| format!("bad permissions: {e}"))?;
             try_core(|c| c.ctx.access.set_password_grants(grants).map(|()| json!({})))
         }
-        "trusted.unattended" => {
-            let key = req.params["key"].as_str().ok_or("bad key")?.to_owned();
-            let days = req.params["days"].as_u64().ok_or("bad days")?;
-            try_core(|c| c.ctx.access.set_unattended(&key, days).map(|()| json!({})))
+        "access.settings" => {
+            #[derive(Deserialize)]
+            struct Settings {
+                password_mode: Option<access::PasswordMode>,
+                without_asking: Option<bool>,
+            }
+            let p: Settings = serde_json::from_value(req.params)
+                .map_err(|e| format!("bad access settings: {e}"))?;
+            try_core(|c| {
+                if let Some(m) = p.password_mode {
+                    c.ctx.access.set_password_mode(m)?;
+                }
+                if let Some(on) = p.without_asking {
+                    c.ctx.access.set_without_asking(on)?;
+                }
+                Ok(json!({}))
+            })
         }
         "trusted.list" => with_core(|c| {
             c.ctx
@@ -809,7 +822,6 @@ fn call(input: &[u8]) -> Result<Value, String> {
                         "last": t.last,
                         "granted": t.granted,
                         "about": t.about,
-                        "unattended_until": t.unattended_until,
                     })
                 })
                 .collect::<Value>()
@@ -929,6 +941,8 @@ fn status() -> Value {
             "network": c.network.status(),
             "permanent_password": c.ctx.access.slots.lock().is_ok_and(|s| s.has_permanent()),
             "password_grants": c.ctx.access.password_grants(),
+            "password_mode": c.ctx.access.password_mode(),
+            "without_asking": c.ctx.access.without_asking(),
             "permissions": permissions(c.persistence),
             "ai": c.ctx.ai.active(),
             "ai_draft": c.ctx.ai.draft().1,
