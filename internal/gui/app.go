@@ -167,6 +167,20 @@ func (a *App) SetVisible(v bool) {
 	a.mu.Lock()
 	a.visible = v
 	a.mu.Unlock()
+	a.syncDock()
+}
+
+// syncDock shows the Dock icon while a Kyokai window is open and hides it
+// while only the tray is left (macOS; elsewhere it does nothing).
+func (a *App) syncDock() {
+	a.mu.Lock()
+	open := a.visible || len(a.viewerWins) > 0
+	a.mu.Unlock()
+	policy := mygo.ActivationPolicyAccessory
+	if open {
+		policy = mygo.ActivationPolicyRegular
+	}
+	mygo.App.SetActivationPolicy(policy)
 }
 
 // Start connects to the engine (starting it when needed) and begins the
@@ -194,9 +208,10 @@ func (a *App) Focus() {
 	if w == nil {
 		return
 	}
+	// The Dock icon first: an accessory app's window does not come forward.
+	a.SetVisible(true)
 	w.Show()
 	w.Focus()
-	a.SetVisible(true)
 }
 
 // Quit ends the app; the engine stops with it.

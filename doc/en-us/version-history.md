@@ -1,5 +1,12 @@
 # Version history
 
+## 0.1.2 (2026-10-18)
+
+- macOS: the Dock icon is shown only while a Kyokai window is open; with only the menu bar icon
+  left, Kyokai leaves the Dock and the app switcher.
+- Checked (2026-10-18): MyGo v0.5.5, EasyTier v2.7.0 (commit `8b7f1f0`), RustDesk 1.5.0, vcpkg
+  2026.07.29 and Rust 1.99.1 are the latest; checked, unchanged.
+
 ## 0.1.1 (2026-10-17)
 
 The macOS release (Apple silicon, Intel), and connections reworked after RustDesk.

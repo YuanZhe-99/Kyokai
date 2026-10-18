@@ -140,6 +140,9 @@ when `SCREENSHOT_DIR` is set.
 - Closing the window hides it to the tray and says so the first time; without a tray, or with
   "Quit" chosen for the close button, closing quits. Quitting the app itself (its menu, the Dock,
   logging out or shutting down) always quits.
+- On macOS the Dock icon is shown only while a Kyokai window is open (the main window or a
+  connection's own window); with only the menu bar icon left, Kyokai leaves the Dock and the app
+  switcher, and opening the window brings the icon back.
 
 ## Languages
 

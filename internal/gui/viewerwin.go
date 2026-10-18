@@ -50,12 +50,14 @@ func (a *App) newViewerWindow() *viewerWindow {
 	show := a.prefs.ShowInCapture
 	a.viewerWins = append(a.viewerWins, vw)
 	a.mu.Unlock()
+	a.syncDock()
 	vw.win.SetContentProtection(!show)
 	vw.watchFullScreen()
 	vw.win.OnClosed(func() {
 		a.mu.Lock()
 		a.viewerWins = slices.DeleteFunc(a.viewerWins, func(w *viewerWindow) bool { return w == vw })
 		a.mu.Unlock()
+		a.syncDock()
 		vw.mu.Lock()
 		tabs := vw.tabs
 		vw.tabs = nil
