@@ -719,38 +719,77 @@ func TestLiveSound(t *testing.T) {
 	s := newLiveSound(func() int64 { return played }, func() time.Time { return clock })
 	packet := make([]float32, soundRate/100*soundChannels) // 10 ms
 	buf := make([]float32, 1<<16)
-	s.feed(packet)
-	if n, err := s.Read(buf); n != len(packet) || err != nil {
-		t.Fatalf("read %d %v", n, err)
+	tick := func() { clock = clock.Add(10 * time.Millisecond) }
+	ahead := func() int64 { return s.handed + int64(len(s.buf)/soundChannels) - played }
+	read := func() int {
+		t.Helper()
+		got := make(chan int)
+		go func() { n, _ := s.Read(buf); got <- n }()
+		select {
+		case n := <-got:
+			return n
+		case <-time.After(time.Second):
+			t.Fatal("Read waits")
+			return 0
+		}
 	}
-	// A burst: no more than the target waits; the oldest goes.
-	for range 20 {
+	// Nothing plays before the target is gathered: playing as each packet
+	// came would run dry between them.
+	for range soundStart/(soundRate/100) - 1 {
+		s.feed(packet)
+		tick()
+	}
+	if !s.filling {
+		t.Fatal("played before the target was gathered")
+	}
+	s.feed(packet)
+	if n := read(); n != soundStart*soundChannels {
+		t.Fatalf("first read %d samples, want the target", n)
+	}
+	// Played steadily, sound passes on as it comes.
+	played += soundRate / 100
+	tick()
+	s.feed(packet)
+	if n := read(); n != len(packet) {
+		t.Fatalf("steady read %d", n)
+	}
+	// A burst beyond the target and its slack is cut back to the target.
+	for range soundSlack / (soundRate / 100) {
 		s.feed(packet)
 	}
-	waiting := func() int64 { return s.handed + int64(len(s.buf)/soundChannels) - played }
-	if w := waiting(); w != soundMin {
-		t.Fatalf("waiting %d frames, want %d", w, soundMin)
+	if a := ahead(); a != s.target+soundSlack {
+		t.Fatalf("%d frames ahead within the slack", a)
 	}
-	// Playing ran dry while sound came: the target grows.
-	s.Read(buf)
-	played = s.handed
-	clock = clock.Add(20 * time.Millisecond)
 	s.feed(packet)
-	if s.target != soundMin+soundGrow {
-		t.Fatalf("target %d after running dry", s.target)
+	if a := ahead(); a != s.target {
+		t.Fatalf("%d frames ahead after a burst, want %d", a, s.target)
 	}
-	// After the host's silence (a long pause) it does not.
-	s.Read(buf)
+	// Playing ran dry while sound came (jitter): it gathers again, more.
+	played = s.handed
+	tick()
+	s.feed(packet)
+	if !s.filling || s.target != soundStart+soundGrow {
+		t.Fatalf("after running dry: filling %v, target %d", s.filling, s.target)
+	}
+	for range (soundStart + soundGrow) / (soundRate / 100) {
+		s.feed(packet)
+	}
+	read()
+	// After the host's silence (a long pause) it gathers the same target.
 	played = s.handed
 	clock = clock.Add(time.Second)
 	s.feed(packet)
-	if s.target != soundMin+soundGrow {
-		t.Fatalf("target %d after silence", s.target)
+	if !s.filling || s.target != soundStart+soundGrow {
+		t.Fatalf("after silence: filling %v, target %d", s.filling, s.target)
 	}
+	for range s.target / (soundRate / 100) {
+		s.feed(packet)
+	}
+	read()
 	// A calm spell lowers it again.
 	clock = clock.Add(soundCalm + time.Second)
 	s.feed(packet)
-	if s.target != soundMin+soundGrow-soundShrink {
+	if s.target != soundStart+soundGrow-soundShrink {
 		t.Fatalf("target %d after calm", s.target)
 	}
 	done := make(chan error)

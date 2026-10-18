@@ -116,13 +116,17 @@ output device or the input device, in their own format. It turns the sound into 
 low-delay mode at 96 kbit/s (`opus.rs`, libopus built by vcpkg; as RustDesk's), and sends none after
 half a second of silence until sound returns (RustDesk's zero gate). In the helper's modes the
 session agent captures and encodes it and the link carries the packets. The packets travel as
-plaintexts tagged `0x04`, beside the video and outside its acknowledgements; a session that falls
+plaintexts tagged `0x04`, beside the video and outside its acknowledgements, and sound waiting
+while a picture is sent goes between its chunks; a session that falls
 behind drops sound (at most half a second waits in the host, 200 ms in the controller's queue). The
 viewer decodes them in its own copy of the core (`kyokai_audio_*`) and plays them through MyGo's
-audio output with an adaptive buffer: it keeps a target ahead of what was played that starts at 40
-ms, grows by 20 ms each time playing ran dry while sound came (a pause over 300 ms is the host's
-silence, not jitter), up to 300 ms, and shrinks by 10 ms after 10 s without that; sound beyond it
-goes, oldest first, so the sound stays with the picture (RustDesk keeps up to 3 s). The bar's
+audio output through a jitter buffer: it holds sound back until a target is gathered, at the start
+and each time playing ran dry, then passes it on as it comes. The target starts at 80 ms, grows by
+40 ms each time playing ran dry while sound came (a pause over 300 ms is the host's silence, not
+jitter), up to 400 ms, and shrinks by 10 ms after 10 s without that, down to 40 ms; sound more than
+60 ms beyond it is cut back to it, oldest first, so the sound stays with the picture. RustDesk
+plays each packet as it comes from a buffer of up to 3 s, fades over 5 ms where it runs dry, and
+trims the buffer when it stays above 600 ms. The bar's
 **Sound** switch (on unless chosen, kept for each device) stops playing and asks the host to stop
 capturing. On this Mac (2026-10-18) an 8-second watch received 386 packets, 7.7 s of sound, with
 the picture, and the input list named the built-in microphone.

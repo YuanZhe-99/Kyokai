@@ -1304,6 +1304,14 @@ async fn seal<W: AsyncWrite + Unpin>(
     step(write_frame(w, &buf[..n])).await
 }
 
+/// Tags one Opus packet of the host's sound for the wire.
+fn sound_packet(opus: &[u8]) -> Vec<u8> {
+    let mut packet = Vec::with_capacity(1 + opus.len());
+    packet.push(media::AUDIO_TAG);
+    packet.extend_from_slice(opus);
+    packet
+}
+
 /// Starts a plaintext that is one part of a message longer than a frame.
 const PART_TAG: u8 = 0x02;
 /// Bytes before a part's piece: the tag, its index and the count (u16 each).
@@ -1648,10 +1656,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     None => std::future::pending().await,
                 }
             } => {
-                let mut packet = Vec::with_capacity(1 + p.len());
-                packet.push(media::AUDIO_TAG);
-                packet.extend_from_slice(&p);
-                seal(&mut noise, &mut buf, &mut wr, &packet).await?;
+                seal(&mut noise, &mut buf, &mut wr, &sound_packet(&p)).await?;
             }
             _ = &mut video_wait, if wants_video && source.is_none() => {
                 // A controller that names no codecs gets H.264.
@@ -1716,6 +1721,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 took_this_second += u64::from(f.took_us);
                 for chunk in media::chunks(frame_no, f.flags, f.pts, &f.data, MAX_PLAINTEXT) {
                     seal(&mut noise, &mut buf, &mut wr, &chunk).await?;
+                    // Sound that came meanwhile goes between the chunks: a
+                    // large picture does not hold it up.
+                    while let Some(p) = sound.as_mut().and_then(|s| s.packets.try_recv().ok()) {
+                        seal(&mut noise, &mut buf, &mut wr, &sound_packet(&p)).await?;
+                    }
                 }
             }
             Some(msg) = async {

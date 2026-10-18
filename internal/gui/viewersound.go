@@ -16,49 +16,58 @@ const (
 	soundRate     = 48000
 	soundChannels = 2
 	// The sound kept ahead of what was played, in frames: a target that
-	// starts at soundMin, grows by soundGrow each time playing ran dry while
-	// sound came (the network's jitter), up to soundMax, and shrinks by
-	// soundShrink after soundCalm without that. Sound beyond it (a burst,
-	// a host whose clock runs fast) is left out, oldest first, so the sound
-	// stays with the picture.
+	// starts at soundStart, grows by soundGrow each time playing ran dry
+	// while sound came (the network's jitter), up to soundMax, and shrinks
+	// by soundShrink after soundCalm without that, down to soundMin.
+	soundStart  = soundRate * 80 / 1000
 	soundMin    = soundRate * 40 / 1000
-	soundMax    = soundRate * 300 / 1000
-	soundGrow   = soundRate * 20 / 1000
+	soundMax    = soundRate * 400 / 1000
+	soundGrow   = soundRate * 40 / 1000
 	soundShrink = soundRate * 10 / 1000
 	soundCalm   = 10 * time.Second
+	// soundSlack: sound ahead beyond target+soundSlack (a burst, a host
+	// whose clock runs fast) is cut back to the target, oldest first, so
+	// the sound stays with the picture.
+	soundSlack = soundRate * 60 / 1000
+	// soundDry: no more than this ahead is playing that ran dry (the
+	// player's interpolation keeps a few frames).
+	soundDry = soundRate / 1000
 	// soundGap: a pause longer than this is the host's silence, not jitter.
 	soundGap = 300 * time.Millisecond
 	// soundPacket is room for one decoded packet (Opus' longest, 120 ms).
 	soundPacket = soundRate * 120 / 1000 * soundChannels
 )
 
-// liveSound is the host's sound as MyGo's player reads it (audio.Decoder):
-// what has arrived, up to an adaptive target ahead of what was played.
+// liveSound is the host's sound as MyGo's player reads it (audio.Decoder),
+// a jitter buffer: it holds sound back until the target is buffered, at the
+// start and whenever playing ran dry, then hands it on as it comes.
 type liveSound struct {
 	mu   sync.Mutex
 	cond sync.Cond
 	buf  []float32
 	// handed: the frames given to the player; played reports the frames it
-	// played (its position), so the difference is what waits to be heard.
+	// played (its position), so the difference is what it holds.
 	handed int64
 	played func() int64
 	now    func() time.Time
-	// target is the frames kept ahead; last when sound last came; calm
-	// since when playing has not run dry.
+	// target is the frames kept ahead; filling while they are gathered;
+	// last when sound last came; calm since when playing has not run dry.
 	target     int64
+	filling    bool
 	last, calm time.Time
 	closed     bool
 }
 
 func newLiveSound(played func() int64, now func() time.Time) *liveSound {
-	s := &liveSound{played: played, now: now, target: soundMin}
+	s := &liveSound{played: played, now: now, target: soundStart, filling: true}
 	s.cond.L = &s.mu
 	return s
 }
 
-// feed adds decoded sound and keeps what waits to be heard within the
-// target: playing that ran dry raises it, a calm spell lowers it, and the
-// oldest sound not handed yet goes beyond it.
+// feed adds decoded sound. Playing that ran dry gathers the target again
+// (a larger one when it was jitter, not the host's silence); a calm spell
+// lowers the target; sound far beyond it is cut back.
+// Side effects: wakes the player's Read once sound may be handed on.
 func (s *liveSound) feed(pcm []float32) {
 	now := s.now()
 	s.mu.Lock()
@@ -66,23 +75,32 @@ func (s *liveSound) feed(pcm []float32) {
 	if s.closed {
 		return
 	}
-	played := s.played()
-	waiting := s.handed + int64(len(s.buf)/soundChannels) - played
+	held := s.handed - s.played()
 	switch {
-	case s.last.IsZero():
+	case !s.filling && held <= soundDry && len(s.buf) == 0:
+		s.filling = true
+		if now.Sub(s.last) < soundGap {
+			s.target, s.calm = min(s.target+soundGrow, soundMax), now
+		}
+	case s.calm.IsZero():
 		s.calm = now
-	case waiting <= 0 && now.Sub(s.last) < soundGap:
-		s.target, s.calm = min(s.target+soundGrow, soundMax), now
 	case now.Sub(s.calm) > soundCalm:
 		s.target, s.calm = max(s.target-soundShrink, soundMin), now
 	}
 	s.last = now
 	s.buf = append(s.buf, pcm...)
-	if over := s.handed + int64(len(s.buf)/soundChannels) - played - s.target; over > 0 {
+	ahead := held + int64(len(s.buf)/soundChannels)
+	if over := ahead - s.target; s.filling && over > 0 || over > soundSlack {
 		drop := int(min(over, int64(len(s.buf)/soundChannels))) * soundChannels
 		s.buf = append(s.buf[:0], s.buf[drop:]...)
+		ahead -= int64(drop / soundChannels)
 	}
-	s.cond.Signal()
+	if s.filling && ahead >= s.target {
+		s.filling = false
+	}
+	if !s.filling {
+		s.cond.Signal()
+	}
 }
 
 // close ends the sound: the player's next read ends it.
@@ -99,11 +117,12 @@ func (s *liveSound) SampleRate() int { return soundRate }
 // Channels is the sound's channels: stereo.
 func (s *liveSound) Channels() int { return soundChannels }
 
-// Read waits for sound and hands over what arrived, whole frames.
+// Read waits until sound may be handed on and hands over what arrived,
+// whole frames.
 func (s *liveSound) Read(buf []float32) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for len(s.buf) == 0 && !s.closed {
+	for (s.filling || len(s.buf) == 0) && !s.closed {
 		s.cond.Wait()
 	}
 	if s.closed {

@@ -83,6 +83,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | Swap Ctrl and Cmd | 交换 Ctrl 与 Cmd |
 | Sound (the host's, in the viewer) | 声音 |
 | Hear sound (permission) / Sound to share | 听到声音 / 共享的声音 |
+| jitter buffer | 抖动缓冲 |
 | event tap (macOS) | 事件监听 |
 | in hardware / in software (an encoder, a decoder) | 硬件 / 软件 |
 | direct (path) | 直连 |

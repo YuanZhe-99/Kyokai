@@ -31,7 +31,7 @@
   Swap Ctrl and Cmd is on by default between a Mac and Windows; each device's viewer settings are
   remembered. The Mac grab no longer freezes other programs' keyboards. Sound: the viewer plays
   what the other computer plays (Opus 1.5.2, ScreenCaptureKit and WASAPI loopback), with a Sound
-  switch; 10 ms low-delay packets, none while the host is silent, an adaptive buffer of 40–300 ms,
+  switch; 10 ms low-delay packets, none while the host is silent, a jitter buffer of 40–400 ms that gathers its target before playing,
   its own Hear sound permission (on by default) and the sound to share chosen in Settings (what the
   computer plays, or an input such as a microphone).
 - Wire protocol 10 (a 0.1.3 device connects only to 0.1.3), FFI ABI 5, local API 2.
