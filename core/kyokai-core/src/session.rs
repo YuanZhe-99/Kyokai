@@ -3980,7 +3980,7 @@ mod tests {
     /// the host is left with no session.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn identify_learns_the_device_id_at_an_address() {
-        let host = device("0.2.1");
+        let host = device("0.3.0");
         let (a, b) = tokio::io::duplex(1 << 16);
         tokio::spawn(serve(host.clone(), b, "192.168.1.20".parse().unwrap()));
         assert_eq!(identify(a).await.unwrap(), host.identity.device_id());
@@ -3992,7 +3992,7 @@ mod tests {
     /// its finished session).
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn removing_a_host_drops_its_sessions_from_the_list() {
-        let (host, controller) = (device("0.2.1"), device("0.2.1"));
+        let (host, controller) = (device("0.3.0"), device("0.3.0"));
         let dialed = host.identity.device_id();
         // Refused: a finished session.
         attempt(&host, &controller, &dialed, "", None).await;
@@ -4047,7 +4047,7 @@ mod tests {
         if std::net::TcpListener::bind(("0.0.0.0", crate::net::KYOKAI_PORT)).is_err() {
             return eprintln!("skipped: port 47310 is taken on this computer");
         }
-        let host = device("0.2.1");
+        let host = device("0.3.0");
         let mut net =
             crate::net::Network::start(host.access.secrets(), host.clone(), false).unwrap();
         let on = |ranges: &[&str]| ByAddress {

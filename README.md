@@ -6,7 +6,7 @@ Kyokai is a cross-platform Computer Use application that enables people and AI a
 with computers across devices. It combines secure peer-to-peer connectivity, direct human control,
 and host-side AI execution in one unified experience.
 
-> **Status:** 0.2.1: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
+> **Status:** 0.3.0: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
 > connections, manual control, AI tasks and the optional privileged helper work on both; more
 > viewer controls and the remaining macOS checks follow. See [PLAN.md](PLAN.md), the
 > [platform notes](doc/en-us/platform-notes.md) (what was verified where) and the
