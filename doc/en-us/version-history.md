@@ -9,6 +9,9 @@
   The Network page's direct addresses, which joined EasyTier nodes by address, are gone.
 - Recent: Remove now takes a device off for good (its finished connections brought it back), and
   Rename… gives a device a name shown only on this computer.
+- The viewer: its bars wrap onto more lines in a narrow window (the controls ran off the edge), and
+  the status line folds away entirely (⌄), leaving a small ⌃ tab to pull it out again, kept for
+  each device.
 - No logs (Settings, Storage; off by default, turned on after a warning): no logs or crash traces
   are written and those written are deleted, and trusted devices and Recent are kept in memory only.
 - Protected mode (Settings, Access; needs a permanent password): Kyokai offers only the AI settings

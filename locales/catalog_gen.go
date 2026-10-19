@@ -3724,6 +3724,16 @@ func (msgs Messages) ViewerFullScreen() string {
 	return Catalog.Format(msgs.locale, "ViewerFullScreen", nil)
 }
 
+// ViewerHideBar says "Hide controls"
+// in the language the app shows.
+func ViewerHideBar() string { return In(i18n.Locale()).ViewerHideBar() }
+
+// ViewerHideBar says "Hide controls"
+// in the language of msgs.
+func (msgs Messages) ViewerHideBar() string {
+	return Catalog.Format(msgs.locale, "ViewerHideBar", nil)
+}
+
 // ViewerImplHardware says "{name} in hardware"
 // in the language the app shows.
 func ViewerImplHardware(name string) string { return In(i18n.Locale()).ViewerImplHardware(name) }
@@ -3922,6 +3932,16 @@ func ViewerRelayedHint() string { return In(i18n.Locale()).ViewerRelayedHint() }
 // in the language of msgs.
 func (msgs Messages) ViewerRelayedHint() string {
 	return Catalog.Format(msgs.locale, "ViewerRelayedHint", nil)
+}
+
+// ViewerShowBar says "Show controls"
+// in the language the app shows.
+func ViewerShowBar() string { return In(i18n.Locale()).ViewerShowBar() }
+
+// ViewerShowBar says "Show controls"
+// in the language of msgs.
+func (msgs Messages) ViewerShowBar() string {
+	return Catalog.Format(msgs.locale, "ViewerShowBar", nil)
 }
 
 // ViewerSound says "Sound"

@@ -124,6 +124,9 @@ type viewer struct {
 	title string
 	// want is what the connection asks the device for.
 	want []string
+	// collapsed: the bottom bar is folded down to the Device ID and Show
+	// controls; guarded by mu.
+	collapsed bool
 	// address is where the connection dials the device (an IP address
 	// or domain name), empty over the network; guarded by mu.
 	address string
@@ -250,7 +253,7 @@ func (a *App) newViewer(device string, about localapi.About, want []string) *vie
 		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto"}
 	// The settings chosen for this device last time.
 	if vp, ok := a.viewerPrefs(device); ok {
-		v.preset, v.full, v.swap, v.mute = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap, vp.Mute
+		v.preset, v.full, v.swap, v.mute, v.collapsed = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap, vp.Mute, vp.Collapsed
 		if slices.Contains(fpsCaps, vp.FPS) {
 			v.fpsCap = vp.FPS
 		}
@@ -926,7 +929,7 @@ func (v *viewer) actionBar(c *ui.Context, a hostActions) {
 	action := func(name string) {
 		v.sendControl(map[string]any{"type": "action", "action": name})
 	}
-	ui.Row(c).FillWidth().Padding(6, 12).Gap(12).AlignItems(ui.Center).Background(t.Surface).Children(func() {
+	ui.Row(c).FillWidth().Wrap().Padding(6, 12).Gap(12).AlignItems(ui.Center).Background(t.Surface).Children(func() {
 		if ui.Button(c.Key("act-lock"), L.ViewerLock()).Clicked() {
 			action("lock")
 		}
@@ -1020,11 +1023,36 @@ func (a *App) pathTo(device string) localapi.NetworkDevice {
 
 // statusBar is the Device ID, the quality controls and the stream's
 // numbers, with the path to the device and where the time goes.
+// It wraps onto more lines in a narrow window, and folds down to the
+// Device ID and Show controls.
 func (v *viewer) statusBar(c *ui.Context, b bar) {
 	t := c.Theme()
 	start, fps, kbps, host, preset, fpsCap, full, displays, showPtr, offer, codec := b.start, b.fps, b.kbps, b.host, b.preset, b.fpsCap, b.full, b.displays, b.showPtr, b.offer, b.codec
-	ui.Row(c).FillWidth().Padding(6, 12).Gap(16).AlignItems(ui.Center).Background(t.Surface).Children(func() {
-		ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).Grow(1)
+	v.mu.Lock()
+	collapsed := v.collapsed
+	v.mu.Unlock()
+	if collapsed {
+		// Folded away entirely: a small tab over the picture's bottom edge
+		// pulls the bar out again.
+		tab := ui.ButtonBase(c.Key("bar-fold")).Absolute().Bottom(0).Right(barTabRight).Padding(2, 14).
+			Radius(6).Background(t.Surface.Alpha(0.85)).Label(L.ViewerShowBar()).Tooltip(L.ViewerShowBar())
+		tab.Children(func() { ui.Text(c, "⌃").TextColor(t.TextMuted) })
+		if tab.Clicked() {
+			v.mu.Lock()
+			v.collapsed = false
+			v.mu.Unlock()
+			v.keepSettings()
+		}
+		return
+	}
+	ui.Row(c).FillWidth().Wrap().Padding(6, 12).Gap(16).AlignItems(ui.Center).Background(t.Surface).Children(func() {
+		if ui.Button(c.Key("bar-fold"), "⌄").Label(L.ViewerHideBar()).Tooltip(L.ViewerHideBar()).Clicked() {
+			v.mu.Lock()
+			v.collapsed = true
+			v.mu.Unlock()
+			v.keepSettings()
+		}
+		ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).SingleLine()
 		if n := len(displays.List); n > 1 {
 			ui.Text(c, L.ViewerDisplay()).FontSize(sizeSmall).TextColor(t.TextMuted)
 			labels := make([]string, n)

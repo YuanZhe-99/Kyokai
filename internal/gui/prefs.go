@@ -77,6 +77,9 @@ type ViewerPrefs struct {
 	Swap   *bool  `json:"swap,omitempty"`
 	// Mute: the host's sound is not played.
 	Mute bool `json:"mute,omitempty"`
+	// Collapsed: the bottom bar shows only the Device ID and Show
+	// controls.
+	Collapsed bool `json:"collapsed,omitempty"`
 }
 
 func defaultPrefs() Prefs { return Prefs{Theme: "system", CheckAppUpdates: true} }

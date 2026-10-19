@@ -113,7 +113,9 @@ when `SCREENSHOT_DIR` is set.
   outside Kyokai, or with its ⧉, it gets a window of its own, which closes with its last tab;
   closing such a window disconnects its tabs. Keys grabbed for a window go to the tab shown.
 - The picture is scaled to fit on black, the host's pointer marked with a small ring that follows
-  the mouse, and a status line: the Device ID, the display by number when the host has several,
+  the mouse, and a status line (it wraps onto more lines in a narrow window; ⌄ folds it away entirely,
+  leaving only a small ⌃ tab at the picture's bottom edge that pulls it out again, kept for each
+  device): the Device ID, the display by number when the host has several,
   quality preset, frame-rate cap ("30 fps"), Codec (Auto and what both computers do, by codec name
   only, when there is a choice), Full colour, Direct or Relayed (Relayed with a hint to turn on direct connections on
   both devices), size, codec, frame rate, bitrate and the host's measured delay, whose tooltip
@@ -121,13 +123,13 @@ when `SCREENSHOT_DIR` is set.
   time goes (the host's encoding, the network, this computer's decoding and drawing, the frame
   rate against the host's target) — or, for the test pattern of a host that may
   not record its screen, "this is a placeholder picture" — Sound (plays the host's sound; on unless chosen, kept for each device), Pointer (shows or hides the ring,
-  remembered for every viewer), AI (collapses the AI panel) and Full screen. With `control-input`, a bar at the top with Lock
+  remembered for every viewer), AI (collapses the AI panel) and Full screen. With `control-input`, a bar at the top (wrapping likewise) with Lock
   screen, Ctrl+Alt+Del (helper modes), the Block their keyboard and mouse and Privacy mode
   switches (each with its label beside it), on Windows and macOS the keyboard mode (Map, Translate,
   Legacy; remembered for every viewer; on a Mac without Kyokai's Accessibility permission a hint
   to allow it), and Swap Ctrl and Cmd where a Mac is on either side; the mouse, the wheel and the
   keyboard on the picture go to the host ([computer-use.md](computer-use.md)). The quality preset,
-  frame-rate cap, Full colour, Codec and Swap Ctrl and Cmd are kept for each device (`viewers` in
+  frame-rate cap, Full colour, Codec, Swap Ctrl and Cmd and the folded status line are kept for each device (`viewers` in
   `gui.json`): a device's viewer opens with the settings chosen for it last.
 - With `run-ai-task` the tab has an AI panel, "AI on the other computer", which the AI switch
   collapses (a step waiting for approval shows it anyway). It shows the host's one AI record,

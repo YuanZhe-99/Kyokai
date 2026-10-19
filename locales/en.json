@@ -625,6 +625,7 @@
   "ViewerEnded": "The session ended.",
   "ViewerExitFullScreen": "Exit full screen",
   "ViewerFullScreen": "Full screen",
+  "ViewerHideBar": "Hide controls",
   "ViewerImplHardware": "{name} in hardware",
   "@ViewerImplHardware": {
     "placeholders": {
@@ -659,6 +660,7 @@
   "ViewerPrivacy": "Privacy mode (their screen goes black)",
   "ViewerReconnect": "Reconnect",
   "ViewerRelayedHint": "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices.",
+  "ViewerShowBar": "Show controls",
   "ViewerSound": "Sound",
   "ViewerSoundHint": "Plays what the other computer plays. Remembered for this device.",
   "ViewerSwapKeys": "Swap Ctrl and Cmd",

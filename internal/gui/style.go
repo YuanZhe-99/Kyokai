@@ -51,6 +51,7 @@ const (
 	onlineDot     float32 = 8   // a device's online dot
 	connectPanelW float32 = 420 // a connection tab's panel before the picture
 	pointerR      float32 = 6   // the host's pointer marker in the viewer
+	barTabRight   float32 = 16  // the folded viewer bar's tab, from the right edge
 	avatarSize    float32 = 36  // a device's round avatar
 	logoSize      float32 = 22  // a vendor logo inside it (about 64%)
 )

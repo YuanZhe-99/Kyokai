@@ -289,6 +289,14 @@ func TestViewerRenders(t *testing.T) {
 			}, 3)
 			v.displays.Current = 1
 		},
+		// A narrow window: the bar wraps instead of squeezing (regression).
+		"viewer-narrow": func(v *viewer) {
+			v.start, v.bm, v.fps, v.kbps = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), 60, 2400
+			v.offer, v.codec, v.fpsCap = []string{"h264", "hevc", "vp9-sw"}, "auto", "60 fps"
+		},
+		"viewer-collapsed": func(v *viewer) {
+			v.start, v.bm, v.collapsed = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), true
+		},
 		"viewer-ai-new": func(v *viewer) { v.state, v.ai = "This session does not show the screen.", viewerAI{run: true} },
 		"viewer-actions": func(v *viewer) {
 			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
@@ -296,9 +304,14 @@ func TestViewerRenders(t *testing.T) {
 		},
 	}
 	for name, setup := range cases {
-		v := &viewer{device: "657365333", preset: 1, fpsCap: "30 fps"}
+		// Connected (pumping), as the stream shows only then.
+		v := &viewer{device: "657365333", preset: 1, fpsCap: "30 fps", pumping: name != "viewer-waiting"}
 		setup(v)
-		tt := ui.NewTester(v.view, 1100, 560)
+		width := 1100
+		if name == "viewer-narrow" {
+			width = 560
+		}
+		tt := ui.NewTester(v.view, width, 560)
 		tt.Frame()
 		tt.Frame() // the pointer marker uses the first frame's layout
 		if dir == "" {
