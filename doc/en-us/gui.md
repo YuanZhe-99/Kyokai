@@ -58,14 +58,18 @@ when `SCREENSHOT_DIR` is set.
   Clear history. While the task waits for approval, every other page shows a banner with Review,
   and a notification announces it. A controller's task shows "Started from" its Device ID, and
   while it works every other page shows a banner with Review and Stop.
-- **Network:** the node's live status (connected, connecting, or why it could not connect; the
-  virtual address; the NAT type in plain words; the port for direct connections while it listens) and the Kyokai devices it routes to
-  (the name a device gave in its last session here, if any, its Device ID, direct or relayed,
-  latency, Copy and Connect), with a note that announced Device IDs are not proof; then the
-  settings form: servers (one URL per line), network name, and a write-only secret field (empty keeps the
-  stored secret; a weak secret is flagged), Save and Clear network settings (after a
-  confirmation: the servers, name and secret), which apply to these fields only.
-  Refused settings show the engine's reason. Last, how devices reach this one: Try direct
+- **Network:** the networks kept (up to 8), with a note that this device has the same Device ID in
+  each. Each shows its name here (or its network name) with the network name under it, a Join
+  switch (applied at once; refused with the engine's reason, after which the page reads the
+  networks again), Edit and Remove (after a confirmation: Kyokai leaves it and forgets its servers,
+  name and secret), its live state (connected, connecting, could not connect with the reason, or
+  not joined; the virtual address; the NAT type in plain words; the port for direct connections
+  while it listens) and the Kyokai devices it routes to (the name a device gave in its last session
+  here, if any, its Device ID, direct or relayed, latency, Copy and Connect). Add a network and
+  Edit open the same form in place: the name shown here (optional), servers (one URL per line),
+  network name, and a write-only secret field (empty keeps the stored secret; a weak secret is
+  flagged), Save (once there is a server and a name) and Cancel; refused settings show the
+  engine's reason. A note says announced Device IDs are not proof. Last, how devices reach this one: Try direct
   connections (off by default; on and fixed in the helper modes; applied as it is switched,
   [networking.md](networking.md)) and Accept connections by address, off by default, and while on
   the accepted ranges, one per line, with Save and Cancel, and a warning when it cannot listen.
@@ -132,13 +136,15 @@ when `SCREENSHOT_DIR` is set.
   rate against the host's target) — or, for the test pattern of a host that may
   not record its screen, "this is a placeholder picture" — Sound (plays the host's sound; on unless chosen, kept for each device), Pointer (shows or hides the ring,
   remembered for every viewer), Clipboard (pulls out the clipboard panel, with `clipboard` or
-  `files`), AI (collapses the AI panel) and Full screen. With `control-input`, a bar at the top (wrapping likewise) with Lock
+  `files`), AI (collapses the AI panel) and Full screen. With `control-input`, whatever the host, a bar at the top
+  (wrapping likewise; ⌃ folds it away, leaving a small ⌄ tab at the picture's top edge, kept for
+  each device) with, when the host offers them (a Windows host), Lock
   screen, Ctrl+Alt+Del (helper modes), the Block their keyboard and mouse and Privacy mode
-  switches (each with its label beside it), on Windows and macOS the keyboard mode (Map, Translate,
+  switches (each with its label beside it), then on Windows and macOS the keyboard mode (Map, Translate,
   Legacy; remembered for every viewer; on a Mac without Kyokai's Accessibility permission a hint
   to allow it), and Swap Ctrl and Cmd where a Mac is on either side; the mouse, the wheel and the
   keyboard on the picture go to the host ([computer-use.md](computer-use.md)). The quality preset,
-  frame-rate cap, Fit or Original size, Full colour, Codec, Swap Ctrl and Cmd, the clipboard switch and the folded status line are kept for each device (`viewers` in
+  frame-rate cap, Fit or Original size, Full colour, Codec, Swap Ctrl and Cmd, the clipboard switch and the folded bars are kept for each device (`viewers` in
   `gui.json`): a device's viewer opens with the settings chosen for it last.
 - The clipboard panel: "Share the clipboard with this device" (on unless switched off, kept for
   each device) and what crossed the clipboard with the device while its tab was in front, newest

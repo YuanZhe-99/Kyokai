@@ -101,7 +101,7 @@ the quality with `{"type": "quality", preset, fps, i444}`, where `i444` asks for
 (4:4:4) where both sides do it. With more than one display the host also sends `{"type": "displays", list, current}` (each
 display's place and size, the primary first) and the controller may ask for another with
 `{"type": "display", index}`. While it sends video the host also sends `{"type": "cursor", x, y, visible}`, its pointer as
-fractions of the picture, when it moves. With `control-input` the host sends
+fractions of the picture, when it moves; `visible` says whether it is on the display shown. With `control-input` the host sends
 `{"type": "actions", ctrl_alt_del, blocked, privacy}` as the session starts and whenever the block
 or privacy mode changes, and the controller may send `{"type": "action", action}` with `lock`,
 `ctrl-alt-del`, `block`, `unblock`, `privacy-on` or `privacy-off` ([computer-use.md](computer-use.md)). With `clipboard`, either side sends

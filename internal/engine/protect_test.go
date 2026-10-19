@@ -15,6 +15,8 @@ func TestProtectedModeRefuses(t *testing.T) {
 	h.protected.Store(true)
 	for _, typ := range []localapi.RequestType{
 		localapi.RequestNetworkGet, localapi.RequestNetworkSet, localapi.RequestPasswordReveal,
+		localapi.RequestNetworkProfiles, localapi.RequestNetworkProfileSet, localapi.RequestNetworkProfileRemove,
+		localapi.RequestNetworkDirect,
 		localapi.RequestPermanentSet, localapi.RequestAccessSettings, localapi.RequestConnect,
 		localapi.RequestIdentityExport, localapi.RequestIdentityReset, localapi.RequestTrustedRemove,
 		localapi.RequestBackground, localapi.RequestStoreExport, localapi.RequestNameSet,

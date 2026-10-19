@@ -2,8 +2,6 @@
 //! (doc/en-us/architecture.md, "FFI"): encoded frames in, RGBA out. They
 //! need no started core; each lives under a handle until closed.
 
-#[cfg(windows)]
-use crate::video;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -14,12 +12,12 @@ enum Decoder {
     Raw { width: u32, height: u32 },
     /// libvpx or libaom, which give the picture in full.
     Soft(crate::soft::Decoder),
+    /// Media Foundation's, which converts in place into the RGBA.
     #[cfg(windows)]
     Mf {
         dec: crate::mf::Decoder,
         width: u32,
         height: u32,
-        nv12: Vec<u8>,
     },
     /// VideoToolbox's H.264 and HEVC.
     #[cfg(target_os = "macos")]
@@ -64,7 +62,6 @@ pub fn open(start: &[u8]) -> Result<u64, String> {
             )?,
             width: s.width,
             height: s.height,
-            nv12: Vec::new(),
         },
         #[cfg(target_os = "macos")]
         name if crate::vt::Codec::from_name(name).is_some() => Decoder::Vt(
@@ -101,28 +98,7 @@ pub fn decode(id: u64, frame: &[u8], rgba: &mut Vec<u8>) -> Result<Option<(u32, 
         }
         Decoder::Soft(dec) => dec.decode(frame, rgba),
         #[cfg(windows)]
-        Decoder::Mf {
-            dec,
-            width,
-            height,
-            nv12,
-        } => {
-            let Some((pw, ph, stride, bytes)) = dec.decode(frame)?.pop() else {
-                return Ok(None);
-            };
-            // The decoder pads to whole macroblocks: show the stream's size.
-            let (w, h) = ((*width).min(pw), (*height).min(ph));
-            *nv12 = bytes;
-            video::nv12_to_rgba(
-                nv12,
-                w as usize,
-                h as usize,
-                stride as usize,
-                ph as usize,
-                rgba,
-            );
-            Ok(Some((w, h)))
-        }
+        Decoder::Mf { dec, width, height } => dec.decode(frame, *width, *height, rgba),
         #[cfg(target_os = "macos")]
         Decoder::Vt(dec) => dec.decode(frame, rgba),
     }

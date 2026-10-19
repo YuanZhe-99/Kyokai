@@ -98,7 +98,8 @@ func TestViewsRender(t *testing.T) {
 		"security":            func(a *App) { a.page, a.status.About = pageSecurity, localapi.About{Name: "WINDOWS-KVM"} },
 		"about":               func(a *App) { a.page = pageAbout },
 		"about-licenses":      func(a *App) { a.page, a.showLicenses = pageAbout, true },
-		"network-off":         func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
+		"network-none":        func(a *App) { a.page, a.net = pageNetwork, netState{loaded: true} },
+		"network-add":         func(a *App) { a.page, a.net = pageNetwork, netState{loaded: true, form: &netForm{}} },
 		"home-connect": func(a *App) {
 			a.status.Network.State = "online"
 			a.connect = connectForm{target: "657 365 333"}
@@ -149,7 +150,7 @@ func TestViewsRender(t *testing.T) {
 			a.page, a.prefs.NoLogs, a.status.LogsOff = pageSecurity, true, true
 		},
 		"network-by-address-failed": func(a *App) {
-			a.page, a.net = pageNetwork, netForm{loaded: true}
+			a.page, a.net = pageNetwork, netState{loaded: true}
 			a.status.ByAddress = localapi.ByAddress{On: true, Ranges: []string{"10.0.0.0/8"}}
 			edited := "10.0.0.0/8\n172.16.0.0/12"
 			a.access = accessForm{loaded: true, ranges: &edited}
@@ -174,11 +175,11 @@ func TestViewsRender(t *testing.T) {
 				{ID: 1, Instruction: "Open the settings", Source: "claude", Model: "claude-opus-5-5", State: "done", Created: 1797400000},
 			}}
 		},
-		"network-online": func(a *App) {
-			a.page = pageNetwork
-			a.status.Network = localapi.NetworkStatus{State: "online", Address: "10.126.126.236", NAT: "symmetric",
-				Devices: []localapi.NetworkDevice{{DeviceID: "213559601", Path: "relay", LatencyMS: 36}, {DeviceID: "647222040", Path: "direct", LatencyMS: 4}}}
-			a.net = netForm{loaded: true, servers: "tcp://example.org:11010", name: "kyokai", hasSecret: true, weakSecret: true}
+		// Three networks: one online, one that failed, one not joined.
+		"network-online": demoNetworks,
+		"network-edit": func(a *App) {
+			demoNetworks(a)
+			a.net.form = &netForm{id: "a1", label: "Home", servers: "tcp://example.org:11010", name: "kyokai-home", hasSecret: true, weakSecret: true}
 		},
 	}
 	for _, lang := range []string{"en", "zh-Hans", "zh-Hant", "ja"} {
@@ -191,8 +192,11 @@ func TestViewsRender(t *testing.T) {
 				a := demoApp(t)
 				setup(a)
 				height := 900
-				if name == "ai-new" || name == "about-licenses" {
+				switch name {
+				case "ai-new", "about-licenses":
 					height = 2300 // the editor and the notices run long
+				case "network-online", "network-edit":
+					height = 1500 // three networks, then how devices reach this one
 				}
 				tt := ui.NewTester(a.View, 1000, height)
 				tt.SetDark(dark)
@@ -216,6 +220,24 @@ func TestViewsRender(t *testing.T) {
 		}
 	}
 	i18n.SetLocaleFunc(nil)
+}
+
+// demoNetworks shows the Network page with three networks: Home online with
+// two devices, one whose node could not start, and one not joined.
+func demoNetworks(a *App) {
+	a.page = pageNetwork
+	home := localapi.NetworkState{ID: "a1", Label: "Home", Joined: true, NetworkNode: localapi.NetworkNode{
+		State: "online", Address: "10.126.126.236", NAT: "symmetric", ListenPort: 47311,
+		Devices: []localapi.NetworkDevice{{DeviceID: "213559601", Path: "relay", LatencyMS: 36}, {DeviceID: "647222040", Path: "direct", LatencyMS: 4}}}}
+	office := localapi.NetworkState{ID: "b2", Label: "office-et", Joined: true, NetworkNode: localapi.NetworkNode{
+		State: "error", Error: "network settings: invalid peer url"}}
+	lab := localapi.NetworkState{ID: "c3", Label: "lab", NetworkNode: localapi.NetworkNode{State: "off"}}
+	a.status.Network = localapi.NetworkStatus{NetworkNode: home.NetworkNode, Networks: []localapi.NetworkState{home, office, lab}}
+	a.net = netState{loaded: true, profiles: []localapi.NetworkProfile{
+		{ID: "a1", Label: "Home", Name: "kyokai-home", Servers: []string{"tcp://example.org:11010"}, HasSecret: true, WeakSecret: true, Joined: true},
+		{ID: "b2", Name: "office-et", Servers: []string{"wss://et.example.com/et"}, HasSecret: true, Joined: true},
+		{ID: "c3", Name: "lab", Servers: []string{"tcp://10.0.0.2:11010"}},
+	}}
 }
 
 func TestDescribeAction(t *testing.T) {
@@ -327,6 +349,18 @@ func TestViewerRenders(t *testing.T) {
 		"viewer-actions": func(v *viewer) {
 			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
 			v.app, v.control, v.actions = &App{}, true, &hostActions{CtrlAltDel: true}
+		},
+		// A Mac host offers no session actions; the top bar still holds the
+		// keyboard choices (regression: it showed for Windows hosts only).
+		"viewer-actions-mac": func(v *viewer) {
+			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
+			v.app, v.control = &App{}, true
+			v.phase.Peer.OS = "macos"
+		},
+		// Folded away: a tab over the picture's top edge pulls it out.
+		"viewer-actions-folded": func(v *viewer) {
+			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
+			v.app, v.control, v.actions, v.topCollapsed = &App{}, true, &hostActions{}, true
 		},
 	}
 	for name, setup := range cases {
@@ -853,9 +887,13 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 	v.setQuality(2, "60 fps", true)
 	v.setCodec("av1")
 	v.setSwap(false)
+	v.mu.Lock()
+	v.topCollapsed = true
+	v.mu.Unlock()
+	v.keepSettings()
 	again := a.newViewer("482916735", localapi.About{}, nil)
-	if again.preset != 2 || again.fpsCap != "60 fps" || !again.full || again.codec != "av1" || again.swap == nil || *again.swap {
-		t.Errorf("reopened %d %q %v %q %v", again.preset, again.fpsCap, again.full, again.codec, again.swap)
+	if again.preset != 2 || again.fpsCap != "60 fps" || !again.full || again.codec != "av1" || again.swap == nil || *again.swap || !again.topCollapsed {
+		t.Errorf("reopened %d %q %v %q %v %v", again.preset, again.fpsCap, again.full, again.codec, again.swap, again.topCollapsed)
 	}
 	if other := a.newViewer("123456789", localapi.About{}, nil); other.preset != 1 || other.codec != "auto" || other.swap != nil {
 		t.Errorf("another device %d %q", other.preset, other.codec)
@@ -987,14 +1025,14 @@ func TestLiveSound(t *testing.T) {
 	}
 }
 
-// TestClearNetworkReturns: clearing after the confirmation (off the main
-// thread) finishes and frees the page; it once took the app lock twice and
-// froze the window.
-func TestClearNetworkReturns(t *testing.T) {
+// TestRemoveNetworkReturns: removing a network after the confirmation
+// (off the main thread) finishes and frees the page; clearing the network
+// settings once took the app lock twice and froze the window.
+func TestRemoveNetworkReturns(t *testing.T) {
 	a := &App{busy: map[string]bool{}, ctx: context.Background(), socket: filepath.Join(t.TempDir(), "none.sock")}
 	done := make(chan struct{})
 	go func() {
-		a.clearNetwork(netForm{name: "kyokai", hasSecret: true}, func() bool { return true })
+		a.removeNetwork("a1", func() bool { return true })
 		close(done)
 	}()
 	select {

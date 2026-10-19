@@ -4,7 +4,7 @@
 //! either side leaves. Generic over the stream, so tests run it in memory.
 
 use crate::about::About;
-use crate::access::{Access, CONFIRM_TIMEOUT, Permission, Refusal, Serve};
+use crate::access::{Access, CONFIRM_TIMEOUT, Permission, Refusal, Serve, Source};
 use crate::auth::{self, Slot};
 use crate::identity::{self, Identity};
 use base64::Engine;
@@ -12,7 +12,6 @@ use base64::engine::general_purpose::STANDARD;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -850,7 +849,7 @@ fn verify_static(
 pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     ctx: Arc<Ctx>,
     mut stream: S,
-    from: IpAddr,
+    from: Source,
 ) {
     // Counted until the login ends; a flood of connections is dropped.
     let Some(incoming) = enter(&ctx) else {
@@ -958,7 +957,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     client: &ClientHello,
     client_key: &[u8; 32],
     context: &[u8],
-    from: IpAddr,
+    from: Source,
     id: u64,
 ) -> Result<(Vec<Permission>, About), Failure> {
     let key_b64 = STANDARD.encode(client_key);
@@ -1867,8 +1866,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             }
             _ = pointer_tick.tick(), if source.is_some() => {
                 let at = source.as_ref().and_then(|s| s.display).map(area);
-                if let Some((x, y, shown)) = at.map_or_else(crate::input::pointer, crate::input::pointer_in) {
-                    let visible = shown && (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y);
+                if let Some((x, y)) = at.map_or_else(crate::input::pointer, crate::input::pointer_in) {
+                    // Shown while it is on the display shown, on every
+                    // platform (whether the system draws its cursor is left
+                    // out: Windows hides it with no mouse attached).
+                    let visible = (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y);
                     let now = (((x * 4096.0) as i32, (y * 4096.0) as i32), visible);
                     if pointer_sent != Some(now) {
                         pointer_sent = Some(now);
@@ -2882,7 +2884,10 @@ mod tests {
         remember: Remember,
     ) -> u64 {
         let (a, b) = tokio::io::duplex(1 << 16);
-        let from: IpAddr = "10.126.126.2".parse().unwrap();
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.2".parse().unwrap(),
+        };
         tokio::spawn(serve(host.clone(), b, from));
         let (id, stop) = begin(controller, dialed, remember);
         let c = controller.clone();
@@ -3272,7 +3277,10 @@ mod tests {
             .set_temporary("k7mq2xpa", &host.identity.public_key())
             .unwrap();
         let dialed = host.identity.device_id();
-        let from: IpAddr = "10.126.126.2".parse().unwrap();
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.2".parse().unwrap(),
+        };
         let (a, b) = tokio::io::duplex(1 << 16);
         let host_side = tokio::spawn(serve(host.clone(), b, from));
         let (id, stop) = begin(&controller, &dialed, Remember::default());
@@ -3365,7 +3373,10 @@ mod tests {
             .set_temporary("k7mq2xpa", &host.identity.public_key())
             .unwrap();
         let dialed = host.identity.device_id();
-        let from: IpAddr = "10.126.126.3".parse().unwrap();
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.3".parse().unwrap(),
+        };
         let (a, b) = tokio::io::duplex(1 << 20);
         let host_side = tokio::spawn(serve(host.clone(), b, from));
         let (id, stop) = begin(&controller, &dialed, Remember::default());
@@ -3481,7 +3492,10 @@ mod tests {
     #[tokio::test]
     async fn garbage_never_panics_and_always_ends_the_host_side() {
         let host = device("1.0.0");
-        let from: IpAddr = "10.126.126.9".parse().unwrap();
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.9".parse().unwrap(),
+        };
         let mut next = rng(0x9e37_79b9_7f4a_7c15);
         for round in 0..400 {
             let (mut a, b) = tokio::io::duplex(1 << 16);
@@ -4216,7 +4230,14 @@ mod tests {
     async fn identify_learns_the_device_id_at_an_address() {
         let host = device("0.3.0");
         let (a, b) = tokio::io::duplex(1 << 16);
-        tokio::spawn(serve(host.clone(), b, "192.168.1.20".parse().unwrap()));
+        tokio::spawn(serve(
+            host.clone(),
+            b,
+            Source {
+                network: 0,
+                ip: "192.168.1.20".parse().unwrap(),
+            },
+        ));
         assert_eq!(identify(a).await.unwrap(), host.identity.device_id());
         assert!(host.sessions.list().as_array().unwrap().is_empty());
     }
@@ -4232,7 +4253,14 @@ mod tests {
         attempt(&host, &controller, &dialed, "", None).await;
         // Waiting for the host's user: a live one.
         let (a, b) = tokio::io::duplex(1 << 16);
-        tokio::spawn(serve(host.clone(), b, "192.168.1.20".parse().unwrap()));
+        tokio::spawn(serve(
+            host.clone(),
+            b,
+            Source {
+                network: 0,
+                ip: "192.168.1.20".parse().unwrap(),
+            },
+        ));
         let (id, stop) = begin(&controller, &dialed, Remember::default());
         let c = controller.clone();
         let d = dialed.clone();

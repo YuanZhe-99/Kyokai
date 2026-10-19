@@ -40,6 +40,42 @@ func TestRealLibrary(t *testing.T) {
 	if err := l.Call("no.such.method", nil, nil); err == nil {
 		t.Fatal("an unknown method must fail")
 	}
+	// The networks: one added is joined (its node starts, though its server
+	// answers nowhere), is listed without its secret and in the status, and
+	// is left, then removed.
+	type networks struct {
+		Profiles []struct {
+			ID        string `json:"id"`
+			Joined    bool   `json:"joined"`
+			HasSecret bool   `json:"has_secret"`
+			Secret    string `json:"secret"`
+		} `json:"profiles"`
+	}
+	var nets networks
+	add := map[string]any{"servers": []string{"tcp://127.0.0.1:9"}, "name": "smoke", "secret": "a-secret-of-16-chars"}
+	if err := l.Call("network.profile.set", add, &nets); err != nil || len(nets.Profiles) != 1 ||
+		!nets.Profiles[0].Joined || !nets.Profiles[0].HasSecret || nets.Profiles[0].Secret != "" {
+		t.Fatalf("add a network: %v %+v", err, nets)
+	}
+	id := nets.Profiles[0].ID
+	var status struct {
+		Network struct {
+			Networks []struct {
+				ID     string `json:"id"`
+				Joined bool   `json:"joined"`
+			} `json:"networks"`
+		} `json:"network"`
+	}
+	if err := l.Call("status", nil, &status); err != nil || len(status.Network.Networks) != 1 ||
+		status.Network.Networks[0].ID != id || !status.Network.Networks[0].Joined {
+		t.Fatalf("status: %v %+v", err, status.Network)
+	}
+	if err := l.Call("network.profile.set", map[string]any{"id": id, "joined": false}, &nets); err != nil || nets.Profiles[0].Joined {
+		t.Fatalf("leave: %v %+v", err, nets)
+	}
+	if err := l.Call("network.profile.remove", map[string]any{"id": id}, &nets); err != nil || len(nets.Profiles) != 0 {
+		t.Fatalf("remove: %v %+v", err, nets)
+	}
 	// The keyboard grab: ending one that never began and a bad request
 	// install nothing; no key is waiting.
 	if err := l.KeyboardGrab(1, "off"); err != nil {

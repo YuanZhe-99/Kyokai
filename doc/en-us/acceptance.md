@@ -38,6 +38,7 @@ Kyokai runs the same flow with any configured provider, and the live runs so far
 | No-TUN connectivity | Verified (Windows) | platform notes: S1 EasyTier spike, Firewall prompts |
 | Dynamic addresses do not break identity | Verified (Windows) | platform notes: Listener rebinding |
 | Network interruption handled cleanly | Verified (Windows) | platform notes: Remote x64 VM; `a_dropped_session_resumes_without_a_new_login` |
+| Several networks joined at once, one Device ID | Verified (macOS, two engines on one Mac) | platform notes: 0.3.2; a session resumes through another joined network |
 
 ## Manual Computer Use
 

@@ -264,10 +264,21 @@ struct Pending {
     reply: oneshot::Sender<Option<Vec<Permission>>>,
 }
 
+/// Where a connection comes from, as the login limits count it: an address
+/// in one of the joined networks (each its own number: EasyTier's address
+/// ranges repeat from one network to the next, so one network's guesses
+/// never lock out another's device), or network 0, this computer's own
+/// networks, for connections by address.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Source {
+    pub network: u64,
+    pub ip: IpAddr,
+}
+
 #[derive(Default)]
 struct Limits {
-    fails: HashMap<IpAddr, VecDeque<Instant>>,
-    blocked: HashMap<IpAddr, Instant>,
+    fails: HashMap<Source, VecDeque<Instant>>,
+    blocked: HashMap<Source, Instant>,
     global: VecDeque<Instant>,
     global_until: Option<Instant>,
 }
@@ -511,9 +522,9 @@ impl Access {
         !trusted.contains_key(key) && trusted.values().any(|t| t.device_id == device_id)
     }
 
-    /// Refuses an address that is blocked, and unpinned controllers while
-    /// the global backoff runs.
-    pub fn admit(&self, from: IpAddr, pinned: bool) -> Result<(), Refusal> {
+    /// Refuses a source that is blocked, and unpinned controllers while the
+    /// global backoff runs.
+    pub fn admit(&self, from: Source, pinned: bool) -> Result<(), Refusal> {
         let l = self.limits.lock().map_err(|_| Refusal::Busy)?;
         let now = Instant::now();
         if l.blocked.get(&from).is_some_and(|until| *until > now) {
@@ -525,9 +536,9 @@ impl Access {
         Ok(())
     }
 
-    /// Counts one failed login from an address.
-    /// Side effects: may block the address or start the global backoff.
-    pub fn failed(&self, from: IpAddr) {
+    /// Counts one failed login from a source.
+    /// Side effects: may block the source or start the global backoff.
+    pub fn failed(&self, from: Source) {
         let Ok(mut l) = self.limits.lock() else {
             return;
         };
@@ -811,7 +822,11 @@ mod tests {
     #[test]
     fn an_address_is_blocked_after_five_failures_and_pinned_keys_skip_the_backoff() {
         let a = access();
-        let ip: IpAddr = "10.126.126.9".parse().unwrap();
+        let at = |network, ip: &str| Source {
+            network,
+            ip: ip.parse().unwrap(),
+        };
+        let ip = at(7, "10.126.126.9");
         for _ in 0..FAILS_PER_ADDRESS - 1 {
             a.failed(ip);
         }
@@ -823,10 +838,17 @@ mod tests {
             Err(Refusal::RateLimited),
             "the address block holds for everyone"
         );
+        // The same address in another network, or by address, is another
+        // device: its guesses are its own.
+        assert!(a.admit(at(8, "10.126.126.9"), false).is_ok());
+        assert!(a.admit(at(0, "10.126.126.9"), false).is_ok());
         for i in 0..=GLOBAL_FAILS {
-            a.failed(IpAddr::from([10, 0, 1, (i % 250) as u8]));
+            a.failed(Source {
+                network: 7,
+                ip: IpAddr::from([10, 0, 1, (i % 250) as u8]),
+            });
         }
-        let other: IpAddr = "10.126.126.77".parse().unwrap();
+        let other = at(7, "10.126.126.77");
         assert_eq!(a.admit(other, false), Err(Refusal::RateLimited));
         assert!(
             a.admit(other, true).is_ok(),

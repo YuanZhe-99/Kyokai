@@ -10,7 +10,7 @@
   从不被覆盖；本次运行使用临时身份并说明这一点，“重新开始”会把它移到一旁（`secrets.bin.unreadable-<time>`，保留），换成一个此后一直保存的新存储与新身份。在 macOS 上只在钥匙串项目不存在时才新建：用户拒绝访问已有项目时不替换任何内容，
   本次运行把机密保存在内存中（持久化状态 `denied`），权限卡片上钥匙串一行的“允许”会再次打开存储——macOS 会再次询问——并在其上重建核心。
 - 机密在释放时清零；`kyokai_stop` 会全部丢弃。
-- 存储中保存设备密钥、含网络密钥的网络设置（[networking.md](networking.md)）、OPAQUE 服务器密钥与固定密码的记录、受信任设备、
+- 存储中保存设备密钥、保存的各个网络及其网络密钥（[networking.md](networking.md)）、OPAQUE 服务器密钥与固定密码的记录、受信任设备、
   已知被控端与为被控端保存的密码（[identity-and-access.md](identity-and-access.md)）以及 AI 服务商的 API 密钥。本地 API 只把网络密钥从界面（或
   `ctl`）传给引擎，从不回传；`ctl` 从环境变量而不是命令行读取它。固定密码与连接时输入的密码同样如此（`KYOKAI_PERMANENT_PASSWORD`、
   `KYOKAI_PASSWORD`）；核心只在该会话结束前把用户输入的密码保留在内存中，随后将其清零。

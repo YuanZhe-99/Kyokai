@@ -16,7 +16,7 @@
   replaced, the run keeps secrets in memory (persistence `denied`), and Allow on the Keychain row of
   the permissions card opens the store again — macOS asks again — and rebuilds the core on it.
 - Secrets are zeroized when dropped; `kyokai_stop` drops them all.
-- The store holds the device key, the network settings with the network secret
+- The store holds the device key, the networks kept with their network secrets
   ([networking.md](networking.md)), the OPAQUE server key and the permanent password's record, the
   trusted devices, the known hosts and the hosts' saved passwords
   ([identity-and-access.md](identity-and-access.md)) and the AI

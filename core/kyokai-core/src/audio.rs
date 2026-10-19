@@ -232,7 +232,7 @@ pub fn set_source(source: &str) {
 }
 
 /// The sound to share and its generation.
-fn chosen() -> (u64, String) {
+pub(crate) fn chosen() -> (u64, String) {
     SOURCE.lock().map(|s| s.clone()).unwrap_or_default()
 }
 

@@ -90,9 +90,14 @@ KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
 `KYOKAI_PROFILE` keeps a development instance apart from an installed Kyokai: its own app name,
 single-instance lock, socket and state directory (`Kyokai-<profile>`). `KYOKAI_SVC` points the GUI at
 another engine binary, `KYOKAI_SOCKET` at another socket. The ABI smoke test needs an absolute
-library path. `ctl network-set` takes the network secret from `KYOKAI_NETWORK_SECRET`, never from
-the command line; `ctl network` shows the settings without it. Two engines with different profiles,
-state directories and sockets on one machine see each other through the same network.
+library path. `ctl network-set` (the first network) and `ctl network-profile` (add one, or change
+the one `--network` names) take the network secret from `KYOKAI_NETWORK_SECRET`, never from the
+command line; `ctl network` and `ctl networks` show the settings without it, `ctl network-remove`
+forgets one and `ctl network-direct` sets direct paths for all of them. Two engines with different
+profiles, state directories and sockets on one machine see each other through the same network:
+with no outside server, one engine with direct paths on lists a server that answers nowhere
+(`tcp://127.0.0.1:9`) and the other lists that engine's listen port (`tcp://127.0.0.1:<port>`,
+from its status).
 
 On macOS, sign local builds with the release identity (`MYGO_SIGN=<identity or its SHA-1>
 scripts/build.sh`) once it is in the login keychain: ad hoc builds get a new identity each time,

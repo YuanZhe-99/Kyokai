@@ -254,6 +254,27 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		}
 		h.changed()
 		return localapi.Response{OK: true, Network: &ns}
+	case localapi.RequestNetworkProfiles:
+		var nets localapi.NetworkProfiles
+		if err := h.lib.Call("network.profiles", nil, &nets); err != nil {
+			return localapi.Fail(localapi.CodeInternal, "%v", err)
+		}
+		return localapi.Response{OK: true, Networks: &nets}
+	case localapi.RequestNetworkProfileSet:
+		if req.Profile == nil {
+			return localapi.Fail(localapi.CodeInvalid, "network missing")
+		}
+		return h.networks("network.profile.set", req.Profile)
+	case localapi.RequestNetworkProfileRemove:
+		if req.Profile == nil || req.Profile.ID == "" {
+			return localapi.Fail(localapi.CodeInvalid, "network missing")
+		}
+		return h.networks("network.profile.remove", map[string]string{"id": req.Profile.ID})
+	case localapi.RequestNetworkDirect:
+		if req.Direct == nil {
+			return localapi.Fail(localapi.CodeInvalid, "direct choice missing")
+		}
+		return h.networks("network.direct", map[string]bool{"direct": *req.Direct})
 	case localapi.RequestNameSet:
 		if req.Name == nil {
 			return localapi.Fail(localapi.CodeInvalid, "name missing")
@@ -563,6 +584,18 @@ func (h *handler) aiSettings(method string, params any) localapi.Response {
 		return localapi.Fail(localapi.CodeInvalid, "%v", err)
 	}
 	return localapi.Response{OK: true, AISettings: &s}
+}
+
+// networks runs a core method that changes the networks kept and answers
+// them; a refusal says why.
+// Side effects: the attached sessions get the new status.
+func (h *handler) networks(method string, params any) localapi.Response {
+	var nets localapi.NetworkProfiles
+	if err := h.lib.Call(method, params, &nets); err != nil {
+		return localapi.Fail(localapi.CodeInvalid, "%v", err)
+	}
+	h.changed()
+	return localapi.Response{OK: true, Networks: &nets}
 }
 
 // command runs a core method that changes state and answers ok or the

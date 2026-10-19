@@ -72,8 +72,12 @@ integers and pointers only:
 Responses are `{"ok": true, "result": …}` or `{"ok": false, "error": "…"}` in a buffer the core
 allocates; panics are caught at the boundary and reported as errors. Methods: `status` (never a
 secret; includes the network status), `password.reveal`, `password.regenerate`, `network.get`
-(settings without the secret), `network.set` (`{servers, name, secret?, direct?}`; a missing secret keeps
-the stored one, an empty one clears it), `password.set_permanent` (`{password}`, null removes it), `session.connect`
+(the first network's settings without the secret, for an older GUI and `ctl`), `network.set` (`{servers, name, secret?, direct?}`: the first network; a missing secret keeps
+the stored one, an empty one clears it, no servers and no name remove it), `network.profiles` (→ `{direct, profiles}`: every
+network kept, `{id, label, servers, name, has_secret, weak_secret, joined}`), `network.profile.set` (`{id?, label?,
+servers?, name?, secret?, joined?}`: no id adds a network, joined unless it says otherwise; with one, what it leaves out
+keeps its value, the secret too; answers the networks), `network.profile.remove` (`{id}`), `network.direct`
+(`{direct}`: try direct paths in every network, [networking.md](networking.md)), `password.set_permanent` (`{password}`, null removes it), `session.connect`
 (`{device_id, password, want, remember, address?}`; an empty password uses the one saved for the host;
 `address` dials that IP address or domain name instead of the network; returns the session id at
 once, progress shows in the status), `session.identify` (`{address}` → `{device_id}` or
@@ -117,7 +121,9 @@ runtime statically, so nothing is resolved through the search path.
   changes.
 - Requests: `status` (with the network status and `build`, the commit the engine was built from,
   which tells two builds of one version apart), `password.reveal`, `password.regenerate`,
-  `network.get`, `network.set` (refused settings answer `invalid` with the reason),
+  `network.get`, `network.set`, `network.profiles`, `network.profile.set`, `network.profile.remove`, `network.direct`
+  (refused settings answer `invalid` with the reason; the status's `network` adds `networks`, each network's own, to all
+  of them together, so an older GUI reads it as before),
   `password.set_permanent`, `session.connect`, `session.identify`, `device.remove`, `protect.set` (while protected mode is on the engine answers only the requests in `protectedAllows` and refuses the rest as `invalid`; the status says `protected`), `logs.set` (`{logs_off}`: No logs; the engine writes or removes its state directory's `no-logs` marker, closes or reopens its log, deletes the logs and calls `access.history`; the status says `logs_off`; the GUI sends it as it attaches and when the setting changes), `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
   `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,

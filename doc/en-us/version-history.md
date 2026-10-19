@@ -1,5 +1,32 @@
 # Version history
 
+## 0.3.2 (2026-10-19)
+
+- Several networks at once: the Network page keeps up to 8 EasyTier networks, each with its
+  servers, network name, secret and a name shown here, and joins any number of them together (a
+  Join switch each), with the same Device ID in every one. Connecting by Device ID tries every
+  joined network that lists the device, direct paths first, and a session that drops resumes
+  through whichever network still reaches it; a host serves sessions from all of them. Try direct
+  connections is one choice for every network, each node listening on a port of its own. The one
+  network of earlier versions becomes the first, joined. Login limits count each network's
+  addresses separately (their address ranges repeat).
+- Found in the Windows ↔ Mac test: the ring marking a Windows host's pointer showed only while
+  dragging (Windows hides its cursor with no mouse attached, and the host followed it); a host now
+  reports its pointer as a Mac host does. The viewer's top bar showed only for Windows hosts, so a
+  Mac host's viewer lacked Keyboard mode and Swap Ctrl and Cmd; it now shows for every session that
+  controls the host, and folds away like the status bar (kept for each device). On a Mac host,
+  turning Hide Kyokai from capture off during a stream could leave Kyokai hidden: the stream now
+  opens again with the new setting; a session agent that starts again also gets the sound to share.
+- Windows brought in line with the Mac's video path: the encoder converts each picture straight
+  into reused Media Foundation samples and the viewer converts decoded pictures in place (no
+  per-frame buffers or copies beyond the conversion), and the viewer decodes H.264 on the GPU
+  where it has a decoder, as a Mac does through VideoToolbox.
+- Protocol 10 and local API 2, unchanged: the networks come with new requests and a `networks`
+  list in the status, beside the old ones, so 0.3.2 and 0.3.1 connect to each other and an older
+  GUI works with a newer engine.
+- Upstream versions checked, unchanged: MyGo v0.5.5, EasyTier v2.7.0, RustDesk 1.5.0 (vendored
+  code), vcpkg 2026.07.29, Rust 1.99.1.
+
 ## 0.3.1 (2026-10-19)
 
 - The tab strip is the window's title bar: the traffic lights (macOS) or minimize, maximize and close

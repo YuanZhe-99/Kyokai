@@ -197,7 +197,8 @@ func (v *viewer) keepSettings() {
 		return
 	}
 	v.mu.Lock()
-	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap, Mute: v.mute, Collapsed: v.collapsed, Original: v.original, NoClipboard: v.clip.off}
+	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap, Mute: v.mute, Collapsed: v.collapsed,
+		TopCollapsed: v.topCollapsed, Original: v.original, NoClipboard: v.clip.off}
 	v.mu.Unlock()
 	v.app.setViewerPrefs(v.device, vp)
 }

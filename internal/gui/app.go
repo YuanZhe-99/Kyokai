@@ -75,8 +75,8 @@ type App struct {
 	soundDevices       []localapi.SoundDevice
 	soundDevicesLoaded bool
 
-	// Network page: the settings form (network.go).
-	net netForm
+	// Network page: the networks kept and the form open (network.go).
+	net netState
 	// Sessions (sessions.go): the connect form, the permissions chosen per
 	// open host confirmation, the access card.
 	connect connectForm

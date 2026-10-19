@@ -48,58 +48,62 @@ func UserSocketPath(profile string) string {
 type RequestType string
 
 const (
-	RequestStatus             RequestType = "status"                 // identity summary, never a secret
-	RequestPasswordReveal     RequestType = "password.reveal"        // the temporary password, for the host's own GUI
-	RequestPasswordRegenerate RequestType = "password.regenerate"    // a new temporary password
-	RequestNetworkGet         RequestType = "network.get"            // network settings without the secret
-	RequestNetworkSet         RequestType = "network.set"            // new network settings (Request.Network)
-	RequestPermanentSet       RequestType = "password.set_permanent" // set or remove the permanent password (Request.Permanent)
-	RequestConnect            RequestType = "session.connect"        // start a session with a device (Request.Connect)
-	RequestIdentify           RequestType = "session.identify"       // which device answers at an address (Request.Address → Response.DeviceID or Response.Failure)
-	RequestDeviceRemove       RequestType = "device.remove"          // take a host off Home: end its sessions from here, forget its key and saved password (Request.DeviceID)
-	RequestClose              RequestType = "session.close"          // end a session (Request.ID)
-	RequestDecide             RequestType = "request.decide"         // answer a host confirmation (Request.Decide)
-	RequestTrustedList        RequestType = "trusted.list"           // the trusted devices
-	RequestTrustedRemove      RequestType = "trusted.remove"         // forget a trusted device (Request.Key)
-	RequestHostForget         RequestType = "host.forget"            // forget a pinned host key (Request.DeviceID)
-	RequestForgetPassword     RequestType = "password.forget_saved"  // forget the password saved for a host (Request.DeviceID)
-	RequestIdentityExport     RequestType = "identity.export"        // an encrypted identity backup (Request.Backup.Passphrase)
-	RequestIdentityImport     RequestType = "identity.import"        // restore an identity backup (Request.Backup)
-	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
-	RequestNameSet            RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
-	RequestAccessSettings     RequestType = "access.settings"        // which passwords open this host (Request.PasswordMode), whether a password admits without asking (Request.WithoutAsking) and connections by address (Request.ByAddress)
-	RequestAgentRestart       RequestType = "helper.agent_restart"   // the helper's session agent starts anew (macOS counts new privacy grants only then)
-	RequestStartOver          RequestType = "secrets.start_over"     // the saved identity cannot be unlocked: move it aside and keep a new one
-	RequestPermission         RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen", "accessibility", "input-monitoring" or "keychain"; macOS)
-	RequestPasswordGrants     RequestType = "access.password_grants" // what a correct password grants without asking (Request.Grants)
-	RequestProtect            RequestType = "protect.set"            // protected mode on (needs a permanent password) or off (with it) (Request.Protect); while on, the engine serves only the status, the AI requests, confirmations, disconnecting, quitting and what the GUI sends as it attaches
-	RequestLogs               RequestType = "logs.set"               // keep no logs, crash traces or connection history (Request.LogsOff), or keep them again; the GUI sends it as it attaches and when the setting changes
-	RequestCaptureShow        RequestType = "capture.show"           // whether captures show Kyokai's windows (Request.Show); hidden until a GUI says otherwise
-	RequestSoundSource        RequestType = "sound.source"           // the sound to share (Request.SoundSource): "" what the computer plays, else an input device's id
-	RequestSoundDevices       RequestType = "sound.devices"          // the input devices that may be shared (Response.SoundDevices)
-	RequestBackground         RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
-	RequestStoreExport        RequestType = "store.export"           // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
-	RequestStoreImport        RequestType = "store.import"           // take over a store this device's other engine sealed (Request.Backup)
-	RequestStoreClear         RequestType = "store.clear"            // forget the moved store and stop: the other engine holds it now
-	RequestHelperRemove       RequestType = "helper.remove"          // the helper removes itself, its state included (macOS), after the store moved out
-	RequestHelperUpdate       RequestType = "helper.update"          // the helper installs the signed bundle in Request.From and restarts
-	RequestAIModels           RequestType = "ai.models.list"         // the models a source lists (Request.Source → Response.AIModels), only when asked
-	RequestMedia              RequestType = "session.media"          // a controller session's media (Request.ID); the connection then carries packets
-	RequestSessionAttach      RequestType = "session.attach"         // streaming; see package doc
-	RequestAISettingsGet      RequestType = "ai.settings.get"        // the AI settings and which keys are stored
-	RequestAISettingsSet      RequestType = "ai.settings.set"        // change the AI settings (Request.AISettings)
-	RequestAIKeySet           RequestType = "ai.key.set"             // store or remove a provider key (Request.AIKey)
-	RequestAITaskStart        RequestType = "ai.task.start"          // start an AI task (Request.AITask)
-	RequestAIDraft            RequestType = "ai.draft.set"           // the shared draft of the next instruction (Request.AITask.Text)
-	RequestAITaskReply        RequestType = "ai.task.reply"          // continue a finished task (Request.ID, Request.AITask.Text)
-	RequestAITaskPause        RequestType = "ai.task.pause"          // pause a task (Request.ID)
-	RequestAITaskResume       RequestType = "ai.task.resume"         // resume a paused task (Request.ID)
-	RequestAITaskCancel       RequestType = "ai.task.cancel"         // cancel a task (Request.ID)
-	RequestAITaskDecide       RequestType = "ai.task.decide"         // answer an approval (Request.ID, Request.AITask.Approve)
-	RequestAITasks            RequestType = "ai.tasks"               // every task, newest first
-	RequestAIHistoryClear     RequestType = "ai.history.clear"       // forget the finished tasks
-	RequestAIStop             RequestType = "ai.stop"                // the emergency stop: cancel every task
-	RequestShutdown           RequestType = "shutdown"
+	RequestStatus               RequestType = "status"                 // identity summary, never a secret
+	RequestPasswordReveal       RequestType = "password.reveal"        // the temporary password, for the host's own GUI
+	RequestPasswordRegenerate   RequestType = "password.regenerate"    // a new temporary password
+	RequestNetworkGet           RequestType = "network.get"            // the first network's settings without the secret (an older GUI, ctl)
+	RequestNetworkSet           RequestType = "network.set"            // the first network's new settings (Request.Network)
+	RequestNetworkProfiles      RequestType = "network.profiles"       // every network kept, without the secrets
+	RequestNetworkProfileSet    RequestType = "network.profile.set"    // add or change a network (Request.Profile)
+	RequestNetworkProfileRemove RequestType = "network.profile.remove" // forget a network (Request.Profile's ID)
+	RequestNetworkDirect        RequestType = "network.direct"         // try direct paths in every network (Request.Direct)
+	RequestPermanentSet         RequestType = "password.set_permanent" // set or remove the permanent password (Request.Permanent)
+	RequestConnect              RequestType = "session.connect"        // start a session with a device (Request.Connect)
+	RequestIdentify             RequestType = "session.identify"       // which device answers at an address (Request.Address → Response.DeviceID or Response.Failure)
+	RequestDeviceRemove         RequestType = "device.remove"          // take a host off Home: end its sessions from here, forget its key and saved password (Request.DeviceID)
+	RequestClose                RequestType = "session.close"          // end a session (Request.ID)
+	RequestDecide               RequestType = "request.decide"         // answer a host confirmation (Request.Decide)
+	RequestTrustedList          RequestType = "trusted.list"           // the trusted devices
+	RequestTrustedRemove        RequestType = "trusted.remove"         // forget a trusted device (Request.Key)
+	RequestHostForget           RequestType = "host.forget"            // forget a pinned host key (Request.DeviceID)
+	RequestForgetPassword       RequestType = "password.forget_saved"  // forget the password saved for a host (Request.DeviceID)
+	RequestIdentityExport       RequestType = "identity.export"        // an encrypted identity backup (Request.Backup.Passphrase)
+	RequestIdentityImport       RequestType = "identity.import"        // restore an identity backup (Request.Backup)
+	RequestIdentityReset        RequestType = "identity.reset"         // a new identity and Device ID
+	RequestNameSet              RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
+	RequestAccessSettings       RequestType = "access.settings"        // which passwords open this host (Request.PasswordMode), whether a password admits without asking (Request.WithoutAsking) and connections by address (Request.ByAddress)
+	RequestAgentRestart         RequestType = "helper.agent_restart"   // the helper's session agent starts anew (macOS counts new privacy grants only then)
+	RequestStartOver            RequestType = "secrets.start_over"     // the saved identity cannot be unlocked: move it aside and keep a new one
+	RequestPermission           RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen", "accessibility", "input-monitoring" or "keychain"; macOS)
+	RequestPasswordGrants       RequestType = "access.password_grants" // what a correct password grants without asking (Request.Grants)
+	RequestProtect              RequestType = "protect.set"            // protected mode on (needs a permanent password) or off (with it) (Request.Protect); while on, the engine serves only the status, the AI requests, confirmations, disconnecting, quitting and what the GUI sends as it attaches
+	RequestLogs                 RequestType = "logs.set"               // keep no logs, crash traces or connection history (Request.LogsOff), or keep them again; the GUI sends it as it attaches and when the setting changes
+	RequestCaptureShow          RequestType = "capture.show"           // whether captures show Kyokai's windows (Request.Show); hidden until a GUI says otherwise
+	RequestSoundSource          RequestType = "sound.source"           // the sound to share (Request.SoundSource): "" what the computer plays, else an input device's id
+	RequestSoundDevices         RequestType = "sound.devices"          // the input devices that may be shared (Response.SoundDevices)
+	RequestBackground           RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
+	RequestStoreExport          RequestType = "store.export"           // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
+	RequestStoreImport          RequestType = "store.import"           // take over a store this device's other engine sealed (Request.Backup)
+	RequestStoreClear           RequestType = "store.clear"            // forget the moved store and stop: the other engine holds it now
+	RequestHelperRemove         RequestType = "helper.remove"          // the helper removes itself, its state included (macOS), after the store moved out
+	RequestHelperUpdate         RequestType = "helper.update"          // the helper installs the signed bundle in Request.From and restarts
+	RequestAIModels             RequestType = "ai.models.list"         // the models a source lists (Request.Source → Response.AIModels), only when asked
+	RequestMedia                RequestType = "session.media"          // a controller session's media (Request.ID); the connection then carries packets
+	RequestSessionAttach        RequestType = "session.attach"         // streaming; see package doc
+	RequestAISettingsGet        RequestType = "ai.settings.get"        // the AI settings and which keys are stored
+	RequestAISettingsSet        RequestType = "ai.settings.set"        // change the AI settings (Request.AISettings)
+	RequestAIKeySet             RequestType = "ai.key.set"             // store or remove a provider key (Request.AIKey)
+	RequestAITaskStart          RequestType = "ai.task.start"          // start an AI task (Request.AITask)
+	RequestAIDraft              RequestType = "ai.draft.set"           // the shared draft of the next instruction (Request.AITask.Text)
+	RequestAITaskReply          RequestType = "ai.task.reply"          // continue a finished task (Request.ID, Request.AITask.Text)
+	RequestAITaskPause          RequestType = "ai.task.pause"          // pause a task (Request.ID)
+	RequestAITaskResume         RequestType = "ai.task.resume"         // resume a paused task (Request.ID)
+	RequestAITaskCancel         RequestType = "ai.task.cancel"         // cancel a task (Request.ID)
+	RequestAITaskDecide         RequestType = "ai.task.decide"         // answer an approval (Request.ID, Request.AITask.Approve)
+	RequestAITasks              RequestType = "ai.tasks"               // every task, newest first
+	RequestAIHistoryClear       RequestType = "ai.history.clear"       // forget the finished tasks
+	RequestAIStop               RequestType = "ai.stop"                // the emergency stop: cancel every task
+	RequestShutdown             RequestType = "shutdown"
 )
 
 // ErrorCode classifies a failed request for clients that react to it.
@@ -117,6 +121,11 @@ type Request struct {
 	Type    RequestType `json:"type"`
 	// Network carries the settings of RequestNetworkSet.
 	Network *NetworkSettings `json:"network,omitempty"`
+	// Profile is the network RequestNetworkProfileSet adds or changes, or
+	// (its ID) the one RequestNetworkProfileRemove forgets.
+	Profile *NetworkChange `json:"profile,omitempty"`
+	// Direct is RequestNetworkDirect's: try direct paths in every network.
+	Direct *bool `json:"direct,omitempty"`
 	// Permanent sets (a password) or removes (nil Password) the permanent
 	// password.
 	Permanent *PermanentPassword `json:"permanent,omitempty"`
@@ -358,6 +367,8 @@ type Response struct {
 	Password string    `json:"password,omitempty"`
 	// Network answers RequestNetworkGet and RequestNetworkSet.
 	Network *NetworkSettings `json:"network,omitempty"`
+	// Networks answers the requests about the networks kept.
+	Networks *NetworkProfiles `json:"networks,omitempty"`
 	// ID answers RequestConnect: the new session's id.
 	ID uint64 `json:"id,omitempty"`
 	// DeviceID answers RequestIdentify: the device at the address, else
@@ -455,7 +466,8 @@ type SoundDevice struct {
 	Name string `json:"name"`
 }
 
-// NetworkSettings are the EasyTier network the engine joins.
+// NetworkSettings are the first EasyTier network the engine keeps, as an
+// older GUI and ctl set it (RequestNetworkGet, RequestNetworkSet).
 type NetworkSettings struct {
 	// Servers are standard EasyTier server URLs, tried in order.
 	Servers []string `json:"servers"`
@@ -470,8 +482,42 @@ type NetworkSettings struct {
 	Direct *bool `json:"direct,omitempty"`
 }
 
-// NetworkStatus is the engine's EasyTier node as it is now.
-type NetworkStatus struct {
+// NetworkProfiles are the EasyTier networks the engine keeps, joined or
+// not, and whether every one tries direct paths (always in the helper).
+type NetworkProfiles struct {
+	Direct   bool             `json:"direct"`
+	Profiles []NetworkProfile `json:"profiles"`
+}
+
+// NetworkProfile is one network kept: its ID, the name shown for it (empty:
+// its network name), its servers and EasyTier network name, its secret as
+// HasSecret and WeakSecret only, and whether this device joins it.
+type NetworkProfile struct {
+	ID         string   `json:"id"`
+	Label      string   `json:"label"`
+	Servers    []string `json:"servers"`
+	Name       string   `json:"name"`
+	HasSecret  bool     `json:"has_secret"`
+	WeakSecret bool     `json:"weak_secret"`
+	Joined     bool     `json:"joined"`
+}
+
+// NetworkChange adds a network (no ID: Servers and Name needed, joined
+// unless Joined says otherwise) or changes one, where nil or empty fields
+// keep their values (the secret too).
+type NetworkChange struct {
+	ID      string   `json:"id,omitempty"`
+	Label   *string  `json:"label,omitempty"`
+	Servers []string `json:"servers,omitempty"`
+	Name    *string  `json:"name,omitempty"`
+	// Secret travels only towards the engine.
+	Secret *string `json:"secret,omitempty"`
+	Joined *bool   `json:"joined,omitempty"`
+}
+
+// NetworkNode is how EasyTier nodes are doing: all of them together, or one
+// network's.
+type NetworkNode struct {
 	// State is "off", "connecting", "online" or "error".
 	State string `json:"state"`
 	// Error says why the node stopped (State "error").
@@ -484,6 +530,24 @@ type NetworkStatus struct {
 	// directly (direct connections on), 0 when it does not listen.
 	ListenPort int             `json:"listen_port,omitempty"`
 	Devices    []NetworkDevice `json:"devices,omitempty"`
+}
+
+// NetworkStatus is the engine's EasyTier nodes as they are now: all of
+// them together — online when one is, each device once by its best path,
+// the address of the first network online — and each network's.
+type NetworkStatus struct {
+	NetworkNode
+	Networks []NetworkState `json:"networks,omitempty"`
+}
+
+// NetworkState is one kept network's node: State "off" while it is not
+// joined.
+type NetworkState struct {
+	ID string `json:"id"`
+	// Label is the name it is shown by (its network name when it has none).
+	Label  string `json:"label"`
+	Joined bool   `json:"joined"`
+	NetworkNode
 }
 
 // NetworkDevice is another Kyokai device the network routes to. Its

@@ -36,12 +36,16 @@ Device ID once they have logged in; left empty, it is the computer's name.
 
 ## Join a network
 
-Devices find each other through an EasyTier network. On the **Network** page enter the
-**Servers** (one address per line), the **Network name** and the **Network secret** that whoever runs
-your network gave you, and save. The page then shows the network's state, this device's address
-and the Kyokai devices it can reach, directly or through a relay. A device's announced ID is only a
-hint: who a device is gets proven when you connect. **Clear network settings** forgets the
-network and disconnects.
+Devices find each other through EasyTier networks. On the **Network** page choose **Add a
+network** and enter the **Servers** (one address per line), the **Network name** and the **Network
+secret** that whoever runs your network gave you, optionally a name to show for it, and save: the
+device joins it at once. You can keep up to 8 networks and join several at the same time (each
+has its **Join** switch); this device has the same Device ID in all of them, so a device in any of
+your networks reaches it. Each network shows its state, this device's address in it and the
+Kyokai devices it can reach, directly or through a relay. A device's announced ID is only a hint:
+who a device is gets proven when you connect. Connecting by Device ID tries every joined network
+that lists the device, direct paths first. **Edit** changes a network; **Remove** leaves it and
+forgets its settings.
 
 Connections go through the server unless you switch on **Try direct connections** (on the Network page; it applies
 at once), which is faster where both networks allow it; Windows may then ask to let Kyokai through
@@ -88,7 +92,9 @@ decides what it types and shortcuts such as the Windows key, Alt+Tab or Cmd+Tab 
 **Translate** types with your own layout and input method; **Legacy** sends only the keys the
 viewer window receives. On a Mac, Map and Translate need **Accessibility** for Kyokai in System
 Settings, Privacy & Security. Between a Mac and Windows, **Swap Ctrl and Cmd** (on by default) makes
-your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. Keys go there only
+your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. The bar at the
+top and the status bar at the bottom each fold away (⌃ and ⌄) to leave more of the picture; the
+small tab left at the edge brings them back, and Kyokai remembers it for that device. Keys go there only
 while the picture has the focus: click it first. You hear what the other computer plays (or the input
 its user chose in Permissions, **Sound to share**, such as a microphone; a Mac asks for its
 Microphone permission then); **Sound** in the status bar turns it off. **Clipboard** pulls out the

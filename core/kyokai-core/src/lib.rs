@@ -861,6 +861,31 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 Ok(c.network.settings())
             })
         }
+        // The networks this device keeps, joined or not (each answers with
+        // them all, without the secrets).
+        "network.profiles" => with_core(|c| c.network.profiles()),
+        "network.profile.set" => {
+            let update: net::ProfileUpdate = serde_json::from_value(req.params)
+                .map_err(|e| format!("bad network settings: {e}"))?;
+            try_core(|c| {
+                c.network.set_profile(c.ctx.access.secrets(), update)?;
+                Ok(c.network.profiles())
+            })
+        }
+        "network.profile.remove" => {
+            let id = req.params["id"].as_str().ok_or("bad network")?.to_owned();
+            try_core(|c| {
+                c.network.remove_profile(c.ctx.access.secrets(), &id)?;
+                Ok(c.network.profiles())
+            })
+        }
+        "network.direct" => {
+            let direct = req.params["direct"].as_bool().ok_or("bad direct choice")?;
+            try_core(|c| {
+                c.network.set_direct(c.ctx.access.secrets(), direct)?;
+                Ok(c.network.profiles())
+            })
+        }
         "session.connect" => {
             let r: Connect = serde_json::from_value(req.params)
                 .map_err(|e| format!("bad connect request: {e}"))?;

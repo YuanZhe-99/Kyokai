@@ -1,25 +1,26 @@
 # Networking
 
-Kyokai devices reach each other through an embedded EasyTier node in the engine (`net.rs` in the
-core). The node joins an EasyTier network through standard EasyTier servers, or directly through
-other devices' addresses; there is no TUN device, no administrator right and no custom
-coordination server.
+Kyokai devices reach each other through EasyTier nodes embedded in the engine (`net.rs` in the
+core): one for each network the user joined, every one announcing this device's Device ID. A node
+joins its EasyTier network through standard EasyTier servers; there is no TUN device, no
+administrator right and no custom coordination server.
 
 ## The node
 
 | Setting | Value |
 |---|---|
-| Instance id | UUIDv5 over the 9-digit Device ID (namespace `6b796f6b-6169-4e00-8000-000000005331`) |
-| Hostname | `Kyokai-<Device ID>` |
+| Instance id | UUIDv5 over the 9-digit Device ID (namespace `6b796f6b-6169-4e00-8000-000000005331`), the same in every network |
+| Hostname | `Kyokai-<Device ID>`, the same in every network |
+| Instance name | `kyokai-<network id>` |
 | TUN | none (`no_tun`); traffic uses EasyTier's in-process data plane (smoltcp) |
 | Address | IPv4 from the network's DHCP |
-| Listeners | none, or with direct paths TCP and UDP on every address at the first port of 47311–47320 free for both (none when all are taken, as by other engines on the computer) |
-| Direct paths | off by default: no UDP, TCP or symmetric hole punching, no UPnP, no STUN and no listener, so nothing waits for unsolicited packets and Windows Firewall does not ask (the NAT type then reads "unknown"); the node still dials a peer that listens (TCP first, an outgoing connection), and otherwise traffic goes through the server's relay. On with "Try direct connections" (`direct`, on the Network page), and always in the helper (see below): hole punching, UPnP, the listeners and direct connections, preferring UDP (`default_protocol`) |
+| Listeners | none, or with direct paths TCP and UDP on every address at the first port of 47311–47320 free for both and not another of this engine's nodes' (none when all are taken, as by other engines on the computer) |
+| Direct paths | off by default: no UDP, TCP or symmetric hole punching, no UPnP, no STUN and no listener, so nothing waits for unsolicited packets and Windows Firewall does not ask (the NAT type then reads "unknown"); the node still dials a peer that listens (TCP first, an outgoing connection), and otherwise traffic goes through the server's relay. On with "Try direct connections" (`direct`, on the Network page, for every network), and always in the helper (see below): hole punching, UPnP, the listeners and direct connections, preferring UDP (`default_protocol`) |
 | Data plane whitelists | TCP and UDP port 47310 only; everything else from the network is dropped |
-| Runtime | a two-thread Tokio runtime owned by the core |
+| Runtime | a two-thread Tokio runtime owned by the core, shared by the nodes |
 
-The node runs while the engine runs and a network is configured; it restarts when the settings
-change.
+A node runs for each joined network while the engine runs. Changing a network restarts its node
+only, leaving it stops it, and changing Try direct connections restarts them all.
 
 Sessions run over the data plane's TCP (smoltcp). Its flush waits until the peer acknowledged
 everything sent, so a session never flushes after a message, which would allow one message per
@@ -29,16 +30,27 @@ sound and input): the bytes leave as they are written. Only a goodbye waits, bri
 
 ## Settings
 
-The user configures one network: up to 8 server URLs (`tcp`, `udp`, `ws`, `wss`, `quic`, `wg`;
-`faketcp` and others are refused), a network name (at most 64 characters) and the network
-secret. The whole entry, secret included, is kept in the secrets
-store ([security.md](security.md)), so without a working OS store it lasts only for the run. A
-secret shorter than 16 characters is reported as weak.
+The user keeps up to 8 networks, each with up to 8 server URLs (`tcp`, `udp`, `ws`, `wss`,
+`quic`, `wg`; `faketcp` and others are refused), a network name (at most 64 characters), the
+network secret, a name shown in Kyokai (optional, at most 64 characters; the network name
+otherwise) and whether this device joins it; any number may be joined at once. A random id (16 hex
+digits) names each one. The whole list, secrets included, is one entry in the secrets store
+(`networks`, [security.md](security.md)), so without a working OS store it lasts only for the run.
+A secret shorter than 16 characters is reported as weak.
 
-A network needs both a server and a name; settings 0.2.0 stored with a name and no server (it
-took other devices' addresses then) leave the node off. Clearing the settings (servers, name and
-secret, the GUI's **Clear network settings**) turns the node off. Reaching another device by its
-IP address or domain name needs no network at all: see [Connections by address](#connections-by-address).
+A network needs both a server and a name. Two joined networks with the same name and secret are
+the same network, so joining the second is refused. 0.3.1 and earlier kept one network (the
+`network` entry): it becomes the first network, joined, with its direct choice, and the old entry
+is removed; settings 0.2.0 stored with a name and no server never joined anything and are dropped.
+Removing a network (the GUI's **Remove**) forgets it, secret included. Reaching another device by
+its IP address or domain name needs no network at all: see
+[Connections by address](#connections-by-address).
+
+**Connecting by Device ID.** Every joined network whose routes announce the Device ID offers
+candidates, up to 3 in each (anyone can announce a Device ID, so one network's squatters cannot
+crowd out another's), tried with direct paths first and then by the lowest latency; the handshake
+decides which one is the device. A session that drops resumes through whichever networks are
+joined then. A host serves sessions from every joined network.
 
 ## Direct paths
 
@@ -53,9 +65,9 @@ holds only its TCP connection to the server and dials a peer that listens (TCP f
 `default_protocol`; an outgoing connection no firewall asks about), and otherwise sessions use the
 server's relay. It does not set `disable_p2p`, which would also refuse a direct connection a
 listening peer offers: a device left off then kept a LAN peer that listens on the relay
-(2026-10-18). **Try direct connections** on the Network page (`direct` in the network settings,
-applied at once, beside the run mode because it opens this computer to the network) turns
-punching on and has the node listen, accepting that Windows may ask. EasyTier's direct
+(2026-10-18). **Try direct connections** on the Network page (`direct`, one choice for every
+network, applied at once) turns punching on and has every node listen, each on a port of its own,
+accepting that Windows may ask. EasyTier's direct
 connector reaches only peers that listen: it tries each of their interface addresses and their
 public address. Hole punching alone needs the shared router to send a device's packets back into
 its own network, which many do not, so two devices on one LAN went through the server's relay
@@ -91,16 +103,18 @@ handshake, a password or the host user's confirmation, and the per-address login
 
 ## Status
 
-The engine reads the node's status when asked, never from a cache:
+The engine reads the nodes' status when asked, never from a cache. `network` is all of them
+together, as older GUIs, Home and the viewer read it; its `networks` lists each:
 
 | Field | Meaning |
 |---|---|
-| `state` | `off`, `connecting`, `online` (a connection to a server or peer is up) or `error` |
+| `state` | `off`, `connecting`, `online` (a connection to a server or peer is up) or `error`; together: online when any network is, connecting when any is, an error only when every joined one failed, off when none is joined |
 | `error` | why the node could not start |
-| `address` | the virtual IPv4 address, once assigned |
-| `nat` | the NAT type found through STUN: `unknown`, `open`, `no-pat`, `full-cone`, `restricted`, `port-restricted`, `symmetric`, `symmetric-easy`, `symmetric-firewall` |
-| `listen_port` | the port other devices' nodes connect to directly, when it listens (direct connections on) |
-| `devices` | other Kyokai devices the network routes to: announced Device ID, `direct` or `relay` path, latency in ms |
+| `address` | the virtual IPv4 address, once assigned (together: the first online network's) |
+| `nat` | the NAT type found through STUN: `unknown`, `open`, `no-pat`, `full-cone`, `restricted`, `port-restricted`, `symmetric`, `symmetric-easy`, `symmetric-firewall` (together: the first online network's) |
+| `listen_port` | the port other devices' nodes connect to directly, when it listens (direct connections on; together: the first online network's) |
+| `devices` | other Kyokai devices the network routes to: announced Device ID, `direct` or `relay` path, latency in ms; together, each device once, by its best path (direct first, then the lowest latency) |
+| `networks` | each network kept, in the order added: its `id`, `label` (the name it is shown by), `joined` and the fields above (`off` while it is not joined) |
 
 Sessions attached to the local API receive a new status whenever it changes (re-read every
 2 seconds).
@@ -109,7 +123,8 @@ Sessions attached to the local API receive a new status whenever it changes (re-
 
 EasyTier is an untrusted pipe. Any member of the network can announce any instance id and
 hostname, and two nodes may announce the same one (both stay routable), so the Device IDs in
-`devices` are hints for finding a device, never proof of who it is. Every Kyokai session is
+`devices` are hints for finding a device, never proof of who it is. This device's nodes announce
+the same instance id and hostname, each in its own network; the networks never see one another. Every Kyokai session is
 authenticated end to end on top of the data plane. EasyTier's own encryption shares one key per
 network among all its members.
 

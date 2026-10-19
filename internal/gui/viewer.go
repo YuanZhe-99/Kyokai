@@ -124,9 +124,9 @@ type viewer struct {
 	title string
 	// want is what the connection asks the device for.
 	want []string
-	// collapsed: the bottom bar is folded down to the Device ID and Show
-	// controls; guarded by mu.
-	collapsed bool
+	// collapsed: the bottom bar is folded away; topCollapsed: the top bar
+	// (the host's actions and the keyboard); guarded by mu.
+	collapsed, topCollapsed bool
 	// address is where the connection dials the device (an IP address
 	// or domain name), empty over the network; guarded by mu.
 	address string
@@ -258,7 +258,7 @@ func (a *App) newViewer(device string, about localapi.About, want []string) *vie
 	// The settings chosen for this device last time.
 	if vp, ok := a.viewerPrefs(device); ok {
 		v.preset, v.full, v.swap, v.mute, v.collapsed = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap, vp.Mute, vp.Collapsed
-		v.original, v.clip.off = vp.Original, vp.NoClipboard
+		v.original, v.clip.off, v.topCollapsed = vp.Original, vp.NoClipboard, vp.TopCollapsed
 		if slices.Contains(fpsCaps, vp.FPS) {
 			v.fpsCap = vp.FPS
 		}
@@ -783,7 +783,7 @@ func (v *viewer) view(c *ui.Context) {
 		return
 	}
 	v.mu.Lock()
-	bm, state, start, original := v.bm, v.state, v.start, v.original
+	bm, state, start, original, control := v.bm, v.state, v.start, v.original, v.control
 	withAI, withClip, ptr, actions := v.ai.aiShown(), v.clip.may && v.clip.shown, v.pointer, v.actions
 	b := bar{start: start, fps: v.fps, kbps: v.kbps, decodeMS: v.decodeMS, drawMS: v.drawMS, host: v.host,
 		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec, decoder: v.decoder}
@@ -796,8 +796,10 @@ func (v *viewer) view(c *ui.Context) {
 		b.path = v.app.pathTo(v.device)
 	}
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
-		if actions != nil {
-			v.actionBar(c, *actions)
+		// Every host that takes this session's input gets the top bar (its
+		// keyboard choices); only a Windows host offers actions in it.
+		if control {
+			v.actionBar(c, actions)
 		}
 		ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
 			if original && state == "" && bm != nil {
@@ -967,50 +969,79 @@ func pointerRing(c *ui.Context, x, y float32) {
 		Background(ui.Hex("#ffffff").Alpha(0.85)).Border(2, ui.Hex("#000000")).PassThrough()
 }
 
-// actionBar offers the host's session actions: lock its screen, send
-// Ctrl+Alt+Del (helper modes only), block its keyboard and mouse, and
-// privacy mode (which blocks them too). The switches show what the host
-// reports, not what was asked.
-func (v *viewer) actionBar(c *ui.Context, a hostActions) {
+// actionBar is the top bar of a session that controls the host: the host's
+// session actions when it offers them (a is nil otherwise) — lock its
+// screen, send Ctrl+Alt+Del (helper modes only), block its keyboard and
+// mouse, and privacy mode (which blocks them too) — then the keyboard mode
+// and Swap Ctrl and Cmd. The switches show what the host reports, not what
+// was asked. It folds away to a small tab over the picture's top edge,
+// kept for the device.
+func (v *viewer) actionBar(c *ui.Context, a *hostActions) {
 	t := c.Theme()
+	v.mu.Lock()
+	folded := v.topCollapsed
+	v.mu.Unlock()
+	fold := func(on bool) {
+		v.mu.Lock()
+		v.topCollapsed = on
+		v.mu.Unlock()
+		v.keepSettings()
+	}
+	if folded {
+		tab := ui.ButtonBase(c.Key("top-fold")).Absolute().Top(0).Right(barTabRight).Padding(2, 14).
+			Radius(6).Background(t.Surface.Alpha(0.85)).Label(L.ViewerShowActions()).Tooltip(L.ViewerShowActions())
+		tab.Children(func() { ui.Text(c, "⌄").TextColor(t.TextMuted) })
+		if tab.Clicked() {
+			fold(false)
+		}
+		return
+	}
 	action := func(name string) {
 		v.sendControl(map[string]any{"type": "action", "action": name})
 	}
 	ui.Row(c).FillWidth().Wrap().Padding(6, 12).Gap(12).AlignItems(ui.Center).Background(t.Surface).Children(func() {
-		if ui.Button(c.Key("act-lock"), L.ViewerLock()).Clicked() {
-			action("lock")
+		if ui.Button(c.Key("top-fold"), "⌃").Label(L.ViewerHideActions()).Tooltip(L.ViewerHideActions()).Clicked() {
+			fold(true)
 		}
-		if a.CtrlAltDel && ui.Button(c.Key("act-cad"), L.ViewerCtrlAltDel()).Clicked() {
-			action("ctrl-alt-del")
+		if a != nil {
+			if ui.Button(c.Key("act-lock"), L.ViewerLock()).Clicked() {
+				action("lock")
+			}
+			if a.CtrlAltDel && ui.Button(c.Key("act-cad"), L.ViewerCtrlAltDel()).Clicked() {
+				action("ctrl-alt-del")
+			}
+			blocked := a.Blocked
+			labelled(c, func() {
+				if ui.Switch(c.Key("act-block"), &blocked).Label(L.ViewerBlockInput()).Disabled(a.Privacy).Changed() {
+					if blocked {
+						action("block")
+					} else {
+						action("unblock")
+					}
+				}
+			}, L.ViewerBlockInput())
+			privacy := a.Privacy
+			labelled(c, func() {
+				if ui.Switch(c.Key("act-privacy"), &privacy).Label(L.ViewerPrivacy()).Changed() {
+					if privacy {
+						action("privacy-on")
+					} else {
+						action("privacy-off")
+					}
+				}
+			}, L.ViewerPrivacy())
 		}
-		blocked := a.Blocked
-		labelled(c, func() {
-			if ui.Switch(c.Key("act-block"), &blocked).Label(L.ViewerBlockInput()).Disabled(a.Privacy).Changed() {
-				if blocked {
-					action("block")
-				} else {
-					action("unblock")
-				}
-			}
-		}, L.ViewerBlockInput())
-		privacy := a.Privacy
-		labelled(c, func() {
-			if ui.Switch(c.Key("act-privacy"), &privacy).Label(L.ViewerPrivacy()).Changed() {
-				if privacy {
-					action("privacy-on")
-				} else {
-					action("privacy-off")
-				}
-			}
-		}, L.ViewerPrivacy())
 		if grabsKeyboard {
 			ui.Row(c).Grow(1)
-			ui.Text(c, L.ViewerKeyboard()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			mode := slices.Index(keyboardModes, v.app.keyboardMode())
-			if ui.Segmented(c.Key("keyboard"), &mode, L.ViewerKeyboardMap(), L.ViewerKeyboardTranslate(), L.ViewerKeyboardLegacy()).
-				Tooltip(L.ViewerKeyboardHint()).Changed() {
-				v.app.setKeyboardMode(keyboardModes[mode])
-			}
+			// The label wraps with its choice, never apart from it.
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, L.ViewerKeyboard()).FontSize(sizeSmall).TextColor(t.TextMuted)
+				mode := slices.Index(keyboardModes, v.app.keyboardMode())
+				if ui.Segmented(c.Key("keyboard"), &mode, L.ViewerKeyboardMap(), L.ViewerKeyboardTranslate(), L.ViewerKeyboardLegacy()).
+					Tooltip(L.ViewerKeyboardHint()).Changed() {
+					v.app.setKeyboardMode(keyboardModes[mode])
+				}
+			})
 			// macOS refuses the tap without Kyokai's Accessibility
 			// permission: the viewer works in Legacy mode meanwhile.
 			v.mu.Lock()

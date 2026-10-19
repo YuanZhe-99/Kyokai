@@ -60,9 +60,11 @@ thread_local! {
 }
 
 /// Converts a BGRA picture (`stride` bytes per row) into NV12 of
-/// `out_w`×`out_h`, scaling with the nearest pixel.
+/// `out_w`×`out_h`, scaling with the nearest pixel, for the tests (the
+/// encoders convert into their own buffers, `bgra_to_nv12_planes`).
 /// Notes: `nv12` is resized to out_w × out_h × 3/2; no allocation once it
 /// has that size.
+#[cfg(test)]
 pub fn bgra_to_nv12(
     bgra: &[u8],
     width: usize,
@@ -747,14 +749,9 @@ mod capture {
 
     /// The stream's encoder with the picture it encodes next.
     enum Encoder {
-        /// Media Foundation, fed NV12 of the stream's size.
+        /// Media Foundation, fed NV12 in samples of its own.
         #[cfg(windows)]
-        Mf {
-            enc: crate::mf::Encoder,
-            nv12: Vec<u8>,
-            width: usize,
-            height: usize,
-        },
+        Mf(crate::mf::Encoder),
         /// libvpx or libaom, fed planar YUV (boxed: it is far larger than
         /// the system encoders' handles).
         Soft(Box<crate::soft::Encoder>),
@@ -773,12 +770,7 @@ mod capture {
             #[cfg(windows)]
             {
                 let c = crate::mf::Codec::from_name(choice.codec).ok_or("unknown codec")?;
-                Ok(Encoder::Mf {
-                    enc: crate::mf::Encoder::new(c, width, height, FPS, BITRATE)?,
-                    nv12: Vec::new(),
-                    width: width as usize,
-                    height: height as usize,
-                })
+                crate::mf::Encoder::new(c, width, height, FPS, BITRATE).map(Encoder::Mf)
             }
             #[cfg(target_os = "macos")]
             {
@@ -792,7 +784,7 @@ mod capture {
         fn kind(&self) -> (&'static str, bool) {
             match self {
                 #[cfg(windows)]
-                Encoder::Mf { enc, .. } => ("media-foundation", enc.hardware()),
+                Encoder::Mf(e) => ("media-foundation", e.hardware()),
                 Encoder::Soft(e) => (e.library(), false),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => ("videotoolbox", e.hardware()),
@@ -808,12 +800,12 @@ mod capture {
         fn picture(&mut self, bgra: &[u8], width: usize, height: usize, stride: usize) {
             match self {
                 #[cfg(windows)]
-                Encoder::Mf {
-                    nv12,
-                    width: w,
-                    height: h,
-                    ..
-                } => bgra_to_nv12(bgra, width, height, stride, *w, *h, nv12),
+                Encoder::Mf(e) => e.picture(Picture {
+                    bgra,
+                    width,
+                    height,
+                    stride,
+                }),
                 Encoder::Soft(e) => e.picture(bgra, width, height, stride),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.picture(bgra, width, height, stride),
@@ -824,7 +816,7 @@ mod capture {
         fn has_picture(&self) -> bool {
             match self {
                 #[cfg(windows)]
-                Encoder::Mf { nv12, .. } => !nv12.is_empty(),
+                Encoder::Mf(e) => e.has_picture(),
                 Encoder::Soft(e) => e.has_picture(),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.has_picture(),
@@ -835,7 +827,7 @@ mod capture {
         fn encode(&mut self, key: bool) -> Result<Vec<(Vec<u8>, bool)>, String> {
             match self {
                 #[cfg(windows)]
-                Encoder::Mf { enc, nv12, .. } => enc.encode(nv12, key),
+                Encoder::Mf(e) => e.encode(key),
                 Encoder::Soft(e) => e.encode(key),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.encode(key),
@@ -846,7 +838,7 @@ mod capture {
         fn set_bitrate(&mut self, bitrate: u32) {
             match self {
                 #[cfg(windows)]
-                Encoder::Mf { enc, .. } => enc.set_bitrate(bitrate),
+                Encoder::Mf(e) => e.set_bitrate(bitrate),
                 Encoder::Soft(e) => e.set_bitrate(bitrate),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.set_bitrate(bitrate),

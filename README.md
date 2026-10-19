@@ -6,7 +6,7 @@ Kyokai is a cross-platform Computer Use application that enables people and AI a
 with computers across devices. It combines secure peer-to-peer connectivity, direct human control,
 and host-side AI execution in one unified experience.
 
-> **Status:** 0.3.1: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
+> **Status:** 0.3.2: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
 > connections, manual control, AI tasks and the optional privileged helper work on both; the
 > remaining viewer controls and macOS checks follow. See [PLAN.md](PLAN.md), the
 > [platform notes](doc/en-us/platform-notes.md) (what was verified where) and the
@@ -18,7 +18,7 @@ and host-side AI execution in one unified experience.
 |---|---|
 | Persistent Device ID backed by a cryptographic device key, with a friendly name and backup | done |
 | Temporary and permanent host passwords (accept either or both), connect without asking, saved passwords, trusted devices, unattended access | done |
-| Connect by Device ID + password over a standard EasyTier network, or by IP address or domain name without one (off on the host by default, local networks and Tailscale only); recent devices and connections as tabs that tear out into windows | done |
+| Connect by Device ID + password over standard EasyTier networks (several joined at once, one Device ID in all), or by IP address or domain name without one (off on the host by default, local networks and Tailscale only); recent devices and connections as tabs that tear out into windows | done |
 | Manual Computer Use: the host's screen (H.264, HEVC, VP9 through Media Foundation; H.264 and HEVC through VideoToolbox; VP8, VP9 and AV1 in software; full colour 4:4:4; adaptive quality), mouse, RustDesk's keyboard modes, clipboard text, images and files, monitors, the remote pointer | done (Windows); macOS: capture, VideoToolbox, input and keyboard |
 | Session actions: lock the screen, Ctrl+Alt+Del, block the host's input, privacy mode | done (Windows): run on a test VM, Ctrl+Alt+Del in the helper mode |
 | AI Computer Use with Claude, OpenAI or any of 20+ provider templates and custom OpenAI-compatible servers, executed on the host with its own key; one AI record and a shared draft for every controller | done; Claude verified live on Windows |
@@ -54,10 +54,11 @@ neither is ever sent.
 ## EasyTier Network Configuration
 
 Kyokai embeds [EasyTier](https://github.com/EasyTier/EasyTier) and connects through standard,
-unmodified EasyTier servers: you enter the server address(es), the network name and the network
-secret. No TUN device, no administrator rights and no Kyokai server are needed; traffic goes
-through the server unless you turn on direct connections. Membership of the
-network grants nothing by itself: every connection still needs the host's password and permission.
+unmodified EasyTier servers: for each network you enter the server address(es), the network
+name and the network secret. Kyokai keeps up to 8 networks and can join several at once, with the
+same Device ID in each. No TUN device, no administrator rights and no Kyokai server are needed;
+traffic goes through the server unless you turn on direct connections. Membership of a network
+grants nothing by itself: every connection still needs the host's password and permission.
 
 ## AI Provider Configuration
 

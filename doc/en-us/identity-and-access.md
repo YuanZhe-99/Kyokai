@@ -139,4 +139,6 @@ served.
 | Host confirmations waiting | 4; more are refused as busy |
 
 Limits are counted per source virtual address, since keys cost nothing to create before they are
-pinned.
+pinned: per network and address, since EasyTier's address ranges repeat from one network to the
+next and one network's guesses must not lock out a device in another (connections by address
+count as a network of their own).

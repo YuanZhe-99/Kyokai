@@ -69,7 +69,7 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 （最多每秒一次）——在拥有 `control-input` 时还可发送 `{"type": "input", event}`。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
 回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate, encode_ms}`（`encode_ms`：上一秒各帧从画面到编码完成的平均时间）（[computer-use.md](computer-use.md)）；控制端可用
 `{"type": "quality", preset, fps, i444}` 设置画质，其中 `i444` 表示在双方都支持时要求全彩（4:4:4）。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用
-`{"type": "display", index}` 请求另一个显示器。发送视频期间，被控端还会在指针移动时发送 `{"type": "cursor", x, y, visible}`，即以画面比例表示的指针位置。拥有 `control-input` 时，被控端在会话开始时发送
+`{"type": "display", index}` 请求另一个显示器。发送视频期间，被控端还会在指针移动时发送 `{"type": "cursor", x, y, visible}`，即以画面比例表示的指针位置；`visible` 表示它是否在所显示的显示器上。拥有 `control-input` 时，被控端在会话开始时发送
 `{"type": "actions", ctrl_alt_del, blocked, privacy}`（阻止或隐私模式变化时也会发送），控制端可以发送 `{"type": "action", action}`，其值为 `lock`、`ctrl-alt-del`、`block`、`unblock`、
 `privacy-on` 或 `privacy-off`（[computer-use.md](computer-use.md)）。拥有 `clipboard` 时，任一端都会为本端复制的文本发送 `{"type": "clipboard", text}`（最大 1 MiB），为图片发送
 `{"type": "clipboard-image", png}`（8 位 RGBA PNG 的 base64，最多 3 MiB、3840×2160）。拥有 `files` 时，任一端用 `{"type": "clipboard-files", id,

@@ -85,7 +85,8 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | Hear sound (permission) / Sound to share | 听到声音 / 共享的声音 |
 | jitter buffer | 抖动缓冲 |
 | Connect by address / Accept connections by address / Accepted from | 按地址连接 / 接受地址直接连接 / 接受来自 |
-| Clear network settings | 清除网络设置 |
+| Networks / Add a network / Join (a network) / Not joined | 网络 / 添加网络 / 加入 / 未加入 |
+| Name shown here (a network's) | 在此显示的名称 |
 | No logs | 完全无日志 |
 | Protected mode | 保护模式 |
 | Rename… (a name shown only on this device) | 重命名…（只在本机显示的名称） |
@@ -100,6 +101,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | clipboard history / Share the clipboard with this device | 剪贴板历史 / 与这台设备共享剪贴板 |
 | (the tab) in front | （标签页）位于前台 |
 | tab strip (the title bar) | 标签栏（即标题栏） |
+| Hide actions / Show actions (the viewer's top bar) | 收起操作栏 / 展开操作栏 |
 
 ## 6. 审阅清单
 

@@ -6,7 +6,10 @@
 //	kyokai-svc helper install [--from DIR] [--operator-sid SID | --operator-uid N] | uninstall [--purge] | status
 //	kyokai-svc agent --down PIPE --up PIPE --helper-pid N | --socket PATH   (started for the helper)
 //	kyokai-svc ctl status | password | regenerate | shutdown | network | trusted [--socket P]
-//	kyokai-svc ctl network-set --server URL [--server URL…] --name N [--direct=true|false]
+//	kyokai-svc ctl network-set --server URL [--server URL…] --name N [--direct=true|false]   (the first network)
+//	kyokai-svc ctl networks | network-direct [--on]   (every network kept; try direct paths in all of them)
+//	kyokai-svc ctl network-profile [--network ID] [--label L] [--server URL…] [--name N] [--joined=true|false]   (no ID adds one)
+//	kyokai-svc ctl network-remove --network ID
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--address A] [--want P,P…] | identify --address A | remove --device ID
@@ -28,7 +31,8 @@
 //	kyokai-svc ctl ai-pause | ai-resume | ai-cancel | ai-approve | ai-decline --id N
 //
 // Secrets come from the environment, never the command line: network-set
-// reads KYOKAI_NETWORK_SECRET (unset keeps the stored one), permanent reads
+// and network-profile read KYOKAI_NETWORK_SECRET (unset keeps the stored
+// one), permanent reads
 // KYOKAI_PERMANENT_PASSWORD, connect reads KYOKAI_PASSWORD, backup and restore read
 // KYOKAI_BACKUP_PASSPHRASE, ai-key reads KYOKAI_AI_KEY.
 //
@@ -59,7 +63,8 @@ import (
 	"github.com/YuanZhe-99/Kyokai/internal/version"
 )
 
-// networkSecretEnv carries the network secret to `ctl network-set`.
+// networkSecretEnv carries the network secret to `ctl network-set` and
+// `ctl network-profile`.
 const networkSecretEnv = "KYOKAI_NETWORK_SECRET"
 
 func main() {
@@ -159,7 +164,7 @@ func ctl(args []string) error {
 	fs := flag.NewFlagSet("ctl", flag.ExitOnError)
 	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "local API socket path")
 	var servers []string
-	fs.Func("server", "network-set: an EasyTier server URL (repeatable)", func(s string) error {
+	fs.Func("server", "network-set, network-profile: an EasyTier server URL (repeatable)", func(s string) error {
 		servers = append(servers, s)
 		return nil
 	})
@@ -167,7 +172,10 @@ func ctl(args []string) error {
 	byAddress := fs.String("by-address", "", "access: accept connections by address (true, false)")
 	ranges := fs.String("ranges", "", "access: the address ranges connections by address are accepted from (comma-separated; with --by-address)")
 	direct := fs.Bool("direct", false, "network-set: try direct (hole-punched) paths; omitted keeps the current choice")
-	name := fs.String("name", "", "network-set: the network name; name-set: this device's friendly name")
+	name := fs.String("name", "", "network-set, network-profile: the network name; name-set: this device's friendly name")
+	network := fs.String("network", "", "network-profile, network-remove: the network's id (network-profile: none adds one)")
+	label := fs.String("label", "", "network-profile: the name the network is shown by (empty: its network name)")
+	joined := fs.String("joined", "", "network-profile: join the network or leave it (true, false)")
 	device := fs.String("device", "", "connect, forget, remove: the Device ID")
 	want := fs.String("want", localapi.PermViewScreen+","+localapi.PermControlInput, "connect: the permissions to ask for")
 	grant := fs.String("grant", "", "allow: the permissions to grant (default: all asked for); password-grants: what a correct password grants without asking (empty: none)")
@@ -180,7 +188,7 @@ func ctl(args []string) error {
 	to := fs.String("to", "", "move: the socket of the engine that takes over this device's store")
 	mode := fs.String("mode", "", "access: which passwords open this host (temporary, permanent, both)")
 	withoutAsking := fs.String("without-asking", "", "access: whether an accepted password admits without asking (true, false)")
-	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached); capture-show: captures show Kyokai's windows; no-logs: keep no logs or connection history; protect: protected mode")
+	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached); capture-show: captures show Kyokai's windows; no-logs: keep no logs or connection history; protect: protected mode; network-direct: try direct paths in every network")
 	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
@@ -218,7 +226,8 @@ func ctl(args []string) error {
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
-		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "capture-show": localapi.RequestCaptureShow, "no-logs": localapi.RequestLogs, "protect": localapi.RequestProtect, "helper-update": localapi.RequestHelperUpdate,
+		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet,
+		"networks": localapi.RequestNetworkProfiles, "network-profile": localapi.RequestNetworkProfileSet, "network-remove": localapi.RequestNetworkProfileRemove, "network-direct": localapi.RequestNetworkDirect, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "capture-show": localapi.RequestCaptureShow, "no-logs": localapi.RequestLogs, "protect": localapi.RequestProtect, "helper-update": localapi.RequestHelperUpdate,
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
@@ -255,6 +264,27 @@ func ctl(args []string) error {
 		req.Background = on
 	case "capture-show":
 		req.Show = on
+	case "network-direct":
+		req.Direct = on
+	case "network-remove":
+		req.Profile = &localapi.NetworkChange{ID: *network}
+	case "network-profile":
+		req.Profile = &localapi.NetworkChange{ID: *network, Servers: servers}
+		fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "label":
+				req.Profile.Label = label
+			case "name":
+				req.Profile.Name = name
+			}
+		})
+		if *joined != "" {
+			j := *joined == "true"
+			req.Profile.Joined = &j
+		}
+		if s, ok := os.LookupEnv(networkSecretEnv); ok {
+			req.Profile.Secret = &s
+		}
 	case "no-logs":
 		req.LogsOff = on
 	case "protect":
@@ -368,6 +398,12 @@ func ctl(args []string) error {
 		n := resp.Network
 		fmt.Printf("servers %s\nname %q\nsecret set: %v (weak: %v)\ndirect paths: %v\n",
 			strings.Join(n.Servers, ", "), n.Name, n.HasSecret, n.WeakSecret, n.Direct != nil && *n.Direct)
+	case resp.Networks != nil:
+		fmt.Printf("direct paths: %v\n", resp.Networks.Direct)
+		for _, p := range resp.Networks.Profiles {
+			fmt.Printf("network %s %q: name %q, servers %s, secret set: %v (weak: %v), joined: %v\n",
+				p.ID, p.Label, p.Name, strings.Join(p.Servers, ", "), p.HasSecret, p.WeakSecret, p.Joined)
+		}
 	case resp.DeviceID != "":
 		fmt.Println("device", resp.DeviceID)
 	case resp.Failure != "":
@@ -472,6 +508,19 @@ func printStatus(s *localapi.Status) {
 	fmt.Println()
 	for _, d := range n.Devices {
 		fmt.Printf("  device %s  %s  %d ms\n", d.DeviceID, d.Path, d.LatencyMS)
+	}
+	for _, each := range n.Networks {
+		fmt.Printf("  network %s %q: %s", each.ID, each.Label, each.State)
+		if each.Error != "" {
+			fmt.Printf(": %s", each.Error)
+		}
+		if each.Address != "" {
+			fmt.Printf(", address %s", each.Address)
+		}
+		if each.ListenPort != 0 {
+			fmt.Printf(", listening on %d", each.ListenPort)
+		}
+		fmt.Printf(", %d devices\n", len(each.Devices))
 	}
 	if s.LogsOff {
 		fmt.Println("no logs")

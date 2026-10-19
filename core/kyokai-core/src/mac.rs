@@ -186,8 +186,8 @@ fn pixel_size(id: CGDirectDisplayID, points: Display) -> (u32, u32) {
 }
 
 /// Where the pointer is, as fractions of the main display (outside 0–1 on
-/// another display), and whether it is shown.
-pub fn pointer() -> Option<(f32, f32, bool)> {
+/// another display).
+pub fn pointer() -> Option<(f32, f32)> {
     if let Some(link) = crate::agent::link() {
         return link.pointer(None);
     }
@@ -201,8 +201,8 @@ pub fn pointer() -> Option<(f32, f32, bool)> {
 }
 
 /// Where the pointer is, as fractions of `area` (points; outside 0–1
-/// elsewhere), and whether it is shown.
-pub fn pointer_in(area: Area) -> Option<(f32, f32, bool)> {
+/// elsewhere).
+pub fn pointer_in(area: Area) -> Option<(f32, f32)> {
     if let Some(link) = crate::agent::link() {
         return link.pointer(Some(area));
     }
@@ -211,7 +211,6 @@ pub fn pointer_in(area: Area) -> Option<(f32, f32, bool)> {
     Some((
         ((at.x - area.x as f64) / area.width.max(1) as f64) as f32,
         ((at.y - area.y as f64) / area.height.max(1) as f64) as f32,
-        true,
     ))
 }
 
@@ -387,8 +386,6 @@ pub struct Capture {
     shared: Arc<Shared>,
     /// The last picture taken.
     seen: u64,
-    /// The display captured.
-    display: CGDirectDisplayID,
     /// Whether the stream's filter shows Kyokai's windows.
     show: bool,
 }
@@ -500,27 +497,19 @@ impl Capture {
             _output: output,
             shared,
             seen: 0,
-            display: id,
             show,
         })
     }
 
     /// Waits up to `timeout` for a picture newer than the last one taken.
-    /// Side effects: when the host user changed whether capture sees
-    /// Kyokai's windows, the stream takes the new filter first (one try per
-    /// change).
+    /// Returns: `Got::Lost` once the host user changed whether capture sees
+    /// Kyokai's windows, so that the capture loop opens the display again,
+    /// with the new filter from the start, as it does when Kyokai starts
+    /// (regression: the running stream's filter was updated once, and when
+    /// that did not take, Kyokai stayed hidden after the switch was off).
     fn next(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got {
-        let show = crate::video::show_kyokai();
-        if show != self.show {
-            self.show = show;
-            if let Ok(f) = filter(self.display, show) {
-                // SAFETY: the stream this capture started takes a filter of
-                // the same display.
-                let _ = finished(|done| unsafe {
-                    self.stream
-                        .updateContentFilter_completionHandler(&f, Some(done))
-                });
-            }
+        if crate::video::show_kyokai() != self.show {
+            return Got::Lost;
         }
         let seen = self.seen;
         let Ok(latest) = self.shared.latest.lock() else {
@@ -1492,7 +1481,7 @@ impl Desktop for Screen {
     }
 
     fn cursor(&mut self) -> Option<(f32, f32)> {
-        let (x, y, _) = pointer()?;
+        let (x, y) = pointer()?;
         Some((x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)))
     }
 

@@ -1022,16 +1022,6 @@ func (msgs Messages) ActionCheckAppUpdate() string {
 	return Catalog.Format(msgs.locale, "ActionCheckAppUpdate", nil)
 }
 
-// ActionClearNetwork says "Clear network settings"
-// in the language the app shows.
-func ActionClearNetwork() string { return In(i18n.Locale()).ActionClearNetwork() }
-
-// ActionClearNetwork says "Clear network settings"
-// in the language of msgs.
-func (msgs Messages) ActionClearNetwork() string {
-	return Catalog.Format(msgs.locale, "ActionClearNetwork", nil)
-}
-
 // ActionConnect says "Connect"
 // in the language the app shows.
 func ActionConnect() string { return In(i18n.Locale()).ActionConnect() }
@@ -1080,6 +1070,16 @@ func ActionDisconnect() string { return In(i18n.Locale()).ActionDisconnect() }
 // in the language of msgs.
 func (msgs Messages) ActionDisconnect() string {
 	return Catalog.Format(msgs.locale, "ActionDisconnect", nil)
+}
+
+// ActionEdit says "Edit"
+// in the language the app shows.
+func ActionEdit() string { return In(i18n.Locale()).ActionEdit() }
+
+// ActionEdit says "Edit"
+// in the language of msgs.
+func (msgs Messages) ActionEdit() string {
+	return Catalog.Format(msgs.locale, "ActionEdit", nil)
 }
 
 // ActionForgetIdentity says "Forget old identity"
@@ -2026,6 +2026,16 @@ func (msgs Messages) NavSecurity() string {
 	return Catalog.Format(msgs.locale, "NavSecurity", nil)
 }
 
+// NetworkAdd says "Add a network"
+// in the language the app shows.
+func NetworkAdd() string { return In(i18n.Locale()).NetworkAdd() }
+
+// NetworkAdd says "Add a network"
+// in the language of msgs.
+func (msgs Messages) NetworkAdd() string {
+	return Catalog.Format(msgs.locale, "NetworkAdd", nil)
+}
+
 // NetworkAddress says "Virtual address"
 // in the language the app shows.
 func NetworkAddress() string { return In(i18n.Locale()).NetworkAddress() }
@@ -2034,26 +2044,6 @@ func NetworkAddress() string { return In(i18n.Locale()).NetworkAddress() }
 // in the language of msgs.
 func (msgs Messages) NetworkAddress() string {
 	return Catalog.Format(msgs.locale, "NetworkAddress", nil)
-}
-
-// NetworkClearConfirm says "This forgets the servers, the addresses, the network name and the secret, and leaves the network."
-// in the language the app shows.
-func NetworkClearConfirm() string { return In(i18n.Locale()).NetworkClearConfirm() }
-
-// NetworkClearConfirm says "This forgets the servers, the addresses, the network name and the secret, and leaves the network."
-// in the language of msgs.
-func (msgs Messages) NetworkClearConfirm() string {
-	return Catalog.Format(msgs.locale, "NetworkClearConfirm", nil)
-}
-
-// NetworkCleared says "Network settings cleared."
-// in the language the app shows.
-func NetworkCleared() string { return In(i18n.Locale()).NetworkCleared() }
-
-// NetworkCleared says "Network settings cleared."
-// in the language of msgs.
-func (msgs Messages) NetworkCleared() string {
-	return Catalog.Format(msgs.locale, "NetworkCleared", nil)
 }
 
 // NetworkConnecting says "Connecting…"
@@ -2136,6 +2126,36 @@ func (msgs Messages) NetworkError() string {
 	return Catalog.Format(msgs.locale, "NetworkError", nil)
 }
 
+// NetworkJoin says "Join"
+// in the language the app shows.
+func NetworkJoin() string { return In(i18n.Locale()).NetworkJoin() }
+
+// NetworkJoin says "Join"
+// in the language of msgs.
+func (msgs Messages) NetworkJoin() string {
+	return Catalog.Format(msgs.locale, "NetworkJoin", nil)
+}
+
+// NetworkLabel says "Name shown here"
+// in the language the app shows.
+func NetworkLabel() string { return In(i18n.Locale()).NetworkLabel() }
+
+// NetworkLabel says "Name shown here"
+// in the language of msgs.
+func (msgs Messages) NetworkLabel() string {
+	return Catalog.Format(msgs.locale, "NetworkLabel", nil)
+}
+
+// NetworkLabelHint says "Optional; the network name shows otherwise."
+// in the language the app shows.
+func NetworkLabelHint() string { return In(i18n.Locale()).NetworkLabelHint() }
+
+// NetworkLabelHint says "Optional; the network name shows otherwise."
+// in the language of msgs.
+func (msgs Messages) NetworkLabelHint() string {
+	return Catalog.Format(msgs.locale, "NetworkLabelHint", nil)
+}
+
 // NetworkNAT says "NAT type"
 // in the language the app shows.
 func NetworkNAT() string { return In(i18n.Locale()).NetworkNAT() }
@@ -2166,14 +2186,24 @@ func (msgs Messages) NetworkNoDevices() string {
 	return Catalog.Format(msgs.locale, "NetworkNoDevices", nil)
 }
 
-// NetworkOff says "Not connected to a network."
+// NetworkNone says "No network yet. Add one to reach other devices by their Device ID."
 // in the language the app shows.
-func NetworkOff() string { return In(i18n.Locale()).NetworkOff() }
+func NetworkNone() string { return In(i18n.Locale()).NetworkNone() }
 
-// NetworkOff says "Not connected to a network."
+// NetworkNone says "No network yet. Add one to reach other devices by their Device ID."
 // in the language of msgs.
-func (msgs Messages) NetworkOff() string {
-	return Catalog.Format(msgs.locale, "NetworkOff", nil)
+func (msgs Messages) NetworkNone() string {
+	return Catalog.Format(msgs.locale, "NetworkNone", nil)
+}
+
+// NetworkNotJoined says "Not joined"
+// in the language the app shows.
+func NetworkNotJoined() string { return In(i18n.Locale()).NetworkNotJoined() }
+
+// NetworkNotJoined says "Not joined"
+// in the language of msgs.
+func (msgs Messages) NetworkNotJoined() string {
+	return Catalog.Format(msgs.locale, "NetworkNotJoined", nil)
 }
 
 // NetworkOnline says "Connected"
@@ -2194,6 +2224,26 @@ func NetworkPort() string { return In(i18n.Locale()).NetworkPort() }
 // in the language of msgs.
 func (msgs Messages) NetworkPort() string {
 	return Catalog.Format(msgs.locale, "NetworkPort", nil)
+}
+
+// NetworkRemoveConfirm says "Remove {name}? Kyokai leaves this network and forgets its servers, network name and secret."
+// in the language the app shows.
+func NetworkRemoveConfirm(name string) string { return In(i18n.Locale()).NetworkRemoveConfirm(name) }
+
+// NetworkRemoveConfirm says "Remove {name}? Kyokai leaves this network and forgets its servers, network name and secret."
+// in the language of msgs.
+func (msgs Messages) NetworkRemoveConfirm(name string) string {
+	return Catalog.Format(msgs.locale, "NetworkRemoveConfirm", map[string]any{"name": name})
+}
+
+// NetworkRemoved says "Network removed."
+// in the language the app shows.
+func NetworkRemoved() string { return In(i18n.Locale()).NetworkRemoved() }
+
+// NetworkRemoved says "Network removed."
+// in the language of msgs.
+func (msgs Messages) NetworkRemoved() string {
+	return Catalog.Format(msgs.locale, "NetworkRemoved", nil)
 }
 
 // NetworkSaved says "Network settings saved."
@@ -2256,34 +2306,24 @@ func (msgs Messages) NetworkServersHint() string {
 	return Catalog.Format(msgs.locale, "NetworkServersHint", nil)
 }
 
-// NetworkSettings says "Network settings"
-// in the language the app shows.
-func NetworkSettings() string { return In(i18n.Locale()).NetworkSettings() }
-
-// NetworkSettings says "Network settings"
-// in the language of msgs.
-func (msgs Messages) NetworkSettings() string {
-	return Catalog.Format(msgs.locale, "NetworkSettings", nil)
-}
-
-// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server. Every device you want to reach joins the same network."
-// in the language the app shows.
-func NetworkSettingsHint() string { return In(i18n.Locale()).NetworkSettingsHint() }
-
-// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server. Every device you want to reach joins the same network."
-// in the language of msgs.
-func (msgs Messages) NetworkSettingsHint() string {
-	return Catalog.Format(msgs.locale, "NetworkSettingsHint", nil)
-}
-
-// NetworkTitle says "Network"
+// NetworkTitle says "Networks"
 // in the language the app shows.
 func NetworkTitle() string { return In(i18n.Locale()).NetworkTitle() }
 
-// NetworkTitle says "Network"
+// NetworkTitle says "Networks"
 // in the language of msgs.
 func (msgs Messages) NetworkTitle() string {
 	return Catalog.Format(msgs.locale, "NetworkTitle", nil)
+}
+
+// NetworksHint says "Join EasyTier networks through standard EasyTier servers, several at once if you like: this device has the same Devic…"
+// in the language the app shows.
+func NetworksHint() string { return In(i18n.Locale()).NetworksHint() }
+
+// NetworksHint says "Join EasyTier networks through standard EasyTier servers, several at once if you like: this device has the same Devic…"
+// in the language of msgs.
+func (msgs Messages) NetworksHint() string {
+	return Catalog.Format(msgs.locale, "NetworksHint", nil)
 }
 
 // NoLogsConfirm says "This is a security risk: afterwards you can't find out who connected to this computer, or which devices it connected …"
@@ -3846,6 +3886,16 @@ func (msgs Messages) ViewerFullScreen() string {
 	return Catalog.Format(msgs.locale, "ViewerFullScreen", nil)
 }
 
+// ViewerHideActions says "Hide actions"
+// in the language the app shows.
+func ViewerHideActions() string { return In(i18n.Locale()).ViewerHideActions() }
+
+// ViewerHideActions says "Hide actions"
+// in the language of msgs.
+func (msgs Messages) ViewerHideActions() string {
+	return Catalog.Format(msgs.locale, "ViewerHideActions", nil)
+}
+
 // ViewerHideBar says "Hide controls"
 // in the language the app shows.
 func ViewerHideBar() string { return In(i18n.Locale()).ViewerHideBar() }
@@ -4074,6 +4124,16 @@ func ViewerScaleHint() string { return In(i18n.Locale()).ViewerScaleHint() }
 // in the language of msgs.
 func (msgs Messages) ViewerScaleHint() string {
 	return Catalog.Format(msgs.locale, "ViewerScaleHint", nil)
+}
+
+// ViewerShowActions says "Show actions"
+// in the language the app shows.
+func ViewerShowActions() string { return In(i18n.Locale()).ViewerShowActions() }
+
+// ViewerShowActions says "Show actions"
+// in the language of msgs.
+func (msgs Messages) ViewerShowActions() string {
+	return Catalog.Format(msgs.locale, "ViewerShowActions", nil)
 }
 
 // ViewerShowBar says "Show controls"

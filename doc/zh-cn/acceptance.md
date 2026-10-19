@@ -36,6 +36,7 @@ OpenAI 是规格中的服务商；Kyokai 对任何已配置的服务商运行相
 | 无 TUN 连接 | 已验证（Windows） | 平台说明：S1 EasyTier 试验、防火墙提示 |
 | 动态地址不影响身份 | 已验证（Windows） | 平台说明：监听重新绑定 |
 | 网络中断得到妥善处理 | 已验证（Windows） | 平台说明：远程 x64 虚拟机；`a_dropped_session_resumes_without_a_new_login` |
+| 同时加入多个网络，设备 ID 相同 | 已验证（macOS，同一台 Mac 上的两个引擎） | 平台说明：0.3.2；会话通过另一个已加入的网络恢复 |
 
 ## 手动 Computer Use
 

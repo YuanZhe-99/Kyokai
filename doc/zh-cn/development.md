@@ -76,9 +76,11 @@ KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
 ```
 
 `KYOKAI_PROFILE` 让开发实例与已安装的 Kyokai 分开：拥有自己的应用名、单实例锁、套接字与状态目录（`Kyokai-<profile>`）。
-`KYOKAI_SVC` 让界面使用另一个引擎可执行文件，`KYOKAI_SOCKET` 指定另一个套接字。ABI 冒烟测试需要库的绝对路径。`ctl network-set` 从
-`KYOKAI_NETWORK_SECRET` 读取网络密钥，从不从命令行读取；`ctl network` 显示不含密钥的设置。同一台机器上使用不同
-配置、状态目录和套接字的两个引擎，可以通过同一个网络互相看到。
+`KYOKAI_SVC` 让界面使用另一个引擎可执行文件，`KYOKAI_SOCKET` 指定另一个套接字。ABI 冒烟测试需要库的绝对路径。`ctl network-set`（第一个网络）
+与 `ctl network-profile`（添加一个网络，或修改 `--network` 指定的网络）从 `KYOKAI_NETWORK_SECRET` 读取网络密钥，从不从命令行读取；
+`ctl network` 和 `ctl networks` 显示不含密钥的设置，`ctl network-remove` 忘记一个网络，`ctl network-direct` 为所有网络设置直接路径。
+同一台机器上使用不同配置、状态目录和套接字的两个引擎，可以通过同一个网络互相看到：没有外部服务器时，一个打开直接路径的引擎列出一个不会
+应答的服务器（`tcp://127.0.0.1:9`），另一个列出前者的监听端口（`tcp://127.0.0.1:<端口>`，见其状态）。
 
 在 macOS 上，发布用的签名身份进入登录钥匙串后，请用它为本地构建签名（`MYGO_SIGN=<身份或其 SHA-1> scripts/build.sh`）：临时签名的构建每次都是新身份，会丢失隐私授权。请用 `open` 而不是从 shell 启动应用，这样 macOS 才会把它的引擎算作 Kyokai 的一部分；从 shell 启动的引擎没有授权，只会发送占位画面。`ctl watch --type T --keys meta+a,enter` 会像查看窗口那样向被控端输入。
 

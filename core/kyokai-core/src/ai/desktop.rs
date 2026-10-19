@@ -458,7 +458,7 @@ mod windows_impl {
         }
 
         fn cursor(&mut self) -> Option<(f32, f32)> {
-            let (x, y, _) = crate::input::pointer()?;
+            let (x, y) = crate::input::pointer()?;
             Some((x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)))
         }
 

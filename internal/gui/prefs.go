@@ -77,9 +77,10 @@ type ViewerPrefs struct {
 	Swap   *bool  `json:"swap,omitempty"`
 	// Mute: the host's sound is not played.
 	Mute bool `json:"mute,omitempty"`
-	// Collapsed: the bottom bar shows only the Device ID and Show
-	// controls.
-	Collapsed bool `json:"collapsed,omitempty"`
+	// Collapsed: the bottom bar is folded away; TopCollapsed: the top bar
+	// (the host's actions and the keyboard).
+	Collapsed    bool `json:"collapsed,omitempty"`
+	TopCollapsed bool `json:"top_collapsed,omitempty"`
 	// Original: the picture shows at one point per pixel, scrolled,
 	// instead of fitted to the window.
 	Original bool `json:"original,omitempty"`

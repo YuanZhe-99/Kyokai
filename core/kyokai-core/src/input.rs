@@ -281,17 +281,16 @@ pub use windows_impl::{
 pub use crate::mac::{Injector, pointer, pointer_in};
 
 /// Where the pointer is, as fractions of the primary display (outside 0–1
-/// on another display), and whether it is shown. Not available off Windows
-/// and macOS.
+/// on another display). Not available off Windows and macOS.
 #[cfg(not(any(windows, target_os = "macos")))]
-pub fn pointer() -> Option<(f32, f32, bool)> {
+pub fn pointer() -> Option<(f32, f32)> {
     None
 }
 
-/// Where the pointer is, as fractions of `area`, and whether it is shown.
-/// Not available off Windows and macOS.
+/// Where the pointer is, as fractions of `area`. Not available off Windows
+/// and macOS.
 #[cfg(not(any(windows, target_os = "macos")))]
-pub fn pointer_in(_area: Area) -> Option<(f32, f32, bool)> {
+pub fn pointer_in(_area: Area) -> Option<(f32, f32)> {
     None
 }
 
@@ -317,12 +316,12 @@ mod windows_impl {
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CURSOR_SHOWING, CURSORINFO, CallNextHookEx, GetCursorInfo, GetCursorPos,
-        GetForegroundWindow, GetMessageW, GetSystemMetrics, GetWindowThreadProcessId,
-        KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW,
-        SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-        SM_YVIRTUALSCREEN, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL,
-        WM_KEYDOWN, WM_MOUSEMOVE, WM_QUIT, WM_SYSKEYDOWN, WindowFromPoint,
+        CURSORINFO, CallNextHookEx, GetCursorInfo, GetCursorPos, GetForegroundWindow, GetMessageW,
+        GetSystemMetrics, GetWindowThreadProcessId, KBDLLHOOKSTRUCT, LLKHF_INJECTED,
+        LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, PostThreadMessageW, SM_CXSCREEN, SM_CXVIRTUALSCREEN,
+        SM_CYSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetWindowsHookExW,
+        UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_MOUSEMOVE, WM_QUIT,
+        WM_SYSKEYDOWN, WindowFromPoint,
     };
     use windows::core::PWSTR;
 
@@ -700,8 +699,8 @@ mod windows_impl {
     }
 
     /// Where the pointer is, as fractions of the primary display (outside
-    /// 0–1 on another display), and whether it is shown.
-    pub fn pointer() -> Option<(f32, f32, bool)> {
+    /// 0–1 on another display).
+    pub fn pointer() -> Option<(f32, f32)> {
         if let Some(link) = crate::agent::link() {
             return link.pointer(None);
         }
@@ -709,9 +708,12 @@ mod windows_impl {
         pointer_in(primary)
     }
 
-    /// Where the pointer is, as fractions of `area` (outside 0–1 elsewhere),
-    /// and whether it is shown.
-    pub fn pointer_in(area: Area) -> Option<(f32, f32, bool)> {
+    /// Where the pointer is, as fractions of `area` (outside 0–1 elsewhere).
+    /// Notes: whether Windows shows its cursor is left out: it hides it with
+    /// no mouse attached except during a drag, and the viewer's ring marks
+    /// where input lands all the same, as on a Mac host (regression: the
+    /// ring showed only while dragging).
+    pub fn pointer_in(area: Area) -> Option<(f32, f32)> {
         if let Some(link) = crate::agent::link() {
             return link.pointer(Some(area));
         }
@@ -725,7 +727,6 @@ mod windows_impl {
             Some((
                 (info.ptScreenPos.x - area.x) as f32 / area.width.max(1) as f32,
                 (info.ptScreenPos.y - area.y) as f32 / area.height.max(1) as f32,
-                info.flags.0 & CURSOR_SHOWING.0 != 0,
             ))
         })
     }

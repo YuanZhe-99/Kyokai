@@ -136,8 +136,11 @@ impl Link {
     /// video stream ends.
     fn attach(self: &Arc<Self>, input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
         *self.out.lock().expect("agent link") = Some(BufWriter::new(out));
-        // A new agent captures as the host user chose.
+        // A new agent captures as the host user chose: Kyokai's windows
+        // shown or not, and the sound to share (regression: an agent that
+        // started again shared what the computer plays, whatever was chosen).
         self.show_kyokai(crate::video::show_kyokai());
+        self.sound_source(&crate::audio::chosen().1);
         let link = self.clone();
         std::thread::spawn(move || {
             let mut input = input;
@@ -439,9 +442,8 @@ impl Link {
             .unwrap_or(false)
     }
 
-    /// The pointer as fractions of `area` (the primary when None) and
-    /// whether it is shown.
-    pub fn pointer(&self, area: Option<Area>) -> Option<(f32, f32, bool)> {
+    /// The pointer as fractions of `area` (the primary when None).
+    pub fn pointer(&self, area: Option<Area>) -> Option<(f32, f32)> {
         self.call("pointer", json!({"area": area})).ok().flatten()
     }
 
@@ -1579,6 +1581,29 @@ mod tests {
             assert!(t0.elapsed() < Duration::from_secs(5), "stream not closed");
             std::thread::sleep(Duration::from_millis(20));
         }
+    }
+
+    /// A new agent first hears how the host user chose to capture: whether
+    /// Kyokai's windows show and the sound to share (regression: an agent
+    /// that started again shared what the computer plays).
+    #[test]
+    fn a_new_agent_hears_the_capture_choices_first() {
+        let (down_r, down_w) = std::io::pipe().unwrap();
+        let (up_r, _up_w) = std::io::pipe().unwrap();
+        let link = Arc::new(Link::new());
+        link.attach(Box::new(up_r), Box::new(down_w));
+        let mut down = down_r;
+        let mut heard = Vec::new();
+        for _ in 0..2 {
+            let (kind, body) = read_message(&mut down).unwrap();
+            assert_eq!(kind, JSON);
+            let v: Value = serde_json::from_slice(&body).unwrap();
+            heard.push((v["op"].as_str().unwrap_or_default().to_owned(), v));
+        }
+        assert_eq!(heard[0].0, "capture.show");
+        assert_eq!(heard[0].1["show"], json!(crate::video::show_kyokai()));
+        assert_eq!(heard[1].0, "sound.source");
+        assert_eq!(heard[1].1["source"], json!(crate::audio::chosen().1));
     }
 
     #[test]
