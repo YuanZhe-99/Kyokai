@@ -24,7 +24,7 @@ when they run; anything not listed here is not assumed.
   `DefWindowProc`; X1/X2 arrive as `KeyBack`/`KeyForward` on release; macOS turns Control-click
   into a right click, ignores CapsLock and lets menu shortcuts (Cmd+Q/W/H/C/V) win; no pointer lock,
   no low-level hooks. A pointer move with no button held comes with `Button` −1 (a drag with the
-  button held), so a filter on buttons 0–2 drops every hover move (Kyokai's did until 0.1.3).
+  button held), so a filter on buttons 0–2 drops every hover move (Kyokai's did until 0.2.0).
 - **Windows of the app.** Several windows, full screen, bounds, always-on-top,
   `SetContentProtection`, and `NativeHandle()` (HWND / NSWindow).
 - **App services.** Tray (menu, icon), notifications (balloons on Windows), clipboard (text,

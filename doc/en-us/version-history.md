@@ -1,6 +1,6 @@
 # Version history
 
-## 0.1.3 (2026-10-18)
+## 0.2.0 (2026-10-18)
 
 - The viewer: the other computer's pointer follows the mouse (moves without a button held were
   dropped, so the pointer moved only on clicks), reported 60 times a second; a Codec choice (Auto
@@ -44,7 +44,7 @@
   only with its probes). A device whose Kyokai quits says goodbye, so the other side ends the
   session at once instead of after a minute. The Network page has direct addresses (other devices'
   IP addresses or domain names, a network without a server) and Clear network settings.
-- Wire protocol 10 (a 0.1.3 device connects only to 0.1.3), FFI ABI 5, local API 2.
+- Wire protocol 10 (a 0.2.0 device connects only to 0.2.0), FFI ABI 5, local API 2.
 - Checked (2026-10-18): MyGo v0.5.5, EasyTier v2.7.0 (commit `8b7f1f0`), RustDesk 1.5.0, vcpkg
   2026.07.29 and Rust 1.99.1 are the latest; checked, unchanged.
 

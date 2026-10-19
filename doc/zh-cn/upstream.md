@@ -18,7 +18,7 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   Windows 丢弃未映射的键，并且总把 `WM_SYSKEYDOWN`（Alt、F10、Alt+F4）交给 `DefWindowProc`；X1/X2 在抬起时以
   `KeyBack`/`KeyForward` 到达；macOS 把 Control 加单击变成右键、忽略 CapsLock、菜单快捷键（Cmd+Q/W/H/C/V）优先；
   没有指针锁定，也没有底层钩子。没有按住按键时的指针移动带 `Button` −1（按住按键拖动时带该按键），所以只放行
-  按键 0–2 的过滤会丢掉所有悬停移动（Kyokai 在 0.1.3 之前就是如此）。
+  按键 0–2 的过滤会丢掉所有悬停移动（Kyokai 在 0.2.0 之前就是如此）。
 - **应用的窗口。** 多窗口、全屏、位置尺寸、置顶、`SetContentProtection`，以及 `NativeHandle()`（HWND / NSWindow）。
 - **应用服务。** 托盘（菜单、图标）、通知（Windows 上为气泡）、剪贴板（文本、HTML、PNG 图片；没有变化事件）、
   对话框、外部打开、按应用名称区分的单实例锁、登录时启动、电源事件（锁定/解锁、空闲时间）、`App.Path`

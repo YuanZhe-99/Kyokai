@@ -167,11 +167,7 @@ func (a *App) networkSettings(c *ui.Context) {
 			}
 			if f.hasSecret || strings.TrimSpace(f.servers+f.peers+f.name) != "" {
 				if ui.Button(c.Key("net-clear"), L.ActionClearNetwork()).Disabled(busy).Clicked() {
-					go func() {
-						if a.confirm(L.NetworkClearConfirm(), L.ActionClearNetwork()) {
-							a.update(func() { a.saveNetwork(f, true) })
-						}
-					}()
+					go a.clearNetwork(f, func() bool { return a.confirm(L.NetworkClearConfirm(), L.ActionClearNetwork()) })
 				}
 			}
 		})
@@ -197,10 +193,19 @@ func (a *App) loadNetwork() {
 	}()
 }
 
+// clearNetwork forgets the network settings once confirmed (a dialog,
+// so it runs off the main thread).
+func (a *App) clearNetwork(f netForm, confirmed func() bool) {
+	if confirmed() {
+		a.saveNetwork(f, true)
+	}
+}
+
 // saveNetwork sends the form to the engine (the servers, addresses, name
 // and secret; the stored direct choice stays); clear forgets them all,
 // the secret too, which turns the node off.
 // Side effects: the engine stores the settings and reconnects.
+// Notes: takes a.mu itself, so it is never called inside a.update.
 func (a *App) saveNetwork(f netForm, clear bool) {
 	// Direct connections are set in Settings, Run mode (setDirect).
 	ns := &localapi.NetworkSettings{Servers: lines(f.servers), Peers: lines(f.peers), Name: strings.TrimSpace(f.name)}

@@ -1,7 +1,7 @@
 {
   "name": "Kyokai",
   "identifier": "com.yuanzhe.kyokai",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "copyright": "Copyright (C) 2026 YuanZhe",
   "main": "./cmd/kyokai",
   "out": "build",

@@ -2,6 +2,7 @@ package gui
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"image"
 	"image/png"
@@ -833,5 +834,33 @@ func TestLiveSound(t *testing.T) {
 	s.close()
 	if err := <-done; err != io.EOF {
 		t.Fatalf("closed: %v", err)
+	}
+}
+
+// TestClearNetworkReturns: clearing after the confirmation (off the main
+// thread) finishes and frees the page; it once took the app lock twice and
+// froze the window.
+func TestClearNetworkReturns(t *testing.T) {
+	a := &App{busy: map[string]bool{}, ctx: context.Background(), socket: filepath.Join(t.TempDir(), "none.sock")}
+	done := make(chan struct{})
+	go func() {
+		a.clearNetwork(netForm{name: "kyokai", hasSecret: true}, func() bool { return true })
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("clearing the network settings did not return")
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		a.mu.Lock()
+		busy := a.busy["network"]
+		a.mu.Unlock()
+		if !busy {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the network page stayed busy")
+		}
 	}
 }
