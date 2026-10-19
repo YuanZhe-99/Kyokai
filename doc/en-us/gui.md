@@ -6,10 +6,14 @@ when `SCREENSHOT_DIR` is set.
 
 ## Structure
 
-- **Main window:** Home, and once a device is connected a row of tabs above it: Kyokai (Home),
-  then one tab per connected device ([Connections](#connections)); the row hides in full screen.
-- **Sidebar:** Kyokai's mark and name, then Home, Network, AI and Settings, each with its icon
-  (original line drawings in `internal/gui/assets/icons`), left-aligned.
+- **Main window:** the tab strip is the window's title bar (MyGo's hidden title bar,
+  `TitleBarOptions`): the window's own controls sit in it — the traffic lights on macOS, minimize,
+  maximize and close on Windows, as tall as the strip — then the Kyokai tab (Home) and one tab per
+  connected device ([Connections](#connections)); its empty part moves the window, and a double
+  click zooms or maximizes it as a title bar does. The strip hides in full screen.
+- **Sidebar:** Kyokai's mark and name, then Home, Network, AI, Permissions, Security, General and
+  About, each with its icon (original line drawings in `internal/gui/assets/icons`), left-aligned.
+  There is no separate Settings page: every page but Home is an area of settings.
 - **Home**, laid out as RustDesk's: on the left "This device" — the Device ID in groups of three
   with Copy; the temporary password, masked until Show, with Copy and New password (when only
   the permanent password is accepted, a line saying so instead, or a warning that none is set); a note when
@@ -18,7 +22,7 @@ when `SCREENSHOT_DIR` is set.
   "Control another device": a Device ID or an address (an IP address or domain name, for a
   device that accepts connections by address; "Looking for the device…" while it is asked who it
   is), Options (also ask to run AI tasks there) and Connect (a Device ID needs a network). On macOS, while Screen Recording, Accessibility, Input Monitoring or the
-  Keychain is missing, "Privacy permissions" with Allow for each (Settings always shows it there);
+  Keychain is missing, "Privacy permissions" with Allow for each (Permissions always shows it there);
   a permission asked for in this run also offers "Reopen Kyokai", since macOS counts a new grant
   only in an engine started after it. In the helper modes the card says the permissions are
   Kyokai Helper's, and a missing one offers Restart Kyokai Helper. Below, **Recent**: one card per
@@ -61,7 +65,10 @@ when `SCREENSHOT_DIR` is set.
   settings form: servers (one URL per line), network name, and a write-only secret field (empty keeps the
   stored secret; a weak secret is flagged), Save and Clear network settings (after a
   confirmation: the servers, name and secret), which apply to these fields only.
-  Refused settings show the engine's reason.
+  Refused settings show the engine's reason. Last, how devices reach this one: Try direct
+  connections (off by default; on and fixed in the helper modes; applied as it is switched,
+  [networking.md](networking.md)) and Accept connections by address, off by default, and while on
+  the accepted ranges, one per line, with Save and Cancel, and a warning when it cannot listen.
 - **Device names:** wherever a device appears (a confirmation, Recent, the connection tabs, trusted
   devices, the viewer's title, the Network page) its name — the one this device's user gave it
   (`gui.json` `aliases`, never sent anywhere), else the friendly name it gives itself — goes beside
@@ -71,27 +78,26 @@ when `SCREENSHOT_DIR` is set.
   names a known maker or system (`deviceLogoName`), else the name's first letter. Vendor logos are
   trademarks of their owners, used only to identify a device's maker; their sources are listed in
   `internal/gui/assets/logos/SOURCES.md` (see [packaging.md](packaging.md), "Vendor logos").
-- **Run mode** (Settings): No privileges / Follow Kyokai / Background service, a note on the one
-  administrator prompt and what moves along; switching runs in the background with a toast
-  ([run-modes.md](run-modes.md)); Windows and macOS. Below it Try direct connections (off by
-  default; on and fixed in the helper modes; applied as it is switched,
-  [networking.md](networking.md)). Diagnostics shows the mode in use.
-- **Settings:** General (language, appearance, open at login — off by default, hide Kyokai from
-  screen capture — on by default, applied to the main window and every viewer at once and told
-  to the engine, whose macOS capture follows it, Sound to share — what this computer plays
-  unless an input device is chosen, a device that is gone shown as not connected, an input asking
-  macOS for the Microphone permission — close button),
-  Device identity (Device ID, fingerprint; back up and restore with a passphrase through a file
-  dialog; reset, after a warning), Access (permanent password: set, change or remove; Accepted passwords: Temporary,
-  Permanent or Both; Connect without asking, on by default, and below it "With a correct
-  password": a switch per permission a password grants without asking; Protected mode (only
-  with a permanent password, after a confirmation); Accept connections by
-  address, off by default, and while on the accepted ranges, one per line, with Save and Cancel,
-  and a warning when it cannot listen; trusted devices with their last connection and Remove), Storage (data folder with Open folder, how secrets are
-  kept, No logs — off by default, turning it on after a warning that nobody can tell any more who
-  connected or whom this device connected to, with a note when the engine in use cannot do it yet),
-  Diagnostics (version and ABI, engine start time, run mode, logs folder, or "Off" with No logs), About (version,
-  license, source code, app updates), Open source licenses (the shipped notices).
+- **Permissions:** on macOS "Privacy permissions" first; Passwords (permanent password: set,
+  change or remove; Accepted passwords: Temporary, Permanent or Both; Connect without asking, on by
+  default, and below it "With a correct password": a switch per permission a password grants
+  without asking); trusted devices with their last connection and Remove; Sound to share — what
+  this computer plays unless an input device is chosen, a device that is gone shown as not
+  connected, an input asking macOS for the Microphone permission.
+- **Security:** Device identity (Device ID, friendly name, fingerprint; back up and restore with a
+  passphrase through a file dialog; reset, after a warning); Protected mode (only with a permanent
+  password, after a confirmation); Privacy: hide Kyokai from screen capture — on by default,
+  applied to the main window and every viewer at once and told to the engine, whose macOS capture
+  follows it — how secrets are kept, and No logs — off by default, turning it on after a warning
+  that nobody can tell any more who connected or whom this device connected to, with a note when
+  the engine in use cannot do it yet.
+- **General:** language, appearance, open at login — off by default — and the close button; Run
+  mode: No privileges / Follow Kyokai / Background service, a note on the one administrator prompt
+  and what moves along; switching runs in the background with a toast
+  ([run-modes.md](run-modes.md)); Windows and macOS.
+- **About:** version, license, source code and app updates; Diagnostics (version and ABI, engine
+  start time, run mode, data folder with Open folder, logs folder, or "Off" with No logs); Open
+  source licenses (the shipped notices).
 - **Protected mode:** the sidebar shows only AI and every page is the AI page, topped by a card
   with the permanent password field and Turn off (a wrong password says so); confirmations and
   the devices connected here still show.
@@ -112,25 +118,36 @@ when `SCREENSHOT_DIR` is set.
   tab (×) disconnects. A tab dragged onto another Kyokai window's tabs moves there; dropped
   outside Kyokai, or with its ⧉, it gets a window of its own, which closes with its last tab;
   closing such a window disconnects its tabs. Keys grabbed for a window go to the tab shown.
-- The picture is scaled to fit on black, the host's pointer marked with a small ring that follows
-  the mouse, and a status line (it wraps onto more lines in a narrow window; ⌄ folds it away entirely,
+- The picture is scaled to fit on black, or with Original size at one point per pixel of the
+  host, scrolled both ways when larger than the window (its scroll bars' thumbs move it; the wheel
+  goes to the host while the session controls it) and centred when smaller; the host's pointer is
+  marked with a small ring that follows the mouse; and a status line (it wraps onto more lines in a narrow window; ⌄ folds it away entirely,
   leaving only a small ⌃ tab at the picture's bottom edge that pulls it out again, kept for each
   device): the Device ID, the display by number when the host has several,
-  quality preset, frame-rate cap ("30 fps"), Codec (Auto and what both computers do, by codec name
+  quality preset, frame-rate cap ("30 fps"), Fit or Original size, Codec (Auto and what both computers do, by codec name
   only, when there is a choice), Full colour, Direct or Relayed (Relayed with a hint to turn on direct connections on
   both devices), size, codec, frame rate, bitrate and the host's measured delay, whose tooltip
   shows what encodes and what decodes, each in hardware or software as it reports, and where the
   time goes (the host's encoding, the network, this computer's decoding and drawing, the frame
   rate against the host's target) — or, for the test pattern of a host that may
   not record its screen, "this is a placeholder picture" — Sound (plays the host's sound; on unless chosen, kept for each device), Pointer (shows or hides the ring,
-  remembered for every viewer), AI (collapses the AI panel) and Full screen. With `control-input`, a bar at the top (wrapping likewise) with Lock
+  remembered for every viewer), Clipboard (pulls out the clipboard panel, with `clipboard` or
+  `files`), AI (collapses the AI panel) and Full screen. With `control-input`, a bar at the top (wrapping likewise) with Lock
   screen, Ctrl+Alt+Del (helper modes), the Block their keyboard and mouse and Privacy mode
   switches (each with its label beside it), on Windows and macOS the keyboard mode (Map, Translate,
   Legacy; remembered for every viewer; on a Mac without Kyokai's Accessibility permission a hint
   to allow it), and Swap Ctrl and Cmd where a Mac is on either side; the mouse, the wheel and the
   keyboard on the picture go to the host ([computer-use.md](computer-use.md)). The quality preset,
-  frame-rate cap, Full colour, Codec, Swap Ctrl and Cmd and the folded status line are kept for each device (`viewers` in
+  frame-rate cap, Fit or Original size, Full colour, Codec, Swap Ctrl and Cmd, the clipboard switch and the folded status line are kept for each device (`viewers` in
   `gui.json`): a device's viewer opens with the settings chosen for it last.
+- The clipboard panel: "Share the clipboard with this device" (on unless switched off, kept for
+  each device) and what crossed the clipboard with the device while its tab was in front, newest
+  first (at most 30, in memory only, gone when the tab closes): each entry's source — from the
+  device (the host) or from this computer (the controller) — and time, then the text with Copy,
+  the image as a thumbnail with its size, or the files' names, count and size; Clear empties it.
+  Only the tab in front — shown in the Kyokai window used last; none while that window shows the
+  Kyokai tab — exchanges the clipboard ([computer-use.md](computer-use.md), "Clipboard"); the panel
+  says so when its tab is behind. Both panels may show, the clipboard's left of the AI's.
 - With `run-ai-task` the tab has an AI panel, "AI on the other computer", which the AI switch
   collapses (a step waiting for approval shows it anyway). It shows the host's one AI record,
   the same for every controller whoever started the task (state, the model's text, its latest
@@ -164,7 +181,7 @@ when `SCREENSHOT_DIR` is set.
 - Menu: the Device ID (disabled), Stop AI task while one is in progress (the emergency stop), Show
   Kyokai, Quit Kyokai. It never shows the password.
 - Kyokai's windows are excluded from screen capture, so neither a viewer nor an AI task sees them,
-  unless Settings' Hide Kyokai from capture is off.
+  unless Security's Hide Kyokai from capture is off.
 - Closing the window hides it to the tray and says so the first time; without a tray, or with
   "Quit" chosen for the close button, closing quits. Quitting the app itself (its menu, the Dock,
   logging out or shutting down) always quits.

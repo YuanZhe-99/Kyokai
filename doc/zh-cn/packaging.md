@@ -28,7 +28,7 @@ x64）；macOS 目标需要 Mac。`CORE_PREBUILT=1` 使用已放入 resources �
 
 ## 许可证
 
-Kyokai 采用 AGPL-3.0-only。每个安装包都带有 `licenses/LICENSE` 与 `licenses/THIRD_PARTY_NOTICES.md`，设置页会显示它们；
+Kyokai 采用 AGPL-3.0-only。每个安装包都带有 `licenses/LICENSE` 与 `licenses/THIRD_PARTY_NOTICES.md`，“关于”页面会显示它们；
 “关于”页链接到源代码。安装包还带有 `licenses/RUST_LICENSES.txt`——核心中每个 Rust crate 及其许可证文本，由
 `cargo about` 根据 `core/about.toml` 与 `core/about.hbs` 生成——以及 EasyTier 的 LGPL-3.0 要求随附的
 `licenses/GPL-3.0.txt`，以及来自 `third_party/licenses` 的原生编解码库文本：`libvpx-LICENSE.txt`（BSD-3-Clause）与

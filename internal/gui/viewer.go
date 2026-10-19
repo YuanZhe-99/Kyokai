@@ -173,6 +173,9 @@ type viewer struct {
 	swap *bool
 	// mute: the host's sound is not played (and not asked for).
 	mute bool
+	// original shows the picture at one point per pixel, scrolled, instead
+	// of fitted to the window.
+	original bool
 	// Input: the picture element's box, whether this session may control
 	// input, and the keys sent down.
 	box     ui.Rect
@@ -192,8 +195,9 @@ type viewer struct {
 	displays hostDisplays
 	// The host's session actions; nil until it offers them.
 	actions *hostActions
-	// The AI panel (viewerai.go).
-	ai viewerAI
+	// The AI panel (viewerai.go) and the clipboard's (viewerclip.go).
+	ai   viewerAI
+	clip viewerClip
 	// The connection's progress as the engine reports it, and whether the
 	// stream is running (pump).
 	phase   localapi.SessionInfo
@@ -254,6 +258,7 @@ func (a *App) newViewer(device string, about localapi.About, want []string) *vie
 	// The settings chosen for this device last time.
 	if vp, ok := a.viewerPrefs(device); ok {
 		v.preset, v.full, v.swap, v.mute, v.collapsed = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap, vp.Mute, vp.Collapsed
+		v.original, v.clip.off = vp.Original, vp.NoClipboard
 		if slices.Contains(fpsCaps, vp.FPS) {
 			v.fpsCap = vp.FPS
 		}
@@ -361,6 +366,7 @@ func (a *App) syncViewers() {
 			v.control = slices.Contains(s.Granted, localapi.PermControlInput)
 			v.ai.run = slices.Contains(s.Granted, localapi.PermRunAITask)
 			v.ai.approve = slices.Contains(s.Granted, localapi.PermApproveAIAction)
+			v.clip.may = slices.Contains(s.Granted, localapi.PermClipboard) || slices.Contains(s.Granted, localapi.PermFiles)
 			v.state = ""
 			if !slices.Contains(s.Granted, localapi.PermViewScreen) {
 				v.state = L.ViewerNoPicture()
@@ -557,6 +563,8 @@ func (v *viewer) pump() {
 			}
 		case packetAITask, packetAIError, packetAIDraft:
 			v.aiPacket(p[0], p[1:])
+		case packetClipboard:
+			v.clipPacketIn(p[1:])
 		case packetStats:
 			var s hostStats
 			if json.Unmarshal(p[1:], &s) == nil {
@@ -762,8 +770,8 @@ func (v *viewer) setState(s string) {
 	})
 }
 
-// view is the viewer window: the picture scaled to fit, the AI panel when
-// the session may run AI tasks, and a status line.
+// view is the viewer window: the picture (fitted, or at its original size),
+// the AI panel when the session may run AI tasks, and a status line.
 func (v *viewer) view(c *ui.Context) {
 	v.mu.Lock()
 	phase, pumping := v.phase, v.pumping
@@ -775,8 +783,8 @@ func (v *viewer) view(c *ui.Context) {
 		return
 	}
 	v.mu.Lock()
-	bm, state, start := v.bm, v.state, v.start
-	withAI, ptr, actions := v.ai.aiShown(), v.pointer, v.actions
+	bm, state, start, original := v.bm, v.state, v.start, v.original
+	withAI, withClip, ptr, actions := v.ai.aiShown(), v.clip.may && v.clip.shown, v.pointer, v.actions
 	b := bar{start: start, fps: v.fps, kbps: v.kbps, decodeMS: v.decodeMS, drawMS: v.drawMS, host: v.host,
 		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec, decoder: v.decoder}
 	v.mu.Unlock()
@@ -792,7 +800,14 @@ func (v *viewer) view(c *ui.Context) {
 			v.actionBar(c, *actions)
 		}
 		ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
-			v.picture(c, bm, state, start, ptr)
+			if original && state == "" && bm != nil {
+				v.originalPicture(c, bm, start, ptr)
+			} else {
+				v.picture(c, bm, state, start, ptr)
+			}
+			if withClip {
+				v.clipPanel(c)
+			}
 			if withAI {
 				v.aiPanel(c)
 			}
@@ -908,16 +923,48 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 			v.mu.Lock()
 			v.box = box
 			v.mu.Unlock()
-			// The marker lets the pointer through, so it never takes a click.
 			if ox, oy, w, h := pictureBox(box, start.Width, start.Height); ptr.Visible && w > 0 {
-				x := box.X - at.X + ox + ptr.X*w
-				y := box.Y - at.Y + oy + ptr.Y*h
-				ui.Column(c.Key("pointer")).Absolute().Left(x-pointerR).Top(y-pointerR).
-					Width(2*pointerR).Height(2*pointerR).Radius(pointerR).
-					Background(ui.Hex("#ffffff").Alpha(0.85)).Border(2, ui.Hex("#000000")).PassThrough()
+				pointerRing(c, box.X-at.X+ox+ptr.X*w, box.Y-at.Y+oy+ptr.Y*h)
 			}
 		}
 	})
+}
+
+// originalPicture is the host's screen at one point per pixel: scrolled in
+// both directions when it is larger than the area (the scroll bars' thumbs
+// move it; the wheel goes to the host while this session controls it),
+// centred on black when it is smaller. The pointer ring scrolls with it.
+func (v *viewer) originalPicture(c *ui.Context, bm *ui.Bitmap, start videoStart, ptr hostPointer) {
+	focused := false
+	defer func() { v.syncGrab(focused) }()
+	w, h := float32(start.Width), float32(start.Height)
+	scroll := ui.ScrollBoth(c.Key("picture-scroll")).Grow(1).MinWidth(0).FillHeight()
+	area := scroll.LayoutBounds()
+	scroll.Children(func() {
+		ui.Column(c).MinWidth(area.W).MinHeight(area.H).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+			ui.Column(c.Key("picture-box")).Width(w).Height(h).Shrink(0).Children(func() {
+				// It takes text and keys as the fitted picture does.
+				img := ui.Image(c.Key("picture"), bm).Width(w).Height(h).Focusable().
+					TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(v.sendInput)
+				focused = img.Focused()
+				box := img.LayoutBounds()
+				v.mu.Lock()
+				v.box = box
+				v.mu.Unlock()
+				if ptr.Visible {
+					pointerRing(c, ptr.X*w, ptr.Y*h)
+				}
+			})
+		})
+	})
+}
+
+// pointerRing marks the host's pointer at x, y in its parent. It lets the
+// pointer through, so it never takes a click.
+func pointerRing(c *ui.Context, x, y float32) {
+	ui.Column(c.Key("pointer")).Absolute().Left(x-pointerR).Top(y-pointerR).
+		Width(2*pointerR).Height(2*pointerR).Radius(pointerR).
+		Background(ui.Hex("#ffffff").Alpha(0.85)).Border(2, ui.Hex("#000000")).PassThrough()
 }
 
 // actionBar offers the host's session actions: lock its screen, send
@@ -1078,6 +1125,18 @@ func (v *viewer) statusBar(c *ui.Context, b bar) {
 				}
 			}
 		}
+		v.mu.Lock()
+		scale := 0
+		if v.original {
+			scale = 1
+		}
+		v.mu.Unlock()
+		if ui.Segmented(c.Key("scale"), &scale, L.ViewerFit(), L.ViewerOriginal()).Tooltip(L.ViewerScaleHint()).Changed() {
+			v.mu.Lock()
+			v.original = scale == 1
+			v.mu.Unlock()
+			v.keepSettings()
+		}
 		labelled(c, func() {
 			if ui.Switch(c.Key("full-colour"), &full).Label(L.QualityFullColour()).Changed() {
 				v.setQuality(preset, fpsCap, full)
@@ -1120,7 +1179,17 @@ func (v *viewer) statusBar(c *ui.Context, b bar) {
 		}
 		v.mu.Lock()
 		canAI, shown := v.ai.run, !v.ai.hidden
+		canClip, clipShown := v.clip.may, v.clip.shown
 		v.mu.Unlock()
+		if canClip {
+			labelled(c, func() {
+				if ui.Switch(c.Key("clip-panel"), &clipShown).Label(L.ViewerClipboard()).Changed() {
+					v.mu.Lock()
+					v.clip.shown = clipShown
+					v.mu.Unlock()
+				}
+			}, L.ViewerClipboard())
+		}
 		if canAI {
 			labelled(c, func() {
 				if ui.Switch(c.Key("ai-panel"), &shown).Label(L.ViewerAIPanel()).Changed() {

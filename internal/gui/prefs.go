@@ -35,7 +35,7 @@ type Prefs struct {
 	// "translate" or "legacy".
 	KeyboardMode string `json:"keyboard_mode,omitempty"`
 	// SoundSource is the sound this device shares: "" for what it plays,
-	// else an input device's id (Settings, Sound to share).
+	// else an input device's id (Permissions, Sound to share).
 	SoundSource string `json:"sound_source,omitempty"`
 	// HidePointer hides the ring that marks the host's pointer in the
 	// viewers (for hosts whose picture shows their cursor already).
@@ -46,7 +46,7 @@ type Prefs struct {
 	// Viewers are the viewer settings chosen for each device, by Device ID.
 	Viewers map[string]ViewerPrefs `json:"viewers,omitempty"`
 	// NoLogs keeps no logs, crash traces or connection history on this
-	// computer, in the GUI and its engine (Settings, Storage).
+	// computer, in the GUI and its engine (Security, No logs).
 	NoLogs bool `json:"no_logs,omitempty"`
 	// Aliases are the names this device's user gave other devices, by
 	// Device ID: shown here instead of the names the devices give
@@ -80,6 +80,12 @@ type ViewerPrefs struct {
 	// Collapsed: the bottom bar shows only the Device ID and Show
 	// controls.
 	Collapsed bool `json:"collapsed,omitempty"`
+	// Original: the picture shows at one point per pixel, scrolled,
+	// instead of fitted to the window.
+	Original bool `json:"original,omitempty"`
+	// NoClipboard: the clipboard is not shared with the device, even with
+	// its tab in front.
+	NoClipboard bool `json:"no_clipboard,omitempty"`
 }
 
 func defaultPrefs() Prefs { return Prefs{Theme: "system", CheckAppUpdates: true} }

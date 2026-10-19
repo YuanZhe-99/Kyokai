@@ -14,7 +14,7 @@ coordination server.
 | TUN | none (`no_tun`); traffic uses EasyTier's in-process data plane (smoltcp) |
 | Address | IPv4 from the network's DHCP |
 | Listeners | none, or with direct paths TCP and UDP on every address at the first port of 47311–47320 free for both (none when all are taken, as by other engines on the computer) |
-| Direct paths | off by default: no UDP, TCP or symmetric hole punching, no UPnP, no STUN and no listener, so nothing waits for unsolicited packets and Windows Firewall does not ask (the NAT type then reads "unknown"); the node still dials a peer that listens (TCP first, an outgoing connection), and otherwise traffic goes through the server's relay. On with "Try direct connections" (`direct`, in Settings, Run mode), and always in the helper (see below): hole punching, UPnP, the listeners and direct connections, preferring UDP (`default_protocol`) |
+| Direct paths | off by default: no UDP, TCP or symmetric hole punching, no UPnP, no STUN and no listener, so nothing waits for unsolicited packets and Windows Firewall does not ask (the NAT type then reads "unknown"); the node still dials a peer that listens (TCP first, an outgoing connection), and otherwise traffic goes through the server's relay. On with "Try direct connections" (`direct`, on the Network page), and always in the helper (see below): hole punching, UPnP, the listeners and direct connections, preferring UDP (`default_protocol`) |
 | Data plane whitelists | TCP and UDP port 47310 only; everything else from the network is dropped |
 | Runtime | a two-thread Tokio runtime owned by the core |
 
@@ -53,7 +53,7 @@ holds only its TCP connection to the server and dials a peer that listens (TCP f
 `default_protocol`; an outgoing connection no firewall asks about), and otherwise sessions use the
 server's relay. It does not set `disable_p2p`, which would also refuse a direct connection a
 listening peer offers: a device left off then kept a LAN peer that listens on the relay
-(2026-10-18). **Try direct connections** in Settings, Run mode (`direct` in the network settings,
+(2026-10-18). **Try direct connections** on the Network page (`direct` in the network settings,
 applied at once, beside the run mode because it opens this computer to the network) turns
 punching on and has the node listen, accepting that Windows may ask. EasyTier's direct
 connector reaches only peers that listen: it tries each of their interface addresses and their
@@ -76,8 +76,8 @@ answers there, then dials that address for the session, which must prove to be t
 any other; the session is the same protocol, over plain TCP. The known host keeps the address,
 so Recent connects the same way next time; connecting by Device ID goes back to the network.
 
-A host accepts them only while its user turns on **Accept connections by address** (Settings,
-Access; off by default): the engine then listens on TCP 47310 on every IPv4 address and, where
+A host accepts them only while its user turns on **Accept connections by address** (the Network
+page; off by default): the engine then listens on TCP 47310 on every IPv4 address and, where
 there is IPv6, every IPv6 address (IPv6 only on that socket), and closes at once any connection
 from outside the allowed ranges, before reading a byte. The ranges default to the private IPv4
 networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local `169.254.0.0/16`,

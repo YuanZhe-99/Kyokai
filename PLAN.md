@@ -23,7 +23,7 @@ this file when the plan is complete.
 | macOS crash | the Mac app crashed once when a connection request came in; on 2026-10-17 requests on this Mac raised the confirmation without a crash, and no crash report was found | cause found from the crashing Mac's logs and fixed, or not seen again over the macOS pass |
 | macOS pass | done on one Mac (platform-notes): capture, permissions, input and keyboard as host, Follow Kyokai. Left: the clipboard, Background service and the login-window agent, the helper's self-disable, sleep notifications, a Mac as controller of another machine through the viewer window, a Mac host from another machine | the acceptance record's rows hold on macOS, both directions Mac ↔ Windows |
 | OpenAI live run | the Responses adapter against the real API (fixtures and fakes only so far) | a task on a real desktop, recorded in platform-notes |
-| Viewer controls (RustDesk parity) | original size; Custom quality (quality and frame rate); a hardware-codec switch; per-session clipboard on/off; lock after the session ends | each control in the viewer, carried by the protocol where the host decides |
+| Viewer controls (RustDesk parity) | Custom quality (quality and frame rate); a hardware-codec switch; lock after the session ends | each control in the viewer, carried by the protocol where the host decides |
 | Runs still to see | the keyboard modes on a real keyboard; the GDI fallback on a machine without desktop duplication; the agent's display power request in the helper modes; a real sleep and wake (the test VM has no sleep state); a mixed-DPI setup | recorded in platform-notes |
 
 ## Decided

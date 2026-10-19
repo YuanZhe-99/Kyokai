@@ -88,7 +88,7 @@ Kyokai runs the same flow with any configured provider, and the live runs so far
 | Exit stops networking | Verified (Windows) | platform notes: App (killing the GUI ends the engine) |
 | Exit stops AI execution | Verified (Windows) | the engine, which runs AI tasks, ends with the app |
 | No permanent networking daemon remains | Verified (Windows) | platform notes: The helper (uninstall leaves nothing) |
-| Configuration paths displayed | Verified (Windows) | Settings → Storage and Diagnostics |
+| Configuration paths displayed | Verified (Windows) | About → Diagnostics (data and logs folders) |
 
 ## Build and release
 

@@ -52,6 +52,11 @@ pub mod packet {
     pub const CODECS: u8 = 11;
     /// engine → GUI: one Opus packet of the host's sound.
     pub const AUDIO: u8 = 12;
+    /// engine → GUI: what crossed the session's clipboard, for the viewer's
+    /// history: `{from, at, text | png | files}` JSON (`from`: "controller"
+    /// for what this side sent, "host" for what the host's side put here;
+    /// `at`: Unix milliseconds).
+    pub const CLIPBOARD: u8 = 13;
 }
 
 /// What a video stream carries, sent before its first frame.
@@ -201,6 +206,9 @@ const READER_GONE: Duration = Duration::from_secs(2);
 const KEEP_FRAMES: usize = 3;
 /// Sound packets kept for a reader that fell behind: 200 ms; older ones go.
 const KEEP_SOUND: usize = 20;
+/// Clipboard packets kept for a reader that is not reading (an image's
+/// packet holds up to 4 MiB); older ones go.
+const KEEP_CLIPBOARD: usize = 8;
 
 /// Why `Queue::pop` returned nothing.
 #[derive(Debug, PartialEq, Eq)]
@@ -251,17 +259,19 @@ impl Queue {
                 | packet::ACTIONS
                 | packet::CODECS),
             ) => q.packets.retain(|p| p.first() != Some(&kind)),
-            Some(&packet::AUDIO) => {
+            Some(&kind @ (packet::AUDIO | packet::CLIPBOARD)) => {
+                let keep = if kind == packet::AUDIO {
+                    KEEP_SOUND
+                } else {
+                    KEEP_CLIPBOARD
+                };
                 let waiting = q
                     .packets
                     .iter()
-                    .filter(|p| p.first() == Some(&packet::AUDIO))
+                    .filter(|p| p.first() == Some(&kind))
                     .count();
-                if waiting >= KEEP_SOUND
-                    && let Some(i) = q
-                        .packets
-                        .iter()
-                        .position(|p| p.first() == Some(&packet::AUDIO))
+                if waiting >= keep
+                    && let Some(i) = q.packets.iter().position(|p| p.first() == Some(&kind))
                 {
                     q.packets.remove(i);
                 }

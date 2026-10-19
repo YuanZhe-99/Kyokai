@@ -460,6 +460,58 @@ pub struct Choices {
     quality: Option<Value>,
     codec: Option<Value>,
     audio: Option<Value>,
+    /// The viewer's clipboard choice, which stays on this side.
+    clipboard: ClipUse,
+}
+
+/// A viewer's clipboard choice for its session (the GUI's local
+/// `clipboard-use` message, never sent to the host): whether the session
+/// shares the clipboard at all, and whether its tab is the one in front,
+/// which alone exchanges it (doc/en-us/computer-use.md, "Clipboard").
+/// Both are on until the viewer says otherwise, as an older GUI never does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClipUse {
+    pub share: bool,
+    pub front: bool,
+}
+
+impl Default for ClipUse {
+    fn default() -> Self {
+        ClipUse {
+            share: true,
+            front: true,
+        }
+    }
+}
+
+/// What crossed a session's clipboard, for the viewer's history.
+enum Crossed<'a> {
+    Text(&'a str),
+    Png(&'a str),
+    Files(&'a [crate::files::Entry]),
+}
+
+/// Adds what crossed a controller's session to its viewer's clipboard
+/// history (media CLIPBOARD): `from` is "controller" for what this side
+/// sent, "host" for what the host's side put on this computer's clipboard.
+/// Notes: a host has no queue, and adds nothing.
+fn clip_history(queue: &Option<Arc<media::Queue>>, from: &str, what: Crossed) {
+    let Some(q) = queue else {
+        return;
+    };
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64);
+    let body = match what {
+        Crossed::Text(text) => json!({"from": from, "at": at, "text": text}),
+        Crossed::Png(png) => json!({"from": from, "at": at, "png": png}),
+        Crossed::Files(files) => json!({"from": from, "at": at, "files": files}),
+    };
+    let mut packet = vec![media::packet::CLIPBOARD];
+    if let Ok(b) = serde_json::to_vec(&body) {
+        packet.extend(b);
+        q.push(packet);
+    }
 }
 
 /// What a controller does with a session's password once the host answers
@@ -1600,6 +1652,48 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut clip = clipboard.map(|s| crate::clipboard::share(s.board));
     let mut transfers =
         files_ok.then(|| crate::files::Transfers::new(MAX_PLAINTEXT - crate::files::HEADER));
+    // The viewer's clipboard choice (a controller's; a host keeps both on),
+    // the latest local copy made while its tab was not in front, offered
+    // when it comes to the front, and the files offer being received, for
+    // the history.
+    let mut clip_use = choices
+        .as_ref()
+        .and_then(|c| c.lock().ok().map(|c| c.clipboard))
+        .unwrap_or_default();
+    let mut waiting: Option<crate::clipboard::Item> = None;
+    let mut receiving_files: Option<Vec<crate::files::Entry>> = None;
+    // Offers a local copy to the other side (files through their
+    // transfers) and adds it to a controller's history.
+    macro_rules! offer {
+        ($item:expr) => {{
+            let msg = match $item {
+                crate::clipboard::Item::Files(paths) => {
+                    if let Some(t) = transfers.as_mut() {
+                        t.copied(paths);
+                    }
+                    None
+                }
+                _ if !text_ok => None,
+                crate::clipboard::Item::Text(text) => Some(Message::Clipboard { text }),
+                crate::clipboard::Item::Image(img) => {
+                    crate::clipboard::to_png(&img).map(|png| Message::ClipboardImage { png })
+                }
+                crate::clipboard::Item::Png(png) => Some(Message::ClipboardImage { png }),
+            };
+            if let Some(m) = msg {
+                seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+                match &m {
+                    Message::Clipboard { text } => {
+                        clip_history(&queue, "controller", Crossed::Text(text))
+                    }
+                    Message::ClipboardImage { png } => {
+                        clip_history(&queue, "controller", Crossed::Png(png))
+                    }
+                    _ => {}
+                }
+            }
+        }};
+    }
     let mut ai_sync = tokio::time::interval(AI_SYNC);
     // The host's pointer, which the captured picture leaves out.
     let mut pointer_tick = tokio::time::interval(POINTER_EVERY);
@@ -1721,22 +1815,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     None => std::future::pending().await,
                 }
             } => {
-                let msg = match item {
-                    crate::clipboard::Item::Files(paths) => {
-                        if let Some(t) = transfers.as_mut() {
-                            t.copied(paths);
-                        }
-                        None
-                    }
-                    _ if !text_ok => None,
-                    crate::clipboard::Item::Text(text) => Some(Message::Clipboard { text }),
-                    crate::clipboard::Item::Image(img) => {
-                        crate::clipboard::to_png(&img).map(|png| Message::ClipboardImage { png })
-                    }
-                    crate::clipboard::Item::Png(png) => Some(Message::ClipboardImage { png }),
-                };
-                if let Some(m) = msg {
-                    seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+                // Only the tab in front shares, while its viewer shares at
+                // all: a copy made while it is behind waits for the front.
+                if !clip_use.share {
+                } else if !clip_use.front {
+                    waiting = Some(item);
+                } else {
+                    offer!(item);
                 }
             }
             step = async {
@@ -1747,11 +1832,20 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             } => {
                 use crate::files::Step;
                 match step {
-                    Step::Offer(id, files) => seal_json(&mut noise, &mut buf, &mut wr, &Message::ClipboardFiles { id, files }).await?,
+                    Step::Offer(id, files) => {
+                        clip_history(&queue, "controller", Crossed::Files(&files));
+                        seal_json(&mut noise, &mut buf, &mut wr, &Message::ClipboardFiles { id, files }).await?;
+                    }
                     Step::Piece(p) => seal(&mut noise, &mut buf, &mut wr, &p).await?,
                     Step::Cancel(id) => seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesCancel { id }).await?,
-                    Step::Stop(id) => seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesStop { id }).await?,
+                    Step::Stop(id) => {
+                        receiving_files = None;
+                        seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesStop { id }).await?;
+                    }
                     Step::Received(paths) => {
+                        if let Some(f) = receiving_files.take() {
+                            clip_history(&queue, "host", Crossed::Files(&f));
+                        }
                         if let Some(c) = &clip {
                             let _ = c.writes.send(crate::clipboard::Item::Files(paths));
                         }
@@ -1847,6 +1941,42 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     None => std::future::pending().await,
                 }
             } => {
+                // The viewer's clipboard choice stays on this side.
+                if msg["type"] == "clipboard-use" {
+                    let now = ClipUse {
+                        share: msg["share"].as_bool().unwrap_or(true),
+                        front: msg["front"].as_bool().unwrap_or(true),
+                    };
+                    if let Some(c) = &choices
+                        && let Ok(mut c) = c.lock()
+                    {
+                        c.clipboard = now;
+                    }
+                    if !now.share {
+                        // Nothing crosses any more, files under way included.
+                        waiting = None;
+                        if clip_use.share && let Some(t) = transfers.as_mut() {
+                            receiving_files = None;
+                            let (sent, received) = t.halt();
+                            if let Some(id) = sent {
+                                seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesCancel { id }).await?;
+                            }
+                            if let Some(id) = received {
+                                seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesStop { id }).await?;
+                            }
+                        }
+                        clip_use = now;
+                    } else if now.front && !clip_use.front {
+                        // Come to the front: what was copied meanwhile goes.
+                        clip_use = now;
+                        if let Some(item) = waiting.take() {
+                            offer!(item);
+                        }
+                    } else {
+                        clip_use = now;
+                    }
+                    continue;
+                }
                 // Only messages a GUI may send pass on to the host.
                 if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::Codec { .. } | Message::Audio { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. })) = serde_json::from_value::<Message>(msg) {
                     // The viewer's latest choices, for a resumed session.
@@ -1997,8 +2127,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::Clipboard { text } => {
                         if let Some(c) = &clip
                             && text_ok
+                            && clip_use.share
+                            && clip_use.front
                             && text.len() <= crate::clipboard::MAX_TEXT
                         {
+                            clip_history(&queue, "host", Crossed::Text(&text));
                             let _ = c.writes.send(crate::clipboard::Item::Text(text));
                         }
                     }
@@ -2007,14 +2140,20 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         // media: images from a controller are not taken there.
                         if let Some(c) = &clip
                             && text_ok
+                            && clip_use.share
+                            && clip_use.front
                             && crate::agent::link().is_none()
                             && let Some(img) = crate::clipboard::from_png(&png)
                         {
+                            clip_history(&queue, "host", Crossed::Png(&png));
                             let _ = c.writes.send(crate::clipboard::Item::Image(img));
                         }
                     }
                     Message::ClipboardFiles { id, files } => {
+                        receiving_files = (queue.is_some() && clip_use.share && clip_use.front).then(|| files.clone());
                         if let Some(t) = transfers.as_mut()
+                            && clip_use.share
+                            && clip_use.front
                             && t.offered(id, files)
                         {
                             seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesGet { id }).await?;
@@ -3567,6 +3706,101 @@ mod tests {
         assert_eq!(session(&other, id)["state"], "connected");
         *other_board.lock().unwrap() = Some(crate::clipboard::Item::Text("private".into()));
         assert!(!board_holds(&host_board, "private").await);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_clipboard_follows_the_tab_in_front_and_the_viewer_s_switch() {
+        use crate::clipboard::Item;
+        let text = |t: &str| Some(Item::Text(t.into()));
+        let (host_board, controller_board): (
+            crate::clipboard::fake::Board,
+            crate::clipboard::fake::Board,
+        ) = (Arc::default(), Arc::default());
+        let rig = fake::rig("session-clip-use", "claude", "http://127.0.0.1:9");
+        let host = device_full(rig.ai.clone(), host_board.clone(), "1.0.0");
+        let controller = device_full(rig.ai.clone(), controller_board.clone(), "1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let want = vec![Permission::Clipboard];
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            Some(want.clone()),
+            want,
+        )
+        .await;
+        let (queue, control) = controller.sessions.media(id).unwrap();
+        let send = |share: bool, front: bool| {
+            control
+                .try_send(json!({"type": "clipboard-use", "share": share, "front": front}))
+                .unwrap();
+        };
+        // Behind: nothing crosses either way; the copy waits.
+        send(true, false);
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        *controller_board.lock().unwrap() = text("copied while behind");
+        *host_board.lock().unwrap() = text("the host's while behind");
+        assert!(!board_holds(&controller_board, "the host's while behind").await);
+        assert!(!board_holds(&host_board, "copied while behind").await);
+        // In front: the waiting copy goes, and the host's copies come again.
+        send(true, true);
+        assert!(board_holds(&host_board, "copied while behind").await);
+        *host_board.lock().unwrap() = text("the host's in front");
+        assert!(board_holds(&controller_board, "the host's in front").await);
+        // Not shared: nothing crosses, and what was copied meanwhile is not
+        // sent once it is shared again; later copies are.
+        send(false, true);
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        *controller_board.lock().unwrap() = text("copied while off");
+        *host_board.lock().unwrap() = text("the host's while off");
+        assert!(!board_holds(&controller_board, "the host's while off").await);
+        send(true, true);
+        assert!(!board_holds(&host_board, "copied while off").await);
+        *controller_board.lock().unwrap() = text("copied again");
+        assert!(board_holds(&host_board, "copied again").await);
+        // The local message never reached the host: the session is up.
+        assert_eq!(session(&controller, id)["state"], "connected");
+        // The history holds what crossed, by side, in order.
+        let mut history = Vec::new();
+        while let Ok(p) = queue.pop(Duration::from_millis(100)) {
+            if p.first() == Some(&media::packet::CLIPBOARD) {
+                let v: Value = serde_json::from_slice(&p[1..]).unwrap();
+                assert!(v["at"].as_u64().unwrap() > 0, "{v}");
+                history.push((
+                    v["from"].as_str().unwrap().to_owned(),
+                    v["text"].as_str().unwrap().to_owned(),
+                ));
+            }
+        }
+        let want: Vec<(String, String)> = [
+            ("controller", "copied while behind"),
+            ("host", "the host's in front"),
+            ("controller", "copied again"),
+        ]
+        .iter()
+        .map(|(a, b)| (a.to_string(), b.to_string()))
+        .collect();
+        assert_eq!(history, want);
+    }
+
+    #[test]
+    fn a_reader_that_is_not_reading_keeps_a_few_clipboard_packets() {
+        let q = media::Queue::default();
+        for i in 0..20u8 {
+            q.push(vec![media::packet::CLIPBOARD, i]);
+        }
+        let mut kept = Vec::new();
+        while let Ok(p) = q.pop(Duration::from_millis(10)) {
+            kept.push(p[1]);
+        }
+        assert_eq!(kept, (12..20).collect::<Vec<u8>>(), "the newest stay");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

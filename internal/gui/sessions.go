@@ -32,7 +32,7 @@ type renameForm struct {
 	name   string
 }
 
-// accessForm is the Settings page's permanent password field, the
+// accessForm is the Permissions and Network pages' state: the permanent password field, the
 // connections-by-address ranges while edited (ranges nil follows the
 // engine), and the trusted devices last fetched (nil until fetched).
 type accessForm struct {
@@ -620,22 +620,18 @@ func (a *App) acceptSettings(c *ui.Context, mode string, without, hasPermanent, 
 	})
 }
 
-// accessSettings is Settings' card for the permanent password, how
-// connections are accepted, connections by address and the trusted
-// devices.
+// accessSettings is the Permissions page's card of passwords: which
+// passwords open this device, the permanent password, and what a correct
+// password grants without asking.
 func (a *App) accessSettings(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	f, busy, hasPermanent := a.access, a.busy["access"], a.status.PermanentPassword
 	grants := slices.Clone(a.status.PasswordGrants)
-	mode, without, by := a.status.PasswordMode, a.status.WithoutAsking, a.status.ByAddress
-	prefs := a.prefs
+	mode, without := a.status.PasswordMode, a.status.WithoutAsking
 	a.mu.Unlock()
-	if !f.loaded && !busy {
-		a.loadTrusted()
-	}
 	card(c).Children(func() {
-		ui.Text(c, L.SettingsAccess()).FontSize(sizeHeading).Bold()
+		ui.Text(c, L.SettingsPasswords()).FontSize(sizeHeading).Bold()
 		hint := L.PermanentNotSet()
 		if hasPermanent {
 			hint = L.PermanentSet()
@@ -664,12 +660,21 @@ func (a *App) accessSettings(c *ui.Context) {
 		if without {
 			a.passwordGrants(c, grants, busy)
 		}
-		ui.Divider(c)
-		a.protectedSetting(c, hasPermanent, busy)
-		ui.Divider(c)
-		a.byAddressSettings(c, by, f.ranges, busy)
-		ui.Divider(c)
-		ui.Text(c, L.TrustedTitle())
+	})
+}
+
+// trustedCard is the Permissions page's list of the devices this one
+// allowed, with their last connection and Remove.
+func (a *App) trustedCard(c *ui.Context) {
+	t := c.Theme()
+	a.mu.Lock()
+	f, busy, prefs := a.access, a.busy["access"], a.prefs
+	a.mu.Unlock()
+	if !f.loaded && !busy {
+		a.loadTrusted()
+	}
+	card(c).Children(func() {
+		ui.Text(c, L.TrustedTitle()).FontSize(sizeHeading).Bold()
 		ui.Text(c, L.TrustedHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		if f.loaded && len(f.trusted) == 0 {
 			ui.Text(c, L.TrustedNone()).FontSize(sizeSmall).TextColor(t.TextMuted)
@@ -691,9 +696,12 @@ func (a *App) protected() bool {
 	return a.status != nil && a.status.Protected
 }
 
-// protectedSetting is the Access card's protected mode: on only with a
+// protectedSetting is the Security page's protected mode: on only with a
 // permanent password, after a confirmation.
-func (a *App) protectedSetting(c *ui.Context, hasPermanent, busy bool) {
+func (a *App) protectedSetting(c *ui.Context) {
+	a.mu.Lock()
+	hasPermanent, busy := a.status.PermanentPassword, a.busy["access"]
+	a.mu.Unlock()
 	on := false
 	settingRow(c, "protected", L.ProtectedTitle(), L.ProtectedHint(), func() {
 		if ui.Switch(c.Key("protected-sw"), &on).Label(L.ProtectedTitle()).Disabled(busy || !hasPermanent).Changed() && on {
@@ -748,11 +756,13 @@ func (a *App) protectedCard(c *ui.Context) {
 	})
 }
 
-// byAddressSettings is the Access card's connections by address: the
+// byAddressSettings is the Network page's connections by address: the
 // switch, and the ranges they are accepted from (edited, then saved).
-// Inputs: edited, the ranges field while edited, else nil.
-func (a *App) byAddressSettings(c *ui.Context, by localapi.ByAddress, edited *string, busy bool) {
+func (a *App) byAddressSettings(c *ui.Context) {
 	t := c.Theme()
+	a.mu.Lock()
+	by, edited, busy := a.status.ByAddress, a.access.ranges, a.busy["access"]
+	a.mu.Unlock()
 	on := by.On
 	settingRow(c, "by-address", L.ByAddressTitle(), L.ByAddressHint(), func() {
 		if ui.Switch(c.Key("by-address-sw"), &on).Label(L.ByAddressTitle()).Disabled(busy).Changed() {
@@ -797,13 +807,13 @@ func (a *App) byAddressSettings(c *ui.Context, by localapi.ByAddress, edited *st
 	}
 }
 
-// allPermissions are the permissions in the order Settings lists them.
+// allPermissions are the permissions in the order the Permissions page lists them.
 var allPermissions = []string{
 	localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard,
 	localapi.PermFiles, localapi.PermHearSound, localapi.PermRunAITask, localapi.PermApproveAIAction,
 }
 
-// passwordGrants is the Access card's choice of what a correct password
+// passwordGrants is the Permissions page's choice of what a correct password
 // grants without asking.
 func (a *App) passwordGrants(c *ui.Context, grants []string, busy bool) {
 	t := c.Theme()

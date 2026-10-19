@@ -1,5 +1,28 @@
 # Version history
 
+## 0.3.1 (2026-10-19)
+
+- The tab strip is the window's title bar: the traffic lights (macOS) or minimize, maximize and close
+  (Windows) sit in it beside the Kyokai tab and the connections' tabs, and its empty part moves the
+  window (MyGo's hidden title bar), instead of a native title bar above a row of tabs. The strip now
+  shows in the main window even with no connection.
+- No Settings page any more: the sidebar is Home, Network, AI, Permissions, Security, General and
+  About. Try direct connections and Accept connections by address moved to the Network page;
+  passwords, what a password grants, trusted devices, Sound to share and macOS's privacy
+  permissions to Permissions; the device identity, protected mode, Hide Kyokai from capture, No
+  logs and how secrets are kept to Security; language, appearance, open at login, the close button
+  and the run mode to General; version, updates, diagnostics and licenses to About.
+- The viewer: Fit or Original size (one point per pixel of the other computer, scrolled both ways
+  when larger than the window), kept for each device; a Clipboard panel with a switch that shares
+  the clipboard with the device or not (kept for each device) and what crossed while its tab was in
+  front, from that device or from this computer, kept in memory until the tab closes. With several
+  connections only the tab in front exchanges the clipboard; a copy made while its tab was behind
+  goes when it comes to the front.
+- Protocol 10, unchanged: the clipboard choice stays between the GUI and its engine (local API 2,
+  additions only), so 0.3.1 and 0.3.0 connect to each other.
+- Upstream versions checked, unchanged: MyGo v0.5.5, EasyTier v2.7.0, RustDesk 1.5.0 (vendored
+  code), vcpkg 2026.07.29, Rust 1.99.1.
+
 ## 0.3.0 (2026-10-18)
 
 - Connect by address: "Control another device" takes an IP address or domain name as well as a

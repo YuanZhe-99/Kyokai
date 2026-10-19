@@ -57,7 +57,8 @@ func main() {
 			{Role: mygo.RoleEditMenu},
 			{Role: mygo.RoleWindowMenu},
 		}))
-		w := mygo.NewWindow(mygo.WindowOptions{
+		// The tab strip is the title bar (gui.TitleBarOptions).
+		w := mygo.NewWindow(gui.TitleBarOptions(mygo.WindowOptions{
 			Title:     "Kyokai",
 			Width:     1000,
 			Height:    700,
@@ -66,9 +67,9 @@ func main() {
 			StateKey:  "main",
 			Hidden:    hidden,
 			Content:   ui.View(a.MainView),
-		})
+		}))
 		// Kyokai's windows stay out of every capture (the viewer's video and
-		// the AI's screenshots) unless Settings says otherwise.
+		// the AI's screenshots) unless Security says otherwise.
 		a.SetWindow(w)
 		a.SetVisible(!hidden)
 		tray := a.NewTray()

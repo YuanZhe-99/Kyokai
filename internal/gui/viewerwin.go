@@ -37,15 +37,26 @@ type viewerWindow struct {
 // tabDrag is what a dragged tab carries: its connection's Device ID.
 type tabDrag struct{ device string }
 
+// TitleBarOptions hides a window's title bar, so that the tab strip is the
+// title bar: the window's own controls (the traffic lights on macOS;
+// minimize, maximize and close on Windows) sit in it, as tall as the strip,
+// and its empty part moves the window (tabBar).
+func TitleBarOptions(o mygo.WindowOptions) mygo.WindowOptions {
+	o.TitleBarStyle = mygo.TitleBarHidden
+	o.TitleBarHeight = int(tabStripH)
+	o.TrafficLightPosition = &mygo.Point{X: trafficX, Y: trafficY}
+	return o
+}
+
 // newViewerWindow opens an empty window for connection tabs.
-// Side effects: a native window, kept out of capture unless Settings says
+// Side effects: a native window, kept out of capture unless Security says
 // otherwise; closing it disconnects its tabs.
 func (a *App) newViewerWindow() *viewerWindow {
 	vw := &viewerWindow{app: a}
-	vw.win = mygo.NewWindow(mygo.WindowOptions{
+	vw.win = mygo.NewWindow(TitleBarOptions(mygo.WindowOptions{
 		Title: "Kyokai", Width: 1280, Height: 800, MinWidth: 480, MinHeight: 320,
 		Content: ui.View(vw.view),
-	})
+	}))
 	a.mu.Lock()
 	show := a.prefs.ShowInCapture
 	a.viewerWins = append(a.viewerWins, vw)
@@ -53,9 +64,13 @@ func (a *App) newViewerWindow() *viewerWindow {
 	a.syncDock()
 	vw.win.SetContentProtection(!show)
 	vw.watchFullScreen()
+	a.watchFocus(vw)
 	vw.win.OnClosed(func() {
 		a.mu.Lock()
 		a.viewerWins = slices.DeleteFunc(a.viewerWins, func(w *viewerWindow) bool { return w == vw })
+		if a.lastWin == vw {
+			a.lastWin = a.main
+		}
 		a.mu.Unlock()
 		a.syncDock()
 		vw.mu.Lock()
@@ -106,6 +121,7 @@ func (vw *viewerWindow) add(v *viewer) {
 	vw.retitle()
 	vw.win.Show()
 	vw.win.Focus()
+	vw.app.syncFront()
 }
 
 // show brings a viewer's tab to the front of its window.
@@ -123,6 +139,7 @@ func (vw *viewerWindow) show(v *viewer) {
 	vw.retitle()
 	vw.win.Show()
 	vw.win.Focus()
+	vw.app.syncFront()
 }
 
 // remove takes a viewer's tab out of this window. A window of its own
@@ -156,6 +173,7 @@ func (vw *viewerWindow) remove(v *viewer) bool {
 	default:
 		vw.retitle()
 	}
+	vw.app.syncFront()
 	return true
 }
 
@@ -216,15 +234,15 @@ func (vw *viewerWindow) closeTab(v *viewer) {
 	}
 }
 
-// view is the window: the tabs (in the main window only once there is a
-// connection; none in full screen), then Home or the connection shown.
+// view is the window: the tab strip, which is its title bar (none in full
+// screen), then Home or the connection shown.
 func (vw *viewerWindow) view(c *ui.Context) {
 	vw.mu.Lock()
 	tabs := slices.Clone(vw.tabs)
 	cur, home, full := vw.cur, vw.home || len(vw.tabs) == 0, vw.full
 	vw.mu.Unlock()
 	ui.Column(c).Fill().Children(func() {
-		if !full && (len(tabs) > 0 || !vw.main) {
+		if !full {
 			vw.tabBar(c, tabs, cur, home)
 		}
 		switch {
@@ -244,8 +262,11 @@ func (vw *viewerWindow) view(c *ui.Context) {
 	}
 }
 
-// tabBar is the row of tabs: Home first in the main window, then one per
-// connection with Open in new window and Close; dragging one moves it.
+// tabBar is the tab strip, which is the window's title bar: room for the
+// window's own controls (c.TitleBar), Home first in the main window, then
+// one tab per connection with Open in new window and Close, and an empty
+// part that moves the window (a double click zooms it, as a title bar
+// does). Dragging a tab moves it; a tab dropped on the strip comes here.
 func (vw *viewerWindow) tabBar(c *ui.Context, tabs []*viewer, cur int, home bool) {
 	t := c.Theme()
 	first := 0 // the index of the first connection's tab
@@ -257,14 +278,43 @@ func (vw *viewerWindow) tabBar(c *ui.Context, tabs []*viewer, cur int, home bool
 		shown = 0
 	}
 	sel := shown
-	bar := ui.TabsBase(c.Key("tabs"), &sel, len(tabs)+first)
-	bar.List.FillWidth().Padding(6, 8).Gap(4).Background(t.Background)
-	if _, over := ui.DragOver[tabDrag](bar.List); over {
-		bar.List.Background(t.Accent.Alpha(0.14))
+	room := c.TitleBar()
+	strip := ui.Row(c.Key("strip")).FillWidth().Shrink(0).Height(max(room.Height, tabStripH)).
+		Padding(0, room.Right+8, 0, room.Left+8).AlignItems(ui.Center).Background(t.Background)
+	if _, over := ui.DragOver[tabDrag](strip); over {
+		strip.Background(t.Accent.Alpha(0.14))
 	}
-	if d, ok := ui.Drop[tabDrag](bar.List); ok {
+	if d, ok := ui.Drop[tabDrag](strip); ok {
 		vw.app.moveTab(d.device, vw)
 	}
+	strip.Children(func() {
+		bar := ui.TabsBase(c.Key("tabs"), &sel, len(tabs)+first)
+		bar.List.Gap(4).MinWidth(0).Clip()
+		vw.tabList(c, bar, tabs, cur, home, first)
+		ui.Box(c.Key("strip-drag")).Grow(1).FillHeight().DragWindow()
+	})
+	if sel == shown {
+		return
+	}
+	vw.mu.Lock()
+	prev := vw.shown()
+	if vw.main && sel == 0 {
+		vw.home = true
+	} else if i := sel - first; i >= 0 && i < len(vw.tabs) {
+		vw.cur, vw.home = i, false
+	}
+	vw.mu.Unlock()
+	if prev != nil {
+		prev.endGrab()
+	}
+	vw.retitle()
+	vw.app.syncFront()
+}
+
+// tabList fills the strip's tab list: Home (the Kyokai tab) in the main
+// window, then each connection's tab, which drags into another window.
+func (vw *viewerWindow) tabList(c *ui.Context, bar ui.TabsParts, tabs []*viewer, cur int, home bool, first int) {
+	t := c.Theme()
 	bar.List.Children(func() {
 		if vw.main {
 			tab := bar.Tab(0).Padding(4, 10).Radius(6)
@@ -305,21 +355,6 @@ func (vw *viewerWindow) tabBar(c *ui.Context, tabs []*viewer, cur int, home bool
 			})
 		}
 	})
-	if sel == shown {
-		return
-	}
-	vw.mu.Lock()
-	prev := vw.shown()
-	if vw.main && sel == 0 {
-		vw.home = true
-	} else if i := sel - first; i >= 0 && i < len(vw.tabs) {
-		vw.cur, vw.home = i, false
-	}
-	vw.mu.Unlock()
-	if prev != nil {
-		prev.endGrab()
-	}
-	vw.retitle()
 }
 
 // tabIcon is a small borderless button in a tab, named for assistive

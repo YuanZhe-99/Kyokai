@@ -18,7 +18,7 @@ permanent password (while Connect without asking is on) and Follow GUI no one, e
 
 ## Switching
 
-Settings, Run mode, switches between the three. Leaving No privileges installs the helper when it
+General, Run mode, switches between the three. Leaving No privileges installs the helper when it
 is missing (the one administrator prompt), waits for it, and **moves the store**
 (`localapi.MoveStore`): the user engine seals its identity, trusted devices, known hosts,
 permanent password, network secret, AI keys, friendly name and AI settings under a one-time
@@ -109,7 +109,7 @@ Helper** (`helper.agent_restart`: the agent exits and launchd starts it again).
 
 Release builds sign the helper's files: `scripts/build.sh` writes `bundle.json` (the version and the
 SHA-256 of `kyokai-svc.exe` and `kyokai_core.dll`) and `bundle.sig` (Ed25519, `KYOKAI_SIGNING_KEY`)
-next to them. When the helper is older than the app, Settings, Run mode, offers **Update the
+next to them. When the helper is older than the app, General, Run mode, offers **Update the
 helper** (`helper.update`): the helper reads the bundle **once**, checks the signature against the
 key embedded in it (`internal/bundlesig/release.pub`), every hash, that it holds both files and is
 not older, writes exactly those verified bytes into its folder (renaming the running files aside)

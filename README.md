@@ -6,9 +6,9 @@ Kyokai is a cross-platform Computer Use application that enables people and AI a
 with computers across devices. It combines secure peer-to-peer connectivity, direct human control,
 and host-side AI execution in one unified experience.
 
-> **Status:** 0.3.0: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
-> connections, manual control, AI tasks and the optional privileged helper work on both; more
-> viewer controls and the remaining macOS checks follow. See [PLAN.md](PLAN.md), the
+> **Status:** 0.3.1: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
+> connections, manual control, AI tasks and the optional privileged helper work on both; the
+> remaining viewer controls and macOS checks follow. See [PLAN.md](PLAN.md), the
 > [platform notes](doc/en-us/platform-notes.md) (what was verified where) and the
 > [user guide](doc/en-us/user-guide.md).
 
@@ -25,7 +25,7 @@ and host-side AI execution in one unified experience.
 | Human take-over, pause, cancel, emergency stop; tasks pause at sleep | done |
 | Optional privileged helper for UAC prompts, the lock screen and unattended access | done (Windows); macOS: install, update and removal |
 | Viewer controls: full screen, pointer ring, collapsible AI panel, codec choice, direct or relayed, where the time goes | done |
-| Viewer controls: original size, per-session clipboard switch | planned |
+| Viewer controls: original size, per-session clipboard switch and history (the clipboard follows the tab in front), tabs in the title bar | done |
 | Protected mode: only the AI settings and tasks until the permanent password turns it off | done |
 | No logs: no logs or crash traces, connection history in memory only (off by default) | done |
 | English, Simplified Chinese, Traditional Chinese, Japanese | done |

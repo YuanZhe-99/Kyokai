@@ -95,6 +95,11 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | listener | 监听 |
 | parameter set (H.264, HEVC) | 参数集 |
 | media engine (Apple silicon) | 媒体引擎 |
+| General / Permissions / Security / About (pages) | 通用 / 权限 / 安全 / 关于 |
+| Fit / Original size (the viewer) | 适应窗口 / 原始大小 |
+| clipboard history / Share the clipboard with this device | 剪贴板历史 / 与这台设备共享剪贴板 |
+| (the tab) in front | （标签页）位于前台 |
+| tab strip (the title bar) | 标签栏（即标题栏） |
 
 ## 6. 审阅清单
 

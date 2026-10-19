@@ -86,7 +86,7 @@ history in the secrets store, or in memory only for No logs, [security.md](secur
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
 name; the status carries `name` and this device's `about`), `access.settings` (`{password_mode?: temporary|permanent|both, without_asking?, by_address?: {on, ranges}}`; `by_address` starts or stops the listener at once), `permission.request` (`{name}`: `screen`, `accessibility`, `input-monitoring` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens; in the helper the agent asks), `store.start_over` (the saved store cannot be unlocked: it is moved aside and the core rebuilt on a new one → `{kept}`), `agent.restart` (the helper's session agent exits and its supervisor starts it again), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
 passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
-mode), `capture.show` (`{show}`: whether captures show Kyokai's windows, as Settings' Hide Kyokai
+mode), `capture.show` (`{show}`: whether captures show Kyokai's windows, as Security's Hide Kyokai
 from capture says; macOS's capture follows it, live; the helper passes it to its agent; hidden
 until a GUI says), `sound.source` (`{source}`: the sound to share, "" for what the computer plays or
 an input device's id; running streams switch; the helper passes it to its agent), `sound.devices`
@@ -125,7 +125,11 @@ runtime statically, so nothing is resolved through the search path.
   `session.media`, `shutdown`, and the AI requests named after the core's
   methods (`ai.settings.get` … `ai.stop`, `ai.draft.set`). `session.media` (`{id}` of a live controller
   session) answers OK and then carries length-prefixed packets both ways: video, stats, the
-  host's codec offer and its AI task from the engine, control and AI messages from the GUI; the GUI asks for a key frame first. The status includes the open host
+  host's codec offer, its AI task and what crossed the clipboard (packet 13) from the engine, control
+  and AI messages from the GUI, among them `clipboard-use`, which the engine keeps for the session
+  and never forwards; the GUI asks for a key frame first. These additions change no request's
+  meaning, so the local API stays at version 2: an older engine ignores `clipboard-use` and an
+  older GUI ignores packet 13. The status includes the open host
   confirmations and the sessions; secrets travel only towards the engine (the network secret, the
   permanent password, a typed password, a provider's API key). A session receives the status after every command that changes it
   and whenever the network's status moves.

@@ -3,6 +3,7 @@ package gui
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"image"
 	"image/png"
@@ -13,6 +14,7 @@ import (
 	"reflect"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -92,8 +94,10 @@ func TestViewsRender(t *testing.T) {
 		"home-permissions":    func(a *App) { a.status.Permissions = &localapi.Permissions{Accessibility: true} },
 		"starting":            func(a *App) { a.connected, a.status = false, nil },
 		"engine-down":         func(a *App) { a.connected, a.status, a.engineErr = false, nil, "kyokai-svc not found" },
-		"settings":            func(a *App) { a.page, a.status.About = pageSettings, localapi.About{Name: "WINDOWS-KVM"} },
-		"licenses":            func(a *App) { a.page, a.showLicenses = pageSettings, true },
+		"general":             func(a *App) { a.page = pageGeneral },
+		"security":            func(a *App) { a.page, a.status.About = pageSecurity, localapi.About{Name: "WINDOWS-KVM"} },
+		"about":               func(a *App) { a.page = pageAbout },
+		"about-licenses":      func(a *App) { a.page, a.showLicenses = pageAbout, true },
 		"network-off":         func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
 		"home-connect": func(a *App) {
 			a.status.Network.State = "online"
@@ -119,8 +123,8 @@ func TestViewsRender(t *testing.T) {
 					Peer: localapi.About{Name: "Living room PC", Maker: "Dell Inc.", OS: "windows"}},
 			}
 		},
-		"settings-access": func(a *App) {
-			a.page, a.status.PermanentPassword = pageSettings, true
+		"permissions": func(a *App) {
+			a.page, a.status.PermanentPassword = pagePermissions, true
 			a.status.PasswordGrants = []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard, localapi.PermFiles}
 			a.status.PasswordMode, a.status.WithoutAsking = "both", true
 			a.status.ByAddress = localapi.ByAddress{On: true, Ranges: []string{"192.168.0.0/16", "100.64.0.0/10"}, Port: 47310}
@@ -137,15 +141,15 @@ func TestViewsRender(t *testing.T) {
 				About: localapi.About{Name: "Studio Mac", Maker: "Apple", Model: "Mac14,13", OS: "macos"}}}
 		},
 		"protected": func(a *App) {
-			// Settings was open: protected mode shows the AI page only.
-			a.page, a.status.Protected, a.status.PermanentPassword = pageSettings, true, true
+			// Security was open: protected mode shows the AI page only.
+			a.page, a.status.Protected, a.status.PermanentPassword = pageSecurity, true, true
 			a.ai = aiState{loaded: true, settings: demoAISettings(true)}
 		},
-		"settings-no-logs": func(a *App) {
-			a.page, a.prefs.NoLogs, a.status.LogsOff = pageSettings, true, true
+		"security-no-logs": func(a *App) {
+			a.page, a.prefs.NoLogs, a.status.LogsOff = pageSecurity, true, true
 		},
-		"settings-by-address-failed": func(a *App) {
-			a.page = pageSettings
+		"network-by-address-failed": func(a *App) {
+			a.page, a.net = pageNetwork, netForm{loaded: true}
 			a.status.ByAddress = localapi.ByAddress{On: true, Ranges: []string{"10.0.0.0/8"}}
 			edited := "10.0.0.0/8\n172.16.0.0/12"
 			a.access = accessForm{loaded: true, ranges: &edited}
@@ -187,8 +191,8 @@ func TestViewsRender(t *testing.T) {
 				a := demoApp(t)
 				setup(a)
 				height := 900
-				if strings.HasPrefix(name, "settings-") || name == "ai-new" {
-					height = 2300 // the trusted devices sit below the fold
+				if name == "ai-new" || name == "about-licenses" {
+					height = 2300 // the editor and the notices run long
 				}
 				tt := ui.NewTester(a.View, 1000, height)
 				tt.SetDark(dark)
@@ -266,6 +270,10 @@ func TestViewerRenders(t *testing.T) {
 	for i := range pic.Pix {
 		pic.Pix[i] = byte(i * 7)
 	}
+	big := image.NewRGBA(image.Rect(0, 0, 1600, 900))
+	for i := range big.Pix {
+		big.Pix[i] = byte(i / 4 % 251)
+	}
 	cases := map[string]func(v *viewer){
 		"viewer-waiting": func(v *viewer) {},
 		"viewer-picture": func(v *viewer) {
@@ -298,6 +306,24 @@ func TestViewerRenders(t *testing.T) {
 			v.start, v.bm, v.collapsed = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), true
 		},
 		"viewer-ai-new": func(v *viewer) { v.state, v.ai = "This session does not show the screen.", viewerAI{run: true} },
+		"viewer-clipboard": func(v *viewer) {
+			v.start, v.bm, v.title = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), "Studio Mac · 657 365 333"
+			v.clip = viewerClip{may: true, shown: true, front: true}
+			thumb, w, h, _ := thumbnail(pngBase64(pic))
+			at := time.Date(2026, 10, 19, 1, 2, 3, 0, time.Local)
+			v.addClip(clipEntry{at: at, text: "copied here\nsecond line"})
+			v.addClip(clipEntry{host: true, at: at.Add(time.Minute), thumb: ui.NewBitmap(thumb), width: w, height: h})
+			v.addClip(clipEntry{host: true, at: at.Add(2 * time.Minute), names: []string{"report.docx", "photos"}, files: 3, size: 2_100_000})
+		},
+		// Original size: smaller than the area, centred on black.
+		"viewer-original-small": func(v *viewer) {
+			v.start, v.bm, v.original = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), true
+			v.pointer = hostPointer{X: 0.25, Y: 0.5, Visible: true}
+		},
+		// Larger than the area: it scrolls.
+		"viewer-original-large": func(v *viewer) {
+			v.start, v.bm, v.original = videoStart{Codec: "h264", Width: 1600, Height: 900}, ui.NewBitmap(big), true
+		},
 		"viewer-actions": func(v *viewer) {
 			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
 			v.app, v.control, v.actions = &App{}, true, &hostActions{CtrlAltDel: true}
@@ -314,6 +340,11 @@ func TestViewerRenders(t *testing.T) {
 		tt := ui.NewTester(v.view, width, 560)
 		tt.Frame()
 		tt.Frame() // the pointer marker uses the first frame's layout
+		// At its original size the picture's box is the picture, one point
+		// per pixel, whatever room the window has.
+		if v.original && (v.box.W != float32(v.start.Width) || v.box.H != float32(v.start.Height)) {
+			t.Errorf("%s: picture box %vx%v, want %dx%d", name, v.box.W, v.box.H, v.start.Width, v.start.Height)
+		}
 		if dir == "" {
 			continue
 		}
@@ -368,6 +399,11 @@ func TestViewerInputMapping(t *testing.T) {
 		{"map: the release of a sent press", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyF5}, "map", &inputEvent{Kind: "key", Key: "f5", Mods: &inputMods{}}},
 		{"translate: no keys", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyC, Mods: ui.Ctrl}, "translate", nil},
 		{"translate: text", ui.InputEvent{Kind: ui.InputText, Text: "ü"}, "translate", &inputEvent{Kind: "text", Text: "ü"}},
+	}
+	// At its original size the box is the picture: a point is a pixel.
+	original := ui.Rect{W: 1600, H: 900}
+	if got, ok := toEvent(ui.InputEvent{Kind: ui.InputPointerDown, X: 400, Y: 225}, original, 1600, 900, held, ""); !ok || got.X != 0.25 || got.Y != 0.25 {
+		t.Fatalf("original size: %+v %v", got, ok)
 	}
 	for _, c := range cases {
 		got, ok := toEvent(c.ev, box, 1600, 900, held, c.grabbed)
@@ -428,6 +464,82 @@ func TestPointerMovesCoalesce(t *testing.T) {
 // TestCodecChoice: the viewer names codecs as people know them (never by
 // their wire names), and a (re)started stream tells the host the bar's
 // quality and codec.
+// pngBase64 is an image as a clipboard packet carries it.
+func pngBase64(img image.Image) string {
+	var b bytes.Buffer
+	_ = png.Encode(&b, img)
+	return base64.StdEncoding.EncodeToString(b.Bytes())
+}
+
+// TestClipboardHistory: entries go newest first by when they crossed, at
+// most clipKeep; an image becomes a thumbnail that fits.
+func TestClipboardHistory(t *testing.T) {
+	v := &viewer{}
+	at := time.Unix(1797400000, 0)
+	for i := range clipKeep + 5 {
+		v.addClip(clipEntry{at: at.Add(time.Duration(i) * time.Second), text: strconv.Itoa(i)})
+	}
+	// One decoded late (an image) still goes in its place: after 34…30.
+	v.addClip(clipEntry{at: at.Add(30 * time.Second), text: "late"})
+	h := v.clip.history
+	if len(h) != clipKeep || h[0].text != strconv.Itoa(clipKeep+4) || h[5].text != "late" {
+		t.Fatalf("history %d, first %q", len(h), h[0].text)
+	}
+	thumb, w, h2, ok := thumbnail(pngBase64(image.NewRGBA(image.Rect(0, 0, 1920, 1080))))
+	if !ok || w != 1920 || h2 != 1080 || thumb.Bounds().Dx() != clipThumbW || thumb.Bounds().Dy() != 135 {
+		t.Fatalf("thumbnail %v %dx%d %v", thumb.Bounds(), w, h2, ok)
+	}
+	if _, _, _, ok := thumbnail("not base64!"); ok {
+		t.Fatal("garbage made a thumbnail")
+	}
+	for n, want := range map[int64]string{820: "820 B", 2_100_000: "2.1 MB", 1500: "1.5 kB"} {
+		if got := sizeLabel(n); got != want {
+			t.Errorf("%d: %q, want %q", n, got, want)
+		}
+	}
+}
+
+// TestFrontFollowsTheWindowUsedLast: only the tab shown in the window used
+// last is in front (none on the Kyokai tab), and each change tells the
+// engine once.
+func TestFrontFollowsTheWindowUsedLast(t *testing.T) {
+	a := &App{viewers: map[string]*viewer{}}
+	newV := func(device string) *viewer {
+		v := &viewer{app: a, device: device, out: make(chan []byte, 8)}
+		a.viewers[device] = v
+		return v
+	}
+	x, y, z := newV("111111111"), newV("222222222"), newV("333333333")
+	a.main = &viewerWindow{app: a, main: true, tabs: []*viewer{x, y}, cur: 1}
+	other := &viewerWindow{app: a, tabs: []*viewer{z}}
+	sent := func(v *viewer) string {
+		select {
+		case p := <-v.out:
+			return string(p[1:])
+		default:
+			return ""
+		}
+	}
+	a.lastWin = a.main
+	a.syncFront()
+	if x.clip.front || !y.clip.front || z.clip.front {
+		t.Fatal("the main window's shown tab should be in front")
+	}
+	if sent(y) != `{"front":true,"share":true,"type":"clipboard-use"}` || sent(x) != "" {
+		t.Fatal("only the change is sent")
+	}
+	a.lastWin = other
+	a.syncFront()
+	if y.clip.front || !z.clip.front || sent(y) == "" || sent(z) == "" {
+		t.Fatal("the other window's tab should be in front now")
+	}
+	a.lastWin, a.main.home = a.main, true
+	a.syncFront()
+	if x.clip.front || y.clip.front || z.clip.front {
+		t.Fatal("on the Kyokai tab no tab is in front")
+	}
+}
+
 func TestCodecChoice(t *testing.T) {
 	for name, want := range map[string]string{"h264": "H.264", "hevc": "HEVC", "vp9": "VP9", "vp9-sw": "VP9", "av1": "AV1", "vp8": "VP8"} {
 		if got := codecLabel(name); got != want {
@@ -451,12 +563,15 @@ func TestCodecChoice(t *testing.T) {
 	}
 	v := &viewer{preset: 2, fpsCap: "60 fps", full: true, codec: "auto"}
 	got := v.choicePackets()
-	if len(got) != 2 || !strings.Contains(string(got[0]), `"fps":60`) || !strings.Contains(string(got[0]), `"preset":"best"`) || !strings.Contains(string(got[0]), `"i444":true`) || string(got[1][1:]) != `{"on":true,"type":"audio"}` {
+	// The clipboard choice goes last; it stays with this side's engine.
+	if len(got) != 3 || !strings.Contains(string(got[0]), `"fps":60`) || !strings.Contains(string(got[0]), `"preset":"best"`) || !strings.Contains(string(got[0]), `"i444":true`) || string(got[1][1:]) != `{"on":true,"type":"audio"}` ||
+		string(got[2][1:]) != `{"front":false,"share":true,"type":"clipboard-use"}` {
 		t.Fatalf("auto: %q", got)
 	}
-	v.codec, v.mute = "av1", true
+	v.codec, v.mute, v.clip.off = "av1", true, true
 	got = v.choicePackets()
-	if len(got) != 3 || string(got[1][1:]) != `{"codec":"av1","type":"codec"}` || string(got[2][1:]) != `{"on":false,"type":"audio"}` {
+	if len(got) != 4 || string(got[1][1:]) != `{"codec":"av1","type":"codec"}` || string(got[2][1:]) != `{"on":false,"type":"audio"}` ||
+		string(got[3][1:]) != `{"front":false,"share":false,"type":"clipboard-use"}` {
 		t.Fatalf("av1, muted: %q", got)
 	}
 }
@@ -597,9 +712,14 @@ func TestConnectionTabsRender(t *testing.T) {
 		name string
 		cur  int
 		home bool
-	}{{"tabs-home", 0, true}, {"tabs-picture", 0, false}, {"tabs-waiting", 1, false}, {"tabs-failed", 2, false}} {
+		room ui.TitleBar
+	}{{"tabs-home", 0, true, ui.TitleBar{}}, {"tabs-picture", 0, false, ui.TitleBar{}}, {"tabs-waiting", 1, false, ui.TitleBar{}}, {"tabs-failed", 2, false, ui.TitleBar{}},
+		// The strip is the title bar: room for the traffic lights, or for
+		// Windows' buttons.
+		{"tabs-titlebar-mac", 0, false, ui.TitleBar{Height: 38, Left: 76}}, {"tabs-titlebar-windows", 0, true, ui.TitleBar{Height: 38, Right: 138}}} {
 		vw.cur, vw.home = shot.cur, shot.home
 		tt := ui.NewTester(vw.view, 1100, 640)
+		tt.SetTitleBar(shot.room)
 		tt.Frame()
 		tt.Frame()
 		if vw.cur != shot.cur || vw.home != shot.home {

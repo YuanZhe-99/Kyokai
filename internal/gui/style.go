@@ -15,15 +15,24 @@ var (
 	networkSVG []byte
 	//go:embed assets/icons/ai.svg
 	aiSVG []byte
-	//go:embed assets/icons/settings.svg
-	settingsSVG []byte
+	//go:embed assets/icons/permissions.svg
+	permissionsSVG []byte
+	//go:embed assets/icons/security.svg
+	securitySVG []byte
+	//go:embed assets/icons/general.svg
+	generalSVG []byte
+	//go:embed assets/icons/about.svg
+	aboutSVG []byte
 	//go:embed assets/icons/mark.svg
 	markSVG []byte
 
-	navHome     = ui.MustParseSVG(homeSVG)
-	navNetwork  = ui.MustParseSVG(networkSVG)
-	navAI       = ui.MustParseSVG(aiSVG)
-	navSettings = ui.MustParseSVG(settingsSVG)
+	navHome        = ui.MustParseSVG(homeSVG)
+	navNetwork     = ui.MustParseSVG(networkSVG)
+	navAI          = ui.MustParseSVG(aiSVG)
+	navPermissions = ui.MustParseSVG(permissionsSVG)
+	navSecurity    = ui.MustParseSVG(securitySVG)
+	navGeneral     = ui.MustParseSVG(generalSVG)
+	navAbout       = ui.MustParseSVG(aboutSVG)
 	// appMark is the app's mark (a ring split by a boundary) for the
 	// sidebar's title.
 	appMark = ui.MustParseSVG(markSVG)
@@ -45,7 +54,9 @@ const (
 	contentMaxW   float32 = 760
 	inputAreaH    float32 = 72  // a multi-line input of about three lines
 	aiPanelW      float32 = 320 // the viewer's AI panel
+	clipPanelW    float32 = 300 // the viewer's clipboard panel
 	tabTitleMaxW  float32 = 220 // a viewer tab's title
+	tabStripH     float32 = 38  // the tab strip, which is the windows' title bar
 	thisDeviceW   float32 = 300 // Home's This device column
 	deviceCardW   float32 = 236 // a recent device's card on Home
 	onlineDot     float32 = 8   // a device's online dot
@@ -54,6 +65,13 @@ const (
 	barTabRight   float32 = 16  // the folded viewer bar's tab, from the right edge
 	avatarSize    float32 = 36  // a device's round avatar
 	logoSize      float32 = 22  // a vendor logo inside it (about 64%)
+)
+
+// Where the macOS traffic lights sit in the tab strip: the close button's
+// top-left corner, which centres the 14-point buttons in tabStripH.
+const (
+	trafficX = 14
+	trafficY = 12
 )
 
 // card is a rounded panel.

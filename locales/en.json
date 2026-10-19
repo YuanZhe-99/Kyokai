@@ -328,7 +328,7 @@
   "FailBroken": "The connection broke.",
   "FailBusy": "The other device has too many open requests. Try again shortly.",
   "FailDenied": "The other device declined.",
-  "FailHelperOutdated": "Kyokai Helper on this device is {helper}, older than this app ({app}). Update it in Settings, Run mode, then reconnect.",
+  "FailHelperOutdated": "Kyokai Helper on this device is {helper}, older than this app ({app}). Update it in General, Run mode, then reconnect.",
   "@FailHelperOutdated": {
     "placeholders": {
       "helper": {
@@ -360,8 +360,8 @@
   "HelperRestarted": "Kyokai Helper restarted with the permissions allowed so far.",
   "HomeDeviceID": "Device ID",
   "HomePasswordHint": "Changes every time Kyokai starts, or when you ask for a new one.",
-  "HomePermanentMissing": "No permanent password is set, so no password opens this device. Set one in Settings › Access.",
-  "HomePermanentOnly": "Only the permanent password opens this device. Change it in Settings › Access.",
+  "HomePermanentMissing": "No permanent password is set, so no password opens this device. Set one in Permissions.",
+  "HomePermanentOnly": "Only the permanent password opens this device. Change it in Permissions.",
   "HomeTemporaryPassword": "Temporary password",
   "HomeThisDevice": "This device",
   "HostConnected": "{device} is connected to this device",
@@ -389,11 +389,13 @@
   "NavAI": "AI",
   "NavHome": "Home",
   "NavNetwork": "Network",
-  "NavSettings": "Settings",
+  "NavPermissions": "Permissions",
+  "NavSecurity": "Security",
   "NetworkAddress": "Virtual address",
   "NetworkClearConfirm": "This forgets the servers, the addresses, the network name and the secret, and leaves the network.",
   "NetworkCleared": "Network settings cleared.",
   "NetworkConnecting": "Connecting…",
+  "NetworkConnections": "How devices reach this one",
   "NetworkDevices": "Kyokai devices in this network",
   "NetworkDevicesHint": "A Device ID here is what a device announces. Kyokai checks who a device really is when it connects.",
   "NetworkDirect": "Try direct connections",
@@ -413,7 +415,7 @@
   "NetworkServers": "Servers",
   "NetworkServersHint": "One address per line, for example tcp://example.org:11010",
   "NetworkSettings": "Network settings",
-  "NetworkSettingsHint": "Join an EasyTier network through a standard EasyTier server, or directly by another device’s address. Every device you want to reach joins the same network.",
+  "NetworkSettingsHint": "Join an EasyTier network through a standard EasyTier server. Every device you want to reach joins the same network.",
   "NetworkTitle": "Network",
   "NoLogsConfirm": "This is a security risk: afterwards you can't find out who connected to this computer, or which devices it connected to. A device whose key changed is no longer recognized after Kyokai restarts, and a crash leaves nothing to investigate. The logs written so far are deleted.",
   "NoLogsEngineBehind": "The engine in use doesn't support this yet; it still keeps logs until it is updated.",
@@ -458,8 +460,8 @@
   "PermissionsHint": "macOS asks you before an app may record the screen or control the computer. Without these, other devices see a placeholder picture and cannot use the mouse or keyboard here. A permission you allow counts once Kyokai is reopened.",
   "PermissionsTitle": "Privacy permissions",
   "ProtectedConfirm": "Kyokai will show only the AI settings and AI tasks. To change anything else, you'll need the permanent password to turn protected mode off. Connection requests and devices connected here still show, so you can always deny and disconnect them.",
-  "ProtectedHint": "This computer's Kyokai then offers only the AI settings and AI tasks; everything else, including the network, access and these settings, stays hidden until the permanent password turns it off. Needs a permanent password.",
-  "ProtectedNeedsPermanent": "Set a permanent password above first.",
+  "ProtectedHint": "This computer's Kyokai then offers only the AI settings and AI tasks; everything else, including the network, permissions and security, stays hidden until the permanent password turns it off. Needs a permanent password.",
+  "ProtectedNeedsPermanent": "Set a permanent password in Permissions first.",
   "ProtectedOnHint": "Only the AI settings and AI tasks are available. Enter the permanent password to turn protected mode off.",
   "ProtectedTitle": "Protected mode",
   "ProtectedTurnOff": "Turn off",
@@ -539,7 +541,6 @@
   "SessionConnecting": "Connecting…",
   "SessionReconnecting": "Connection lost — reconnecting…",
   "SettingsAbout": "About",
-  "SettingsAccess": "Access",
   "SettingsCheckAppUpdates": "Check for updates daily",
   "SettingsCheckAppUpdatesHint": "Only signed updates from Kyokai's GitHub releases are offered.",
   "SettingsCloseButton": "Close button",
@@ -554,13 +555,14 @@
   "SettingsNameHint": "What other devices see beside this Device ID once their login succeeded. Leave it empty to use this computer's name.",
   "SettingsOpenAtLogin": "Open at login",
   "SettingsOpenAtLoginHint": "Off unless you turn it on: Kyokai never starts by itself.",
+  "SettingsPasswords": "Passwords",
+  "SettingsPrivacy": "Privacy",
   "SettingsRunMode": "Run mode",
   "SettingsSoundMissing": "An input not connected now",
   "SettingsSoundSource": "Sound to share",
   "SettingsSoundSourceHint": "What devices that control this one hear: what this computer plays, or an input such as a microphone.",
   "SettingsSoundSystem": "What this computer plays",
   "SettingsSoundUnnamed": "Unnamed input",
-  "SettingsStorage": "Storage",
   "SettingsTheme": "Appearance",
   "StartOverDone": "This device has a new identity, kept from now on.",
   "StartOverHint": "Without a backup it cannot come back. Start over to keep a new identity from now on; the old file stays aside, untouched.",
@@ -596,6 +598,32 @@
   "ViewerAIPanel": "AI",
   "ViewerAITitle": "AI on the other computer",
   "ViewerBlockInput": "Block their keyboard and mouse",
+  "ViewerClipBehind": "Not shared right now: another tab or the Kyokai tab is in front.",
+  "ViewerClipClear": "Clear",
+  "ViewerClipEmpty": "Nothing has crossed yet.",
+  "ViewerClipFiles": "{count, plural, one{# file} other{# files}}, {size}",
+  "@ViewerClipFiles": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "ViewerClipFromHere": "From this computer",
+  "ViewerClipFromHost": "From {device}",
+  "@ViewerClipFromHost": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "ViewerClipHint": "Only the device whose tab is in front shares the clipboard. What crossed is listed here until the tab closes, and kept nowhere else.",
+  "ViewerClipShare": "Share the clipboard with this device",
+  "ViewerClipboard": "Clipboard",
   "ViewerCodecAuto": "Auto",
   "ViewerCodecHint": "The video codec. Auto lets the other computer choose; the list shows what both computers support.",
   "ViewerCtrlAltDel": "Ctrl+Alt+Del",
@@ -624,6 +652,7 @@
   },
   "ViewerEnded": "The session ended.",
   "ViewerExitFullScreen": "Exit full screen",
+  "ViewerFit": "Fit",
   "ViewerFullScreen": "Full screen",
   "ViewerHideBar": "Hide controls",
   "ViewerImplHardware": "{name} in hardware",
@@ -652,6 +681,7 @@
   "ViewerLock": "Lock screen",
   "ViewerNoDecoder": "The picture can't be shown: Kyokai's core library is missing.",
   "ViewerNoPicture": "This session does not show the screen.",
+  "ViewerOriginal": "Original size",
   "ViewerPasswordAgain": "Enter its password:",
   "ViewerPasswordHint": "Or enter its password:",
   "ViewerPlaceholder": "The other device can't record its screen yet: this is a placeholder picture.",
@@ -660,6 +690,7 @@
   "ViewerPrivacy": "Privacy mode (their screen goes black)",
   "ViewerReconnect": "Reconnect",
   "ViewerRelayedHint": "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices.",
+  "ViewerScaleHint": "Fit shows the whole screen in the window. Original size shows one point per pixel of the other computer; drag the scroll bars to move around.",
   "ViewerShowBar": "Show controls",
   "ViewerSound": "Sound",
   "ViewerSoundHint": "Plays what the other computer plays. Remembered for this device.",

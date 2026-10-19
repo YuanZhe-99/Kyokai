@@ -51,7 +51,7 @@ func (a *App) currentMode() int {
 	return modeFollow
 }
 
-// runModeCard is Settings' choice of No privileges, Follow GUI and
+// runModeCard is General's choice of No privileges, Follow GUI and
 // Background service.
 func (a *App) runModeCard(c *ui.Context) {
 	t := c.Theme()
@@ -77,27 +77,6 @@ func (a *App) runModeCard(c *ui.Context) {
 			note = L.RunModeSwitching()
 		}
 		ui.Text(c, note).FontSize(sizeSmall).TextColor(t.TextMuted)
-		// Direct connections open this computer to the network, so they sit
-		// with the run mode; the helper always tries them. The switch
-		// applies at once.
-		a.mu.Lock()
-		net, netBusy := a.net, a.busy["network"]
-		a.mu.Unlock()
-		if !net.loaded && !netBusy {
-			a.loadNetwork()
-		}
-		helperMode := cur != modeUser
-		directHint := L.NetworkDirectHint()
-		if helperMode {
-			directHint = L.NetworkDirectHelper()
-		}
-		direct := net.direct || helperMode
-		settingRow(c, "net-direct", L.NetworkDirect(), directHint, func() {
-			if ui.Switch(c.Key("net-direct-sw"), &direct).Label(L.NetworkDirect()).
-				Disabled(busy || netBusy || helperMode || !net.loaded).Changed() {
-				a.setDirect(direct)
-			}
-		})
 		// A helper behind the app is updated on request too: from a signed
 		// build without a prompt, from an unsigned one with one.
 		if behind := a.outdatedHelper(); behind.helper != "" {

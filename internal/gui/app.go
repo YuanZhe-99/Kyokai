@@ -20,11 +20,15 @@ import (
 
 type page int
 
+// The sidebar's pages: Home, then the areas of settings (doc/en-us/gui.md).
 const (
 	pageHome page = iota
 	pageNetwork
 	pageAI
-	pageSettings
+	pagePermissions
+	pageSecurity
+	pageGeneral
+	pageAbout
 )
 
 // App is the GUI's state. Fields after mu are guarded by it; views read
@@ -67,7 +71,7 @@ type App struct {
 	// helperUpdated: this run already updated an older helper (modes.go).
 	helperUpdated bool
 	// soundDevices are the engine's input devices for Sound to share,
-	// asked once Settings shows.
+	// asked once Permissions shows.
 	soundDevices       []localapi.SoundDevice
 	soundDevicesLoaded bool
 
@@ -80,7 +84,7 @@ type App struct {
 	rename renameForm
 	// unlock is the permanent password typed to leave protected mode.
 	unlock string
-	// name is the friendly-name field in Settings while it is edited.
+	// name is the friendly-name field in Security while it is edited.
 	name   nameForm
 	grants map[uint64][]string
 	access accessForm
@@ -93,6 +97,9 @@ type App struct {
 	viewerWins []*viewerWindow
 	// main is the main window as a holder of tabs, Home first.
 	main *viewerWindow
+	// lastWin is the Kyokai window used last, whose shown tab is the one
+	// in front, which alone exchanges the clipboard (viewerclip.go).
+	lastWin *viewerWindow
 	// keyReader starts the reader of the keys the viewers' keyboard grab
 	// takes (viewerinput.go), once.
 	keyReader sync.Once
@@ -122,6 +129,7 @@ func New(profile, stateDir, socket string) *App {
 		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{}, viewers: map[string]*viewer{},
 	}
 	a.main = &viewerWindow{app: a, main: true, home: true}
+	a.lastWin = a.main
 	a.socket = startSocket(a.prefs.Helper, helper.Inspect().Installed, socket)
 	return a
 }
@@ -147,6 +155,7 @@ func (a *App) SetWindow(w *mygo.Window) {
 	show := a.prefs.ShowInCapture
 	a.mu.Unlock()
 	w.SetContentProtection(!show)
+	a.watchFocus(a.main)
 }
 
 // setShowInCapture saves whether capture may see Kyokai's windows and
@@ -408,8 +417,14 @@ func (a *App) View(c *ui.Context) {
 						a.protectedCard(c)
 					}
 					a.aiView(c)
-				case pageSettings:
-					a.settingsView(c)
+				case pagePermissions:
+					a.permissionsView(c)
+				case pageSecurity:
+					a.securityView(c)
+				case pageGeneral:
+					a.generalView(c)
+				case pageAbout:
+					a.aboutView(c)
 				default:
 					a.homeView(c)
 				}

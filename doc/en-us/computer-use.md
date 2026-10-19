@@ -119,7 +119,7 @@ through the server (Relayed, with a hint to turn on direct connections on both d
 The host sends its sound to a controller granted `hear-sound` (its own permission, asked for and
 granted by a correct password by default) that asks for it (`{"type": "audio", on}`; the viewer asks
 as its stream starts, and a resumed controller asks again). What it shares is the host user's choice
-in Settings, **Sound to share** (the GUI's `sound_source`, sent to the engine as it attaches and when
+in Permissions, **Sound to share** (the GUI's `sound_source`, sent to the engine as it attaches and when
 it changes, `sound.source`; the helper passes it to its agent; a running stream switches at once):
 what the computer plays, or one input device (`sound.devices` lists them: Core Audio's devices with
 inputs on macOS, the active capture endpoints on Windows). `audio.rs` captures what the computer
@@ -246,6 +246,24 @@ is a Kyokai process). Text up to 1 MiB, or an image up to 3840×2160 sent as PNG
 there; files are under Files). In the helper modes images from a controller are not taken, because the
 helper and its agent are privileged and never decode remote media ([run-modes.md](run-modes.md)).
 
+On a controller with several connections, only the one whose tab is in front — shown in the Kyokai
+window used last; none while that window shows the Kyokai tab — exchanges the clipboard, as
+RustDesk's client does: what is copied here goes to that device alone, and only that device's
+copies reach this computer's clipboard. A copy made while a tab is behind waits, and goes when the
+tab comes to the front (copied in another program, then pasted there); the other device's copies
+that arrive meanwhile are dropped. The viewer's **Share the clipboard with this device** switch
+(kept for each device) stops it altogether: nothing is offered or taken, transfers of files under
+way end (`files-cancel`, `files-stop`), and switching it on again sends only later copies. The GUI
+tells its engine both with `{"type": "clipboard-use", share, front}` on the session's media
+connection, which the engine keeps for the session (a resumed one included) and never sends to the
+host, so the wire protocol is unchanged; an engine that does not know it shares as before. A
+host's side is unchanged: it offers its copies to every controller allowed `clipboard`.
+
+The controller's engine reports what crossed — text, an image as PNG, or files as the offer lists
+them — with its side (`from`: `controller` or `host`) and time to its GUI (media packet 13), which
+lists it in the viewer's clipboard panel, newest first, at most 30 entries, in memory only: never
+written to disk, gone when the tab closes. A GUI that does not read them keeps at most 8 waiting.
+
 ### Files
 
 With the separate `files` permission, files and folders copied on one side (on Windows, Explorer's
@@ -286,7 +304,7 @@ twice with one idempotency key starts one task.
 
 ### Providers
 
-The host's user sets up **sources** (Settings of the AI page; `ai.json`): each has an id, a name,
+The host's user sets up **sources** (the AI page; `ai.json`): each has an id, a name,
 the template it came from, a protocol, a base URL and the models used from it, and the task uses one
 chosen model of one source. A new host has two: Claude (`https://api.anthropic.com/v1`) and OpenAI
 (`https://api.openai.com/v1`). Templates add OpenRouter, Google Gemini, Groq, Together, Fireworks,
@@ -401,7 +419,7 @@ continues it until the engine stops.
 |---|---|
 | Permissions | Screen Recording for capture, Accessibility for input, Input Monitoring for the local-input watch, and the Keychain item of the secrets store ([security.md](security.md)); the engine reports them (`permissions` in the status); the GUI asks for them on its first start per version and through Allow on its permissions card — the privacy permissions in its own process (`kyokai_privacy_request`), so that a prompt belongs to the app, whose grant covers the engine (macOS counts the engine as part of it), and the Keychain through the engine (`permission.request` `keychain`). macOS 27 shows no prompt for either process: Allow opens the pane, where Kyokai is switched on (Accessibility's pane is called Device Control and Data Access there), which also opens the pane in System Settings. A Screen Recording grant counts once Kyokai restarts, which the card's Reopen Kyokai does (it stops the engine first) |
 | Displays | Core Graphics' active displays in points, the unit of its global coordinates (a Retina display is half its pixels); the main display is the primary |
-| Capture | a ScreenCaptureKit stream of the display at its pixel size scaled to fit 1920×1080, BGRA, without the pointer (the viewer draws it from the pointer messages) and, while Settings' Hide Kyokai from capture is on (the default), without the windows of Kyokai's processes and app: the GUI tells the engine the setting as it attaches and whenever it changes (`capture.show`; in the helper modes the helper passes it to its agent), a running stream takes the new filter at once, and AI screenshots follow it too; an unchanged screen sends no picture; without the permission the host sends the test pattern |
+| Capture | a ScreenCaptureKit stream of the display at its pixel size scaled to fit 1920×1080, BGRA, without the pointer (the viewer draws it from the pointer messages) and, while Security's Hide Kyokai from capture is on (the default), without the windows of Kyokai's processes and app: the GUI tells the engine the setting as it attaches and whenever it changes (`capture.show`; in the helper modes the helper passes it to its agent), a running stream takes the new filter at once, and AI screenshots follow it too; an unchanged screen sends no picture; without the permission the host sends the test pattern |
 | Encode | VideoToolbox's H.264 and HEVC (above), then the software codecs (`vp9-sw`, `av1`, `vp8`) |
 | Decode | the viewer decodes `h264` and `hevc` through VideoToolbox and the software codecs through libvpx and libaom |
 | Input | Core Graphics events posted at the HID level and tagged as Kyokai's: pointer events in points with click counts for double and triple clicks, wheel notches as lines, named keys and modifiers (`ctrl` → Control, `alt` → Option, `meta` → Command) with the held modifiers' flags, text as Unicode, scan codes through a table to Mac key codes (Caps Lock follows the controller's; a Mac has no NumLock). The guard looks up the owner of the window under the point (or the frontmost normal window for keys) and drops events for this engine or the app that started it |

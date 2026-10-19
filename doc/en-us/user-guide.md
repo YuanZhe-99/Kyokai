@@ -8,7 +8,7 @@ for the people using it; how it works is in the other pages of this folder.
 
 On Windows, run the installer: it installs for your user only and asks for no administrator rights.
 Kyokai starts with its window and an icon in the notification area; closing the window keeps it
-running there (Settings, General, can make the close button quit instead). Kyokai does not start
+running there (General can make the close button quit instead). Kyokai does not start
 with Windows unless you switch on "Open at login".
 
 On macOS, open the disk image and drag Kyokai to Applications. Kyokai is signed but not notarized
@@ -17,7 +17,7 @@ by Apple, so macOS may call the downloaded app damaged: run
 Kyokai asks on its first start for **Screen Recording** (so others can see this screen),
 **Accessibility** (so they can use the mouse and keyboard) and **Input Monitoring** (so your own
 keyboard and mouse pause an AI task, and Control+Option+Shift+Esc stops it). Allow them in System
-Settings, Privacy & Security; **Privacy permissions** on Home and in Settings shows what is still
+Settings, Privacy & Security; **Privacy permissions** on Home and in Permissions shows what is still
 missing and opens the right pane with **Allow…**. A permission you allow counts only after Kyokai
 starts again: click **Reopen Kyokai** on its row. Allow Kyokai to use its
 Keychain item too (**Always Allow**); if you denied it, **Allow…** on the Keychain row asks again.
@@ -30,8 +30,8 @@ account. If that is not possible, Home says so: the Device ID then changes on ev
 Home shows **This device**: the Device ID, nine digits that others use to reach this computer, and
 the **Temporary password**, hidden until you choose Show. The temporary password changes every
 time Kyokai starts and whenever you choose **New password**; give it only to someone you want to let
-in. Settings, Access, can also set a permanent password, for devices you trust over time.
-Settings, Device identity, sets this computer's **Friendly name**, which others see beside the
+in. Permissions can also set a permanent password, for devices you trust over time.
+Security, Device identity, sets this computer's **Friendly name**, which others see beside the
 Device ID once they have logged in; left empty, it is the computer's name.
 
 ## Join a network
@@ -43,7 +43,7 @@ and the Kyokai devices it can reach, directly or through a relay. A device's ann
 hint: who a device is gets proven when you connect. **Clear network settings** forgets the
 network and disconnects.
 
-Connections go through the server unless you switch on **Try direct connections** (Settings, Run mode; it applies
+Connections go through the server unless you switch on **Try direct connections** (on the Network page; it applies
 at once), which is faster where both networks allow it; Windows may then ask to let Kyokai through
 its firewall, and a Mac to let it find devices on the local network. On one network it is enough on
 one of the two computers; turn it on on both for computers on different networks. Each device in
@@ -76,6 +76,8 @@ display. The bar below the picture sets
 the quality (**Faster**, **Balanced**, **Sharper**), a frame-rate cap and the **Codec** (**Auto**
 lets the other computer choose; the list shows what both computers support). It also says whether
 the connection is **Direct** or **Relayed**; the tooltip of its numbers shows where the time goes.
+**Fit** shows the whole screen in the window; **Original size** shows it at one point per pixel of
+the other computer, with scroll bars to drag when it is larger than the window.
 Click the picture to use the mouse and keyboard there; Kyokai's own windows on the other computer never receive your
 input. The bar above it can **Lock screen**, send **Ctrl+Alt+Del** (when the other computer runs
 Kyokai as a helper) and **Block their keyboard and mouse** while you work, or turn on **Privacy mode**, which also
@@ -88,9 +90,14 @@ viewer window receives. On a Mac, Map and Translate need **Accessibility** for K
 Settings, Privacy & Security. Between a Mac and Windows, **Swap Ctrl and Cmd** (on by default) makes
 your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. Keys go there only
 while the picture has the focus: click it first. You hear what the other computer plays (or the input
-its user chose in Settings, **Sound to share**, such as a microphone; a Mac asks for its
-Microphone permission then); **Sound** in the status bar turns it off. Quality, frame rate, codec, sound and the swap are remembered for
-each device. While you are connected the other computer does not go to
+its user chose in Permissions, **Sound to share**, such as a microphone; a Mac asks for its
+Microphone permission then); **Sound** in the status bar turns it off. **Clipboard** pulls out the
+clipboard panel: **Share the clipboard with this device** turns sharing off or on for that device,
+and below it is what crossed the clipboard while its tab was in front — from that device or from
+this computer, newest first, with **Copy** for text — kept only until the tab closes. With several
+devices connected, only the one whose tab is in front (in the Kyokai window you used last) shares
+the clipboard; switching to a tab sends what you copied meanwhile. Quality, frame rate, Fit or
+Original size, codec, sound, the swap and the clipboard switch are remembered for each device. While you are connected the other computer does not go to
 sleep by itself. Closing the tab (×) disconnects; when a connection ends, its tab says why and offers
 **Reconnect**. A connection that drops reconnects by itself for a minute without asking again.
 **Remove** in a device's menu takes it off Recent and forgets its saved password. **Rename…** gives
@@ -103,18 +110,18 @@ On the same local network, over Tailscale, or wherever the other computer can be
 connect without joining a network: enter its IP address or domain name (add `:port` when it is not
 47310) instead of a Device ID and choose **Connect**. Kyokai first asks who answers there, then
 connects to that device; Recent then remembers the address. The other computer must allow it:
-Settings, Access, **Accept connections by address** (off by default). It accepts them only from the
+the Network page, **Accept connections by address** (off by default). It accepts them only from the
 listed address ranges — by default local networks and Tailscale — and still needs a password or
 its user's approval. Windows may ask to let Kyokai through its firewall.
 
 ## Let someone control this device
 
-Someone with your password gets in at once with what Settings, Access, **With a correct password**
+Someone with your password gets in at once with what Permissions, **With a correct password**
 allows (by default seeing the screen, the mouse and keyboard, the clipboard and files, but no AI
 tasks). Otherwise — they ask for more, ask without a password, or a known Device ID arrives with a
 new key — a request appears at the top of every page with their Device ID, a warning in the last
-two cases, and a switch for each permission they asked for. Choose what to allow, then **Allow**, or **Deny**. Devices you allowed are listed in Settings,
-Access; **Remove** revokes one at once and ends its connections. There, **Accepted passwords**
+two cases, and a switch for each permission they asked for. Choose what to allow, then **Allow**, or **Deny**. Devices you allowed are listed in
+Permissions; **Remove** revokes one at once and ends its connections. There, **Accepted passwords**
 chooses which passwords let a device in (**Temporary**, **Permanent** or **Both**), and **Connect
 without asking** (on by default) lets a correct password in without asking you; switched off, you
 are always asked. With nobody at the computer (Background service), only the permanent password
@@ -123,7 +130,7 @@ of the keyboard and mouse always wins over theirs and over any AI.
 
 ## Run Kyokai as a helper
 
-Settings, **Run mode**, chooses where this device runs. **No privileges** (the default) needs
+General, **Run mode**, chooses where this device runs. **No privileges** (the default) needs
 nothing. **Follow Kyokai** and **Background service** install a helper once, after one
 administrator prompt, so the other side can also see and use sign-in screens and administrator
 prompts on this computer; Background service also lets devices you allowed to connect without
@@ -132,7 +139,7 @@ Choosing No privileges again removes the helper.
 
 On a Mac the helper sees and controls the screen as **Kyokai Helper**, which needs its own Screen
 Recording and Accessibility (Device Control and Data Access) permissions: after switching, open
-**Privacy permissions** in Settings, click **Allow…**, switch Kyokai Helper on in the pane that
+**Privacy permissions** in Permissions, click **Allow…**, switch Kyokai Helper on in the pane that
 opens, then click **Restart Kyokai Helper**. Switching back to No privileges on a Mac needs no
 password.
 
@@ -154,7 +161,7 @@ clear it.
 The AI sends screenshots of this computer's screen to the provider you chose. Kyokai's own windows
 are left out of them, and out of screen sharing and other remote-desktop tools too. To see and
 change Kyokai through another remote-desktop tool, for example on a computer nobody sits at, turn
-off **Hide Kyokai from screen capture** in Settings; the AI then sees Kyokai's windows as well.
+off **Hide Kyokai from screen capture** in Security; the AI then sees Kyokai's windows as well.
 
 ## AI on another computer
 
@@ -175,17 +182,17 @@ them too, and sees a banner while your task works there, with **Stop** at hand.
   AI task pauses first.
 - When the controlling device disconnects, its AI task pauses.
 - Network membership alone grants nothing; every session needs your password or your confirmation.
-- **Protected mode** (Settings, Access; needs a permanent password) leaves only the AI settings and
+- **Protected mode** (Security; needs a permanent password) leaves only the AI settings and
   AI tasks in Kyokai on this computer, for someone who should use the AI here but change nothing
   else. To turn it off, enter the permanent password on the AI page.
-- **No logs** (Settings, Storage) keeps Kyokai from writing logs or crash reports and from keeping a
+- **No logs** (Security) keeps Kyokai from writing logs or crash reports and from keeping a
   record of connections: trusted devices and Recent last only until Kyokai quits, and the logs
   already written are deleted. It is a trade-off: afterwards you can't find out who connected to
   this computer or which devices it connected to, so Kyokai asks before turning it on.
 
 ## Back up your identity
 
-Settings, **Device identity**, can **Back up…** this device's identity into a file protected by a
+Security, **Device identity**, can **Back up…** this device's identity into a file protected by a
 passphrase you choose, and **Restore…** it on this or another computer, which then has this Device
 ID. **Reset…** gives this computer a new identity and Device ID; devices that knew the old one see a
 warning and can choose **Forget old identity**.
@@ -193,9 +200,9 @@ warning and can choose **Forget old identity**.
 ## When something is wrong
 
 - "The Kyokai engine is not running.": its background part stopped; the reason is shown, and Kyokai
-  starts it again. Logs are in the folder that Settings, Diagnostics, opens.
+  starts it again. Logs are in the folder that About, Diagnostics, opens.
 - The network shows an error: check the server addresses, the name and the secret.
-- The other device is reached through a relay: turn on **Try direct connections** (Settings, Run
-  mode) on both devices; if it stays relayed, the networks block direct paths: it works, a little slower.
+- The other device is reached through a relay: turn on **Try direct connections** (the Network
+  page) on both devices; if it stays relayed, the networks block direct paths: it works, a little slower.
 - An AI task stops with an error: the reason (an unaccepted key, a provider that did not answer)
   is shown with the task.

@@ -24,13 +24,44 @@ type netForm struct {
 	direct     bool
 }
 
-// networkView is the Network page: the node's live status and its settings.
+// networkView is the Network page: the node's live status, its settings,
+// and how devices reach this one (direct connections, by address).
 func (a *App) networkView(c *ui.Context) {
 	if !a.engineState(c) {
 		return
 	}
 	a.networkStatus(c)
 	a.networkSettings(c)
+	a.connectionsCard(c)
+}
+
+// connectionsCard is how other devices reach this one: Try direct
+// connections (applied at once; the helper always tries them, so it is on
+// and fixed in its modes) and Accept connections by address.
+func (a *App) connectionsCard(c *ui.Context) {
+	a.mu.Lock()
+	net, netBusy, modeBusy := a.net, a.busy["network"], a.busy["mode"]
+	a.mu.Unlock()
+	if !net.loaded && !netBusy {
+		a.loadNetwork()
+	}
+	helperMode := a.currentMode() != modeUser
+	card(c).Children(func() {
+		ui.Text(c, L.NetworkConnections()).FontSize(sizeHeading).Bold()
+		directHint := L.NetworkDirectHint()
+		if helperMode {
+			directHint = L.NetworkDirectHelper()
+		}
+		direct := net.direct || helperMode
+		settingRow(c, "net-direct", L.NetworkDirect(), directHint, func() {
+			if ui.Switch(c.Key("net-direct-sw"), &direct).Label(L.NetworkDirect()).
+				Disabled(modeBusy || netBusy || helperMode || !net.loaded).Changed() {
+				a.setDirect(direct)
+			}
+		})
+		ui.Divider(c)
+		a.byAddressSettings(c)
+	})
 }
 
 func (a *App) networkStatus(c *ui.Context) {

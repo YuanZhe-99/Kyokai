@@ -1662,13 +1662,13 @@ func (msgs Messages) FailDenied() string {
 	return Catalog.Format(msgs.locale, "FailDenied", nil)
 }
 
-// FailHelperOutdated says "Kyokai Helper on this device is {helper}, older than this app ({app}). Update it in Settings, Run mode, then reconnect."
+// FailHelperOutdated says "Kyokai Helper on this device is {helper}, older than this app ({app}). Update it in General, Run mode, then reconnect."
 // in the language the app shows.
 func FailHelperOutdated(helper string, app string) string {
 	return In(i18n.Locale()).FailHelperOutdated(helper, app)
 }
 
-// FailHelperOutdated says "Kyokai Helper on this device is {helper}, older than this app ({app}). Update it in Settings, Run mode, then reconnect."
+// FailHelperOutdated says "Kyokai Helper on this device is {helper}, older than this app ({app}). Update it in General, Run mode, then reconnect."
 // in the language of msgs.
 func (msgs Messages) FailHelperOutdated(helper string, app string) string {
 	return Catalog.Format(msgs.locale, "FailHelperOutdated", map[string]any{"helper": helper, "app": app})
@@ -1786,21 +1786,21 @@ func (msgs Messages) HomePasswordHint() string {
 	return Catalog.Format(msgs.locale, "HomePasswordHint", nil)
 }
 
-// HomePermanentMissing says "No permanent password is set, so no password opens this device. Set one in Settings › Access."
+// HomePermanentMissing says "No permanent password is set, so no password opens this device. Set one in Permissions."
 // in the language the app shows.
 func HomePermanentMissing() string { return In(i18n.Locale()).HomePermanentMissing() }
 
-// HomePermanentMissing says "No permanent password is set, so no password opens this device. Set one in Settings › Access."
+// HomePermanentMissing says "No permanent password is set, so no password opens this device. Set one in Permissions."
 // in the language of msgs.
 func (msgs Messages) HomePermanentMissing() string {
 	return Catalog.Format(msgs.locale, "HomePermanentMissing", nil)
 }
 
-// HomePermanentOnly says "Only the permanent password opens this device. Change it in Settings › Access."
+// HomePermanentOnly says "Only the permanent password opens this device. Change it in Permissions."
 // in the language the app shows.
 func HomePermanentOnly() string { return In(i18n.Locale()).HomePermanentOnly() }
 
-// HomePermanentOnly says "Only the permanent password opens this device. Change it in Settings › Access."
+// HomePermanentOnly says "Only the permanent password opens this device. Change it in Permissions."
 // in the language of msgs.
 func (msgs Messages) HomePermanentOnly() string {
 	return Catalog.Format(msgs.locale, "HomePermanentOnly", nil)
@@ -2006,14 +2006,24 @@ func (msgs Messages) NavNetwork() string {
 	return Catalog.Format(msgs.locale, "NavNetwork", nil)
 }
 
-// NavSettings says "Settings"
+// NavPermissions says "Permissions"
 // in the language the app shows.
-func NavSettings() string { return In(i18n.Locale()).NavSettings() }
+func NavPermissions() string { return In(i18n.Locale()).NavPermissions() }
 
-// NavSettings says "Settings"
+// NavPermissions says "Permissions"
 // in the language of msgs.
-func (msgs Messages) NavSettings() string {
-	return Catalog.Format(msgs.locale, "NavSettings", nil)
+func (msgs Messages) NavPermissions() string {
+	return Catalog.Format(msgs.locale, "NavPermissions", nil)
+}
+
+// NavSecurity says "Security"
+// in the language the app shows.
+func NavSecurity() string { return In(i18n.Locale()).NavSecurity() }
+
+// NavSecurity says "Security"
+// in the language of msgs.
+func (msgs Messages) NavSecurity() string {
+	return Catalog.Format(msgs.locale, "NavSecurity", nil)
 }
 
 // NetworkAddress says "Virtual address"
@@ -2054,6 +2064,16 @@ func NetworkConnecting() string { return In(i18n.Locale()).NetworkConnecting() }
 // in the language of msgs.
 func (msgs Messages) NetworkConnecting() string {
 	return Catalog.Format(msgs.locale, "NetworkConnecting", nil)
+}
+
+// NetworkConnections says "How devices reach this one"
+// in the language the app shows.
+func NetworkConnections() string { return In(i18n.Locale()).NetworkConnections() }
+
+// NetworkConnections says "How devices reach this one"
+// in the language of msgs.
+func (msgs Messages) NetworkConnections() string {
+	return Catalog.Format(msgs.locale, "NetworkConnections", nil)
 }
 
 // NetworkDevices says "Kyokai devices in this network"
@@ -2246,11 +2266,11 @@ func (msgs Messages) NetworkSettings() string {
 	return Catalog.Format(msgs.locale, "NetworkSettings", nil)
 }
 
-// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server, or directly by another device’s address. Every device …"
+// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server. Every device you want to reach joins the same network."
 // in the language the app shows.
 func NetworkSettingsHint() string { return In(i18n.Locale()).NetworkSettingsHint() }
 
-// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server, or directly by another device’s address. Every device …"
+// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server. Every device you want to reach joins the same network."
 // in the language of msgs.
 func (msgs Messages) NetworkSettingsHint() string {
 	return Catalog.Format(msgs.locale, "NetworkSettingsHint", nil)
@@ -2696,21 +2716,21 @@ func (msgs Messages) ProtectedConfirm() string {
 	return Catalog.Format(msgs.locale, "ProtectedConfirm", nil)
 }
 
-// ProtectedHint says "This computer's Kyokai then offers only the AI settings and AI tasks; everything else, including the network, access …"
+// ProtectedHint says "This computer's Kyokai then offers only the AI settings and AI tasks; everything else, including the network, permiss…"
 // in the language the app shows.
 func ProtectedHint() string { return In(i18n.Locale()).ProtectedHint() }
 
-// ProtectedHint says "This computer's Kyokai then offers only the AI settings and AI tasks; everything else, including the network, access …"
+// ProtectedHint says "This computer's Kyokai then offers only the AI settings and AI tasks; everything else, including the network, permiss…"
 // in the language of msgs.
 func (msgs Messages) ProtectedHint() string {
 	return Catalog.Format(msgs.locale, "ProtectedHint", nil)
 }
 
-// ProtectedNeedsPermanent says "Set a permanent password above first."
+// ProtectedNeedsPermanent says "Set a permanent password in Permissions first."
 // in the language the app shows.
 func ProtectedNeedsPermanent() string { return In(i18n.Locale()).ProtectedNeedsPermanent() }
 
-// ProtectedNeedsPermanent says "Set a permanent password above first."
+// ProtectedNeedsPermanent says "Set a permanent password in Permissions first."
 // in the language of msgs.
 func (msgs Messages) ProtectedNeedsPermanent() string {
 	return Catalog.Format(msgs.locale, "ProtectedNeedsPermanent", nil)
@@ -3200,16 +3220,6 @@ func (msgs Messages) SettingsAbout() string {
 	return Catalog.Format(msgs.locale, "SettingsAbout", nil)
 }
 
-// SettingsAccess says "Access"
-// in the language the app shows.
-func SettingsAccess() string { return In(i18n.Locale()).SettingsAccess() }
-
-// SettingsAccess says "Access"
-// in the language of msgs.
-func (msgs Messages) SettingsAccess() string {
-	return Catalog.Format(msgs.locale, "SettingsAccess", nil)
-}
-
 // SettingsCheckAppUpdates says "Check for updates daily"
 // in the language the app shows.
 func SettingsCheckAppUpdates() string { return In(i18n.Locale()).SettingsCheckAppUpdates() }
@@ -3350,6 +3360,26 @@ func (msgs Messages) SettingsOpenAtLoginHint() string {
 	return Catalog.Format(msgs.locale, "SettingsOpenAtLoginHint", nil)
 }
 
+// SettingsPasswords says "Passwords"
+// in the language the app shows.
+func SettingsPasswords() string { return In(i18n.Locale()).SettingsPasswords() }
+
+// SettingsPasswords says "Passwords"
+// in the language of msgs.
+func (msgs Messages) SettingsPasswords() string {
+	return Catalog.Format(msgs.locale, "SettingsPasswords", nil)
+}
+
+// SettingsPrivacy says "Privacy"
+// in the language the app shows.
+func SettingsPrivacy() string { return In(i18n.Locale()).SettingsPrivacy() }
+
+// SettingsPrivacy says "Privacy"
+// in the language of msgs.
+func (msgs Messages) SettingsPrivacy() string {
+	return Catalog.Format(msgs.locale, "SettingsPrivacy", nil)
+}
+
 // SettingsRunMode says "Run mode"
 // in the language the app shows.
 func SettingsRunMode() string { return In(i18n.Locale()).SettingsRunMode() }
@@ -3408,16 +3438,6 @@ func SettingsSoundUnnamed() string { return In(i18n.Locale()).SettingsSoundUnnam
 // in the language of msgs.
 func (msgs Messages) SettingsSoundUnnamed() string {
 	return Catalog.Format(msgs.locale, "SettingsSoundUnnamed", nil)
-}
-
-// SettingsStorage says "Storage"
-// in the language the app shows.
-func SettingsStorage() string { return In(i18n.Locale()).SettingsStorage() }
-
-// SettingsStorage says "Storage"
-// in the language of msgs.
-func (msgs Messages) SettingsStorage() string {
-	return Catalog.Format(msgs.locale, "SettingsStorage", nil)
 }
 
 // SettingsTheme says "Appearance"
@@ -3630,6 +3650,98 @@ func (msgs Messages) ViewerBlockInput() string {
 	return Catalog.Format(msgs.locale, "ViewerBlockInput", nil)
 }
 
+// ViewerClipBehind says "Not shared right now: another tab or the Kyokai tab is in front."
+// in the language the app shows.
+func ViewerClipBehind() string { return In(i18n.Locale()).ViewerClipBehind() }
+
+// ViewerClipBehind says "Not shared right now: another tab or the Kyokai tab is in front."
+// in the language of msgs.
+func (msgs Messages) ViewerClipBehind() string {
+	return Catalog.Format(msgs.locale, "ViewerClipBehind", nil)
+}
+
+// ViewerClipClear says "Clear"
+// in the language the app shows.
+func ViewerClipClear() string { return In(i18n.Locale()).ViewerClipClear() }
+
+// ViewerClipClear says "Clear"
+// in the language of msgs.
+func (msgs Messages) ViewerClipClear() string {
+	return Catalog.Format(msgs.locale, "ViewerClipClear", nil)
+}
+
+// ViewerClipEmpty says "Nothing has crossed yet."
+// in the language the app shows.
+func ViewerClipEmpty() string { return In(i18n.Locale()).ViewerClipEmpty() }
+
+// ViewerClipEmpty says "Nothing has crossed yet."
+// in the language of msgs.
+func (msgs Messages) ViewerClipEmpty() string {
+	return Catalog.Format(msgs.locale, "ViewerClipEmpty", nil)
+}
+
+// ViewerClipFiles says "{count, plural, one{# file} other{# files}}, {size}"
+// in the language the app shows.
+func ViewerClipFiles(count int, size string) string {
+	return In(i18n.Locale()).ViewerClipFiles(count, size)
+}
+
+// ViewerClipFiles says "{count, plural, one{# file} other{# files}}, {size}"
+// in the language of msgs.
+func (msgs Messages) ViewerClipFiles(count int, size string) string {
+	return Catalog.Format(msgs.locale, "ViewerClipFiles", map[string]any{"count": count, "size": size})
+}
+
+// ViewerClipFromHere says "From this computer"
+// in the language the app shows.
+func ViewerClipFromHere() string { return In(i18n.Locale()).ViewerClipFromHere() }
+
+// ViewerClipFromHere says "From this computer"
+// in the language of msgs.
+func (msgs Messages) ViewerClipFromHere() string {
+	return Catalog.Format(msgs.locale, "ViewerClipFromHere", nil)
+}
+
+// ViewerClipFromHost says "From {device}"
+// in the language the app shows.
+func ViewerClipFromHost(device string) string { return In(i18n.Locale()).ViewerClipFromHost(device) }
+
+// ViewerClipFromHost says "From {device}"
+// in the language of msgs.
+func (msgs Messages) ViewerClipFromHost(device string) string {
+	return Catalog.Format(msgs.locale, "ViewerClipFromHost", map[string]any{"device": device})
+}
+
+// ViewerClipHint says "Only the device whose tab is in front shares the clipboard. What crossed is listed here until the tab closes, and kep…"
+// in the language the app shows.
+func ViewerClipHint() string { return In(i18n.Locale()).ViewerClipHint() }
+
+// ViewerClipHint says "Only the device whose tab is in front shares the clipboard. What crossed is listed here until the tab closes, and kep…"
+// in the language of msgs.
+func (msgs Messages) ViewerClipHint() string {
+	return Catalog.Format(msgs.locale, "ViewerClipHint", nil)
+}
+
+// ViewerClipShare says "Share the clipboard with this device"
+// in the language the app shows.
+func ViewerClipShare() string { return In(i18n.Locale()).ViewerClipShare() }
+
+// ViewerClipShare says "Share the clipboard with this device"
+// in the language of msgs.
+func (msgs Messages) ViewerClipShare() string {
+	return Catalog.Format(msgs.locale, "ViewerClipShare", nil)
+}
+
+// ViewerClipboard says "Clipboard"
+// in the language the app shows.
+func ViewerClipboard() string { return In(i18n.Locale()).ViewerClipboard() }
+
+// ViewerClipboard says "Clipboard"
+// in the language of msgs.
+func (msgs Messages) ViewerClipboard() string {
+	return Catalog.Format(msgs.locale, "ViewerClipboard", nil)
+}
+
 // ViewerCodecAuto says "Auto"
 // in the language the app shows.
 func ViewerCodecAuto() string { return In(i18n.Locale()).ViewerCodecAuto() }
@@ -3712,6 +3824,16 @@ func ViewerExitFullScreen() string { return In(i18n.Locale()).ViewerExitFullScre
 // in the language of msgs.
 func (msgs Messages) ViewerExitFullScreen() string {
 	return Catalog.Format(msgs.locale, "ViewerExitFullScreen", nil)
+}
+
+// ViewerFit says "Fit"
+// in the language the app shows.
+func ViewerFit() string { return In(i18n.Locale()).ViewerFit() }
+
+// ViewerFit says "Fit"
+// in the language of msgs.
+func (msgs Messages) ViewerFit() string {
+	return Catalog.Format(msgs.locale, "ViewerFit", nil)
 }
 
 // ViewerFullScreen says "Full screen"
@@ -3854,6 +3976,16 @@ func (msgs Messages) ViewerNoPicture() string {
 	return Catalog.Format(msgs.locale, "ViewerNoPicture", nil)
 }
 
+// ViewerOriginal says "Original size"
+// in the language the app shows.
+func ViewerOriginal() string { return In(i18n.Locale()).ViewerOriginal() }
+
+// ViewerOriginal says "Original size"
+// in the language of msgs.
+func (msgs Messages) ViewerOriginal() string {
+	return Catalog.Format(msgs.locale, "ViewerOriginal", nil)
+}
+
 // ViewerPasswordAgain says "Enter its password:"
 // in the language the app shows.
 func ViewerPasswordAgain() string { return In(i18n.Locale()).ViewerPasswordAgain() }
@@ -3932,6 +4064,16 @@ func ViewerRelayedHint() string { return In(i18n.Locale()).ViewerRelayedHint() }
 // in the language of msgs.
 func (msgs Messages) ViewerRelayedHint() string {
 	return Catalog.Format(msgs.locale, "ViewerRelayedHint", nil)
+}
+
+// ViewerScaleHint says "Fit shows the whole screen in the window. Original size shows one point per pixel of the other computer; drag the scr…"
+// in the language the app shows.
+func ViewerScaleHint() string { return In(i18n.Locale()).ViewerScaleHint() }
+
+// ViewerScaleHint says "Fit shows the whole screen in the window. Original size shows one point per pixel of the other computer; drag the scr…"
+// in the language of msgs.
+func (msgs Messages) ViewerScaleHint() string {
+	return Catalog.Format(msgs.locale, "ViewerScaleHint", nil)
 }
 
 // ViewerShowBar says "Show controls"

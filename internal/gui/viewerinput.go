@@ -197,7 +197,7 @@ func (v *viewer) keepSettings() {
 		return
 	}
 	v.mu.Lock()
-	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap, Mute: v.mute, Collapsed: v.collapsed}
+	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap, Mute: v.mute, Collapsed: v.collapsed, Original: v.original, NoClipboard: v.clip.off}
 	v.mu.Unlock()
 	v.app.setViewerPrefs(v.device, vp)
 }
@@ -288,10 +288,12 @@ func commandEvents(command string) []inputEvent {
 
 // choicePackets are the viewer's quality and codec choices as control
 // packets, for a stream that (re)starts: the host starts each session
-// with its defaults.
+// with its defaults. The last, its clipboard choice, stays with this
+// side's engine.
 func (v *viewer) choicePackets() [][]byte {
 	v.mu.Lock()
 	preset, fpsCap, full, codec, mute := v.preset, v.fpsCap, v.full, v.codec, v.mute
+	clip := v.clipUsePacket()
 	v.mu.Unlock()
 	fps := 30
 	_, _ = fmt.Sscan(fpsCap, &fps)
@@ -302,7 +304,7 @@ func (v *viewer) choicePackets() [][]byte {
 		out = append(out, append([]byte{packetControl}, body...))
 	}
 	sound, _ := json.Marshal(map[string]any{"type": "audio", "on": !mute})
-	return append(out, append([]byte{packetControl}, sound...))
+	return append(out, append([]byte{packetControl}, sound...), clip)
 }
 
 // codecLabel is how the viewer names a codec: Auto, the codec's usual

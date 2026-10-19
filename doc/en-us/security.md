@@ -47,7 +47,7 @@ that user could not read.
 - Screenshots exist in memory for the task's conversation and go only to the chosen provider; the
   history (`ai-tasks.json`) keeps instructions, the model's text and the actions, never a picture.
   Kyokai's own windows are excluded from capture (`SetContentProtection`), so the AI page and
-  approvals never reach the model. The host user can turn this off in Settings (General, "Hide
+  approvals never reach the model. The host user can turn this off in Security (Privacy, "Hide
   Kyokai from screen capture", on by default) to see and change Kyokai through another
   remote-desktop tool on an unattended computer; the windows then appear in every capture,
   including Kyokai's own video and the AI's screenshots. Input still never reaches them.
@@ -87,7 +87,7 @@ to `helper.log` in its state directory.
 
 ### No logs
 
-Settings, Storage, **No logs** (off by default; turning it on asks first, warning that afterwards
+Security, Privacy, **No logs** (off by default; turning it on asks first, warning that afterwards
 nobody can tell who connected or whom this device connected to) keeps as little as possible on
 the computer. The GUI and its engine (the user engine or the helper, told on every attach and
 change with `logs.set`) then:
@@ -143,7 +143,7 @@ unlocked desktop, and a compromised provider.
 - The temporary password can be shown and copied by anyone at the unlocked desktop; the tray never
   shows it.
 - A device that knows the password gets the password grants without anyone confirming; turning the
-  grants off in Settings, Access (or a password change) keeps it out. A device without the password
+  grants off in Permissions (or a password change) keeps it out. A device without the password
   can still ask, and is held back by the confirmation and the rate limits.
 - An AI task sends the screen to the provider the host's user chose, including whatever other
   apps show; the approval policy and local input are defence in depth, not a classifier of every

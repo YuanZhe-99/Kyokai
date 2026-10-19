@@ -57,7 +57,10 @@ func (a *App) sidebar(c *ui.Context) {
 		link("home", L.NavHome(), navHome, pageHome)
 		link("network", L.NavNetwork(), navNetwork, pageNetwork)
 		link("ai", L.NavAI(), navAI, pageAI)
-		link("settings", L.NavSettings(), navSettings, pageSettings)
+		link("permissions", L.NavPermissions(), navPermissions, pagePermissions)
+		link("security", L.NavSecurity(), navSecurity, pageSecurity)
+		link("general", L.SettingsGeneral(), navGeneral, pageGeneral)
+		link("about", L.SettingsAbout(), navAbout, pageAbout)
 	})
 }
 
@@ -181,17 +184,49 @@ func secretsNote(p string) string {
 	return p
 }
 
-func (a *App) settingsView(c *ui.Context) {
+// permissionsView is the Permissions page: what this Mac lets Kyokai do,
+// which passwords open this device and what they grant without asking, the
+// trusted devices, and the sound to share.
+func (a *App) permissionsView(c *ui.Context) {
+	if !a.engineState(c) {
+		return
+	}
+	a.permissionsCard(c, true)
+	a.accessSettings(c)
+	a.trustedCard(c)
+	a.mu.Lock()
+	p := a.prefs
+	a.mu.Unlock()
+	card(c).Children(func() { a.soundSourceRow(c, p) })
+}
+
+// securityView is the Security page: the device identity, protected mode,
+// and what Kyokai lets others see and keeps on this computer.
+func (a *App) securityView(c *ui.Context) {
+	if !a.engineState(c) {
+		return
+	}
+	a.identitySettings(c)
+	card(c).Children(func() { a.protectedSetting(c) })
+	a.privacySettings(c)
+}
+
+// generalView is the General page: the app's language and look, how it
+// starts and closes, and its run mode.
+func (a *App) generalView(c *ui.Context) {
 	a.generalSettings(c)
 	if a.engineState(c) {
-		a.permissionsCard(c, true)
 		a.runModeCard(c)
-		a.identitySettings(c)
-		a.accessSettings(c)
-		a.storageSettings(c)
+	}
+}
+
+// aboutView is the About page: the version and updates, diagnostics and
+// the open source licenses.
+func (a *App) aboutView(c *ui.Context) {
+	a.aboutSettings(c)
+	if a.engineState(c) {
 		a.diagnostics(c)
 	}
-	a.aboutSettings(c)
 	a.licenses(c)
 }
 
@@ -241,13 +276,6 @@ func (a *App) generalSettings(c *ui.Context) {
 				a.mu.Unlock()
 			}
 		})
-		hide := !p.ShowInCapture
-		settingRow(c, "capture", L.SettingsHideFromCapture(), L.SettingsHideFromCaptureHint(), func() {
-			if ui.Switch(c.Key("capture-sw"), &hide).Label(L.SettingsHideFromCapture()).Changed() {
-				a.setShowInCapture(p, !hide)
-			}
-		})
-		a.soundSourceRow(c, p)
 		closeIdx := 0
 		if p.CloseQuits {
 			closeIdx = 1
@@ -279,16 +307,23 @@ func (a *App) identitySettings(c *ui.Context) {
 	})
 }
 
-func (a *App) storageSettings(c *ui.Context) {
+// privacySettings is the Security page's card of what Kyokai lets others
+// see and keeps here: Hide Kyokai from screen capture, how secrets are kept,
+// and No logs.
+func (a *App) privacySettings(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	st := *a.status
 	a.mu.Unlock()
 	card(c).Children(func() {
-		ui.Text(c, L.SettingsStorage()).FontSize(sizeHeading).Bold()
-		settingRow(c, "dir", L.StorageLocation(), st.StateDir, func() {
-			if ui.Button(c.Key("open-dir"), L.ActionOpenFolder()).Clicked() {
-				_ = mygo.Shell.OpenPath(st.StateDir)
+		ui.Text(c, L.SettingsPrivacy()).FontSize(sizeHeading).Bold()
+		a.mu.Lock()
+		p := a.prefs
+		a.mu.Unlock()
+		hide := !p.ShowInCapture
+		settingRow(c, "capture", L.SettingsHideFromCapture(), L.SettingsHideFromCaptureHint(), func() {
+			if ui.Switch(c.Key("capture-sw"), &hide).Label(L.SettingsHideFromCapture()).Changed() {
+				a.setShowInCapture(p, !hide)
 			}
 		})
 		settingRow(c, "secrets", L.StorageSecrets(), "", func() {
@@ -298,9 +333,6 @@ func (a *App) storageSettings(c *ui.Context) {
 			}
 			ui.Text(c, secretsNote(st.Persistence)).FontSize(sizeSmall).TextColor(col).MaxWidth(360)
 		})
-		a.mu.Lock()
-		p := a.prefs
-		a.mu.Unlock()
 		off := p.NoLogs
 		settingRow(c, "no-logs", L.NoLogsTitle(), L.NoLogsHint(), func() {
 			if ui.Switch(c.Key("no-logs-sw"), &off).Label(L.NoLogsTitle()).Changed() {
@@ -337,6 +369,11 @@ func (a *App) diagnostics(c *ui.Context) {
 		})
 		settingRow(c, "mode", L.DiagRunMode(), "", func() {
 			ui.Text(c, []string{L.RunModeUser(), L.RunModeFollow(), L.RunModeBackground()}[a.currentMode()])
+		})
+		settingRow(c, "dir", L.StorageLocation(), st.StateDir, func() {
+			if ui.Button(c.Key("open-dir"), L.ActionOpenFolder()).Clicked() {
+				_ = mygo.Shell.OpenPath(st.StateDir)
+			}
 		})
 		if st.LogsOff {
 			settingRow(c, "logs", L.DiagLogs(), "", func() {

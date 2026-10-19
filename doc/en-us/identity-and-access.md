@@ -46,7 +46,7 @@ sessions with this host end and its resume tokens are dropped.
 | gives the permanent password with nobody at the computer | admits it with what a password grants (see Unattended access) |
 | gives a correct password of a kind the host does not accept | refuses it as a wrong password |
 
-Which passwords open the host is chosen in Settings, Access ("Accepted passwords": Temporary,
+Which passwords open the host is chosen in Permissions ("Accepted passwords": Temporary,
 Permanent or Both, by default Both); "Connect without asking" (on by default) lets an accepted
 password admit without confirmation, and off, every connection asks. What a password grants
 without asking is chosen there too ("With a correct password"),
@@ -77,7 +77,7 @@ total; further attempts are answered `busy`.
 
 ## Friendly names
 
-Each device has a friendly name, set in Settings (Device identity; at most 64 characters; empty
+Each device has a friendly name, set in Security (Device identity; at most 64 characters; empty
 uses the computer's name: `COMPUTERNAME` on Windows, the Sharing name on macOS) and kept in
 `device.json` in the state folder. With it a device describes its hardware maker and model (SMBIOS
 `SystemManufacturer` and `SystemProductName` on Windows; Apple and `hw.model` on macOS) and its
@@ -93,7 +93,7 @@ again beside its Device ID.
 
 ## Protected mode
 
-Settings, Access, **Protected mode** (off by default) leaves this computer's Kyokai offering only the
+Security, **Protected mode** (off by default) leaves this computer's Kyokai offering only the
 AI settings and AI tasks, for a computer whose local user should run AI tasks but change nothing
 else. It turns on only while a permanent password is set (after a confirmation) and off only with
 that password, entered on the AI page: the core checks it on this computer by running both sides

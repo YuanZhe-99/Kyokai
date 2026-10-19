@@ -484,6 +484,18 @@ impl Transfers {
         }
     }
 
+    /// Gives up both directions, as when the viewer stops sharing the
+    /// clipboard: a listing under way is not offered either.
+    /// Returns: this side's offer, which the other side is told is
+    /// cancelled, and the offer being received, which it is asked to stop.
+    pub fn halt(&mut self) -> (Option<u64>, Option<u64>) {
+        self.next += 1;
+        self.sending = None;
+        let sent = self.offer.take().map(|(id, _)| id);
+        let received = self.receiving.take().map(|(id, _)| id);
+        (sent, received)
+    }
+
     /// Waits for what the session does next.
     /// Notes: cancel safe; nothing is taken from a queue without being
     /// returned or handled.
