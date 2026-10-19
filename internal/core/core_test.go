@@ -48,7 +48,9 @@ func TestRealLibrary(t *testing.T) {
 	if l.KeyboardGrab(1, "legacy") == nil || l.KeyboardGrab(0, "map") == nil {
 		t.Fatal("a bad grab must fail")
 	}
-	if _, ok, err := l.Keyboard().Read(time.Millisecond); ok || (err != nil) != (runtime.GOOS != "windows") {
+	// Read answers on Windows and macOS (a Mac viewer grabs keys too) and
+	// fails elsewhere.
+	if _, ok, err := l.Keyboard().Read(time.Millisecond); ok || (err != nil) != (runtime.GOOS != "windows" && runtime.GOOS != "darwin") {
 		t.Fatalf("read: %v %v", ok, err)
 	}
 	// The viewer's decoder: raw test-pattern frames pass through.

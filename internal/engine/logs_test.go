@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -12,6 +13,17 @@ import (
 // the log is written again.
 func TestNoLogs(t *testing.T) {
 	dir := t.TempDir()
+	// The log is open again at the end: close it, or Windows cannot
+	// delete the folder.
+	t.Cleanup(func() {
+		logFile.Lock()
+		defer logFile.Unlock()
+		_ = debug.SetCrashOutput(nil, debug.CrashOptions{})
+		if logFile.f != nil {
+			_ = logFile.f.Close()
+			logFile.f = nil
+		}
+	})
 	path := filepath.Join(dir, "logs", "engine.log")
 	helperLog := filepath.Join(dir, "helper.log")
 	if err := os.WriteFile(helperLog, []byte("old"), 0o600); err != nil {
