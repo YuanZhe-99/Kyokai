@@ -97,7 +97,7 @@ func TestViewsRender(t *testing.T) {
 		"network-off":         func(a *App) { a.page, a.net = pageNetwork, netForm{loaded: true} },
 		"home-connect": func(a *App) {
 			a.status.Network.State = "online"
-			a.connect = connectForm{deviceID: "657 365 333"}
+			a.connect = connectForm{target: "657 365 333"}
 			a.status.Recent = []localapi.RecentDevice{
 				{DeviceID: "657365333", Last: 1797400000, SavedPassword: true, About: localapi.About{Name: "Studio Mac", Maker: "Apple", Model: "Mac14,13", OS: "macos"}},
 				{DeviceID: "647222040", Last: 1797300000},
@@ -123,10 +123,32 @@ func TestViewsRender(t *testing.T) {
 			a.page, a.status.PermanentPassword = pageSettings, true
 			a.status.PasswordGrants = []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard, localapi.PermFiles}
 			a.status.PasswordMode, a.status.WithoutAsking = "both", true
+			a.status.ByAddress = localapi.ByAddress{On: true, Ranges: []string{"192.168.0.0/16", "100.64.0.0/10"}, Port: 47310}
 			a.access = accessForm{loaded: true, trusted: []localapi.TrustedDevice{
 				{Key: "k", DeviceID: "213559601", Last: 1797400000, Granted: []string{localapi.PermViewScreen}, About: localapi.About{Name: "Office laptop", Maker: "LENOVO"}},
 				{Key: "k2", DeviceID: "647222040", Last: 1797300000, Granted: []string{localapi.PermViewScreen}},
 			}}
+		},
+		"home-address": func(a *App) {
+			a.connect = connectForm{target: "office.example.org", identifying: true}
+			a.prefs.Aliases = map[string]string{"657365333": "Studio"}
+			a.rename = renameForm{device: "657365333", name: "Studio"}
+			a.status.Recent = []localapi.RecentDevice{{DeviceID: "657365333", Last: 1797400000, Address: "192.168.1.20",
+				About: localapi.About{Name: "Studio Mac", Maker: "Apple", Model: "Mac14,13", OS: "macos"}}}
+		},
+		"protected": func(a *App) {
+			// Settings was open: protected mode shows the AI page only.
+			a.page, a.status.Protected, a.status.PermanentPassword = pageSettings, true, true
+			a.ai = aiState{loaded: true, settings: demoAISettings(true)}
+		},
+		"settings-no-logs": func(a *App) {
+			a.page, a.prefs.NoLogs, a.status.LogsOff = pageSettings, true, true
+		},
+		"settings-by-address-failed": func(a *App) {
+			a.page = pageSettings
+			a.status.ByAddress = localapi.ByAddress{On: true, Ranges: []string{"10.0.0.0/8"}}
+			edited := "10.0.0.0/8\n172.16.0.0/12"
+			a.access = accessForm{loaded: true, ranges: &edited}
 		},
 		"home-remote-ai": func(a *App) {
 			a.status.AI = &localapi.AIActive{ID: 4, State: "running", Origin: "213559601"}
@@ -154,11 +176,6 @@ func TestViewsRender(t *testing.T) {
 				Devices: []localapi.NetworkDevice{{DeviceID: "213559601", Path: "relay", LatencyMS: 36}, {DeviceID: "647222040", Path: "direct", LatencyMS: 4}}}
 			a.net = netForm{loaded: true, servers: "tcp://example.org:11010", name: "kyokai", hasSecret: true, weakSecret: true}
 		},
-		"network-listening": func(a *App) {
-			a.page = pageNetwork
-			a.status.Network = localapi.NetworkStatus{State: "listening", Address: "10.126.126.1", ListenPort: 47311}
-			a.net = netForm{loaded: true, peers: "192.168.1.20\noffice.example.org", name: "kyokai", hasSecret: true, direct: true}
-		},
 	}
 	for _, lang := range []string{"en", "zh-Hans", "zh-Hant", "ja"} {
 		i18n.SetLocaleFunc(func() string { return lang })
@@ -170,8 +187,8 @@ func TestViewsRender(t *testing.T) {
 				a := demoApp(t)
 				setup(a)
 				height := 900
-				if name == "settings-access" || name == "ai-new" {
-					height = 1500 // the trusted devices sit below the fold
+				if strings.HasPrefix(name, "settings-") || name == "ai-new" {
+					height = 2300 // the trusted devices sit below the fold
 				}
 				tt := ui.NewTester(a.View, 1000, height)
 				tt.SetDark(dark)
@@ -862,5 +879,48 @@ func TestClearNetworkReturns(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("the network page stayed busy")
 		}
+	}
+}
+
+// TestConnectTarget reads Connect's field as a Device ID or an address.
+func TestConnectTarget(t *testing.T) {
+	for _, c := range []struct{ in, device, address string }{
+		{"482 916 735", "482916735", ""},
+		{"482916735", "482916735", ""},
+		{"48291673", "", ""},
+		{"", "", ""},
+		{" 192.168.1.20 ", "", "192.168.1.20"},
+		{"office.example.org:47312", "", "office.example.org:47312"},
+		{"fe80::1", "", "fe80::1"},
+		{"100.101.102.103", "", "100.101.102.103"},
+	} {
+		device, address := parseTarget(c.in)
+		if device != c.device || address != c.address {
+			t.Errorf("parseTarget(%q) = %q, %q; want %q, %q", c.in, device, address, c.device, c.address)
+		}
+	}
+}
+
+// TestDeviceRowsUseLocalNames: a name given here replaces the one the
+// device gives itself, and a recent device keeps the address it was
+// reached at.
+func TestDeviceRowsUseLocalNames(t *testing.T) {
+	st := &localapi.Status{
+		Recent: []localapi.RecentDevice{{DeviceID: "657365333", Address: "192.168.1.20", About: localapi.About{Name: "Studio Mac"}}},
+		Sessions: []localapi.SessionInfo{{ID: 3, Role: "controller", DeviceID: "424829924", State: "failed"},
+			{ID: 4, Role: "host", DeviceID: "100000002", State: "connected"}},
+	}
+	rows := deviceRows(st, Prefs{Aliases: map[string]string{"657365333": "Studio", "424829924": "Attic"}})
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d, want 2 (hosts only)", len(rows))
+	}
+	if rows[0].about.Name != "Studio" || rows[0].address != "192.168.1.20" {
+		t.Errorf("recent row = %q at %q", rows[0].about.Name, rows[0].address)
+	}
+	if rows[1].about.Name != "Attic" {
+		t.Errorf("session row = %q, want the local name", rows[1].about.Name)
+	}
+	if got := deviceRows(st, Prefs{})[0].about.Name; got != "Studio Mac" {
+		t.Errorf("without a local name = %q", got)
 	}
 }

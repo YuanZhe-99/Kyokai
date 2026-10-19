@@ -1,8 +1,9 @@
 # Wire protocol
 
 A controller reaches a host's engine over the EasyTier data plane: TCP to the host's virtual IPv4
-address, port 47310 ([networking.md](networking.md)). EasyTier is an untrusted pipe, so the session
-is authenticated and encrypted end to end on top of it. The protocol version is 10 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes and files on the clipboard, 5 asking without a password, 6 the host's one AI record and the shared draft, 7 the codec offer and the viewer's codec, and the host's encode time in its stats, 8 the frame acknowledgements and the encoder in the stream description, 9 the host's sound, 10 the `hear-sound` permission and 10 ms sound packets).
+address, port 47310 ([networking.md](networking.md)), or, connecting by address, plain TCP to the
+host's own address (port 47310 unless given). Neither path is trusted, so the session is
+authenticated and encrypted end to end on top of it, the same on both. The protocol version is 10 (2 added the AI and clipboard messages, 3 the session actions, 4 the scan-code key event of the keyboard modes and files on the clipboard, 5 asking without a password, 6 the host's one AI record and the shared draft, 7 the codec offer and the viewer's codec, and the host's encode time in its stats, 8 the frame acknowledgements and the encoder in the stream description, 9 the host's sound, 10 the `hear-sound` permission and 10 ms sound packets).
 
 ## Framing
 
@@ -25,7 +26,9 @@ static key per session and prove their device identity by signing it.
 | 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests (or none, with the controller's description `about`, to ask without a password), and a resume token when resuming |
 
 The signature is Ed25519 by the device key over `kyokai/noise-static/v1` followed by the sender's
-Noise static public key. The controller refuses a host whose device key does not derive the Device
+Noise static public key. To learn whom an address reaches, the controller sends frame 1, reads
+frame 2, checks its signature and closes the connection (`session.identify`); the host keeps no
+session for it. The controller refuses a host whose device key does not derive the Device
 ID it dialed, or that differs from the key it pinned for that ID
 ([identity-and-access.md](identity-and-access.md)). `host_hello` carries the host's source URL,
 which the controller shows (AGPL-3.0 §13).

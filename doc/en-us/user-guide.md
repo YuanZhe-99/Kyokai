@@ -43,15 +43,11 @@ and the Kyokai devices it can reach, directly or through a relay. A device's ann
 hint: who a device is gets proven when you connect. **Clear network settings** forgets the
 network and disconnects.
 
-Without a server, devices can join by address: on one computer turn on **Try direct connections**
-and save just the network name and secret; the Network page then shows its **Port for direct
-addresses**. On the other, enter that computer's IP address or domain name under **Direct
-addresses** (add `:port` when the port is not 47311) with the same name and secret. Connections go
-through the server unless you switch on **Try direct connections** (Settings, Run mode; it applies
+Connections go through the server unless you switch on **Try direct connections** (Settings, Run mode; it applies
 at once), which is faster where both networks allow it; Windows may then ask to let Kyokai through
 its firewall, and a Mac to let it find devices on the local network. On one network it is enough on
 one of the two computers; turn it on on both for computers on different networks. Each device in
-the list has Copy and Connect.
+the list has Copy and Connect. Without a network you can still connect by address (below).
 
 ## Control another device
 
@@ -97,7 +93,19 @@ Microphone permission then); **Sound** in the status bar turns it off. Quality, 
 each device. While you are connected the other computer does not go to
 sleep by itself. Closing the tab (×) disconnects; when a connection ends, its tab says why and offers
 **Reconnect**. A connection that drops reconnects by itself for a minute without asking again.
-**Remove** in a device's menu takes it off Recent and forgets its saved password.
+**Remove** in a device's menu takes it off Recent and forgets its saved password. **Rename…** gives
+it a name of your own, shown only on this device; leave it empty to use the device's own name
+again.
+
+### Connect by address
+
+On the same local network, over Tailscale, or wherever the other computer can be reached, you can
+connect without joining a network: enter its IP address or domain name (add `:port` when it is not
+47310) instead of a Device ID and choose **Connect**. Kyokai first asks who answers there, then
+connects to that device; Recent then remembers the address. The other computer must allow it:
+Settings, Access, **Accept connections by address** (off by default). It accepts them only from the
+listed address ranges — by default local networks and Tailscale — and still needs a password or
+its user's approval. Windows may ask to let Kyokai through its firewall.
 
 ## Let someone control this device
 
@@ -167,6 +175,13 @@ them too, and sees a banner while your task works there, with **Stop** at hand.
   AI task pauses first.
 - When the controlling device disconnects, its AI task pauses.
 - Network membership alone grants nothing; every session needs your password or your confirmation.
+- **Protected mode** (Settings, Access; needs a permanent password) leaves only the AI settings and
+  AI tasks in Kyokai on this computer, for someone who should use the AI here but change nothing
+  else. To turn it off, enter the permanent password on the AI page.
+- **No logs** (Settings, Storage) keeps Kyokai from writing logs or crash reports and from keeping a
+  record of connections: trusted devices and Recent last only until Kyokai quits, and the logs
+  already written are deleted. It is a trade-off: afterwards you can't find out who connected to
+  this computer or which devices it connected to, so Kyokai asks before turning it on.
 
 ## Back up your identity
 

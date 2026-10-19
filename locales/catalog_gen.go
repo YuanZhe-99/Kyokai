@@ -1152,6 +1152,16 @@ func (msgs Messages) ActionRemove() string {
 	return Catalog.Format(msgs.locale, "ActionRemove", nil)
 }
 
+// ActionRename says "Rename…"
+// in the language the app shows.
+func ActionRename() string { return In(i18n.Locale()).ActionRename() }
+
+// ActionRename says "Rename…"
+// in the language of msgs.
+func (msgs Messages) ActionRename() string {
+	return Catalog.Format(msgs.locale, "ActionRename", nil)
+}
+
 // ActionReopen says "Reopen Kyokai"
 // in the language the app shows.
 func ActionReopen() string { return In(i18n.Locale()).ActionReopen() }
@@ -1332,6 +1342,66 @@ func (msgs Messages) BackupTitle() string {
 	return Catalog.Format(msgs.locale, "BackupTitle", nil)
 }
 
+// ByAddressFailed says "Not accepting yet: port 47310 is in use or blocked on this computer."
+// in the language the app shows.
+func ByAddressFailed() string { return In(i18n.Locale()).ByAddressFailed() }
+
+// ByAddressFailed says "Not accepting yet: port 47310 is in use or blocked on this computer."
+// in the language of msgs.
+func (msgs Messages) ByAddressFailed() string {
+	return Catalog.Format(msgs.locale, "ByAddressFailed", nil)
+}
+
+// ByAddressHint says "Other devices can connect by this computer's IP address or domain name (port 47310), without a network. They still ne…"
+// in the language the app shows.
+func ByAddressHint() string { return In(i18n.Locale()).ByAddressHint() }
+
+// ByAddressHint says "Other devices can connect by this computer's IP address or domain name (port 47310), without a network. They still ne…"
+// in the language of msgs.
+func (msgs Messages) ByAddressHint() string {
+	return Catalog.Format(msgs.locale, "ByAddressHint", nil)
+}
+
+// ByAddressRanges says "Accepted from"
+// in the language the app shows.
+func ByAddressRanges() string { return In(i18n.Locale()).ByAddressRanges() }
+
+// ByAddressRanges says "Accepted from"
+// in the language of msgs.
+func (msgs Messages) ByAddressRanges() string {
+	return Catalog.Format(msgs.locale, "ByAddressRanges", nil)
+}
+
+// ByAddressRangesHint says "Address ranges (192.168.0.0/16) or single addresses, one per line. By default: local networks and Tailscale (100.64.0…"
+// in the language the app shows.
+func ByAddressRangesHint() string { return In(i18n.Locale()).ByAddressRangesHint() }
+
+// ByAddressRangesHint says "Address ranges (192.168.0.0/16) or single addresses, one per line. By default: local networks and Tailscale (100.64.0…"
+// in the language of msgs.
+func (msgs Messages) ByAddressRangesHint() string {
+	return Catalog.Format(msgs.locale, "ByAddressRangesHint", nil)
+}
+
+// ByAddressSaved says "Address ranges saved."
+// in the language the app shows.
+func ByAddressSaved() string { return In(i18n.Locale()).ByAddressSaved() }
+
+// ByAddressSaved says "Address ranges saved."
+// in the language of msgs.
+func (msgs Messages) ByAddressSaved() string {
+	return Catalog.Format(msgs.locale, "ByAddressSaved", nil)
+}
+
+// ByAddressTitle says "Accept connections by address"
+// in the language the app shows.
+func ByAddressTitle() string { return In(i18n.Locale()).ByAddressTitle() }
+
+// ByAddressTitle says "Accept connections by address"
+// in the language of msgs.
+func (msgs Messages) ByAddressTitle() string {
+	return Catalog.Format(msgs.locale, "ByAddressTitle", nil)
+}
+
 // CloseHide says "Keep running in the tray"
 // in the language the app shows.
 func CloseHide() string { return In(i18n.Locale()).CloseHide() }
@@ -1352,11 +1422,21 @@ func (msgs Messages) CloseQuit() string {
 	return Catalog.Format(msgs.locale, "CloseQuit", nil)
 }
 
-// ConnectNeedsNetwork says "Join a network on the Network page first."
+// ConnectIdentifying says "Looking for the device at that address…"
+// in the language the app shows.
+func ConnectIdentifying() string { return In(i18n.Locale()).ConnectIdentifying() }
+
+// ConnectIdentifying says "Looking for the device at that address…"
+// in the language of msgs.
+func (msgs Messages) ConnectIdentifying() string {
+	return Catalog.Format(msgs.locale, "ConnectIdentifying", nil)
+}
+
+// ConnectNeedsNetwork says "To connect by Device ID, join a network on the Network page first. An IP address or domain name works without one."
 // in the language the app shows.
 func ConnectNeedsNetwork() string { return In(i18n.Locale()).ConnectNeedsNetwork() }
 
-// ConnectNeedsNetwork says "Join a network on the Network page first."
+// ConnectNeedsNetwork says "To connect by Device ID, join a network on the Network page first. An IP address or domain name works without one."
 // in the language of msgs.
 func (msgs Messages) ConnectNeedsNetwork() string {
 	return Catalog.Format(msgs.locale, "ConnectNeedsNetwork", nil)
@@ -1380,6 +1460,16 @@ func ConnectPasswordSaved() string { return In(i18n.Locale()).ConnectPasswordSav
 // in the language of msgs.
 func (msgs Messages) ConnectPasswordSaved() string {
 	return Catalog.Format(msgs.locale, "ConnectPasswordSaved", nil)
+}
+
+// ConnectPlaceholder says "Device ID or address"
+// in the language the app shows.
+func ConnectPlaceholder() string { return In(i18n.Locale()).ConnectPlaceholder() }
+
+// ConnectPlaceholder says "Device ID or address"
+// in the language of msgs.
+func (msgs Messages) ConnectPlaceholder() string {
+	return Catalog.Format(msgs.locale, "ConnectPlaceholder", nil)
 }
 
 // ConnectRecent says "Recent"
@@ -1480,6 +1570,16 @@ func DiagLogs() string { return In(i18n.Locale()).DiagLogs() }
 // in the language of msgs.
 func (msgs Messages) DiagLogs() string {
 	return Catalog.Format(msgs.locale, "DiagLogs", nil)
+}
+
+// DiagLogsOff says "Off (No logs)"
+// in the language the app shows.
+func DiagLogsOff() string { return In(i18n.Locale()).DiagLogsOff() }
+
+// DiagLogsOff says "Off (No logs)"
+// in the language of msgs.
+func (msgs Messages) DiagLogsOff() string {
+	return Catalog.Format(msgs.locale, "DiagLogsOff", nil)
 }
 
 // DiagRunMode says "Run mode"
@@ -1736,6 +1836,36 @@ func (msgs Messages) HostConnected(device string) string {
 	return Catalog.Format(msgs.locale, "HostConnected", map[string]any{"device": device})
 }
 
+// IdentifyBroken says "No Kyokai device answered at that address."
+// in the language the app shows.
+func IdentifyBroken() string { return In(i18n.Locale()).IdentifyBroken() }
+
+// IdentifyBroken says "No Kyokai device answered at that address."
+// in the language of msgs.
+func (msgs Messages) IdentifyBroken() string {
+	return Catalog.Format(msgs.locale, "IdentifyBroken", nil)
+}
+
+// IdentifySelf says "That address is this device."
+// in the language the app shows.
+func IdentifySelf() string { return In(i18n.Locale()).IdentifySelf() }
+
+// IdentifySelf says "That address is this device."
+// in the language of msgs.
+func (msgs Messages) IdentifySelf() string {
+	return Catalog.Format(msgs.locale, "IdentifySelf", nil)
+}
+
+// IdentifyUnreachable says "Nothing answered at that address. Check the address, and that the device accepts connections by address from here."
+// in the language the app shows.
+func IdentifyUnreachable() string { return In(i18n.Locale()).IdentifyUnreachable() }
+
+// IdentifyUnreachable says "Nothing answered at that address. Check the address, and that the device accepts connections by address from here."
+// in the language of msgs.
+func (msgs Messages) IdentifyUnreachable() string {
+	return Catalog.Format(msgs.locale, "IdentifyUnreachable", nil)
+}
+
 // IdentityFingerprint says "Fingerprint"
 // in the language the app shows.
 func IdentityFingerprint() string { return In(i18n.Locale()).IdentityFingerprint() }
@@ -1986,16 +2116,6 @@ func (msgs Messages) NetworkError() string {
 	return Catalog.Format(msgs.locale, "NetworkError", nil)
 }
 
-// NetworkListening says "Waiting for other devices to connect by this device’s address"
-// in the language the app shows.
-func NetworkListening() string { return In(i18n.Locale()).NetworkListening() }
-
-// NetworkListening says "Waiting for other devices to connect by this device’s address"
-// in the language of msgs.
-func (msgs Messages) NetworkListening() string {
-	return Catalog.Format(msgs.locale, "NetworkListening", nil)
-}
-
 // NetworkNAT says "NAT type"
 // in the language the app shows.
 func NetworkNAT() string { return In(i18n.Locale()).NetworkNAT() }
@@ -2044,26 +2164,6 @@ func NetworkOnline() string { return In(i18n.Locale()).NetworkOnline() }
 // in the language of msgs.
 func (msgs Messages) NetworkOnline() string {
 	return Catalog.Format(msgs.locale, "NetworkOnline", nil)
-}
-
-// NetworkPeers says "Direct addresses"
-// in the language the app shows.
-func NetworkPeers() string { return In(i18n.Locale()).NetworkPeers() }
-
-// NetworkPeers says "Direct addresses"
-// in the language of msgs.
-func (msgs Messages) NetworkPeers() string {
-	return Catalog.Format(msgs.locale, "NetworkPeers", nil)
-}
-
-// NetworkPeersHint says "IP addresses or domain names of other Kyokai devices, one per line (port 47311 unless you give one). Those devices ne…"
-// in the language the app shows.
-func NetworkPeersHint() string { return In(i18n.Locale()).NetworkPeersHint() }
-
-// NetworkPeersHint says "IP addresses or domain names of other Kyokai devices, one per line (port 47311 unless you give one). Those devices ne…"
-// in the language of msgs.
-func (msgs Messages) NetworkPeersHint() string {
-	return Catalog.Format(msgs.locale, "NetworkPeersHint", nil)
 }
 
 // NetworkPort says "Port for direct addresses"
@@ -2164,6 +2264,56 @@ func NetworkTitle() string { return In(i18n.Locale()).NetworkTitle() }
 // in the language of msgs.
 func (msgs Messages) NetworkTitle() string {
 	return Catalog.Format(msgs.locale, "NetworkTitle", nil)
+}
+
+// NoLogsConfirm says "This is a security risk: afterwards you can't find out who connected to this computer, or which devices it connected …"
+// in the language the app shows.
+func NoLogsConfirm() string { return In(i18n.Locale()).NoLogsConfirm() }
+
+// NoLogsConfirm says "This is a security risk: afterwards you can't find out who connected to this computer, or which devices it connected …"
+// in the language of msgs.
+func (msgs Messages) NoLogsConfirm() string {
+	return Catalog.Format(msgs.locale, "NoLogsConfirm", nil)
+}
+
+// NoLogsEngineBehind says "The engine in use doesn't support this yet; it still keeps logs until it is updated."
+// in the language the app shows.
+func NoLogsEngineBehind() string { return In(i18n.Locale()).NoLogsEngineBehind() }
+
+// NoLogsEngineBehind says "The engine in use doesn't support this yet; it still keeps logs until it is updated."
+// in the language of msgs.
+func (msgs Messages) NoLogsEngineBehind() string {
+	return Catalog.Format(msgs.locale, "NoLogsEngineBehind", nil)
+}
+
+// NoLogsHint says "Kyokai writes no logs or crash reports and keeps no record of connections on this computer: trusted devices and Recen…"
+// in the language the app shows.
+func NoLogsHint() string { return In(i18n.Locale()).NoLogsHint() }
+
+// NoLogsHint says "Kyokai writes no logs or crash reports and keeps no record of connections on this computer: trusted devices and Recen…"
+// in the language of msgs.
+func (msgs Messages) NoLogsHint() string {
+	return Catalog.Format(msgs.locale, "NoLogsHint", nil)
+}
+
+// NoLogsTitle says "No logs"
+// in the language the app shows.
+func NoLogsTitle() string { return In(i18n.Locale()).NoLogsTitle() }
+
+// NoLogsTitle says "No logs"
+// in the language of msgs.
+func (msgs Messages) NoLogsTitle() string {
+	return Catalog.Format(msgs.locale, "NoLogsTitle", nil)
+}
+
+// NoLogsTurnOn says "Keep no logs"
+// in the language the app shows.
+func NoLogsTurnOn() string { return In(i18n.Locale()).NoLogsTurnOn() }
+
+// NoLogsTurnOn says "Keep no logs"
+// in the language of msgs.
+func (msgs Messages) NoLogsTurnOn() string {
+	return Catalog.Format(msgs.locale, "NoLogsTurnOn", nil)
 }
 
 // NotifyAppUpdateTitle says "Kyokai update"
@@ -2536,6 +2686,86 @@ func (msgs Messages) PermissionsTitle() string {
 	return Catalog.Format(msgs.locale, "PermissionsTitle", nil)
 }
 
+// ProtectedConfirm says "Kyokai will show only the AI settings and AI tasks. To change anything else, you'll need the permanent password to tu…"
+// in the language the app shows.
+func ProtectedConfirm() string { return In(i18n.Locale()).ProtectedConfirm() }
+
+// ProtectedConfirm says "Kyokai will show only the AI settings and AI tasks. To change anything else, you'll need the permanent password to tu…"
+// in the language of msgs.
+func (msgs Messages) ProtectedConfirm() string {
+	return Catalog.Format(msgs.locale, "ProtectedConfirm", nil)
+}
+
+// ProtectedHint says "This computer's Kyokai then offers only the AI settings and AI tasks; everything else, including the network, access …"
+// in the language the app shows.
+func ProtectedHint() string { return In(i18n.Locale()).ProtectedHint() }
+
+// ProtectedHint says "This computer's Kyokai then offers only the AI settings and AI tasks; everything else, including the network, access …"
+// in the language of msgs.
+func (msgs Messages) ProtectedHint() string {
+	return Catalog.Format(msgs.locale, "ProtectedHint", nil)
+}
+
+// ProtectedNeedsPermanent says "Set a permanent password above first."
+// in the language the app shows.
+func ProtectedNeedsPermanent() string { return In(i18n.Locale()).ProtectedNeedsPermanent() }
+
+// ProtectedNeedsPermanent says "Set a permanent password above first."
+// in the language of msgs.
+func (msgs Messages) ProtectedNeedsPermanent() string {
+	return Catalog.Format(msgs.locale, "ProtectedNeedsPermanent", nil)
+}
+
+// ProtectedOnHint says "Only the AI settings and AI tasks are available. Enter the permanent password to turn protected mode off."
+// in the language the app shows.
+func ProtectedOnHint() string { return In(i18n.Locale()).ProtectedOnHint() }
+
+// ProtectedOnHint says "Only the AI settings and AI tasks are available. Enter the permanent password to turn protected mode off."
+// in the language of msgs.
+func (msgs Messages) ProtectedOnHint() string {
+	return Catalog.Format(msgs.locale, "ProtectedOnHint", nil)
+}
+
+// ProtectedTitle says "Protected mode"
+// in the language the app shows.
+func ProtectedTitle() string { return In(i18n.Locale()).ProtectedTitle() }
+
+// ProtectedTitle says "Protected mode"
+// in the language of msgs.
+func (msgs Messages) ProtectedTitle() string {
+	return Catalog.Format(msgs.locale, "ProtectedTitle", nil)
+}
+
+// ProtectedTurnOff says "Turn off"
+// in the language the app shows.
+func ProtectedTurnOff() string { return In(i18n.Locale()).ProtectedTurnOff() }
+
+// ProtectedTurnOff says "Turn off"
+// in the language of msgs.
+func (msgs Messages) ProtectedTurnOff() string {
+	return Catalog.Format(msgs.locale, "ProtectedTurnOff", nil)
+}
+
+// ProtectedTurnOn says "Turn on protected mode"
+// in the language the app shows.
+func ProtectedTurnOn() string { return In(i18n.Locale()).ProtectedTurnOn() }
+
+// ProtectedTurnOn says "Turn on protected mode"
+// in the language of msgs.
+func (msgs Messages) ProtectedTurnOn() string {
+	return Catalog.Format(msgs.locale, "ProtectedTurnOn", nil)
+}
+
+// ProtectedWrongPassword says "That is not the permanent password."
+// in the language the app shows.
+func ProtectedWrongPassword() string { return In(i18n.Locale()).ProtectedWrongPassword() }
+
+// ProtectedWrongPassword says "That is not the permanent password."
+// in the language of msgs.
+func (msgs Messages) ProtectedWrongPassword() string {
+	return Catalog.Format(msgs.locale, "ProtectedWrongPassword", nil)
+}
+
 // QualityBalanced says "Balanced"
 // in the language the app shows.
 func QualityBalanced() string { return In(i18n.Locale()).QualityBalanced() }
@@ -2574,6 +2804,26 @@ func QualitySpeed() string { return In(i18n.Locale()).QualitySpeed() }
 // in the language of msgs.
 func (msgs Messages) QualitySpeed() string {
 	return Catalog.Format(msgs.locale, "QualitySpeed", nil)
+}
+
+// RenameHint says "Shown only on this device. Leave it empty to use the name the device gives itself."
+// in the language the app shows.
+func RenameHint() string { return In(i18n.Locale()).RenameHint() }
+
+// RenameHint says "Shown only on this device. Leave it empty to use the name the device gives itself."
+// in the language of msgs.
+func (msgs Messages) RenameHint() string {
+	return Catalog.Format(msgs.locale, "RenameHint", nil)
+}
+
+// RenameTitle says "Name for {device}"
+// in the language the app shows.
+func RenameTitle(device string) string { return In(i18n.Locale()).RenameTitle(device) }
+
+// RenameTitle says "Name for {device}"
+// in the language of msgs.
+func (msgs Messages) RenameTitle(device string) string {
+	return Catalog.Format(msgs.locale, "RenameTitle", map[string]any{"device": device})
 }
 
 // RequestAsks says "It asks to:"

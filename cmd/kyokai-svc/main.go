@@ -9,13 +9,15 @@
 //	kyokai-svc ctl network-set --server URL [--server URL…] --name N [--direct=true|false]
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
 //	kyokai-svc ctl permanent [--remove]
-//	kyokai-svc ctl connect --device ID [--want P,P…]
+//	kyokai-svc ctl connect --device ID [--address A] [--want P,P…] | identify --address A | remove --device ID
 //	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--codec C] [--text T] [--click X,Y] [--type T] [--keys K,K…] [--action A,A…] [--display N]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
-//	kyokai-svc ctl untrust --key K | forget --device ID | access [--mode temporary|permanent|both] [--without-asking=true|false]
+//	kyokai-svc ctl untrust --key K | forget --device ID | access [--mode temporary|permanent|both] [--without-asking=true|false] [--by-address=true|false --ranges R,R…]
 //	kyokai-svc ctl password-grants --grant P,P…   (what a correct password grants without asking; empty: none)
 //	kyokai-svc ctl background [--on]     (the helper: Background service or Follow GUI)
 //	kyokai-svc ctl capture-show [--on]   (captures show Kyokai's windows, or hide them)
+//	kyokai-svc ctl no-logs [--on]        (keep no logs, crash traces or connection history, or keep them again)
+//	kyokai-svc ctl protect [--on]        (protected mode on, or off with KYOKAI_PERMANENT_PASSWORD)
 //	kyokai-svc ctl move --to SOCKET       (moves the whole store to another engine of this device, which stops this one)
 //	kyokai-svc ctl helper-update --from DIR (the helper installs the signed bundle in DIR)
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
@@ -161,14 +163,12 @@ func ctl(args []string) error {
 		servers = append(servers, s)
 		return nil
 	})
-	var peers []string
-	fs.Func("peer", "network-set: another device's IP address or domain name, reached directly (repeatable)", func(s string) error {
-		peers = append(peers, s)
-		return nil
-	})
+	address := fs.String("address", "", "identify, connect: the host's IP address or domain name (connect: instead of the network)")
+	byAddress := fs.String("by-address", "", "access: accept connections by address (true, false)")
+	ranges := fs.String("ranges", "", "access: the address ranges connections by address are accepted from (comma-separated; with --by-address)")
 	direct := fs.Bool("direct", false, "network-set: try direct (hole-punched) paths; omitted keeps the current choice")
 	name := fs.String("name", "", "network-set: the network name; name-set: this device's friendly name")
-	device := fs.String("device", "", "connect, forget: the Device ID")
+	device := fs.String("device", "", "connect, forget, remove: the Device ID")
 	want := fs.String("want", localapi.PermViewScreen+","+localapi.PermControlInput, "connect: the permissions to ask for")
 	grant := fs.String("grant", "", "allow: the permissions to grant (default: all asked for); password-grants: what a correct password grants without asking (empty: none)")
 	id := fs.Uint64("id", 0, "close, allow, deny: the session or request id")
@@ -180,7 +180,7 @@ func ctl(args []string) error {
 	to := fs.String("to", "", "move: the socket of the engine that takes over this device's store")
 	mode := fs.String("mode", "", "access: which passwords open this host (temporary, permanent, both)")
 	withoutAsking := fs.String("without-asking", "", "access: whether an accepted password admits without asking (true, false)")
-	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached); capture-show: captures show Kyokai's windows")
+	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached); capture-show: captures show Kyokai's windows; no-logs: keep no logs or connection history; protect: protected mode")
 	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
@@ -218,18 +218,18 @@ func ctl(args []string) error {
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
-		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "capture-show": localapi.RequestCaptureShow, "helper-update": localapi.RequestHelperUpdate,
+		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "capture-show": localapi.RequestCaptureShow, "no-logs": localapi.RequestLogs, "protect": localapi.RequestProtect, "helper-update": localapi.RequestHelperUpdate,
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
-		"forget": localapi.RequestHostForget, "backup": localapi.RequestIdentityExport,
+		"forget": localapi.RequestHostForget, "remove": localapi.RequestDeviceRemove, "identify": localapi.RequestIdentify, "backup": localapi.RequestIdentityExport,
 		"restore": localapi.RequestIdentityImport, "reset-identity": localapi.RequestIdentityReset,
 		"ai": localapi.RequestAISettingsGet, "ai-set": localapi.RequestAISettingsSet, "ai-key": localapi.RequestAIKeySet, "ai-models": localapi.RequestAIModels,
 		"ai-start": localapi.RequestAITaskStart, "ai-reply": localapi.RequestAITaskReply, "ai-tasks": localapi.RequestAITasks,
 		"ai-pause": localapi.RequestAITaskPause, "ai-resume": localapi.RequestAITaskResume, "ai-cancel": localapi.RequestAITaskCancel,
 		"ai-approve": localapi.RequestAITaskDecide, "ai-decline": localapi.RequestAITaskDecide,
 		"ai-clear": localapi.RequestAIHistoryClear, "ai-stop": localapi.RequestAIStop,
-	}[cmd], ID: *id, Key: *key, DeviceID: *device}
+	}[cmd], ID: *id, Key: *key, DeviceID: *device, Address: *address}
 	if req.Type == "" {
 		usage()
 	}
@@ -245,6 +245,9 @@ func ctl(args []string) error {
 			on := *withoutAsking == "true"
 			req.WithoutAsking = &on
 		}
+		if *byAddress != "" {
+			req.ByAddress = &localapi.ByAddress{On: *byAddress == "true", Ranges: append([]string{}, list(*ranges)...)}
+		}
 	case "password-grants":
 		g := append([]string{}, list(*grant)...) // never null: empty grants nothing
 		req.Grants = &g
@@ -252,10 +255,15 @@ func ctl(args []string) error {
 		req.Background = on
 	case "capture-show":
 		req.Show = on
+	case "no-logs":
+		req.LogsOff = on
+	case "protect":
+		// Off needs the permanent password, from the environment.
+		req.Protect = &localapi.ProtectRequest{On: *on, Password: os.Getenv(permanentEnv)}
 	case "helper-update":
 		req.From = *from
 	case "network-set":
-		req.Network = &localapi.NetworkSettings{Servers: servers, Peers: peers, Name: *name}
+		req.Network = &localapi.NetworkSettings{Servers: servers, Name: *name}
 		fs.Visit(func(f *flag.Flag) {
 			if f.Name == "direct" {
 				req.Network.Direct = direct
@@ -278,7 +286,7 @@ func ctl(args []string) error {
 		if !ok {
 			return fmt.Errorf("set %s to the host's password (empty asks without one)", passwordEnv)
 		}
-		req.Connect = &localapi.ConnectRequest{DeviceID: *device, Password: p, Want: list(*want)}
+		req.Connect = &localapi.ConnectRequest{DeviceID: *device, Password: p, Want: list(*want), Address: *address}
 	case "backup", "restore":
 		p, ok := os.LookupEnv(passphraseEnv)
 		if !ok || *file == "" {
@@ -358,8 +366,12 @@ func ctl(args []string) error {
 		printStatus(resp.Status)
 	case resp.Network != nil:
 		n := resp.Network
-		fmt.Printf("servers %s\naddresses %s\nname %q\nsecret set: %v (weak: %v)\ndirect paths: %v\n",
-			strings.Join(n.Servers, ", "), strings.Join(n.Peers, ", "), n.Name, n.HasSecret, n.WeakSecret, n.Direct != nil && *n.Direct)
+		fmt.Printf("servers %s\nname %q\nsecret set: %v (weak: %v)\ndirect paths: %v\n",
+			strings.Join(n.Servers, ", "), n.Name, n.HasSecret, n.WeakSecret, n.Direct != nil && *n.Direct)
+	case resp.DeviceID != "":
+		fmt.Println("device", resp.DeviceID)
+	case resp.Failure != "":
+		return fmt.Errorf("no device there: %s", resp.Failure)
 	case resp.Password != "":
 		fmt.Println(resp.Password)
 	case resp.Document != "":
@@ -461,12 +473,28 @@ func printStatus(s *localapi.Status) {
 	for _, d := range n.Devices {
 		fmt.Printf("  device %s  %s  %d ms\n", d.DeviceID, d.Path, d.LatencyMS)
 	}
+	if s.LogsOff {
+		fmt.Println("no logs")
+	}
+	if s.Protected {
+		fmt.Println("protected mode")
+	}
+	if b := s.ByAddress; b.On {
+		fmt.Printf("by address: from %s", strings.Join(b.Ranges, ", "))
+		if b.Port != 0 {
+			fmt.Printf(", listening on %d", b.Port)
+		}
+		if b.Error != "" {
+			fmt.Printf(", not listening: %s", b.Error)
+		}
+		fmt.Println()
+	}
 	for _, r := range s.Requests {
 		fmt.Printf("request %d  from %s %q  wants %s  known %v  new key %v  password %v\n",
 			r.ID, r.DeviceID, r.About.Name, strings.Join(r.Want, ","), r.Known, r.NewKey, r.Password)
 	}
 	for _, r := range s.Recent {
-		fmt.Printf("recent %s %q  %s %s\n", r.DeviceID, r.About.Name, r.About.Maker, r.About.Model)
+		fmt.Printf("recent %s %q  %s %s %s\n", r.DeviceID, r.About.Name, r.About.Maker, r.About.Model, r.Address)
 	}
 	for _, x := range s.Sessions {
 		fmt.Printf("session %d  %s  %s %q  %s", x.ID, x.Role, x.DeviceID, x.Peer.Name, x.State)

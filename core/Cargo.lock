@@ -2812,6 +2812,7 @@ dependencies = [
  "sha2 0.10.9",
  "sha2 0.11.1",
  "snow",
+ "socket2",
  "tokio",
  "uuid",
  "windows 0.62.2",

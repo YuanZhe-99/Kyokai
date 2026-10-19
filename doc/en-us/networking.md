@@ -30,18 +30,15 @@ sound and input): the bytes leave as they are written. Only a goodbye waits, bri
 ## Settings
 
 The user configures one network: up to 8 server URLs (`tcp`, `udp`, `ws`, `wss`, `quic`, `wg`;
-`faketcp` and others are refused), up to 8 direct addresses, a network name (at most 64
-characters) and the network secret. The whole entry, secret included, is kept in the secrets
+`faketcp` and others are refused), a network name (at most 64 characters) and the network
+secret. The whole entry, secret included, is kept in the secrets
 store ([security.md](security.md)), so without a working OS store it lasts only for the run. A
 secret shorter than 16 characters is reported as weak.
 
-A direct address is another Kyokai device's IP address or domain name, with the first listening
-port (47311) unless it names one, or a URL in one of the server schemes; each becomes a peer the
-node dials like a server (`tcp://` unless given). The other device must listen (direct
-connections on). A network needs a name and a server or an address, or only a name on a device
-that listens: others then reach it by its address, and its state reads `listening` until one
-does. Clearing the settings (servers, addresses, name and secret, the GUI's **Clear network
-settings**) turns the node off.
+A network needs both a server and a name; settings 0.2.0 stored with a name and no server (it
+took other devices' addresses then) leave the node off. Clearing the settings (servers, name and
+secret, the GUI's **Clear network settings**) turns the node off. Reaching another device by its
+IP address or domain name needs no network at all: see [Connections by address](#connections-by-address).
 
 ## Direct paths
 
@@ -68,17 +65,41 @@ network asks for Kyokai's Local Network permission (not in the helper, a root da
 helper always punches and listens: its installer adds an inbound allow rule (`Kyokai helper`)
 for its own `kyokai-svc.exe`, removed with it ([run-modes.md](run-modes.md)).
 
+## Connections by address
+
+A controller can also reach a host by the host's own IP address or domain name, with no EasyTier
+network: a LAN address, a Tailscale address, or a name that resolves to one. The person types it
+where a Device ID goes ("Control another device"); the port is 47310 unless the address names one
+(`host:port`, `[v6]:port`). The controller first opens a connection and reads the host's
+`host_hello` only (`session.identify`, [protocol.md](protocol.md)) to learn which Device ID
+answers there, then dials that address for the session, which must prove to be that device like
+any other; the session is the same protocol, over plain TCP. The known host keeps the address,
+so Recent connects the same way next time; connecting by Device ID goes back to the network.
+
+A host accepts them only while its user turns on **Accept connections by address** (Settings,
+Access; off by default): the engine then listens on TCP 47310 on every IPv4 address and, where
+there is IPv6, every IPv6 address (IPv6 only on that socket), and closes at once any connection
+from outside the allowed ranges, before reading a byte. The ranges default to the private IPv4
+networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local `169.254.0.0/16`,
+Tailscale's `100.64.0.0/10`, and IPv6 unique-local `fc00::/7` (Tailscale's IPv6 addresses among
+them) and link-local `fe80::/10`; the user may list up to 32 ranges or single addresses. An IPv4
+address mapped into IPv6 counts as IPv4. A port already taken (a second engine on this computer)
+leaves it not listening, which the status reports. Windows Firewall may ask about the listener,
+like direct connections. Everything after the connection is as over the network: the Noise
+handshake, a password or the host user's confirmation, and the per-address login limits
+([identity-and-access.md](identity-and-access.md)).
+
 ## Status
 
 The engine reads the node's status when asked, never from a cache:
 
 | Field | Meaning |
 |---|---|
-| `state` | `off`, `connecting`, `listening` (no server or address to dial: waiting for other devices), `online` (a connection to a server or peer is up) or `error` |
+| `state` | `off`, `connecting`, `online` (a connection to a server or peer is up) or `error` |
 | `error` | why the node could not start |
 | `address` | the virtual IPv4 address, once assigned |
 | `nat` | the NAT type found through STUN: `unknown`, `open`, `no-pat`, `full-cone`, `restricted`, `port-restricted`, `symmetric`, `symmetric-easy`, `symmetric-firewall` |
-| `listen_port` | the port other devices reach this one at by its address, when it listens |
+| `listen_port` | the port other devices' nodes connect to directly, when it listens (direct connections on) |
 | `devices` | other Kyokai devices the network routes to: announced Device ID, `direct` or `relay` path, latency in ms |
 
 Sessions attached to the local API receive a new status whenever it changes (re-read every

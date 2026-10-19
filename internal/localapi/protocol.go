@@ -55,6 +55,8 @@ const (
 	RequestNetworkSet         RequestType = "network.set"            // new network settings (Request.Network)
 	RequestPermanentSet       RequestType = "password.set_permanent" // set or remove the permanent password (Request.Permanent)
 	RequestConnect            RequestType = "session.connect"        // start a session with a device (Request.Connect)
+	RequestIdentify           RequestType = "session.identify"       // which device answers at an address (Request.Address → Response.DeviceID or Response.Failure)
+	RequestDeviceRemove       RequestType = "device.remove"          // take a host off Home: end its sessions from here, forget its key and saved password (Request.DeviceID)
 	RequestClose              RequestType = "session.close"          // end a session (Request.ID)
 	RequestDecide             RequestType = "request.decide"         // answer a host confirmation (Request.Decide)
 	RequestTrustedList        RequestType = "trusted.list"           // the trusted devices
@@ -65,11 +67,13 @@ const (
 	RequestIdentityImport     RequestType = "identity.import"        // restore an identity backup (Request.Backup)
 	RequestIdentityReset      RequestType = "identity.reset"         // a new identity and Device ID
 	RequestNameSet            RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
-	RequestAccessSettings     RequestType = "access.settings"        // which passwords open this host (Request.PasswordMode) and whether a password admits without asking (Request.WithoutAsking)
+	RequestAccessSettings     RequestType = "access.settings"        // which passwords open this host (Request.PasswordMode), whether a password admits without asking (Request.WithoutAsking) and connections by address (Request.ByAddress)
 	RequestAgentRestart       RequestType = "helper.agent_restart"   // the helper's session agent starts anew (macOS counts new privacy grants only then)
 	RequestStartOver          RequestType = "secrets.start_over"     // the saved identity cannot be unlocked: move it aside and keep a new one
 	RequestPermission         RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen", "accessibility", "input-monitoring" or "keychain"; macOS)
 	RequestPasswordGrants     RequestType = "access.password_grants" // what a correct password grants without asking (Request.Grants)
+	RequestProtect            RequestType = "protect.set"            // protected mode on (needs a permanent password) or off (with it) (Request.Protect); while on, the engine serves only the status, the AI requests, confirmations, disconnecting, quitting and what the GUI sends as it attaches
+	RequestLogs               RequestType = "logs.set"               // keep no logs, crash traces or connection history (Request.LogsOff), or keep them again; the GUI sends it as it attaches and when the setting changes
 	RequestCaptureShow        RequestType = "capture.show"           // whether captures show Kyokai's windows (Request.Show); hidden until a GUI says otherwise
 	RequestSoundSource        RequestType = "sound.source"           // the sound to share (Request.SoundSource): "" what the computer plays, else an input device's id
 	RequestSoundDevices       RequestType = "sound.devices"          // the input devices that may be shared (Response.SoundDevices)
@@ -135,10 +139,20 @@ type Request struct {
 	// are RequestAccessSettings' (empty or nil: unchanged).
 	PasswordMode  string `json:"password_mode,omitempty"`
 	WithoutAsking *bool  `json:"without_asking,omitempty"`
+	// ByAddress replaces whether and from where this host accepts
+	// connections by address (RequestAccessSettings).
+	ByAddress *ByAddress `json:"by_address,omitempty"`
+	// Address is the IP address or domain name RequestIdentify dials.
+	Address string `json:"address,omitempty"`
 	// Permission names what RequestPermission asks the system for.
 	Permission string `json:"permission,omitempty"`
 	// Grants are the permissions of RequestPasswordGrants (empty: none).
 	Grants *[]string `json:"grants,omitempty"`
+	// Protect is RequestProtect's.
+	Protect *ProtectRequest `json:"protect,omitempty"`
+	// LogsOff is RequestLogs': true keeps no logs, crash traces or
+	// connection history (and deletes the logs written).
+	LogsOff *bool `json:"logs_off,omitempty"`
 	// Show is RequestCaptureShow's: true lets captures see Kyokai's
 	// windows ("Hide Kyokai from capture" off).
 	Show *bool `json:"show,omitempty"`
@@ -287,6 +301,29 @@ type ConnectRequest struct {
 	Want     []string `json:"want,omitempty"`
 	// Remember keeps the password for this host once it accepts the login.
 	Remember bool `json:"remember,omitempty"`
+	// Address dials this IP address or domain name (with or without a
+	// port) instead of the network; the device there must prove to be
+	// DeviceID.
+	Address string `json:"address,omitempty"`
+}
+
+// ProtectRequest turns protected mode on, or off with the permanent
+// password.
+type ProtectRequest struct {
+	On       bool   `json:"on"`
+	Password string `json:"password,omitempty"`
+}
+
+// ByAddress is whether a host accepts connections by address (TCP on
+// this computer's own addresses, port 47310) and the source address
+// ranges it accepts them from.
+type ByAddress struct {
+	On     bool     `json:"on"`
+	Ranges []string `json:"ranges"`
+	// Port is where it listens, 0 when it does not (status only).
+	Port int `json:"port,omitempty"`
+	// Error says why it could not listen (status only).
+	Error string `json:"error,omitempty"`
 }
 
 // Decision answers a host confirmation; Permissions are the granted ones.
@@ -323,6 +360,11 @@ type Response struct {
 	Network *NetworkSettings `json:"network,omitempty"`
 	// ID answers RequestConnect: the new session's id.
 	ID uint64 `json:"id,omitempty"`
+	// DeviceID answers RequestIdentify: the device at the address, else
+	// Failure says why there is none: "unreachable", "incompatible",
+	// "broken" (not a Kyokai device) or "self" (this device).
+	DeviceID string `json:"device_id,omitempty"`
+	Failure  string `json:"failure,omitempty"`
 	// Trusted answers RequestTrustedList.
 	Trusted []TrustedDevice `json:"trusted,omitempty"`
 	// Document answers RequestIdentityExport: the encrypted backup.
@@ -383,6 +425,9 @@ type RecentDevice struct {
 	// SavedPassword says whether a password is saved for the host (never
 	// the password).
 	SavedPassword bool `json:"saved_password,omitempty"`
+	// Address is the address the last session dialed, empty over the
+	// network.
+	Address string `json:"address,omitempty"`
 }
 
 // SessionInfo is one session of this device, live or recently finished.
@@ -414,10 +459,7 @@ type SoundDevice struct {
 type NetworkSettings struct {
 	// Servers are standard EasyTier server URLs, tried in order.
 	Servers []string `json:"servers"`
-	// Peers are other devices reached directly: an IP address or domain
-	// name each, with a port (47311 by default) or as a URL.
-	Peers []string `json:"peers,omitempty"`
-	Name  string   `json:"name"`
+	Name    string   `json:"name"`
 	// Secret is set only in a request; nil keeps the stored secret.
 	Secret *string `json:"secret,omitempty"`
 	// HasSecret and WeakSecret describe the stored secret in a response.
@@ -430,8 +472,7 @@ type NetworkSettings struct {
 
 // NetworkStatus is the engine's EasyTier node as it is now.
 type NetworkStatus struct {
-	// State is "off", "connecting", "listening" (no server or address to
-	// dial: waiting for other devices), "online" or "error".
+	// State is "off", "connecting", "online" or "error".
 	State string `json:"state"`
 	// Error says why the node stopped (State "error").
 	Error string `json:"error,omitempty"`
@@ -439,8 +480,8 @@ type NetworkStatus struct {
 	Address string `json:"address,omitempty"`
 	// NAT is the detected NAT type ("unknown" until STUN answers).
 	NAT string `json:"nat,omitempty"`
-	// ListenPort is where other devices reach this one by its address
-	// (direct connections on), 0 when it does not listen.
+	// ListenPort is where other devices' nodes connect to this one
+	// directly (direct connections on), 0 when it does not listen.
 	ListenPort int             `json:"listen_port,omitempty"`
 	Devices    []NetworkDevice `json:"devices,omitempty"`
 }
@@ -485,10 +526,19 @@ type Status struct {
 	// PasswordMode is which passwords open this host ("temporary",
 	// "permanent", "both"); WithoutAsking whether an accepted password
 	// admits without confirmation.
-	PasswordMode  string        `json:"password_mode"`
-	WithoutAsking bool          `json:"without_asking"`
-	Requests      []HostRequest `json:"requests"`
-	Sessions      []SessionInfo `json:"sessions"`
+	PasswordMode  string `json:"password_mode"`
+	WithoutAsking bool   `json:"without_asking"`
+	// ByAddress is whether and from where this host accepts connections
+	// by address, and whether it listens.
+	ByAddress ByAddress `json:"by_address"`
+	// LogsOff: this engine keeps no logs, crash traces or connection
+	// history (Settings, No logs).
+	LogsOff bool `json:"logs_off,omitempty"`
+	// Protected: protected mode is on; the GUI offers only the AI page
+	// until the permanent password turns it off.
+	Protected bool          `json:"protected,omitempty"`
+	Requests  []HostRequest `json:"requests"`
+	Sessions  []SessionInfo `json:"sessions"`
 	// Recent are the hosts this device connected to, newest first.
 	Recent []RecentDevice `json:"recent"`
 	// Name is the friendly name chosen here ("" follows the computer's

@@ -64,6 +64,101 @@ const SAVED_PASSWORD_PREFIX: &str = "saved_password.";
 const PASSWORD_GRANTS_NAME: &str = "password_grants";
 const PASSWORD_MODE_NAME: &str = "password_mode";
 const WITHOUT_ASKING_NAME: &str = "connect_without_asking";
+const BY_ADDRESS_NAME: &str = "connect_by_address";
+/// Set while this device keeps no connection history (Settings, No logs).
+const NO_HISTORY_NAME: &str = "no_history";
+/// Set while the host is in protected mode: its interface offers only the
+/// AI settings and tasks until the permanent password turns it off.
+const PROTECTED_NAME: &str = "protected";
+/// The connection history: whom this host let in, whom this device
+/// connected to.
+const HISTORY: [&str; 2] = [TRUSTED_NAME, KNOWN_HOSTS_NAME];
+/// The source addresses a host accepts connections by address from until
+/// its user changes them: the private and link-local IPv4 networks,
+/// Tailscale's addresses (100.64.0.0/10) and IPv6 unique-local (Tailscale's
+/// IPv6 addresses among them) and link-local addresses.
+pub const DEFAULT_BY_ADDRESS_RANGES: [&str; 7] = [
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "169.254.0.0/16",
+    "100.64.0.0/10",
+    "fc00::/7",
+    "fe80::/10",
+];
+/// Most address ranges a host lists.
+const MAX_RANGES: usize = 32;
+
+/// Whether this host accepts sessions by address, on this computer's own
+/// addresses, and from which source addresses (Settings, Access).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ByAddress {
+    pub on: bool,
+    /// Address ranges (`192.168.0.0/16`, `fe80::/10`) or single addresses.
+    pub ranges: Vec<String>,
+}
+
+impl Default for ByAddress {
+    fn default() -> Self {
+        ByAddress {
+            on: false,
+            ranges: DEFAULT_BY_ADDRESS_RANGES.map(String::from).to_vec(),
+        }
+    }
+}
+
+impl ByAddress {
+    /// Whether a connection from `ip` is accepted (an IPv4 address mapped
+    /// into IPv6 counts as IPv4).
+    pub fn admits(&self, ip: IpAddr) -> bool {
+        let ip = ip.to_canonical();
+        self.on
+            && self
+                .ranges
+                .iter()
+                .filter_map(|r| parse_range(r))
+                .any(|(net, len)| in_range(net, len, ip))
+    }
+
+    /// Checks the ranges at the local API boundary.
+    fn check(&self) -> Result<(), String> {
+        if self.ranges.len() > MAX_RANGES {
+            return Err(format!("at most {MAX_RANGES} address ranges"));
+        }
+        match self.ranges.iter().find(|r| parse_range(r).is_none()) {
+            Some(bad) => Err(format!("{bad:?} is not an address range")),
+            None => Ok(()),
+        }
+    }
+}
+
+/// Reads `a.b.c.d/n`, `v6/n` or a single address (a full-length prefix).
+fn parse_range(range: &str) -> Option<(IpAddr, u8)> {
+    let (ip, len) = match range.split_once('/') {
+        Some((ip, len)) => (ip.parse::<IpAddr>().ok()?, len.parse::<u8>().ok()?),
+        None => {
+            let ip = range.parse::<IpAddr>().ok()?;
+            (ip, if ip.is_ipv4() { 32 } else { 128 })
+        }
+    };
+    let max = if ip.is_ipv4() { 32 } else { 128 };
+    (len <= max).then_some((ip, len))
+}
+
+/// Whether `ip` lies in the network `net`/`len` (both of one family).
+fn in_range(net: IpAddr, len: u8, ip: IpAddr) -> bool {
+    match (net, ip) {
+        (IpAddr::V4(n), IpAddr::V4(i)) => {
+            let mask = u32::MAX.checked_shl(32 - u32::from(len)).unwrap_or(0);
+            u32::from(n) & mask == u32::from(i) & mask
+        }
+        (IpAddr::V6(n), IpAddr::V6(i)) => {
+            let mask = u128::MAX.checked_shl(128 - u32::from(len)).unwrap_or(0);
+            u128::from(n) & mask == u128::from(i) & mask
+        }
+        _ => false,
+    }
+}
 
 /// Which of the host's passwords open it (Settings, Access, "Accepted
 /// passwords").
@@ -142,6 +237,10 @@ pub struct KnownHost {
     /// What the host last said about itself.
     #[serde(default)]
     pub about: About,
+    /// The address the last session dialed, or empty over the network: the
+    /// next connection from Home goes the same way.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub address: String,
 }
 
 /// A resume token's grant: who may resume, with what, until when.
@@ -182,12 +281,16 @@ pub struct Access {
     /// Resume tokens issued to accepted controllers, in memory only.
     resumes: Mutex<HashMap<String, Resume>>,
     serve: Mutex<Serve>,
+    /// The connection history while it is kept in memory only (No logs),
+    /// by store name; None keeps it in the secrets store.
+    memory: Mutex<Option<HashMap<&'static str, zeroize::Zeroizing<String>>>>,
 }
 
 impl Access {
     /// Loads the password slots and starts with no failures counted.
     pub fn load(secrets: Arc<Secrets>) -> Result<Self, String> {
         let slots = Slots::load(&secrets)?;
+        let memory = secrets.get(NO_HISTORY_NAME).map(|_| HashMap::new());
         Ok(Access {
             secrets,
             slots: Mutex::new(slots),
@@ -195,7 +298,87 @@ impl Access {
             pending: Mutex::new((0, Vec::new())),
             resumes: Mutex::default(),
             serve: Mutex::default(),
+            memory: Mutex::new(memory),
         })
+    }
+
+    /// Whether the host is in protected mode.
+    pub fn protected(&self) -> bool {
+        self.secrets.get(PROTECTED_NAME).is_some()
+    }
+
+    /// Turns protected mode on (a permanent password must be set) or off
+    /// (with the permanent password).
+    /// Side effects: rewrites the secrets store.
+    pub fn set_protected(&self, on: bool, password: &str, host_key: &[u8]) -> Result<(), String> {
+        let slots = self.slots.lock().map_err(|_| "access state poisoned")?;
+        if on {
+            if !slots.has_permanent() {
+                return Err("protected mode needs a permanent password".into());
+            }
+            return self.secrets.set(PROTECTED_NAME, "true");
+        }
+        if !slots.check_permanent(password, host_key) {
+            return Err("that is not the permanent password".into());
+        }
+        self.secrets.remove(PROTECTED_NAME)
+    }
+
+    /// Whether the connection history is written to the store (off with
+    /// No logs).
+    pub fn keeps_history(&self) -> bool {
+        self.memory.lock().map(|m| m.is_none()).unwrap_or(true)
+    }
+
+    /// Keeps the connection history (trusted devices, known hosts) in the
+    /// store, or in memory only, where it is gone when the engine stops.
+    /// Side effects: moves the history out of the store (dropping it from
+    /// there) or back into it.
+    pub fn keep_history(&self, keep: bool) -> Result<(), String> {
+        let mut memory = self.memory.lock().map_err(|_| "access state poisoned")?;
+        match (keep, memory.take()) {
+            (false, None) => {
+                let mut held = HashMap::new();
+                for name in HISTORY {
+                    if let Some(text) = self.secrets.get(name) {
+                        held.insert(name, text);
+                    }
+                    self.secrets.remove(name)?;
+                }
+                self.secrets.set(NO_HISTORY_NAME, "true")?;
+                *memory = Some(held);
+            }
+            (true, Some(held)) => {
+                for (name, text) in held {
+                    self.secrets.set(name, &text)?;
+                }
+                self.secrets.remove(NO_HISTORY_NAME)?;
+            }
+            (_, unchanged) => *memory = unchanged,
+        }
+        Ok(())
+    }
+
+    /// A history entry, from memory while No logs is on.
+    fn history(&self, name: &'static str) -> Option<zeroize::Zeroizing<String>> {
+        match self.memory.lock().ok()?.as_ref() {
+            Some(held) => held.get(name).cloned(),
+            None => self.secrets.get(name),
+        }
+    }
+
+    /// Stores a history entry, in memory only while No logs is on.
+    fn store_history<T: Serialize>(&self, name: &'static str, value: &T) -> Result<(), String> {
+        let text =
+            zeroize::Zeroizing::new(serde_json::to_string(value).map_err(|e| e.to_string())?);
+        let mut memory = self.memory.lock().map_err(|_| "access state poisoned")?;
+        match memory.as_mut() {
+            Some(held) => {
+                held.insert(name, text);
+                Ok(())
+            }
+            None => self.secrets.set(name, &text),
+        }
     }
 
     /// The secrets store the slots persist into.
@@ -248,6 +431,28 @@ impl Access {
     /// Side effects: rewrites the secrets store.
     pub fn set_without_asking(&self, on: bool) -> Result<(), String> {
         self.store(WITHOUT_ASKING_NAME, &on)
+    }
+
+    /// Whether and from where this host accepts sessions by address (off
+    /// unless the host user turned it on).
+    pub fn by_address(&self) -> ByAddress {
+        self.secrets
+            .get(BY_ADDRESS_NAME)
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
+    }
+
+    /// Sets whether and from where this host accepts sessions by address.
+    /// Side effects: rewrites the secrets store.
+    pub fn set_by_address(&self, mut by: ByAddress) -> Result<(), String> {
+        by.ranges = by
+            .ranges
+            .iter()
+            .map(|r| r.trim().to_owned())
+            .filter(|r| !r.is_empty())
+            .collect();
+        by.check()?;
+        self.store(BY_ADDRESS_NAME, &by)
     }
 
     /// What the permanent password admits with nobody at the computer
@@ -435,8 +640,7 @@ impl Access {
 
     /// The trusted devices, keyed by base64 device key.
     pub fn trusted(&self) -> BTreeMap<String, Trusted> {
-        self.secrets
-            .get(TRUSTED_NAME)
+        self.history(TRUSTED_NAME)
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_default()
     }
@@ -463,7 +667,7 @@ impl Access {
         entry.last = now;
         entry.device_id = device_id.to_owned();
         entry.granted = granted.to_vec();
-        self.store(TRUSTED_NAME, &all)
+        self.store_history(TRUSTED_NAME, &all)
     }
 
     /// Forgets a trusted device.
@@ -474,7 +678,7 @@ impl Access {
         if let Ok(mut r) = self.resumes.lock() {
             r.retain(|_, v| v.key != key);
         }
-        self.store(TRUSTED_NAME, &all)
+        self.store_history(TRUSTED_NAME, &all)
     }
 
     /// Issues a single-use token that lets this controller key resume a
@@ -540,7 +744,14 @@ impl Access {
 
     /// Pins a host key for its Device ID, or refreshes its last connection
     /// (controller side).
-    pub fn pin_host(&self, device_id: &str, key: &str, about: &About) -> Result<(), String> {
+    /// Inputs: `address`, the address dialed, or empty over the network.
+    pub fn pin_host(
+        &self,
+        device_id: &str,
+        key: &str,
+        about: &About,
+        address: &str,
+    ) -> Result<(), String> {
         let mut all = self.known_hosts();
         all.insert(
             device_id.to_owned(),
@@ -548,9 +759,10 @@ impl Access {
                 key: key.to_owned(),
                 last: unix_now(),
                 about: about.clone(),
+                address: address.to_owned(),
             },
         );
-        self.store(KNOWN_HOSTS_NAME, &all)
+        self.store_history(KNOWN_HOSTS_NAME, &all)
     }
 
     /// The hosts connected to most recently, newest first (controller side).
@@ -565,12 +777,11 @@ impl Access {
     pub fn forget_host(&self, device_id: &str) -> Result<(), String> {
         let mut all = self.known_hosts();
         all.remove(device_id).ok_or("not a known host")?;
-        self.store(KNOWN_HOSTS_NAME, &all)
+        self.store_history(KNOWN_HOSTS_NAME, &all)
     }
 
     fn known_hosts(&self) -> BTreeMap<String, KnownHost> {
-        self.secrets
-            .get(KNOWN_HOSTS_NAME)
+        self.history(KNOWN_HOSTS_NAME)
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_default()
     }
@@ -719,9 +930,122 @@ mod tests {
     fn pinned_hosts_persist_and_can_be_forgotten() {
         let a = access();
         assert_eq!(a.known_host("100000002"), None);
-        a.pin_host("100000002", "key-H", &About::default()).unwrap();
+        a.pin_host("100000002", "key-H", &About::default(), "")
+            .unwrap();
         assert_eq!(a.known_host("100000002").as_deref(), Some("key-H"));
         a.forget_host("100000002").unwrap();
         assert_eq!(a.known_host("100000002"), None);
+    }
+
+    /// Connections by address are accepted only while on, and only from
+    /// the listed ranges.
+    #[test]
+    fn by_address_admits_listed_ranges() {
+        let on = ByAddress {
+            on: true,
+            ..ByAddress::default()
+        };
+        for (ip, ok) in [
+            ("192.168.1.20", true),
+            ("10.1.2.3", true),
+            ("172.31.255.1", true),
+            ("172.32.0.1", false),
+            ("100.101.102.103", true),
+            ("100.128.0.1", false),
+            ("8.8.8.8", false),
+            ("127.0.0.1", false),
+            ("::ffff:192.168.1.20", true),
+            ("fe80::1", true),
+            ("fd7a:115c:a1e0::1", true),
+            ("2001:db8::1", false),
+        ] {
+            let ip: IpAddr = ip.parse().unwrap();
+            assert_eq!(on.admits(ip), ok, "{ip}");
+        }
+        assert!(!ByAddress::default().admits("192.168.1.20".parse().unwrap()));
+        let one = ByAddress {
+            on: true,
+            ranges: vec!["127.0.0.1".into(), "0.0.0.0/0".into()],
+        };
+        assert!(one.admits("127.0.0.1".parse().unwrap()));
+        assert!(one.admits("8.8.8.8".parse().unwrap()));
+        for (range, ok) in [
+            ("192.168.0.0/16", true),
+            ("::/0", true),
+            ("192.168.0.0/33", false),
+            ("192.168.0/16", false),
+            ("example.org", false),
+            ("", false),
+        ] {
+            let by = ByAddress {
+                on: true,
+                ranges: vec![range.into()],
+            };
+            assert_eq!(by.check().is_ok(), ok, "{range:?}");
+        }
+    }
+
+    /// With No logs the connection history lives in memory only: none of
+    /// it is in the store, it stays off after a restart, and turning it
+    /// back on writes this run's history.
+    #[test]
+    fn no_logs_keeps_the_history_in_memory() {
+        let secrets = Arc::new(Secrets::memory());
+        let a = Access::load(secrets.clone()).unwrap();
+        a.pin_host("100000002", "key-H", &About::default(), "")
+            .unwrap();
+        a.trust(
+            "key-C",
+            "100000003",
+            &[Permission::ViewScreen],
+            &About::default(),
+        )
+        .unwrap();
+        a.keep_history(false).unwrap();
+        assert!(!a.keeps_history());
+        assert!(secrets.get(KNOWN_HOSTS_NAME).is_none());
+        assert!(secrets.get(TRUSTED_NAME).is_none());
+        // Still known for this run, and new connections stay in memory.
+        assert_eq!(a.known_host("100000002").as_deref(), Some("key-H"));
+        a.pin_host("100000004", "key-J", &About::default(), "")
+            .unwrap();
+        assert!(secrets.get(KNOWN_HOSTS_NAME).is_none());
+        assert_eq!(a.recent().len(), 2);
+        // A restart remembers the choice, not the history.
+        let again = Access::load(secrets.clone()).unwrap();
+        assert!(!again.keeps_history());
+        assert!(again.recent().is_empty() && again.trusted().is_empty());
+        // Back on: this run's history is written.
+        a.keep_history(true).unwrap();
+        assert!(a.keeps_history());
+        assert_eq!(Access::load(secrets).unwrap().recent().len(), 2);
+    }
+
+    /// Protected mode needs a permanent password to turn on, and only the
+    /// permanent password (not the temporary one) turns it off.
+    #[test]
+    fn protected_mode_needs_the_permanent_password() {
+        let secrets = Arc::new(Secrets::memory());
+        let a = Access::load(secrets).unwrap();
+        let key = [7u8; 32];
+        assert!(
+            a.set_protected(true, "", &key).is_err(),
+            "no permanent password"
+        );
+        {
+            let mut slots = a.slots.lock().unwrap();
+            slots.set_temporary("temp-pass", &key).unwrap();
+            slots
+                .set_permanent(a.secrets(), Some("long-lived-pw"), &key)
+                .unwrap();
+        }
+        a.set_protected(true, "", &key).unwrap();
+        assert!(a.protected());
+        for wrong in ["", "temp-pass", "long-lived-pX"] {
+            assert!(a.set_protected(false, wrong, &key).is_err(), "{wrong:?}");
+            assert!(a.protected());
+        }
+        a.set_protected(false, "long-lived-pw", &key).unwrap();
+        assert!(!a.protected());
     }
 }

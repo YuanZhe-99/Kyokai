@@ -1,5 +1,23 @@
 # Version history
 
+## 0.2.1 (2026-10-18)
+
+- Connect by address: "Control another device" takes an IP address or domain name as well as a
+  Device ID and connects over plain TCP, with no network; the host accepts it only with Accept
+  connections by address on (Settings, Access; off by default) and only from the listed address
+  ranges (by default local networks and Tailscale's 100.64.0.0/10). Recent remembers the address.
+  The Network page's direct addresses, which joined EasyTier nodes by address, are gone.
+- Recent: Remove now takes a device off for good (its finished connections brought it back), and
+  Rename… gives a device a name shown only on this computer.
+- No logs (Settings, Storage; off by default, turned on after a warning): no logs or crash traces
+  are written and those written are deleted, and trusted devices and Recent are kept in memory only.
+- Protected mode (Settings, Access; needs a permanent password): Kyokai offers only the AI settings
+  and AI tasks, the engine refuses everything else, and only the permanent password turns it off.
+- Protocol 10, unchanged: 0.2.1 and 0.2.0 connect to each other; a 0.2.0 host does not accept
+  connections by address.
+- Upstream versions checked, unchanged: MyGo v0.5.5, EasyTier v2.7.0, RustDesk 1.5.0 (vendored
+  code), vcpkg 2026.07.29, Rust 1.99.1.
+
 ## 0.2.0 (2026-10-18)
 
 - The viewer: the other computer's pointer follows the mouse (moves without a button held were

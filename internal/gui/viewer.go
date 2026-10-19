@@ -124,6 +124,9 @@ type viewer struct {
 	title string
 	// want is what the connection asks the device for.
 	want []string
+	// address is where the connection dials the device (an IP address
+	// or domain name), empty over the network; guarded by mu.
+	address string
 	// home is the window the tab is in now; nil once the viewer closed.
 	home atomic.Pointer[viewerWindow]
 	conn net.Conn
@@ -210,14 +213,20 @@ func (a *App) viewerFor(device string) *viewer {
 
 // connectDevice opens the connection to a device as a tab of the main
 // window, or shows its tab when it is open; a connection that ended
-// connects again. want is what to ask for (nil: viewing, input, the
-// clipboard and files).
+// connects again. address, when set, is where to dial the device instead
+// of the network (an IP address or domain name). want is what to ask for
+// (nil: viewing, input, the clipboard and files).
 // Notes: call on the main thread; one connection per device.
-func (a *App) connectDevice(device string, about localapi.About, want []string) {
+func (a *App) connectDevice(device, address string, about localapi.About, want []string) {
 	if want == nil {
 		want = connectWant(false)
 	}
 	if v := a.viewerFor(device); v != nil {
+		if address != "" {
+			v.mu.Lock()
+			v.address = address
+			v.mu.Unlock()
+		}
 		if w := v.home.Load(); w != nil {
 			w.show(v)
 		}
@@ -227,12 +236,16 @@ func (a *App) connectDevice(device string, about localapi.About, want []string) 
 		return
 	}
 	v := a.newViewer(device, about, want)
+	v.address = address
 	a.main.add(v)
 	v.redial("", false)
 }
 
 // newViewer makes a device's connection, not yet dialed, and registers it.
 func (a *App) newViewer(device string, about localapi.About, want []string) *viewer {
+	a.mu.Lock()
+	about = a.prefs.named(device, about)
+	a.mu.Unlock()
 	v := &viewer{app: a, device: device, title: deviceTitle(about, device), want: want,
 		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto"}
 	// The settings chosen for this device last time.
@@ -272,14 +285,14 @@ func (v *viewer) redial(password string, remember bool) {
 	v.mu.Lock()
 	v.phase = localapi.SessionInfo{State: "connecting", DeviceID: v.device}
 	v.state, v.bm, v.start, v.password = "", nil, videoStart{}, ""
-	want := v.want
+	want, address := v.want, v.address
 	v.mu.Unlock()
 	go func() {
 		if old != 0 {
 			_, _ = v.app.requestWith(localapi.Request{Type: localapi.RequestClose, ID: old})
 		}
 		resp, err := v.app.requestWith(localapi.Request{Type: localapi.RequestConnect, Connect: &localapi.ConnectRequest{
-			DeviceID: v.device, Password: password, Want: want, Remember: remember,
+			DeviceID: v.device, Password: password, Want: want, Remember: remember, Address: address,
 		}})
 		v.update(func() {
 			if err != nil {
@@ -331,10 +344,13 @@ func (a *App) syncViewers() {
 			}
 			v.sid.Store(s.ID)
 		}
+		a.mu.Lock()
+		peer := a.prefs.named(s.DeviceID, s.Peer)
+		a.mu.Unlock()
 		v.mu.Lock()
 		v.phase = s
-		if s.Peer.Name != "" {
-			v.title = deviceTitle(s.Peer, s.DeviceID)
+		if peer.Name != "" {
+			v.title = deviceTitle(peer, s.DeviceID)
 		}
 		start := s.State == "connected" && !v.pumping
 		if start {

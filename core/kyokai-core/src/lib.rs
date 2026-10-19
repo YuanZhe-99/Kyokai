@@ -81,6 +81,10 @@ impl Core {
 #[derive(Deserialize)]
 struct Connect {
     device_id: String,
+    /// Dial this address (IP address or domain name) instead of the
+    /// network's routes; the device there must prove to be `device_id`.
+    #[serde(default)]
+    address: Option<String>,
     password: zeroize::Zeroizing<String>,
     #[serde(default)]
     want: Vec<access::Permission>,
@@ -757,6 +761,12 @@ fn call(input: &[u8]) -> Result<Value, String> {
             let password: Option<zeroize::Zeroizing<String>> =
                 serde_json::from_value(req.params["password"].take())
                     .map_err(|e| format!("bad password: {e}"))?;
+            if password.is_none() && with_core(|c| json!(c.ctx.access.protected()))? == json!(true)
+            {
+                return Err(
+                    "protected mode needs the permanent password: turn it off first".into(),
+                );
+            }
             if password
                 .as_ref()
                 .is_some_and(|p| p.chars().count() < MIN_PERMANENT)
@@ -872,10 +882,60 @@ fn call(input: &[u8]) -> Result<Value, String> {
                     saved: saved.is_some(),
                 };
                 let password = saved.unwrap_or(r.password);
+                let address = r.address.filter(|a| !a.trim().is_empty());
                 let id = c
                     .network
-                    .connect(&r.device_id, password, r.want, remember)?;
+                    .connect(&r.device_id, address, password, r.want, remember)?;
                 Ok(json!({"id": id}))
+            })
+        }
+        "session.identify" => {
+            let address = req.params["address"]
+                .as_str()
+                .ok_or("bad address")?
+                .to_owned();
+            net::split_address(&address)?;
+            // Dialing may take seconds: not under the core's lock.
+            let (handle, own) = {
+                let guard = CORE.lock().map_err(|_| "core state poisoned")?;
+                let c = guard.as_ref().ok_or("the core is not started")?;
+                (c.network.handle(), c.ctx.identity.device_id())
+            };
+            Ok(match handle.block_on(net::identify(&address)) {
+                Ok(id) if id == own => json!({"failure": "self"}),
+                Ok(id) => json!({"device_id": id}),
+                Err(failure) => json!({"failure": failure}),
+            })
+        }
+        "protect.set" => {
+            let on = req.params["on"]
+                .as_bool()
+                .ok_or("bad protected-mode choice")?;
+            let password: zeroize::Zeroizing<String> =
+                serde_json::from_value(req.params["password"].take()).unwrap_or_default();
+            try_core(|c| {
+                let key = c.ctx.identity.public_key();
+                c.ctx
+                    .access
+                    .set_protected(on, &password, &key)
+                    .map(|()| json!({}))
+            })
+        }
+        "access.history" => {
+            let keep = req.params["keep"].as_bool().ok_or("bad history choice")?;
+            try_core(|c| c.ctx.access.keep_history(keep).map(|()| json!({})))
+        }
+        "device.remove" => {
+            let id = req.params["device_id"]
+                .as_str()
+                .ok_or("bad Device ID")?
+                .to_owned();
+            try_core(|c| {
+                c.ctx.sessions.remove_host(&id);
+                c.ctx.access.forget_password(&id)?;
+                // A device never connected to has no pinned key.
+                let _ = c.ctx.access.forget_host(&id);
+                Ok(json!({}))
             })
         }
         "password.forget_saved" => {
@@ -948,6 +1008,7 @@ fn call(input: &[u8]) -> Result<Value, String> {
             struct Settings {
                 password_mode: Option<access::PasswordMode>,
                 without_asking: Option<bool>,
+                by_address: Option<access::ByAddress>,
             }
             let p: Settings = serde_json::from_value(req.params)
                 .map_err(|e| format!("bad access settings: {e}"))?;
@@ -957,6 +1018,10 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 }
                 if let Some(on) = p.without_asking {
                     c.ctx.access.set_without_asking(on)?;
+                }
+                if let Some(by) = p.by_address {
+                    c.ctx.access.set_by_address(by)?;
+                    c.network.accept_by_address();
                 }
                 Ok(json!({}))
             })
@@ -1095,6 +1160,9 @@ fn status() -> Value {
             "password_grants": c.ctx.access.password_grants(),
             "password_mode": c.ctx.access.password_mode(),
             "without_asking": c.ctx.access.without_asking(),
+            "by_address": c.network.by_address_status(),
+            "keeps_history": c.ctx.access.keeps_history(),
+            "protected": c.ctx.access.protected(),
             "permissions": permissions(c.persistence),
             "ai": c.ctx.ai.active(),
             "ai_draft": c.ctx.ai.draft().1,
@@ -1107,7 +1175,7 @@ fn status() -> Value {
                 .into_iter()
                 .map(|(id, h)| {
                     let saved = c.ctx.access.saved_password(&id).is_some();
-                    json!({"device_id": id, "last": h.last, "about": h.about, "saved_password": saved})
+                    json!({"device_id": id, "last": h.last, "about": h.about, "saved_password": saved, "address": h.address})
                 })
                 .collect::<Value>(),
             "name": c.ctx.about.lock().map(|l| l.chosen().to_owned()).unwrap_or_default(),

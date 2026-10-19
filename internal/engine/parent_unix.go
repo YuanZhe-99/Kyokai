@@ -22,3 +22,12 @@ func watchParent(ctx context.Context, pid int) {
 		}
 	}
 }
+
+// quietStderr sends this process's stderr nowhere (No logs): a launchd
+// job's StandardErrorPath (the macOS helper's helper.log) would keep it.
+func quietStderr() {
+	if null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0); err == nil {
+		_ = syscall.Dup2(int(null.Fd()), 2)
+		_ = null.Close()
+	}
+}

@@ -169,6 +169,7 @@ func (a *App) connectLoop() {
 			// shares what the computer plays).
 			a.sendCapture()
 			a.sendSoundSource()
+			a.sendLogs()
 			attach, stop := context.WithCancel(a.ctx)
 			a.mu.Lock()
 			a.reattach = stop

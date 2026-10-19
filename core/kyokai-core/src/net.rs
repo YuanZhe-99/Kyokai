@@ -12,7 +12,7 @@ use easytier::proto::common::NatType;
 use easytier_core::config::toml::TomlConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -22,7 +22,8 @@ use uuid::Uuid;
 /// it, so the whole entry is kept there).
 const SECRET_NAME: &str = "network";
 /// The only port Kyokai uses inside the virtual network; the data plane's
-/// whitelists drop everything else.
+/// whitelists drop everything else. A host that accepts connections by
+/// address listens on it (TCP) on this computer's own addresses too.
 pub const KYOKAI_PORT: u16 = 47_310;
 /// The ports the node may listen on for direct connections (TCP and UDP,
 /// the first free one): with direct connections on, devices on the same
@@ -55,10 +56,6 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 pub struct Settings {
     /// Standard EasyTier server URLs, tried in order.
     pub servers: Vec<String>,
-    /// Other devices reached directly by IP address or domain name (their
-    /// listener, `peer_url`): a network can do without a server.
-    #[serde(default)]
-    pub peers: Vec<String>,
     /// The EasyTier network name.
     pub name: String,
     /// The EasyTier network secret.
@@ -77,8 +74,6 @@ pub struct Update {
     // Missing or null lists and names mean none (leaving the network).
     #[serde(default)]
     servers: Option<Vec<String>>,
-    #[serde(default)]
-    peers: Option<Vec<String>>,
     #[serde(default)]
     name: Option<String>,
     secret: Option<String>,
@@ -112,6 +107,10 @@ pub struct Network {
     always_direct: bool,
     /// The port the node listens on for other devices, if it does.
     listen: Option<u16>,
+    /// Accepts sessions by address while the host's user allows it.
+    by_address: Option<JoinHandle<()>>,
+    /// Why accepting by address could not listen, safe to show.
+    by_address_error: Option<String>,
 }
 
 impl Network {
@@ -140,8 +139,11 @@ impl Network {
             phase: Arc::new(Mutex::new(Phase::Off)),
             always_direct,
             listen: None,
+            by_address: None,
+            by_address_error: None,
         };
         net.restart();
+        net.accept_by_address();
         Ok(net)
     }
 
@@ -149,7 +151,6 @@ impl Network {
     pub fn settings(&self) -> Value {
         json!({
             "servers": self.settings.servers,
-            "peers": self.settings.peers,
             "name": self.settings.name,
             "has_secret": !self.settings.secret.is_empty(),
             "weak_secret": is_weak(&self.settings.secret),
@@ -170,16 +171,10 @@ impl Network {
                 .iter()
                 .map(|s| s.trim().to_owned())
                 .collect(),
-            peers: update
-                .peers
-                .unwrap_or_default()
-                .iter()
-                .map(|s| s.trim().to_owned())
-                .collect(),
             name: update.name.unwrap_or_default().trim().to_owned(),
             direct: update.direct.unwrap_or(self.settings.direct),
         };
-        validate(&settings, settings.direct || self.always_direct)?;
+        validate(&settings)?;
         let text =
             zeroize::Zeroizing::new(serde_json::to_string(&settings).map_err(|e| e.to_string())?);
         secrets.set(SECRET_NAME, &text)?;
@@ -222,12 +217,7 @@ impl Network {
             })
             .collect();
         json!({
-            // A device that dials nobody waits to be dialed.
-            "state": match (reached_server, self.settings.servers.is_empty() && self.settings.peers.is_empty()) {
-                (true, _) => "online",
-                (false, true) => "listening",
-                (false, false) => "connecting",
-            },
+            "state": if reached_server { "online" } else { "connecting" },
             "address": me.ipv4_addr.map(|a| a.address().to_string()),
             "nat": nat_name(me.stun_info.udp_nat_type),
             "listen_port": self.listen,
@@ -238,8 +228,9 @@ impl Network {
     /// Stops the current node and starts one for the current settings.
     fn restart(&mut self) {
         self.stop_node();
-        // A name alone is a device that listens (validate): others dial it.
-        if self.settings.name.is_empty() {
+        // Settings stored by 0.2.0 may name a network without a server
+        // (it took other devices' addresses then): there is nothing to join.
+        if self.settings.name.is_empty() || self.settings.servers.is_empty() {
             self.set_phase(Phase::Off);
             return;
         }
@@ -310,19 +301,32 @@ impl Network {
         self.node = Some(node);
     }
 
-    /// Starts a session with the device that announces `device_id`.
+    /// Starts a session with the device that announces `device_id`, or
+    /// with the one at `address` (an IP address or domain name, with or
+    /// without a port), which must prove to be that device.
     /// Returns: the session's id at once; its progress shows in the status.
     /// Notes: every route that announces the Device ID is a candidate (up to
-    /// MAX_CANDIDATES); the handshake decides which one is the device.
+    /// MAX_CANDIDATES); the handshake decides which one is the device. A
+    /// session by address needs no network.
     pub fn connect(
         &self,
         device_id: &str,
+        address: Option<String>,
         password: zeroize::Zeroizing<String>,
         want: Vec<Permission>,
         remember: session::Remember,
     ) -> Result<u64, String> {
-        let node = self.node.clone().ok_or("not connected to a network")?;
+        let route = match address {
+            Some(address) => {
+                split_address(&address)?;
+                Route::Address(address)
+            }
+            None => Route::Network(self.node.clone().ok_or("not connected to a network")?),
+        };
         let (id, stop) = session::begin(&self.ctx, device_id, remember);
+        if let Route::Address(address) = &route {
+            session::dials_address(&self.ctx, id, address);
+        }
         let ctx = self.ctx.clone();
         let device_id = device_id.to_owned();
         self.rt.spawn(async move {
@@ -337,7 +341,17 @@ impl Network {
                         _ = tokio::time::sleep(RESUME_RETRY) => {}
                     }
                 }
-                let failure = match dial(&node, &ctx, id, &stop, &device_id, &password, &want, resume.take()).await {
+                let resume_with = resume.take();
+                let dialed = match &route {
+                    Route::Network(node) => dial(node, &ctx, id, &stop, &device_id, &password, &want, resume_with).await,
+                    Route::Address(address) => match dial_address(address).await {
+                        Ok(stream) => Dialed::Outcome(
+                            session::connect(ctx.clone(), id, stop.clone(), stream, device_id.clone(), password.clone(), want.clone(), resume_with).await,
+                        ),
+                        Err(_) => Dialed::Nothing(session::Failure::Unreachable, resume_with),
+                    },
+                };
+                let failure = match dialed {
                     Dialed::Outcome(session::Outcome::Done) => return,
                     Dialed::Outcome(session::Outcome::Lost(token)) => {
                         lost_at.get_or_insert_with(std::time::Instant::now);
@@ -357,6 +371,81 @@ impl Network {
             }
         });
         Ok(id)
+    }
+
+    /// Starts or stops accepting sessions by address, as the host's user
+    /// set it: TCP on KYOKAI_PORT on every address of this computer, a
+    /// connection from outside the allowed ranges closed at once.
+    /// Side effects: binds or closes the listeners; Windows Firewall may
+    /// ask about them.
+    pub fn accept_by_address(&mut self) {
+        if let Some(task) = self.by_address.take() {
+            task.abort();
+            // Its listeners close only once the task is dropped: wait, so
+            // the port binds again (regression: changing the ranges left
+            // the port taken by the old listener).
+            let _ = self.rt.block_on(task);
+        }
+        self.by_address_error = None;
+        let by = self.ctx.access.by_address();
+        if !by.on {
+            return;
+        }
+        let _rt = self.rt.enter();
+        let v4 = listen_tcp(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        // Without IPv6 on this computer, IPv4 alone.
+        let v6 = listen_tcp(IpAddr::V6(Ipv6Addr::UNSPECIFIED)).ok();
+        let v4 = match v4 {
+            Ok(l) => l,
+            Err(e) => {
+                self.by_address_error = Some(format!("port {KYOKAI_PORT}: {e}"));
+                return;
+            }
+        };
+        let ctx = self.ctx.clone();
+        self.by_address = Some(self.rt.spawn(async move {
+            loop {
+                let accepted = match &v6 {
+                    Some(v6) => tokio::select! {
+                        a = v4.accept() => a,
+                        a = v6.accept() => a,
+                    },
+                    None => v4.accept().await,
+                };
+                let Ok((stream, from)) = accepted else {
+                    // Out of descriptors and the like: try again shortly.
+                    tokio::time::sleep(BIND_RETRY).await;
+                    continue;
+                };
+                if !by.admits(from.ip()) {
+                    continue; // dropped: closed without a word
+                }
+                let _ = stream.set_nodelay(true);
+                tokio::spawn(session::serve(
+                    ctx.clone(),
+                    stream,
+                    from.ip().to_canonical(),
+                ));
+            }
+        }));
+    }
+
+    /// Accepting by address as the status shows it: the setting, and
+    /// whether it listens.
+    pub fn by_address_status(&self) -> Value {
+        let by = self.ctx.access.by_address();
+        json!({
+            "on": by.on,
+            "ranges": by.ranges,
+            "port": self.by_address.is_some().then_some(KYOKAI_PORT),
+            "error": self.by_address_error,
+        })
+    }
+
+    /// The runtime's handle, for work that must not hold the core's lock
+    /// (identifying the device at an address).
+    pub fn handle(&self) -> tokio::runtime::Handle {
+        self.rt.handle().clone()
     }
 
     fn stop_node(&mut self) {
@@ -379,8 +468,110 @@ impl Network {
 
 impl Drop for Network {
     fn drop(&mut self) {
+        if let Some(task) = self.by_address.take() {
+            task.abort();
+        }
         self.stop_node();
     }
+}
+
+/// How a controller reaches a host.
+enum Route {
+    /// The routes of the EasyTier network that announce its Device ID.
+    Network(Arc<NativeCoreInstance>),
+    /// An address as the person typed it.
+    Address(String),
+}
+
+/// A TCP listener on KYOKAI_PORT of every address of one family (IPv6
+/// only for IPv6, so both families can listen side by side).
+fn listen_tcp(any: IpAddr) -> std::io::Result<tokio::net::TcpListener> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    let domain = if any.is_ipv4() {
+        Domain::IPV4
+    } else {
+        Domain::IPV6
+    };
+    let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
+    if any.is_ipv6() {
+        socket.set_only_v6(true)?;
+    }
+    socket.bind(&SocketAddr::new(any, KYOKAI_PORT).into())?;
+    socket.listen(64)?;
+    socket.set_nonblocking(true)?;
+    tokio::net::TcpListener::from_std(socket.into())
+}
+
+/// Splits an address as typed into a host and a port: an IP address or
+/// domain name, with KYOKAI_PORT unless it names one (`host:port`,
+/// `[v6]:port`).
+pub fn split_address(address: &str) -> Result<(String, u16), String> {
+    let bad = || format!("{address:?} is not an address");
+    let a = address.trim();
+    if a.is_empty()
+        || a.len() > 270
+        || a.contains("://")
+        || a.chars()
+            .any(|c| c.is_whitespace() || c.is_control() || c == '/')
+    {
+        return Err(bad());
+    }
+    if let Ok(ip) = a.parse::<IpAddr>() {
+        return Ok((ip.to_string(), KYOKAI_PORT));
+    }
+    let (host, port) = if let Some(rest) = a.strip_prefix('[') {
+        let (ip, rest) = rest.split_once(']').ok_or_else(bad)?;
+        ip.parse::<Ipv6Addr>().map_err(|_| bad())?;
+        match rest {
+            "" => (ip, None),
+            _ => (ip, Some(rest.strip_prefix(':').ok_or_else(bad)?)),
+        }
+    } else {
+        match a.split_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (a, None),
+        }
+    };
+    let port = match port {
+        Some(p) => p.parse::<u16>().ok().filter(|&p| p != 0).ok_or_else(bad)?,
+        None => KYOKAI_PORT,
+    };
+    if host.is_empty() {
+        return Err(bad());
+    }
+    Ok((host.to_owned(), port))
+}
+
+/// Opens a TCP connection to an address as typed: every address its name
+/// resolves to, in order, until one answers.
+async fn dial_address(address: &str) -> Result<tokio::net::TcpStream, session::Failure> {
+    let (host, port) = split_address(address).map_err(|_| session::Failure::Unreachable)?;
+    let addrs = tokio::time::timeout(DIAL_TIMEOUT, tokio::net::lookup_host((host.as_str(), port)))
+        .await
+        .map_err(|_| session::Failure::Unreachable)?
+        .map_err(|_| session::Failure::Unreachable)?;
+    for addr in addrs {
+        if let Ok(Ok(stream)) =
+            tokio::time::timeout(DIAL_TIMEOUT, tokio::net::TcpStream::connect(addr)).await
+        {
+            let _ = stream.set_nodelay(true);
+            return Ok(stream);
+        }
+    }
+    Err(session::Failure::Unreachable)
+}
+
+/// Learns which device answers at an address (the GUI then connects to
+/// that Device ID there).
+/// Returns: its Device ID, or why there is none: `unreachable`, `incompatible`
+/// (another protocol version) or `broken` (not a Kyokai device, or it broke
+/// off).
+pub async fn identify(address: &str) -> Result<String, &'static str> {
+    let stream = dial_address(address).await.map_err(|_| "unreachable")?;
+    session::identify(stream).await.map_err(|f| match f {
+        session::Failure::Incompatible => "incompatible",
+        _ => "broken",
+    })
 }
 
 /// What one round of dialing a Device ID came to.
@@ -474,9 +665,7 @@ fn config(
     let peers: String = s
         .servers
         .iter()
-        .cloned()
-        .chain(s.peers.iter().map(|p| peer_url(p)))
-        .map(|p| format!("[[peer]]\nuri = {}\n", q(&p)))
+        .map(|p| format!("[[peer]]\nuri = {}\n", q(p)))
         .collect();
     let toml = format!(
         r#"
@@ -523,51 +712,13 @@ stun_servers_v6 = []
     TomlConfig::new_from_str(&toml)
 }
 
-/// The URL of another device's listener from its address as typed: an IP
-/// address or domain name, with the first listening port (47311) unless it
-/// names one, over TCP unless it is a URL itself.
-fn peer_url(address: &str) -> String {
-    if address.contains("://") {
-        return address.to_owned();
-    }
-    let port = LISTEN_PORTS.start();
-    match address.parse::<std::net::IpAddr>() {
-        Ok(std::net::IpAddr::V6(ip)) => format!("tcp://[{ip}]:{port}"),
-        Ok(ip) => format!("tcp://{ip}:{port}"),
-        // host:port, [v6]:port, or a bare name.
-        Err(_)
-            if address
-                .rsplit_once(':')
-                .is_some_and(|(_, p)| p.parse::<u16>().is_ok()) =>
-        {
-            format!("tcp://{address}")
-        }
-        Err(_) => format!("tcp://{address}:{port}"),
-    }
-}
-
 /// Checks settings at the local API boundary.
-/// Inputs: `listens`, whether the node will listen (direct connections on):
-/// then a network name alone lets other devices reach it by its address.
-fn validate(s: &Settings, listens: bool) -> Result<(), String> {
-    let reach = !s.servers.is_empty() || !s.peers.is_empty();
-    if reach && s.name.is_empty() {
-        return Err("a network needs a network name".into());
+fn validate(s: &Settings) -> Result<(), String> {
+    if s.servers.is_empty() != s.name.is_empty() {
+        return Err("a network needs a server and a network name".into());
     }
-    if !reach && !s.name.is_empty() && !listens {
-        return Err(
-            "a network needs a server, another device's address, or direct connections on".into(),
-        );
-    }
-    if s.servers.len() > MAX_SERVERS || s.peers.len() > MAX_SERVERS {
-        return Err(format!(
-            "at most {MAX_SERVERS} servers and {MAX_SERVERS} addresses"
-        ));
-    }
-    for address in &s.peers {
-        if address.is_empty() || address.chars().any(|c| c.is_whitespace() || c.is_control()) {
-            return Err(format!("{address:?} is not an address"));
-        }
+    if s.servers.len() > MAX_SERVERS {
+        return Err(format!("at most {MAX_SERVERS} servers"));
     }
     if s.name.chars().count() > 64 || s.name.chars().any(char::is_control) {
         return Err("the network name is too long or has control characters".into());
@@ -575,13 +726,7 @@ fn validate(s: &Settings, listens: bool) -> Result<(), String> {
     if s.secret.chars().any(char::is_control) {
         return Err("the network secret has control characters".into());
     }
-    for server in s
-        .servers
-        .iter()
-        .cloned()
-        .chain(s.peers.iter().map(|p| peer_url(p)))
-    {
-        let server = &server;
+    for server in &s.servers {
         let (scheme, rest) = server
             .split_once("://")
             .ok_or_else(|| format!("{server:?} is not a server URL"))?;
@@ -624,7 +769,6 @@ mod tests {
     fn settings(servers: &[&str], name: &str, secret: &str) -> Settings {
         Settings {
             servers: servers.iter().map(|s| s.to_string()).collect(),
-            peers: Vec::new(),
             name: name.into(),
             secret: secret.into(),
             direct: false,
@@ -647,59 +791,39 @@ mod tests {
             (settings(&["tcp://a"; 9], "n", ""), false),
         ];
         for (s, ok) in cases {
-            assert_eq!(
-                validate(&s, false).is_ok(),
-                ok,
-                "{:?} {:?}",
-                s.servers,
-                s.name
-            );
+            assert_eq!(validate(&s).is_ok(), ok, "{:?} {:?}", s.servers, s.name);
         }
-        // Another device's address reaches a network without a server.
-        let with = |peers: &[&str], name: &str| Settings {
-            peers: peers.iter().map(|p| p.to_string()).collect(),
-            ..settings(&[], name, "s")
-        };
-        for (s, ok) in [
-            (with(&["192.168.1.20"], "kyokai"), true),
-            (with(&["office.example.org:47312"], "kyokai"), true),
-            (with(&["192.168.1.20"], ""), false),
-            (with(&["a b"], "kyokai"), false),
-            (with(&["faketcp://a:1"], "kyokai"), false),
-            (with(&["a"; 9], "kyokai"), false),
-        ] {
-            assert_eq!(validate(&s, false).is_ok(), ok, "{:?}", s.peers);
-        }
-        // A device that listens needs only the network: others dial it.
-        assert!(validate(&settings(&[], "kyokai", "s"), true).is_ok());
     }
 
-    /// An address as typed becomes the URL of the device's listener.
+    /// An address as typed: a host and Kyokai's port unless it names one.
     #[test]
-    fn peer_addresses_become_listener_urls() {
-        for (address, url) in [
-            ("192.168.1.20", "tcp://192.168.1.20:47311"),
-            ("192.168.1.20:47313", "tcp://192.168.1.20:47313"),
-            ("office.example.org", "tcp://office.example.org:47311"),
-            ("office.example.org:9000", "tcp://office.example.org:9000"),
-            ("fe80::1", "tcp://[fe80::1]:47311"),
-            ("[fe80::1]:47312", "tcp://[fe80::1]:47312"),
-            ("udp://10.0.0.2:47311", "udp://10.0.0.2:47311"),
+    fn addresses_as_typed() {
+        for (address, want) in [
+            ("192.168.1.20", Some(("192.168.1.20", 47310))),
+            (" 192.168.1.20:5000 ", Some(("192.168.1.20", 5000))),
+            ("office.example.org", Some(("office.example.org", 47310))),
+            (
+                "office.example.org:9000",
+                Some(("office.example.org", 9000)),
+            ),
+            ("fe80::1", Some(("fe80::1", 47310))),
+            (
+                "[fd7a:115c:a1e0::1]:47312",
+                Some(("fd7a:115c:a1e0::1", 47312)),
+            ),
+            ("[fe80::1]", Some(("fe80::1", 47310))),
+            ("", None),
+            ("a b", None),
+            ("tcp://a:1", None),
+            ("a:0", None),
+            ("a:x", None),
+            (":47310", None),
+            ("[nope]:1", None),
         ] {
-            assert_eq!(peer_url(address), url, "{address}");
+            let got = split_address(address).ok();
+            let want = want.map(|(h, p)| (h.to_owned(), p));
+            assert_eq!(got, want, "{address:?}");
         }
-        let s = Settings {
-            peers: vec!["10.0.0.2".into()],
-            ..settings(&["tcp://example.org:11010"], "n", "s")
-        };
-        use easytier_core::config::toml::ConfigLoader;
-        let uris: Vec<String> = config(&s, "100000002", true, Some(47311))
-            .unwrap()
-            .get_peers()
-            .iter()
-            .map(|p| p.uri.to_string())
-            .collect();
-        assert_eq!(uris, ["tcp://example.org:11010", "tcp://10.0.0.2:47311"]);
     }
 
     #[test]

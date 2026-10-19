@@ -67,7 +67,13 @@ total; further attempts are answered `busy`.
   Device ID is known with another key is shown as "a new key claiming this ID".
 - **Controller side (known hosts):** the first accepted session pins the host's device key for its
   Device ID; later sessions with another key are refused until the user forgets the host. Each
-  accepted session also records when, and the newest 8 are offered as recent devices.
+  accepted session also records when, and the address it dialed when it connected by address, and
+  the newest 8 are offered as recent devices. Connecting by address, the person names no Device
+  ID: the first session pins whichever device answered there, and its Device ID shows in the tab
+  and on Recent. Removing a recent device forgets its pinned key and saved password and takes its
+  sessions off the list.
+- **No logs** keeps both lists in memory only ([security.md](security.md)): after a restart no
+  key is pinned, so a changed key is not noticed.
 
 ## Friendly names
 
@@ -81,7 +87,23 @@ hostname stays `Kyokai-<Device ID>`. A received description is cleaned (control 
 bidirectional overrides removed, each field cut to 64 characters) and stored with the trusted device
 (host side) or the known host (controller side); a resumed session keeps the last one. It is a
 claim of the other device: the interface shows it beside the Device ID, never instead of it, and it
-authenticates nothing.
+authenticates nothing. The user may also give a device a name of their own (Recent, Rename…),
+kept only in the GUI's settings on this device and shown instead of the device's friendly name,
+again beside its Device ID.
+
+## Protected mode
+
+Settings, Access, **Protected mode** (off by default) leaves this computer's Kyokai offering only the
+AI settings and AI tasks, for a computer whose local user should run AI tasks but change nothing
+else. It turns on only while a permanent password is set (after a confirmation) and off only with
+that password, entered on the AI page: the core checks it on this computer by running both sides
+of an OPAQUE login against the permanent record (`Slots::check_permanent`; the temporary password
+does not count), and refuses removing the permanent password while the mode is on. The choice
+(`protected`) is kept in the secrets store, so it survives restarts and moves with the store. The
+engine enforces it on the local API, so `ctl` is held to it too: while on it serves only the status,
+the AI requests, answering confirmations, disconnecting, quitting, turning the mode off, and what the
+GUI sends as it attaches (capture, sound, No logs, privacy permissions, the helper's update). The
+host user stays in charge: confirmations and the devices connected here still show on every page.
 
 ## Identity backup, restore and reset
 

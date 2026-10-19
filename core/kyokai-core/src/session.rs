@@ -445,6 +445,11 @@ struct Entry {
     choices: Arc<Mutex<Choices>>,
     /// Controller side: what to do with the password once the host answers.
     remember: Remember,
+    /// Controller side: the address dialed, or empty over the network.
+    address: String,
+    /// Removed from the interface's list (Home's Remove): left out of the
+    /// status, and dropped once it ends.
+    removed: bool,
 }
 
 /// A viewer's latest quality and codec messages: sent again when its
@@ -521,6 +526,8 @@ impl Sessions {
             control_rx: Arc::new(tokio::sync::Mutex::new(control_rx)),
             choices: Arc::default(),
             remember: Remember::default(),
+            address: String::new(),
+            removed: false,
         });
         (id, stop)
     }
@@ -530,6 +537,7 @@ impl Sessions {
         if let Some(e) = s.1.iter_mut().find(|e| e.id == id) {
             f(e);
         }
+        s.1.retain(|e| !(e.removed && matches!(e.state, State::Closed | State::Failed)));
         let finished =
             s.1.iter()
                 .filter(|e| matches!(e.state, State::Closed | State::Failed))
@@ -631,10 +639,29 @@ impl Sessions {
         Ok(())
     }
 
+    /// Takes a host off the interface's list: its sessions from here end
+    /// and are no longer listed (Home's Remove).
+    pub fn remove_host(&self, device_id: &str) {
+        let mut s = self.inner.lock().expect("sessions lock");
+        s.1.retain(|e| {
+            !(e.role == Role::Controller
+                && e.device_id == device_id
+                && matches!(e.state, State::Closed | State::Failed))
+        });
+        for e in
+            s.1.iter_mut()
+                .filter(|e| e.role == Role::Controller && e.device_id == device_id)
+        {
+            e.removed = true;
+            e.stop.notify_one();
+        }
+    }
+
     /// The sessions, for the status (never a secret).
     pub fn list(&self) -> Value {
         let s = self.inner.lock().expect("sessions lock");
         s.1.iter()
+            .filter(|e| !e.removed)
             .map(|e| {
                 json!({
                     "id": e.id,
@@ -1172,7 +1199,11 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             return Err(Failure::Refused(verdict.reason.unwrap_or(Refusal::Denied)));
         }
         let peer = verdict.about.unwrap_or_default().clean();
-        let _ = ctx.access.pin_host(&device_id, &host.device_key, &peer);
+        let mut address = String::new();
+        ctx.sessions.update(id, |e| address.clone_from(&e.address));
+        let _ = ctx
+            .access
+            .pin_host(&device_id, &host.device_key, &peer, &address);
         let mut remember = Remember::default();
         ctx.sessions.update(id, |e| remember = e.remember);
         if remember.save && !password.is_empty() {
@@ -1247,6 +1278,31 @@ pub fn begin(ctx: &Ctx, device_id: &str, remember: Remember) -> (u64, Arc<Notify
     let (id, stop) = ctx.sessions.open(Role::Controller, device_id);
     ctx.sessions.update(id, |e| e.remember = remember);
     (id, stop)
+}
+
+/// Records the address an outgoing session dials (connections by
+/// address), which the known host keeps for the next one.
+pub fn dials_address(ctx: &Ctx, id: u64, address: &str) {
+    ctx.sessions.update(id, |e| e.address = address.to_owned());
+}
+
+/// Learns which device answers at an address: the first two handshake
+/// messages, then the connection is dropped (the host sees a connection
+/// that never logs in).
+/// Returns: the Device ID its device key derives, proven by its signature.
+pub async fn identify<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S) -> Result<String, Failure> {
+    let (mut hs, _) = noise(true)?;
+    let mut buf = vec![0u8; MAX_FRAME];
+    let n = hs.write_message(&[], &mut buf)?;
+    step(write_frame(&mut stream, &buf[..n])).await?;
+    let frame = step(read_frame(&mut stream)).await?;
+    let n = hs.read_message(&frame, &mut buf)?;
+    let host: HostHello = serde_json::from_slice(&buf[..n]).map_err(|_| Failure::Broken)?;
+    if host.protocol != PROTOCOL {
+        return Err(Failure::Incompatible);
+    }
+    let key = verify_static(&host.device_key, &host.signature, hs.get_remote_static())?;
+    Ok(identity::device_id(&key))
 }
 
 /// Ends an outgoing session that found no device to talk to.
@@ -3353,7 +3409,7 @@ mod tests {
         let dialed = host.identity.device_id();
         controller
             .access
-            .pin_host(&dialed, "c29tZW9uZSBlbHNl", &About::default())
+            .pin_host(&dialed, "c29tZW9uZSBlbHNl", &About::default(), "")
             .unwrap();
         let id = attempt(&host, &controller, &dialed, "x", None).await;
         assert_eq!(session(&controller, id)["failure"], "key-changed");
@@ -3918,5 +3974,97 @@ mod tests {
         assert_eq!(raw_wait(&mut peer, "files-stop").await, Some(8));
         stop.notify_one();
         assert!(task.await.unwrap().is_ok());
+    }
+
+    /// A device at an address tells its Device ID before any login, and
+    /// the host is left with no session.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn identify_learns_the_device_id_at_an_address() {
+        let host = device("0.2.1");
+        let (a, b) = tokio::io::duplex(1 << 16);
+        tokio::spawn(serve(host.clone(), b, "192.168.1.20".parse().unwrap()));
+        assert_eq!(identify(a).await.unwrap(), host.identity.device_id());
+        assert!(host.sessions.list().as_array().unwrap().is_empty());
+    }
+
+    /// Removing a host from Home ends its sessions from here and leaves
+    /// none of them listed (regression: a removed device came back from
+    /// its finished session).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn removing_a_host_drops_its_sessions_from_the_list() {
+        let (host, controller) = (device("0.2.1"), device("0.2.1"));
+        let dialed = host.identity.device_id();
+        // Refused: a finished session.
+        attempt(&host, &controller, &dialed, "", None).await;
+        // Waiting for the host's user: a live one.
+        let (a, b) = tokio::io::duplex(1 << 16);
+        tokio::spawn(serve(host.clone(), b, "192.168.1.20".parse().unwrap()));
+        let (id, stop) = begin(&controller, &dialed, Remember::default());
+        let c = controller.clone();
+        let d = dialed.clone();
+        let run = tokio::spawn(async move {
+            connect(
+                c,
+                id,
+                stop,
+                a,
+                d,
+                zeroize::Zeroizing::new(String::new()),
+                vec![Permission::ViewScreen],
+                None,
+            )
+            .await
+        });
+        // Until the host's user is asked (slow under a full test run).
+        for _ in 0..500 {
+            if session(&controller, id)["state"] == "confirming"
+                && !host.access.pending().as_array().unwrap().is_empty()
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(controller.sessions.list().as_array().unwrap().len(), 2);
+        controller.sessions.remove_host(&dialed);
+        assert!(controller.sessions.list().as_array().unwrap().is_empty());
+        // Once it ends (here: the host's user says no) it is gone.
+        let q = host.access.pending()[0]["id"].as_u64().unwrap();
+        host.access.decide(q, None).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), run)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(controller.sessions.inner.lock().unwrap().1.is_empty());
+    }
+
+    /// A host that accepts connections by address answers on its own
+    /// addresses, keeps listening when its ranges change (regression: the
+    /// old listener still held the port), and closes a connection from
+    /// outside them.
+    #[test]
+    fn a_host_accepts_by_address_from_its_ranges() {
+        use crate::access::ByAddress;
+        if std::net::TcpListener::bind(("0.0.0.0", crate::net::KYOKAI_PORT)).is_err() {
+            return eprintln!("skipped: port 47310 is taken on this computer");
+        }
+        let host = device("0.2.1");
+        let mut net =
+            crate::net::Network::start(host.access.secrets(), host.clone(), false).unwrap();
+        let on = |ranges: &[&str]| ByAddress {
+            on: true,
+            ranges: ranges.iter().map(|r| r.to_string()).collect(),
+        };
+        let identify =
+            |net: &crate::net::Network| net.handle().block_on(crate::net::identify("127.0.0.1"));
+        host.access.set_by_address(on(&["10.0.0.0/8"])).unwrap();
+        net.accept_by_address();
+        assert_eq!(identify(&net), Err("broken"), "outside the ranges");
+        host.access.set_by_address(on(&["127.0.0.1"])).unwrap();
+        net.accept_by_address();
+        assert_eq!(net.by_address_status()["port"], crate::net::KYOKAI_PORT);
+        assert_eq!(identify(&net), Ok(host.identity.device_id()));
+        host.access.set_by_address(ByAddress::default()).unwrap();
+        net.accept_by_address();
+        assert_eq!(identify(&net), Err("unreachable"), "off");
     }
 }

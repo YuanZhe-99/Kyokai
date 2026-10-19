@@ -99,6 +99,13 @@ type Status struct {
 	// (access.settings).
 	PasswordMode  string `json:"password_mode"`
 	WithoutAsking bool   `json:"without_asking"`
+	// ByAddress is decoded by the host (localapi.ByAddress).
+	ByAddress json.RawMessage `json:"by_address"`
+	// KeepsHistory: the connection history is written to the store (off
+	// with No logs).
+	KeepsHistory bool `json:"keeps_history"`
+	// Protected: protected mode is on.
+	Protected bool `json:"protected"`
 	// Permissions are the system's privacy permissions (macOS), or null;
 	// decoded by the host.
 	Permissions json.RawMessage `json:"permissions"`

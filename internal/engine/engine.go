@@ -17,6 +17,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
@@ -158,7 +159,25 @@ func Run(ctx context.Context, opts Options) error {
 		h.background = m.Background
 	}
 	h.updateServe()
+	_, _ = h.status() // reads protected mode
 	return localapi.ServeWith(ctx, ln, h, authz)
+}
+
+// protectedAllows are the requests served in protected mode: the status,
+// the AI page, what keeps the host user in charge of sessions (confirm,
+// disconnect, stop the AI), what the GUI sends on its own as it attaches,
+// quitting, and turning the mode off. Everything else is refused, ctl
+// included.
+var protectedAllows = map[localapi.RequestType]bool{
+	localapi.RequestStatus: true, localapi.RequestProtect: true, localapi.RequestShutdown: true,
+	localapi.RequestDecide: true, localapi.RequestClose: true,
+	localapi.RequestCaptureShow: true, localapi.RequestSoundSource: true, localapi.RequestLogs: true,
+	localapi.RequestPermission: true, localapi.RequestAgentRestart: true, localapi.RequestHelperUpdate: true,
+	localapi.RequestAISettingsGet: true, localapi.RequestAISettingsSet: true, localapi.RequestAIKeySet: true,
+	localapi.RequestAIModels: true, localapi.RequestAITaskStart: true, localapi.RequestAIDraft: true,
+	localapi.RequestAITaskReply: true, localapi.RequestAITaskPause: true, localapi.RequestAITaskResume: true,
+	localapi.RequestAITaskCancel: true, localapi.RequestAITaskDecide: true, localapi.RequestAITasks: true,
+	localapi.RequestAIHistoryClear: true, localapi.RequestAIStop: true,
 }
 
 // handler answers the local API from the core.
@@ -179,12 +198,28 @@ type handler struct {
 	// remove removes the helper itself (macOS); nil elsewhere.
 	remove func() error
 
+	// protected: protected mode is on (protectedAllows), as the core's
+	// status said last.
+	protected atomic.Bool
+
 	mu       sync.Mutex
 	sessions map[chan struct{}]bool // each is poked when the status changes
 }
 
 func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Response {
+	if h.protected.Load() && !protectedAllows[req.Type] {
+		return localapi.Fail(localapi.CodeInvalid, "protected mode is on: turn it off with the permanent password first")
+	}
 	switch req.Type {
+	case localapi.RequestProtect:
+		if req.Protect == nil {
+			return localapi.Fail(localapi.CodeInvalid, "protected-mode choice missing")
+		}
+		resp := h.command("protect.set", map[string]any{"on": req.Protect.On, "password": req.Protect.Password})
+		if resp.OK {
+			h.protected.Store(req.Protect.On)
+		}
+		return resp
 	case localapi.RequestStatus:
 		st, err := h.status()
 		if err != nil {
@@ -229,7 +264,7 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 	case localapi.RequestStartOver:
 		return h.command("store.start_over", nil)
 	case localapi.RequestAccessSettings:
-		if req.PasswordMode == "" && req.WithoutAsking == nil {
+		if req.PasswordMode == "" && req.WithoutAsking == nil && req.ByAddress == nil {
 			return localapi.Fail(localapi.CodeInvalid, "nothing to change")
 		}
 		params := map[string]any{}
@@ -239,12 +274,27 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		if req.WithoutAsking != nil {
 			params["without_asking"] = *req.WithoutAsking
 		}
+		if req.ByAddress != nil {
+			ranges := req.ByAddress.Ranges
+			if ranges == nil {
+				ranges = []string{}
+			}
+			params["by_address"] = map[string]any{"on": req.ByAddress.On, "ranges": ranges}
+		}
 		return h.command("access.settings", params)
 	case localapi.RequestPermission:
 		if req.Permission == "" {
 			return localapi.Fail(localapi.CodeInvalid, "permission missing")
 		}
 		return h.command("permission.request", map[string]string{"name": req.Permission})
+	case localapi.RequestLogs:
+		if req.LogsOff == nil {
+			return localapi.Fail(localapi.CodeInvalid, "logs choice missing")
+		}
+		if err := SetLogsOff(h.stateDir, *req.LogsOff); err != nil {
+			return localapi.Fail(localapi.CodeInternal, "logs: %v", err)
+		}
+		return h.command("access.history", map[string]bool{"keep": !*req.LogsOff})
 	case localapi.RequestCaptureShow:
 		if req.Show == nil {
 			return localapi.Fail(localapi.CodeInvalid, "show missing")
@@ -294,6 +344,25 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		}
 		h.changed()
 		return localapi.Response{OK: true, ID: out.ID}
+	case localapi.RequestIdentify:
+		if req.Address == "" {
+			return localapi.Fail(localapi.CodeInvalid, "address missing")
+		}
+		var out struct {
+			DeviceID string `json:"device_id"`
+			Failure  string `json:"failure"`
+		}
+		if err := h.lib.Call("session.identify", map[string]string{"address": req.Address}, &out); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true, DeviceID: out.DeviceID, Failure: out.Failure}
+	case localapi.RequestDeviceRemove:
+		if req.DeviceID == "" {
+			return localapi.Fail(localapi.CodeInvalid, "device ID missing")
+		}
+		resp := h.command("device.remove", map[string]string{"device_id": req.DeviceID})
+		h.changed()
+		return resp
 	case localapi.RequestClose:
 		return h.command("session.close", map[string]uint64{"id": req.ID})
 	case localapi.RequestForgetPassword:
@@ -581,6 +650,7 @@ func (h *handler) status() (*localapi.Status, error) {
 	if err := h.lib.Call("status", nil, &st); err != nil {
 		return nil, err
 	}
+	h.protected.Store(st.Protected)
 	var network localapi.NetworkStatus
 	var requests []localapi.HostRequest
 	var sessions []localapi.SessionInfo
@@ -588,11 +658,12 @@ func (h *handler) status() (*localapi.Status, error) {
 	var ai *localapi.AIActive
 	var about localapi.About
 	var permissions *localapi.Permissions
+	var byAddress localapi.ByAddress
 	for _, part := range []struct {
 		name string
 		raw  json.RawMessage
 		dst  any
-	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}, {"about", st.About, &about}, {"permissions", st.Permissions, &permissions}} {
+	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}, {"about", st.About, &about}, {"permissions", st.Permissions, &permissions}, {"by_address", st.ByAddress, &byAddress}} {
 		if err := json.Unmarshal(part.raw, part.dst); err != nil {
 			return nil, fmt.Errorf("%s status: %w", part.name, err)
 		}
@@ -601,37 +672,120 @@ func (h *handler) status() (*localapi.Status, error) {
 		Version: st.Version, Build: version.Build(), ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: h.runMode, Background: h.isBackground(), Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
-		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, AIDraft: st.AIDraft, Permissions: permissions,
+		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, ByAddress: byAddress, LogsOff: LogsOff(h.stateDir) || !st.KeepsHistory, Protected: st.Protected, AIDraft: st.AIDraft, Permissions: permissions,
 		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
 		Name: st.Name, About: about,
 	}, nil
 }
 
+// noLogs is the marker in a state directory that keeps every process
+// using it from writing logs or crash traces (Settings, No logs).
+const noLogs = "no-logs"
+
+// logFile is this process's log (Logger, CrashLog): the path it uses, and
+// the open file, nil while logs are off.
+var logFile struct {
+	sync.Mutex
+	path string
+	f    *os.File
+	off  bool
+}
+
+// LogsOff reports whether a state directory says to keep no logs.
+func LogsOff(stateDir string) bool {
+	_, err := os.Stat(filepath.Join(stateDir, noLogs))
+	return err == nil
+}
+
 // Logger returns a Logf writing to path (appending), or to stderr when the
-// file cannot be opened.
+// file cannot be opened; nowhere while the state directory (path's
+// grandparent) says no logs.
 // Side effects: a fatal Go error's trace goes to the same file (CrashLog).
 func Logger(path string) func(string, ...any) {
-	var w io.Writer = os.Stderr
-	if f := CrashLog(path); f != nil {
-		w = f
+	CrashLog(path)
+	return func(format string, args ...any) {
+		logFile.Lock()
+		defer logFile.Unlock()
+		var w io.Writer = os.Stderr
+		switch {
+		case logFile.f != nil:
+			w = logFile.f
+		case logFile.off:
+			return
+		}
+		log.New(w, "", log.LstdFlags).Printf(format, args...)
 	}
-	l := log.New(w, "", log.LstdFlags)
-	return l.Printf
 }
 
 // CrashLog opens path for appending and sends this process's crash trace
-// (an unrecovered panic or a fatal runtime error) there as well as to stderr.
-// Returns: the file, or nil when it cannot be opened.
+// (an unrecovered panic or a fatal runtime error) there as well as to
+// stderr, unless the state directory (path's grandparent) says no logs.
+// Returns: the file, or nil when logs are off or it cannot be opened.
 func CrashLog(path string) *os.File {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	logFile.Lock()
+	defer logFile.Unlock()
+	logFile.path = path
+	stateDir := filepath.Dir(filepath.Dir(path))
+	logFile.off = LogsOff(stateDir)
+	if logFile.off {
+		// launchd opens the macOS helper's helper.log anew at each start.
+		quietStderr()
+		_ = os.Remove(filepath.Join(stateDir, "helper.log"))
 		return nil
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	return openLog()
+}
+
+// openLog opens logFile.path (caller holds logFile).
+func openLog() *os.File {
+	if err := os.MkdirAll(filepath.Dir(logFile.path), 0o700); err != nil {
+		return nil
+	}
+	f, err := os.OpenFile(logFile.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil
 	}
 	_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+	logFile.f = f
 	return f
+}
+
+// SetLogsOff turns logs off for a state directory and this process, and
+// deletes the ones written (the logs folder, and the macOS helper's
+// helper.log), or turns them on again.
+// Side effects: writes or removes the marker; closes or reopens this
+// process's log; while off, a crash trace goes to stderr only, and stderr
+// itself nowhere (quietStderr).
+func SetLogsOff(stateDir string, off bool) error {
+	logFile.Lock()
+	defer logFile.Unlock()
+	marker := filepath.Join(stateDir, noLogs)
+	logFile.off = off
+	if !off {
+		if err := os.Remove(marker); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if logFile.f == nil && logFile.path != "" {
+			openLog()
+		}
+		return nil
+	}
+	if err := os.WriteFile(marker, nil, 0o600); err != nil {
+		return err
+	}
+	_ = debug.SetCrashOutput(nil, debug.CrashOptions{})
+	if logFile.f != nil {
+		_ = logFile.f.Close()
+		logFile.f = nil
+	}
+	quietStderr()
+	if err := os.RemoveAll(filepath.Join(stateDir, "logs")); err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(stateDir, "helper.log")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 // isBackground reports the helper's mode for the status.

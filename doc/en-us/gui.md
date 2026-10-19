@@ -15,18 +15,22 @@ when `SCREENSHOT_DIR` is set.
   the permanent password is accepted, a line saying so instead, or a warning that none is set); a note when
   secrets are not persisted, and when the saved identity cannot be unlocked, Start over (the old
   store moved aside, a new identity kept from then on; `secrets.start_over`). On the right
-  "Control another device": a Device ID, Options (also ask to run AI tasks there) and Connect
-  (needs a network). On macOS, while Screen Recording, Accessibility, Input Monitoring or the
+  "Control another device": a Device ID or an address (an IP address or domain name, for a
+  device that accepts connections by address; "Looking for the device…" while it is asked who it
+  is), Options (also ask to run AI tasks there) and Connect (a Device ID needs a network). On macOS, while Screen Recording, Accessibility, Input Monitoring or the
   Keychain is missing, "Privacy permissions" with Allow for each (Settings always shows it there);
   a permission asked for in this run also offers "Reopen Kyokai", since macOS counts a new grant
   only in an engine started after it. In the helper modes the card says the permissions are
   Kyokai Helper's, and a missing one offers Restart Kyokai Helper. Below, **Recent**: one card per
-  device — never one per session — with its avatar, friendly name and Device ID, a dot (green
+  device — never one per session — with its avatar, its name (the one given here, else its
+  friendly name) and Device ID, a dot (green
   while the device is on the network), its state (connected, connecting, waiting, why the last
   attempt failed, or when it was last connected; cut short with "…") and "Password saved"; a
-  click connects (or shows its tab), and its ⋯ menu has Connect, Connect with AI, Forget
-  password, Forget old identity (after a key change) and Remove (forgets its pinned key and saved
-  password, and disconnects it).
+  click connects (or shows its tab), by the address it was last reached at if any, and its ⋯ menu
+  has Connect, Connect with AI, Rename… (a name shown only on this device, edited in a card above
+  the devices; empty goes back to the device's own), Forget password, Forget old identity (after a
+  key change) and Remove (disconnects it, takes it and its finished connections off Recent, and
+  forgets its pinned key, saved password and the name given here).
 
 - **Confirmations:** a controller waiting for this host's user shows at the top of every page with
   its Device ID, whether it is known or a new key claiming a known ID, a warning when it gave no
@@ -50,18 +54,18 @@ when `SCREENSHOT_DIR` is set.
   Clear history. While the task waits for approval, every other page shows a banner with Review,
   and a notification announces it. A controller's task shows "Started from" its Device ID, and
   while it works every other page shows a banner with Review and Stop.
-- **Network:** the node's live status (connected, connecting, waiting for other devices to connect
-  by this device's address, or why it could not connect; the virtual address; the NAT type in
-  plain words; the port for direct addresses while it listens) and the Kyokai devices it routes to
+- **Network:** the node's live status (connected, connecting, or why it could not connect; the
+  virtual address; the NAT type in plain words; the port for direct connections while it listens) and the Kyokai devices it routes to
   (the name a device gave in its last session here, if any, its Device ID, direct or relayed,
   latency, Copy and Connect), with a note that announced Device IDs are not proof; then the
-  settings form: servers (one URL per line), direct addresses (other devices' IP addresses or
-  domain names, one per line), network name, and a write-only secret field (empty keeps the
+  settings form: servers (one URL per line), network name, and a write-only secret field (empty keeps the
   stored secret; a weak secret is flagged), Save and Clear network settings (after a
-  confirmation: the servers, addresses, name and secret), which apply to these fields only.
+  confirmation: the servers, name and secret), which apply to these fields only.
   Refused settings show the engine's reason.
 - **Device names:** wherever a device appears (a confirmation, Recent, the connection tabs, trusted
-  devices, the viewer's title) its friendly name goes beside the Device ID, never instead of it,
+  devices, the viewer's title, the Network page) its name — the one this device's user gave it
+  (`gui.json` `aliases`, never sent anywhere), else the friendly name it gives itself — goes beside
+  the Device ID, never instead of it,
   with a round avatar (`deviceAvatar`): the vendor's monochrome logo when the device's maker,
   model, name or system (tried in that order; whole words only, so `hp` does not match `php-dev`)
   names a known maker or system (`deviceLogoName`), else the name's first letter. Vendor logos are
@@ -80,10 +84,17 @@ when `SCREENSHOT_DIR` is set.
   Device identity (Device ID, fingerprint; back up and restore with a passphrase through a file
   dialog; reset, after a warning), Access (permanent password: set, change or remove; Accepted passwords: Temporary,
   Permanent or Both; Connect without asking, on by default, and below it "With a correct
-  password": a switch per permission a password grants without asking; trusted devices with their
-  last connection and Remove), Storage (data folder with Open folder, how secrets are
-  kept), Diagnostics (version and ABI, engine start time, run mode, logs folder), About (version,
+  password": a switch per permission a password grants without asking; Protected mode (only
+  with a permanent password, after a confirmation); Accept connections by
+  address, off by default, and while on the accepted ranges, one per line, with Save and Cancel,
+  and a warning when it cannot listen; trusted devices with their last connection and Remove), Storage (data folder with Open folder, how secrets are
+  kept, No logs — off by default, turning it on after a warning that nobody can tell any more who
+  connected or whom this device connected to, with a note when the engine in use cannot do it yet),
+  Diagnostics (version and ABI, engine start time, run mode, logs folder, or "Off" with No logs), About (version,
   license, source code, app updates), Open source licenses (the shipped notices).
+- **Protected mode:** the sidebar shows only AI and every page is the AI page, topped by a card
+  with the permanent password field and Turn off (a wrong password says so); confirmations and
+  the devices connected here still show.
 - Until the engine's session is attached, pages that need it show "Starting…" or why the engine is
   not running.
 - **App updates (About):** a daily check (switchable) and "Check for updates" read the signed

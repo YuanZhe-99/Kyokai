@@ -23,3 +23,7 @@ func watchParent(ctx context.Context, pid int) {
 	case <-done:
 	}
 }
+
+// quietStderr does nothing on Windows: no file keeps a Kyokai process's
+// stderr there (the service has none).
+func quietStderr() {}

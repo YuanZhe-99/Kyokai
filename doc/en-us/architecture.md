@@ -72,14 +72,19 @@ integers and pointers only:
 Responses are `{"ok": true, "result": …}` or `{"ok": false, "error": "…"}` in a buffer the core
 allocates; panics are caught at the boundary and reported as errors. Methods: `status` (never a
 secret; includes the network status), `password.reveal`, `password.regenerate`, `network.get`
-(settings without the secret), `network.set` (`{servers, peers, name, secret?}`; a missing secret keeps
+(settings without the secret), `network.set` (`{servers, name, secret?, direct?}`; a missing secret keeps
 the stored one, an empty one clears it), `password.set_permanent` (`{password}`, null removes it), `session.connect`
-(`{device_id, password, want, remember}`; an empty password uses the one saved for the host;
-returns the session id at once, progress shows in the status), `password.forget_saved`
+(`{device_id, password, want, remember, address?}`; an empty password uses the one saved for the host;
+`address` dials that IP address or domain name instead of the network; returns the session id at
+once, progress shows in the status), `session.identify` (`{address}` → `{device_id}` or
+`{failure}`: `unreachable`, `incompatible`, `broken` or `self`; dials without holding the core's
+lock), `device.remove` (`{device_id}`: ends this device's sessions with that host, leaves them out of
+the list, forgets its pinned key and saved password), `protect.set` (`{on, password?}`: protected mode, on with a permanent password set, off with it, [identity-and-access.md](identity-and-access.md)), `access.history` (`{keep}`: the connection
+history in the secrets store, or in memory only for No logs, [security.md](security.md)), `password.forget_saved`
 (`{device_id}`), `session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,
 `host.forget`, `identity.export` (`{passphrase}` → `{document}`), `identity.import`
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
-name; the status carries `name` and this device's `about`), `access.settings` (`{password_mode?: temporary|permanent|both, without_asking?}`), `permission.request` (`{name}`: `screen`, `accessibility`, `input-monitoring` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens; in the helper the agent asks), `store.start_over` (the saved store cannot be unlocked: it is moved aside and the core rebuilt on a new one → `{kept}`), `agent.restart` (the helper's session agent exits and its supervisor starts it again), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
+name; the status carries `name` and this device's `about`), `access.settings` (`{password_mode?: temporary|permanent|both, without_asking?, by_address?: {on, ranges}}`; `by_address` starts or stops the listener at once), `permission.request` (`{name}`: `screen`, `accessibility`, `input-monitoring` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens; in the helper the agent asks), `store.start_over` (the saved store cannot be unlocked: it is moved aside and the core rebuilt on a new one → `{kept}`), `agent.restart` (the helper's session agent exits and its supervisor starts it again), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
 passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
 mode), `capture.show` (`{show}`: whether captures show Kyokai's windows, as Settings' Hide Kyokai
 from capture says; macOS's capture follows it, live; the helper passes it to its agent; hidden
@@ -93,11 +98,11 @@ an input device's id; running streams switch; the helper passes it to its agent)
 `ai.task.pause`, `ai.task.resume`, `ai.task.cancel` (`{id}`), `ai.task.decide` (`{id, approve}`),
 `ai.tasks` (newest first), `ai.draft.set` (`{text}`: the shared draft of the next instruction), `ai.history.clear`, `ai.stop` (cancels every task). The status also
 carries `permanent_password`, `permissions` (macOS: `{screen, accessibility, input_monitoring, keychain}`, the agent's in the helper; null elsewhere),
-`password_mode` and `without_asking` (the access settings), `ai_draft` (the shared draft),
+`password_mode` and `without_asking` (the access settings), `by_address` (`{on, ranges, port, error}`: connections by address, [networking.md](networking.md)), `keeps_history`, `protected`, `ai_draft` (the shared draft),
 `password_grants` (what a correct password grants without asking;
 set with `access.password_grants` `{grants}`), `requests` (open host confirmations, each with
 `password`: whether the controller gave one), `sessions`, `recent` (hosts
-connected to, newest first) and `ai` (the task in progress with its state and origin, or null). The Go binding keeps the response slots it passes to the core in heap memory,
+connected to, newest first, each with the `address` its last session dialed) and `ai` (the task in progress with its state and origin, or null). The Go binding keeps the response slots it passes to the core in heap memory,
 never on a goroutine stack, which may move between taking an address and the call. On Windows the
 library is loaded by absolute path with
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` and links the C
@@ -113,7 +118,7 @@ runtime statically, so nothing is resolved through the search path.
 - Requests: `status` (with the network status and `build`, the commit the engine was built from,
   which tells two builds of one version apart), `password.reveal`, `password.regenerate`,
   `network.get`, `network.set` (refused settings answer `invalid` with the reason),
-  `password.set_permanent`, `session.connect`, `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
+  `password.set_permanent`, `session.connect`, `session.identify`, `device.remove`, `protect.set` (while protected mode is on the engine answers only the requests in `protectedAllows` and refuses the rest as `invalid`; the status says `protected`), `logs.set` (`{logs_off}`: No logs; the engine writes or removes its state directory's `no-logs` marker, closes or reopens its log, deletes the logs and calls `access.history`; the status says `logs_off`; the GUI sends it as it attaches and when the setting changes), `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
   `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,

@@ -120,6 +120,29 @@ impl Slots {
         self.permanent.is_some()
     }
 
+    /// Checks a password against the permanent one on this computer (to
+    /// leave protected mode), running both sides of an OPAQUE login.
+    /// Returns: whether it is the permanent password; the temporary one
+    /// does not count.
+    pub fn check_permanent(&self, password: &str, host_key: &[u8]) -> bool {
+        const CONTEXT: &[u8] = b"kyokai/local-check/v1";
+        if self.permanent.is_none() {
+            return false;
+        }
+        let Ok((client, requests)) = client_start(password) else {
+            return false;
+        };
+        let Ok((responses, server)) = self.respond(&requests, host_key, CONTEXT) else {
+            return false;
+        };
+        match client.finish(password, &responses, host_key, CONTEXT) {
+            Some((Slot::Permanent, done)) => {
+                server.finish(Slot::Permanent, &done, host_key, CONTEXT)
+            }
+            _ => false,
+        }
+    }
+
     /// Answers the controller's credential requests, one per slot; an unset
     /// slot answers with a fake record indistinguishable from a real one.
     /// Inputs: `context` binds the login to the Noise handshake.

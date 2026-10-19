@@ -82,7 +82,30 @@ The engine writes `logs/engine.log` in the state directory. Audited on 2026-10-1
 its start (version, Device ID, how secrets are kept) and why it stops (lifeline or parent gone);
 the core writes no log; a provider's error carries its status and message, never the key. A Go
 crash trace (in `engine.log`, and `logs/gui-crash.log` for the GUI) holds the stack and the
-runtime's message, which never include secrets.
+runtime's message, which never include secrets. The macOS helper's launchd job sends its stderr
+to `helper.log` in its state directory.
+
+### No logs
+
+Settings, Storage, **No logs** (off by default; turning it on asks first, warning that afterwards
+nobody can tell who connected or whom this device connected to) keeps as little as possible on
+the computer. The GUI and its engine (the user engine or the helper, told on every attach and
+change with `logs.set`) then:
+
+- write no log and no crash trace: a `no-logs` marker in the state directory keeps every process
+  started there from opening its log, the crash output is switched off, and stderr goes to the
+  null device (launchd would keep it in `helper.log`);
+- delete the logs already written: the `logs` folder and `helper.log` (launchd creates an empty one
+  at each helper start, which the helper deletes);
+- keep the connection history only in memory (`access.history`): trusted devices and known hosts
+  move out of the secrets store and are gone when the engine stops, so after a restart a known
+  Device ID with a new key is no longer flagged and Recent starts empty. The choice itself
+  (`no_history`) is kept, so the next start keeps none either.
+
+Saved passwords, names given to devices, per-device viewer settings and the AI task history are
+the user's own settings and stay. Reports the system writes itself (macOS crash reports in
+`~/Library/Logs/DiagnosticReports`, Windows Error Reporting) are outside Kyokai's control. Turning
+No logs off writes this run's history to the store again and logs from then on.
 
 ## Local API
 

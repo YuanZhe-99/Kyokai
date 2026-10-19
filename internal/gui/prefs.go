@@ -1,10 +1,12 @@
 package gui
 
 import (
+	"maps"
 	"path/filepath"
 	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/fsutil"
+	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 )
 
 // Prefs are the GUI's own settings, kept in the state directory.
@@ -43,6 +45,22 @@ type Prefs struct {
 	AskedPermissions string `json:"asked_permissions,omitempty"`
 	// Viewers are the viewer settings chosen for each device, by Device ID.
 	Viewers map[string]ViewerPrefs `json:"viewers,omitempty"`
+	// NoLogs keeps no logs, crash traces or connection history on this
+	// computer, in the GUI and its engine (Settings, Storage).
+	NoLogs bool `json:"no_logs,omitempty"`
+	// Aliases are the names this device's user gave other devices, by
+	// Device ID: shown here instead of the names the devices give
+	// themselves, and never sent anywhere.
+	Aliases map[string]string `json:"aliases,omitempty"`
+}
+
+// named is what a device says about itself, with the name this device's
+// user gave it, if any, in place of its own.
+func (p Prefs) named(device string, about localapi.About) localapi.About {
+	if alias := p.Aliases[device]; alias != "" {
+		about.Name = alias
+	}
+	return about
 }
 
 // ViewerPrefs are the settings a device's viewer opens with: the quality
@@ -107,6 +125,26 @@ func (a *App) setViewerPrefs(device string, vp ViewerPrefs) {
 	}
 	viewers[device] = vp
 	p.Viewers = viewers
+	a.setPrefs(p)
+}
+
+// setAlias names a device on this device only; an empty name goes back
+// to the one the device gives itself.
+// Side effects: writes gui.json.
+func (a *App) setAlias(device, name string) {
+	a.mu.Lock()
+	p := a.prefs
+	a.mu.Unlock()
+	aliases := maps.Clone(p.Aliases)
+	if aliases == nil {
+		aliases = map[string]string{}
+	}
+	if name == "" {
+		delete(aliases, device)
+	} else {
+		aliases[device] = name
+	}
+	p.Aliases = aliases
 	a.setPrefs(p)
 }
 

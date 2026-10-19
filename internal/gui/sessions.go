@@ -17,17 +17,45 @@ import (
 
 // connectForm is the Home page's "connect to another device" form.
 type connectForm struct {
-	deviceID string
+	// target is a Device ID or an address, as typed.
+	target string
 	// ai also asks to run AI tasks on the host and approve their actions.
 	ai bool
+	// identifying: the device at an address is being asked for its ID.
+	identifying bool
 }
 
-// accessForm is the Settings page's permanent password field and the
-// trusted devices last fetched (nil until fetched).
+// renameForm is the name being given to a recent device (Home), while
+// device is set.
+type renameForm struct {
+	device string
+	name   string
+}
+
+// accessForm is the Settings page's permanent password field, the
+// connections-by-address ranges while edited (ranges nil follows the
+// engine), and the trusted devices last fetched (nil until fetched).
 type accessForm struct {
 	permanent string
+	ranges    *string
 	trusted   []localapi.TrustedDevice
 	loaded    bool
+}
+
+// parseTarget reads Connect's field: nine digits (spaces allowed) are a
+// Device ID, other digits nothing yet, anything else an address.
+func parseTarget(s string) (device, address string) {
+	compact := strings.Join(strings.Fields(s), "")
+	if compact == "" {
+		return "", ""
+	}
+	if strings.Trim(compact, "0123456789") == "" {
+		if len(compact) == 9 {
+			return compact, ""
+		}
+		return "", ""
+	}
+	return "", strings.TrimSpace(s)
 }
 
 // requestsView shows every controller waiting for this host's user, on
@@ -39,7 +67,7 @@ func (a *App) requestsView(c *ui.Context) {
 	if a.connected && a.status != nil {
 		reqs = a.status.Requests
 	}
-	grants := a.grants
+	grants, prefs := a.grants, a.prefs
 	a.mu.Unlock()
 	var perms *localapi.Permissions
 	if len(reqs) > 0 {
@@ -50,7 +78,7 @@ func (a *App) requestsView(c *ui.Context) {
 		card(c.Key(key)).Border(2, t.Accent).Children(func() {
 			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
 				deviceAvatar(c, r.About)
-				ui.Text(c, L.RequestTitle(deviceTitle(r.About, r.DeviceID))).FontSize(sizeHeading).Bold()
+				ui.Text(c, L.RequestTitle(deviceTitle(prefs.named(r.DeviceID, r.About), r.DeviceID))).FontSize(sizeHeading).Bold()
 			})
 			if !r.Password {
 				ui.Text(c, L.RequestNoPassword()).FontSize(sizeSmall).TextColor(t.Warning)
@@ -113,6 +141,7 @@ func (a *App) hostBanner(c *ui.Context) {
 			}
 		}
 	}
+	prefs := a.prefs
 	a.mu.Unlock()
 	for _, s := range here {
 		key := "here-" + itoa(s.ID)
@@ -120,7 +149,7 @@ func (a *App) hostBanner(c *ui.Context) {
 			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
 				deviceAvatar(c, s.Peer)
 				ui.Column(c).Grow(1).Gap(2).Children(func() {
-					ui.Text(c, L.HostConnected(deviceTitle(s.Peer, s.DeviceID))).Bold()
+					ui.Text(c, L.HostConnected(deviceTitle(prefs.named(s.DeviceID, s.Peer), s.DeviceID))).Bold()
 					ui.Text(c, sessionState(s, a.outdatedHelper())).FontSize(sizeSmall).TextColor(t.TextMuted)
 				})
 				if ui.Button(c.Key(key+"-close"), L.ActionDisconnect()).Clicked() {
@@ -152,22 +181,28 @@ func (a *App) decide(id uint64, allow bool, granted []string) {
 func (a *App) connectCard(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
-	f, online := a.connect, a.status.Network.State == "online" || a.status.Network.State == "listening"
+	f, online := a.connect, a.status.Network.State == "online"
 	a.mu.Unlock()
 	card(c).Children(func() {
 		ui.Text(c, L.ConnectTitle()).FontSize(sizeHeading).Bold()
-		id := ui.TextInput(c.Key("conn-id"), &f.deviceID).Placeholder("482 916 735").FillWidth().FontSize(sizeTitle).FontFeatures("tnum")
+		id := ui.TextInput(c.Key("conn-id"), &f.target).Placeholder(L.ConnectPlaceholder()).FillWidth().FontSize(sizeTitle).FontFeatures("tnum").Disabled(f.identifying)
 		if id.Changed() {
 			a.mu.Lock()
-			a.connect.deviceID = f.deviceID
+			a.connect.target = f.target
 			a.mu.Unlock()
 		}
-		device := strings.Join(strings.Fields(f.deviceID), "")
-		ready := online && len(device) == 9
+		device, address := parseTarget(f.target)
+		ready := (online && device != "" || address != "") && !f.identifying
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			if !online {
+			switch {
+			case f.identifying:
+				ui.Row(c).Grow(1).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Spinner(c)
+					ui.Text(c, L.ConnectIdentifying()).FontSize(sizeSmall).TextColor(t.TextMuted)
+				})
+			case !online && address == "":
 				ui.Text(c, L.ConnectNeedsNetwork()).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
-			} else {
+			default:
 				ui.Row(c).Grow(1)
 			}
 			ui.MenuButton(c.Key("conn-options"), L.ConnectOptions(), func(m *ui.Menu) {
@@ -178,10 +213,59 @@ func (a *App) connectCard(c *ui.Context) {
 				}
 			}).Label(L.ConnectOptions()).Tooltip(L.ConnectOptions())
 			if ui.PrimaryButton(c.Key("conn-go"), L.ActionConnect()).Disabled(!ready).Clicked() {
-				a.connectDevice(device, a.recentAbout(device), connectWant(f.ai))
+				if address != "" {
+					a.connectAddress(address, connectWant(f.ai))
+				} else {
+					a.connectDevice(device, "", a.recentAbout(device), connectWant(f.ai))
+				}
 			}
 		})
 	})
+}
+
+// connectAddress asks the device at an address for its Device ID, then
+// connects to that device there.
+// Side effects: a toast when no device answers.
+func (a *App) connectAddress(address string, want []string) {
+	a.mu.Lock()
+	a.connect.identifying = true
+	a.mu.Unlock()
+	go func() {
+		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestIdentify, Address: address})
+		a.update(func() {
+			a.connect.identifying = false
+			var refused *localapi.RequestError
+			switch {
+			case errors.As(err, &refused):
+				a.setToast(refused.Message, true)
+			case err != nil:
+				a.setToast(L.EngineDown(), true)
+			case resp.DeviceID == "":
+				a.setToast(identifyFailure(resp.Failure), true)
+			}
+		})
+		a.mu.Lock()
+		w := a.window
+		a.mu.Unlock()
+		// On the main thread (Window.Update) and not under a.mu, which
+		// connectDevice takes itself.
+		if err == nil && resp.DeviceID != "" && w != nil {
+			w.Update(func() { a.connectDevice(resp.DeviceID, address, a.recentAbout(resp.DeviceID), want) })
+		}
+	}()
+}
+
+// identifyFailure words why no device answered at an address.
+func identifyFailure(name string) string {
+	switch name {
+	case "unreachable":
+		return L.IdentifyUnreachable()
+	case "incompatible":
+		return L.FailIncompatible()
+	case "self":
+		return L.IdentifySelf()
+	}
+	return L.IdentifyBroken()
 }
 
 // recentAbout is what a recent device said about itself, if anything.
@@ -208,22 +292,27 @@ func connectWant(ai bool) []string {
 // deviceRow is one device on Home: what it said about itself and its
 // connection from here, if any.
 type deviceRow struct {
-	id    string
+	id string
+	// about carries the name this device's user gave it, if any.
 	about localapi.About
 	last  int64
 	saved bool
+	// address is the address the last session dialed, empty over the
+	// network.
+	address string
 	// session is the newest connection to it in the engine's list, or nil.
 	session *localapi.SessionInfo
 }
 
 // deviceRows are the devices this one connected to, newest first, with
-// the ones being connected to for the first time.
-func deviceRows(st *localapi.Status) []deviceRow {
+// the ones being connected to for the first time, by the names p gives
+// them.
+func deviceRows(st *localapi.Status, p Prefs) []deviceRow {
 	var rows []deviceRow
 	index := map[string]int{}
 	for _, r := range st.Recent {
 		index[r.DeviceID] = len(rows)
-		rows = append(rows, deviceRow{id: r.DeviceID, about: r.About, last: r.Last, saved: r.SavedPassword})
+		rows = append(rows, deviceRow{id: r.DeviceID, about: p.named(r.DeviceID, r.About), last: r.Last, saved: r.SavedPassword, address: r.Address})
 	}
 	for _, s := range st.Sessions {
 		if s.Role != "controller" {
@@ -232,7 +321,7 @@ func deviceRows(st *localapi.Status) []deviceRow {
 		i, ok := index[s.DeviceID]
 		if !ok {
 			index[s.DeviceID] = len(rows)
-			rows = append(rows, deviceRow{id: s.DeviceID, about: s.Peer})
+			rows = append(rows, deviceRow{id: s.DeviceID, about: p.named(s.DeviceID, s.Peer)})
 			i = len(rows) - 1
 		}
 		if cur := rows[i].session; cur == nil || s.ID > cur.ID {
@@ -245,11 +334,12 @@ func deviceRows(st *localapi.Status) []deviceRow {
 
 // devicesCard is Home's recent devices, one card each as RustDesk shows
 // them: a click connects (or shows its tab), its menu connects with AI,
-// forgets its password or old identity, or removes it.
+// renames it here, forgets its password or old identity, or removes it.
 func (a *App) devicesCard(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
-	rows := deviceRows(a.status)
+	rows := deviceRows(a.status, a.prefs)
+	rename := a.rename
 	online := map[string]bool{}
 	for _, d := range a.status.Network.Devices {
 		online[d.DeviceID] = true
@@ -259,6 +349,9 @@ func (a *App) devicesCard(c *ui.Context) {
 		return
 	}
 	ui.Text(c, L.ConnectRecent()).FontSize(sizeHeading).Bold()
+	if rename.device != "" {
+		a.renameCard(c, rename)
+	}
 	ui.Row(c).FillWidth().Wrap().Gap(gap).AlignItems(ui.Start).Children(func() {
 		for _, r := range rows {
 			a.deviceCard(c, t, r, online[r.id])
@@ -286,7 +379,7 @@ func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
 	keyChanged := r.session != nil && r.session.State == "failed" && string(r.session.Failure) == `"key-changed"`
 	box := ui.ButtonBase(c.Key("device-"+r.id)).Width(deviceCardW).Radius(cardRadius).Background(t.Surface).Border(1, t.Border).Label(deviceTitle(r.about, r.id))
 	if box.Clicked() {
-		a.connectDevice(r.id, r.about, nil)
+		a.connectDevice(r.id, r.address, r.about, nil)
 	}
 	box.Children(func() {
 		ui.Column(c).FillWidth().Padding(12).Gap(8).Children(func() {
@@ -306,12 +399,17 @@ func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
 				more.Children(func() { ui.Text(c, "⋯").TextColor(t.TextMuted) })
 				more.Menu(func(m *ui.Menu) {
 					if m.Item(L.ActionConnect()).Chosen() {
-						a.connectDevice(r.id, r.about, nil)
+						a.connectDevice(r.id, r.address, r.about, nil)
 					}
 					if m.Item(L.ActionConnectAI()).Chosen() {
-						a.connectDevice(r.id, r.about, connectWant(true))
+						a.connectDevice(r.id, r.address, r.about, connectWant(true))
 					}
 					m.Separator()
+					if m.Item(L.ActionRename()).Chosen() {
+						a.mu.Lock()
+						a.rename = renameForm{device: r.id, name: a.prefs.Aliases[r.id]}
+						a.mu.Unlock()
+					}
 					if r.saved && m.Item(L.ActionForgetPassword()).Chosen() {
 						a.forgetPassword(r.id)
 					}
@@ -348,8 +446,45 @@ func (a *App) forgetPassword(device string) {
 	}()
 }
 
-// removeDevice takes a device off Home: its connection ends, and its
-// pinned key and saved password are forgotten.
+// renameCard edits the name a recent device has on this device only.
+func (a *App) renameCard(c *ui.Context, f renameForm) {
+	t := c.Theme()
+	a.mu.Lock()
+	var about localapi.About
+	for _, r := range deviceRows(a.status, Prefs{}) {
+		if r.id == f.device {
+			about = r.about
+		}
+	}
+	a.mu.Unlock()
+	card(c.Key("rename-" + f.device)).Children(func() {
+		ui.Text(c, L.RenameTitle(deviceTitle(about, f.device))).Bold()
+		ui.Text(c, L.RenameHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+		ui.Row(c).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
+			in := ui.TextInput(c.Key("rename-in"), &f.name).Placeholder(about.Name).Grow(1)
+			if in.Changed() {
+				a.mu.Lock()
+				a.rename.name = f.name
+				a.mu.Unlock()
+			}
+			if ui.Button(c.Key("rename-cancel"), L.ActionCancel()).Clicked() {
+				a.mu.Lock()
+				a.rename = renameForm{}
+				a.mu.Unlock()
+			}
+			if ui.PrimaryButton(c.Key("rename-save"), L.ActionSave()).Clicked() {
+				a.mu.Lock()
+				a.rename = renameForm{}
+				a.mu.Unlock()
+				a.setAlias(f.device, strings.TrimSpace(f.name))
+			}
+		})
+	})
+}
+
+// removeDevice takes a device off Home: its connection ends, its
+// sessions leave the list, its pinned key, saved password and the name
+// given here are forgotten.
 // Notes: call on the main thread.
 func (a *App) removeDevice(device string) {
 	if v := a.viewerFor(device); v != nil {
@@ -359,9 +494,12 @@ func (a *App) removeDevice(device string) {
 			v.disconnect()
 		}
 	}
+	a.setAlias(device, "")
 	go func() {
-		_, _ = a.requestWith(localapi.Request{Type: localapi.RequestForgetPassword, DeviceID: device})
-		_, _ = a.requestWith(localapi.Request{Type: localapi.RequestHostForget, DeviceID: device})
+		_, err := a.requestWith(localapi.Request{Type: localapi.RequestDeviceRemove, DeviceID: device})
+		if err != nil {
+			a.update(func() { a.setToast(L.EngineDown(), true) })
+		}
 	}()
 }
 
@@ -482,14 +620,16 @@ func (a *App) acceptSettings(c *ui.Context, mode string, without, hasPermanent, 
 	})
 }
 
-// accessSettings is Settings' card for the permanent password and the
-// trusted devices.
+// accessSettings is Settings' card for the permanent password, how
+// connections are accepted, connections by address and the trusted
+// devices.
 func (a *App) accessSettings(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	f, busy, hasPermanent := a.access, a.busy["access"], a.status.PermanentPassword
 	grants := slices.Clone(a.status.PasswordGrants)
-	mode, without := a.status.PasswordMode, a.status.WithoutAsking
+	mode, without, by := a.status.PasswordMode, a.status.WithoutAsking, a.status.ByAddress
+	prefs := a.prefs
 	a.mu.Unlock()
 	if !f.loaded && !busy {
 		a.loadTrusted()
@@ -525,6 +665,10 @@ func (a *App) accessSettings(c *ui.Context) {
 			a.passwordGrants(c, grants, busy)
 		}
 		ui.Divider(c)
+		a.protectedSetting(c, hasPermanent, busy)
+		ui.Divider(c)
+		a.byAddressSettings(c, by, f.ranges, busy)
+		ui.Divider(c)
 		ui.Text(c, L.TrustedTitle())
 		ui.Text(c, L.TrustedHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		if f.loaded && len(f.trusted) == 0 {
@@ -532,13 +676,125 @@ func (a *App) accessSettings(c *ui.Context) {
 		}
 		for _, d := range f.trusted {
 			hint := L.TrustedLast(time.Unix(d.Last, 0).Local().Format(time.DateTime))
-			settingRow(c, "trust-"+d.Key, deviceTitle(d.About, d.DeviceID), hint, func() {
+			settingRow(c, "trust-"+d.Key, deviceTitle(prefs.named(d.DeviceID, d.About), d.DeviceID), hint, func() {
 				if ui.Button(c.Key("trust-rm-"+d.Key), L.ActionRemove()).Disabled(busy).Clicked() {
 					a.untrust(d.Key)
 				}
 			})
 		}
 	})
+}
+
+// protected reports whether protected mode is on (caller holds a.mu).
+func (a *App) protected() bool {
+	// The last status counts while the engine is away.
+	return a.status != nil && a.status.Protected
+}
+
+// protectedSetting is the Access card's protected mode: on only with a
+// permanent password, after a confirmation.
+func (a *App) protectedSetting(c *ui.Context, hasPermanent, busy bool) {
+	on := false
+	settingRow(c, "protected", L.ProtectedTitle(), L.ProtectedHint(), func() {
+		if ui.Switch(c.Key("protected-sw"), &on).Label(L.ProtectedTitle()).Disabled(busy || !hasPermanent).Changed() && on {
+			// A dialog: off the main thread.
+			go func() {
+				if a.confirm(L.ProtectedConfirm(), L.ProtectedTurnOn()) {
+					a.accessCommand(localapi.Request{Type: localapi.RequestProtect, Protect: &localapi.ProtectRequest{On: true}}, nil)
+				}
+			}()
+		}
+	})
+	if !hasPermanent {
+		ui.Text(c, L.ProtectedNeedsPermanent()).FontSize(sizeSmall).TextColor(c.Theme().TextMuted)
+	}
+}
+
+// protectedCard tops the AI page in protected mode: what it is, and the
+// permanent password to turn it off.
+func (a *App) protectedCard(c *ui.Context) {
+	t := c.Theme()
+	a.mu.Lock()
+	password, busy := a.unlock, a.busy["access"]
+	a.mu.Unlock()
+	card(c).Border(2, t.Accent).Children(func() {
+		ui.Text(c, L.ProtectedTitle()).FontSize(sizeHeading).Bold()
+		ui.Text(c, L.ProtectedOnHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+		ui.Row(c).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
+			in := ui.TextInput(c.Key("unlock-in"), &password).Password().Placeholder(L.PermanentTitle()).Grow(1).Disabled(busy)
+			if in.Changed() {
+				a.mu.Lock()
+				a.unlock = password
+				a.mu.Unlock()
+			}
+			if ui.Button(c.Key("unlock-go"), L.ProtectedTurnOff()).Disabled(busy || password == "").Clicked() {
+				a.mu.Lock()
+				a.unlock = ""
+				a.mu.Unlock()
+				a.mu.Lock()
+				a.busy["access"] = true
+				a.mu.Unlock()
+				go func() {
+					_, err := a.requestWith(localapi.Request{Type: localapi.RequestProtect, Protect: &localapi.ProtectRequest{Password: password}})
+					a.update(func() {
+						delete(a.busy, "access")
+						if err != nil {
+							a.setToast(L.ProtectedWrongPassword(), true)
+						}
+					})
+				}()
+			}
+		})
+	})
+}
+
+// byAddressSettings is the Access card's connections by address: the
+// switch, and the ranges they are accepted from (edited, then saved).
+// Inputs: edited, the ranges field while edited, else nil.
+func (a *App) byAddressSettings(c *ui.Context, by localapi.ByAddress, edited *string, busy bool) {
+	t := c.Theme()
+	on := by.On
+	settingRow(c, "by-address", L.ByAddressTitle(), L.ByAddressHint(), func() {
+		if ui.Switch(c.Key("by-address-sw"), &on).Label(L.ByAddressTitle()).Disabled(busy).Changed() {
+			a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings,
+				ByAddress: &localapi.ByAddress{On: on, Ranges: by.Ranges}}, nil)
+		}
+	})
+	if !by.On {
+		return
+	}
+	if by.Port == 0 {
+		ui.Text(c, L.ByAddressFailed()).FontSize(sizeSmall).TextColor(t.Warning)
+	}
+	ranges := strings.Join(by.Ranges, "\n")
+	if edited != nil {
+		ranges = *edited
+	}
+	ui.Column(c.Key("by-address-ranges")).Gap(4).FillWidth().Children(func() {
+		ui.Text(c, L.ByAddressRanges())
+		if ui.TextArea(c.Key("by-address-ranges-in"), &ranges).FillWidth().MinHeight(inputAreaH).Disabled(busy).Changed() {
+			a.mu.Lock()
+			a.access.ranges = &ranges
+			a.mu.Unlock()
+		}
+		ui.Text(c, L.ByAddressRangesHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+	})
+	if edited != nil {
+		ui.Row(c).Gap(gap).Children(func() {
+			if ui.Button(c.Key("by-address-save"), L.ActionSave()).Disabled(busy).Clicked() {
+				a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings,
+					ByAddress: &localapi.ByAddress{On: true, Ranges: append([]string{}, lines(ranges)...)}}, func() {
+					a.access.ranges = nil
+					a.setToast(L.ByAddressSaved(), false)
+				})
+			}
+			if ui.Button(c.Key("by-address-cancel"), L.ActionCancel()).Disabled(busy).Clicked() {
+				a.mu.Lock()
+				a.access.ranges = nil
+				a.mu.Unlock()
+			}
+		})
+	}
 }
 
 // allPermissions are the permissions in the order Settings lists them.

@@ -10,7 +10,7 @@ import (
 // Version is the product version. mygo.json must carry the same value
 // (checked by TestManifestMatches); release tags are "v" + Version. The Rust
 // core has no version of its own: its hosts pass this one when they start it.
-const Version = "0.2.0"
+const Version = "0.2.1"
 
 // Build identifies this build within its version: the commit it was built
 // from ("" without that record, a build outside the repository). Two builds

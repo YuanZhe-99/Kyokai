@@ -23,7 +23,7 @@ const sourceURL = "https://github.com/YuanZhe-99/Kyokai"
 func (a *App) sidebar(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
-	pg := a.page
+	pg, protected := a.page, a.protected()
 	a.mu.Unlock()
 	ui.Column(c).Width(sidebarW).FillHeight().Background(t.Surface).Padding(12, 8).Gap(2).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).PaddingX(8).PaddingY(4).Children(func() {
@@ -49,6 +49,10 @@ func (a *App) sidebar(c *ui.Context) {
 				a.page = p
 				a.mu.Unlock()
 			}
+		}
+		if protected {
+			link("ai", L.NavAI(), navAI, pageAI)
+			return
 		}
 		link("home", L.NavHome(), navHome, pageHome)
 		link("network", L.NavNetwork(), navNetwork, pageNetwork)
@@ -294,6 +298,30 @@ func (a *App) storageSettings(c *ui.Context) {
 			}
 			ui.Text(c, secretsNote(st.Persistence)).FontSize(sizeSmall).TextColor(col).MaxWidth(360)
 		})
+		a.mu.Lock()
+		p := a.prefs
+		a.mu.Unlock()
+		off := p.NoLogs
+		settingRow(c, "no-logs", L.NoLogsTitle(), L.NoLogsHint(), func() {
+			if ui.Switch(c.Key("no-logs-sw"), &off).Label(L.NoLogsTitle()).Changed() {
+				if !off {
+					a.setNoLogs(p, false)
+					return
+				}
+				// A dialog: off the main thread.
+				go func() {
+					if a.confirm(L.NoLogsConfirm(), L.NoLogsTurnOn()) {
+						a.mu.Lock()
+						p := a.prefs
+						a.mu.Unlock()
+						a.setNoLogs(p, true)
+					}
+				}()
+			}
+		})
+		if off && !st.LogsOff {
+			ui.Text(c, L.NoLogsEngineBehind()).FontSize(sizeSmall).TextColor(t.Warning)
+		}
 	})
 }
 
@@ -310,6 +338,12 @@ func (a *App) diagnostics(c *ui.Context) {
 		settingRow(c, "mode", L.DiagRunMode(), "", func() {
 			ui.Text(c, []string{L.RunModeUser(), L.RunModeFollow(), L.RunModeBackground()}[a.currentMode()])
 		})
+		if st.LogsOff {
+			settingRow(c, "logs", L.DiagLogs(), "", func() {
+				ui.Text(c, L.DiagLogsOff()).FontSize(sizeSmall).TextColor(c.Theme().TextMuted)
+			})
+			return
+		}
 		logs := filepath.Join(st.StateDir, "logs")
 		settingRow(c, "logs", L.DiagLogs(), logs, func() {
 			if ui.Button(c.Key("open-logs"), L.ActionOpenFolder()).Clicked() {

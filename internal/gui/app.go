@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/YuanZhe-99/Kyokai/internal/engine"
 	"github.com/YuanZhe-99/Kyokai/internal/helper"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	L "github.com/YuanZhe-99/Kyokai/locales"
@@ -75,6 +76,10 @@ type App struct {
 	// Sessions (sessions.go): the connect form, the permissions chosen per
 	// open host confirmation, the access card.
 	connect connectForm
+	// rename is the name being given to a recent device on Home.
+	rename renameForm
+	// unlock is the permanent password typed to leave protected mode.
+	unlock string
 	// name is the friendly-name field in Settings while it is edited.
 	name   nameForm
 	grants map[uint64][]string
@@ -176,6 +181,27 @@ func (a *App) sendCapture() {
 	show := a.prefs.ShowInCapture
 	a.mu.Unlock()
 	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestCaptureShow, Show: &show})
+}
+
+// sendLogs tells the engine whether to keep logs and connection history,
+// as the preferences say. An engine of an older version refuses the
+// request, which changes nothing.
+func (a *App) sendLogs() {
+	a.mu.Lock()
+	off := a.prefs.NoLogs
+	a.mu.Unlock()
+	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestLogs, LogsOff: &off})
+}
+
+// setNoLogs keeps no logs, crash traces or connection history from now
+// on (deleting the logs written), or keeps them again: in this GUI's
+// state folder and in its engine's.
+// Side effects: writes gui.json and the marker; may delete the logs.
+func (a *App) setNoLogs(p Prefs, off bool) {
+	p.NoLogs = off
+	a.setPrefs(p)
+	_ = engine.SetLogsOff(a.stateDir, off)
+	go a.sendLogs()
 }
 
 // sendSoundSource tells the engine which sound this device shares, as the
@@ -362,8 +388,11 @@ func (a *App) MainView(c *ui.Context) { a.main.view(c) }
 func (a *App) View(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
-	pg := a.page
+	pg, protected := a.page, a.protected()
 	a.mu.Unlock()
+	if protected {
+		pg = pageAI
+	}
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
 		ui.Row(c).Fill().Grow(1).AlignItems(ui.Stretch).Children(func() {
 			a.sidebar(c)
@@ -375,6 +404,9 @@ func (a *App) View(c *ui.Context) {
 				case pageNetwork:
 					a.networkView(c)
 				case pageAI:
+					if protected {
+						a.protectedCard(c)
+					}
 					a.aiView(c)
 				case pageSettings:
 					a.settingsView(c)
