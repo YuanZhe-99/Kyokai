@@ -21,6 +21,7 @@
   into reused Media Foundation samples and the viewer converts decoded pictures in place (no
   per-frame buffers or copies beyond the conversion), and the viewer decodes H.264 on the GPU
   where it has a decoder, as a Mac does through VideoToolbox.
+- Started at login, Kyokai opens no window and waits in the tray (on a Mac it asked too early whether it was a login item, read no, and showed its window).
 - Protocol 10 and local API 2, unchanged: the networks come with new requests and a `networks`
   list in the status, beside the old ones, so 0.3.2 and 0.3.1 connect to each other and an older
   GUI works with a newer engine.

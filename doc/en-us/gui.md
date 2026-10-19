@@ -95,7 +95,7 @@ when `SCREENSHOT_DIR` is set.
   follows it — how secrets are kept, and No logs — off by default, turning it on after a warning
   that nobody can tell any more who connected or whom this device connected to, with a note when
   the engine in use cannot do it yet.
-- **General:** language, appearance, open at login — off by default — and the close button; Run
+- **General:** language, appearance, open at login — off by default; started at login, Kyokai shows no window, only its tray icon (on a Mac, as a login item, asked once the app is ready: asked earlier, macOS answered no) — and the close button; Run
   mode: No privileges / Follow Kyokai / Background service, a note on the one administrator prompt
   and what moves along; switching runs in the background with a toast
   ([run-modes.md](run-modes.md)); Windows and macOS.
