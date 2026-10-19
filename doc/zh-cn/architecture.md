@@ -51,7 +51,7 @@
 | `kyokai_start(json, len, *out, *out_len) -> i32` | 以 `{version, state_dir, profile}` 启动核心 |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | 应答 `{method, params}` |
 | `kyokai_free(ptr, len)` | 释放响应缓冲区 |
-| `kyokai_stop()` | 丢弃核心的状态，包括内存中的机密 |
+| `kyokai_stop()` | 结束所有会话（已连接的会话各发送告别，最多等待一秒），然后丢弃核心的状态，包括内存中的机密 |
 | `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | 等待控制端会话的下一个媒体包，并复制到调用方的缓冲区；-1 超时，-2 已结束，-3 过大 |
 | `kyokai_media_write(session, ptr, len) -> i32` | 把界面发来的控制包（输入、关键帧请求）交给会话：0，-1 格式错误，-2 已结束；会话落后时指针移动可能被丢弃（-3），其他包都会等到会话接收 |
 | `kyokai_decoder_open(json, len) -> u64` | 为视频流（`{codec, width, height}`）打开查看用的解码器；编解码器不可用时返回 0。不需要已启动的核心 |
@@ -67,7 +67,7 @@
 
 响应是核心分配的缓冲区中的 `{"ok": true, "result": …}` 或 `{"ok": false, "error": "…"}`；panic 在边界处捕获并作为错误返回。
 方法：`status`（从不含机密；包含网络状态）、`password.reveal`、`password.regenerate`、`network.get`（不含密钥的设置）、
-`network.set`（`{servers, name, secret?}`；缺少密钥时保留已存的密钥）、`password.set_permanent`（`{password}`，null 表示移除）、
+`network.set`（`{servers, peers, name, secret?}`；缺少密钥时保留已存的密钥，空密钥则清除）、`password.set_permanent`（`{password}`，null 表示移除）、
 `session.connect`（`{device_id, password, want, remember}`；空密码使用为该被控端保存的密码；立即返回会话 id，进度见状态）、`password.forget_saved`（`{device_id}`）、`session.close`、`request.decide`
 （`{id, allow, permissions}`）、`trusted.list`、`trusted.remove`、`host.forget`、`identity.export`（`{passphrase}` → `{document}`）、`identity.import`
 （`{document, passphrase}`）、`identity.reset`、`device.set_name`（`{name}`；"" 表示使用电脑的名称；状态中带有 `name` 与本机的 `about`）、`access.settings`（`{password_mode?: temporary|permanent|both, without_asking?}`）、`permission.request`（`{name}`：macOS 上的 `screen`、`accessibility`、`input-monitoring` 或 `keychain` → `{granted}`；`keychain` 会重新打开存储，打开后重建核心；在助手中由代理请求）、`store.start_over`（已保存的存储无法解锁：把它移到一旁，在新存储上重建核心 → `{kept}`）、`agent.restart`（助手的会话代理退出，由其监管者再次启动）、`store.export`（`{passphrase}` → `{document}`）、`store.import`（`{document, passphrase}`）、`store.clear`（切换运行方式时使用，[run-modes.md](run-modes.md)）、`host.serve`（`{serve}`：`all`、`unattended` 或 `none`，由引擎依据运行方式设定）、`capture.show`（`{show}`：采集中是否显示 Kyokai 的窗口，依设置中的“在屏幕采集中隐藏 Kyokai”；macOS 的采集即时跟随；助手会转告其代理；在界面说明之前保持隐藏）、`sound.source`（`{source}`：共享的声音，"" 为本机正在播放的声音，否则为输入设备的 id；正在进行的流随之切换；助手会转告其代理）、`sound.devices`（→ `[{id, name}]`，输入设备；助手模式下为代理的），以及 AI 任务的方法（[computer-use.md](computer-use.md)）：`ai.settings.get`、

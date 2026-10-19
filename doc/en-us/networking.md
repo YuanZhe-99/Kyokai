@@ -1,8 +1,9 @@
 # Networking
 
 Kyokai devices reach each other through an embedded EasyTier node in the engine (`net.rs` in the
-core). The node joins an EasyTier network through standard EasyTier servers; there is no TUN
-device, no administrator right and no custom coordination server.
+core). The node joins an EasyTier network through standard EasyTier servers, or directly through
+other devices' addresses; there is no TUN device, no administrator right and no custom
+coordination server.
 
 ## The node
 
@@ -20,13 +21,27 @@ device, no administrator right and no custom coordination server.
 The node runs while the engine runs and a network is configured; it restarts when the settings
 change.
 
+Sessions run over the data plane's TCP (smoltcp). Its flush waits until the peer acknowledged
+everything sent, so a session never flushes after a message, which would allow one message per
+round trip (with the peer's delayed acknowledgement, about 90 a second on a LAN, shared by video,
+sound and input): the bytes leave as they are written. Only a goodbye waits, briefly, for the peer
+([protocol.md](protocol.md)). The send and receive buffers are 128 KiB each.
+
 ## Settings
 
 The user configures one network: up to 8 server URLs (`tcp`, `udp`, `ws`, `wss`, `quic`, `wg`;
-`faketcp` and others are refused), a network name (at most 64 characters) and the network secret.
-The whole entry, secret included, is kept in the secrets store ([security.md](security.md)), so
-without a working OS store it lasts only for the run. A secret shorter than 16 characters is
-reported as weak. Clearing the servers and the name turns the node off.
+`faketcp` and others are refused), up to 8 direct addresses, a network name (at most 64
+characters) and the network secret. The whole entry, secret included, is kept in the secrets
+store ([security.md](security.md)), so without a working OS store it lasts only for the run. A
+secret shorter than 16 characters is reported as weak.
+
+A direct address is another Kyokai device's IP address or domain name, with the first listening
+port (47311) unless it names one, or a URL in one of the server schemes; each becomes a peer the
+node dials like a server (`tcp://` unless given). The other device must listen (direct
+connections on). A network needs a name and a server or an address, or only a name on a device
+that listens: others then reach it by its address, and its state reads `listening` until one
+does. Clearing the settings (servers, addresses, name and secret, the GUI's **Clear network
+settings**) turns the node off.
 
 ## Direct paths
 
@@ -59,10 +74,11 @@ The engine reads the node's status when asked, never from a cache:
 
 | Field | Meaning |
 |---|---|
-| `state` | `off`, `connecting`, `online` (a connection to a server or peer is up) or `error` |
+| `state` | `off`, `connecting`, `listening` (no server or address to dial: waiting for other devices), `online` (a connection to a server or peer is up) or `error` |
 | `error` | why the node could not start |
 | `address` | the virtual IPv4 address, once assigned |
 | `nat` | the NAT type found through STUN: `unknown`, `open`, `no-pat`, `full-cone`, `restricted`, `port-restricted`, `symmetric`, `symmetric-easy`, `symmetric-firewall` |
+| `listen_port` | the port other devices reach this one at by its address, when it listens |
 | `devices` | other Kyokai devices the network routes to: announced Device ID, `direct` or `relay` path, latency in ms |
 
 Sessions attached to the local API receive a new status whenever it changes (re-read every

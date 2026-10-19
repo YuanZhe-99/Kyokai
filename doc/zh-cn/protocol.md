@@ -47,7 +47,9 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 
 ## 会话消息
 
-结果为接受之后，双方交换 `{"type": …}` 文档：每 5 秒一次 `ping` / `pong`，以及 `bye`。15 秒内没有任何帧的会话会被关闭。
+结果为接受之后，双方交换 `{"type": …}` 文档：每 5 秒一次 `ping` / `pong`，以及 `bye`。结束会话的一方（会话被关闭，或其引擎停止：
+引擎停止前结束所有会话，最多等待一秒）发送 `bye`，并保持连接打开，直到另一方据此结束会话并关闭连接，或 500 毫秒过去：若先关闭，
+另一方的下一次写入会失败，它会把连接当作丢失并尝试恢复。15 秒内没有任何帧的会话会被关闭。
 视频与输入见“媒体”，AI 任务见其单独一节。
 
 ## 媒体
@@ -58,7 +60,8 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 `h264` 与 `hevc`，经 Media Foundation 的 `vp9`，软件的 `vp9-sw`、`av1` 与 `vp8`），以及其中能以全彩解码的（`vp9-sw`、`av1`；旧版本不带此字段）。
 被控端回复 `{"type": "codec-offer", codecs}`：它能发送且控制端能解码的编码，按它的顺序；控制端可以用 `{"type": "codec", codec}`
 选择其中之一（`auto`，或清单中的名称；其他名称不改变任何东西），并用 `{"type": "audio", on}` 请求被控端的声音（被控端只发给获得 `hear-sound` 的
-控制端，以字节 `0x04` 开头的明文，后接一个 48 kHz 立体声、10 毫秒的 Opus 数据包，静音时不发送，[computer-use.md](computer-use.md)“声音”）；恢复的控制端
+控制端，以字节 `0x04` 开头的明文，后接一个 48 kHz 立体声、10 毫秒的 Opus 数据包，静音时不发送，发送某帧的一个分片时已在等待的数据包在
+该帧下一个分片之前发出，[computer-use.md](computer-use.md)“声音”）；恢复的控制端
 会在发送其 `codecs` 之前再次发送查看者的 `quality`、`codec` 与 `audio`。
 被控端在第一帧之前发送 `{"type": "video-start", codec, width, height, i444, encoder, hardware}`（`i444` 与 `hardware` 仅在为真时出现；`encoder`：`videotoolbox`、`media-foundation`、`libvpx` 或 `libaom`，由编码器自己报告，测试图案不带此字段）。每帧的最后一个分片到达时，控制端发送 `{"type": "received", frame}`（该帧的编号）；被控端只在未确认的帧少于 3 个时发送新帧，并且只接受对它已发送且尚未确认的帧的确认。控制端可以发送
 `{"type": "key-frame"}`（被控端随后重新说明视频流、其显示器与编码清单，并发送关键帧）——即其界面的第一次请求，以及控制端在其队列丢弃帧期间自己的请求

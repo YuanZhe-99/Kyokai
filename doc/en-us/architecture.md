@@ -55,7 +55,7 @@ integers and pointers only:
 | `kyokai_start(json, len, *out, *out_len) -> i32` | Starts the core with `{version, state_dir, profile}` |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | Answers `{method, params}` |
 | `kyokai_free(ptr, len)` | Frees a response buffer |
-| `kyokai_stop()` | Drops the core's state, including its in-memory secrets |
+| `kyokai_stop()` | Ends every session (each connected one with a goodbye, waiting up to a second), then drops the core's state, including its in-memory secrets |
 | `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | Waits for a controller session's next media packet and copies it into the caller's buffer; -1 timeout, -2 ended, -3 too large |
 | `kyokai_media_write(session, ptr, len) -> i32` | Passes a control packet from the GUI (input, key-frame request) to the session: 0, -1 malformed, -2 ended; a pointer move may be left out while the session is behind (-3), anything else waits until the session takes it |
 | `kyokai_decoder_open(json, len) -> u64` | Opens a viewer decoder for a stream (`{codec, width, height}`); 0 when the codec is not available. Needs no started core |
@@ -72,8 +72,8 @@ integers and pointers only:
 Responses are `{"ok": true, "result": …}` or `{"ok": false, "error": "…"}` in a buffer the core
 allocates; panics are caught at the boundary and reported as errors. Methods: `status` (never a
 secret; includes the network status), `password.reveal`, `password.regenerate`, `network.get`
-(settings without the secret), `network.set` (`{servers, name, secret?}`; a missing secret keeps
-the stored one), `password.set_permanent` (`{password}`, null removes it), `session.connect`
+(settings without the secret), `network.set` (`{servers, peers, name, secret?}`; a missing secret keeps
+the stored one, an empty one clears it), `password.set_permanent` (`{password}`, null removes it), `session.connect`
 (`{device_id, password, want, remember}`; an empty password uses the one saved for the host;
 returns the session id at once, progress shows in the status), `password.forget_saved`
 (`{device_id}`), `session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,

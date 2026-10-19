@@ -383,37 +383,55 @@ func (v *viewer) update(fn func()) {
 	}
 }
 
-// pump reads the session's media until the stream or the window ends,
-// decoding each frame with a decoder of the GUI's core.
-// Side effects: asks the host for a key frame first, so a (re)opened viewer
-// starts with a complete picture.
-// Notes: runs on one locked OS thread, which the decoder is tied to.
-func (v *viewer) pump() {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	lib, err := coreLib()
-	if err != nil {
-		v.setState(L.ViewerNoDecoder())
-		return
+// Packets waiting for the video and the sound goroutines: a few frames,
+// and about half a second of sound.
+const (
+	videoWaiting = 4
+	soundWaiting = 50
+)
+
+// packetPool reuses packet buffers between the reader and the goroutines
+// it hands packets to, so nothing allocates per frame.
+type packetPool chan []byte
+
+// get returns a spare buffer, or nil (ReadPacket makes one).
+func (p packetPool) get() []byte {
+	select {
+	case b := <-p:
+		return b
+	default:
+		return nil
 	}
-	var dec *core.Decoder
-	// fresh: the decoder has not had a key frame yet.
-	fresh := false
-	// The host's sound, played while the viewer has it on.
-	var snd *viewerSound
-	defer func() {
-		if dec != nil {
-			dec.Close()
-		}
-		if snd != nil {
-			snd.close()
-		}
-	}()
+}
+
+// put gives a buffer back; spares beyond the pool's room are left to the
+// collector.
+func (p packetPool) put(b []byte) {
+	select {
+	case p <- b:
+	default:
+	}
+}
+
+// pump reads the session's media until the stream or the window ends. As
+// RustDesk's client does, reading never waits on decoding: frames go to the
+// video goroutine and sound to the sound goroutine, each with its own
+// queue, so a slow picture never holds up sound, input or the host's
+// reports.
+// Side effects: asks the host for a key frame first, so a (re)opened viewer
+// starts with a complete picture, and again when the video queue was full
+// and frames were left out.
+func (v *viewer) pump() {
 	defer func() {
 		v.mu.Lock()
 		v.pumping = false
 		v.mu.Unlock()
 	}()
+	lib, err := coreLib()
+	if err != nil {
+		v.setState(L.ViewerNoDecoder())
+		return
+	}
 	conn, err := localapi.NewClient(v.app.socket).Media(v.app.ctx, v.session())
 	if err != nil {
 		v.setState(L.ViewerEnded())
@@ -423,7 +441,8 @@ func (v *viewer) pump() {
 	v.conn = conn
 	v.mu.Unlock()
 	defer conn.Close()
-	_ = localapi.WritePacket(conn, append([]byte{packetControl}, `{"type":"key-frame"}`...))
+	keyRequest := append([]byte{packetControl}, `{"type":"key-frame"}`...)
+	_ = localapi.WritePacket(conn, keyRequest)
 	// The host follows what the bar shows, also for a new session.
 	for _, p := range v.choicePackets() {
 		_ = localapi.WritePacket(conn, p)
@@ -433,43 +452,52 @@ func (v *viewer) pump() {
 	done := make(chan struct{})
 	defer close(done)
 	go v.writer(conn, done)
-	var buf []byte
+	pool := make(packetPool, videoWaiting+soundWaiting+4)
+	video := make(chan []byte, videoWaiting)
+	sound := make(chan []byte, soundWaiting)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); v.decodeVideo(lib, video, pool) }()
+	go func() { defer wg.Done(); v.playSound(lib, sound, pool) }()
+	defer wg.Wait()
+	defer close(sound)
+	defer close(video)
+	var gate videoGate
 	for {
-		p, err := localapi.ReadPacket(conn, buf)
+		p, err := localapi.ReadPacket(conn, pool.get())
 		if err != nil {
 			v.setState(L.ViewerEnded())
 			return
 		}
-		buf = p
 		if len(p) == 0 {
+			pool.put(p)
 			continue
 		}
 		switch p[0] {
 		case packetVideoStart:
-			var s videoStart
-			if json.Unmarshal(p[1:], &s) != nil || s.Width <= 0 || s.Height <= 0 || s.Width > 16384 || s.Height > 16384 {
-				continue
+			// A new stream always reaches the decoder.
+			gate.lost = false
+			video <- p
+			continue
+		case packetFrame:
+			sent, ask := gate.pass(p, video)
+			if !sent {
+				pool.put(p)
 			}
-			// The same stream described again (a key frame was asked
-			// for): a new group of pictures, which the decoder takes as
-			// it is, without a blank picture between.
-			v.mu.Lock()
-			same := dec != nil && v.start == s
-			v.mu.Unlock()
-			if same {
-				continue
+			if ask {
+				select {
+				case v.out <- keyRequest:
+				default:
+				}
 			}
-			if dec != nil {
-				dec.Close()
-				dec = nil
+			continue
+		case packetAudio:
+			select {
+			case sound <- p:
+			default:
+				pool.put(p) // the sound goroutine is behind: left out
 			}
-			d, err := lib.OpenDecoder(p[1:])
-			if err != nil {
-				v.setState(L.ViewerUnsupported(codecLabel(s.Codec)))
-				continue
-			}
-			dec, fresh = d, true
-			v.begin(s)
+			continue
 		case packetDisplays:
 			var d hostDisplays
 			if json.Unmarshal(p[1:], &d) == nil {
@@ -499,20 +527,6 @@ func (v *viewer) pump() {
 					v.mu.Unlock()
 				})
 			}
-		case packetAudio:
-			v.mu.Lock()
-			mute := v.mute
-			v.mu.Unlock()
-			switch {
-			case mute && snd != nil:
-				snd.close()
-				snd = nil
-			case !mute && snd == nil:
-				snd, _ = openSound(lib)
-			}
-			if snd != nil && len(p) > 1 {
-				snd.packet(p[1:])
-			}
 		case packetCursor:
 			var ptr hostPointer
 			if json.Unmarshal(p[1:], &ptr) == nil {
@@ -531,35 +545,129 @@ func (v *viewer) pump() {
 				v.host = s
 				v.mu.Unlock()
 			}
-		case packetFrame:
-			if len(p) < 10 {
-				continue
-			}
-			// A new decoder starts at a key frame: the frames encoded before
-			// the host's (they may still come after its stream description)
-			// refer to pictures it never had.
-			if fresh && p[1]&keyFrame == 0 {
-				continue
-			}
-			first := fresh
-			fresh = false
-			if dec != nil {
-				v.show(dec, p[10:])
-				// The decoder knows how it decodes once it has a key frame.
-				if first {
-					name, hw, _ := dec.Info()
-					v.update(func() {
-						v.mu.Lock()
-						v.decoder = codecImpl{name, hw}
-						v.mu.Unlock()
-					})
-				}
-			}
 		}
+		pool.put(p)
 	}
 }
 
-// begin prepares the pictures for a new stream, at once on the pump's
+// videoGate passes frames to the video goroutine's queue. Once the queue
+// was full and a frame was left out, the frames after it refer to a
+// picture the decoder never had: they are left out too, until a key frame.
+type videoGate struct {
+	lost bool
+}
+
+// pass queues frame p unless it must be left out.
+// Returns: whether it was queued (the caller keeps it otherwise), and
+// whether to ask the host for a key frame (once per loss).
+func (g *videoGate) pass(p []byte, video chan<- []byte) (sent, ask bool) {
+	if g.lost && (len(p) < 2 || p[1]&keyFrame == 0) {
+		return false, false
+	}
+	select {
+	case video <- p:
+		g.lost = false
+		return true, false
+	default:
+		ask = !g.lost
+		g.lost = true
+		return false, ask
+	}
+}
+
+// decodeVideo opens a decoder for each stream the host describes and shows
+// its frames, until video closes.
+// Notes: runs on one locked OS thread, which the decoder is tied to.
+func (v *viewer) decodeVideo(lib *core.Lib, video <-chan []byte, pool packetPool) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	var dec *core.Decoder
+	defer func() {
+		if dec != nil {
+			dec.Close()
+		}
+	}()
+	// fresh: the decoder has not had a key frame yet.
+	fresh := false
+	for p := range video {
+		switch p[0] {
+		case packetVideoStart:
+			var s videoStart
+			if json.Unmarshal(p[1:], &s) != nil || s.Width <= 0 || s.Height <= 0 || s.Width > 16384 || s.Height > 16384 {
+				break
+			}
+			// The same stream described again (a key frame was asked
+			// for): a new group of pictures, which the decoder takes as
+			// it is, without a blank picture between.
+			v.mu.Lock()
+			same := dec != nil && v.start == s
+			v.mu.Unlock()
+			if same {
+				break
+			}
+			if dec != nil {
+				dec.Close()
+				dec = nil
+			}
+			d, err := lib.OpenDecoder(p[1:])
+			if err != nil {
+				v.setState(L.ViewerUnsupported(codecLabel(s.Codec)))
+				break
+			}
+			dec, fresh = d, true
+			v.begin(s)
+		case packetFrame:
+			// A new decoder starts at a key frame: the frames encoded before
+			// the host's (they may still come after its stream description)
+			// refer to pictures it never had.
+			if len(p) < 10 || dec == nil || fresh && p[1]&keyFrame == 0 {
+				break
+			}
+			first := fresh
+			fresh = false
+			v.show(dec, p[10:])
+			// The decoder knows how it decodes once it has a key frame.
+			if first {
+				name, hw, _ := dec.Info()
+				v.update(func() {
+					v.mu.Lock()
+					v.decoder = codecImpl{name, hw}
+					v.mu.Unlock()
+				})
+			}
+		}
+		pool.put(p)
+	}
+}
+
+// playSound plays the host's sound packets while the viewer has sound on,
+// until sound closes.
+func (v *viewer) playSound(lib *core.Lib, sound <-chan []byte, pool packetPool) {
+	var snd *viewerSound
+	defer func() {
+		if snd != nil {
+			snd.close()
+		}
+	}()
+	for p := range sound {
+		v.mu.Lock()
+		mute := v.mute
+		v.mu.Unlock()
+		switch {
+		case mute && snd != nil:
+			snd.close()
+			snd = nil
+		case !mute && snd == nil:
+			snd, _ = openSound(lib)
+		}
+		if snd != nil && len(p) > 1 {
+			snd.packet(p[1:])
+		}
+		pool.put(p)
+	}
+}
+
+// begin prepares the pictures for a new stream, at once on the video
 // goroutine, so the stream's first frame (its key frame) finds them; the
 // bitmap keeps the old picture until the first new one is shown.
 func (v *viewer) begin(s videoStart) {

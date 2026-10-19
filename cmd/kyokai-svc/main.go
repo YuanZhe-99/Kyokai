@@ -161,6 +161,11 @@ func ctl(args []string) error {
 		servers = append(servers, s)
 		return nil
 	})
+	var peers []string
+	fs.Func("peer", "network-set: another device's IP address or domain name, reached directly (repeatable)", func(s string) error {
+		peers = append(peers, s)
+		return nil
+	})
 	direct := fs.Bool("direct", false, "network-set: try direct (hole-punched) paths; omitted keeps the current choice")
 	name := fs.String("name", "", "network-set: the network name; name-set: this device's friendly name")
 	device := fs.String("device", "", "connect, forget: the Device ID")
@@ -250,7 +255,7 @@ func ctl(args []string) error {
 	case "helper-update":
 		req.From = *from
 	case "network-set":
-		req.Network = &localapi.NetworkSettings{Servers: servers, Name: *name}
+		req.Network = &localapi.NetworkSettings{Servers: servers, Peers: peers, Name: *name}
 		fs.Visit(func(f *flag.Flag) {
 			if f.Name == "direct" {
 				req.Network.Direct = direct
@@ -353,8 +358,8 @@ func ctl(args []string) error {
 		printStatus(resp.Status)
 	case resp.Network != nil:
 		n := resp.Network
-		fmt.Printf("servers %s\nname %q\nsecret set: %v (weak: %v)\ndirect paths: %v\n",
-			strings.Join(n.Servers, ", "), n.Name, n.HasSecret, n.WeakSecret, n.Direct != nil && *n.Direct)
+		fmt.Printf("servers %s\naddresses %s\nname %q\nsecret set: %v (weak: %v)\ndirect paths: %v\n",
+			strings.Join(n.Servers, ", "), strings.Join(n.Peers, ", "), n.Name, n.HasSecret, n.WeakSecret, n.Direct != nil && *n.Direct)
 	case resp.Password != "":
 		fmt.Println(resp.Password)
 	case resp.Document != "":
@@ -448,6 +453,9 @@ func printStatus(s *localapi.Status) {
 	}
 	if n.Address != "" {
 		fmt.Printf(", address %s, NAT %s", n.Address, n.NAT)
+	}
+	if n.ListenPort != 0 {
+		fmt.Printf(", listening on %d", n.ListenPort)
 	}
 	fmt.Println()
 	for _, d := range n.Devices {
@@ -594,6 +602,11 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	// fresh: the decoder has not had a key frame yet.
 	fresh := false
 	frames, bytes, pictures, sounds, soundBytes := 0, 0, 0, 0, 0
+	// When sound last came, its longest gap and the gaps over 30 ms: the
+	// jitter the viewer's buffer has to cover.
+	var soundAt time.Time
+	var soundGap time.Duration
+	soundLate := 0
 	var decodeErr error
 	printedDisplays := map[byte]bool{}
 	start := time.Now()
@@ -631,6 +644,16 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 		case len(p) > 1 && p[0] == 12:
 			sounds++
 			soundBytes += len(p) - 1
+			if now := time.Now(); !soundAt.IsZero() {
+				gap := now.Sub(soundAt)
+				soundGap = max(soundGap, gap)
+				if gap > 30*time.Millisecond {
+					soundLate++
+				}
+				soundAt = now
+			} else {
+				soundAt = now
+			}
 		case len(p) > 0 && p[0] == 11:
 			fmt.Printf("codecs %s\n", p[1:])
 		case len(p) >= 10 && p[0] == 2:
@@ -653,7 +676,7 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	}
 	el := time.Since(start).Seconds()
 	fmt.Printf("%d frames in %.1f s: %.1f fps, %.0f kbit/s\n", frames, el, float64(frames)/el, float64(bytes)*8/1000/el)
-	fmt.Printf("%d sound packets (%d ms, %.0f bytes each)\n", sounds, sounds*10, float64(soundBytes)/float64(max(sounds, 1)))
+	fmt.Printf("%d sound packets (%d ms, %.0f bytes each), longest gap %d ms, %d gaps over 30 ms\n", sounds, sounds*10, float64(soundBytes)/float64(max(sounds, 1)), soundGap.Milliseconds(), soundLate)
 	if dec != nil {
 		dec.Close()
 		fmt.Printf("%d pictures decoded\n", pictures)

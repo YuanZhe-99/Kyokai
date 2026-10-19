@@ -84,6 +84,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | Sound (the host's, in the viewer) | 声音 |
 | Hear sound (permission) / Sound to share | 听到声音 / 共享的声音 |
 | jitter buffer | 抖动缓冲 |
+| Direct addresses / Clear network settings | 直连地址 / 清除网络设置 |
 | event tap (macOS) | 事件监听 |
 | in hardware / in software (an encoder, a decoder) | 硬件 / 软件 |
 | direct (path) | 直连 |

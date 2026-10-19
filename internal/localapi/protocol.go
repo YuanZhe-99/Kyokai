@@ -414,7 +414,10 @@ type SoundDevice struct {
 type NetworkSettings struct {
 	// Servers are standard EasyTier server URLs, tried in order.
 	Servers []string `json:"servers"`
-	Name    string   `json:"name"`
+	// Peers are other devices reached directly: an IP address or domain
+	// name each, with a port (47311 by default) or as a URL.
+	Peers []string `json:"peers,omitempty"`
+	Name  string   `json:"name"`
 	// Secret is set only in a request; nil keeps the stored secret.
 	Secret *string `json:"secret,omitempty"`
 	// HasSecret and WeakSecret describe the stored secret in a response.
@@ -427,15 +430,19 @@ type NetworkSettings struct {
 
 // NetworkStatus is the engine's EasyTier node as it is now.
 type NetworkStatus struct {
-	// State is "off", "connecting", "online" or "error".
+	// State is "off", "connecting", "listening" (no server or address to
+	// dial: waiting for other devices), "online" or "error".
 	State string `json:"state"`
 	// Error says why the node stopped (State "error").
 	Error string `json:"error,omitempty"`
 	// Address is the node's virtual IPv4 address once assigned.
 	Address string `json:"address,omitempty"`
 	// NAT is the detected NAT type ("unknown" until STUN answers).
-	NAT     string          `json:"nat,omitempty"`
-	Devices []NetworkDevice `json:"devices,omitempty"`
+	NAT string `json:"nat,omitempty"`
+	// ListenPort is where other devices reach this one by its address
+	// (direct connections on), 0 when it does not listen.
+	ListenPort int             `json:"listen_port,omitempty"`
+	Devices    []NetworkDevice `json:"devices,omitempty"`
 }
 
 // NetworkDevice is another Kyokai device the network routes to. Its

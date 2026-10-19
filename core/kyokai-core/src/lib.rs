@@ -176,14 +176,35 @@ pub unsafe extern "C" fn kyokai_call(
 
 /// Stops the core, dropping its in-memory secrets. Calling it twice is
 /// harmless.
+/// Side effects: sessions end first, each connected one with a goodbye its
+/// peer acknowledged (waiting up to GOODBYE_WAIT).
 #[unsafe(no_mangle)]
 pub extern "C" fn kyokai_stop() {
     let _ = catch_unwind(|| {
+        // Every session says goodbye first, so the other device ends it at
+        // once instead of waiting for the connection to time out (an ended
+        // session's goodbye was acknowledged, or its wait ran out).
+        let ctx = CORE
+            .lock()
+            .ok()
+            .and_then(|c| c.as_ref().map(|c| c.ctx.clone()));
+        if let Some(ctx) = ctx
+            && ctx.sessions.any_connected()
+        {
+            ctx.sessions.close_all();
+            let until = std::time::Instant::now() + GOODBYE_WAIT;
+            while ctx.sessions.any_connected() && std::time::Instant::now() < until {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        }
         if let Ok(mut core) = CORE.lock() {
             *core = None;
         }
     });
 }
+
+/// How long stopping waits for the sessions' goodbyes.
+const GOODBYE_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Waits for the next media packet of a controller session, for the GUI
 /// (doc/en-us/architecture.md, "FFI").

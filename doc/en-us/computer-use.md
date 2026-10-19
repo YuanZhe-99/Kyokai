@@ -73,6 +73,13 @@ is slow there; VP9 comes first.
 The viewer asks for a key frame when it opens; the host then describes the stream, its displays
 and the codec offer again and starts a new group of pictures.
 
+As RustDesk's client does, the viewer's reading never waits on decoding: one goroutine reads the
+session's packets and hands frames to a video goroutine (on its own OS thread, which the decoder is
+tied to; up to 4 frames wait) and sound to a sound goroutine (up to 50 packets); the host's
+reports it handles itself. When the video queue is full a frame is left out, and so is every frame
+after it until a key frame, which it asks the host for once; sound that finds its queue full is
+left out. A slow picture so never holds up sound, input or the host's reports.
+
 ## Quality and bandwidth
 
 The host runs RustDesk's video QoS (`core/third_party/rustdesk-qos`, its upstream tests included):
@@ -87,6 +94,15 @@ The viewer's status bar offers RustDesk's presets — Faster (ratio 0.5), Balanc
 Sharper (1.5) — a frame-rate cap of 15, 30 or 60, and the Full colour switch; they reach the host as
 `{"type": "quality", preset, fps, i444}` and set that viewer's image quality and custom frame
 rate in the QoS, and whether it gets full colour (above).
+
+RustDesk's QoS knows nothing of input: it raises the frame rate only from its probes, by 1 a second
+below the preset's normal rate and by 5 after three good probes in a row, from 15. Dragging a window
+or typing needs every frame at once, so for 2 seconds after a person's input (a key, a click, a
+pointer move) the host sends at the viewer's cap while the measured delay is under 100 ms, and the
+first input after a quiet spell applies it at once rather than at the next probe; with more delay
+the QoS decides. Pointer moves cross as RustDesk's do, each as it comes, except that the viewer
+keeps only the newest move not sent yet (one every 8 ms at most), so a stalled path never queues
+stale moves ahead of a click.
 
 With the stats the host reports how long its frames took from picture to frame (`encode_ms`, the
 average of the last second's), and its stream description names its encoder and whether it runs in

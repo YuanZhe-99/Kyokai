@@ -40,7 +40,13 @@ Devices find each other through an EasyTier network. On the **Network** page ent
 **Servers** (one address per line), the **Network name** and the **Network secret** that whoever runs
 your network gave you, and save. The page then shows the network's state, this device's address
 and the Kyokai devices it can reach, directly or through a relay. A device's announced ID is only a
-hint: who a device is gets proven when you connect. **Leave network** disconnects. Connections go
+hint: who a device is gets proven when you connect. **Clear network settings** forgets the
+network and disconnects.
+
+Without a server, devices can join by address: on one computer turn on **Try direct connections**
+and save just the network name and secret; the Network page then shows its **Port for direct
+addresses**. On the other, enter that computer's IP address or domain name under **Direct
+addresses** (add `:port` when the port is not 47311) with the same name and secret. Connections go
 through the server unless you switch on **Try direct connections** (Settings, Run mode; it applies
 at once), which is faster where both networks allow it; Windows may then ask to let Kyokai through
 its firewall, and a Mac to let it find devices on the local network. On one network it is enough on

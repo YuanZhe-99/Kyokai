@@ -153,6 +153,11 @@ func TestViewsRender(t *testing.T) {
 				Devices: []localapi.NetworkDevice{{DeviceID: "213559601", Path: "relay", LatencyMS: 36}, {DeviceID: "647222040", Path: "direct", LatencyMS: 4}}}
 			a.net = netForm{loaded: true, servers: "tcp://example.org:11010", name: "kyokai", hasSecret: true, weakSecret: true}
 		},
+		"network-listening": func(a *App) {
+			a.page = pageNetwork
+			a.status.Network = localapi.NetworkStatus{State: "listening", Address: "10.126.126.1", ListenPort: 47311}
+			a.net = netForm{loaded: true, peers: "192.168.1.20\noffice.example.org", name: "kyokai", hasSecret: true, direct: true}
+		},
 	}
 	for _, lang := range []string{"en", "zh-Hans", "zh-Hant", "ja"} {
 		i18n.SetLocaleFunc(func() string { return lang })
@@ -219,7 +224,7 @@ func TestDescribeAction(t *testing.T) {
 	}
 }
 
-func TestServerLines(t *testing.T) {
+func TestLines(t *testing.T) {
 	cases := []struct {
 		in   string
 		want []string
@@ -229,7 +234,7 @@ func TestServerLines(t *testing.T) {
 		{" tcp://a:1 \r\n\n  wss://b/et\n", []string{"tcp://a:1", "wss://b/et"}},
 	}
 	for _, c := range cases {
-		if got := serverLines(c.in); !slices.Equal(got, c.want) {
+		if got := lines(c.in); !slices.Equal(got, c.want) {
 			t.Errorf("%q → %q, want %q", c.in, got, c.want)
 		}
 	}
@@ -713,6 +718,34 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 // ends when closed; what waits to be heard stays within a target that grows
 // when playing runs dry while sound comes (up to 300 ms), shrinks after a
 // calm spell, and drops the oldest sound beyond it.
+// A full video queue leaves frames out until a key frame, asking the host
+// for one once.
+func TestVideoGate(t *testing.T) {
+	video := make(chan []byte, 1)
+	var g videoGate
+	key, delta := []byte{packetFrame, keyFrame}, []byte{packetFrame, 0}
+	for i, c := range []struct {
+		p         []byte
+		drain     bool
+		sent, ask bool
+	}{
+		{delta, false, true, false}, // room: queued
+		{delta, false, false, true}, // full: left out, a key frame asked for
+		{delta, false, false, false},
+		{delta, true, false, false}, // room again, but it needs its reference
+		{key, false, true, false},   // a key frame starts over
+		{delta, true, true, false},
+	} {
+		if c.drain {
+			<-video
+		}
+		sent, ask := g.pass(c.p, video)
+		if sent != c.sent || ask != c.ask {
+			t.Fatalf("step %d: sent %v ask %v", i, sent, ask)
+		}
+	}
+}
+
 func TestLiveSound(t *testing.T) {
 	var played int64
 	clock := time.Unix(0, 0)

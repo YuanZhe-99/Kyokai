@@ -41,6 +41,8 @@ const MAX_PLAINTEXT: usize = MAX_FRAME - 16;
 const STEP_TIMEOUT: Duration = Duration::from_secs(15);
 const PING_EVERY: Duration = Duration::from_secs(5);
 const IDLE_LIMIT: Duration = Duration::from_secs(15);
+/// How long a session that says goodbye waits for the peer to close.
+const BYE_WAIT: Duration = Duration::from_millis(500);
 /// The QoS viewer id and display name of a session (one viewer, the primary
 /// display).
 const QOS_VIEWER: i32 = 1;
@@ -347,6 +349,22 @@ fn shown(displays: &[video::Display], s: &video::Source) -> Option<Message> {
 /// only a change, so the viewer's ring follows a moving pointer smoothly.
 const POINTER_EVERY: Duration = Duration::from_millis(16);
 
+/// How long after a person's input the host sends at the viewer's frame-rate
+/// cap: dragging and typing need every frame, not the QoS's slow climb from
+/// its start (RustDesk's QoS knows nothing of input).
+const INPUT_BOOST: Duration = Duration::from_secs(2);
+/// Above this delay the network cannot carry more frames: the QoS decides.
+const BOOST_DELAY_MS: u32 = 100;
+
+/// The frame rate to send: the QoS's, or the viewer's cap while a person's
+/// input came within INPUT_BOOST and the delay is low.
+fn boosted(qos_fps: u32, cap: u32, input_at: Option<Instant>, delay_ms: u32) -> u32 {
+    match input_at {
+        Some(t) if t.elapsed() < INPUT_BOOST && delay_ms < BOOST_DELAY_MS => qos_fps.max(cap),
+        _ => qos_fps,
+    }
+}
+
 /// How often a controller whose GUI lost frames asks the host for a key
 /// frame at most.
 const KEY_AGAIN: Duration = Duration::from_secs(1);
@@ -588,6 +606,24 @@ impl Sessions {
         }
     }
 
+    /// Ends every session, each with a goodbye to its peer, so the other
+    /// device ends it at once instead of waiting for the connection to die.
+    pub fn close_all(&self) {
+        let s = self.inner.lock().expect("sessions lock");
+        for e in
+            s.1.iter()
+                .filter(|e| !matches!(e.state, State::Closed | State::Failed))
+        {
+            e.stop.notify_one();
+        }
+    }
+
+    /// Whether any session is connected (and so has a goodbye to send).
+    pub fn any_connected(&self) -> bool {
+        let s = self.inner.lock().expect("sessions lock");
+        s.1.iter().any(|e| e.state == State::Connected)
+    }
+
     pub fn close(&self, id: u64) -> Result<(), String> {
         let s = self.inner.lock().map_err(|_| "sessions lock poisoned")?;
         let e = s.1.iter().find(|e| e.id == id).ok_or("no such session")?;
@@ -673,7 +709,9 @@ async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, frame: &[u8]) -> Result<(
     let len = u16::try_from(frame.len()).map_err(|_| Failure::Broken)?;
     w.write_u16(len).await?;
     w.write_all(frame).await?;
-    w.flush().await?;
+    // No flush: EasyTier's TCP flush waits until the peer acknowledged
+    // everything sent, which would allow one message per round trip. The
+    // bytes leave as soon as they are written.
     Ok(())
 }
 
@@ -1548,6 +1586,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut probe = tokio::time::interval(Duration::from_secs(1));
     let mut probe_sent: Option<Instant> = None;
     let mut last_delay = 0u32;
+    // The viewer's frame-rate cap, when a person's input last came, and the
+    // bitrate last set (kbit/s), for the input boost.
+    let mut fps_cap = rustdesk_qos::FPS;
+    let mut input_at: Option<Instant> = None;
+    let mut last_kbps = 0u32;
     let mut sent_this_second = 0usize;
     // The microseconds this second's frames took from picture to frame.
     let mut took_this_second = 0u64;
@@ -1587,6 +1630,15 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         tokio::select! {
             _ = stop.notified() => {
                 let _ = seal_json(&mut noise, &mut buf, &mut wr, &Message::Bye).await;
+                // The stream stays open until the peer read the goodbye and
+                // closed its end (or BYE_WAIT passed): closed first, the
+                // peer's next write would fail and it would take the
+                // connection for lost and resume it.
+                let _ = tokio::time::timeout(BYE_WAIT, async {
+                    let _ = wr.flush().await;
+                    while frames.recv().await.is_some() {}
+                })
+                .await;
                 return Ok(());
             }
             _ = ai_sync.tick(), if host_ai.is_some() => {
@@ -1701,8 +1753,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 let encode_ms = (took_this_second / sent_this_second.max(1) as u64 / 1000) as u32;
                 sent_this_second = 0;
                 took_this_second = 0;
-                let fps = qos.fps();
+                let fps = boosted(qos.fps(), fps_cap, input_at, last_delay);
                 let kbps = (base_kbps as f32 * qos.ratio()) as u32;
+                last_kbps = kbps;
                 qos.store_bitrate(kbps);
                 if let Some(s) = &source {
                     s.set_targets(fps, kbps.saturating_mul(1000));
@@ -1723,7 +1776,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     seal(&mut noise, &mut buf, &mut wr, &chunk).await?;
                     // Sound that came meanwhile goes between the chunks: a
                     // large picture does not hold it up.
-                    while let Some(p) = sound.as_mut().and_then(|s| s.packets.try_recv().ok()) {
+                    // Only what waits now: more comes every 10 ms.
+                    for _ in 0..sound.as_ref().map_or(0, |s| s.packets.len()) {
+                        let Some(p) = sound.as_mut().and_then(|s| s.packets.try_recv().ok()) else {
+                            break;
+                        };
                         seal(&mut noise, &mut buf, &mut wr, &sound_packet(&p)).await?;
                     }
                 }
@@ -1825,6 +1882,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         }
                         if (1..=video::MAX_FPS).contains(&fps) {
                             qos.user_custom_fps(QOS_VIEWER, fps);
+                            fps_cap = fps;
                         }
                     }
                     // Only a frame sent and not yet acknowledged moves the mark.
@@ -2028,6 +2086,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             if !(hover && ai.ai.acting()) {
                                 ai.ai.take_over();
                                 inj.inject(&e);
+                                // The first input after a quiet spell raises
+                                // the frame rate now, not at the next probe.
+                                let quiet = input_at.is_none_or(|t| t.elapsed() >= INPUT_BOOST);
+                                input_at = Some(Instant::now());
+                                if quiet && last_kbps > 0 && let Some(s) = &source {
+                                    s.set_targets(boosted(qos.fps(), fps_cap, input_at, last_delay), last_kbps.saturating_mul(1000));
+                                }
                             }
                         }
                     }
@@ -2094,6 +2159,66 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A writer like EasyTier's TCP stream, whose flush waits until the
+    /// peer acknowledged everything: it never does here.
+    struct AckFlush(Vec<u8>);
+
+    impl AsyncWrite for AckFlush {
+        fn poll_write(
+            mut self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+            b: &[u8],
+        ) -> std::task::Poll<std::io::Result<usize>> {
+            self.0.extend_from_slice(b);
+            std::task::Poll::Ready(Ok(b.len()))
+        }
+        fn poll_flush(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Pending
+        }
+        fn poll_shutdown(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Pending
+        }
+    }
+
+    /// Writing a frame never waits for the peer's acknowledgement: with
+    /// EasyTier's flush that allowed one message per round trip, which
+    /// starved video and sound and stalled the session.
+    #[tokio::test]
+    async fn frames_do_not_wait_for_acknowledgement() {
+        let mut w = AckFlush(Vec::new());
+        for _ in 0..100 {
+            tokio::time::timeout(Duration::from_millis(100), write_frame(&mut w, b"sound"))
+                .await
+                .expect("a frame write waited for the peer")
+                .unwrap();
+        }
+        assert_eq!(w.0.len(), 100 * (2 + 5));
+    }
+
+    /// A person's recent input lifts the frame rate to the viewer's cap
+    /// while the delay is low; otherwise the QoS decides.
+    #[test]
+    fn input_lifts_the_frame_rate() {
+        let now = Some(Instant::now());
+        let old = Instant::now().checked_sub(INPUT_BOOST + Duration::from_secs(1));
+        for (qos, cap, at, delay, want) in [
+            (15, 30, now, 20, 30),
+            (15, 60, now, 20, 60),
+            (15, 30, now, BOOST_DELAY_MS, 15),
+            (15, 30, old, 20, 15),
+            (15, 30, None, 20, 15),
+            (30, 10, now, 20, 30),
+        ] {
+            assert_eq!(boosted(qos, cap, at, delay), want, "{qos} {cap} {delay}");
+        }
+    }
 
     /// The viewer's sound request crosses as `{"type": "audio", on}`.
     #[test]
@@ -2245,6 +2370,51 @@ mod tests {
             try_pw("long-lived-pw", None).await["failure"],
             json!({"refused": "absent"})
         );
+    }
+
+    /// A host that stops (its user quits Kyokai) says goodbye: the
+    /// controller's session ends at once, closed, instead of waiting for the
+    /// connection to time out and then trying to resume it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stopping_host_ends_the_controllers_session() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        {
+            let mut slots = host.access.slots.lock().unwrap();
+            let key = host.identity.public_key();
+            slots
+                .set_permanent(host.access.secrets(), Some("long-lived-pw"), &key)
+                .unwrap();
+        }
+        host.access
+            .set_password_grants(vec![Permission::ViewScreen])
+            .unwrap();
+        host.access.set_serve(Serve::Unattended);
+        let dialed = host.identity.device_id();
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "long-lived-pw",
+            None,
+            vec![Permission::ViewScreen],
+        )
+        .await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        // The host marks its side connected on its own task.
+        let until = Instant::now() + Duration::from_secs(2);
+        while !host.sessions.any_connected() && Instant::now() < until {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(host.sessions.any_connected());
+        host.sessions.close_all();
+        let until = Instant::now() + Duration::from_secs(2);
+        while session(&controller, id)["state"] == "connected" && Instant::now() < until {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let s = session(&controller, id);
+        assert_eq!(s["state"], "closed", "{s}");
+        assert!(!host.sessions.any_connected());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

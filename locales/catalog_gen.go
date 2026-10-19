@@ -1022,6 +1022,16 @@ func (msgs Messages) ActionCheckAppUpdate() string {
 	return Catalog.Format(msgs.locale, "ActionCheckAppUpdate", nil)
 }
 
+// ActionClearNetwork says "Clear network settings"
+// in the language the app shows.
+func ActionClearNetwork() string { return In(i18n.Locale()).ActionClearNetwork() }
+
+// ActionClearNetwork says "Clear network settings"
+// in the language of msgs.
+func (msgs Messages) ActionClearNetwork() string {
+	return Catalog.Format(msgs.locale, "ActionClearNetwork", nil)
+}
+
 // ActionConnect says "Connect"
 // in the language the app shows.
 func ActionConnect() string { return In(i18n.Locale()).ActionConnect() }
@@ -1110,16 +1120,6 @@ func ActionInstallUpdate() string { return In(i18n.Locale()).ActionInstallUpdate
 // in the language of msgs.
 func (msgs Messages) ActionInstallUpdate() string {
 	return Catalog.Format(msgs.locale, "ActionInstallUpdate", nil)
-}
-
-// ActionLeaveNetwork says "Leave network"
-// in the language the app shows.
-func ActionLeaveNetwork() string { return In(i18n.Locale()).ActionLeaveNetwork() }
-
-// ActionLeaveNetwork says "Leave network"
-// in the language of msgs.
-func (msgs Messages) ActionLeaveNetwork() string {
-	return Catalog.Format(msgs.locale, "ActionLeaveNetwork", nil)
 }
 
 // ActionNewPassword says "New password"
@@ -1896,6 +1896,26 @@ func (msgs Messages) NetworkAddress() string {
 	return Catalog.Format(msgs.locale, "NetworkAddress", nil)
 }
 
+// NetworkClearConfirm says "This forgets the servers, the addresses, the network name and the secret, and leaves the network."
+// in the language the app shows.
+func NetworkClearConfirm() string { return In(i18n.Locale()).NetworkClearConfirm() }
+
+// NetworkClearConfirm says "This forgets the servers, the addresses, the network name and the secret, and leaves the network."
+// in the language of msgs.
+func (msgs Messages) NetworkClearConfirm() string {
+	return Catalog.Format(msgs.locale, "NetworkClearConfirm", nil)
+}
+
+// NetworkCleared says "Network settings cleared."
+// in the language the app shows.
+func NetworkCleared() string { return In(i18n.Locale()).NetworkCleared() }
+
+// NetworkCleared says "Network settings cleared."
+// in the language of msgs.
+func (msgs Messages) NetworkCleared() string {
+	return Catalog.Format(msgs.locale, "NetworkCleared", nil)
+}
+
 // NetworkConnecting says "Connecting…"
 // in the language the app shows.
 func NetworkConnecting() string { return In(i18n.Locale()).NetworkConnecting() }
@@ -1966,14 +1986,14 @@ func (msgs Messages) NetworkError() string {
 	return Catalog.Format(msgs.locale, "NetworkError", nil)
 }
 
-// NetworkLeft says "Left the network."
+// NetworkListening says "Waiting for other devices to connect by this device’s address"
 // in the language the app shows.
-func NetworkLeft() string { return In(i18n.Locale()).NetworkLeft() }
+func NetworkListening() string { return In(i18n.Locale()).NetworkListening() }
 
-// NetworkLeft says "Left the network."
+// NetworkListening says "Waiting for other devices to connect by this device’s address"
 // in the language of msgs.
-func (msgs Messages) NetworkLeft() string {
-	return Catalog.Format(msgs.locale, "NetworkLeft", nil)
+func (msgs Messages) NetworkListening() string {
+	return Catalog.Format(msgs.locale, "NetworkListening", nil)
 }
 
 // NetworkNAT says "NAT type"
@@ -2024,6 +2044,36 @@ func NetworkOnline() string { return In(i18n.Locale()).NetworkOnline() }
 // in the language of msgs.
 func (msgs Messages) NetworkOnline() string {
 	return Catalog.Format(msgs.locale, "NetworkOnline", nil)
+}
+
+// NetworkPeers says "Direct addresses"
+// in the language the app shows.
+func NetworkPeers() string { return In(i18n.Locale()).NetworkPeers() }
+
+// NetworkPeers says "Direct addresses"
+// in the language of msgs.
+func (msgs Messages) NetworkPeers() string {
+	return Catalog.Format(msgs.locale, "NetworkPeers", nil)
+}
+
+// NetworkPeersHint says "IP addresses or domain names of other Kyokai devices, one per line (port 47311 unless you give one). Those devices ne…"
+// in the language the app shows.
+func NetworkPeersHint() string { return In(i18n.Locale()).NetworkPeersHint() }
+
+// NetworkPeersHint says "IP addresses or domain names of other Kyokai devices, one per line (port 47311 unless you give one). Those devices ne…"
+// in the language of msgs.
+func (msgs Messages) NetworkPeersHint() string {
+	return Catalog.Format(msgs.locale, "NetworkPeersHint", nil)
+}
+
+// NetworkPort says "Port for direct addresses"
+// in the language the app shows.
+func NetworkPort() string { return In(i18n.Locale()).NetworkPort() }
+
+// NetworkPort says "Port for direct addresses"
+// in the language of msgs.
+func (msgs Messages) NetworkPort() string {
+	return Catalog.Format(msgs.locale, "NetworkPort", nil)
 }
 
 // NetworkSaved says "Network settings saved."
@@ -2096,11 +2146,11 @@ func (msgs Messages) NetworkSettings() string {
 	return Catalog.Format(msgs.locale, "NetworkSettings", nil)
 }
 
-// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server. Every device you want to reach joins the same network."
+// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server, or directly by another device’s address. Every device …"
 // in the language the app shows.
 func NetworkSettingsHint() string { return In(i18n.Locale()).NetworkSettingsHint() }
 
-// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server. Every device you want to reach joins the same network."
+// NetworkSettingsHint says "Join an EasyTier network through a standard EasyTier server, or directly by another device’s address. Every device …"
 // in the language of msgs.
 func (msgs Messages) NetworkSettingsHint() string {
 	return Catalog.Format(msgs.locale, "NetworkSettingsHint", nil)

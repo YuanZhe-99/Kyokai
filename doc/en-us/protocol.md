@@ -60,7 +60,11 @@ sent again.
 ## Session messages
 
 After an accepted verdict both sides exchange `{"type": …}` documents: `ping` / `pong` every
-5 seconds, and `bye`. A session with no frame for 15 seconds is closed. Video and input follow
+5 seconds, and `bye`. A side that ends the session (closed, or its engine stopping: the engine ends
+every session before it stops, waiting up to a second) sends `bye` and keeps the connection open
+until the other side, which ends its session on it, closes it, or 500 ms passed: closed first,
+the other side's next write would fail and it would take the connection for lost and resume it. A
+session with no frame for 15 seconds is closed. Video and input follow
 under Media, AI tasks under their own heading.
 
 ## Media
@@ -78,7 +82,8 @@ full colour (`vp9-sw`, `av1`; a field older builds leave out). The host answers 
 controller may choose one with `{"type": "codec", codec}`, and asks for the host's sound with
 `{"type": "audio", on}` (the host sends it only to a controller granted `hear-sound`, as
 plaintexts that start with byte `0x04` followed by one 10 ms Opus packet of 48 kHz stereo, none
-while it is silent, [computer-use.md](computer-use.md), "Sound") (`auto`, or a name of the offer; another
+while it is silent, the packets waiting when a frame's chunk was sent going out before its next
+chunk, [computer-use.md](computer-use.md), "Sound") (`auto`, or a name of the offer; another
 name changes nothing), and a resumed controller sends its viewer's `quality`, `codec` and `audio` again
 before its `codecs`. Before its first frame the host
 sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer than 3 are unacknowledged, and takes only an acknowledgement of a frame it sent and that was not acknowledged. The controller may send `{"type":

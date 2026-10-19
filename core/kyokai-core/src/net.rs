@@ -55,6 +55,10 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(3);
 pub struct Settings {
     /// Standard EasyTier server URLs, tried in order.
     pub servers: Vec<String>,
+    /// Other devices reached directly by IP address or domain name (their
+    /// listener, `peer_url`): a network can do without a server.
+    #[serde(default)]
+    pub peers: Vec<String>,
     /// The EasyTier network name.
     pub name: String,
     /// The EasyTier network secret.
@@ -73,6 +77,8 @@ pub struct Update {
     // Missing or null lists and names mean none (leaving the network).
     #[serde(default)]
     servers: Option<Vec<String>>,
+    #[serde(default)]
+    peers: Option<Vec<String>>,
     #[serde(default)]
     name: Option<String>,
     secret: Option<String>,
@@ -104,6 +110,8 @@ pub struct Network {
     phase: Arc<Mutex<Phase>>,
     /// The helper always tries direct paths (its installer allowed them).
     always_direct: bool,
+    /// The port the node listens on for other devices, if it does.
+    listen: Option<u16>,
 }
 
 impl Network {
@@ -131,6 +139,7 @@ impl Network {
             serving: None,
             phase: Arc::new(Mutex::new(Phase::Off)),
             always_direct,
+            listen: None,
         };
         net.restart();
         Ok(net)
@@ -140,6 +149,7 @@ impl Network {
     pub fn settings(&self) -> Value {
         json!({
             "servers": self.settings.servers,
+            "peers": self.settings.peers,
             "name": self.settings.name,
             "has_secret": !self.settings.secret.is_empty(),
             "weak_secret": is_weak(&self.settings.secret),
@@ -160,10 +170,16 @@ impl Network {
                 .iter()
                 .map(|s| s.trim().to_owned())
                 .collect(),
+            peers: update
+                .peers
+                .unwrap_or_default()
+                .iter()
+                .map(|s| s.trim().to_owned())
+                .collect(),
             name: update.name.unwrap_or_default().trim().to_owned(),
             direct: update.direct.unwrap_or(self.settings.direct),
         };
-        validate(&settings)?;
+        validate(&settings, settings.direct || self.always_direct)?;
         let text =
             zeroize::Zeroizing::new(serde_json::to_string(&settings).map_err(|e| e.to_string())?);
         secrets.set(SECRET_NAME, &text)?;
@@ -206,9 +222,15 @@ impl Network {
             })
             .collect();
         json!({
-            "state": if reached_server { "online" } else { "connecting" },
+            // A device that dials nobody waits to be dialed.
+            "state": match (reached_server, self.settings.servers.is_empty() && self.settings.peers.is_empty()) {
+                (true, _) => "online",
+                (false, true) => "listening",
+                (false, false) => "connecting",
+            },
             "address": me.ipv4_addr.map(|a| a.address().to_string()),
             "nat": nat_name(me.stun_info.udp_nat_type),
+            "listen_port": self.listen,
             "devices": devices,
         })
     }
@@ -216,7 +238,8 @@ impl Network {
     /// Stops the current node and starts one for the current settings.
     fn restart(&mut self) {
         self.stop_node();
-        if self.settings.servers.is_empty() || self.settings.name.is_empty() {
+        // A name alone is a device that listens (validate): others dial it.
+        if self.settings.name.is_empty() {
             self.set_phase(Phase::Off);
             return;
         }
@@ -224,6 +247,7 @@ impl Network {
         let _rt = self.rt.enter();
         let direct = self.settings.direct || self.always_direct;
         let listen = if direct { free_port() } else { None };
+        self.listen = listen;
         let node = match config(&self.settings, &self.device_id, direct, listen)
             .and_then(create_native_instance)
         {
@@ -450,7 +474,9 @@ fn config(
     let peers: String = s
         .servers
         .iter()
-        .map(|p| format!("[[peer]]\nuri = {}\n", q(p)))
+        .cloned()
+        .chain(s.peers.iter().map(|p| peer_url(p)))
+        .map(|p| format!("[[peer]]\nuri = {}\n", q(&p)))
         .collect();
     let toml = format!(
         r#"
@@ -497,13 +523,51 @@ stun_servers_v6 = []
     TomlConfig::new_from_str(&toml)
 }
 
-/// Checks settings at the local API boundary.
-fn validate(s: &Settings) -> Result<(), String> {
-    if s.servers.is_empty() != s.name.is_empty() {
-        return Err("a network needs both a server and a network name".into());
+/// The URL of another device's listener from its address as typed: an IP
+/// address or domain name, with the first listening port (47311) unless it
+/// names one, over TCP unless it is a URL itself.
+fn peer_url(address: &str) -> String {
+    if address.contains("://") {
+        return address.to_owned();
     }
-    if s.servers.len() > MAX_SERVERS {
-        return Err(format!("at most {MAX_SERVERS} servers"));
+    let port = LISTEN_PORTS.start();
+    match address.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V6(ip)) => format!("tcp://[{ip}]:{port}"),
+        Ok(ip) => format!("tcp://{ip}:{port}"),
+        // host:port, [v6]:port, or a bare name.
+        Err(_)
+            if address
+                .rsplit_once(':')
+                .is_some_and(|(_, p)| p.parse::<u16>().is_ok()) =>
+        {
+            format!("tcp://{address}")
+        }
+        Err(_) => format!("tcp://{address}:{port}"),
+    }
+}
+
+/// Checks settings at the local API boundary.
+/// Inputs: `listens`, whether the node will listen (direct connections on):
+/// then a network name alone lets other devices reach it by its address.
+fn validate(s: &Settings, listens: bool) -> Result<(), String> {
+    let reach = !s.servers.is_empty() || !s.peers.is_empty();
+    if reach && s.name.is_empty() {
+        return Err("a network needs a network name".into());
+    }
+    if !reach && !s.name.is_empty() && !listens {
+        return Err(
+            "a network needs a server, another device's address, or direct connections on".into(),
+        );
+    }
+    if s.servers.len() > MAX_SERVERS || s.peers.len() > MAX_SERVERS {
+        return Err(format!(
+            "at most {MAX_SERVERS} servers and {MAX_SERVERS} addresses"
+        ));
+    }
+    for address in &s.peers {
+        if address.is_empty() || address.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return Err(format!("{address:?} is not an address"));
+        }
     }
     if s.name.chars().count() > 64 || s.name.chars().any(char::is_control) {
         return Err("the network name is too long or has control characters".into());
@@ -511,7 +575,13 @@ fn validate(s: &Settings) -> Result<(), String> {
     if s.secret.chars().any(char::is_control) {
         return Err("the network secret has control characters".into());
     }
-    for server in &s.servers {
+    for server in s
+        .servers
+        .iter()
+        .cloned()
+        .chain(s.peers.iter().map(|p| peer_url(p)))
+    {
+        let server = &server;
         let (scheme, rest) = server
             .split_once("://")
             .ok_or_else(|| format!("{server:?} is not a server URL"))?;
@@ -554,6 +624,7 @@ mod tests {
     fn settings(servers: &[&str], name: &str, secret: &str) -> Settings {
         Settings {
             servers: servers.iter().map(|s| s.to_string()).collect(),
+            peers: Vec::new(),
             name: name.into(),
             secret: secret.into(),
             direct: false,
@@ -576,8 +647,59 @@ mod tests {
             (settings(&["tcp://a"; 9], "n", ""), false),
         ];
         for (s, ok) in cases {
-            assert_eq!(validate(&s).is_ok(), ok, "{:?} {:?}", s.servers, s.name);
+            assert_eq!(
+                validate(&s, false).is_ok(),
+                ok,
+                "{:?} {:?}",
+                s.servers,
+                s.name
+            );
         }
+        // Another device's address reaches a network without a server.
+        let with = |peers: &[&str], name: &str| Settings {
+            peers: peers.iter().map(|p| p.to_string()).collect(),
+            ..settings(&[], name, "s")
+        };
+        for (s, ok) in [
+            (with(&["192.168.1.20"], "kyokai"), true),
+            (with(&["office.example.org:47312"], "kyokai"), true),
+            (with(&["192.168.1.20"], ""), false),
+            (with(&["a b"], "kyokai"), false),
+            (with(&["faketcp://a:1"], "kyokai"), false),
+            (with(&["a"; 9], "kyokai"), false),
+        ] {
+            assert_eq!(validate(&s, false).is_ok(), ok, "{:?}", s.peers);
+        }
+        // A device that listens needs only the network: others dial it.
+        assert!(validate(&settings(&[], "kyokai", "s"), true).is_ok());
+    }
+
+    /// An address as typed becomes the URL of the device's listener.
+    #[test]
+    fn peer_addresses_become_listener_urls() {
+        for (address, url) in [
+            ("192.168.1.20", "tcp://192.168.1.20:47311"),
+            ("192.168.1.20:47313", "tcp://192.168.1.20:47313"),
+            ("office.example.org", "tcp://office.example.org:47311"),
+            ("office.example.org:9000", "tcp://office.example.org:9000"),
+            ("fe80::1", "tcp://[fe80::1]:47311"),
+            ("[fe80::1]:47312", "tcp://[fe80::1]:47312"),
+            ("udp://10.0.0.2:47311", "udp://10.0.0.2:47311"),
+        ] {
+            assert_eq!(peer_url(address), url, "{address}");
+        }
+        let s = Settings {
+            peers: vec!["10.0.0.2".into()],
+            ..settings(&["tcp://example.org:11010"], "n", "s")
+        };
+        use easytier_core::config::toml::ConfigLoader;
+        let uris: Vec<String> = config(&s, "100000002", true, Some(47311))
+            .unwrap()
+            .get_peers()
+            .iter()
+            .map(|p| p.uri.to_string())
+            .collect();
+        assert_eq!(uris, ["tcp://example.org:11010", "tcp://10.0.0.2:47311"]);
     }
 
     #[test]

@@ -152,7 +152,7 @@ func (a *App) decide(id uint64, allow bool, granted []string) {
 func (a *App) connectCard(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
-	f, online := a.connect, a.status.Network.State == "online"
+	f, online := a.connect, a.status.Network.State == "online" || a.status.Network.State == "listening"
 	a.mu.Unlock()
 	card(c).Children(func() {
 		ui.Text(c, L.ConnectTitle()).FontSize(sizeHeading).Bold()

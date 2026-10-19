@@ -50,13 +50,16 @@ when `SCREENSHOT_DIR` is set.
   Clear history. While the task waits for approval, every other page shows a banner with Review,
   and a notification announces it. A controller's task shows "Started from" its Device ID, and
   while it works every other page shows a banner with Review and Stop.
-- **Network:** the node's live status (connected, connecting, or why it could not connect; the
-  virtual address; the NAT type in plain words) and the Kyokai devices it routes to (the name a
-  device gave in its last session here, if any, its Device ID, direct or relayed, latency, Copy
-  and Connect), with a note that announced Device IDs are not proof; then the settings form:
-  servers (one URL per line), network name, and a write-only secret field (empty keeps the stored
-  secret; a weak secret is flagged), Save and Leave network, which apply to these fields only. Refused settings show
-  the engine's reason.
+- **Network:** the node's live status (connected, connecting, waiting for other devices to connect
+  by this device's address, or why it could not connect; the virtual address; the NAT type in
+  plain words; the port for direct addresses while it listens) and the Kyokai devices it routes to
+  (the name a device gave in its last session here, if any, its Device ID, direct or relayed,
+  latency, Copy and Connect), with a note that announced Device IDs are not proof; then the
+  settings form: servers (one URL per line), direct addresses (other devices' IP addresses or
+  domain names, one per line), network name, and a write-only secret field (empty keeps the
+  stored secret; a weak secret is flagged), Save and Clear network settings (after a
+  confirmation: the servers, addresses, name and secret), which apply to these fields only.
+  Refused settings show the engine's reason.
 - **Device names:** wherever a device appears (a confirmation, Recent, the connection tabs, trusted
   devices, the viewer's title) its friendly name goes beside the Device ID, never instead of it,
   with a round avatar (`deviceAvatar`): the vendor's monochrome logo when the device's maker,

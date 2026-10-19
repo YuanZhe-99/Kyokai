@@ -34,6 +34,16 @@
   switch; 10 ms low-delay packets, none while the host is silent, a jitter buffer of 40–400 ms that gathers its target before playing,
   its own Hear sound permission (on by default) and the sound to share chosen in Settings (what the
   computer plays, or an input such as a microphone).
+- Found in the next test: sessions flushed after every message, and EasyTier's flush waits for
+  the peer's acknowledgement, so a session carried about one message per round trip for video,
+  sound and input together (the frame rate stayed low, sound choked, and a burst of sound could
+  stall the session): writes no longer flush, and on this Mac the frame rate went from 0–13.5 to
+  26.6 fps with sound arriving at most 32 ms apart. The viewer reads, decodes video and plays
+  sound on separate goroutines, as RustDesk's client does. For 2 seconds after a person's input the
+  host sends at the viewer's frame-rate cap while the delay is low (RustDesk's QoS climbs from 15
+  only with its probes). A device whose Kyokai quits says goodbye, so the other side ends the
+  session at once instead of after a minute. The Network page has direct addresses (other devices'
+  IP addresses or domain names, a network without a server) and Clear network settings.
 - Wire protocol 10 (a 0.1.3 device connects only to 0.1.3), FFI ABI 5, local API 2.
 - Checked (2026-10-18): MyGo v0.5.5, EasyTier v2.7.0 (commit `8b7f1f0`), RustDesk 1.5.0, vcpkg
   2026.07.29 and Rust 1.99.1 are the latest; checked, unchanged.

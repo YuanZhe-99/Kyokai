@@ -2,6 +2,7 @@ package gui
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -16,6 +17,7 @@ import (
 type netForm struct {
 	loaded     bool
 	servers    string // one URL per line
+	peers      string // one address per line
 	name       string
 	secret     string
 	hasSecret  bool
@@ -42,13 +44,15 @@ func (a *App) networkStatus(c *ui.Context) {
 	for _, r := range a.status.Recent {
 		known[r.DeviceID] = r.About
 	}
-	online := n.State == "online"
+	online := n.State == "online" || n.State == "listening"
 	a.mu.Unlock()
 	card(c).Children(func() {
 		ui.Text(c, L.NetworkTitle()).FontSize(sizeHeading).Bold()
 		switch n.State {
 		case "online":
 			ui.Text(c, L.NetworkOnline()).TextColor(t.Success)
+		case "listening":
+			ui.Text(c, L.NetworkListening()).TextColor(t.TextMuted)
 		case "connecting":
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Spinner(c)
@@ -68,6 +72,11 @@ func (a *App) networkStatus(c *ui.Context) {
 		}
 		if n.State == "online" {
 			settingRow(c, "net-nat", L.NetworkNAT(), "", func() { ui.Text(c, natLabel(n.NAT)) })
+		}
+		if n.ListenPort != 0 {
+			settingRow(c, "net-port", L.NetworkPort(), "", func() {
+				ui.Text(c, strconv.Itoa(n.ListenPort)).FontFeatures("tnum").Selectable()
+			})
 		}
 		ui.Divider(c)
 		ui.Text(c, L.NetworkDevices()).Bold()
@@ -136,6 +145,9 @@ func (a *App) networkSettings(c *ui.Context) {
 		field("net-servers", L.NetworkServers(), L.NetworkServersHint(), func() {
 			edit(ui.TextArea(c.Key("net-servers-in"), &f.servers).FillWidth().MinHeight(inputAreaH).Disabled(busy))
 		})
+		field("net-peers", L.NetworkPeers(), L.NetworkPeersHint(), func() {
+			edit(ui.TextArea(c.Key("net-peers-in"), &f.peers).FillWidth().MinHeight(inputAreaH).Disabled(busy))
+		})
 		field("net-name", L.NetworkName(), "", func() {
 			edit(ui.TextInput(c.Key("net-name-in"), &f.name).FillWidth().Disabled(busy))
 		})
@@ -153,9 +165,13 @@ func (a *App) networkSettings(c *ui.Context) {
 			if ui.Button(c.Key("net-save"), L.ActionSave()).Disabled(busy).Clicked() {
 				a.saveNetwork(f, false)
 			}
-			if f.hasSecret || strings.TrimSpace(f.servers) != "" {
-				if ui.Button(c.Key("net-leave"), L.ActionLeaveNetwork()).Disabled(busy).Clicked() {
-					a.saveNetwork(f, true)
+			if f.hasSecret || strings.TrimSpace(f.servers+f.peers+f.name) != "" {
+				if ui.Button(c.Key("net-clear"), L.ActionClearNetwork()).Disabled(busy).Clicked() {
+					go func() {
+						if a.confirm(L.NetworkClearConfirm(), L.ActionClearNetwork()) {
+							a.update(func() { a.saveNetwork(f, true) })
+						}
+					}()
 				}
 			}
 		})
@@ -181,15 +197,16 @@ func (a *App) loadNetwork() {
 	}()
 }
 
-// saveNetwork sends the form to the engine (the servers, name and secret;
-// the stored direct choice stays); leave clears the servers and
-// the name, which turns the node off.
+// saveNetwork sends the form to the engine (the servers, addresses, name
+// and secret; the stored direct choice stays); clear forgets them all,
+// the secret too, which turns the node off.
 // Side effects: the engine stores the settings and reconnects.
-func (a *App) saveNetwork(f netForm, leave bool) {
+func (a *App) saveNetwork(f netForm, clear bool) {
 	// Direct connections are set in Settings, Run mode (setDirect).
-	ns := &localapi.NetworkSettings{Servers: serverLines(f.servers), Name: strings.TrimSpace(f.name)}
-	if leave {
-		ns.Servers, ns.Name = nil, ""
+	ns := &localapi.NetworkSettings{Servers: lines(f.servers), Peers: lines(f.peers), Name: strings.TrimSpace(f.name)}
+	if clear {
+		none := ""
+		ns.Servers, ns.Peers, ns.Name, ns.Secret = nil, nil, "", &none
 	} else if f.secret != "" {
 		ns.Secret = &f.secret
 	}
@@ -208,8 +225,8 @@ func (a *App) saveNetwork(f netForm, leave bool) {
 				a.setToast(L.EngineDown(), true)
 			default:
 				a.net = formFrom(resp.Network)
-				if leave {
-					a.setToast(L.NetworkLeft(), false)
+				if clear {
+					a.setToast(L.NetworkCleared(), false)
 				} else {
 					a.setToast(L.NetworkSaved(), false)
 				}
@@ -231,7 +248,7 @@ func (a *App) setDirect(on bool) {
 		stored, err := a.requestWith(localapi.Request{Type: localapi.RequestNetworkGet})
 		var resp *localapi.Response
 		if err == nil && stored.Network != nil {
-			ns := &localapi.NetworkSettings{Servers: stored.Network.Servers, Name: stored.Network.Name, Direct: &on}
+			ns := &localapi.NetworkSettings{Servers: stored.Network.Servers, Peers: stored.Network.Peers, Name: stored.Network.Name, Direct: &on}
 			resp, err = a.requestWith(localapi.Request{Type: localapi.RequestNetworkSet, Network: ns})
 		}
 		a.update(func() {
@@ -249,13 +266,13 @@ func (a *App) setDirect(on bool) {
 
 func formFrom(ns *localapi.NetworkSettings) netForm {
 	return netForm{
-		loaded: true, servers: strings.Join(ns.Servers, "\n"), name: ns.Name,
+		loaded: true, servers: strings.Join(ns.Servers, "\n"), peers: strings.Join(ns.Peers, "\n"), name: ns.Name,
 		hasSecret: ns.HasSecret, weakSecret: ns.WeakSecret, direct: ns.Direct != nil && *ns.Direct,
 	}
 }
 
-// serverLines splits the servers field into URLs, dropping blank lines.
-func serverLines(s string) []string {
+// lines splits a field of one entry per line, dropping blank lines.
+func lines(s string) []string {
 	var out []string
 	for line := range strings.Lines(s) {
 		if line = strings.TrimSpace(line); line != "" {
