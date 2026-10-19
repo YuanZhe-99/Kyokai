@@ -1296,6 +1296,15 @@ mod tests {
         // A fresh profile per run: a Keychain item made by another test binary
         // would raise an access prompt that nobody answers on CI.
         let profile = format!("test-{}", std::process::id());
+        // The Keychain item outlives the state directory; remove it even when
+        // the test fails.
+        struct Forget<'a>(&'a str);
+        impl Drop for Forget<'_> {
+            fn drop(&mut self) {
+                store::forget_master_key(self.0);
+            }
+        }
+        let _forget = Forget(&profile);
         let cfg = json!({"version": "0.0.0", "state_dir": dir, "profile": profile}).to_string();
         let started = roundtrip(kyokai_start, &cfg);
         assert_eq!(started["ok"], true, "{started}");
@@ -1323,5 +1332,10 @@ mod tests {
         assert_eq!(after["result"]["serve"], "none");
         kyokai_stop();
         let _ = std::fs::remove_dir_all(dir);
+        // Regression: every run left a `master-key.test-<pid>` Keychain item.
+        assert!(
+            store::forget_master_key(&profile),
+            "the Keychain item remains"
+        );
     }
 }

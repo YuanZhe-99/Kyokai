@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"testing"
 	"time"
@@ -25,6 +26,9 @@ func TestRealLibrary(t *testing.T) {
 	// Keychain item made by another test binary raises an access prompt that
 	// nobody answers on CI.
 	profile := fmt.Sprintf("test-%d-%d", os.Getpid(), time.Now().UnixNano())
+	if runtime.GOOS == "darwin" {
+		t.Cleanup(func() { forgetMasterKey(t, profile) })
+	}
 	st, err := l.Start(Config{Version: "0.0.0-test", StateDir: dir, Profile: profile})
 	if err != nil {
 		t.Fatal(err)
@@ -110,6 +114,17 @@ func TestRealLibrary(t *testing.T) {
 		if err := atDepth(depth, func() error { return l.Call("status", nil, nil) }); err != nil {
 			t.Fatalf("status at depth %d: %v", depth, err)
 		}
+	}
+}
+
+// forgetMasterKey deletes the Keychain item the core made for profile, which
+// outlives the test's state directory, and fails the test if it remains
+// (regression: every run left a `master-key.test-…` item behind).
+func forgetMasterKey(t *testing.T, profile string) {
+	args := []string{"-s", "com.yuanzhe.kyokai", "-a", "master-key." + profile}
+	_ = exec.Command("security", append([]string{"delete-generic-password"}, args...)...).Run()
+	if exec.Command("security", append([]string{"find-generic-password"}, args...)...).Run() == nil {
+		t.Errorf("the Keychain item for profile %s remains", profile)
 	}
 }
 

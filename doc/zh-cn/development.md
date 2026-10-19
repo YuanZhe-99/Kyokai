@@ -76,7 +76,7 @@ KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
 ```
 
 `KYOKAI_PROFILE` 让开发实例与已安装的 Kyokai 分开：拥有自己的应用名、单实例锁、套接字与状态目录（`Kyokai-<profile>`）。
-`KYOKAI_SVC` 让界面使用另一个引擎可执行文件，`KYOKAI_SOCKET` 指定另一个套接字。ABI 冒烟测试需要库的绝对路径。`ctl network-set`（第一个网络）
+`KYOKAI_SVC` 让界面使用另一个引擎可执行文件，`KYOKAI_SOCKET` 指定另一个套接字。ABI 冒烟测试需要库的绝对路径。在 macOS 上，启动真实核心的测试（`cargo test`、ABI 冒烟测试、`scripts/smoke.sh`）会为新的配置创建钥匙串项目（`master-key.test-…`、`master-key.smoke-…`），并在结束时删除；Rust 与 Go 测试在其项目残留时失败。`ctl network-set`（第一个网络）
 与 `ctl network-profile`（添加一个网络，或修改 `--network` 指定的网络）从 `KYOKAI_NETWORK_SECRET` 读取网络密钥，从不从命令行读取；
 `ctl network` 和 `ctl networks` 显示不含密钥的设置，`ctl network-remove` 忘记一个网络，`ctl network-direct` 为所有网络设置直接路径。
 同一台机器上使用不同配置、状态目录和套接字的两个引擎，可以通过同一个网络互相看到：没有外部服务器时，一个打开直接路径的引擎列出一个不会

@@ -118,6 +118,21 @@ impl Secrets {
     }
 }
 
+/// Deletes profile's master key from the OS store, for tests that open a
+/// real store: the Keychain item outlives the state directory.
+/// Returns: whether no key for profile is left outside a state directory.
+#[cfg(test)]
+pub fn forget_master_key(profile: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    return os::forget(profile);
+    #[cfg(not(target_os = "macos"))]
+    {
+        // DPAPI keeps the key next to the store; elsewhere there is none.
+        let _ = profile;
+        true
+    }
+}
+
 /// Moves an unreadable store aside, so that the next open starts an empty
 /// one; nothing is deleted.
 /// Returns: the name the old store now has.
@@ -279,6 +294,8 @@ mod os {
     use super::{Persistence, new_key};
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD;
+    #[cfg(test)]
+    use security_framework::passwords::delete_generic_password;
     use security_framework::passwords::{get_generic_password, set_generic_password};
     use std::path::Path;
     use zeroize::Zeroizing;
@@ -298,11 +315,7 @@ mod os {
         _state_dir: &Path,
         profile: &str,
     ) -> Result<Zeroizing<[u8; 32]>, Persistence> {
-        let account = if profile.is_empty() {
-            "master-key".to_owned()
-        } else {
-            format!("master-key.{profile}")
-        };
+        let account = account(profile);
         match get_generic_password(SERVICE, &account) {
             Ok(text) => {
                 let raw = Zeroizing::new(
@@ -324,6 +337,24 @@ mod os {
         set_generic_password(SERVICE, &account, text.as_bytes())
             .map_err(|_| Persistence::MemoryOnly)?;
         Ok(key)
+    }
+
+    /// The Keychain account that holds profile's master key.
+    fn account(profile: &str) -> String {
+        if profile.is_empty() {
+            "master-key".to_owned()
+        } else {
+            format!("master-key.{profile}")
+        }
+    }
+
+    /// Deletes profile's Keychain item.
+    /// Returns: whether the item is gone.
+    #[cfg(test)]
+    pub fn forget(profile: &str) -> bool {
+        let account = account(profile);
+        let _ = delete_generic_password(SERVICE, &account);
+        matches!(get_generic_password(SERVICE, &account), Err(e) if e.code() == NOT_FOUND)
     }
 }
 

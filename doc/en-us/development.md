@@ -90,7 +90,9 @@ KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
 `KYOKAI_PROFILE` keeps a development instance apart from an installed Kyokai: its own app name,
 single-instance lock, socket and state directory (`Kyokai-<profile>`). `KYOKAI_SVC` points the GUI at
 another engine binary, `KYOKAI_SOCKET` at another socket. The ABI smoke test needs an absolute
-library path. `ctl network-set` (the first network) and `ctl network-profile` (add one, or change
+library path. On macOS the tests that start a real core (`cargo test`, the ABI smoke test,
+`scripts/smoke.sh`) make a Keychain item for a fresh profile (`master-key.test-…`, `master-key.smoke-…`)
+and delete it when they finish; the Rust and Go tests fail if theirs remains. `ctl network-set` (the first network) and `ctl network-profile` (add one, or change
 the one `--network` names) take the network secret from `KYOKAI_NETWORK_SECRET`, never from the
 command line; `ctl network` and `ctl networks` show the settings without it, `ctl network-remove`
 forgets one and `ctl network-direct` sets direct paths for all of them. Two engines with different

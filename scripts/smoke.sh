@@ -12,7 +12,14 @@ cd "$(dirname "$0")/.."
 [ "${1:-}" = user ] || { echo "usage: scripts/smoke.sh user" >&2; exit 2; }
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+# The Keychain item of the smoke profile outlives the state directory.
+cleanup() {
+	rm -rf "$work"
+	if [ "$(uname)" = Darwin ] && [ -n "${KYOKAI_PROFILE:-}" ]; then
+		security delete-generic-password -s com.yuanzhe.kyokai -a "master-key.$KYOKAI_PROFILE" >/dev/null 2>&1 || true
+	fi
+}
+trap cleanup EXIT
 case "$(go env GOOS)" in
 windows) lib=kyokai_core.dll ext=.exe ;;
 darwin) lib=libkyokai_core.dylib ext="" ;;
