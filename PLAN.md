@@ -19,7 +19,6 @@ this file when the plan is complete.
 | Item | Scope | Done when |
 |---|---|---|
 | 0.4.0: Windows host video | a still screen no longer counts as a lost display; a reopened, resumed or restarted stream gets the hardware encoder back; GDI tries desktop duplication again; the GPU scales a large display before the copy; the pointer is watched off the network threads | `ctl watch` on this machine and the VM as hosts shows the gains against 0.3.2, recorded in platform-notes |
-| 0.4.0: login window (Windows) | the GUI never starts a console program at start-up | no window at a start with `--mygo-opened-at-login` while the helper is installed |
 | 0.4.0: Kyokai's windows follow Hide Kyokai from capture | with it off, a person's remote input reaches Kyokai's windows, never the host's AI, nobody while a request or an approval waits; the macOS helper modes guard Kyokai's windows | tests; clicks on Kyokai's window from the VM's viewer work only as described |
 | 0.4.0: macOS hardening | no MyGo call that waits for the main thread under the app lock; a hang watchdog; ScreenCaptureKit only with Screen Recording, stopped before it is released; panic-proof callbacks; the engine's stderr and panics in its log | tests on Windows and the macOS CI; the first connection to a Mac host no longer freezes |
 | 0.4.0: viewer toolbar | one floating toolbar over the picture (Display, Quality, Keyboard, Actions, toggles, path), folded into a handle that drags along the top edge | view tests; the running app at several widths |
