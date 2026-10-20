@@ -959,11 +959,22 @@ pub(crate) fn window_owner(at: Option<CGPoint>) -> Option<i32> {
     None
 }
 
-/// Whether a process is Kyokai's: this engine or the app that started it.
-fn kyokai_pid(pid: i32) -> bool {
-    let pid = pid as u32;
-    pid == std::process::id() || pid == std::os::unix::process::parent_id()
+/// Whether a process is one of Kyokai's: the app, the engine or Kyokai
+/// Helper, told by its executable's name as on Windows, whoever started it
+/// (regression: "this engine or its parent" missed the app in the helper
+/// modes, where launchd starts the agent, so remote input and the AI reached
+/// Kyokai's windows there).
+fn kyokai_process(pid: i32) -> bool {
+    let mut path = [0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    // SAFETY: proc_pidpath writes at most the buffer's length and returns
+    // the length it wrote (0 or less for an unknown process).
+    let n = unsafe { libc::proc_pidpath(pid, path.as_mut_ptr().cast(), path.len() as u32) };
+    n > 0 && crate::input::is_kyokai(&String::from_utf8_lossy(&path[..n as usize]))
 }
+
+/// How long the answer for a window's process is reused (`kyokai_owner`),
+/// so pointer moves do not ask for each event.
+const OWNER_TTL: Duration = Duration::from_secs(1);
 
 /// A mouse press: its button, place (points), time and click count.
 #[derive(Clone, Copy)]
@@ -990,6 +1001,9 @@ pub struct Injector {
     press: Option<Press>,
     /// Wheel movement not sent yet (less than a line).
     scroll: (f32, f32),
+    /// The last window owner asked about: its process, whether it is
+    /// Kyokai's, and when (`kyokai_owner`).
+    owner: (i32, bool, Instant),
 }
 
 impl Default for Injector {
@@ -1002,6 +1016,8 @@ impl Default for Injector {
             at: (0.0, 0.0),
             press: None,
             scroll: (0.0, 0.0),
+            // No process has this number: the first owner is asked about.
+            owner: (i32::MIN, false, Instant::now()),
         }
     }
 }
@@ -1057,8 +1073,20 @@ impl Injector {
         post(event);
     }
 
+    /// Whether a window's process is one of Kyokai's (the answer for the last
+    /// process is reused for OWNER_TTL).
+    fn kyokai_owner(&mut self, pid: i32) -> bool {
+        let (last, kyokai, at) = self.owner;
+        if pid == last && at.elapsed() < OWNER_TTL {
+            return kyokai;
+        }
+        let kyokai = kyokai_process(pid);
+        self.owner = (pid, kyokai, Instant::now());
+        kyokai
+    }
+
     /// Whether the window `guard` names is one of Kyokai's.
-    fn blocked(&self, guard: Guard) -> bool {
+    fn blocked(&mut self, guard: Guard) -> bool {
         let owner = match guard {
             Guard::None => return false,
             Guard::At(x, y) => {
@@ -1072,7 +1100,7 @@ impl Injector {
             }
             Guard::Focus => window_owner(None),
         };
-        owner.is_some_and(kyokai_pid)
+        owner.is_some_and(|pid| self.kyokai_owner(pid))
     }
 
     /// Injects an event, unless it would reach a Kyokai window.
@@ -1497,6 +1525,17 @@ impl Desktop for Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Kyokai's processes are told by their executable, whoever started them
+    /// (regression: "this engine or its parent" missed the app in the helper
+    /// modes, where launchd starts the agent).
+    #[test]
+    fn kyokai_processes_are_told_by_their_executable() {
+        // This test binary is kyokai_core-….
+        assert!(kyokai_process(std::process::id() as i32));
+        assert!(!kyokai_process(1), "launchd");
+        assert!(!kyokai_process(-1), "no such process");
+    }
 
     /// Every key the Map table names comes back to its scan code, so a Mac
     /// viewer sends what a Mac host turns into the same key.

@@ -288,7 +288,7 @@ Ctrl+Alt+Shift+Esc（紧急停止，任务运行期间有效）、托盘中的�
 | 采集 | 显示器的 ScreenCaptureKit 流，按其像素尺寸缩放到 1920×1080 以内，BGRA，不含指针（查看窗口根据指针消息自己绘制），“安全”中“在屏幕采集中隐藏 Kyokai”打开时（默认）也不含 Kyokai 的进程与应用的窗口：界面在连接引擎时以及设置改变时把它告诉引擎（`capture.show`；助手模式下由助手转告其代理，代理每次启动时也再转告一次），正在进行的视频流按新的过滤器重新打开（约半秒没有画面；原先在原处更新过滤器，只尝试一次，未生效时 Kyokai 一直被隐藏），AI 截图也照此处理；画面不变时不发送；没有权限时被控端发送测试图案 |
 | 编码 | 先用 VideoToolbox 的 H.264 与 HEVC（见上文），然后是软件编解码器（`vp9-sw`、`av1`、`vp8`） |
 | 解码 | 查看窗口经 VideoToolbox 解码 `h264` 与 `hevc`，经 libvpx 与 libaom 解码软件编码 |
-| 输入 | 在 HID 层投递并标记为 Kyokai 的 Core Graphics 事件：以点为单位的指针事件，带点击次数以支持双击与三击；滚轮刻度按行；按名称的按键与修饰键（`ctrl` → Control，`alt` → Option，`meta` → Command），附带所按住修饰键的标志；文本以 Unicode 输入；扫描码经对照表转换为 Mac 键码（Caps Lock 跟随控制端；Mac 没有 NumLock）。防护会查找该点下窗口的所有者（按键则查找最前面的普通窗口），丢弃发往本引擎或启动它的应用的事件 |
+| 输入 | 在 HID 层投递并标记为 Kyokai 的 Core Graphics 事件：以点为单位的指针事件，带点击次数以支持双击与三击；滚轮刻度按行；按名称的按键与修饰键（`ctrl` → Control，`alt` → Option，`meta` → Command），附带所按住修饰键的标志；文本以 Unicode 输入；扫描码经对照表转换为 Mac 键码（Caps Lock 跟随控制端；Mac 没有 NumLock）。防护会查找该点下窗口的所有者（按键则查找最前面的普通窗口），丢弃发往 Kyokai 任一进程（应用、引擎、Kyokai Helper）的事件，与 Windows 上一样按其可执行文件判断（0.4.0 之前只匹配本引擎及其父进程，在助手模式下由 launchd 启动代理，因而漏掉了应用） |
 | 本地输入 | 只监听的事件监听器（输入监控）记录被控端用户的按键与移动，跳过 Kyokai 标记的事件，并监视 Ctrl+Option+Shift+Esc |
 | AI 任务 | 每次截图用一个短暂的 ScreenCaptureKit 流以全分辨率采集主显示器，输入与监视相同 |
 
