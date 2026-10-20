@@ -17,6 +17,10 @@ workspace = true
 
 [dependencies]
 anyhow = "1"
+# The core's log lines and panics with the local time, on stderr (lib.rs,
+# diagnostics); both crates are in the tree already.
+log = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # EasyTier, pinned by commit (third_party/upstream.json), minimal feature set:
 # data plane, AES-GCM, DHCP, the standard server connectors and a DNS
 # resolver for STUN (doc/en-us/networking.md). No TUN, SOCKS5, KCP, faketcp,

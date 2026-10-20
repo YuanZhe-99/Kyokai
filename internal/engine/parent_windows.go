@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"os"
 
 	"golang.org/x/sys/windows"
 )
@@ -24,6 +25,32 @@ func watchParent(ctx context.Context, pid int) {
 	}
 }
 
-// quietStderr does nothing on Windows: no file keeps a Kyokai process's
-// stderr there (the service has none).
-func quietStderr() {}
+// stderrFile is the file this process's stderr is, kept open (and out of
+// the collector's reach) while it is.
+var stderrFile *os.File
+
+// quietStderr sends this process's stderr nowhere (No logs): the core
+// writes its panics and log lines there.
+func quietStderr() {
+	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		return
+	}
+	if windows.SetStdHandle(windows.STD_ERROR_HANDLE, windows.Handle(null.Fd())) != nil {
+		_ = null.Close()
+		return
+	}
+	stderrFile = null
+}
+
+// logStderr points this process's stderr at f, the log, so that the core's
+// panics and log lines and a Go crash trace (both look the handle up as
+// they write) are kept there.
+// Returns: whether it could.
+func logStderr(f *os.File) bool {
+	if windows.SetStdHandle(windows.STD_ERROR_HANDLE, windows.Handle(f.Fd())) != nil {
+		return false
+	}
+	stderrFile = f
+	return true
+}

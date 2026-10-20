@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,7 +115,13 @@ func (e *engineChild) ensure(ctx context.Context, socket string) error {
 	}
 	e.cmd, e.lifeline = cmd, w
 	e.starts = append(e.starts, now)
-	go func() { _ = cmd.Wait() }()
+	// An engine that ends with an error (a crash among them) is noted in
+	// the GUI's crash log, where its standard logger writes.
+	go func() {
+		if err := cmd.Wait(); err != nil {
+			log.Printf("the engine ended: %v", err)
+		}
+	}()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := client.Do(ctx, localapi.Request{Type: localapi.RequestStatus}); err == nil {

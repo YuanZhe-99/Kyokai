@@ -866,14 +866,21 @@ mod capture {
                 let encoder = Encoder::open(choice, w, h)?;
                 Ok::<_, String>((capturer, encoder, w, h))
             })();
+            let colour = if choice.i444 { " 4:4:4" } else { "" };
             let (capturer, mut encoder, w, h) = match opened {
                 Ok(v) => v,
                 Err(e) => {
+                    log::info!("video: {}{colour} did not open: {e}", choice.codec);
                     let _ = ready_tx.send(Err(e));
                     return;
                 }
             };
             let (name, hardware) = encoder.kind();
+            log::info!(
+                "video: {}{colour} at {w}x{h} through {name} in {}",
+                choice.codec,
+                if hardware { "hardware" } else { "software" }
+            );
             let _ = ready_tx.send(Ok(VideoStart {
                 codec: choice.codec.into(),
                 width: w,

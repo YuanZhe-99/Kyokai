@@ -153,8 +153,8 @@ runtime statically, so nothing is resolved through the search path.
 | `gui.json` | GUI preferences |
 | `ai.json` | AI settings: provider, models, approval policy (no key) |
 | `ai-tasks.json` | Finished AI tasks, without screenshots |
-| `logs/engine.log` | Engine log, without secrets, and the engine's crash trace |
-| `logs/gui-crash.log` | The GUI's crash trace |
+| `logs/engine.log` | Engine log, without secrets: the engine's lines, the core's (its stderr) and a crash trace |
+| `logs/gui-crash.log` | The GUI's stderr: its crash trace, a panic in its copy of the core, an engine that ended with an error |
 
 ## Cross-cutting rules
 

@@ -1597,6 +1597,18 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     } else {
         Vec::new()
     };
+    // What this Mac lets the session do, for the log (the helper's agent
+    // has grants of its own).
+    #[cfg(target_os = "macos")]
+    if matches!(side, Side::Host { .. }) && crate::agent::link().is_none() {
+        let p = crate::mac::permissions(false);
+        log::info!(
+            "host session: screen recording {}, accessibility {}, input monitoring {}",
+            p.screen,
+            p.accessibility,
+            p.input_monitoring
+        );
+    }
     // A controller says which codecs it decodes before anything else;
     // a resumed one first gives the viewer's quality and codec again, so
     // the host opens the video as the viewer chose.
@@ -2086,7 +2098,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::Audio { on } if matches!(side, Side::Host { .. }) => {
                         if on && may_hear {
                             if sound.is_none() {
-                                sound = audio::Source::open().ok();
+                                sound = audio::Source::open()
+                                    .inspect_err(|e| log::info!("sound did not open: {e}"))
+                                    .ok();
                             }
                         } else {
                             sound = None;

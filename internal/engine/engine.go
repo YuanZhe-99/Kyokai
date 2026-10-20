@@ -750,9 +750,11 @@ func Logger(path string) func(string, ...any) {
 	}
 }
 
-// CrashLog opens path for appending and sends this process's crash trace
-// (an unrecovered panic or a fatal runtime error) there as well as to
-// stderr, unless the state directory (path's grandparent) says no logs.
+// CrashLog opens path for appending and keeps there what this process
+// writes to stderr — a crash trace (an unrecovered panic or a fatal runtime
+// error) and what the core writes (its panics and log lines) — unless the
+// state directory (path's grandparent) says no logs; stderr then goes
+// nowhere.
 // Returns: the file, or nil when logs are off or it cannot be opened.
 func CrashLog(path string) *os.File {
 	logFile.Lock()
@@ -769,7 +771,11 @@ func CrashLog(path string) *os.File {
 	return openLog()
 }
 
-// openLog opens logFile.path (caller holds logFile).
+// openLog opens logFile.path and points this process's stderr, and the
+// standard logger, at it; where stderr cannot be pointed there, the crash
+// trace alone goes there (caller holds logFile).
+// Notes: with stderr in the file, the crash trace is not sent there a
+// second time (SetCrashOutput writes in addition to stderr).
 func openLog() *os.File {
 	if err := os.MkdirAll(filepath.Dir(logFile.path), 0o700); err != nil {
 		return nil
@@ -778,7 +784,12 @@ func openLog() *os.File {
 	if err != nil {
 		return nil
 	}
-	_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+	if logStderr(f) {
+		// The standard logger kept the stderr it started with (Windows).
+		log.SetOutput(f)
+	} else {
+		_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+	}
 	logFile.f = f
 	return f
 }
@@ -807,11 +818,13 @@ func SetLogsOff(stateDir string, off bool) error {
 		return err
 	}
 	_ = debug.SetCrashOutput(nil, debug.CrashOptions{})
+	// Stderr leaves the log before the log closes.
+	quietStderr()
+	log.SetOutput(io.Discard)
 	if logFile.f != nil {
 		_ = logFile.f.Close()
 		logFile.f = nil
 	}
-	quietStderr()
 	if err := os.RemoveAll(filepath.Join(stateDir, "logs")); err != nil {
 		return err
 	}

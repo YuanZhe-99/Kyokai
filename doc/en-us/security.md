@@ -78,12 +78,18 @@ without revealing it.
 ## Logging
 
 Logs record versions, the Device ID and how secrets are kept — never a password, key or secret.
-The engine writes `logs/engine.log` in the state directory. Audited on 2026-10-17: the engine logs
-its start (version, Device ID, how secrets are kept) and why it stops (lifeline or parent gone);
-the core writes no log; a provider's error carries its status and message, never the key. A Go
-crash trace (in `engine.log`, and `logs/gui-crash.log` for the GUI) holds the stack and the
-runtime's message, which never include secrets. The macOS helper's launchd job sends its stderr
-to `helper.log` in its state directory.
+The engine writes `logs/engine.log` in the state directory and, while logs are on, points its
+stderr there; the GUI points its own at `logs/gui-crash.log`. Audited on 2026-10-17 and again on
+2026-10-19: the engine logs its start (version, Device ID, how secrets are kept) and why it stops
+(lifeline or parent gone); the core logs, through stderr, how each stream captures and encodes
+(the capture method, the codec, the encoder and whether it runs in hardware), why video or sound
+did not open (with the system's error), and on a Mac host the privacy permissions it has — never a
+password, key, address or Device ID; a panic in the core is recorded with its thread, place and
+backtrace; a provider's error carries its status and message, never the key. A Go crash trace (in
+`engine.log`, and `gui-crash.log` for the GUI, which also notes an engine that ended with an
+error) holds the stack and the runtime's message, which never include secrets. The macOS helper's
+launchd job sends its stderr to `helper.log` in its state directory until the engine points it at
+`engine.log`.
 
 ### No logs
 

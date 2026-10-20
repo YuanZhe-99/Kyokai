@@ -569,8 +569,57 @@ pub unsafe extern "C" fn kyokai_free(ptr: *mut u8, len: usize) {
     }
 }
 
+/// Writes the log records of Kyokai's own code and of the vendored capturer
+/// (never EasyTier's) to stderr with the local time, like the engine's own
+/// lines: the engine points stderr at its log while logs are on
+/// (doc/en-us/security.md, "Logging").
+struct StderrLog;
+
+impl log::Log for StderrLog {
+    fn enabled(&self, m: &log::Metadata) -> bool {
+        m.level() <= log::Level::Info
+            && (m.target().starts_with("kyokai_core") || m.target().starts_with("rustdesk_"))
+    }
+
+    fn log(&self, r: &log::Record) {
+        if self.enabled(r.metadata()) {
+            eprintln!("{} core {}: {}", now(), r.level(), r.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+/// The local time as the engine's log writes it.
+fn now() -> String {
+    chrono::Local::now().format("%Y/%m/%d %H:%M:%S").to_string()
+}
+
+/// Installs, once per process, the core's logger and a panic hook that
+/// records each panic with its thread, place and backtrace (the default
+/// hook wrote the message alone, to a stderr nothing kept).
+fn diagnostics() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        if log::set_logger(&StderrLog).is_ok() {
+            log::set_max_level(log::LevelFilter::Info);
+        }
+        std::panic::set_hook(Box::new(|info| {
+            let thread = std::thread::current();
+            eprintln!(
+                "{} core panic on thread {}: {info}\n{}",
+                now(),
+                thread.name().unwrap_or("unnamed"),
+                std::backtrace::Backtrace::force_capture()
+            );
+        }));
+    });
+}
+
 /// Runs `f` on the request bytes and writes its JSON response, catching
 /// panics so none crosses the C boundary.
+/// Side effects: installs the core's diagnostics on the first call
+/// (`diagnostics`).
 ///
 /// # Safety
 /// `input` points to `len` readable bytes; `out` and `out_len` are valid for
@@ -582,6 +631,7 @@ unsafe fn exchange(
     out_len: *mut usize,
     f: impl FnOnce(&[u8]) -> Result<Value, String>,
 ) -> i32 {
+    diagnostics();
     if input.is_null() || out.is_null() || out_len.is_null() {
         return -1;
     }
