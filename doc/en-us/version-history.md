@@ -1,5 +1,35 @@
 # Version history
 
+## 0.4.0 (2026-10-19)
+
+- A Windows host is faster: a still screen no longer counts as a lost display (capture was torn
+  down and rebuilt after every quiet moment); a stream that restarts, changes codec or resumes after
+  a drop gets the hardware encoder back instead of falling to software; the GPU scales a large
+  desktop before it is copied; capture that fell back to GDI tries desktop duplication again every
+  2 s; the pointer and a person's input stay off the network's threads.
+- Windows: started at login with the helper installed, Kyokai no longer leaves a blank window (it
+  ran a console program to read the helper's version).
+- Kyokai's windows follow Hide Kyokai from capture (Security): with it off (it asks first), a
+  person controlling this device can also use Kyokai's own windows; the host's AI never can, and
+  nobody can while a connection request or an AI approval waits. On macOS, Kyokai's windows are now
+  guarded in the helper modes too.
+- macOS: the first connection request could freeze the app (it announced the request under its
+  lock while macOS asked about notifications); a watchdog writes the stacks of a frozen GUI to
+  `gui-crash.log`. Capture and sound give up at once without Screen Recording, a program without a
+  bundle identifier no longer panics the capture filter, streams are stopped before they are
+  released, and every framework callback catches its own panic. A Mac host stays awake while
+  someone is connected.
+- The engine's stderr, its panics and what each session's capture, encoder and sound opened go to
+  `engine.log` while logs are on.
+- The viewer's two bars are one toolbar floating over the picture, as RustDesk's: Display, Quality,
+  Keyboard and Actions menus, toggles for Sound, Pointer, Clipboard, AI and Full screen, and the
+  path to the device. Its grip drags it along the top edge (the place is kept for every viewer);
+  it folds to a small handle (kept for each device).
+- Protocol 10, unchanged; local API 2 with the new request `input.kyokai` (an older engine refuses
+  it and keeps Kyokai's windows guarded).
+- Upstream versions checked, unchanged: MyGo v0.5.5, EasyTier v2.7.0, RustDesk 1.5.0 (vendored
+  code), vcpkg 2026.07.29, Rust 1.99.1.
+
 ## 0.3.2 (2026-10-19)
 
 - Several networks at once: the Network page keeps up to 8 EasyTier networks, each with its
