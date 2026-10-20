@@ -49,12 +49,16 @@ that user could not read.
   Kyokai's own windows are excluded from capture (`SetContentProtection`), so the AI page and
   approvals never reach the model. The host user can turn this off in Security (Privacy, "Hide
   Kyokai from screen capture", on by default) to see and change Kyokai through another
-  remote-desktop tool on an unattended computer; the windows then appear in every capture,
-  including Kyokai's own video and the AI's screenshots. Input still never reaches them.
+  remote-desktop tool, or through Kyokai itself, on an unattended computer (turning it off asks
+  first); the windows then appear in every capture, including Kyokai's own video and the AI's
+  screenshots, and a person's input from a session with `control-input` reaches them too — the
+  host's AI never, and nobody while a controller waits for the host user's answer or the AI for
+  an approval, so no one answers those in the host user's place. The GUI tells the engine with
+  `input.kyokai`; an engine of an older version refuses it and keeps them guarded.
 - The model's proposals are only input: every action is parsed, bounds-checked against the latest
   screenshot and executed by the host's own executor; nothing runs commands or code, and nothing
-  is injected into a Kyokai window (pointer input by the window under it, keys by the focused
-  window).
+  the AI does is injected into a Kyokai window, whatever the host user lets people do (pointer input
+  by the window under it, keys by the focused window).
 - Local input, pause, cancel and the emergency stop revoke the task's input lease at once; a
   response that arrives afterwards never acts ([computer-use.md](computer-use.md)).
 - A controller's task runs with the host's key under the host's approval policy; the controller
@@ -129,7 +133,7 @@ caller's token (its user and its enabled groups); an administrator outside them 
 | The host's passwords | guessing them online or offline | OPAQUE (nothing to guess offline from the wire), rate limits per address with a global backoff that spares pinned keys, the host's confirmation for anything beyond the password grants |
 | Permissions | a controller doing more than it was granted | each request checked against the session's permissions on the host; no permission implies another; network membership grants none |
 | Provider keys and secrets | leaking through logs, the status, sessions or files | only towards the engine on the local API, kept in the secrets store, never logged or returned |
-| The host's desktop under AI | a model (or text on the screen steering it) acting against the user | proposals are only input, validated and executed by the host; approvals; local input and take-over pause at once; late responses never act; Kyokai's windows are neither captured nor injected into |
+| The host's desktop under AI | a model (or text on the screen steering it) acting against the user | proposals are only input, validated and executed by the host; approvals; local input and take-over pause at once; late responses never act; Kyokai's windows are neither captured nor injected into by the AI (people controlling the host reach them only while the host user lets it, and never while a request or an approval waits) |
 | Old messages | replaying input, commands or logins | Noise nonces; resume tokens single-use, bound to the controller's key and valid 2 minutes; commands never re-sent after a reconnect; idempotent task start |
 | A revoked device | coming back | revoking ends its live sessions and drops its resume tokens; its task pauses when its session ends |
 | The local API | another local user driving the engine | peer credentials, the engine's own user only |

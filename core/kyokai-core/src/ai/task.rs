@@ -672,6 +672,14 @@ impl Ai {
             .any(|t| matches!(t.state, State::Running | State::Approval))
     }
 
+    /// Whether a task waits for the host user's approval of an action: while
+    /// one does, no session's input reaches Kyokai's own windows (only those
+    /// allowed to approve answer it, through the session).
+    pub fn awaiting_approval(&self) -> bool {
+        let tasks = self.shared.tasks.lock().expect("tasks");
+        tasks.iter().any(|t| matches!(t.state, State::Approval))
+    }
+
     /// The newest task, whoever started it (the host's user or a
     /// controller), as sessions show it: one record for every controller,
     /// with its latest steps and progress notes only.
@@ -1384,7 +1392,8 @@ async fn execute(
                         if !d.inject(&e) {
                             d.release();
                             return Outcome::Failed(
-                                "Kyokai's own window has the focus; nothing was sent to it.".into(),
+                                "That was aimed at Kyokai's own window; nothing was sent to it."
+                                    .into(),
                             );
                         }
                     }

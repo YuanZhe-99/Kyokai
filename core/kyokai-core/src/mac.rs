@@ -1103,13 +1103,15 @@ impl Injector {
         owner.is_some_and(|pid| self.kyokai_owner(pid))
     }
 
-    /// Injects an event, unless it would reach a Kyokai window.
+    /// Injects an event, unless it would reach a Kyokai window and
+    /// `kyokai_ok` is false: a person's input while the host user lets it
+    /// reach them (`input::kyokai_input`), never the AI's.
     /// Returns: whether it was injected.
-    pub fn inject(&mut self, e: &Event) -> bool {
+    pub fn inject(&mut self, e: &Event, kyokai_ok: bool) -> bool {
         if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
-            return link.inject(id, e, self.area);
+            return link.inject(id, e, self.area, kyokai_ok);
         }
-        if !e.valid() || self.blocked(e.guard()) {
+        if !e.valid() || (!kyokai_ok && self.blocked(e.guard())) {
             return false;
         }
         match e {
@@ -1501,7 +1503,8 @@ impl Desktop for Screen {
     }
 
     fn inject(&mut self, e: &Event) -> bool {
-        self.injector.inject(e)
+        // The AI never reaches Kyokai's windows, whatever the host user lets.
+        self.injector.inject(e, false)
     }
 
     fn release(&mut self) {

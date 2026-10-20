@@ -180,10 +180,12 @@ func (a *App) setShowInCapture(p Prefs, show bool) {
 	go a.sendCapture()
 }
 
-// sendCapture tells the engine whether its captures show Kyokai's windows,
-// as the preferences say: macOS's capture filter follows it (on Windows the
+// sendCapture tells the engine whether its captures show Kyokai's windows and
+// whether a person's remote input may reach them: both follow Hide Kyokai
+// from capture. macOS's capture filter follows the first (on Windows the
 // windows' display affinity does the job). An engine of an older version
-// refuses the request, which changes nothing.
+// refuses what it does not know, which changes nothing: it keeps Kyokai's
+// windows guarded.
 func (a *App) sendCapture() {
 	a.captureMu.Lock()
 	defer a.captureMu.Unlock()
@@ -191,6 +193,7 @@ func (a *App) sendCapture() {
 	show := a.prefs.ShowInCapture
 	a.mu.Unlock()
 	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestCaptureShow, Show: &show})
+	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestInputKyokai, KyokaiInput: &show})
 }
 
 // sendLogs tells the engine whether to keep logs and connection history,

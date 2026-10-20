@@ -323,7 +323,21 @@ func (a *App) privacySettings(c *ui.Context) {
 		hide := !p.ShowInCapture
 		settingRow(c, "capture", L.SettingsHideFromCapture(), L.SettingsHideFromCaptureHint(), func() {
 			if ui.Switch(c.Key("capture-sw"), &hide).Label(L.SettingsHideFromCapture()).Changed() {
-				a.setShowInCapture(p, !hide)
+				if hide {
+					a.setShowInCapture(p, false)
+					return
+				}
+				// Shown, Kyokai's windows take the input of the people
+				// controlling this device too: ask first (a dialog: off the
+				// main thread).
+				go func() {
+					if a.confirm(L.SettingsHideFromCaptureConfirm(), L.SettingsHideFromCaptureOff()) {
+						a.mu.Lock()
+						p := a.prefs
+						a.mu.Unlock()
+						a.setShowInCapture(p, true)
+					}
+				}()
 			}
 		})
 		settingRow(c, "secrets", L.StorageSecrets(), "", func() {

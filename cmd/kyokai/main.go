@@ -68,12 +68,17 @@ func main() {
 			MinWidth:  760,
 			MinHeight: 520,
 			StateKey:  "main",
-			Hidden:    hidden,
-			Content:   ui.View(a.MainView),
+			// Shown once its display affinity is set: never captured for a
+			// moment.
+			Hidden:  true,
+			Content: ui.View(a.MainView),
 		}))
 		// Kyokai's windows stay out of every capture (the viewer's video and
 		// the AI's screenshots) unless Security says otherwise.
 		a.SetWindow(w)
+		if !hidden {
+			w.Show()
+		}
 		a.SetVisible(!hidden)
 		tray := a.NewTray()
 		a.SetTray(tray)

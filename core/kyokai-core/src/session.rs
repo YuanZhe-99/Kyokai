@@ -331,6 +331,16 @@ fn area(d: video::Display) -> crate::input::Area {
     }
 }
 
+/// Whether a person's input from a session may reach Kyokai's own windows:
+/// only while the host user lets it (`allowed`: Hide Kyokai from capture is
+/// off), and not while a controller waits for the host user's answer or the
+/// AI for approval, so that nobody answers those in the host user's place
+/// through Kyokai's window. The host's AI never may (its own injector).
+#[cfg(any(windows, target_os = "macos"))]
+fn kyokai_reachable(allowed: bool, access: &Access, ai: &crate::ai::Ai) -> bool {
+    allowed && !access.asking() && !ai.awaiting_approval()
+}
+
 /// The displays message for a source, when there is a choice and it shows
 /// one of them.
 fn shown(displays: &[video::Display], s: &video::Source) -> Option<Message> {
@@ -1011,6 +1021,7 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         sound,
                         input,
                         ai,
+                        access: ctx.access.clone(),
                     },
                     clipboard,
                 ) => r.err(),
@@ -1474,10 +1485,14 @@ pub enum Side {
     Host {
         video: bool,
         sound: bool,
-        // Read by the Windows input service; macOS input comes with the Mac pass.
-        #[cfg_attr(not(windows), allow(dead_code))]
+        // Read by the input service of Windows and macOS.
+        #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
         input: bool,
         ai: HostAi,
+        /// The host's access state: while a controller waits for the host
+        /// user, nobody's input reaches Kyokai's windows (`kyokai_reachable`).
+        #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+        access: Arc<Access>,
     },
     /// The controller: puts media into the queue its GUI drains, and sends
     /// the GUI's control messages (input, key-frame requests) to the host;
@@ -2405,11 +2420,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // nor reach the desktop while the AI acts.
                     #[cfg(any(windows, target_os = "macos"))]
                     Message::Input { event } => {
-                        if let (Some(inj), Ok(e), Side::Host { ai, .. }) = (injector.as_mut(), serde_json::from_value::<crate::input::Event>(event), &side) {
+                        if let (Some(inj), Ok(e), Side::Host { ai, access, .. }) = (injector.as_mut(), serde_json::from_value::<crate::input::Event>(event), &side) {
                             let hover = matches!(e, crate::input::Event::Pointer { action: crate::input::PointerAction::Move, .. });
                             if !(hover && ai.ai.acting()) {
                                 ai.ai.take_over();
-                                inj.inject(&e);
+                                inj.inject(&e, kyokai_reachable(crate::input::kyokai_input(), access, &ai.ai));
                                 // The first input after a quiet spell raises
                                 // the frame rate now, not at the next probe.
                                 let quiet = input_at.is_none_or(|t| t.elapsed() >= INPUT_BOOST);
@@ -4364,6 +4379,7 @@ mod tests {
                 run: false,
                 approve: false,
             },
+            access: host.access.clone(),
         };
         let stopped = stop.clone();
         let task = tokio::spawn(async move { run(host_end, &stopped, side, None).await });
@@ -4422,6 +4438,7 @@ mod tests {
                 run: false,
                 approve: false,
             },
+            access: host.access.clone(),
         };
         let shared = Shared {
             board: Box::new(crate::clipboard::fake::Fake(board.clone())),

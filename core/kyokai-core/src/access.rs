@@ -610,6 +610,15 @@ impl Access {
         }
     }
 
+    /// Whether a controller waits for the host user's answer: while one
+    /// does, no session's input reaches Kyokai's own windows, so nobody
+    /// answers it in the host user's place.
+    pub fn asking(&self) -> bool {
+        self.pending
+            .lock()
+            .is_ok_and(|p| p.1.iter().any(|q| !q.reply.is_closed()))
+    }
+
     /// The open confirmations, for the host's interface.
     pub fn pending(&self) -> Value {
         let Ok(mut p) = self.pending.lock() else {
@@ -879,6 +888,9 @@ mod tests {
                 false,
             )
             .unwrap();
+        // While a controller waits for the host user, nobody's input reaches
+        // Kyokai's windows.
+        assert!(a.asking());
         let open = a.pending();
         assert_eq!(open[0]["new_key"], true);
         assert_eq!(open[0]["known"], false);
@@ -895,6 +907,7 @@ mod tests {
         .unwrap();
         assert_eq!(rx.try_recv().unwrap(), Some(vec![Permission::ControlInput]));
         assert!(a.decide(id, None).is_err(), "answered once");
+        assert!(!a.asking(), "answered");
     }
 
     #[test]

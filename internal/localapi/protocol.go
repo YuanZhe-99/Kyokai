@@ -79,6 +79,7 @@ const (
 	RequestProtect              RequestType = "protect.set"            // protected mode on (needs a permanent password) or off (with it) (Request.Protect); while on, the engine serves only the status, the AI requests, confirmations, disconnecting, quitting and what the GUI sends as it attaches
 	RequestLogs                 RequestType = "logs.set"               // keep no logs, crash traces or connection history (Request.LogsOff), or keep them again; the GUI sends it as it attaches and when the setting changes
 	RequestCaptureShow          RequestType = "capture.show"           // whether captures show Kyokai's windows (Request.Show); hidden until a GUI says otherwise
+	RequestInputKyokai          RequestType = "input.kyokai"           // whether a person's remote input may reach Kyokai's windows (Request.KyokaiInput); refused until a GUI says otherwise
 	RequestSoundSource          RequestType = "sound.source"           // the sound to share (Request.SoundSource): "" what the computer plays, else an input device's id
 	RequestSoundDevices         RequestType = "sound.devices"          // the input devices that may be shared (Response.SoundDevices)
 	RequestBackground           RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
@@ -165,6 +166,10 @@ type Request struct {
 	// Show is RequestCaptureShow's: true lets captures see Kyokai's
 	// windows ("Hide Kyokai from capture" off).
 	Show *bool `json:"show,omitempty"`
+	// KyokaiInput is RequestInputKyokai's: true lets a person's remote input
+	// reach Kyokai's windows ("Hide Kyokai from capture" off; never the
+	// host's AI, nor while a confirmation or an approval waits).
+	KyokaiInput *bool `json:"kyokai_input,omitempty"`
 	// SoundSource is RequestSoundSource's: "" for what the computer
 	// plays, else an input device's id.
 	SoundSource *string `json:"sound_source,omitempty"`

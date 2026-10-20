@@ -3320,6 +3320,18 @@ func (msgs Messages) SettingsHideFromCapture() string {
 	return Catalog.Format(msgs.locale, "SettingsHideFromCapture", nil)
 }
 
+// SettingsHideFromCaptureConfirm says "People who see or control this device will see Kyokai's windows, and those controlling it can use them: change its se…"
+// in the language the app shows.
+func SettingsHideFromCaptureConfirm() string {
+	return In(i18n.Locale()).SettingsHideFromCaptureConfirm()
+}
+
+// SettingsHideFromCaptureConfirm says "People who see or control this device will see Kyokai's windows, and those controlling it can use them: change its se…"
+// in the language of msgs.
+func (msgs Messages) SettingsHideFromCaptureConfirm() string {
+	return Catalog.Format(msgs.locale, "SettingsHideFromCaptureConfirm", nil)
+}
+
 // SettingsHideFromCaptureHint says "On: Kyokai's windows stay out of screenshots, screen sharing, remote-desktop tools, Kyokai's own video and the AI's s…"
 // in the language the app shows.
 func SettingsHideFromCaptureHint() string { return In(i18n.Locale()).SettingsHideFromCaptureHint() }
@@ -3328,6 +3340,16 @@ func SettingsHideFromCaptureHint() string { return In(i18n.Locale()).SettingsHid
 // in the language of msgs.
 func (msgs Messages) SettingsHideFromCaptureHint() string {
 	return Catalog.Format(msgs.locale, "SettingsHideFromCaptureHint", nil)
+}
+
+// SettingsHideFromCaptureOff says "Show Kyokai"
+// in the language the app shows.
+func SettingsHideFromCaptureOff() string { return In(i18n.Locale()).SettingsHideFromCaptureOff() }
+
+// SettingsHideFromCaptureOff says "Show Kyokai"
+// in the language of msgs.
+func (msgs Messages) SettingsHideFromCaptureOff() string {
+	return Catalog.Format(msgs.locale, "SettingsHideFromCaptureOff", nil)
 }
 
 // SettingsIdentity says "Device identity"

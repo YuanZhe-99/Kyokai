@@ -415,10 +415,16 @@ impl Link {
     /// for the agent's answer, which nobody reads: a person's input never
     /// holds up the session (each key and click used to wait for it on one
     /// of the network's two threads).
+    /// Inputs: `kyokai` says whether the event may reach Kyokai's own windows,
+    /// which this engine decides for a person's input (the agent keeps no state
+    /// of its own about it).
     /// Returns: whether it was sent (false without an agent).
-    pub fn inject(&self, id: u64, e: &Event, area: Option<Area>) -> bool {
-        self.send("input", json!({"injector": id, "event": e, "area": area}))
-            .is_ok()
+    pub fn inject(&self, id: u64, e: &Event, area: Option<Area>, kyokai: bool) -> bool {
+        self.send(
+            "input",
+            json!({"injector": id, "event": e, "area": area, "kyokai": kyokai}),
+        )
+        .is_ok()
     }
 
     /// Releases what injector `id` holds.
@@ -674,8 +680,8 @@ impl Injector {
     fn set_area(&mut self, area: Option<Area>) {
         self.0.set_area(area);
     }
-    fn inject(&mut self, e: &Event) -> bool {
-        self.0.inject(e)
+    fn inject(&mut self, e: &Event, kyokai_ok: bool) -> bool {
+        self.0.inject(e, kyokai_ok)
     }
     fn release_all(&mut self) {
         self.0.release_all();
@@ -705,7 +711,7 @@ struct Injector {}
 #[cfg(not(any(windows, target_os = "macos")))]
 impl Injector {
     fn set_area(&mut self, _: Option<Area>) {}
-    fn inject(&mut self, _: &Event) -> bool {
+    fn inject(&mut self, _: &Event, _: bool) -> bool {
         false
     }
     fn release_all(&mut self) {}
@@ -836,7 +842,10 @@ impl Agent {
                 };
                 let inj = self.injectors.entry(injector).or_default();
                 inj.set_area(area);
-                json!(inj.inject(&e))
+                // The engine decides whether a person's input may reach
+                // Kyokai's windows; a helper that says nothing keeps them
+                // guarded.
+                json!(inj.inject(&e, req["kyokai"].as_bool().unwrap_or(false)))
             }
             "input.release" => {
                 if let Some(i) = self.injectors.get_mut(&injector) {
@@ -1625,11 +1634,34 @@ mod tests {
         assert_eq!(heard[1].1["source"], json!(crate::audio::chosen().1));
     }
 
+    /// A person's input goes to the agent with the engine's decision whether
+    /// it may reach Kyokai's windows, and without waiting for an answer.
+    #[test]
+    fn input_carries_whether_it_may_reach_kyokai() {
+        let (down_r, down_w) = std::io::pipe().unwrap();
+        let (up_r, _up_w) = std::io::pipe().unwrap();
+        let link = Arc::new(Link::new());
+        link.attach(Box::new(up_r), Box::new(down_w));
+        let mut down = down_r;
+        // The capture choices come first (a_new_agent_hears_the_capture_choices_first).
+        for _ in 0..2 {
+            read_message(&mut down).unwrap();
+        }
+        for kyokai in [true, false] {
+            assert!(link.inject(7, &Event::Text { text: "x".into() }, None, kyokai));
+            let (_, body) = read_message(&mut down).unwrap();
+            let v: Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(v["op"], "input");
+            assert_eq!(v["kyokai"], kyokai);
+            assert_eq!(v["id"], 0, "no answer awaited");
+        }
+    }
+
     #[test]
     fn calls_fail_cleanly_without_an_agent_and_after_it_left() {
         let link = Arc::new(Link::new());
         assert_eq!(link.displays(), Vec::new());
-        assert!(!link.inject(1, &Event::Text { text: "x".into() }, None));
+        assert!(!link.inject(1, &Event::Text { text: "x".into() }, None, false));
         assert!(link.desktop().is_err());
         // An agent that goes away mid-session: calls answer at once.
         let (down_r, down_w) = std::io::pipe().unwrap();

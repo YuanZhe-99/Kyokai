@@ -938,9 +938,12 @@ fn every_action_policy_asks_and_a_decline_runs_nothing() {
     let t = rig.state(id, "approval");
     assert_eq!(t["approval"]["action"]["kind"], "click");
     assert_eq!(rig.clicks(), 0);
+    // While it waits, nobody's input reaches Kyokai's windows.
+    assert!(rig.ai.awaiting_approval());
     rig.ai.decide(id, false).unwrap();
     let t = rig.state(id, "done");
     assert_eq!(t["steps"][0]["outcome"], "declined");
+    assert!(!rig.ai.awaiting_approval());
     assert_eq!(t["steps"][1]["outcome"], "not-executed");
     assert_eq!(rig.clicks(), 0);
     let requests = server.requests.lock().unwrap();

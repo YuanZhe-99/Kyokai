@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -121,6 +122,68 @@ func TestNothingWaitsForTheMainThreadUnderTheLock(t *testing.T) {
 			delete(want, w)
 		case <-time.After(5 * time.Second):
 			t.Fatalf("never called: %v", want)
+		}
+	}
+}
+
+// recordEngine answers every request with OK and keeps the requests.
+type recordEngine struct {
+	okEngine
+	mu   sync.Mutex
+	seen []localapi.Request
+}
+
+func (e *recordEngine) Handle(_ context.Context, req localapi.Request) localapi.Response {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.seen = append(e.seen, req)
+	return localapi.Response{Version: localapi.ProtocolVersion, OK: true}
+}
+
+// last is the last request of a type the engine was sent.
+func (e *recordEngine) last(typ localapi.RequestType) (localapi.Request, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i := len(e.seen) - 1; i >= 0; i-- {
+		if e.seen[i].Type == typ {
+			return e.seen[i], true
+		}
+	}
+	return localapi.Request{}, false
+}
+
+// TestKyokaiInputFollowsHideFromCapture: a person's remote input may reach
+// Kyokai's windows exactly when they show in capture (Hide Kyokai from
+// capture off), and the GUI tells the engine both together.
+func TestKyokaiInputFollowsHideFromCapture(t *testing.T) {
+	dir, err := os.MkdirTemp("", "ky")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "e.sock")
+	ln, err := localapi.ListenWith(localapi.ListenOptions{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	engine := &recordEngine{}
+	go localapi.ServeWith(ctx, ln, engine, localapi.Authorizer{OwnerUID: uint32(os.Getuid()), OwnerSID: localapi.CurrentSID()})
+
+	a := New("", t.TempDir(), path)
+	for _, show := range []bool{true, false} {
+		a.mu.Lock()
+		a.prefs.ShowInCapture = show
+		a.mu.Unlock()
+		a.sendCapture()
+		input, ok := engine.last(localapi.RequestInputKyokai)
+		if !ok || input.KyokaiInput == nil || *input.KyokaiInput != show {
+			t.Errorf("shown %v: input.kyokai %+v", show, input.KyokaiInput)
+		}
+		capture, ok := engine.last(localapi.RequestCaptureShow)
+		if !ok || capture.Show == nil || *capture.Show != show {
+			t.Errorf("shown %v: capture.show %+v", show, capture.Show)
 		}
 	}
 }

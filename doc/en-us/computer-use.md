@@ -171,7 +171,10 @@ with extended-key flags for the navigation keys and modifiers pressed and releas
 Kyokai's (`dwExtraInfo`) so local input can be told apart. Nothing is injected into a Kyokai
 window: pointer presses and moves are dropped when the window under the point is Kyokai's, the
 wheel when the window under the pointer is, keys and text when Kyokai's window has the focus;
-releases always pass. Kyokai's windows are left out of capture, so a check by focus alone refused
+releases always pass. Only a person's input passes there too, and only while the host user turned
+Security's Hide Kyokai from capture off (`input.kyokai`) and neither a controller waits for the
+host user's answer nor the AI for an approval; the session decides per event and the helper's
+agent follows what it is told with each event. Kyokai's windows are left out of capture, so a check by focus alone refused
 clicks on windows the viewer and the model do see while Kyokai's unseen window was in front.
 Whatever a session holds is released when it ends. Malformed events are dropped without ending the session.
 
@@ -350,7 +353,7 @@ The host captures its primary display with RustDesk's GDI capturer at the displa
 (the capturing thread is per-monitor DPI aware), scales it to fit 1366×768 by averaging, and sends
 it as PNG. A zoom crops a fresh capture and is never scaled up. Coordinates refer to the latest full
 screenshot; the host maps them onto the display and injects through the input service above, with
-the same Kyokai-window guard and tag.
+the same Kyokai-window guard and tag, which the AI never passes.
 
 | Action (`kind`) | Fields | Runs as |
 |---|---|---|

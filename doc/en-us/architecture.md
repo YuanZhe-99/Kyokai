@@ -92,7 +92,11 @@ name; the status carries `name` and this device's `about`), `access.settings` (`
 passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
 mode), `capture.show` (`{show}`: whether captures show Kyokai's windows, as Security's Hide Kyokai
 from capture says; macOS's capture follows it, live; the helper passes it to its agent; hidden
-until a GUI says), `sound.source` (`{source}`: the sound to share, "" for what the computer plays or
+until a GUI says), `input.kyokai` (`{allow}`: whether a person's remote input may reach Kyokai's
+windows, as the same switch says, which the GUI sends with `capture.show`; each session decides per
+event, never for the AI nor while a confirmation or an approval waits, and tells the helper's agent
+with the event; refused until a GUI says; an older engine refuses the request and stays guarded),
+`sound.source` (`{source}`: the sound to share, "" for what the computer plays or
 an input device's id; running streams switch; the helper passes it to its agent), `sound.devices`
 (→ `[{id, name}]`, the input devices; the agent's in the helper), and for AI tasks ([computer-use.md](computer-use.md)):
 `ai.settings.get`, `ai.settings.set` (`{sources?, model?: {source, id}, approval?}`; the answer adds
@@ -126,7 +130,7 @@ runtime statically, so nothing is resolved through the search path.
   of them together, so an older GUI reads it as before),
   `password.set_permanent`, `session.connect`, `session.identify`, `device.remove`, `protect.set` (while protected mode is on the engine answers only the requests in `protectedAllows` and refuses the rest as `invalid`; the status says `protected`), `logs.set` (`{logs_off}`: No logs; the engine writes or removes its state directory's `no-logs` marker, closes or reopens its log, deletes the logs and calls `access.history`; the status says `logs_off`; the GUI sends it as it attaches and when the setting changes), `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
-  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
+  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `input.kyokai` (`{kyokai_input}`; sent with `capture.show`; an engine that does not know it keeps Kyokai's windows guarded), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,
   `session.media`, `shutdown`, and the AI requests named after the core's
   methods (`ai.settings.get` … `ai.stop`, `ai.draft.set`). `session.media` (`{id}` of a live controller

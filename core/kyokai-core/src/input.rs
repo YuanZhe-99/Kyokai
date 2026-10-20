@@ -472,13 +472,14 @@ mod windows_impl {
         }
 
         /// Injects an event, unless it would reach a Kyokai window (see
-        /// `Guard`).
+        /// `Guard`) and `kyokai_ok` is false: a person's input while the
+        /// host user lets it reach them (`kyokai_input`), never the AI's.
         /// Returns: whether it was injected.
-        pub fn inject(&mut self, e: &Event) -> bool {
+        pub fn inject(&mut self, e: &Event, kyokai_ok: bool) -> bool {
             if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
-                return e.valid() && link.inject(id, e, self.area);
+                return e.valid() && link.inject(id, e, self.area, kyokai_ok);
             }
-            if !e.valid() || self.blocked(e.guard()) {
+            if !e.valid() || (!kyokai_ok && self.blocked(e.guard())) {
                 return false;
             }
             match e {
@@ -1025,6 +1026,23 @@ mod windows_impl {
     }
 }
 
+/// Whether a person's remote input may reach Kyokai's own windows: the host
+/// user turned "Hide Kyokai from capture" off, which the GUI tells the
+/// engine (`input.kyokai`). Refused until told otherwise; the host's AI
+/// never may (its injector always keeps the guard).
+static KYOKAI_INPUT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether a person's remote input may reach Kyokai's windows
+/// (KYOKAI_INPUT).
+pub fn kyokai_input() -> bool {
+    KYOKAI_INPUT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Sets whether a person's remote input may reach Kyokai's windows.
+pub fn set_kyokai_input(allow: bool) {
+    KYOKAI_INPUT.store(allow, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Whether an executable path is Kyokai's GUI or engine.
 pub fn is_kyokai(path: &str) -> bool {
     let name = path
@@ -1269,7 +1287,7 @@ mod tests {
             caps: !caps,
             num: false,
         };
-        if !inj.inject(&down) {
+        if !inj.inject(&down, false) {
             return; // a Kyokai window is in front
         }
         let tag = INJECTED_TAG;
@@ -1287,7 +1305,7 @@ mod tests {
             caps,
             num: false,
         };
-        assert!(inj.inject(&win));
+        assert!(inj.inject(&win, false));
         assert_eq!(
             take_sent(ours),
             [(0, 0x5B, BY_SCAN_CODE | EXTENDED_KEY, tag)]

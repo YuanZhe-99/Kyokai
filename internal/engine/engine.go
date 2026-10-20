@@ -171,7 +171,7 @@ func Run(ctx context.Context, opts Options) error {
 var protectedAllows = map[localapi.RequestType]bool{
 	localapi.RequestStatus: true, localapi.RequestProtect: true, localapi.RequestShutdown: true,
 	localapi.RequestDecide: true, localapi.RequestClose: true,
-	localapi.RequestCaptureShow: true, localapi.RequestSoundSource: true, localapi.RequestLogs: true,
+	localapi.RequestCaptureShow: true, localapi.RequestInputKyokai: true, localapi.RequestSoundSource: true, localapi.RequestLogs: true,
 	localapi.RequestPermission: true, localapi.RequestAgentRestart: true, localapi.RequestHelperUpdate: true,
 	localapi.RequestAISettingsGet: true, localapi.RequestAISettingsSet: true, localapi.RequestAIKeySet: true,
 	localapi.RequestAIModels: true, localapi.RequestAITaskStart: true, localapi.RequestAIDraft: true,
@@ -321,6 +321,11 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "show missing")
 		}
 		return h.command("capture.show", map[string]bool{"show": *req.Show})
+	case localapi.RequestInputKyokai:
+		if req.KyokaiInput == nil {
+			return localapi.Fail(localapi.CodeInvalid, "allow missing")
+		}
+		return h.command("input.kyokai", map[string]bool{"allow": *req.KyokaiInput})
 	case localapi.RequestSoundSource:
 		if req.SoundSource == nil {
 			return localapi.Fail(localapi.CodeInvalid, "source missing")

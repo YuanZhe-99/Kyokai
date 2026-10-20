@@ -1046,6 +1046,14 @@ fn call(input: &[u8]) -> Result<Value, String> {
             None => Err("this engine has no session agent".into()),
         },
         "store.start_over" => start_over().map(|kept| json!({"kept": kept})),
+        // A person's remote input may reach Kyokai's windows, or not (the
+        // host user's Hide Kyokai from capture). Each session decides per
+        // event and tells the helper's agent with it.
+        "input.kyokai" => {
+            let allow = req.params["allow"].as_bool().ok_or("bad input setting")?;
+            input::set_kyokai_input(allow);
+            Ok(json!({}))
+        }
         "capture.show" => {
             let show = req.params["show"].as_bool().ok_or("bad capture setting")?;
             video::set_show_kyokai(show);

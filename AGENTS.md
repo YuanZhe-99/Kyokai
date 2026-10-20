@@ -149,8 +149,9 @@ Do not change these without the user explicitly deciding to:
   permission; permissions never imply each other; the model cannot grant itself anything.
 - **The host user always wins.** Local input, take-over and emergency stop revoke the AI input
   lease at once; a model response that arrives after a pause or cancel never acts.
-- **Remote input never reaches Kyokai's own windows**, and Kyokai's windows are excluded from
-  capture unless the host user turns that off in Settings (on by default).
+- **Kyokai's own windows are excluded from capture, and remote input never reaches them**, unless
+  the host user turns Hide Kyokai from capture off in Security (on by default); even then the host's
+  AI never operates them, and nobody does while a connection request or an AI approval waits.
 - **No replay.** Input events and AI actions are never re-sent after a reconnect; task creation is
   idempotent; stale observations are rejected.
 - **Default posture.** No autostart, no service, no elevation, no TUN, no unattended access, no AI

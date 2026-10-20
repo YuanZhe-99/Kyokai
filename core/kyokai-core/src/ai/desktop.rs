@@ -450,7 +450,8 @@ mod windows_impl {
         }
 
         fn inject(&mut self, e: &Event) -> bool {
-            self.injector.inject(e)
+            // The AI never reaches Kyokai's windows, whatever the host user lets.
+            self.injector.inject(e, false)
         }
 
         fn release(&mut self) {

@@ -27,7 +27,7 @@ func TestProtectedModeRefuses(t *testing.T) {
 	}
 	for _, typ := range []localapi.RequestType{
 		localapi.RequestStatus, localapi.RequestProtect, localapi.RequestDecide, localapi.RequestClose,
-		localapi.RequestCaptureShow, localapi.RequestSoundSource, localapi.RequestLogs,
+		localapi.RequestCaptureShow, localapi.RequestInputKyokai, localapi.RequestSoundSource, localapi.RequestLogs,
 		localapi.RequestAISettingsSet, localapi.RequestAITaskStart, localapi.RequestAIStop,
 	} {
 		if !protectedAllows[typ] {

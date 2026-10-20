@@ -83,8 +83,9 @@ lets the other computer choose; the list shows what both computers support). It 
 the connection is **Direct** or **Relayed**; the tooltip of its numbers shows where the time goes.
 **Fit** shows the whole screen in the window; **Original size** shows it at one point per pixel of
 the other computer, with scroll bars to drag when it is larger than the window.
-Click the picture to use the mouse and keyboard there; Kyokai's own windows on the other computer never receive your
-input. The bar above it can **Lock screen**, send **Ctrl+Alt+Del** (when the other computer runs
+Click the picture to use the mouse and keyboard there; Kyokai's own windows on the other computer take your input only
+where its user turned off **Hide Kyokai from screen capture**, and not while a connection request or an AI approval waits
+there. The bar above it can **Lock screen**, send **Ctrl+Alt+Del** (when the other computer runs
 Kyokai as a helper) and **Block their keyboard and mouse** while you work, or turn on **Privacy mode**, which also
 blacks out their screen while you still see it; its user can always lift both with
 Ctrl+Alt+Shift+Esc or Ctrl+Alt+Del. The bar also chooses how your keyboard reaches the other
@@ -168,7 +169,9 @@ clear it.
 The AI sends screenshots of this computer's screen to the provider you chose. Kyokai's own windows
 are left out of them, and out of screen sharing and other remote-desktop tools too. To see and
 change Kyokai through another remote-desktop tool, for example on a computer nobody sits at, turn
-off **Hide Kyokai from screen capture** in Security; the AI then sees Kyokai's windows as well.
+off **Hide Kyokai from screen capture** in Security (Kyokai asks first): the AI then sees Kyokai's
+windows as well, and people controlling this computer through Kyokai can use them too. The AI never
+can, and nobody can while a connection request or an AI approval waits for you.
 
 ## AI on another computer
 

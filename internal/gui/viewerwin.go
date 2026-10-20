@@ -48,13 +48,17 @@ func TitleBarOptions(o mygo.WindowOptions) mygo.WindowOptions {
 	return o
 }
 
-// newViewerWindow opens an empty window for connection tabs.
+// newViewerWindow makes an empty window for connection tabs, shown as its
+// first tab comes (add).
 // Side effects: a native window, kept out of capture unless Security says
 // otherwise; closing it disconnects its tabs.
 func (a *App) newViewerWindow() *viewerWindow {
 	vw := &viewerWindow{app: a}
 	vw.win = mygo.NewWindow(TitleBarOptions(mygo.WindowOptions{
 		Title: "Kyokai", Width: 1280, Height: 800, MinWidth: 480, MinHeight: 320,
+		// Shown (add) once its display affinity is set: never captured for a
+		// moment.
+		Hidden:  true,
 		Content: ui.View(vw.view),
 	}))
 	a.mu.Lock()

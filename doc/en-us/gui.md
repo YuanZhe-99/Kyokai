@@ -92,7 +92,9 @@ when `SCREENSHOT_DIR` is set.
   passphrase through a file dialog; reset, after a warning); Protected mode (only with a permanent
   password, after a confirmation); Privacy: hide Kyokai from screen capture — on by default,
   applied to the main window and every viewer at once and told to the engine, whose macOS capture
-  follows it — how secrets are kept, and No logs — off by default, turning it on after a warning
+  follows it; turned off (after a warning), Kyokai's windows also take the input of the people
+  controlling this device, never the AI's and nobody's while a request or an approval waits —
+  how secrets are kept, and No logs — off by default, turning it on after a warning
   that nobody can tell any more who connected or whom this device connected to, with a note when
   the engine in use cannot do it yet.
 - **General:** language, appearance, open at login — off by default; started at login, Kyokai shows no window, only its tray icon (on a Mac, as a login item, asked once the app is ready: asked earlier, macOS answered no) — and the close button; Run
@@ -187,7 +189,8 @@ when `SCREENSHOT_DIR` is set.
 - Menu: the Device ID (disabled), Stop AI task while one is in progress (the emergency stop), Show
   Kyokai, Quit Kyokai. It never shows the password.
 - Kyokai's windows are excluded from screen capture, so neither a viewer nor an AI task sees them,
-  unless Security's Hide Kyokai from capture is off.
+  and remote input never reaches them, unless Security's Hide Kyokai from capture is off (the AI
+  never reaches them).
 - Closing the window hides it to the tray and says so the first time; without a tray, or with
   "Quit" chosen for the close button, closing quits. Quitting the app itself (its menu, the Dock,
   logging out or shutting down) always quits.
