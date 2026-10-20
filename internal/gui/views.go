@@ -137,13 +137,13 @@ func (a *App) homeView(c *ui.Context) {
 							a.showPassword = false
 							a.mu.Unlock()
 						} else {
-							a.revealPassword(func(string) { a.showPassword = true })
+							a.revealPassword(func(string) { a.update(func() { a.showPassword = true }) })
 						}
 					}
 					if ui.Button(c.Key("copy-pw"), L.ActionCopy()).Clicked() {
 						a.revealPassword(func(p string) {
-							mygo.Clipboard.WriteText(p)
-							a.setToast(L.Copied(), false)
+							clipboardWrite(p)
+							a.update(func() { a.setToast(L.Copied(), false) })
 						})
 					}
 					if ui.Button(c.Key("new-pw"), L.ActionNewPassword()).Clicked() {

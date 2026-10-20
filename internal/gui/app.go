@@ -5,6 +5,7 @@ package gui
 
 import (
 	"context"
+	"log"
 	"runtime"
 	"sync"
 	"time"
@@ -281,14 +282,58 @@ func (a *App) syncDock() {
 	mygo.App.SetActivationPolicy(policy)
 }
 
-// Start connects to the engine (starting it when needed) and begins the
-// daily update check.
+// Start connects to the engine (starting it when needed), begins the daily
+// update check and watches the main thread (watchMain).
 func (a *App) Start() {
+	// Asked without the lock: MyGo answers it on the main thread.
+	openAtLogin := mygo.App.OpenAtLogin()
 	a.mu.Lock()
-	a.openAtLogin = mygo.App.OpenAtLogin()
+	a.openAtLogin = openAtLogin
 	a.mu.Unlock()
 	go a.connectLoop()
 	go a.appUpdateLoop()
+	go a.watchMain()
+}
+
+// How often the GUI makes sure its main thread still answers, and how long
+// it waits before it writes down where every goroutine is (watchMain).
+const (
+	watchEvery = 5 * time.Second
+	hangAfter  = 10 * time.Second
+)
+
+// watchMain notes a main thread that stopped answering: every watchEvery it
+// asks the main thread to run nothing, and when that has not happened
+// within hangAfter it writes every goroutine's stack to the GUI's crash log
+// (through the standard logger: nowhere while No logs is on), once per
+// hang.
+// Notes: a frozen app is what a person calls a crash, and it leaves no
+// report; the stacks say what waits for what.
+func (a *App) watchMain() {
+	for {
+		select {
+		case <-a.ctx.Done():
+			return
+		case <-time.After(watchEvery):
+		}
+		ran := make(chan struct{})
+		go mygo.RunOnMain(func() { close(ran) })
+		select {
+		case <-ran:
+			continue
+		case <-a.ctx.Done():
+			return
+		case <-time.After(hangAfter):
+		}
+		buf := make([]byte, 1<<20)
+		log.Printf("the main thread has not answered for %v:\n%s", hangAfter, buf[:runtime.Stack(buf, true)])
+		// Once per hang: the next look waits until it answers again.
+		select {
+		case <-ran:
+		case <-a.ctx.Done():
+			return
+		}
+	}
 }
 
 // Stop ends the session and the engine.
@@ -372,12 +417,28 @@ func (a *App) update(fn func()) {
 	}
 }
 
+// notify shows a desktop notification where the system has them.
+// Notes: it waits for the main thread (on macOS the first notification of a
+// run waits for the user's answer whether Kyokai may show them): never call
+// it holding a.mu, which the main thread takes to draw.
 func (a *App) notify(id, title, body string) {
-	if !mygo.NotificationsSupported() {
-		return
-	}
-	_ = mygo.NewNotification(mygo.NotificationOptions{ID: id, Title: title, Body: body}).Show()
+	notifier(id, title, body)
 }
+
+// notifier shows a desktop notification; tests replace it.
+var notifier = func(id, title, body string) {
+	if notificationsSupported() {
+		_ = mygo.NewNotification(mygo.NotificationOptions{ID: id, Title: title, Body: body}).Show()
+	}
+}
+
+// notificationsSupported asks the system once whether it shows
+// notifications (a call on the main thread).
+var notificationsSupported = sync.OnceValue(mygo.NotificationsSupported)
+
+// clipboardWrite puts text on the clipboard; tests replace it.
+// Notes: it waits for the main thread, as notify does.
+var clipboardWrite = func(text string) { mygo.Clipboard.WriteText(text) }
 
 // setToast shows a short message at the bottom for four seconds (caller holds
 // a.mu or runs on the main thread).

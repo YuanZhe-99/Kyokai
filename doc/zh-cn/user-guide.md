@@ -106,3 +106,4 @@ AI 会把本机屏幕的截图发送给你所选的服务商。Kyokai 自己的�
 - 网络显示错误：检查服务器地址、名称与密钥。
 - 对方设备经中继到达：在两台设备上都打开**尝试直接连接**（在“网络”页面中）；如果仍是中继，说明网络阻止了直连：可以正常使用，只是稍慢一些。
 - AI 任务因错误停止：原因（密钥未被接受、服务商没有响应）会与任务一起显示。
+- Kyokai 不再响应或关闭了：开启日志时，日志文件夹（“关于”的诊断）中的 `gui-crash.log` 与 `engine.log` 会记下它当时在做什么——窗口卡住 10 秒后会把状态写到那里。在 Mac 上，用 `kill -QUIT` 加 Kyokai 的进程号可以立即写下；崩溃的引擎的报告由系统保存在 `~/Library/Logs/DiagnosticReports`（`kyokai-svc-…`）中，`log show --last 1h --predicate 'process == "Kyokai" OR process == "kyokai-svc"'` 会显示 macOS 记下的内容；把这些连同经过描述一起发送。

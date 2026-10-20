@@ -213,3 +213,9 @@ warning and can choose **Forget old identity**.
   page) on both devices; if it stays relayed, the networks block direct paths: it works, a little slower.
 - An AI task stops with an error: the reason (an unaccepted key, a provider that did not answer)
   is shown with the task.
+- Kyokai stops answering or closes: with logs on, `gui-crash.log` and `engine.log` in the logs
+  folder (About, Diagnostics) say where it was — a frozen window writes its state there after 10
+  seconds. On a Mac, `kill -QUIT` and the Kyokai process number write it at once, the system keeps a
+  crashed engine's report in `~/Library/Logs/DiagnosticReports` (`kyokai-svc-…`), and
+  `log show --last 1h --predicate 'process == "Kyokai" OR process == "kyokai-svc"'` shows what
+  macOS noted; send those with a description of what happened.

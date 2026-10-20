@@ -57,3 +57,70 @@ func TestAccessCommandWithoutFollowUp(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// revealEngine answers every request with OK and a temporary password.
+type revealEngine struct{ okEngine }
+
+func (revealEngine) Handle(context.Context, localapi.Request) localapi.Response {
+	return localapi.Response{Version: localapi.ProtocolVersion, OK: true, Password: "k7mq2xpa"}
+}
+
+// TestNothingWaitsForTheMainThreadUnderTheLock: notifications and the
+// clipboard, which wait for the main thread, are never reached holding
+// a.mu, which the main thread takes to draw (regression: a connection
+// request and an AI step waiting for approval were announced under the
+// lock, and Copy wrote the clipboard under it; the app froze, as on the
+// first connection to a Mac).
+func TestNothingWaitsForTheMainThreadUnderTheLock(t *testing.T) {
+	dir, err := os.MkdirTemp("", "ky")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "e.sock")
+	ln, err := localapi.ListenWith(localapi.ListenOptions{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go localapi.ServeWith(ctx, ln, revealEngine{}, localapi.Authorizer{OwnerUID: uint32(os.Getuid()), OwnerSID: localapi.CurrentSID()})
+
+	a := New("", t.TempDir(), path)
+	called := make(chan string, 4)
+	// Stands in for the main thread, which the real call waits for: it
+	// takes the lock to draw.
+	main := func(what string) {
+		took := make(chan struct{})
+		go func() {
+			a.mu.Lock()
+			a.mu.Unlock()
+			close(took)
+		}()
+		select {
+		case <-took:
+		case <-time.After(2 * time.Second):
+			t.Errorf("%s waited for the main thread holding the app lock", what)
+		}
+		called <- what
+	}
+	notify, write := notifier, clipboardWrite
+	t.Cleanup(func() { notifier, clipboardWrite = notify, write })
+	notifier = func(id, _, _ string) { main(id) }
+	clipboardWrite = func(string) { main("clipboard") }
+
+	a.statusPushed(&localapi.Status{
+		Requests: []localapi.HostRequest{{ID: 1, DeviceID: "482916735"}},
+		AI:       &localapi.AIActive{ID: 3, State: "approval"},
+	})
+	a.revealPassword(func(p string) { clipboardWrite(p) })
+	want := map[string]bool{"request": true, "ai-approval": true, "clipboard": true}
+	for len(want) > 0 {
+		select {
+		case w := <-called:
+			delete(want, w)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("never called: %v", want)
+		}
+	}
+}

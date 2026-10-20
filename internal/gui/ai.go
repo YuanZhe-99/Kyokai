@@ -282,16 +282,15 @@ func (a *App) aiBanner(c *ui.Context) {
 }
 
 // aiStatusChanged reacts to a pushed status (caller holds a.mu): it keeps
-// the task list current while a task runs and notifies when the task waits
-// for approval.
-func (a *App) aiStatusChanged(prev, st *localapi.Status) {
-	if st.AI != nil && st.AI.State == "approval" && (prev == nil || prev.AI == nil || prev.AI.State != "approval") {
-		a.notify("ai-approval", L.AINotifyApprovalTitle(), L.AINotifyApprovalBody())
-	}
+// the task list current while a task runs.
+// Returns: whether the task now waits for approval, which the caller
+// announces once it let go of the lock (statusPushed).
+func (a *App) aiStatusChanged(prev, st *localapi.Status) (approval bool) {
 	if st.AI != nil && !a.ai.polling {
 		a.ai.polling = true
 		go a.pollAI()
 	}
+	return st.AI != nil && st.AI.State == "approval" && (prev == nil || prev.AI == nil || prev.AI.State != "approval")
 }
 
 // pollAI re-reads the tasks while one is in progress, and once after it

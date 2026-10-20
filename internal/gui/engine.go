@@ -182,32 +182,7 @@ func (a *App) connectLoop() {
 			a.reattach = stop
 			a.mu.Unlock()
 			err := client.Attach(attach, func(st *localapi.Status) error {
-				a.update(func() {
-					if a.status == nil || a.status.PasswordSerial != st.PasswordSerial {
-						a.password, a.showPassword = "", false
-					}
-					// A controller waits for this user: say so even with the window hidden.
-					if fresh := newRequests(a.status, st); len(fresh) > 0 {
-						a.notify("request", L.RequestTitle(groupDigits(fresh[0].DeviceID)), L.RequestNotify())
-						go a.Focus()
-					}
-					a.aiStatusChanged(a.status, st)
-					// The shared draft as typed elsewhere, unless this user
-					// is typing.
-					if (a.status == nil || a.status.AIDraft != st.AIDraft) && time.Since(a.ai.draftAt) > draftQuiet {
-						a.ai.draft = st.AIDraft
-					}
-					a.permissionsChanged(st)
-					a.helperChanged(st)
-					a.status, a.connected, a.engineErr = st, true, ""
-				})
-				// The connections' tabs follow the sessions (main thread).
-				a.mu.Lock()
-				w := a.window
-				a.mu.Unlock()
-				if w != nil {
-					w.Update(a.syncViewers)
-				}
+				a.statusPushed(st)
 				return nil
 			})
 			stop()
@@ -227,6 +202,50 @@ func (a *App) connectLoop() {
 	}
 }
 
+// statusPushed takes a status the engine pushed: the state changes under
+// the lock, then what they announce outside it — a notification and the
+// window for a controller waiting for this user (even with the window
+// hidden), a notification for an AI step waiting for approval — and the
+// connections' tabs on the main thread.
+// Notes: MyGo's notifications and window calls wait for the main thread,
+// which takes a.mu to draw: made under the lock they froze the app for good
+// (the first connection to a Mac host, where the first notification of a
+// run waits for macOS to answer whether Kyokai may show them).
+func (a *App) statusPushed(st *localapi.Status) {
+	var asking string
+	var approval bool
+	a.update(func() {
+		if a.status == nil || a.status.PasswordSerial != st.PasswordSerial {
+			a.password, a.showPassword = "", false
+		}
+		if fresh := newRequests(a.status, st); len(fresh) > 0 {
+			asking = fresh[0].DeviceID
+		}
+		approval = a.aiStatusChanged(a.status, st)
+		// The shared draft as typed elsewhere, unless this user is typing.
+		if (a.status == nil || a.status.AIDraft != st.AIDraft) && time.Since(a.ai.draftAt) > draftQuiet {
+			a.ai.draft = st.AIDraft
+		}
+		a.permissionsChanged(st)
+		a.helperChanged(st)
+		a.status, a.connected, a.engineErr = st, true, ""
+	})
+	if asking != "" {
+		go a.notify("request", L.RequestTitle(groupDigits(asking)), L.RequestNotify())
+		go a.Focus()
+	}
+	if approval {
+		go a.notify("ai-approval", L.AINotifyApprovalTitle(), L.AINotifyApprovalBody())
+	}
+	// The connections' tabs follow the sessions (main thread).
+	a.mu.Lock()
+	w := a.window
+	a.mu.Unlock()
+	if w != nil {
+		w.Update(a.syncViewers)
+	}
+}
+
 // request sends one request to the engine.
 func (a *App) request(t localapi.RequestType) (*localapi.Response, error) {
 	return a.requestWith(localapi.Request{Type: t})
@@ -239,9 +258,13 @@ func (a *App) requestWith(req localapi.Request) (*localapi.Response, error) {
 
 // revealPassword fetches the temporary password for the Home page or the
 // clipboard; it never reaches a log or a file.
+// Notes: `then` runs after the state is updated, without a.mu: it may call
+// MyGo, which waits for the main thread (regression: Copy wrote the
+// clipboard under the lock and could freeze the app).
 func (a *App) revealPassword(then func(pw string)) {
 	go func() {
 		resp, err := a.request(localapi.RequestPasswordReveal)
+		ok := false
 		a.update(func() {
 			if err != nil {
 				a.setToast(L.EngineDown(), true)
@@ -251,9 +274,10 @@ func (a *App) revealPassword(then func(pw string)) {
 			if a.status != nil {
 				a.passwordFor = a.status.PasswordSerial
 			}
-			if then != nil {
-				then(resp.Password)
-			}
+			ok = true
 		})
+		if ok && then != nil {
+			then(resp.Password)
+		}
 	}()
 }

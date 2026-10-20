@@ -87,7 +87,7 @@ did not open (with the system's error), and on a Mac host the privacy permission
 password, key, address or Device ID; a panic in the core is recorded with its thread, place and
 backtrace; a provider's error carries its status and message, never the key. A Go crash trace (in
 `engine.log`, and `gui-crash.log` for the GUI, which also notes an engine that ended with an
-error) holds the stack and the runtime's message, which never include secrets. The macOS helper's
+error and every goroutine's stack when its main thread has not answered for 10 seconds) holds the stack and the runtime's message, which never include secrets. The macOS helper's
 launchd job sends its stderr to `helper.log` in its state directory until the engine points it at
 `engine.log`.
 

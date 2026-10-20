@@ -162,3 +162,7 @@ runtime statically, so nothing is resolved through the search path.
 - **Never show stale data as current.** The GUI shows the engine's state only while its session is
   attached and says "starting" or why the engine is not running otherwise.
 - **Versioned boundaries.** The ABI and the local API carry versions; enums cross as names.
+- **Nothing waits for the main thread under the app lock.** MyGo's notifications, clipboard and
+  window calls wait for the main thread, which takes the GUI's lock to draw: they are made after
+  the lock is let go (`statusPushed`, `revealPassword`); a watchdog writes every goroutine's stack
+  to `gui-crash.log` when the main thread has not answered for 10 seconds (`watchMain`).
