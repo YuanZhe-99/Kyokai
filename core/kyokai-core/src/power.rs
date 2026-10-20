@@ -5,26 +5,38 @@
 //! display does not go dark. When the computer goes to sleep anyway (the
 //! user chose it, a lid closed), the AI task in progress pauses: it never
 //! carries on from a screen it saw before the sleep.
+//!
+//! The hold is a power request on Windows and a pair of IOKit power
+//! assertions on macOS; in the helper modes the session agent, in the
+//! user's session, holds one too while it streams video.
 
 use std::sync::{Arc, Weak};
+
+#[cfg(windows)]
+use windows_impl as imp;
+
+#[cfg(target_os = "macos")]
+use mac_impl as imp;
 
 /// Keeps the computer and its displays awake while held; every holder
 /// shares one power request.
 pub struct Awake(());
 
 /// The shared power request and how many hold it.
-#[cfg(windows)]
-static AWAKE: std::sync::Mutex<(usize, Option<isize>)> = std::sync::Mutex::new((0, None));
+#[cfg(any(windows, target_os = "macos"))]
+static AWAKE: std::sync::Mutex<(usize, Option<imp::Request>)> = std::sync::Mutex::new((0, None));
 
 /// Keeps the computer awake until the guard is dropped.
 /// Side effects: the first guard sets a system and a display power request
-/// ("Kyokai: someone is connected", shown by `powercfg /requests`).
+/// ("Kyokai: someone is connected", shown by `powercfg /requests` on
+/// Windows and `pmset -g assertions` on macOS); dropping the last one
+/// releases it.
 pub fn keep_awake() -> Awake {
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     {
         let mut awake = AWAKE.lock().expect("power request");
         if awake.0 == 0 {
-            awake.1 = windows_impl::request();
+            awake.1 = imp::request();
         }
         awake.0 += 1;
     }
@@ -33,21 +45,21 @@ pub fn keep_awake() -> Awake {
 
 impl Drop for Awake {
     fn drop(&mut self) {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
             let mut awake = AWAKE.lock().expect("power request");
             awake.0 -= 1;
             if awake.0 == 0
                 && let Some(h) = awake.1.take()
             {
-                windows_impl::release(h);
+                imp::release(h);
             }
         }
     }
 }
 
 /// Whether a power request is held now (for tests).
-#[cfg(all(test, windows))]
+#[cfg(all(test, any(windows, target_os = "macos")))]
 fn awake() -> bool {
     AWAKE.lock().expect("power request").1.is_some()
 }
@@ -100,6 +112,9 @@ mod windows_impl {
     };
     use windows::Win32::UI::WindowsAndMessaging::{DEVICE_NOTIFY_CALLBACK, PBT_APMSUSPEND};
     use windows::core::PWSTR;
+
+    /// The power request's handle, as an integer so the static is Send.
+    pub type Request = isize;
 
     /// Creates and sets the power request.
     /// Returns: its handle as an integer, or None when Windows refused.
@@ -205,7 +220,60 @@ mod windows_impl {
     }
 }
 
-#[cfg(all(test, windows))]
+#[cfg(target_os = "macos")]
+mod mac_impl {
+    use objc2_core_foundation::CFString;
+
+    /// The idle system sleep and idle display sleep assertions' IDs; 0
+    /// (kIOPMNullAssertionID) for one macOS refused.
+    pub type Request = [u32; 2];
+
+    /// kIOPMAssertionLevelOn.
+    const LEVEL_ON: u32 = 255;
+
+    #[link(name = "IOKit", kind = "framework")]
+    unsafe extern "C" {
+        fn IOPMAssertionCreateWithName(
+            kind: &CFString,
+            level: u32,
+            name: &CFString,
+            id: *mut u32,
+        ) -> i32;
+        fn IOPMAssertionRelease(id: u32) -> i32;
+    }
+
+    /// Takes the idle system sleep and idle display sleep assertions.
+    /// Returns: their IDs, or None when macOS refused both.
+    pub fn request() -> Option<Request> {
+        let name = CFString::from_static_str("Kyokai: someone is connected");
+        let ids = [
+            "PreventUserIdleSystemSleep", // kIOPMAssertionTypePreventUserIdleSystemSleep
+            "PreventUserIdleDisplaySleep", // kIOPMAssertionTypePreventUserIdleDisplaySleep
+        ]
+        .map(|kind| {
+            let kind = CFString::from_static_str(kind);
+            let mut id = 0;
+            // SAFETY: both strings live through the call, which retains what
+            // it keeps; `id` is a valid out pointer; the assertion is
+            // released in `release`.
+            let r = unsafe { IOPMAssertionCreateWithName(&kind, LEVEL_ON, &name, &mut id) };
+            if r == 0 { id } else { 0 }
+        });
+        (ids != [0, 0]).then_some(ids)
+    }
+
+    /// Releases the assertions.
+    pub fn release(ids: Request) {
+        for id in ids.into_iter().filter(|&id| id != 0) {
+            // SAFETY: `id` came from `request` and is released once.
+            unsafe {
+                IOPMAssertionRelease(id);
+            }
+        }
+    }
+}
+
+#[cfg(all(test, any(windows, target_os = "macos")))]
 mod tests {
     use super::*;
 

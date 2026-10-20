@@ -235,10 +235,12 @@ mode is on; the viewer's switches show that report, not the request.
 
 ## Sleep
 
-While a session is connected the host keeps the computer and its displays awake (a power
-request, "Kyokai: someone is connected"; in the helper modes the session agent holds it for the
-displays while it streams video, since Windows ignores a display request from session 0), so the idle timer neither cuts the session nor darkens
-the captured display. When the computer goes to sleep anyway, the AI task in progress pauses
+While a session is connected the host keeps the computer and its displays awake (on Windows a
+power request, on macOS an idle system sleep and an idle display sleep power assertion, both named
+"Kyokai: someone is connected"; taken when the first session connects and released with the
+last; in the helper modes the session agent, in the user's session, holds one for the displays
+while it streams video, since Windows ignores a display request from session 0), so the idle
+timer neither cuts the session nor darkens the captured display. When the computer goes to sleep anyway, the AI task in progress pauses
 ("the computer went to sleep") and waits for a person to resume it; after waking, sessions
 resume through the network as after any drop.
 
