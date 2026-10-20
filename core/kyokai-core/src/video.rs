@@ -709,6 +709,7 @@ fn test_pattern(tx: mpsc::Sender<Encoded>, stop: Arc<AtomicBool>) -> VideoStart 
 
 /// What one capture attempt gave.
 #[cfg(any(windows, target_os = "macos"))]
+#[derive(Debug, PartialEq)]
 pub(crate) enum Got {
     Picture,
     Nothing,
@@ -1048,9 +1049,25 @@ mod screen {
                     take(pb.data, pb.width, pb.height, pb.stride);
                     Got::Picture
                 }
-                Err(e) if e.kind() != std::io::ErrorKind::WouldBlock => Got::Lost,
-                _ => Got::Nothing,
+                Err(e) => missed(e.kind()),
+                Ok(Frame::Texture(_)) => Got::Nothing,
             }
+        }
+    }
+
+    /// What a frame that did not come means: the wait timing out on a still
+    /// screen (TimedOut, as the vendored capturer reports
+    /// DXGI_ERROR_WAIT_TIMEOUT) or a frame where only the pointer moved
+    /// (WouldBlock) is nothing new; anything else lost the display (access
+    /// lost to a mode change, the lock screen or a UAC prompt, the session
+    /// gone, no duplication).
+    /// Notes: RustDesk's own wrapper turns the timeout into WouldBlock; the
+    /// vendored module alone does not (regression: every still frame period
+    /// reopened the display after half a second).
+    pub(super) fn missed(kind: std::io::ErrorKind) -> Got {
+        match kind {
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => Got::Nothing,
+            _ => Got::Lost,
         }
     }
 }
@@ -1058,6 +1075,27 @@ mod screen {
 #[cfg(all(test, windows))]
 mod screen_tests {
     use super::*;
+
+    /// Desktop duplication's wait timing out on a still screen is nothing
+    /// new, never a lost display (regression: every still frame period tore
+    /// the capture down and opened it again half a second later).
+    #[test]
+    fn a_still_screen_is_not_a_lost_display() {
+        use std::io::ErrorKind::*;
+        for (kind, want) in [
+            (TimedOut, Got::Nothing),
+            (WouldBlock, Got::Nothing),
+            (ConnectionReset, Got::Lost),
+            (ConnectionAborted, Got::Lost),
+            (PermissionDenied, Got::Lost),
+            (InvalidData, Got::Lost),
+            (AddrNotAvailable, Got::Lost),
+            (Interrupted, Got::Lost),
+            (Other, Got::Lost),
+        ] {
+            assert_eq!(screen::missed(kind), want, "{kind:?}");
+        }
+    }
 
     /// The GDI fallback reads a picture of the display's size and then
     /// reports the unchanged screen as nothing new. Needs an interactive

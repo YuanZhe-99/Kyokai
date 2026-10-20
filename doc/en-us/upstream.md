@@ -155,6 +155,11 @@ when they run; anything not listed here is not assumed.
   builds on its own once `hbb_common`, `base` and libyuv are replaced by a small shim (frame types,
   rotate/mirror in plain Rust) and the Magnification module is dropped; it captures a 3840×2160
   display at about 60 fps.
+- **A still screen times out.** `dxgi/mod.rs` reports `AcquireNextFrame`'s
+  `DXGI_ERROR_WAIT_TIMEOUT` as `io::ErrorKind::TimedOut`; scrap's own wrapper around it turns that
+  into `WouldBlock`, which the vendored module alone does not. Read as a lost display, it made a
+  Windows host tear its capture down and open it again half a second later at every still frame
+  period (0.1.0–0.3.2). Upstream also creates a new staging texture for every frame.
 - **Codecs in Kyokai.** `libs/scrap/src/common/{vpxcodec,vpx,aom}.rs` build on their own once
   their `hbb_common`, protobuf and libyuv uses are cut away (`core/third_party/rustdesk-codec`);
   the bindings are RustDesk's headers and bindgen settings, generated ahead of time. RustDesk

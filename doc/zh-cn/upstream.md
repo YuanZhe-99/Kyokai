@@ -117,6 +117,9 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
 - **实测（S3-lite，Windows ARM64，`spikes/s3-capture`）。** 用一个小的替代模块（帧类型、纯 Rust 的旋转/镜像）取代 `hbb_common`、
   `base` 与 libyuv 并去掉 Magnification 模块后，`libs/scrap/src/dxgi` 中的 DXGI 采集器可以独立构建；它以约 60 fps 采集
   3840×2160 显示器。
+- **屏幕静止时会超时。** `dxgi/mod.rs` 把 `AcquireNextFrame` 的 `DXGI_ERROR_WAIT_TIMEOUT` 报告为
+  `io::ErrorKind::TimedOut`；scrap 自己对它的封装会把它变成 `WouldBlock`，单独引入的模块则不会。若把它当作显示器丢失，Windows
+  被控端会在每个静止的帧周期拆掉采集、半秒后重新打开（0.1.0–0.3.2）。上游还会为每一帧新建一个暂存纹理。
 - **Kyokai 中的编解码器。** 去掉对 `hbb_common`、protobuf 与 libyuv 的使用后，`libs/scrap/src/common/{vpxcodec,vpx,aom}.rs`
   可以独立构建（`core/third_party/rustdesk-codec`）；绑定使用 RustDesk 的头文件与 bindgen 设置，预先生成。RustDesk 把
   vcpkg 固定在同一提交（`9e593bb`，发布版 2026.07.29：libvpx 1.16.0、aom 3.13.3）。依赖的约定：libvpx 与 libaom 每次调用

@@ -18,6 +18,11 @@ this file when the plan is complete.
 
 | Item | Scope | Done when |
 |---|---|---|
+| 0.4.0: Windows host video | a still screen no longer counts as a lost display; a reopened, resumed or restarted stream gets the hardware encoder back; GDI tries desktop duplication again; the GPU scales a large display before the copy; the pointer is watched off the network threads | `ctl watch` on this machine and the VM as hosts shows the gains against 0.3.2, recorded in platform-notes |
+| 0.4.0: login window (Windows) | the GUI never starts a console program at start-up | no window at a start with `--mygo-opened-at-login` while the helper is installed |
+| 0.4.0: Kyokai's windows follow Hide Kyokai from capture | with it off, a person's remote input reaches Kyokai's windows, never the host's AI, nobody while a request or an approval waits; the macOS helper modes guard Kyokai's windows | tests; clicks on Kyokai's window from the VM's viewer work only as described |
+| 0.4.0: macOS hardening | no MyGo call that waits for the main thread under the app lock; a hang watchdog; ScreenCaptureKit only with Screen Recording, stopped before it is released; panic-proof callbacks; the engine's stderr and panics in its log | tests on Windows and the macOS CI; the first connection to a Mac host no longer freezes |
+| 0.4.0: viewer toolbar | one floating toolbar over the picture (Display, Quality, Keyboard, Actions, toggles, path), folded into a handle that drags along the top edge | view tests; the running app at several widths |
 | Protocol compatibility (after 0.2.0) | the handshake accepts a range of protocol versions (the oldest still spoken up to the newest); a message of an unknown type is ignored instead of ending the session; features a peer may lack are announced (as the codec offer is), never assumed | a build talks to the previous release with the features both have, tested both ways |
 | Shared AI record and draft | the host keeps one AI record that every controller sees and may steer with its permissions (done in the core); the AI prompt draft is shared live: what one controller or the host's user types reaches the host, which passes it to every other controller and its own AI page | two controllers and the host see the same task and the same draft, recorded in platform-notes |
 | macOS crash | the Mac app crashed once when a connection request came in; on 2026-10-17 requests on this Mac raised the confirmation without a crash, and no crash report was found | cause found from the crashing Mac's logs and fixed, or not seen again over the macOS pass |
@@ -28,6 +33,11 @@ this file when the plan is complete.
 
 ## Decided
 
+- Kyokai's windows follow Hide Kyokai from capture: with it off, a person controlling this device
+  may use them too (never the host's AI, nobody while a connection request or an AI approval
+  waits); with it on, as before, neither sees nor reaches them (2026-10-19).
+- The viewer's controls are one floating toolbar over the picture, as RustDesk's; folded, its handle
+  drags along the top edge and keeps its place (2026-10-19).
 - Breaking wire changes are allowed only until 0.2.0 is released; from then on a new version keeps talking
   to the previous ones (see Protocol compatibility) (2026-10-18).
 
