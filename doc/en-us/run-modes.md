@@ -87,7 +87,9 @@ They talk over two one-way named pipes (synchronous I/O on one pipe handle is se
 waiting read would block every write), each with a random name, created as the first instance
 with a SYSTEM-only DACL; the helper checks that the client is the agent process it started, and
 the agent that the server is the helper named on its command line. Messages are a u32 length, a
-kind (JSON request or reply, a video frame, a screenshot) and the body. Only encoded video, input
+kind (JSON request or reply, a video frame, a screenshot) and the body. A person's input goes to
+the agent without waiting for an answer, and the pointer is asked for on a thread of the session's
+own, so neither holds up the network's threads. Only encoded video, input
 events, clipboard text, clipboard images this computer copied (as PNG, encoded by the agent), the
 paths of copied files and the AI's screenshots cross. Both processes are privileged and never decode remote media, so in the
 helper modes clipboard images from a controller are not taken. Files on the clipboard are read

@@ -12,7 +12,7 @@ use base64::engine::general_purpose::STANDARD;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -347,6 +347,54 @@ fn shown(displays: &[video::Display], s: &video::Source) -> Option<Message> {
 /// How often the host looks where its pointer is (with video); it reports
 /// only a change, so the viewer's ring follows a moving pointer smoothly.
 const POINTER_EVERY: Duration = Duration::from_millis(16);
+
+/// Watches the host's pointer for a session on a thread of its own, every
+/// POINTER_EVERY: a tokio interval waits in whole ticks of Windows' timer,
+/// and in the helper modes each look is a call to the agent, which must not
+/// hold up the network's two threads. Dropping it ends the thread.
+struct PointerWatch {
+    /// The display the pointer is measured against (None: the primary).
+    area: Arc<Mutex<Option<crate::input::Area>>>,
+    /// Where the pointer is, as fractions of `area`, as it changes.
+    at: tokio::sync::watch::Receiver<Option<(f32, f32)>>,
+    stop: Arc<AtomicBool>,
+}
+
+impl PointerWatch {
+    /// Starts watching, against the primary display until told otherwise.
+    fn start() -> PointerWatch {
+        let area = Arc::new(Mutex::new(None));
+        let stop = Arc::new(AtomicBool::new(false));
+        let (tx, at) = tokio::sync::watch::channel(None);
+        let (shown, done) = (area.clone(), stop.clone());
+        std::thread::spawn(move || {
+            while !done.load(Ordering::Relaxed) {
+                let on = *shown.lock().unwrap_or_else(|e| e.into_inner());
+                let now = on.map_or_else(crate::input::pointer, crate::input::pointer_in);
+                tx.send_if_modified(|was| {
+                    let changed = *was != now;
+                    *was = now;
+                    changed
+                });
+                std::thread::sleep(POINTER_EVERY);
+            }
+        });
+        PointerWatch { area, at, stop }
+    }
+
+    /// Measures the pointer against another display from now on, and
+    /// reports where it is even if it did not move (a new stream).
+    fn show(&mut self, area: Option<crate::input::Area>) {
+        *self.area.lock().unwrap_or_else(|e| e.into_inner()) = area;
+        self.at.mark_changed();
+    }
+}
+
+impl Drop for PointerWatch {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
 
 /// How long after a person's input the host sends at the viewer's frame-rate
 /// cap: dragging and typing need every frame, not the QoS's slow climb from
@@ -1746,7 +1794,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     }
     let mut ai_sync = tokio::time::interval(AI_SYNC);
     // The host's pointer, which the captured picture leaves out.
-    let mut pointer_tick = tokio::time::interval(POINTER_EVERY);
+    let mut pointer = wants_video.then(PointerWatch::start);
     let mut pointer_sent: Option<((i32, i32), bool)> = None;
     let mut ai_sent: Option<Value> = None;
     // The serial of the shared draft this controller has (host side).
@@ -1827,6 +1875,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             }
             announce(&mut noise, &mut buf, &mut wr, &s, &displays).await?;
             base_kbps = rustdesk_qos::base_bitrate(s.start.width, s.start.height);
+            if let Some(p) = pointer.as_mut() {
+                p.show(s.display.map(area));
+            }
             source = Some(s);
             pointer_sent = None;
         }};
@@ -1920,9 +1971,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 chosen = video::choose(&[], &[], false, false);
                 reopen!(None);
             }
-            _ = pointer_tick.tick(), if source.is_some() => {
-                let at = source.as_ref().and_then(|s| s.display).map(area);
-                if let Some((x, y)) = at.map_or_else(crate::input::pointer, crate::input::pointer_in) {
+            Ok(()) = async {
+                match pointer.as_mut() {
+                    Some(p) => p.at.changed().await,
+                    None => std::future::pending().await,
+                }
+            }, if source.is_some() => {
+                let at = pointer.as_mut().and_then(|p| *p.at.borrow_and_update());
+                if let Some((x, y)) = at {
                     // Shown while it is on the display shown, on every
                     // platform (whether the system draws its cursor is left
                     // out: Windows hides it with no mouse attached).

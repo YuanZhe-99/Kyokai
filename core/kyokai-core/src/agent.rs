@@ -20,7 +20,7 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use crate::ai::desktop::Frame;
-use crate::input::{Area, Event, LocalInput, PointerAction};
+use crate::input::{Area, Event, LocalInput};
 use crate::media::VideoStart;
 use crate::video::{Choice, Display, Encoded, Targets};
 use serde::{Deserialize, Serialize};
@@ -79,18 +79,19 @@ fn write_message(w: &mut impl Write, kind: u8, parts: &[&[u8]]) -> std::io::Resu
     w.flush()
 }
 
-/// Reads one message: its kind and body.
+/// Reads one message: its kind and body (read apart, so the body is not
+/// moved to drop the kind: a video frame's crosses once).
 fn read_message(r: &mut impl Read) -> std::io::Result<(u8, Vec<u8>)> {
-    let mut len = [0u8; 4];
-    r.read_exact(&mut len)?;
-    let len = u32::from_le_bytes(len) as usize;
+    let mut head = [0u8; 5];
+    r.read_exact(&mut head[..4])?;
+    let len = u32::from_le_bytes(head[..4].try_into().expect("4 bytes")) as usize;
     if len == 0 || len > MAX_MESSAGE {
         return Err(std::io::Error::other("bad agent message length"));
     }
-    let mut body = vec![0u8; len];
+    r.read_exact(&mut head[4..])?;
+    let mut body = vec![0u8; len - 1];
     r.read_exact(&mut body)?;
-    let kind = body.remove(0);
-    Ok((kind, body))
+    Ok((head[4], body))
 }
 
 /// A reply the link waits for.
@@ -167,7 +168,7 @@ impl Link {
         std::thread::spawn(move || {
             let mut input = input;
             while let Ok((kind, body)) = read_message(&mut input) {
-                link.received(kind, &body);
+                link.received(kind, body);
             }
             *link.out.lock().expect("agent link") = None;
             link.waiting.lock().expect("agent link").clear();
@@ -176,11 +177,12 @@ impl Link {
         });
     }
 
-    /// Hands one message from the agent to whoever waits for it.
-    fn received(&self, kind: u8, body: &[u8]) {
+    /// Hands one message from the agent to whoever waits for it; a frame,
+    /// sound or a screenshot keeps the message's buffer, its header drained.
+    fn received(&self, kind: u8, mut body: Vec<u8>) {
         match kind {
             JSON => {
-                let Ok(v) = serde_json::from_slice::<Value>(body) else {
+                let Ok(v) = serde_json::from_slice::<Value>(&body) else {
                     return;
                 };
                 let Some(id) = v["id"].as_u64() else {
@@ -204,10 +206,11 @@ impl Link {
                 if let Some(s) = self.streams.lock().expect("agent link").get_mut(&stream)
                     && (key || !s.skipping)
                 {
+                    body.drain(..17);
                     let frame = Encoded {
                         flags,
                         pts,
-                        data: body[17..].to_vec(),
+                        data: body,
                         took_us,
                     };
                     // A full channel drops this frame, and the ones after it
@@ -229,15 +232,17 @@ impl Link {
                 let stream = u32::from_le_bytes(body[0..4].try_into().expect("4 bytes"));
                 if let Some(tx) = self.sounds.lock().expect("agent link").get(&stream) {
                     // A session that falls behind loses sound, not time.
-                    let _ = tx.try_send(body[4..].to_vec());
+                    body.drain(..4);
+                    let _ = tx.try_send(body);
                 }
             }
             SCREEN if body.len() >= 16 => {
                 let id = u64::from_le_bytes(body[0..8].try_into().expect("8 bytes"));
                 let width = u32::from_le_bytes(body[8..12].try_into().expect("4 bytes"));
                 let height = u32::from_le_bytes(body[12..16].try_into().expect("4 bytes"));
+                body.drain(..16);
                 let frame = Frame {
-                    bgra: body[16..].to_vec(),
+                    bgra: body,
                     width,
                     height,
                 };
@@ -406,23 +411,14 @@ impl Link {
         id
     }
 
-    /// Injects an event through the agent's injector `id`.
-    /// Returns: whether it was injected (false without an agent); for a
-    /// pointer move, whether it was sent.
-    /// Notes: a pointer move does not wait for the agent's answer, so the
-    /// moves of a hand on the viewer never hold up the session.
+    /// Injects an event through the agent's injector `id`, without waiting
+    /// for the agent's answer, which nobody reads: a person's input never
+    /// holds up the session (each key and click used to wait for it on one
+    /// of the network's two threads).
+    /// Returns: whether it was sent (false without an agent).
     pub fn inject(&self, id: u64, e: &Event, area: Option<Area>) -> bool {
-        let params = json!({"injector": id, "event": e, "area": area});
-        if matches!(
-            e,
-            Event::Pointer {
-                action: PointerAction::Move,
-                ..
-            }
-        ) {
-            return self.send("input", params).is_ok();
-        }
-        self.call("input", params).unwrap_or(false)
+        self.send("input", json!({"injector": id, "event": e, "area": area}))
+            .is_ok()
     }
 
     /// Releases what injector `id` holds.
