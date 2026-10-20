@@ -16,7 +16,7 @@ use objc2_application_services::{
 };
 use objc2_core_foundation::{
     CFBoolean, CFDictionary, CFMachPort, CFNumber, CFRetained, CFRunLoop, CFString, CFType,
-    CGPoint, CGRect, kCFRunLoopCommonModes,
+    CGPoint, CGRect, kCFRunLoopCommonModes, kCFRunLoopDefaultMode,
 };
 use objc2_core_graphics::{
     CGDirectDisplayID, CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayIsMain, CGDisplayMode,
@@ -233,8 +233,13 @@ struct Content(Retained<SCShareableContent>);
 unsafe impl Send for Content {}
 
 /// The displays and applications that can be captured now.
-/// Returns: an error without the Screen Recording permission.
+/// Returns: an error without the Screen Recording permission, at once: asking
+/// ScreenCaptureKit then may show macOS's prompt and leave its answer
+/// pending past `WAIT`.
 fn shareable() -> Result<Retained<SCShareableContent>, String> {
+    if !CGPreflightScreenCaptureAccess() {
+        return Err("capturing the screen needs the Screen Recording permission".into());
+    }
     let (tx, rx) = sync_channel(1);
     let done = RcBlock::new(
         move |content: *mut SCShareableContent, error: *mut NSError| {
@@ -268,6 +273,39 @@ fn finished(call: impl FnOnce(&block2::DynBlock<dyn Fn(*mut NSError)>)) -> Resul
     call(&done);
     rx.recv_timeout(WAIT)
         .map_err(|_| "ScreenCaptureKit did not answer".to_string())?
+}
+
+/// How long dropping a stream waits for ScreenCaptureKit to let go of it.
+const STOP_WAIT: Duration = Duration::from_secs(2);
+
+/// Stops a stream: removes its output, so that no more pictures or sound
+/// arrive, then stops it and waits up to `STOP_WAIT` for the answer.
+/// Side effects: the completion block keeps the stream and the output alive
+/// until ScreenCaptureKit answers, even after the wait gave up (regression
+/// candidate: a stream released while stopping, or still starting, called
+/// into freed objects).
+fn stop(
+    stream: &Retained<SCStream>,
+    output: Retained<ProtocolObject<dyn SCStreamOutput>>,
+    kind: SCStreamOutputType,
+) {
+    // SAFETY: the output was added for `kind`; an error (it was never
+    // added, the stream already ended) leaves nothing to remove.
+    if let Err(e) = unsafe { stream.removeStreamOutput_type_error(&output, kind) } {
+        log::info!("removing a stream's output: {}", e.localizedDescription());
+    }
+    let (tx, rx) = sync_channel(1);
+    let keep = (stream.clone(), output);
+    let done = RcBlock::new(move |_: *mut NSError| {
+        let _ = &keep;
+        let _ = tx.try_send(());
+    });
+    // SAFETY: the handler is a block of the expected signature; an error
+    // (the stream never started) is the same as stopped.
+    unsafe { stream.stopCaptureWithCompletionHandler(Some(&done)) };
+    if rx.recv_timeout(STOP_WAIT).is_err() {
+        log::info!("ScreenCaptureKit did not answer the stop");
+    }
 }
 
 /// The newest picture of a stream.
@@ -356,15 +394,16 @@ define_class!(
             kind: SCStreamOutputType,
         ) {
             if kind == SCStreamOutputType::Screen {
-                self.ivars().take(sample);
+                crate::guarded(|| self.ivars().take(sample));
             }
         }
     }
 
     unsafe impl SCStreamDelegate for Output {
         #[unsafe(method(stream:didStopWithError:))]
-        fn stream_did_stop(&self, _stream: &SCStream, _error: &NSError) {
-            self.ivars().stop();
+        fn stream_did_stop(&self, _stream: &SCStream, error: &NSError) {
+            log::info!("the screen stream stopped: {}", error.localizedDescription());
+            crate::guarded(|| self.ivars().stop());
         }
     }
 );
@@ -410,13 +449,16 @@ fn filter(id: CGDirectDisplayID, show_kyokai: bool) -> Result<Retained<SCContent
     // SAFETY: plain reads of the snapshot.
     let hidden: Vec<Retained<SCRunningApplication>> = unsafe { content.applications() }
         .iter()
-        .filter(|a| unsafe {
-            left_out(
-                a.processID(),
-                &a.bundleIdentifier().to_string(),
-                own,
-                show_kyokai,
-            )
+        .filter(|a| {
+            // Read as optional: a program without a bundle (a command-line
+            // tool with a window) has none, and the generated binding
+            // panics on nil.
+            // SAFETY: `bundleIdentifier` takes no arguments and returns a
+            // nullable NSString.
+            let bundle: Option<Retained<NSString>> = unsafe { msg_send![&**a, bundleIdentifier] };
+            let bundle = bundle.map(|b| b.to_string()).unwrap_or_default();
+            // SAFETY: a plain read of the snapshot.
+            left_out(unsafe { a.processID() }, &bundle, own, show_kyokai)
         })
         .collect();
     // SAFETY: a filter of a display of the snapshot, without those
@@ -491,7 +533,14 @@ impl Capture {
         }
         .map_err(|e| e.localizedDescription().to_string())?;
         // SAFETY: the handler is a block of the expected signature.
-        finished(|done| unsafe { stream.startCaptureWithCompletionHandler(Some(done)) })?;
+        if let Err(e) =
+            finished(|done| unsafe { stream.startCaptureWithCompletionHandler(Some(done)) })
+        {
+            // A start that did not answer in time may still come: stop it.
+            let output = ProtocolObject::from_retained(output);
+            stop(&stream, output, SCStreamOutputType::Screen);
+            return Err(e);
+        }
         Ok(Capture {
             stream,
             _output: output,
@@ -536,9 +585,8 @@ impl Capture {
 
 impl Drop for Capture {
     fn drop(&mut self) {
-        // SAFETY: stops the stream this capture started; nothing waits for
-        // the answer.
-        unsafe { self.stream.stopCaptureWithCompletionHandler(None) };
+        let output = ProtocolObject::from_retained(self._output.clone());
+        stop(&self.stream, output, SCStreamOutputType::Screen);
     }
 }
 
@@ -562,7 +610,7 @@ define_class!(
             kind: SCStreamOutputType,
         ) {
             if kind == SCStreamOutputType::Audio {
-                take_sound(sample, self.ivars());
+                crate::guarded(|| take_sound(sample, self.ivars()));
             }
         }
     }
@@ -669,7 +717,13 @@ impl AudioCapture {
         }
         .map_err(|e| e.localizedDescription().to_string())?;
         // SAFETY: the handler is a block of the expected signature.
-        finished(|done| unsafe { stream.startCaptureWithCompletionHandler(Some(done)) })?;
+        if let Err(e) =
+            finished(|done| unsafe { stream.startCaptureWithCompletionHandler(Some(done)) })
+        {
+            let output = ProtocolObject::from_retained(output);
+            stop(&stream, output, SCStreamOutputType::Audio);
+            return Err(e);
+        }
         Ok(AudioCapture {
             stream,
             _output: output,
@@ -679,9 +733,8 @@ impl AudioCapture {
 
 impl Drop for AudioCapture {
     fn drop(&mut self) {
-        // SAFETY: stops the stream this capture started; nothing waits for
-        // the answer.
-        unsafe { self.stream.stopCaptureWithCompletionHandler(None) };
+        let output = ProtocolObject::from_retained(self._output.clone());
+        stop(&self.stream, output, SCStreamOutputType::Audio);
     }
 }
 
@@ -1296,6 +1349,9 @@ struct Watched {
     stop: AtomicBool,
     /// The tap, to switch it on again when macOS turned it off.
     tap: AtomicPtr<CFMachPort>,
+    /// The watch was dropped: its thread ends even when the drop came
+    /// before its run loop ran.
+    ended: AtomicBool,
 }
 
 /// The run loop of the watch's thread, stopped from the thread that drops
@@ -1313,7 +1369,8 @@ pub struct LocalWatch {
     run_loop: Loop,
 }
 
-/// The event tap's callback: notes local input and the stop shortcut.
+/// The event tap's callback: notes local input and the stop shortcut; the
+/// event always goes on (the tap only listens).
 unsafe extern "C-unwind" fn tapped(
     _proxy: CGEventTapProxy,
     kind: CGEventType,
@@ -1321,21 +1378,25 @@ unsafe extern "C-unwind" fn tapped(
     info: *mut c_void,
 ) -> *mut CGEvent {
     // SAFETY: `info` is the watch's `Watched`, kept alive by the tap's
-    // thread while its run loop runs.
-    let watched = unsafe { &*(info as *const Watched) };
-    // SAFETY: the event is valid for the callback.
-    let e = unsafe { event.as_ref() };
+    // thread while its run loop runs; the event is valid for the callback.
+    let (watched, e) = unsafe { (&*(info as *const Watched), event.as_ref()) };
+    crate::guarded(|| note(watched, kind, e));
+    event.as_ptr()
+}
+
+/// Notes one event the tap saw.
+fn note(watched: &Watched, kind: CGEventType, e: &CGEvent) {
     if kind == CGEventType::TapDisabledByTimeout || kind == CGEventType::TapDisabledByUserInput {
         // SAFETY: the tap lives as long as its thread's run loop runs.
         if let Some(tap) = unsafe { watched.tap.load(Ordering::Acquire).as_ref() } {
             CGEvent::tap_enable(tap, true);
         }
-        return event.as_ptr();
+        return;
     }
     if CGEvent::integer_value_field(Some(e), CGEventField::EventSourceUserData)
         == INJECTED_TAG as i64
     {
-        return event.as_ptr();
+        return;
     }
     let now = Some(Instant::now());
     let moved = [
@@ -1361,7 +1422,6 @@ unsafe extern "C-unwind" fn tapped(
     {
         watched.stop.store(true, Ordering::Relaxed);
     }
-    event.as_ptr()
 }
 
 impl LocalWatch {
@@ -1420,8 +1480,18 @@ impl LocalWatch {
             run_loop.add_source(Some(&source), unsafe { kCFRunLoopCommonModes });
             CGEvent::tap_enable(&tap, true);
             let _ = tx.send(Ok(Loop(run_loop)));
-            CFRunLoop::run();
+            // Short turns, so that a stop sent before the loop ran is not
+            // lost.
+            while !shared.ended.load(Ordering::Acquire) {
+                // SAFETY: an immutable constant of the framework.
+                let _ = CFRunLoop::run_in_mode(unsafe { kCFRunLoopDefaultMode }, 0.5, false);
+            }
+            // The tap goes with its run loop, as the keyboard grab's does
+            // (keyboard.rs).
             shared.tap.store(std::ptr::null_mut(), Ordering::Release);
+            CGEvent::tap_enable(&tap, false);
+            source.invalidate();
+            tap.invalidate();
         });
         let run_loop = rx
             .recv()
@@ -1445,6 +1515,7 @@ impl LocalWatch {
 
 impl Drop for LocalWatch {
     fn drop(&mut self) {
+        self.watched.ended.store(true, Ordering::Release);
         self.run_loop.0.stop();
     }
 }

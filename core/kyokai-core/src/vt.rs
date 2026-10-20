@@ -515,11 +515,13 @@ unsafe extern "C-unwind" fn encoded(
     if status != 0 {
         return;
     }
-    if let Some(frame) = sample.and_then(|s| annex_b(out.syntax, s))
-        && let Ok(mut units) = out.units.lock()
-    {
-        units.push(frame);
-    }
+    crate::guarded(|| {
+        if let Some(frame) = sample.and_then(|s| annex_b(out.syntax, s))
+            && let Ok(mut units) = out.units.lock()
+        {
+            units.push(frame);
+        }
+    });
 }
 
 /// A compressed sample as Annex B, and whether it is a key frame (the
@@ -861,12 +863,14 @@ unsafe extern "C-unwind" fn decoded(
     }
     // SAFETY: the caller's contract above.
     let out = unsafe { &*(refcon as *const Decoded) };
-    if let Some(image) = NonNull::new(image)
-        && let Ok(mut picture) = out.0.lock()
-    {
-        // SAFETY: retains the picture past the callback.
-        *picture = Some(unsafe { CFRetained::retain(image) });
-    }
+    crate::guarded(|| {
+        if let Some(image) = NonNull::new(image)
+            && let Ok(mut picture) = out.0.lock()
+        {
+            // SAFETY: retains the picture past the callback.
+            *picture = Some(unsafe { CFRetained::retain(image) });
+        }
+    });
 }
 
 #[cfg(test)]

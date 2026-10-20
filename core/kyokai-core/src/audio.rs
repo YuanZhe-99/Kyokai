@@ -521,7 +521,8 @@ mod input {
             let pcm = &*(user as *const Arc<Pcm>);
             let b = &*buffer;
             let samples = std::slice::from_raw_parts(b.data as *const f32, b.size as usize / 4);
-            pcm.push(samples, 2, crate::opus::RATE as u32);
+            // A panic must not reach the C caller (it would abort).
+            crate::guarded(|| pcm.push(samples, 2, crate::opus::RATE as u32));
             AudioQueueEnqueueBuffer(queue, buffer, 0, std::ptr::null());
         }
     }

@@ -616,6 +616,14 @@ fn diagnostics() {
     });
 }
 
+/// Runs the body of a callback that a system framework calls, so that a
+/// panic (logged by the panic hook) ends the callback instead of unwinding
+/// into foreign code or aborting the process.
+#[cfg(target_os = "macos")]
+pub(crate) fn guarded(f: impl FnOnce()) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+}
+
 /// Runs `f` on the request bytes and writes its JSON response, catching
 /// panics so none crosses the C boundary.
 /// Side effects: installs the core's diagnostics on the first call
