@@ -2,7 +2,7 @@
 // scrap types and libyuv calls the dxgi module expects.
 //! What the vendored RustDesk DXGI code expects from the rest of `scrap`:
 //! its frame and buffer types, the adapter description, and libyuv's ARGB
-//! rotation and mirroring (here in plain Rust, for whole 32-bit pixels).
+//! rotation (here in plain Rust, for whole 32-bit pixels).
 
 use std::ffi::c_void;
 use std::io;
@@ -91,33 +91,6 @@ pub unsafe fn ARGBRotate(
             unsafe {
                 let s = src.add(y * src_stride as usize + x * 4) as *const u32;
                 let d = dst.add(dy * dst_stride as usize + dx * 4) as *mut u32;
-                d.write_unaligned(s.read_unaligned());
-            }
-        }
-    }
-    0
-}
-
-/// Mirrors a width×height ARGB image left to right (libyuv's ARGBMirror).
-///
-/// # Safety
-/// As ARGBRotate.
-#[allow(non_snake_case)]
-pub unsafe fn ARGBMirror(
-    src: *const u8,
-    src_stride: i32,
-    dst: *mut u8,
-    dst_stride: i32,
-    width: i32,
-    height: i32,
-) -> i32 {
-    let (w, h) = (width as usize, height as usize);
-    for y in 0..h {
-        for x in 0..w {
-            // SAFETY: both offsets are inside the images, per the contract.
-            unsafe {
-                let s = src.add(y * src_stride as usize + x * 4) as *const u32;
-                let d = dst.add(y * dst_stride as usize + (w - 1 - x) * 4) as *mut u32;
                 d.write_unaligned(s.read_unaligned());
             }
         }

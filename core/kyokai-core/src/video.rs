@@ -782,6 +782,12 @@ pub(crate) trait Grab: Sized {
     /// Waits up to `timeout` for a picture newer than the last one and hands
     /// it to `take` (top-down BGRA, width, height, bytes per row).
     fn frame(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got;
+
+    /// When the last picture handed over was taken, if the capturer knows
+    /// better than `take` being called (before a copy of its own).
+    fn taken(&self) -> Option<Instant> {
+        None
+    }
 }
 
 #[cfg(any(windows, target_os = "macos"))]
@@ -1006,7 +1012,8 @@ mod capture {
                     },
                 );
                 match got {
-                    Got::Picture => {}
+                    // The encode time counts from the capture's own copy.
+                    Got::Picture => taken = cap.taken().or(taken),
                     Got::Nothing if (wanted || held > 0) && encoder.has_picture() => {}
                     Got::Lost => {
                         if wanted {
@@ -1107,13 +1114,30 @@ mod screen {
         list
     }
 
-    /// A display through desktop duplication (or GDI).
-    pub struct Dxgi(Capturer);
+    /// How often a capture that fell back to GDI tries desktop duplication
+    /// again (it fails for a moment around a UAC prompt or the lock screen).
+    const GDI_RETRY: Duration = Duration::from_secs(2);
+
+    /// A display through desktop duplication (or GDI), scaled on the GPU to
+    /// the stream's size.
+    pub struct Dxgi {
+        cap: Capturer,
+        /// The display, by its place on the virtual desktop.
+        want: Display,
+        /// The stream's size, which the GPU scales to.
+        size: (usize, usize),
+        /// When desktop duplication was last tried while on GDI.
+        tried: Instant,
+    }
 
     impl Grab for Dxgi {
         /// Opens a display by its place on the virtual desktop, on the
         /// input desktop (the agent follows it to a UAC prompt or the lock
-        /// screen).
+        /// screen), and asks the GPU for pictures of the stream's size: a
+        /// 4K desktop crosses to the CPU as 1080p, as ScreenCaptureKit
+        /// hands a Mac host its pictures. GDI, a desktop image kept in
+        /// system memory and a GPU the pass fails on deliver the display's
+        /// size, which the encoder scales.
         fn open(want: Display) -> Result<(Self, u32, u32), String> {
             crate::agent::follow_input_desktop();
             let display = attached()
@@ -1121,18 +1145,71 @@ mod screen {
                 .find(|d| d.origin() == (want.x, want.y))
                 .ok_or("the display is gone")?;
             let (dw, dh) = (display.width() as u32, display.height() as u32);
-            let capturer = Capturer::new(display).map_err(|e| format!("capturer: {e}"))?;
-            Ok((Dxgi(capturer), dw, dh))
+            let mut cap = Capturer::new(display).map_err(|e| format!("capturer: {e}"))?;
+            let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
+            let size = (w as usize, h as usize);
+            cap.scale_to(size.0, size.1);
+            log::info!(
+                "capture: a {dw}x{dh} display through {}",
+                if cap.is_gdi() {
+                    "GDI"
+                } else {
+                    "desktop duplication"
+                }
+            );
+            let tried = Instant::now();
+            Ok((
+                Dxgi {
+                    cap,
+                    want,
+                    size,
+                    tried,
+                },
+                w,
+                h,
+            ))
         }
 
         fn frame(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got {
-            match self.0.frame(timeout.as_millis() as u32) {
+            if self.cap.is_gdi() && self.tried.elapsed() >= GDI_RETRY {
+                self.tried = Instant::now();
+                self.duplicate_again();
+            }
+            match self.cap.frame(timeout.as_millis() as u32) {
                 Ok(Frame::PixelBuffer(pb)) => {
                     take(pb.data, pb.width, pb.height, pb.stride);
                     Got::Picture
                 }
                 Err(e) => missed(e.kind()),
                 Ok(Frame::Texture(_)) => Got::Nothing,
+            }
+        }
+
+        /// When desktop duplication handed the last frame over, or GDI began
+        /// copying it: the copy to system memory counts in the encode time.
+        fn taken(&self) -> Option<Instant> {
+            self.cap.acquired()
+        }
+    }
+
+    impl Dxgi {
+        /// Switches a capture that fell back to GDI to desktop duplication
+        /// again where it opens now (regression: a moment's failure, as
+        /// around a UAC prompt, kept the stream on GDI to its end). A display
+        /// that DXGI does not list (no GPU output, some virtual machines) is
+        /// left on GDI without trying.
+        fn duplicate_again(&mut self) {
+            let Some(display) = Displays::new().ok().and_then(|mut all| {
+                all.find(|d| d.attached_to_desktop() && d.origin() == (self.want.x, self.want.y))
+            }) else {
+                return;
+            };
+            if let Ok(mut cap) = Capturer::new(display)
+                && !cap.is_gdi()
+            {
+                cap.scale_to(self.size.0, self.size.1);
+                self.cap = cap;
+                log::info!("capture: desktop duplication is back");
             }
         }
     }

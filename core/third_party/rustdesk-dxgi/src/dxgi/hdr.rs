@@ -2,7 +2,8 @@
 // commit fada664df7a294d1d1a9ca3e7cd3637069122f17. License: AGPL-3.0 (RustDesk); the original
 // scrap code by Ram (quadrupleslap) is MIT.
 // Modified by Kyokai: no Magnification (privacy mode) module; logging through the `log` crate
-// instead of hbb_common; scrap's shared types and libyuv calls come from crate::shim.
+// instead of hbb_common; scrap's shared types and libyuv calls come from crate::shim. Its shader
+// helpers (VS_SRC, compile_shader, load_d3d_compile, check) also serve scale.rs.
 
 //! HDR desktop -> SDR normalization for Desktop Duplication frames.
 //!
@@ -77,7 +78,7 @@ pub fn is_permanent(err: &io::Error) -> bool {
     err.kind() == io::ErrorKind::Unsupported
 }
 
-const VS_SRC: &str = "\
+pub(super) const VS_SRC: &str = "\
 float4 main(uint id : SV_VertexID) : SV_Position {
     float2 uv = float2((id << 1) & 2, id & 2);
     return float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
@@ -463,7 +464,7 @@ fn other(msg: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::Other, msg.into())
 }
 
-fn check(hr: HRESULT, what: &str) -> io::Result<()> {
+pub(super) fn check(hr: HRESULT, what: &str) -> io::Result<()> {
     if hr == S_OK {
         Ok(())
     } else {
@@ -473,7 +474,7 @@ fn check(hr: HRESULT, what: &str) -> io::Result<()> {
 
 // D3DCompile(pSrcData, SrcDataSize, pSourceName, pDefines, pInclude,
 //            pEntrypoint, pTarget, Flags1, Flags2, ppCode, ppErrorMsgs)
-type D3DCompileFn = unsafe extern "system" fn(
+pub(super) type D3DCompileFn = unsafe extern "system" fn(
     LPCVOID,
     SIZE_T,
     LPCSTR,
@@ -491,7 +492,7 @@ static D3D_COMPILE: OnceLock<Result<D3DCompileFn, String>> = OnceLock::new();
 
 // Loaded once per process and kept: the compiler DLL is only needed on HDR
 // desktops, and an import-time link would make every install depend on it.
-fn load_d3d_compile() -> io::Result<D3DCompileFn> {
+pub(super) fn load_d3d_compile() -> io::Result<D3DCompileFn> {
     D3D_COMPILE
         .get_or_init(|| unsafe { find_d3d_compile() })
         .clone()
@@ -511,7 +512,7 @@ unsafe fn find_d3d_compile() -> Result<D3DCompileFn, String> {
     Ok(mem::transmute::<_, D3DCompileFn>(f))
 }
 
-unsafe fn compile_shader(
+pub(super) unsafe fn compile_shader(
     compile: D3DCompileFn,
     src: &str,
     target: &[u8],

@@ -2,7 +2,9 @@
 // commit fada664df7a294d1d1a9ca3e7cd3637069122f17. License: AGPL-3.0 (RustDesk); the original
 // scrap code by Ram (quadrupleslap) is MIT.
 // Modified by Kyokai: no Magnification (privacy mode) module; logging through the `log` crate
-// instead of hbb_common; scrap's shared types and libyuv calls come from crate::shim.
+// instead of hbb_common; scrap's shared types and libyuv calls come from crate::shim. The bitmap
+// is read top-down (a negative height), so a frame needs neither a buffer of its own nor the
+// mirror and rotation passes that turned the bottom-up rows around.
 
 use std::mem::size_of;
 use winapi::{
@@ -110,17 +112,15 @@ impl CapturerGDI {
                 return Err("Failed to copy screen to Windows buffer".into());
             }
 
-            let stride = self.width * PIXEL_WIDTH;
-            let size: usize = (stride * self.height) as usize;
-            let mut data1: Vec<u8> = Vec::with_capacity(size);
-            data1.set_len(size);
+            let size: usize = (self.width * PIXEL_WIDTH * self.height) as usize;
             data.resize(size, 0);
 
             let mut bmi = BITMAPINFO {
                 bmiHeader: BITMAPINFOHEADER {
                     biSize: size_of::<BITMAPINFOHEADER>() as _,
                     biWidth: self.width as _,
-                    biHeight: self.height as _,
+                    // Top-down rows (Kyokai).
+                    biHeight: -self.height as _,
                     biPlanes: 1,
                     biBitCount: (8 * PIXEL_WIDTH) as _,
                     biCompression: BI_RGB,
@@ -151,23 +151,6 @@ impl CapturerGDI {
             if res == 0 {
                 return Err("GetDIBits failed".into());
             }
-            crate::common::ARGBMirror(
-                data.as_ptr(),
-                stride,
-                data1.as_mut_ptr(),
-                stride,
-                self.width,
-                self.height,
-            );
-            crate::common::ARGBRotate(
-                data1.as_ptr(),
-                stride,
-                data.as_mut_ptr(),
-                stride,
-                self.width,
-                self.height,
-                crate::RotationMode::kRotate180,
-            );
             Ok(())
         }
     }

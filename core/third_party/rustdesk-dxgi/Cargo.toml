@@ -18,7 +18,5 @@ winapi = { version = "0.3", features = ["dxgi", "dxgi1_2", "dxgi1_5", "dxgi1_6",
 [features]
 vram = []
 
-# Upstream's tests need RustDesk's dev-dependencies; Kyokai's capture
-# module tests this crate through its API instead.
-[lib]
-test = false
+# Upstream's tests need RustDesk's dev-dependencies and stay switched off in
+# their files (cfg(any())); the tests that run are Kyokai's own (scale.rs).

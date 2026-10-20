@@ -8,7 +8,7 @@ mod dxgi;
 mod shim;
 
 pub mod common {
-    pub use crate::shim::{ARGBMirror, ARGBRotate};
+    pub use crate::shim::ARGBRotate;
 }
 pub use dxgi::{Capturer, CapturerGDI, Display, Displays};
 pub use shim::{would_block_if_equal, AdapterDevice, Frame, PixelBuffer, RotationMode};

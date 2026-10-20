@@ -2,19 +2,24 @@
 // commit fada664df7a294d1d1a9ca3e7cd3637069122f17. License: AGPL-3.0 (RustDesk); the original
 // scrap code by Ram (quadrupleslap) is MIT.
 // Modified by Kyokai: no Magnification (privacy mode) module; logging through the `log` crate
-// instead of hbb_common; scrap's shared types and libyuv calls come from crate::shim.
+// instead of hbb_common; scrap's shared types and libyuv calls come from crate::shim. A frame is
+// copied to system memory through one staging texture per size instead of a new one per frame,
+// scaled and turned on the GPU first when the capturer was asked for a smaller picture or the
+// display is turned (scale_to, scale.rs), and the capturer tells when its last frame was taken
+// (acquired).
 
-use std::{io, mem, ptr, slice};
+use std::{io, mem, ptr, slice, time::Instant};
 pub mod gdi;
 pub use gdi::CapturerGDI;
 pub mod hdr;
+mod scale;
 
 use winapi::{
     shared::{
         dxgi::*,
         dxgi1_2::*,
         dxgi1_6::*,
-        dxgiformat::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT},
+        dxgiformat::{DXGI_FORMAT, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT},
         dxgitype::*,
         minwindef::{DWORD, FALSE, TRUE, UINT},
         ntdef::LONG,
@@ -74,6 +79,19 @@ pub struct Capturer {
     rotate: Rotate,
     frame_state: FrameState,
     hdr: Option<hdr::HdrToSdr>,
+    // Kyokai: the staging texture frames are copied into and its size and
+    // format, kept while they stay.
+    staging: ComPtr<ID3D11Texture2D>,
+    staging_size: (UINT, UINT, DXGI_FORMAT),
+    // Kyokai: the picture size asked for (scale_to), the GPU pass that
+    // scales and turns to it, whether that pass failed for good (the CPU
+    // scales then), and the size the last frame came in when it ran.
+    target: Option<(u32, u32)>,
+    scaler: Option<scale::Scaler>,
+    scale_failed: bool,
+    out: Option<(usize, usize)>,
+    // Kyokai: when the last frame was taken (acquired).
+    acquired: Option<Instant>,
 }
 
 impl Capturer {
@@ -193,7 +211,107 @@ impl Capturer {
             rotate,
             frame_state: FrameState::Idle,
             hdr: None,
+            staging: ComPtr(ptr::null_mut()),
+            staging_size: (0, 0, 0),
+            target: None,
+            scaler: None,
+            scale_failed: false,
+            out: None,
+            acquired: None,
         })
+    }
+
+    /// Asks for pictures of `width`×`height`, the right way up, scaled on
+    /// the GPU (Kyokai). Desktop duplication delivers them so; GDI and a
+    /// desktop image kept in system memory still deliver the display's
+    /// size, and so does a GPU the pass fails on (the caller scales those).
+    pub fn scale_to(&mut self, width: usize, height: usize) {
+        self.target = Some((width as u32, height as u32));
+    }
+
+    /// When the last frame was taken: desktop duplication handed it over,
+    /// or GDI began copying it (Kyokai, for the host's encode time).
+    pub fn acquired(&self) -> Option<Instant> {
+        self.acquired
+    }
+
+    // How the display's image is turned to show the right way up (DXGI
+    // hands it over as the panel scans it).
+    fn turn(&self) -> crate::RotationMode {
+        match self.display.rotation() {
+            DXGI_MODE_ROTATION_ROTATE90 => kRotate90,
+            DXGI_MODE_ROTATION_ROTATE180 => kRotate180,
+            DXGI_MODE_ROTATION_ROTATE270 => kRotate270,
+            _ => kRotate0,
+        }
+    }
+
+    // The size the GPU pass renders a frame at: the size asked for, when it
+    // differs from the display's or the display is turned; None to copy the
+    // frame as it is (Kyokai).
+    fn gpu_size(&self) -> Option<(u32, u32)> {
+        let (w, h) = self.target?;
+        if self.scale_failed {
+            return None;
+        }
+        let same = (w, h) == (self.width as u32, self.height as u32);
+        (!same || self.turn() != kRotate0).then_some((w, h))
+    }
+
+    // Runs the GPU pass on `source` (as the panel scans it), making it on
+    // first use (Kyokai).
+    unsafe fn scale(
+        &mut self,
+        source: *mut ID3D11Texture2D,
+        desc: &D3D11_TEXTURE2D_DESC,
+        size: (u32, u32),
+    ) -> io::Result<*mut ID3D11Texture2D> {
+        if self.scaler.is_none() {
+            self.scaler = Some(scale::Scaler::new(self.device.0, self.context.0)?);
+            log::info!(
+                "scaling {}x{} to {}x{} on the GPU",
+                self.width,
+                self.height,
+                size.0,
+                size.1
+            );
+        }
+        let turn = self.turn();
+        match self.scaler.as_mut() {
+            Some(s) => s.run(source, (desc.Width, desc.Height), turn, size),
+            None => Err(io::Error::new(io::ErrorKind::Other, "no scaler")),
+        }
+    }
+
+    // Makes the staging texture match `desc` (size and format), unless it
+    // does already, with the surface frames are read through (Kyokai: one
+    // per size instead of one per frame). Called with no frame mapped.
+    unsafe fn ensure_staging(&mut self, desc: &D3D11_TEXTURE2D_DESC) -> io::Result<()> {
+        let size = (desc.Width, desc.Height, desc.Format);
+        if !self.staging.is_null() && self.staging_size == size {
+            return Ok(());
+        }
+        let mut staging_desc = *desc;
+        staging_desc.Usage = D3D11_USAGE_STAGING;
+        staging_desc.BindFlags = 0;
+        staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        staging_desc.MiscFlags = 0;
+        let mut readable = ptr::null_mut();
+        wrap_hresult((*self.device.0).CreateTexture2D(&staging_desc, ptr::null(), &mut readable))?;
+        (*readable).SetEvictionPriority(DXGI_RESOURCE_PRIORITY_MAXIMUM);
+        let readable = ComPtr(readable);
+        let mut surface: *mut IDXGISurface = ptr::null_mut();
+        (*readable.0).QueryInterface(
+            &IID_IDXGISurface,
+            &mut surface as *mut *mut _ as *mut *mut _,
+        );
+        if surface.is_null() {
+            return Err(io::Error::new(io::ErrorKind::Other, "no staging surface"));
+        }
+        self.surface = ComPtr(surface);
+        self.staging = readable;
+        self.staging_size = size;
+        Ok(())
     }
 
     // Asks for the float desktop that HDR mode composes so it can be tone-mapped;
@@ -452,6 +570,8 @@ impl Capturer {
 
         wrap_hresult((*self.duplication.0).AcquireNextFrame(timeout, &mut info, &mut frame))?;
         self.frame_state = FrameState::Acquired;
+        self.acquired = Some(Instant::now());
+        self.out = None;
         let frame = ComPtr(frame);
 
         if *info.LastPresentTime.QuadPart() == 0 {
@@ -464,15 +584,16 @@ impl Capturer {
             wrap_hresult((*self.duplication.0).MapDesktopSurface(&mut rect))?;
             self.frame_state = FrameState::Mapped;
         } else {
-            self.surface = ComPtr(self.ohgodwhat(frame.0)?);
+            self.ohgodwhat(frame.0)?;
             wrap_hresult((*self.surface.0).Map(&mut rect, DXGI_MAP_READ))?;
             self.frame_state = FrameState::Mapped;
         }
         Ok((rect.pBits, rect.Pitch))
     }
 
-    // copy from GPU memory to system memory
-    unsafe fn ohgodwhat(&mut self, frame: *mut IDXGIResource) -> io::Result<*mut IDXGISurface> {
+    // copy from GPU memory to system memory (Kyokai: into the staging
+    // texture kept for the size, through the GPU pass first when one is due)
+    unsafe fn ohgodwhat(&mut self, frame: *mut IDXGIResource) -> io::Result<()> {
         let mut texture: *mut ID3D11Texture2D = ptr::null_mut();
         (*frame).QueryInterface(
             &IID_ID3D11Texture2D,
@@ -490,59 +611,56 @@ impl Capturer {
             (*source).GetDesc(&mut texture_desc);
         }
 
-        texture_desc.Usage = D3D11_USAGE_STAGING;
-        texture_desc.BindFlags = 0;
-        texture_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-        texture_desc.MiscFlags = 0;
+        if let Some(size) = self.gpu_size() {
+            match self.scale(source, &texture_desc, size) {
+                Ok(scaled) => {
+                    source = scaled;
+                    (*source).GetDesc(&mut texture_desc);
+                    self.out = Some((size.0 as usize, size.1 as usize));
+                }
+                Err(err) => {
+                    // The CPU scales and turns from here on.
+                    log::warn!("scaling on the GPU failed, the CPU scales instead: {err}");
+                    self.scaler = None;
+                    self.scale_failed = true;
+                }
+            }
+        }
 
-        let mut readable = ptr::null_mut();
-        wrap_hresult((*self.device.0).CreateTexture2D(
-            &mut texture_desc,
-            ptr::null(),
-            &mut readable,
-        ))?;
-        (*readable).SetEvictionPriority(DXGI_RESOURCE_PRIORITY_MAXIMUM);
-        let readable = ComPtr(readable);
-
-        let mut surface = ptr::null_mut();
-        (*readable.0).QueryInterface(
-            &IID_IDXGISurface,
-            &mut surface as *mut *mut _ as *mut *mut _,
-        );
-
-        (*self.context.0).CopyResource(readable.0 as *mut _, source as *mut _);
-
-        Ok(surface)
+        self.ensure_staging(&texture_desc)?;
+        (*self.context.0).CopyResource(self.staging.0 as *mut _, source as *mut _);
+        Ok(())
     }
 
     pub fn frame<'a>(&'a mut self, timeout: UINT) -> io::Result<Frame<'a>> {
         if self.output_texture {
             Ok(Frame::Texture(self.get_texture(timeout)?))
         } else {
-            let width = self.width;
-            let height = self.height;
+            let (data, width, height) = self.get_pixelbuffer(timeout)?;
             Ok(Frame::PixelBuffer(PixelBuffer::with_BGRA(
-                self.get_pixelbuffer(timeout)?,
-                width,
-                height,
+                data, width, height,
             )))
         }
     }
 
-    fn get_pixelbuffer<'a>(&'a mut self, timeout: UINT) -> io::Result<&'a [u8]> {
+    // The frame's pixels with their width and height (Kyokai: the GPU
+    // pass's size when it ran).
+    fn get_pixelbuffer<'a>(&'a mut self, timeout: UINT) -> io::Result<(&'a [u8], usize, usize)> {
+        let (width, height) = (self.width, self.height);
         unsafe {
             // Release last frame.
             // No error checking needed because we don't care.
             // None of the errors crash anyway.
             let result = {
                 if let Some(gdi_capturer) = &self.gdi_capturer {
+                    self.acquired = Some(Instant::now());
                     match gdi_capturer.frame(&mut self.gdi_buffer) {
                         Ok(_) => {
                             crate::would_block_if_equal(
                                 &mut self.saved_raw_data,
                                 &self.gdi_buffer,
                             )?;
-                            &self.gdi_buffer
+                            (&self.gdi_buffer[..], width, height)
                         }
                         Err(err) => {
                             return Err(io::Error::new(io::ErrorKind::Other, err.to_string()));
@@ -551,6 +669,10 @@ impl Capturer {
                 } else {
                     self.release_frame()?;
                     let r = self.load_frame(timeout)?;
+                    if let Some((w, h)) = self.out {
+                        // Scaled and turned on the GPU.
+                        return Ok((slice::from_raw_parts(r.0, r.1 as usize * h), w, h));
+                    }
                     let rotate = match self.display.rotation() {
                         DXGI_MODE_ROTATION_IDENTITY | DXGI_MODE_ROTATION_UNSPECIFIED => kRotate0,
                         DXGI_MODE_ROTATION_ROTATE90 => kRotate90,
@@ -564,7 +686,11 @@ impl Capturer {
                         }
                     };
                     if rotate == kRotate0 {
-                        slice::from_raw_parts(r.0, r.1 as usize * self.height)
+                        (
+                            slice::from_raw_parts(r.0, r.1 as usize * self.height),
+                            width,
+                            height,
+                        )
                     } else {
                         self.rotated.resize(self.width * self.height * 4, 0);
                         crate::common::ARGBRotate(
@@ -584,7 +710,7 @@ impl Capturer {
                             } as _,
                             rotate,
                         );
-                        &self.rotated[..]
+                        (&self.rotated[..], width, height)
                     }
                 }
             };
