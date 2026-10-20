@@ -3702,6 +3702,16 @@ func (msgs Messages) ViewerAITitle() string {
 	return Catalog.Format(msgs.locale, "ViewerAITitle", nil)
 }
 
+// ViewerActions says "Actions"
+// in the language the app shows.
+func ViewerActions() string { return In(i18n.Locale()).ViewerActions() }
+
+// ViewerActions says "Actions"
+// in the language of msgs.
+func (msgs Messages) ViewerActions() string {
+	return Catalog.Format(msgs.locale, "ViewerActions", nil)
+}
+
 // ViewerBlockInput says "Block their keyboard and mouse"
 // in the language the app shows.
 func ViewerBlockInput() string { return In(i18n.Locale()).ViewerBlockInput() }
@@ -3804,6 +3814,16 @@ func (msgs Messages) ViewerClipboard() string {
 	return Catalog.Format(msgs.locale, "ViewerClipboard", nil)
 }
 
+// ViewerCodec says "Codec"
+// in the language the app shows.
+func ViewerCodec() string { return In(i18n.Locale()).ViewerCodec() }
+
+// ViewerCodec says "Codec"
+// in the language of msgs.
+func (msgs Messages) ViewerCodec() string {
+	return Catalog.Format(msgs.locale, "ViewerCodec", nil)
+}
+
 // ViewerCodecAuto says "Auto"
 // in the language the app shows.
 func ViewerCodecAuto() string { return In(i18n.Locale()).ViewerCodecAuto() }
@@ -3856,6 +3876,16 @@ func (msgs Messages) ViewerDisplay() string {
 	return Catalog.Format(msgs.locale, "ViewerDisplay", nil)
 }
 
+// ViewerDisplayN says "Display {number}"
+// in the language the app shows.
+func ViewerDisplayN(number string) string { return In(i18n.Locale()).ViewerDisplayN(number) }
+
+// ViewerDisplayN says "Display {number}"
+// in the language of msgs.
+func (msgs Messages) ViewerDisplayN(number string) string {
+	return Catalog.Format(msgs.locale, "ViewerDisplayN", map[string]any{"number": number})
+}
+
 // ViewerEncoding says "Encoding (the other computer): {codec}, {impl}"
 // in the language the app shows.
 func ViewerEncoding(codec string, impl string) string {
@@ -3898,6 +3928,16 @@ func (msgs Messages) ViewerFit() string {
 	return Catalog.Format(msgs.locale, "ViewerFit", nil)
 }
 
+// ViewerFrameRate says "Frame rate"
+// in the language the app shows.
+func ViewerFrameRate() string { return In(i18n.Locale()).ViewerFrameRate() }
+
+// ViewerFrameRate says "Frame rate"
+// in the language of msgs.
+func (msgs Messages) ViewerFrameRate() string {
+	return Catalog.Format(msgs.locale, "ViewerFrameRate", nil)
+}
+
 // ViewerFullScreen says "Full screen"
 // in the language the app shows.
 func ViewerFullScreen() string { return In(i18n.Locale()).ViewerFullScreen() }
@@ -3906,16 +3946,6 @@ func ViewerFullScreen() string { return In(i18n.Locale()).ViewerFullScreen() }
 // in the language of msgs.
 func (msgs Messages) ViewerFullScreen() string {
 	return Catalog.Format(msgs.locale, "ViewerFullScreen", nil)
-}
-
-// ViewerHideActions says "Hide actions"
-// in the language the app shows.
-func ViewerHideActions() string { return In(i18n.Locale()).ViewerHideActions() }
-
-// ViewerHideActions says "Hide actions"
-// in the language of msgs.
-func (msgs Messages) ViewerHideActions() string {
-	return Catalog.Format(msgs.locale, "ViewerHideActions", nil)
 }
 
 // ViewerHideBar says "Hide controls"
@@ -4028,6 +4058,16 @@ func (msgs Messages) ViewerLock() string {
 	return Catalog.Format(msgs.locale, "ViewerLock", nil)
 }
 
+// ViewerMoveBar says "Drag to move the controls"
+// in the language the app shows.
+func ViewerMoveBar() string { return In(i18n.Locale()).ViewerMoveBar() }
+
+// ViewerMoveBar says "Drag to move the controls"
+// in the language of msgs.
+func (msgs Messages) ViewerMoveBar() string {
+	return Catalog.Format(msgs.locale, "ViewerMoveBar", nil)
+}
+
 // ViewerNoDecoder says "The picture can't be shown: Kyokai's core library is missing."
 // in the language the app shows.
 func ViewerNoDecoder() string { return In(i18n.Locale()).ViewerNoDecoder() }
@@ -4118,6 +4158,16 @@ func (msgs Messages) ViewerPrivacy() string {
 	return Catalog.Format(msgs.locale, "ViewerPrivacy", nil)
 }
 
+// ViewerQuality says "Quality"
+// in the language the app shows.
+func ViewerQuality() string { return In(i18n.Locale()).ViewerQuality() }
+
+// ViewerQuality says "Quality"
+// in the language of msgs.
+func (msgs Messages) ViewerQuality() string {
+	return Catalog.Format(msgs.locale, "ViewerQuality", nil)
+}
+
 // ViewerReconnect says "Reconnect"
 // in the language the app shows.
 func ViewerReconnect() string { return In(i18n.Locale()).ViewerReconnect() }
@@ -4146,16 +4196,6 @@ func ViewerScaleHint() string { return In(i18n.Locale()).ViewerScaleHint() }
 // in the language of msgs.
 func (msgs Messages) ViewerScaleHint() string {
 	return Catalog.Format(msgs.locale, "ViewerScaleHint", nil)
-}
-
-// ViewerShowActions says "Show actions"
-// in the language the app shows.
-func ViewerShowActions() string { return In(i18n.Locale()).ViewerShowActions() }
-
-// ViewerShowActions says "Show actions"
-// in the language of msgs.
-func (msgs Messages) ViewerShowActions() string {
-	return Catalog.Format(msgs.locale, "ViewerShowActions", nil)
 }
 
 // ViewerShowBar says "Show controls"
@@ -4248,6 +4288,16 @@ func ViewerTitle(device string) string { return In(i18n.Locale()).ViewerTitle(de
 // in the language of msgs.
 func (msgs Messages) ViewerTitle(device string) string {
 	return Catalog.Format(msgs.locale, "ViewerTitle", map[string]any{"device": device})
+}
+
+// ViewerToolbar says "Connection controls"
+// in the language the app shows.
+func ViewerToolbar() string { return In(i18n.Locale()).ViewerToolbar() }
+
+// ViewerToolbar says "Connection controls"
+// in the language of msgs.
+func (msgs Messages) ViewerToolbar() string {
+	return Catalog.Format(msgs.locale, "ViewerToolbar", nil)
 }
 
 // ViewerUnsupported says "This picture uses {codec}, which this version can't show yet."

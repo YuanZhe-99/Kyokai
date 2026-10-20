@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -319,13 +320,13 @@ func TestViewerRenders(t *testing.T) {
 			}, 3)
 			v.displays.Current = 1
 		},
-		// A narrow window: the bar wraps instead of squeezing (regression).
+		// A narrow window: what does not fit goes into the toolbar's overflow menu.
 		"viewer-narrow": func(v *viewer) {
 			v.start, v.bm, v.fps, v.kbps = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), 60, 2400
 			v.offer, v.codec, v.fpsCap = []string{"h264", "hevc", "vp9-sw"}, "auto", "60 fps"
 		},
-		"viewer-collapsed": func(v *viewer) {
-			v.start, v.bm, v.collapsed = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), true
+		"viewer-folded": func(v *viewer) {
+			v.start, v.bm, v.folded = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), true
 		},
 		"viewer-ai-new": func(v *viewer) { v.state, v.ai = "This session does not show the screen.", viewerAI{run: true} },
 		"viewer-clipboard": func(v *viewer) {
@@ -350,17 +351,12 @@ func TestViewerRenders(t *testing.T) {
 			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
 			v.app, v.control, v.actions = &App{}, true, &hostActions{CtrlAltDel: true}
 		},
-		// A Mac host offers no session actions; the top bar still holds the
-		// keyboard choices (regression: it showed for Windows hosts only).
+		// A Mac host offers no session actions; the toolbar still holds the
+		// keyboard choices (regression: they showed for Windows hosts only).
 		"viewer-actions-mac": func(v *viewer) {
 			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
 			v.app, v.control = &App{}, true
 			v.phase.Peer.OS = "macos"
-		},
-		// Folded away: a tab over the picture's top edge pulls it out.
-		"viewer-actions-folded": func(v *viewer) {
-			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
-			v.app, v.control, v.actions, v.topCollapsed = &App{}, true, &hostActions{}, true
 		},
 	}
 	for name, setup := range cases {
@@ -879,6 +875,114 @@ func TestKeyboardAcrossSystems(t *testing.T) {
 	}
 }
 
+// TestViewerToolbarDrags: the toolbar's grip drags it along the picture's
+// top edge, as far as the edges and no further; where it is let go is kept
+// for every viewer, it opens there, folding keeps it there, and a press on
+// it sends the host nothing.
+func TestViewerToolbarDrags(t *testing.T) {
+	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
+	pic := image.NewRGBA(image.Rect(0, 0, 320, 180))
+	open := func() (*viewer, *ui.Tester) {
+		v := a.newViewer("482916735", localapi.About{}, nil)
+		v.start, v.bm, v.pumping, v.control = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), true, true
+		tt := ui.NewTester(v.view, 1100, 560)
+		tt.SetPreferences(ui.Preferences{ReduceMotion: true})
+		tt.Frame()
+		tt.Frame()
+		return v, tt
+	}
+	const width = 1100
+	// drag presses on the grip and moves the pointer by dx.
+	drag := func(v *viewer, tt *ui.Tester, dx float32) {
+		x := (width-v.barW)/2 + v.barOff.X + 14
+		y := barTop + 16
+		tt.Move(x, y)
+		tt.Press(x, y)
+		for i := 1; i <= 10; i++ {
+			tt.Move(x+dx*float32(i)/10, y)
+		}
+		tt.Release(x+dx, y)
+		tt.Frame()
+	}
+	v, tt := open()
+	if v.barW == 0 || v.barOff.X != 0 {
+		t.Fatalf("the toolbar opens %v wide at %v, want in the middle", v.barW, v.barOff)
+	}
+	free := width - v.barW - 2*barMargin
+	drag(v, tt, -200)
+	if at := a.toolbarAt(); math.Abs(float64(at+200/free)) > 0.01 {
+		t.Errorf("dragged 200 to the left: kept at %v, want %v", at, -200/free)
+	}
+	if len(v.out) != 0 {
+		t.Errorf("a press on the toolbar sent %d packets to the host", len(v.out))
+	}
+	drag(v, tt, 2000)
+	if at := a.toolbarAt(); at != 0.5 || v.barOff.X != free/2 {
+		t.Errorf("dragged past the right edge: kept at %v (offset %v), want 0.5 (%v)", at, v.barOff.X, free/2)
+	}
+	// Another viewer opens it where it was left.
+	a.mu.Lock()
+	delete(a.viewers, "482916735")
+	a.mu.Unlock()
+	other, ott := open()
+	if other.barOff.X != free/2 {
+		t.Errorf("another viewer opens it at %v, want %v", other.barOff.X, free/2)
+	}
+	if err := ott.Click(L.ViewerHideBar()); err != nil {
+		t.Fatal(err)
+	}
+	ott.Frame()
+	if !other.folded {
+		t.Fatal("⌃ did not fold the toolbar")
+	}
+	ott.Frame()
+	if want := (width - other.barW - 2*barMargin) / 2; other.barOff.X != want {
+		t.Errorf("folded, the handle is at %v, want %v at the right", other.barOff.X, want)
+	}
+	if err := ott.Click(L.ViewerShowBar()); err != nil {
+		t.Fatal(err)
+	}
+	ott.Frame()
+	if other.folded {
+		t.Error("⌄ did not open the toolbar")
+	}
+}
+
+// TestViewerToolbarMenus: the toolbar's menus choose the quality and send
+// the host's session actions.
+func TestViewerToolbarMenus(t *testing.T) {
+	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
+	v := a.newViewer("482916735", localapi.About{}, nil)
+	v.start, v.bm, v.pumping, v.control = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 320, 180))), true, true
+	v.actions = &hostActions{}
+	tt := ui.NewTester(v.view, 1100, 560)
+	tt.Frame()
+	tt.Frame()
+	if err := tt.Click(L.ViewerQuality()); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem(L.QualityBest()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if v.preset != 2 {
+		t.Errorf("chose Sharper: preset %d", v.preset)
+	}
+	for len(v.out) > 0 {
+		<-v.out
+	}
+	if err := tt.Click(L.ViewerActions()); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem(L.ViewerLock()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(v.out) != 1 || !strings.Contains(string(<-v.out), `"lock"`) {
+		t.Error("Lock screen sent no lock action")
+	}
+}
+
 // TestViewerSettingsPerDevice: a device's viewer opens with the settings
 // chosen for it last time; another device with the defaults.
 func TestViewerSettingsPerDevice(t *testing.T) {
@@ -888,12 +992,12 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 	v.setCodec("av1")
 	v.setSwap(false)
 	v.mu.Lock()
-	v.topCollapsed = true
+	v.folded = true
 	v.mu.Unlock()
 	v.keepSettings()
 	again := a.newViewer("482916735", localapi.About{}, nil)
-	if again.preset != 2 || again.fpsCap != "60 fps" || !again.full || again.codec != "av1" || again.swap == nil || *again.swap || !again.topCollapsed {
-		t.Errorf("reopened %d %q %v %q %v %v", again.preset, again.fpsCap, again.full, again.codec, again.swap, again.topCollapsed)
+	if again.preset != 2 || again.fpsCap != "60 fps" || !again.full || again.codec != "av1" || again.swap == nil || *again.swap || !again.folded {
+		t.Errorf("reopened %d %q %v %q %v %v", again.preset, again.fpsCap, again.full, again.codec, again.swap, again.folded)
 	}
 	if other := a.newViewer("123456789", localapi.About{}, nil); other.preset != 1 || other.codec != "auto" || other.swap != nil {
 		t.Errorf("another device %d %q", other.preset, other.codec)

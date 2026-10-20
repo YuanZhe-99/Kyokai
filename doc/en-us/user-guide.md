@@ -76,30 +76,31 @@ anything more its user is asked. The other computer's user chooses what to allow
 | Approve AI actions | answer the approvals of those tasks |
 
 Once connected, the tab shows the other screen. Drag the tab out of the window (or click its ⧉)
-for a window of its own, and onto another Kyokai window to move it there; **Full screen** fills the
-display. The bar below the picture sets
-the quality (**Faster**, **Balanced**, **Sharper**), a frame-rate cap and the **Codec** (**Auto**
-lets the other computer choose; the list shows what both computers support). It also says whether
-the connection is **Direct** or **Relayed**; the tooltip of its numbers shows where the time goes.
-**Fit** shows the whole screen in the window; **Original size** shows it at one point per pixel of
-the other computer, with scroll bars to drag when it is larger than the window.
+for a window of its own, and onto another Kyokai window to move it there. The toolbar floating
+over the top of the picture holds the controls; rest the pointer on an icon to see its name. Drag
+it by its grip at the left end to wherever along the top edge suits you, and fold it with ⌃ to a small handle;
+Kyokai remembers both. **Display** chooses the screen when the other computer has several, and
+**Fit** (the whole screen in the window) or **Original size** (one point per pixel of the other
+computer, with scroll bars to drag when it is larger than the window). **Quality** sets
+**Faster**, **Balanced** or **Sharper**, a frame-rate cap and the **Codec** (**Auto** lets the
+other computer choose; the list shows what both computers support). Beside the icons the toolbar
+says whether the connection is **Direct** or **Relayed**; its tooltip shows where the time goes.
+**Full screen** fills the display.
 Click the picture to use the mouse and keyboard there; Kyokai's own windows on the other computer take your input only
 where its user turned off **Hide Kyokai from screen capture**, and not while a connection request or an AI approval waits
-there. The bar above it can **Lock screen**, send **Ctrl+Alt+Del** (when the other computer runs
+there. **Actions** can **Lock screen**, send **Ctrl+Alt+Del** (when the other computer runs
 Kyokai as a helper) and **Block their keyboard and mouse** while you work, or turn on **Privacy mode**, which also
 blacks out their screen while you still see it; its user can always lift both with
-Ctrl+Alt+Shift+Esc or Ctrl+Alt+Del. The bar also chooses how your keyboard reaches the other
+Ctrl+Alt+Shift+Esc or Ctrl+Alt+Del. **Keyboard** chooses how your keyboard reaches the other
 computer: **Map** (the default) sends each key by its place, so the other computer's layout
 decides what it types and shortcuts such as the Windows key, Alt+Tab or Cmd+Tab go there too;
 **Translate** types with your own layout and input method; **Legacy** sends only the keys the
 viewer window receives. On a Mac, Map and Translate need **Accessibility** for Kyokai in System
 Settings, Privacy & Security. Between a Mac and Windows, **Swap Ctrl and Cmd** (on by default) makes
-your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. The bar at the
-top and the status bar at the bottom each fold away (⌃ and ⌄) to leave more of the picture; the
-small tab left at the edge brings them back, and Kyokai remembers it for that device. Keys go there only
+your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. Keys go there only
 while the picture has the focus: click it first. You hear what the other computer plays (or the input
 its user chose in Permissions, **Sound to share**, such as a microphone; a Mac asks for its
-Microphone permission then); **Sound** in the status bar turns it off. **Clipboard** pulls out the
+Microphone permission then); **Sound** in the toolbar turns it off. **Clipboard** pulls out the
 clipboard panel: **Share the clipboard with this device** turns sharing off or on for that device,
 and below it is what crossed the clipboard while its tab was in front — from that device or from
 this computer, newest first, with **Copy** for text — kept only until the tab closes. With several

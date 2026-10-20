@@ -40,6 +40,10 @@ type Prefs struct {
 	// HidePointer hides the ring that marks the host's pointer in the
 	// viewers (for hosts whose picture shows their cursor already).
 	HidePointer bool `json:"hide_pointer,omitempty"`
+	// ToolbarAt is where the viewers' toolbar sits along the picture's top
+	// edge, as a share of the room it has: -0.5 at the left, 0 (the zero
+	// value) in the middle, 0.5 at the right.
+	ToolbarAt float32 `json:"toolbar_at,omitempty"`
 	// AskedPermissions is the app version that last asked macOS for the
 	// privacy permissions on its own.
 	AskedPermissions string `json:"asked_permissions,omitempty"`
@@ -77,10 +81,8 @@ type ViewerPrefs struct {
 	Swap   *bool  `json:"swap,omitempty"`
 	// Mute: the host's sound is not played.
 	Mute bool `json:"mute,omitempty"`
-	// Collapsed: the bottom bar is folded away; TopCollapsed: the top bar
-	// (the host's actions and the keyboard).
-	Collapsed    bool `json:"collapsed,omitempty"`
-	TopCollapsed bool `json:"top_collapsed,omitempty"`
+	// Folded: the toolbar is folded to its handle.
+	Folded bool `json:"folded,omitempty"`
 	// Original: the picture shows at one point per pixel, scrolled,
 	// instead of fitted to the window.
 	Original bool `json:"original,omitempty"`

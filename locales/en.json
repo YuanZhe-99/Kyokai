@@ -610,6 +610,7 @@
   "ViewerAIHostApproves": "The other computer's user approves this step.",
   "ViewerAIPanel": "AI",
   "ViewerAITitle": "AI on the other computer",
+  "ViewerActions": "Actions",
   "ViewerBlockInput": "Block their keyboard and mouse",
   "ViewerClipBehind": "Not shared right now: another tab or the Kyokai tab is in front.",
   "ViewerClipClear": "Clear",
@@ -637,6 +638,7 @@
   "ViewerClipHint": "Only the device whose tab is in front shares the clipboard. What crossed is listed here until the tab closes, and kept nowhere else.",
   "ViewerClipShare": "Share the clipboard with this device",
   "ViewerClipboard": "Clipboard",
+  "ViewerCodec": "Codec",
   "ViewerCodecAuto": "Auto",
   "ViewerCodecHint": "The video codec. Auto lets the other computer choose; the list shows what both computers support.",
   "ViewerCtrlAltDel": "Ctrl+Alt+Del",
@@ -652,6 +654,14 @@
     }
   },
   "ViewerDisplay": "Display",
+  "ViewerDisplayN": "Display {number}",
+  "@ViewerDisplayN": {
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
   "ViewerEncoding": "Encoding (the other computer): {codec}, {impl}",
   "@ViewerEncoding": {
     "placeholders": {
@@ -666,8 +676,8 @@
   "ViewerEnded": "The session ended.",
   "ViewerExitFullScreen": "Exit full screen",
   "ViewerFit": "Fit",
+  "ViewerFrameRate": "Frame rate",
   "ViewerFullScreen": "Full screen",
-  "ViewerHideActions": "Hide actions",
   "ViewerHideBar": "Hide controls",
   "ViewerImplHardware": "{name} in hardware",
   "@ViewerImplHardware": {
@@ -693,6 +703,7 @@
   "ViewerKeyboardNoGrab": "Allow Accessibility for Kyokai in System Settings to send every key, then reopen this connection.",
   "ViewerKeyboardTranslate": "Translate",
   "ViewerLock": "Lock screen",
+  "ViewerMoveBar": "Drag to move the controls",
   "ViewerNoDecoder": "The picture can't be shown: Kyokai's core library is missing.",
   "ViewerNoPicture": "This session does not show the screen.",
   "ViewerOriginal": "Original size",
@@ -702,10 +713,10 @@
   "ViewerPointer": "Pointer",
   "ViewerPointerHint": "Marks where their pointer is, for computers whose picture leaves it out.",
   "ViewerPrivacy": "Privacy mode (their screen goes black)",
+  "ViewerQuality": "Quality",
   "ViewerReconnect": "Reconnect",
   "ViewerRelayedHint": "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices.",
   "ViewerScaleHint": "Fit shows the whole screen in the window. Original size shows one point per pixel of the other computer; drag the scroll bars to move around.",
-  "ViewerShowActions": "Show actions",
   "ViewerShowBar": "Show controls",
   "ViewerSound": "Sound",
   "ViewerSoundHint": "Plays what the other computer plays. Remembered for this device.",
@@ -744,6 +755,7 @@
       }
     }
   },
+  "ViewerToolbar": "Connection controls",
   "ViewerUnsupported": "This picture uses {codec}, which this version can't show yet.",
   "@ViewerUnsupported": {
     "placeholders": {

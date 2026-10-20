@@ -101,7 +101,8 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | clipboard history / Share the clipboard with this device | 剪贴板历史 / 与这台设备共享剪贴板 |
 | (the tab) in front | （标签页）位于前台 |
 | tab strip (the title bar) | 标签栏（即标题栏） |
-| Hide actions / Show actions (the viewer's top bar) | 收起操作栏 / 展开操作栏 |
+| toolbar (the viewer's) / Hide controls / Show controls | 控制栏 / 收起控制栏 / 展开控制栏 |
+| grip / handle (the folded toolbar) | 拖动柄 / 把手 |
 
 ## 6. 审阅清单
 

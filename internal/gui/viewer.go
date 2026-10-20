@@ -124,9 +124,16 @@ type viewer struct {
 	title string
 	// want is what the connection asks the device for.
 	want []string
-	// collapsed: the bottom bar is folded away; topCollapsed: the top bar
-	// (the host's actions and the keyboard); guarded by mu.
-	collapsed, topCollapsed bool
+	// folded: the toolbar is folded to its handle; guarded by mu.
+	folded bool
+	// The toolbar on the main thread: its offset from the middle of the
+	// picture's top edge, its width in the last frame, and whether the
+	// pointer was dragging it then. pic is the picture, which takes the
+	// keyboard again after a choice in the toolbar.
+	barOff      ui.Point
+	barW        float32
+	barDragging bool
+	pic         ui.Handle
 	// address is where the connection dials the device (an IP address
 	// or domain name), empty over the network; guarded by mu.
 	address string
@@ -257,8 +264,8 @@ func (a *App) newViewer(device string, about localapi.About, want []string) *vie
 		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto"}
 	// The settings chosen for this device last time.
 	if vp, ok := a.viewerPrefs(device); ok {
-		v.preset, v.full, v.swap, v.mute, v.collapsed = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap, vp.Mute, vp.Collapsed
-		v.original, v.clip.off, v.topCollapsed = vp.Original, vp.NoClipboard, vp.TopCollapsed
+		v.preset, v.full, v.swap, v.mute, v.folded = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap, vp.Mute, vp.Folded
+		v.original, v.clip.off = vp.Original, vp.NoClipboard
 		if slices.Contains(fpsCaps, vp.FPS) {
 			v.fpsCap = vp.FPS
 		}
@@ -770,8 +777,9 @@ func (v *viewer) setState(s string) {
 	})
 }
 
-// view is the viewer window: the picture (fitted, or at its original size),
-// the AI panel when the session may run AI tasks, and a status line.
+// view is the viewer window: the picture (fitted, or at its original size)
+// with the toolbar over its top edge, and beside it the clipboard panel and
+// the AI panel when the session may use them.
 func (v *viewer) view(c *ui.Context) {
 	v.mu.Lock()
 	phase, pumping := v.phase, v.pumping
@@ -795,26 +803,24 @@ func (v *viewer) view(c *ui.Context) {
 	if v.app != nil {
 		b.path = v.app.pathTo(v.device)
 	}
-	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
-		// Every host that takes this session's input gets the top bar (its
-		// keyboard choices); only a Windows host offers actions in it.
-		if control {
-			v.actionBar(c, actions)
-		}
-		ui.Row(c).Grow(1).FillWidth().AlignItems(ui.Stretch).Children(func() {
+	ui.Row(c).Fill().Background(ui.Hex("#000000")).AlignItems(ui.Stretch).Children(func() {
+		// The toolbar floats over the picture, the panels beside it.
+		stage := ui.Row(c.Key("stage")).Grow(1).MinWidth(0).AlignItems(ui.Stretch)
+		stageW := stage.LayoutBounds().W
+		stage.Children(func() {
 			if original && state == "" && bm != nil {
 				v.originalPicture(c, bm, start, ptr)
 			} else {
 				v.picture(c, bm, state, start, ptr)
 			}
-			if withClip {
-				v.clipPanel(c)
-			}
-			if withAI {
-				v.aiPanel(c)
-			}
+			v.toolbar(c, b, actions, control, stageW)
 		})
-		v.statusBar(c, b)
+		if withClip {
+			v.clipPanel(c)
+		}
+		if withAI {
+			v.aiPanel(c)
+		}
 	})
 }
 
@@ -919,7 +925,7 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 			// mode sends letters as that text (regression: no key reached a
 			// Mac's host from a Mac). Candidate windows open at its corner.
 			img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().
-				TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(v.sendInput)
+				TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(v.sendInput).Bind(&v.pic)
 			focused = img.Focused()
 			box := img.LayoutBounds()
 			v.mu.Lock()
@@ -947,7 +953,7 @@ func (v *viewer) originalPicture(c *ui.Context, bm *ui.Bitmap, start videoStart,
 			ui.Column(c.Key("picture-box")).Width(w).Height(h).Shrink(0).Children(func() {
 				// It takes text and keys as the fitted picture does.
 				img := ui.Image(c.Key("picture"), bm).Width(w).Height(h).Focusable().
-					TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(v.sendInput)
+					TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(v.sendInput).Bind(&v.pic)
 				focused = img.Focused()
 				box := img.LayoutBounds()
 				v.mu.Lock()
@@ -969,103 +975,7 @@ func pointerRing(c *ui.Context, x, y float32) {
 		Background(ui.Hex("#ffffff").Alpha(0.85)).Border(2, ui.Hex("#000000")).PassThrough()
 }
 
-// actionBar is the top bar of a session that controls the host: the host's
-// session actions when it offers them (a is nil otherwise) — lock its
-// screen, send Ctrl+Alt+Del (helper modes only), block its keyboard and
-// mouse, and privacy mode (which blocks them too) — then the keyboard mode
-// and Swap Ctrl and Cmd. The switches show what the host reports, not what
-// was asked. It folds away to a small tab over the picture's top edge,
-// kept for the device.
-func (v *viewer) actionBar(c *ui.Context, a *hostActions) {
-	t := c.Theme()
-	v.mu.Lock()
-	folded := v.topCollapsed
-	v.mu.Unlock()
-	fold := func(on bool) {
-		v.mu.Lock()
-		v.topCollapsed = on
-		v.mu.Unlock()
-		v.keepSettings()
-	}
-	if folded {
-		tab := ui.ButtonBase(c.Key("top-fold")).Absolute().Top(0).Right(barTabRight).Padding(2, 14).
-			Radius(6).Background(t.Surface.Alpha(0.85)).Label(L.ViewerShowActions()).Tooltip(L.ViewerShowActions())
-		tab.Children(func() { ui.Text(c, "⌄").TextColor(t.TextMuted) })
-		if tab.Clicked() {
-			fold(false)
-		}
-		return
-	}
-	action := func(name string) {
-		v.sendControl(map[string]any{"type": "action", "action": name})
-	}
-	ui.Row(c).FillWidth().Wrap().Padding(6, 12).Gap(12).AlignItems(ui.Center).Background(t.Surface).Children(func() {
-		if ui.Button(c.Key("top-fold"), "⌃").Label(L.ViewerHideActions()).Tooltip(L.ViewerHideActions()).Clicked() {
-			fold(true)
-		}
-		if a != nil {
-			if ui.Button(c.Key("act-lock"), L.ViewerLock()).Clicked() {
-				action("lock")
-			}
-			if a.CtrlAltDel && ui.Button(c.Key("act-cad"), L.ViewerCtrlAltDel()).Clicked() {
-				action("ctrl-alt-del")
-			}
-			blocked := a.Blocked
-			labelled(c, func() {
-				if ui.Switch(c.Key("act-block"), &blocked).Label(L.ViewerBlockInput()).Disabled(a.Privacy).Changed() {
-					if blocked {
-						action("block")
-					} else {
-						action("unblock")
-					}
-				}
-			}, L.ViewerBlockInput())
-			privacy := a.Privacy
-			labelled(c, func() {
-				if ui.Switch(c.Key("act-privacy"), &privacy).Label(L.ViewerPrivacy()).Changed() {
-					if privacy {
-						action("privacy-on")
-					} else {
-						action("privacy-off")
-					}
-				}
-			}, L.ViewerPrivacy())
-		}
-		if grabsKeyboard {
-			ui.Row(c).Grow(1)
-			// The label wraps with its choice, never apart from it.
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, L.ViewerKeyboard()).FontSize(sizeSmall).TextColor(t.TextMuted)
-				mode := slices.Index(keyboardModes, v.app.keyboardMode())
-				if ui.Segmented(c.Key("keyboard"), &mode, L.ViewerKeyboardMap(), L.ViewerKeyboardTranslate(), L.ViewerKeyboardLegacy()).
-					Tooltip(L.ViewerKeyboardHint()).Changed() {
-					v.app.setKeyboardMode(keyboardModes[mode])
-				}
-			})
-			// macOS refuses the tap without Kyokai's Accessibility
-			// permission: the viewer works in Legacy mode meanwhile.
-			v.mu.Lock()
-			refused := v.noGrab
-			v.mu.Unlock()
-			if refused && runtime.GOOS == "darwin" {
-				ui.Text(c, L.ViewerKeyboardNoGrab()).FontSize(sizeSmall).TextColor(t.Warning)
-			}
-		}
-		// Ctrl and Cmd matter where a Mac is on either side.
-		v.mu.Lock()
-		swap, peerOS := v.swapping(), v.phase.Peer.OS
-		v.mu.Unlock()
-		if runtime.GOOS == "darwin" || peerOS == "macos" {
-			labelled(c, func() {
-				if ui.Switch(c.Key("swap-keys"), &swap).Label(L.ViewerSwapKeys()).Tooltip(L.ViewerSwapKeysHint()).Changed() {
-					v.setSwap(swap)
-				}
-			}, L.ViewerSwapKeys())
-		}
-	})
-}
-
-// bar is what the status bar shows: the stream and its numbers, the
+// bar is what the toolbar shows: the stream and its numbers, the
 // viewer's choices, and the network's path to the device.
 type bar struct {
 	start                       videoStart
@@ -1099,146 +1009,307 @@ func (a *App) pathTo(device string) localapi.NetworkDevice {
 	return localapi.NetworkDevice{}
 }
 
-// statusBar is the Device ID, the quality controls and the stream's
-// numbers, with the path to the device and where the time goes.
-// It wraps onto more lines in a narrow window, and folds down to the
-// Device ID and Show controls.
-func (v *viewer) statusBar(c *ui.Context, b bar) {
+// toolbar is the viewer's controls, floating over the picture's top edge
+// as RustDesk's: menus for the display, the quality, the keyboard and the
+// host's session actions, toggles for the sound, the pointer ring, the
+// clipboard and AI panels and full screen, and the path to the device. Its
+// grip, or any gap between its controls, drags it along the top edge, to a
+// place kept for every viewer (Prefs.ToolbarAt); ⌃ folds it to a small
+// handle at that place, kept for the device. It never covers more than the
+// picture's width less barMargin a side: what does not fit goes into the
+// toolbar's overflow menu.
+// Notes: call on the main thread (barOff, barW and barDragging are its own).
+func (v *viewer) toolbar(c *ui.Context, b bar, a *hostActions, control bool, stageW float32) {
 	t := c.Theme()
-	start, fps, kbps, host, preset, fpsCap, full, displays, showPtr, offer, codec := b.start, b.fps, b.kbps, b.host, b.preset, b.fpsCap, b.full, b.displays, b.showPtr, b.offer, b.codec
 	v.mu.Lock()
-	collapsed := v.collapsed
+	folded := v.folded
 	v.mu.Unlock()
-	if collapsed {
-		// Folded away entirely: a small tab over the picture's bottom edge
-		// pulls the bar out again.
-		tab := ui.ButtonBase(c.Key("bar-fold")).Absolute().Bottom(0).Right(barTabRight).Padding(2, 14).
-			Radius(6).Background(t.Surface.Alpha(0.85)).Label(L.ViewerShowBar()).Tooltip(L.ViewerShowBar())
-		tab.Children(func() { ui.Text(c, "⌃").TextColor(t.TextMuted) })
-		if tab.Clicked() {
-			v.mu.Lock()
-			v.collapsed = false
-			v.mu.Unlock()
-			v.keepSettings()
+	at := float32(0)
+	if v.app != nil {
+		at = v.app.toolbarAt()
+	}
+	free := max(stageW-v.barW-2*barMargin, 0)
+	if !v.barDragging {
+		v.barOff = ui.Point{X: at * free}
+	}
+	ui.Row(c.Key("bar-lane")).Absolute().Top(barTop).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
+		bar := ui.Row(c.Key("bar")).AlignItems(ui.Center).Gap(2).Padding(2, 6).Radius(barRadius).
+			Background(t.Surface).Border(1, t.Border).Shadow(0, 2, 10, 0, ui.RGBA(0, 0, 0, 0.3)).
+			MaxWidth(max(stageW-2*barMargin, 0)).
+			Draggable(&v.barOff, ui.DraggableOptions{Axis: ui.Horizontal, Bounds: &ui.Rect{X: -free / 2, W: free}, Rigid: true})
+		bar.Children(func() {
+			ui.Icon(c, barGrip).Size(barIconSize, barIconSize).TextColor(t.TextMuted).Cursor(ui.CursorGrab).Tooltip(L.ViewerMoveBar())
+			if !folded {
+				ui.Toolbar(c, func() { v.barControls(c, b, a, control) }).Label(L.ViewerToolbar()).Shrink(1).MinWidth(0).Padding(0)
+			}
+			// The path and the fold button never go into the overflow menu.
+			if folded {
+				if flatButton(c, "bar-fold", barUnfold, L.ViewerShowBar()).Clicked() {
+					v.fold(false)
+				}
+				return
+			}
+			pathChip(c, b)
+			if flatButton(c, "bar-fold", barFold, L.ViewerHideBar()).Clicked() {
+				v.fold(true)
+			}
+		})
+		if w := bar.LayoutBounds().W; w != v.barW {
+			// Its place depends on its width: once more with the new one.
+			v.barW = w
+			c.Invalidate()
 		}
+		dragging := bar.Dragging()
+		if v.barDragging && !dragging && free > 0 && v.app != nil {
+			v.app.setToolbarAt(min(max(v.barOff.X/free, -0.5), 0.5))
+		}
+		v.barDragging = dragging
+	})
+}
+
+// barButton is an icon button of the toolbar, named by label.
+func barButton(c *ui.Context, key string, icon *ui.SVG, label string) ui.Element {
+	return ui.Button(c.Key(key), "").Label(label).Tooltip(label).Children(func() {
+		ui.Icon(c, icon).Size(barIconSize, barIconSize)
+	})
+}
+
+// flatButton is an icon button with the toolbar's look outside a toolbar
+// (which keeps room for its overflow button).
+func flatButton(c *ui.Context, key string, icon *ui.SVG, label string) ui.Element {
+	t := c.Theme()
+	b := ui.ButtonBase(c.Key(key)).Padding(6, 10).Radius(t.Radius).AlignItems(ui.Center).Label(label).Tooltip(label)
+	switch {
+	case b.Pressed():
+		b.Background(t.SurfacePressed)
+	case b.Hovered():
+		b.Background(t.SurfaceHover)
+	}
+	return b.Children(func() { ui.Icon(c, icon).Size(barIconSize, barIconSize) })
+}
+
+// barMenu is a menu button of the toolbar: its icon, named by label, and
+// the menu that build fills.
+func barMenu(c *ui.Context, key string, icon *ui.SVG, label string, build func(m *ui.Menu)) ui.Element {
+	return barButton(c, key, icon, label).Menu(build)
+}
+
+// barToggle is an icon toggle of the toolbar, pressed while *on.
+func barToggle(c *ui.Context, key string, on *bool, icon *ui.SVG, label, hint string) ui.Element {
+	if hint == "" {
+		hint = label
+	}
+	return ui.Toggle(c.Key(key), on, "").Label(label).Tooltip(hint).Children(func() {
+		ui.Icon(c, icon).Size(barIconSize, barIconSize)
+	})
+}
+
+// fold folds the toolbar to its handle, or opens it, and keeps that for
+// the device.
+func (v *viewer) fold(on bool) {
+	v.mu.Lock()
+	v.folded = on
+	v.mu.Unlock()
+	v.keepSettings()
+}
+
+// barControls are the toolbar's menus and toggles. After a choice the
+// picture takes the keyboard again.
+func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool) {
+	t := c.Theme()
+	back := func() { v.pic.Focus(c) }
+	preset, fpsCap, full := b.preset, b.fpsCap, b.full
+	v.mu.Lock()
+	original, soundOn, swap, peerOS, refused := v.original, !v.mute, v.swapping(), v.phase.Peer.OS, v.noGrab
+	canAI, aiShown, canClip, clipShown := v.ai.run, !v.ai.hidden, v.clip.may, v.clip.shown
+	v.mu.Unlock()
+
+	barMenu(c, "bar-display", barDisplay, L.ViewerDisplay(), func(m *ui.Menu) {
+		if n := len(b.displays.List); n > 1 {
+			for i := range n {
+				if m.Item(L.ViewerDisplayN(strconv.Itoa(i + 1))).Checked(i == b.displays.Current).Chosen() {
+					v.sendControl(map[string]any{"type": "display", "index": i})
+					back()
+				}
+			}
+			m.Separator()
+		}
+		for i, label := range []string{L.ViewerFit(), L.ViewerOriginal()} {
+			if m.Item(label).Checked(original == (i == 1)).Chosen() {
+				v.mu.Lock()
+				v.original = i == 1
+				v.mu.Unlock()
+				v.keepSettings()
+				back()
+			}
+		}
+	})
+
+	barMenu(c, "bar-quality", barQuality, L.ViewerQuality(), func(m *ui.Menu) {
+		for i, label := range []string{L.QualitySpeed(), L.QualityBalanced(), L.QualityBest()} {
+			if m.Item(label).Checked(i == preset).Chosen() {
+				v.setQuality(i, fpsCap, full)
+				back()
+			}
+		}
+		m.Separator()
+		m.Submenu(L.ViewerFrameRate(), func(m *ui.Menu) {
+			for _, rate := range fpsCaps {
+				if m.Item(rate).Checked(rate == fpsCap).Chosen() {
+					v.setQuality(preset, rate, full)
+					back()
+				}
+			}
+		})
+		if names, labels := codecChoices(b.offer); len(names) > 2 {
+			m.Submenu(L.ViewerCodec(), func(m *ui.Menu) {
+				for i, label := range labels {
+					if m.Item(label).Checked(names[i] == b.codec).Chosen() {
+						v.setCodec(names[i])
+						back()
+					}
+				}
+			})
+		}
+		if m.Item(L.QualityFullColour()).Checked(full).Chosen() {
+			v.setQuality(preset, fpsCap, !full)
+			back()
+		}
+	})
+
+	// Ctrl and Cmd matter where a Mac is on either side.
+	swappable := runtime.GOOS == "darwin" || peerOS == "macos"
+	if control && (grabsKeyboard || swappable) {
+		// macOS refuses the keyboard grab without Kyokai's Accessibility
+		// permission: the viewer works in Legacy mode meanwhile, and the
+		// button says why.
+		noGrab := refused && runtime.GOOS == "darwin"
+		kb := barMenu(c, "bar-keyboard", barKeyboard, L.ViewerKeyboard(), func(m *ui.Menu) {
+			if grabsKeyboard {
+				mode := v.app.keyboardMode()
+				for i, label := range []string{L.ViewerKeyboardMap(), L.ViewerKeyboardTranslate(), L.ViewerKeyboardLegacy()} {
+					if m.Item(label).Checked(keyboardModes[i] == mode).Chosen() {
+						v.app.setKeyboardMode(keyboardModes[i])
+						back()
+					}
+				}
+			}
+			if swappable {
+				if grabsKeyboard {
+					m.Separator()
+				}
+				if m.Item(L.ViewerSwapKeys()).Checked(swap).Chosen() {
+					v.setSwap(!swap)
+					back()
+				}
+			}
+		})
+		if noGrab {
+			kb.TextColor(t.Warning).Tooltip(L.ViewerKeyboardNoGrab())
+		}
+	}
+
+	// The checks show what the host reports, not what was asked.
+	if control && a != nil {
+		action := func(name string) {
+			v.sendControl(map[string]any{"type": "action", "action": name})
+			back()
+		}
+		barMenu(c, "bar-actions", barActions, L.ViewerActions(), func(m *ui.Menu) {
+			if m.Item(L.ViewerLock()).Chosen() {
+				action("lock")
+			}
+			if a.CtrlAltDel && m.Item(L.ViewerCtrlAltDel()).Chosen() {
+				action("ctrl-alt-del")
+			}
+			m.Separator()
+			if m.Item(L.ViewerBlockInput()).Checked(a.Blocked).Disabled(a.Privacy).Chosen() {
+				if a.Blocked {
+					action("unblock")
+				} else {
+					action("block")
+				}
+			}
+			if m.Item(L.ViewerPrivacy()).Checked(a.Privacy).Chosen() {
+				if a.Privacy {
+					action("privacy-off")
+				} else {
+					action("privacy-on")
+				}
+			}
+		})
+	}
+
+	icon := barSound
+	if !soundOn {
+		icon = barSoundOff
+	}
+	if barToggle(c, "bar-sound", &soundOn, icon, L.ViewerSound(), L.ViewerSoundHint()).Changed() {
+		v.setSound(soundOn)
+		back()
+	}
+	if v.app != nil {
+		showPtr := b.showPtr
+		if barToggle(c, "bar-pointer", &showPtr, barPointer, L.ViewerPointer(), L.ViewerPointerHint()).Changed() {
+			v.app.setShowPointer(showPtr)
+			back()
+		}
+	}
+	if canClip && barToggle(c, "bar-clipboard", &clipShown, barClipboard, L.ViewerClipboard(), "").Changed() {
+		v.mu.Lock()
+		v.clip.shown = clipShown
+		v.mu.Unlock()
+	}
+	if canAI && barToggle(c, "bar-ai", &aiShown, navAI, L.ViewerAIPanel(), "").Changed() {
+		v.mu.Lock()
+		v.ai.hidden = !aiShown
+		v.mu.Unlock()
+	}
+	if w := v.home.Load(); w != nil {
+		full, icon, label := w.fullScreen(), barFullScreen, L.ViewerFullScreen()
+		if full {
+			icon, label = barExitFullScreen, L.ViewerExitFullScreen()
+		}
+		if barButton(c, "bar-full-screen", icon, label).Clicked() {
+			w.win.SetFullScreen(!full)
+			back()
+		}
+	}
+}
+
+// pathChip is how the stream reaches this computer: a dot and Direct or
+// Relayed (in the warning colour, with what to do about it) with the
+// latency, or a warning that the host sends its test pattern. Its tooltip
+// has the stream's numbers and where the time goes.
+func pathChip(c *ui.Context, b bar) {
+	t := c.Theme()
+	start := b.start
+	if start.Codec == "raw-rgba" {
+		// The host sends its test pattern: it may not record its screen.
+		ui.Text(c.Key("bar-path"), "⚠").TextColor(t.Warning).Label(L.ViewerPlaceholder()).Tooltip(L.ViewerPlaceholder())
 		return
 	}
-	ui.Row(c).FillWidth().Wrap().Padding(6, 12).Gap(16).AlignItems(ui.Center).Background(t.Surface).Children(func() {
-		if ui.Button(c.Key("bar-fold"), "⌄").Label(L.ViewerHideBar()).Tooltip(L.ViewerHideBar()).Clicked() {
-			v.mu.Lock()
-			v.collapsed = true
-			v.mu.Unlock()
-			v.keepSettings()
-		}
-		ui.Text(c, groupDigits(v.device)).FontSize(sizeSmall).SingleLine()
-		if n := len(displays.List); n > 1 {
-			ui.Text(c, L.ViewerDisplay()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			labels := make([]string, n)
-			for i := range labels {
-				labels[i] = strconv.Itoa(i + 1)
-			}
-			current := displays.Current
-			if ui.Segmented(c.Key("display"), &current, labels...).Changed() {
-				v.sendControl(map[string]any{"type": "display", "index": current})
-			}
-		}
-		if ui.Segmented(c.Key("quality"), &preset, L.QualitySpeed(), L.QualityBalanced(), L.QualityBest()).Changed() {
-			v.setQuality(preset, fpsCap, full)
-		}
-		if ui.Select(c.Key("fps"), &fpsCap, fpsCaps).Width(100).Changed() {
-			v.setQuality(preset, fpsCap, full)
-		}
-		if names, labels := codecChoices(offer); len(names) > 2 {
-			picked := codecLabel(codec)
-			if ui.Select(c.Key("codec"), &picked, labels).Width(150).Tooltip(L.ViewerCodecHint()).Changed() {
-				if i := slices.Index(labels, picked); i >= 0 {
-					v.setCodec(names[i])
-				}
-			}
-		}
-		v.mu.Lock()
-		scale := 0
-		if v.original {
-			scale = 1
-		}
-		v.mu.Unlock()
-		if ui.Segmented(c.Key("scale"), &scale, L.ViewerFit(), L.ViewerOriginal()).Tooltip(L.ViewerScaleHint()).Changed() {
-			v.mu.Lock()
-			v.original = scale == 1
-			v.mu.Unlock()
-			v.keepSettings()
-		}
-		labelled(c, func() {
-			if ui.Switch(c.Key("full-colour"), &full).Label(L.QualityFullColour()).Changed() {
-				v.setQuality(preset, fpsCap, full)
-			}
-		}, L.QualityFullColour())
-		if start.Codec == "raw-rgba" {
-			// The host sends its test pattern: it may not record its screen.
-			ui.Text(c, L.ViewerPlaceholder()).FontSize(sizeSmall).TextColor(t.Warning)
-		} else if start.Width > 0 {
-			codec := codecLabel(start.Codec)
-			if start.I444 {
-				codec += " 4:4:4"
-			}
-			switch b.path.Path {
-			case "direct":
-				ui.Text(c, L.PathDirect()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			case "relay":
-				ui.Text(c, L.PathRelay()).FontSize(sizeSmall).TextColor(t.Warning).Tooltip(L.ViewerRelayedHint())
-			}
-			ui.Text(c, fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s · %d ms", start.Width, start.Height, codec, fps, kbps, host.DelayMS)).
-				FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted).
-				Tooltip(L.ViewerEncoding(codec, implLabel(codecImpl{start.Encoder, start.Hardware})) + "\n" +
-					L.ViewerDecoding(codec, implLabel(b.decoder)) + "\n" +
-					L.ViewerTimes(host.EncodeMS, host.DelayMS, int(b.decodeMS+0.5), int(b.drawMS+0.5), int(fps+0.5), host.FPS))
-		}
-		v.mu.Lock()
-		soundOn := !v.mute
-		v.mu.Unlock()
-		labelled(c, func() {
-			if ui.Switch(c.Key("sound"), &soundOn).Label(L.ViewerSound()).Tooltip(L.ViewerSoundHint()).Changed() {
-				v.setSound(soundOn)
-			}
-		}, L.ViewerSound())
-		if v.app != nil {
-			labelled(c, func() {
-				if ui.Switch(c.Key("pointer-marker"), &showPtr).Label(L.ViewerPointer()).Tooltip(L.ViewerPointerHint()).Changed() {
-					v.app.setShowPointer(showPtr)
-				}
-			}, L.ViewerPointer())
-		}
-		v.mu.Lock()
-		canAI, shown := v.ai.run, !v.ai.hidden
-		canClip, clipShown := v.clip.may, v.clip.shown
-		v.mu.Unlock()
-		if canClip {
-			labelled(c, func() {
-				if ui.Switch(c.Key("clip-panel"), &clipShown).Label(L.ViewerClipboard()).Changed() {
-					v.mu.Lock()
-					v.clip.shown = clipShown
-					v.mu.Unlock()
-				}
-			}, L.ViewerClipboard())
-		}
-		if canAI {
-			labelled(c, func() {
-				if ui.Switch(c.Key("ai-panel"), &shown).Label(L.ViewerAIPanel()).Changed() {
-					v.mu.Lock()
-					v.ai.hidden = !shown
-					v.mu.Unlock()
-				}
-			}, L.ViewerAIPanel())
-		}
-		if w := v.home.Load(); w != nil {
-			full := w.fullScreen()
-			label := L.ViewerFullScreen()
-			if full {
-				label = L.ViewerExitFullScreen()
-			}
-			if ui.Button(c.Key("full-screen"), label).Clicked() {
-				w.win.SetFullScreen(!full)
-			}
-		}
+	if start.Width == 0 {
+		return
+	}
+	codec := codecLabel(start.Codec)
+	if start.I444 {
+		codec += " 4:4:4"
+	}
+	tip := fmt.Sprintf("%d×%d · %s · %.0f fps · %.0f kbit/s", start.Width, start.Height, codec, b.fps, b.kbps) + "\n" +
+		L.ViewerEncoding(codec, implLabel(codecImpl{start.Encoder, start.Hardware})) + "\n" +
+		L.ViewerDecoding(codec, implLabel(b.decoder)) + "\n" +
+		L.ViewerTimes(b.host.EncodeMS, b.host.DelayMS, int(b.decodeMS+0.5), int(b.drawMS+0.5), int(b.fps+0.5), b.host.FPS)
+	dot, text := t.Success, fmt.Sprintf("%d ms", b.host.DelayMS)
+	switch b.path.Path {
+	case "direct":
+		text = L.PathDirect() + " · " + text
+	case "relay":
+		dot, text = t.Warning, L.PathRelay()+" · "+text
+		tip = L.ViewerRelayedHint() + "\n\n" + tip
+	}
+	ui.Row(c.Key("bar-path")).Gap(6).Padding(0, 6).AlignItems(ui.Center).Shrink(0).Tooltip(tip).Children(func() {
+		ui.Column(c).Size(onlineDot, onlineDot).Radius(onlineDot / 2).Background(dot)
+		ui.Text(c, text).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted).SingleLine()
 	})
 }

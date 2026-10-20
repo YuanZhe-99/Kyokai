@@ -54,8 +54,8 @@ build) gets H.264.
 
 **Codec choice.** After the controller's codecs the host offers what it can send that the
 controller decodes (`codec-offer`, in the host's order): the codecs it has an encoder for — Media
-Foundation's registered encoders, VideoToolbox's and the software ones. The viewer's status bar
-lists them under Codec by name only, Auto first (H.264, HEVC, VP9, AV1, VP8; a host offering VP9 from
+Foundation's registered encoders, VideoToolbox's and the software ones. The viewer's toolbar
+lists them under Quality, Codec, by name only, Auto first (H.264, HEVC, VP9, AV1, VP8; a host offering VP9 from
 Media Foundation and libvpx is asked for its first, the better one; the stats name the codec in use
 the same way). A chosen codec goes first in the host's order, in full colour first
 when Full colour is on and the codec carries it, and the others stay behind it, so a codec whose
@@ -65,12 +65,12 @@ colour switches). The viewer sends its quality and codec as its stream starts, a
 keeps them and sends them again, before its codecs, when the session resumes, so the host opens
 the video as the viewer chose (they are settings, not input).
 
-**Full colour (4:4:4).** The viewer's status bar has a Full colour switch. When it is on and the
+**Full colour (4:4:4).** The viewer's Quality menu has a Full colour choice. When it is on and the
 controller decodes software VP9 or AV1 in 4:4:4 (every current build does), the host puts those
 first in full colour (I444: chroma at every pixel, so one-pixel coloured text and lines stay sharp)
 and restarts the video; switching it off goes back to the normal order. Full colour costs more
-bandwidth and encoder time than 4:2:0, and the stream description says when it is on (the status
-bar shows "4:4:4"). libaom on Windows ARM64 is built without its SIMD code (vcpkg's port), so AV1
+bandwidth and encoder time than 4:2:0, and the stream description says when it is on (the toolbar's
+path tooltip shows "4:4:4"). libaom on Windows ARM64 is built without its SIMD code (vcpkg's port), so AV1
 is slow there; VP9 comes first.
 
 The viewer asks for a key frame when it opens; the host then describes the stream, its displays
@@ -93,8 +93,8 @@ ratio; the encoder's bitrate is RustDesk's base bitrate for the picture size tim
 (Balanced: 0.67, about 1.4 Mbit/s at 1080p), changed while it runs. Once a second the host also
 reports the delay, frame rate and bitrate it chose; the viewer shows the delay.
 
-The viewer's status bar offers RustDesk's presets — Faster (ratio 0.5), Balanced (0.67) and
-Sharper (1.5) — a frame-rate cap of 15, 30 or 60, and the Full colour switch; they reach the host as
+The viewer's Quality menu offers RustDesk's presets — Faster (ratio 0.5), Balanced (0.67) and
+Sharper (1.5) — a frame-rate cap of 15, 30 or 60, and Full colour; they reach the host as
 `{"type": "quality", preset, fps, i444}` and set that viewer's image quality and custom frame
 rate in the QoS, and whether it gets full colour (above).
 
@@ -114,7 +114,7 @@ hardware (`encoder`, `hardware`, as the encoder reports). The tooltip of the vie
 what encodes on the host and what decodes here (for example "HEVC, VideoToolbox in hardware"; AV1
 is always libaom in software), the host's encode time, the network delay (the probe), the viewer's
 own decode and draw times and the frame rate against the host's target.
-Beside the numbers the bar says whether the network reaches the device directly (Direct) or
+Beside its icons the toolbar says whether the network reaches the device directly (Direct) or
 through the server (Relayed, with a hint to turn on direct connections on both devices,
 [networking.md](networking.md)).
 
@@ -146,8 +146,8 @@ and each time playing ran dry, then passes it on as it comes. The target starts 
 jitter), up to 400 ms, and shrinks by 10 ms after 10 s without that, down to 40 ms; sound more than
 60 ms beyond it is cut back to it, oldest first, so the sound stays with the picture. RustDesk
 plays each packet as it comes from a buffer of up to 3 s, fades over 5 ms where it runs dry, and
-trims the buffer when it stays above 600 ms. The bar's
-**Sound** switch (on unless chosen, kept for each device) stops playing and asks the host to stop
+trims the buffer when it stays above 600 ms. The toolbar's
+**Sound** toggle (on unless chosen, kept for each device) stops playing and asks the host to stop
 capturing. On this Mac (2026-10-18) an 8-second watch received 386 packets, 7.7 s of sound, with
 the picture, and the input list named the built-in microphone.
 
@@ -157,7 +157,7 @@ The viewer sends input only for a session granted `control-input`; the host chec
 
 | Event | Sent as |
 |---|---|
-| pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses and moves on the bars around it are dropped, releases always sent; a move with no button held goes with button 0 (the host knows what it holds). The viewer sends the newest move at most every 8 ms, and any other event sends a waiting move first; the controller's engine may leave out a move while the session is behind (a newer one follows), and every other event waits for the session |
+| pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses and moves on the black bars around it are dropped (the toolbar over it takes its own), releases always sent; a move with no button held goes with button 0 (the host knows what it holds). The viewer sends the newest move at most every 8 ms, and any other event sends a waiting move first; the controller's engine may leave out a move while the session is behind (a newer one follows), and every other event waits for the session |
 | scroll | `{kind: "scroll", dx, dy}` in lines (touchpad pixels ÷ 40); positive `dy` moves the content down |
 | a key, in Map or Translate mode | `{kind: "scan", code, down, caps, num}`: the key's scan code as Windows numbers it (the set-1 code, 0xE0xx for extended keys, 0xE11D for Pause) with the controller's CapsLock and NumLock ([Keyboard modes](#keyboard-modes)) |
 | text | `{kind: "text", text}`: typed as Unicode characters, so the controller's layout and dead keys decide (Translate and Legacy) |
@@ -180,7 +180,7 @@ Whatever a session holds is released when it ends. Malformed events are dropped 
 
 ### Keyboard modes
 
-The viewer offers RustDesk's three keyboard modes; its bar chooses one for every viewer and Kyokai
+The viewer offers RustDesk's three keyboard modes; its toolbar's Keyboard menu chooses one for every viewer and Kyokai
 remembers it (Map unless chosen). Map and Translate need the controller to grab the keyboard: a
 low-level hook on Windows, an event tap on macOS (as RustDesk's grab does there; it needs Kyokai's
 Accessibility permission on the controlling Mac, and without it the viewer works in Legacy mode and
@@ -195,7 +195,7 @@ keys only for an element that does, and Legacy sends letters as that text (with 
 letter reached the host from a Mac). In Legacy mode a Mac's menu takes Cmd+C, X, V, A, Z and
 Shift+Cmd+Z before the window sees them; their edit commands are sent as those shortcuts again.
 
-**Swap Ctrl and Cmd** (in the bar where a Mac is on either side, kept for each device) exchanges
+**Swap Ctrl and Cmd** (in the toolbar's Keyboard menu where a Mac is on either side, kept for each device) exchanges
 Ctrl and Cmd, the Windows key, in what the viewer sends: in a key's modifiers and in the left and
 right keys sent by position. It is on unless chosen between a Mac and Windows, so Cmd+C on a Mac
 copies on Windows and Ctrl+C on Windows copies on a Mac (RustDesk has the same switch, off by
@@ -215,8 +215,8 @@ NumLock, as RustDesk's input service does. The keys Windows makes up (the Ctrl t
 AltGr, the Shift around numpad keys) are not sent; the host's layout makes its own. Keys the grab
 sent down are released when their window leaves the front, its grab ends or the mode changes; keys
 other programs inject on the controller are left alone. The hook is installed with the first grab
-and removed with the last. Ctrl+Alt+Del cannot be taken (Windows shows it to no hook); the bar's
-button sends it in the helper modes.
+and removed with the last. Ctrl+Alt+Del cannot be taken (Windows shows it to no hook); the Actions
+menu sends it in the helper modes.
 
 ### Session actions
 

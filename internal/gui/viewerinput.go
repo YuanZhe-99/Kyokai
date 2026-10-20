@@ -197,8 +197,8 @@ func (v *viewer) keepSettings() {
 		return
 	}
 	v.mu.Lock()
-	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap, Mute: v.mute, Collapsed: v.collapsed,
-		TopCollapsed: v.topCollapsed, Original: v.original, NoClipboard: v.clip.off}
+	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap, Mute: v.mute, Folded: v.folded,
+		Original: v.original, NoClipboard: v.clip.off}
 	v.mu.Unlock()
 	v.app.setViewerPrefs(v.device, vp)
 }
@@ -494,6 +494,24 @@ func (a *App) setShowPointer(show bool) {
 	a.mu.Unlock()
 	p.HidePointer = !show
 	a.setPrefs(p)
+}
+
+// setToolbarAt remembers where the viewers' toolbar sits (Prefs.ToolbarAt).
+// Side effects: writes gui.json.
+func (a *App) setToolbarAt(at float32) {
+	a.mu.Lock()
+	p := a.prefs
+	a.mu.Unlock()
+	p.ToolbarAt = at
+	a.setPrefs(p)
+}
+
+// toolbarAt is where the viewers' toolbar sits (Prefs.ToolbarAt), held
+// within its range.
+func (a *App) toolbarAt() float32 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return min(max(a.prefs.ToolbarAt, -0.5), 0.5)
 }
 
 // showPointer reports whether the viewers mark the host's pointer (on

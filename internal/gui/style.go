@@ -38,6 +38,50 @@ var (
 	appMark = ui.MustParseSVG(markSVG)
 )
 
+// The viewer toolbar's icons, in the same style.
+var (
+	//go:embed assets/icons/display.svg
+	displaySVG []byte
+	//go:embed assets/icons/quality.svg
+	qualitySVG []byte
+	//go:embed assets/icons/keyboard.svg
+	keyboardSVG []byte
+	//go:embed assets/icons/actions.svg
+	actionsSVG []byte
+	//go:embed assets/icons/sound.svg
+	soundSVG []byte
+	//go:embed assets/icons/sound-off.svg
+	soundOffSVG []byte
+	//go:embed assets/icons/pointer.svg
+	pointerSVG []byte
+	//go:embed assets/icons/clipboard.svg
+	clipboardSVG []byte
+	//go:embed assets/icons/full-screen.svg
+	fullScreenSVG []byte
+	//go:embed assets/icons/exit-full-screen.svg
+	exitFullScreenSVG []byte
+	//go:embed assets/icons/grip.svg
+	gripSVG []byte
+	//go:embed assets/icons/fold.svg
+	foldSVG []byte
+	//go:embed assets/icons/unfold.svg
+	unfoldSVG []byte
+
+	barDisplay        = ui.MustParseSVG(displaySVG)
+	barQuality        = ui.MustParseSVG(qualitySVG)
+	barKeyboard       = ui.MustParseSVG(keyboardSVG)
+	barActions        = ui.MustParseSVG(actionsSVG)
+	barSound          = ui.MustParseSVG(soundSVG)
+	barSoundOff       = ui.MustParseSVG(soundOffSVG)
+	barPointer        = ui.MustParseSVG(pointerSVG)
+	barClipboard      = ui.MustParseSVG(clipboardSVG)
+	barFullScreen     = ui.MustParseSVG(fullScreenSVG)
+	barExitFullScreen = ui.MustParseSVG(exitFullScreenSVG)
+	barGrip           = ui.MustParseSVG(gripSVG)
+	barFold           = ui.MustParseSVG(foldSVG)
+	barUnfold         = ui.MustParseSVG(unfoldSVG)
+)
+
 // Layout and type scale (doc/en-us/gui.md: body 14, titles 20–24, nothing
 // below 12).
 const (
@@ -62,7 +106,10 @@ const (
 	onlineDot     float32 = 8   // a device's online dot
 	connectPanelW float32 = 420 // a connection tab's panel before the picture
 	pointerR      float32 = 6   // the host's pointer marker in the viewer
-	barTabRight   float32 = 16  // the folded viewer bar's tab, from the right edge
+	barTop        float32 = 8   // the viewer toolbar, from the picture's top edge
+	barMargin     float32 = 8   // the least room it keeps from the picture's sides
+	barRadius     float32 = 10  // its corners
+	barIconSize   float32 = 16  // its icons
 	avatarSize    float32 = 36  // a device's round avatar
 	logoSize      float32 = 22  // a vendor logo inside it (about 64%)
 )

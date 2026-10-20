@@ -127,27 +127,33 @@ when `SCREENSHOT_DIR` is set.
 - The picture is scaled to fit on black, or with Original size at one point per pixel of the
   host, scrolled both ways when larger than the window (its scroll bars' thumbs move it; the wheel
   goes to the host while the session controls it) and centred when smaller; the host's pointer is
-  marked with a small ring that follows the mouse; and a status line (it wraps onto more lines in a narrow window; ⌄ folds it away entirely,
-  leaving only a small ⌃ tab at the picture's bottom edge that pulls it out again, kept for each
-  device): the Device ID, the display by number when the host has several,
-  quality preset, frame-rate cap ("30 fps"), Fit or Original size, Codec (Auto and what both computers do, by codec name
-  only, when there is a choice), Full colour, Direct or Relayed (Relayed with a hint to turn on direct connections on
-  both devices), size, codec, frame rate, bitrate and the host's measured delay, whose tooltip
-  shows what encodes and what decodes, each in hardware or software as it reports, and where the
-  time goes (the host's encoding, the network, this computer's decoding and drawing, the frame
-  rate against the host's target) — or, for the test pattern of a host that may
-  not record its screen, "this is a placeholder picture" — Sound (plays the host's sound; on unless chosen, kept for each device), Pointer (shows or hides the ring,
-  remembered for every viewer), Clipboard (pulls out the clipboard panel, with `clipboard` or
-  `files`), AI (collapses the AI panel) and Full screen. With `control-input`, whatever the host, a bar at the top
-  (wrapping likewise; ⌃ folds it away, leaving a small ⌄ tab at the picture's top edge, kept for
-  each device) with, when the host offers them (a Windows host), Lock
-  screen, Ctrl+Alt+Del (helper modes), the Block their keyboard and mouse and Privacy mode
-  switches (each with its label beside it), then on Windows and macOS the keyboard mode (Map, Translate,
-  Legacy; remembered for every viewer; on a Mac without Kyokai's Accessibility permission a hint
-  to allow it), and Swap Ctrl and Cmd where a Mac is on either side; the mouse, the wheel and the
-  keyboard on the picture go to the host ([computer-use.md](computer-use.md)). The quality preset,
-  frame-rate cap, Fit or Original size, Full colour, Codec, Swap Ctrl and Cmd, the clipboard switch and the folded bars are kept for each device (`viewers` in
-  `gui.json`): a device's viewer opens with the settings chosen for it last.
+  marked with a small ring that follows the mouse. A toolbar floats over the picture's top edge,
+  as RustDesk's: its grip (or any gap between its controls) drags it along that edge, and where it
+  is let go is kept for every viewer (`toolbar_at` in `gui.json`); ⌃ folds it to a small handle
+  (the grip and ⌄) at the same place, kept for each device. Its icons, each named by its tooltip:
+  Display (the display by number when the host has several; Fit or Original size), Quality (the
+  preset, Frame rate with the cap such as "30 fps", Codec with Auto and what both computers do, by
+  codec name only, when there is a choice, and Full colour), Keyboard (with `control-input`, on
+  Windows and macOS: the keyboard mode Map, Translate or Legacy, remembered for every viewer, and
+  Swap Ctrl and Cmd where a Mac is on either side; on a Mac without Kyokai's Accessibility
+  permission the icon takes the warning colour and its tooltip says to allow it), Actions (with
+  `control-input`, when the host offers them, a Windows host: Lock screen, Ctrl+Alt+Del in the
+  helper modes, Block their keyboard and mouse and Privacy mode, checked as the host reports),
+  then toggles for Sound (plays the host's sound; on unless chosen, kept for each device), Pointer
+  (shows or hides the ring, remembered for every viewer), Clipboard (pulls out the clipboard panel,
+  with `clipboard` or `files`), AI (collapses the AI panel) and Full screen; what does not fit a
+  narrow window goes into the toolbar's » menu. Beside them the path: a dot and Direct or Relayed
+  (Relayed in the warning colour, its tooltip with a hint to turn on direct connections on both
+  devices) with the host's measured delay, the tooltip also showing size, codec, frame rate and
+  bitrate, what encodes and what decodes, each in hardware or software as it reports, and where
+  the time goes (the host's encoding, the network, this computer's decoding and drawing, the frame
+  rate against the host's target) — or, for the test pattern of a host that may not record its
+  screen, a warning sign saying "this is a placeholder picture". After a choice in the toolbar the
+  picture takes the keyboard again; the mouse, the wheel and the keyboard on the picture go to the
+  host ([computer-use.md](computer-use.md)), a press on the toolbar never does. The quality preset,
+  frame-rate cap, Fit or Original size, Full colour, Codec, Swap Ctrl and Cmd, the clipboard switch
+  and the folded toolbar are kept for each device (`viewers` in `gui.json`): a device's viewer
+  opens with the settings chosen for it last.
 - The clipboard panel: "Share the clipboard with this device" (on unless switched off, kept for
   each device) and what crossed the clipboard with the device while its tab was in front, newest
   first (at most 30, in memory only, gone when the tab closes): each entry's source — from the
