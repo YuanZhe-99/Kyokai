@@ -28,7 +28,7 @@ Kyokai 沿用 Easytier-MyGo 的做法：管理员授权只在安装特权助手�
 其下的 `state` 文件夹对用户关闭），把执行安装的用户作为**操作者**记录在 `state\helper.json` 中，为它自己的 `kyokai-svc.exe` 添加一条入站防火墙规则（`Kyokai helper`，
 这样助手的直接连接无需提示；[networking.md](networking.md)），并注册自动启动的服务 `KyokaiHelper`：
 它以 SYSTEM 身份运行 `kyokai-svc run --host helper`，失败后会重新启动。`helper uninstall` 停止并删除该服务、它的文件与套接字
-（`--purge` 还会删除助手的身份与受信任设备）；`helper status` 不需要任何权限。
+（`--purge` 还会删除助手的身份与受信任设备）；`helper status` 不需要任何权限。界面只从服务管理器得知助手是否已安装，不为此启动任何进程（它的版本来自助手的状态）：引擎是控制台程序，界面为取其版本而运行它时会打开一个控制台窗口，开机自启时这个窗口空白地留在屏幕上（0.3.2）。
 
 助手的引擎把身份与机密保存在 `%ProgramData%\Kyokai\state` 中（以 SYSTEM 身份使用 DPAPI）。它的套接字 `%ProgramData%\Kyokai\ctl.sock`
 所有本地用户都能打开，但助手只服务 SYSTEM、操作者以及本地 `kyokai` 组的成员（若管理员创建了该组）；其他任何人，包括管理员，都会被拒绝

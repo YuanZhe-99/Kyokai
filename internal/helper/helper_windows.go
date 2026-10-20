@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -180,30 +181,67 @@ func Uninstall(purge bool) error {
 	return nil
 }
 
-// Inspect reports the installed helper. It asks only for query rights, so
-// it works without administrator rights (the GUI).
+// openService opens the helper's service for queries, which needs no
+// administrator rights.
+// Returns: the service manager's and the service's handles, which the
+// caller closes; an error when either does not open (no helper).
+func openService() (scm, h windows.Handle, err error) {
+	scm, err = windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		return 0, 0, err
+	}
+	name, _ := windows.UTF16PtrFromString(ServiceName)
+	h, err = windows.OpenService(scm, name, windows.SERVICE_QUERY_STATUS)
+	if err != nil {
+		windows.CloseServiceHandle(scm)
+		return 0, 0, err
+	}
+	return scm, h, nil
+}
+
+// Installed reports whether the helper's service exists, from the service
+// manager alone: unlike Inspect it starts no process, so the GUI asks it
+// as it starts.
+func Installed() bool {
+	scm, h, err := openService()
+	if err != nil {
+		return false
+	}
+	windows.CloseServiceHandle(h)
+	windows.CloseServiceHandle(scm)
+	return true
+}
+
+// Inspect reports the installed helper with its state and version (`helper
+// status`). It asks only for query rights, so it needs no administrator.
+// Side effects: runs the installed engine for its version, with no window.
 func Inspect() Status {
 	var st Status
-	scm, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	scm, h, err := openService()
 	if err != nil {
 		return st
 	}
 	defer windows.CloseServiceHandle(scm)
-	name, _ := windows.UTF16PtrFromString(ServiceName)
-	h, err := windows.OpenService(scm, name, windows.SERVICE_QUERY_STATUS)
-	if err != nil {
-		return st
-	}
 	defer windows.CloseServiceHandle(h)
 	st.Installed = true
 	var q windows.SERVICE_STATUS
 	if windows.QueryServiceStatus(h, &q) == nil {
 		st.Active = q.CurrentState == windows.SERVICE_RUNNING
 	}
-	if out, err := exec.Command(svcPath(), "version").Output(); err == nil {
+	if out, err := versionCmd().Output(); err == nil {
 		st.Version = strings.TrimSpace(string(out))
 	}
 	return st
+}
+
+// versionCmd asks the installed engine for its version with no console:
+// the engine is a console program, and started from a process without one
+// (the GUI) it got a console window of its own, which Windows left blank on
+// the screen when the GUI started at login.
+func versionCmd() *exec.Cmd {
+	cmd := exec.Command(svcPath(), "version")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
+	return cmd
 }
 
 // SelfUpdate replaces the helper's files with the signed bundle in from

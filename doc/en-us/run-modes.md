@@ -45,7 +45,10 @@ for its own `kyokai-svc.exe` (`Kyokai helper`, so the helper's direct paths need
 [networking.md](networking.md)) and registers the automatic
 service `KyokaiHelper`, which runs `kyokai-svc run --host helper` as SYSTEM and restarts after a
 failure. `helper uninstall` stops and deletes the service, its files and the socket (`--purge`
-also deletes the helper's identity and trusted devices); `helper status` needs no rights.
+also deletes the helper's identity and trusted devices); `helper status` needs no rights. The GUI
+learns whether the helper is installed from the service manager alone and starts no process for
+it (its version comes from the helper's status): the engine is a console program, and run from
+the GUI for its version it opened a console window, left blank on the screen at login (0.3.2).
 
 The helper's engine keeps its identity and secrets in `%ProgramData%\Kyokai\state` (DPAPI as
 SYSTEM). Its socket `%ProgramData%\Kyokai\ctl.sock` can be opened by every local user, and the

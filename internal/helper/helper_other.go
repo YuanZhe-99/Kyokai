@@ -22,6 +22,9 @@ func Install(InstallOptions) error { return ErrUnsupported }
 // Uninstall is not available yet.
 func Uninstall(bool) error { return ErrUnsupported }
 
+// Installed reports false without a backend.
+func Installed() bool { return false }
+
 // Inspect reports nothing installed.
 func Inspect() Status { return Status{} }
 

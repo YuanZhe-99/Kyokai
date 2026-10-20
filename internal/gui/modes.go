@@ -221,7 +221,7 @@ func (a *App) doSwitch(from, to int) error {
 	case from != modeUser && to != modeUser:
 		return background()
 	case from == modeUser:
-		if !helper.Inspect().Installed {
+		if !helper.Installed() {
 			bin, err := engineBinary()
 			if err != nil {
 				return err
@@ -265,7 +265,7 @@ func (a *App) doSwitch(from, to int) error {
 // Returns: whether the helper is gone.
 func removeHelper(ctx context.Context, hlp *localapi.Client) bool {
 	for range 20 {
-		if !helper.Inspect().Installed {
+		if !helper.Installed() {
 			return true
 		}
 		_, _ = hlp.Do(ctx, localapi.Request{Type: localapi.RequestHelperRemove})
@@ -275,7 +275,7 @@ func removeHelper(ctx context.Context, hlp *localapi.Client) bool {
 		case <-time.After(time.Second):
 		}
 	}
-	return !helper.Inspect().Installed
+	return !helper.Installed()
 }
 
 // useSocket points the GUI at another engine and remembers the choice.

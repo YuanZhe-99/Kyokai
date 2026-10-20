@@ -130,7 +130,7 @@ func New(profile, stateDir, socket string) *App {
 	}
 	a.main = &viewerWindow{app: a, main: true, home: true}
 	a.lastWin = a.main
-	a.socket = startSocket(a.prefs.Helper, helper.Inspect().Installed, socket)
+	a.socket = startSocket(a.prefs.Helper, helper.Installed(), socket)
 	return a
 }
 

@@ -238,10 +238,17 @@ func isNotEmpty(err error) bool {
 	return errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST)
 }
 
-// Inspect reports the installed helper; it needs no rights.
+// Installed reports whether the helper is installed, from its daemon's
+// property list alone: unlike Inspect it starts no process, so the GUI asks
+// it as it starts.
+func Installed() bool { return fileExists(daemonPlist()) }
+
+// Inspect reports the installed helper with its state and version (`helper
+// status`); it needs no rights.
+// Side effects: runs launchctl and the installed engine.
 func Inspect() Status {
 	var s Status
-	if !fileExists(daemonPlist()) {
+	if !Installed() {
 		return s
 	}
 	s.Installed = true
