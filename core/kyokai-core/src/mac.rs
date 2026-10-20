@@ -532,10 +532,11 @@ impl Capture {
             )
         }
         .map_err(|e| e.localizedDescription().to_string())?;
-        // SAFETY: the handler is a block of the expected signature.
-        if let Err(e) =
-            finished(|done| unsafe { stream.startCaptureWithCompletionHandler(Some(done)) })
-        {
+        let started = finished(|done| {
+            // SAFETY: the handler is a block of the expected signature.
+            unsafe { stream.startCaptureWithCompletionHandler(Some(done)) }
+        });
+        if let Err(e) = started {
             // A start that did not answer in time may still come: stop it.
             let output = ProtocolObject::from_retained(output);
             stop(&stream, output, SCStreamOutputType::Screen);
@@ -716,10 +717,11 @@ impl AudioCapture {
             )
         }
         .map_err(|e| e.localizedDescription().to_string())?;
-        // SAFETY: the handler is a block of the expected signature.
-        if let Err(e) =
-            finished(|done| unsafe { stream.startCaptureWithCompletionHandler(Some(done)) })
-        {
+        let started = finished(|done| {
+            // SAFETY: the handler is a block of the expected signature.
+            unsafe { stream.startCaptureWithCompletionHandler(Some(done)) }
+        });
+        if let Err(e) = started {
             let output = ProtocolObject::from_retained(output);
             stop(&stream, output, SCStreamOutputType::Audio);
             return Err(e);
