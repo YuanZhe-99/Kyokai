@@ -436,6 +436,9 @@ struct Entry {
     /// What the other device said about itself after the login.
     peer: About,
     stop: Arc<Notify>,
+    /// Host side: notified when a resumed connection replaces this session,
+    /// which then ends at once (`Sessions::supersede`).
+    cut: Arc<Notify>,
     /// Controller side: media for the GUI, and the GUI's control messages.
     media: Arc<media::Queue>,
     control_tx: mpsc::Sender<Value>,
@@ -572,6 +575,7 @@ impl Sessions {
             peer_source: String::new(),
             peer: About::default(),
             stop: stop.clone(),
+            cut: Arc::default(),
             media: Arc::default(),
             control_tx,
             control_rx: Arc::new(tokio::sync::Mutex::new(control_rx)),
@@ -641,6 +645,31 @@ impl Sessions {
                 .filter(|e| e.role == Role::Host && e.state == State::Connected)
                 .count()
         })
+    }
+
+    /// Ends a live host session that a resumed connection replaces, at once
+    /// and without a goodbye: its connection is gone, though this host has
+    /// not noticed yet.
+    fn supersede(&self, id: u64) {
+        if let Ok(s) = self.inner.lock()
+            && let Some(e) = s.1.iter().find(|e| {
+                e.id == id
+                    && e.role == Role::Host
+                    && !matches!(e.state, State::Closed | State::Failed)
+            })
+        {
+            e.cut.notify_one();
+        }
+    }
+
+    /// What tells a host session that a resumed connection replaced it
+    /// (`supersede`).
+    fn cut(&self, id: u64) -> Arc<Notify> {
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|s| s.1.iter().find(|e| e.id == id).map(|e| e.cut.clone()))
+            .unwrap_or_default()
     }
 
     /// Asks every live host session with a device to end.
@@ -902,6 +931,7 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     };
     let device_id = identity::device_id(&client_key);
     let (id, stop) = ctx.sessions.open(Role::Host, &device_id);
+    let cut = ctx.sessions.cut(id);
     ctx.sessions.update(id, |e| {
         e.peer_version = client.version.clone();
     });
@@ -924,20 +954,25 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 e.state = State::Connected;
                 e.granted = granted;
             });
-            let failure = run(
-                ch,
-                &stop,
-                Side::Host {
-                    video,
-                    sound,
-                    input,
-                    ai,
-                },
-                clipboard,
-            )
-            .await
-            .err();
-            // The controller's AI task does not go on without it.
+            let failure = tokio::select! {
+                r = run(
+                    ch,
+                    &stop,
+                    Side::Host {
+                        video,
+                        sound,
+                        input,
+                        ai,
+                    },
+                    clipboard,
+                ) => r.err(),
+                // A resumed connection took this session's place: its
+                // connection is gone, so it ends at once, with no goodbye,
+                // letting go of its capture and encoder.
+                () = cut.notified() => None,
+            };
+            // The controller's AI task does not go on without it (as after
+            // any drop, a resumed one too).
             ctx.ai.controller_left(&device_id);
             ctx.sessions.end(id, failure);
         }
@@ -977,15 +1012,15 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         let _ = ch.send(&refuse(Refusal::Absent)).await;
         return Err(Failure::Refused(Refusal::Absent));
     }
-    if ctx.sessions.connected_hosts() >= MAX_HOST_SESSIONS {
-        let _ = ch.send(&refuse(Refusal::Busy)).await;
-        return Err(Failure::Refused(Refusal::Busy));
-    }
     // Resuming a dropped session: same key, same permissions, no new login.
+    // The session it resumes ends now if this host has not noticed the drop
+    // yet: it would hold its capture and the hardware encoder until its idle
+    // limit. A resume takes that session's place, so it is never busy.
     if let Some(token) = &client.resume
-        && let Some(granted) = ctx.access.take_resume(token, &key_b64)
+        && let Some((granted, old)) = ctx.access.take_resume(token, &key_b64)
     {
-        let resume = ctx.access.issue_resume(&key_b64, &granted);
+        ctx.sessions.supersede(old);
+        let resume = ctx.access.issue_resume(&key_b64, &granted, id);
         step(ch.send(&Verdict {
             accepted: true,
             granted: granted.clone(),
@@ -1002,6 +1037,10 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             .map(|t| t.about)
             .unwrap_or_default();
         return Ok((granted, peer));
+    }
+    if ctx.sessions.connected_hosts() >= MAX_HOST_SESSIONS {
+        let _ = ch.send(&refuse(Refusal::Busy)).await;
+        return Err(Failure::Refused(Refusal::Busy));
     }
     // The slot the password opened, or None when the controller only asks.
     let (slot, about) = match &client.requests {
@@ -1053,7 +1092,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     .then(|| want.clone());
     if let Some(granted) = unattended.or(by_password) {
         let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
-        let resume = ctx.access.issue_resume(&key_b64, &granted);
+        let resume = ctx.access.issue_resume(&key_b64, &granted, id);
         step(ch.send(&Verdict {
             accepted: true,
             granted: granted.clone(),
@@ -1094,7 +1133,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         }
     };
     let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
-    let resume = ctx.access.issue_resume(&key_b64, &granted);
+    let resume = ctx.access.issue_resume(&key_b64, &granted, id);
     step(ch.send(&Verdict {
         accepted: true,
         granted: granted.clone(),
@@ -1770,13 +1809,18 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         seal_json(&mut noise, &mut buf, &mut wr, &offered(inj)).await?;
     }
     // Opens the video on a display (None: the primary) from the chosen
-    // candidates, once the old capture let go of its encoder, and describes
-    // it to the controller.
+    // candidates, once the old capture let go of its encoder (dropping it
+    // parks its thread, which Source::open waits for), and describes it to
+    // the controller. Opening blocks for as long as a second: it runs off
+    // the network's two threads, and one that panicked sends the pattern.
     macro_rules! reopen {
         ($display:expr) => {{
             let display = $display;
             source = None;
-            let s = video::Source::open(display, &chosen);
+            let wanted = chosen.clone();
+            let s = tokio::task::spawn_blocking(move || video::Source::open(display, &wanted))
+                .await
+                .unwrap_or_else(|_| video::Source::pattern());
             #[cfg(any(windows, target_os = "macos"))]
             if let Some(inj) = injector.as_mut() {
                 inj.set_area(s.display.map(area));
@@ -2066,8 +2110,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         if i444 != full_colour {
                             full_colour = i444;
                             let c = video::prefer(video::choose(&decodes.0, &decodes.1, full_colour, hevc_first), preferred.as_deref());
-                            if wants_video && source.is_some() && c != chosen {
-                                chosen = c;
+                            let first_changed = c.first() != chosen.first();
+                            chosen = c;
+                            if wants_video && source.is_some() && first_changed {
                                 reopen!(source.as_ref().and_then(|s| s.display));
                             }
                         }
@@ -2098,7 +2143,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::Audio { on } if matches!(side, Side::Host { .. }) => {
                         if on && may_hear {
                             if sound.is_none() {
-                                sound = audio::Source::open()
+                                // Opening may wait on the system: off the
+                                // network's threads.
+                                sound = tokio::task::spawn_blocking(audio::Source::open)
+                                    .await
+                                    .map_err(|e| e.to_string())
+                                    .and_then(|r| r)
                                     .inspect_err(|e| log::info!("sound did not open: {e}"))
                                     .ok();
                             }
@@ -2231,14 +2281,21 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // of them this host can send.
                     Message::Codecs { decode, i444 } => {
                         decodes = (decode, i444);
-                        hevc_first = video::hevc_hardware();
+                        // Listing the encoders asks the system: off the
+                        // network's threads.
+                        hevc_first = tokio::task::spawn_blocking(video::hevc_hardware).await.unwrap_or(false);
                         let c = video::prefer(video::choose(&decodes.0, &decodes.1, full_colour, hevc_first), preferred.as_deref());
                         if wants_video {
                             offer = video::offer(&decodes.0, &video::encodable()).iter().map(|c| c.to_string()).collect();
                             seal_json(&mut noise, &mut buf, &mut wr, &Message::CodecOffer { codecs: offer.clone() }).await?;
                         }
-                        if wants_video && (source.is_none() || c != chosen) {
-                            chosen = c;
+                        // The video opens again only when the first choice
+                        // changes: the fallbacks after it differing (codecs
+                        // that came after the wait) is no reason to drop a
+                        // stream and its hardware encoder.
+                        let first_changed = source.is_none() || c.first() != chosen.first();
+                        chosen = c;
+                        if wants_video && first_changed {
                             reopen!(source.as_ref().and_then(|s| s.display));
                         }
                     }
@@ -2395,6 +2452,62 @@ mod tests {
             _: &mut std::task::Context<'_>,
         ) -> std::task::Poll<std::io::Result<()>> {
             std::task::Poll::Pending
+        }
+    }
+
+    /// A host's end of a connection that can drop without the host noticing:
+    /// once cut, the other end sees it close while the host's reads wait
+    /// forever and its writes vanish (a network gone, not yet timed out).
+    #[derive(Clone)]
+    struct Stall(Arc<Mutex<Option<tokio::io::DuplexStream>>>);
+
+    impl Stall {
+        fn cut(&self) {
+            *self.0.lock().unwrap() = None;
+        }
+    }
+
+    impl AsyncRead for Stall {
+        fn poll_read(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            match self.0.lock().unwrap().as_mut() {
+                Some(s) => std::pin::Pin::new(s).poll_read(cx, buf),
+                None => std::task::Poll::Pending,
+            }
+        }
+    }
+
+    impl AsyncWrite for Stall {
+        fn poll_write(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+            b: &[u8],
+        ) -> std::task::Poll<std::io::Result<usize>> {
+            match self.0.lock().unwrap().as_mut() {
+                Some(s) => std::pin::Pin::new(s).poll_write(cx, b),
+                None => std::task::Poll::Ready(Ok(b.len())),
+            }
+        }
+        fn poll_flush(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            match self.0.lock().unwrap().as_mut() {
+                Some(s) => std::pin::Pin::new(s).poll_flush(cx),
+                None => std::task::Poll::Ready(Ok(())),
+            }
+        }
+        fn poll_shutdown(
+            self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            match self.0.lock().unwrap().as_mut() {
+                Some(s) => std::pin::Pin::new(s).poll_shutdown(cx),
+                None => std::task::Poll::Ready(Ok(())),
+            }
         }
     }
 
@@ -3360,6 +3473,91 @@ mod tests {
         until("connected").await;
         assert_eq!(session(&controller, id)["granted"], json!(["view-screen"]));
         assert_eq!(host.access.pending(), json!([]));
+    }
+
+    /// A host that has not noticed its connection drop ends that session as
+    /// the controller resumes it, instead of keeping it (with its capture and
+    /// hardware encoder) until its idle limit: one host session is left
+    /// connected (regression: the resumed stream fell to the software
+    /// encoder).
+    #[tokio::test]
+    async fn a_resumed_session_ends_the_one_it_replaces() {
+        let host = device("1.0.0");
+        let controller = device("1.0.0");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.2".parse().unwrap(),
+        };
+        // The host's connected sessions, by id.
+        let connected_hosts = |ctx: &Ctx| -> Vec<u64> {
+            ctx.sessions
+                .list()
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["role"] == "host" && e["state"] == "connected")
+                .filter_map(|e| e["id"].as_u64())
+                .collect()
+        };
+        let (a, b) = tokio::io::duplex(1 << 16);
+        let line = Stall(Arc::new(Mutex::new(Some(b))));
+        tokio::spawn(serve(host.clone(), line.clone(), from));
+        let (id, stop) = begin(&controller, &dialed, Remember::default());
+        // Nothing asked for beyond the login: no capture in the test.
+        let first = tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop.clone(),
+            a,
+            dialed.clone(),
+            zeroize::Zeroizing::new("k7mq2xpa".into()),
+            Vec::new(),
+            None,
+        ));
+        for _ in 0..200 {
+            if session(&controller, id)["state"] == "connected" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let old = connected_hosts(&host);
+        assert_eq!(old.len(), 1);
+        // The network drops: the controller sees it, the host does not.
+        line.cut();
+        let Outcome::Lost(token) = first.await.unwrap() else {
+            panic!("a dropped session should be resumable");
+        };
+        assert_eq!(connected_hosts(&host), old, "the host has not noticed");
+        let (a, b) = tokio::io::duplex(1 << 16);
+        tokio::spawn(serve(host.clone(), b, from));
+        tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop,
+            a,
+            dialed,
+            zeroize::Zeroizing::new("not the password".into()),
+            Vec::new(),
+            Some(token),
+        ));
+        for _ in 0..200 {
+            let now = connected_hosts(&host);
+            if session(&controller, id)["state"] == "connected" && now.len() == 1 && now != old {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!(
+            "host sessions connected after the resume: {:?} (before: {old:?})",
+            connected_hosts(&host)
+        );
     }
 
     /// Waits for the next media packet of `kind`, skipping the others.

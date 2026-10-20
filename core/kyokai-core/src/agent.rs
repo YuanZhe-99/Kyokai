@@ -107,6 +107,28 @@ struct Stream {
     skipping: bool,
 }
 
+/// A video stream of the agent, held by the session's source: dropping it
+/// closes the stream at once, ahead of any stream the session opens next,
+/// so that the agent lets go of its encoder first (the thread following
+/// the stream would close it only at its next look at `stop`).
+pub struct AgentVideo {
+    link: Arc<Link>,
+    stream: u32,
+}
+
+impl Drop for AgentVideo {
+    fn drop(&mut self) {
+        let _ = self
+            .link
+            .send("video.close", json!({"stream": self.stream}));
+        self.link
+            .streams
+            .lock()
+            .expect("agent link")
+            .remove(&self.stream);
+    }
+}
+
 /// The helper's end: calls into the agent and the video it streams.
 pub struct Link {
     out: Mutex<Option<BufWriter<Box<dyn Write + Send>>>>,
@@ -282,9 +304,10 @@ impl Link {
 
     /// Starts a video stream in the agent: `display` (the primary when
     /// None) in the first of `choices` that opens; its frames go to `tx`,
-    /// and `key`, `targets` and `stop` are followed until `stop` is set.
-    /// Returns: the stream's start and the display shown, or None when the
-    /// agent cannot start it (the caller shows the test pattern).
+    /// and `key` and `targets` are followed until `stop` is set.
+    /// Returns: the stream's start, the display shown and the stream, whose
+    /// drop closes it, or None when the agent cannot start it (the caller
+    /// shows the test pattern).
     pub fn open_video(
         self: &Arc<Self>,
         display: Option<Display>,
@@ -293,7 +316,7 @@ impl Link {
         key: Arc<AtomicBool>,
         targets: Arc<Targets>,
         stop: Arc<AtomicBool>,
-    ) -> Option<(VideoStart, Option<Display>)> {
+    ) -> Option<(VideoStart, Option<Display>, AgentVideo)> {
         let stream = self.next_stream.fetch_add(1, Ordering::Relaxed);
         self.streams.lock().expect("agent link").insert(
             stream,
@@ -338,10 +361,12 @@ impl Link {
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
-            let _ = link.send("video.close", json!({"stream": stream}));
-            link.streams.lock().expect("agent link").remove(&stream);
         });
-        Some((opened.start, opened.display))
+        let video = AgentVideo {
+            link: self.clone(),
+            stream,
+        };
+        Some((opened.start, opened.display, video))
     }
 
     /// Starts the computer's sound in the agent for one session.
@@ -1565,7 +1590,7 @@ mod tests {
             codec: "vp9-sw",
             i444: true,
         }];
-        let (start, _) = link
+        let (start, _, video) = link
             .open_video(None, &choices, tx, key, targets, stop.clone())
             .expect("the agent opens a stream");
         assert!(start.width > 0 && start.height > 0);
@@ -1574,13 +1599,11 @@ mod tests {
         }
         let frame = rx.blocking_recv().expect("a frame through the agent");
         assert!(!frame.data.is_empty());
+        // The stream ends as its source drops it: the link forgets it at
+        // once, before any stream the session opens next.
         stop.store(true, Ordering::Relaxed);
-        // The stream ends: the link forgets it and its frames stop.
-        let t0 = Instant::now();
-        while !link.streams.lock().unwrap().is_empty() {
-            assert!(t0.elapsed() < Duration::from_secs(5), "stream not closed");
-            std::thread::sleep(Duration::from_millis(20));
-        }
+        drop(video);
+        assert!(link.streams.lock().unwrap().is_empty(), "stream not closed");
     }
 
     /// A new agent first hears how the host user chose to capture: whether

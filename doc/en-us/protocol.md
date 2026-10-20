@@ -57,8 +57,10 @@ A dropped connection (not a `bye`) can be resumed for 60 seconds: the controller
 every 3 seconds and sends the token from the last verdict. A token is single-use, bound to the
 controller's device key, kept in the host's memory only and valid for 2 minutes; a valid one
 answers frame 3 with an accepting verdict at once (same permissions, no password, no
-confirmation, a new token); anything else falls back to the login. Nothing that was in flight is
-sent again.
+confirmation, a new token) and ends the session it resumes, which the host may not have noticed
+dropping (it would keep its capture and encoder until its idle limit; as after any drop, an AI
+task that controller started pauses); a resume is never refused as busy, since it takes that
+session's place. Anything else falls back to the login. Nothing that was in flight is sent again.
 
 ## Session messages
 

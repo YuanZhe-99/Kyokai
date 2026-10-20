@@ -243,11 +243,13 @@ pub struct KnownHost {
     pub address: String,
 }
 
-/// A resume token's grant: who may resume, with what, until when.
+/// A resume token's grant: who may resume, with what, until when, and
+/// the session it resumes (which the new connection replaces).
 struct Resume {
     key: String,
     granted: Vec<Permission>,
     until: Instant,
+    session: u64,
 }
 
 /// A confirmation waiting for the host's user.
@@ -693,8 +695,9 @@ impl Access {
     }
 
     /// Issues a single-use token that lets this controller key resume a
-    /// dropped session with the same permissions (host side).
-    pub fn issue_resume(&self, key: &str, granted: &[Permission]) -> String {
+    /// dropped session with the same permissions (host side); `session` is
+    /// the session it was issued in.
+    pub fn issue_resume(&self, key: &str, granted: &[Permission], session: u64) -> String {
         let mut bytes = [0u8; 32];
         let _ = getrandom::fill(&mut bytes);
         let token = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
@@ -715,6 +718,7 @@ impl Access {
                     key: key.to_owned(),
                     granted: granted.to_vec(),
                     until: now + RESUME_WINDOW,
+                    session,
                 },
             );
         }
@@ -722,11 +726,11 @@ impl Access {
     }
 
     /// Redeems a resume token for the controller key that holds it.
-    /// Returns: the permissions to grant again; None for an unknown, used,
-    /// expired or foreign token.
-    pub fn take_resume(&self, token: &str, key: &str) -> Option<Vec<Permission>> {
+    /// Returns: the permissions to grant again and the session it resumes;
+    /// None for an unknown, used, expired or foreign token.
+    pub fn take_resume(&self, token: &str, key: &str) -> Option<(Vec<Permission>, u64)> {
         let r = self.resumes.lock().ok()?.remove(token)?;
-        (r.key == key && r.until > Instant::now()).then_some(r.granted)
+        (r.key == key && r.until > Instant::now()).then_some((r.granted, r.session))
     }
 
     /// The host key pinned for a Device ID, if any (controller side).
@@ -938,12 +942,13 @@ mod tests {
     #[test]
     fn resume_tokens_are_single_use_and_bound_to_their_key() {
         let a = access();
-        let t = a.issue_resume("key-A", &[Permission::ViewScreen]);
+        let t = a.issue_resume("key-A", &[Permission::ViewScreen], 7);
         assert_eq!(a.take_resume(&t, "key-B"), None, "another key");
-        let t = a.issue_resume("key-A", &[Permission::ViewScreen]);
+        let t = a.issue_resume("key-A", &[Permission::ViewScreen], 7);
+        // The token names the session it resumes, which the new one ends.
         assert_eq!(
             a.take_resume(&t, "key-A"),
-            Some(vec![Permission::ViewScreen])
+            Some((vec![Permission::ViewScreen], 7))
         );
         assert_eq!(a.take_resume(&t, "key-A"), None, "used once");
     }

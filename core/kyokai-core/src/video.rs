@@ -335,8 +335,8 @@ pub fn nv12_planes_to_rgba(
 
 use crate::media::{self, VideoStart};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -568,7 +568,8 @@ pub fn order(list: &mut [Display]) {
 }
 
 /// The host's video: its screen in the best codec it can send, else the
-/// test pattern. Dropping it stops the producer.
+/// test pattern. Dropping it stops the producer; the next source waits for
+/// it to let go of its display and encoder (`wait_stopped`).
 pub struct Source {
     pub start: VideoStart,
     /// The display shown, None for the test pattern.
@@ -577,6 +578,28 @@ pub struct Source {
     key: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     targets: Arc<Targets>,
+    /// The capture thread, which ends with the display and the encoder let
+    /// go.
+    done: Option<std::thread::JoinHandle<()>>,
+    /// A stream of the helper's agent, closed as the source drops.
+    _agent: Option<crate::agent::AgentVideo>,
+}
+
+/// Capture threads of dropped sources that may still hold their display
+/// and encoder: a new source waits for them first, STOP_WAIT at most, so
+/// that it gets the hardware encoder back (one per process, `mf.rs`).
+static STOPPING: Mutex<Vec<std::thread::JoinHandle<()>>> = Mutex::new(Vec::new());
+/// Longest a new source waits for the capture threads still stopping.
+const STOP_WAIT: Duration = Duration::from_secs(1);
+
+/// Waits until the capture threads of dropped sources have ended (STOP_WAIT
+/// at most; a thread that takes longer is left be).
+fn wait_stopped() {
+    let pending = std::mem::take(&mut *STOPPING.lock().unwrap_or_else(|e| e.into_inner()));
+    let until = Instant::now() + STOP_WAIT;
+    while pending.iter().any(|t| !t.is_finished()) && Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
 
 /// What QoS asks of the producer, read on every frame.
@@ -590,7 +613,11 @@ impl Source {
     /// Starts the best source this host has: `display` (the primary when
     /// None) in the first of `choices` whose encoder opens, or the test
     /// pattern.
+    /// Notes: waits first for the capture threads of dropped sources
+    /// (`wait_stopped`), and opening a capture can take a second: call it
+    /// off the async runtime.
     pub fn open(display: Option<Display>, choices: &[Choice]) -> Source {
+        wait_stopped();
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
         let targets = Arc::new(Targets {
@@ -603,7 +630,7 @@ impl Source {
         let link = crate::agent::link();
         let (tx, frames) = mpsc::channel(if link.is_some() { 2 } else { 1 });
         if let Some(link) = link
-            && let Some((start, shown)) = link.open_video(
+            && let Some((start, shown, agent)) = link.open_video(
                 display,
                 choices,
                 tx.clone(),
@@ -619,6 +646,8 @@ impl Source {
                 key,
                 stop,
                 targets,
+                done: None,
+                _agent: Some(agent),
             };
         }
         #[cfg(windows)]
@@ -628,7 +657,7 @@ impl Source {
         #[cfg(any(windows, target_os = "macos"))]
         if link.is_none()
             && let Some(d) = display.or_else(|| displays().first().copied())
-            && let Some(start) = choices.iter().find_map(|&c| {
+            && let Some((start, done)) = choices.iter().find_map(|&c| {
                 capture::start::<Platform>(
                     tx.clone(),
                     key.clone(),
@@ -647,17 +676,31 @@ impl Source {
                 key,
                 stop,
                 targets,
+                done: Some(done),
+                _agent: None,
             };
         }
         let _ = (display, choices);
-        let start = test_pattern(tx, stop.clone());
+        Source::pattern()
+    }
+
+    /// The test pattern alone: for a host that cannot capture, and when
+    /// opening the screen failed outright.
+    pub fn pattern() -> Source {
+        let stop = Arc::new(AtomicBool::new(false));
+        let (tx, frames) = mpsc::channel(1);
         Source {
-            start,
+            start: test_pattern(tx, stop.clone()),
             display: None,
             frames,
-            key,
+            key: Arc::new(AtomicBool::new(true)),
             stop,
-            targets,
+            targets: Arc::new(Targets {
+                fps: AtomicU32::new(FPS),
+                bitrate: AtomicU32::new(BITRATE),
+            }),
+            done: None,
+            _agent: None,
         }
     }
 
@@ -681,6 +724,12 @@ impl Source {
 impl Drop for Source {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        if let Some(done) = self.done.take() {
+            STOPPING
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(done);
+        }
     }
 }
 
@@ -747,6 +796,24 @@ mod capture {
     /// How often the capture thread looks again for room while the session
     /// is still sending the last frame.
     const ROOM_WAIT: Duration = Duration::from_millis(2);
+    /// Longest the capture thread waits for a picture before it looks at
+    /// its stop flag again.
+    const FRAME_WAIT: Duration = Duration::from_millis(100);
+    /// How often a sleeping capture thread looks at its stop flag.
+    const STOP_POLL: Duration = Duration::from_millis(20);
+
+    /// Sleeps `d`, or less once `stop` is set: a dropped source's thread
+    /// ends within STOP_POLL, so the next source gets its encoder soon.
+    fn nap(d: Duration, stop: &AtomicBool) {
+        let until = Instant::now() + d;
+        loop {
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() || stop.load(Ordering::Relaxed) {
+                return;
+            }
+            std::thread::sleep(left.min(STOP_POLL));
+        }
+    }
 
     /// The stream's encoder with the picture it encodes next.
     enum Encoder {
@@ -849,7 +916,9 @@ mod capture {
 
     /// Starts capturing `display` with `G` and encoding it.
     /// Returns: the stream description once the capturer and the encoder
-    /// work, or why not (no interactive desktop, no permission, no encoder).
+    /// work, with the capture thread (it ends with the display and the
+    /// encoder let go), or why not (no interactive desktop, no permission,
+    /// no encoder).
     pub fn start<G: Grab>(
         tx: mpsc::Sender<Encoded>,
         key: Arc<AtomicBool>,
@@ -857,9 +926,9 @@ mod capture {
         targets: Arc<Targets>,
         display: Display,
         choice: Choice,
-    ) -> Result<VideoStart, String> {
+    ) -> Result<(VideoStart, std::thread::JoinHandle<()>), String> {
         let (ready_tx, ready) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
+        let thread = std::thread::spawn(move || {
             let opened = (|| {
                 let (capturer, dw, dh) = G::open(display)?;
                 let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
@@ -901,8 +970,10 @@ mod capture {
             let mut capturer = Some(capturer);
             while !stop.load(Ordering::Relaxed) {
                 let Some(cap) = capturer.as_mut() else {
-                    std::thread::sleep(REOPEN_AFTER);
-                    capturer = G::open(display).ok().map(|(c, _, _)| c);
+                    nap(REOPEN_AFTER, &stop);
+                    if !stop.load(Ordering::Relaxed) {
+                        capturer = G::open(display).ok().map(|(c, _, _)| c);
+                    }
                     continue;
                 };
                 // Room for the frame first: a picture is taken only when the
@@ -927,10 +998,13 @@ mod capture {
                 // Unchanged screens time out: nothing is encoded or sent,
                 // unless a key frame was asked for.
                 let mut taken = None;
-                let got = cap.frame(period, &mut |bgra, width, height, stride| {
-                    taken = Some(Instant::now());
-                    encoder.picture(bgra, width, height, stride)
-                });
+                let got = cap.frame(
+                    period.min(FRAME_WAIT),
+                    &mut |bgra, width, height, stride| {
+                        taken = Some(Instant::now());
+                        encoder.picture(bgra, width, height, stride)
+                    },
+                );
                 match got {
                     Got::Picture => {}
                     Got::Nothing if (wanted || held > 0) && encoder.has_picture() => {}
@@ -947,7 +1021,7 @@ mod capture {
                         }
                         // GDI answers at once instead of waiting the timeout.
                         if let Some(rest) = period.checked_sub(begun.elapsed()) {
-                            std::thread::sleep(rest);
+                            nap(rest, &stop);
                         }
                         continue;
                     }
@@ -981,13 +1055,14 @@ mod capture {
                     }
                 }
                 if let Some(rest) = period.checked_sub(begun.elapsed()) {
-                    std::thread::sleep(rest);
+                    nap(rest, &stop);
                 }
             }
         });
         ready
             .recv()
             .unwrap_or_else(|_| Err("the capture thread ended".into()))
+            .map(|start| (start, thread))
     }
 }
 
@@ -1163,7 +1238,7 @@ mod screen_tests {
                 display,
                 choice,
             ) {
-                Ok(s) => s,
+                Ok((s, _)) => s,
                 Err(e) => return eprintln!("skipped: {e}"),
             };
             eprintln!("stream {start:?}");
@@ -1418,6 +1493,89 @@ mod tests {
             assert!(decode.iter().any(|d| d == c), "{c}");
         }
         assert_eq!(i444, ["vp9-sw", "av1"]);
+    }
+
+    /// Whether a test capturer (`Fake`) is open.
+    #[cfg(any(windows, target_os = "macos"))]
+    static FAKE_OPEN: AtomicBool = AtomicBool::new(false);
+
+    /// A capturer for the tests: a still grey picture, let go slowly as a
+    /// GPU capturer is.
+    #[cfg(any(windows, target_os = "macos"))]
+    struct Fake;
+
+    #[cfg(any(windows, target_os = "macos"))]
+    impl Grab for Fake {
+        fn open(_: Display) -> Result<(Self, u32, u32), String> {
+            FAKE_OPEN.store(true, Ordering::SeqCst);
+            Ok((Fake, 64, 48))
+        }
+
+        fn frame(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got {
+            std::thread::sleep(timeout.min(Duration::from_millis(5)));
+            take(&[128u8; 64 * 48 * 4], 64, 48, 64 * 4);
+            Got::Picture
+        }
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    impl Drop for Fake {
+        fn drop(&mut self) {
+            std::thread::sleep(Duration::from_millis(100));
+            FAKE_OPEN.store(false, Ordering::SeqCst);
+        }
+    }
+
+    /// A dropped source's capture lets go of its display and its encoder
+    /// before the next source opens (regression: the next one opened at once
+    /// and found the one hardware encoder still taken).
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn the_next_source_waits_for_the_last_one_to_let_go() {
+        let (tx, frames) = mpsc::channel(1);
+        let key = Arc::new(AtomicBool::new(true));
+        let stop = Arc::new(AtomicBool::new(false));
+        let targets = Arc::new(Targets {
+            fps: AtomicU32::new(FPS),
+            bitrate: AtomicU32::new(BITRATE),
+        });
+        let display = Display {
+            x: 0,
+            y: 0,
+            width: 64,
+            height: 48,
+            primary: true,
+        };
+        let choice = Choice {
+            codec: "vp8",
+            i444: false,
+        };
+        let (start, done) = capture::start::<Fake>(
+            tx,
+            key.clone(),
+            stop.clone(),
+            targets.clone(),
+            display,
+            choice,
+        )
+        .expect("VP8 opens");
+        let source = Source {
+            start,
+            display: Some(display),
+            frames,
+            key,
+            stop,
+            targets,
+            done: Some(done),
+            _agent: None,
+        };
+        assert!(FAKE_OPEN.load(Ordering::SeqCst));
+        drop(source);
+        wait_stopped();
+        assert!(
+            !FAKE_OPEN.load(Ordering::SeqCst),
+            "the capture still held its display"
+        );
     }
 
     #[test]
