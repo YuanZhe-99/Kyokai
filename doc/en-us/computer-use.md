@@ -260,8 +260,11 @@ Each key the grab takes carries the controller's CapsLock and NumLock: before a 
 presses its own CapsLock if it differs, before a numpad key whose meaning NumLock changes its
 NumLock, as RustDesk's input service does. The keys Windows makes up (the Ctrl that comes with
 AltGr, the Shift around numpad keys) are not sent; the host's layout makes its own. Keys the grab
-sent down are released when their window leaves the front, its grab ends or the mode changes; keys
-other programs inject on the controller are left alone. The hook is installed with the first grab
+sent down are released when their window leaves the front, its grab ends or the mode changes. Keys
+another program injects on the controller — another remote-control program operating it, as when
+Kyokai runs inside a RustDesk session — are taken like typed ones; only Kyokai's own (tagged) and
+characters injected as text (`VK_PACKET`, RustDesk's Translate and Legacy modes) are left alone,
+and such text reaches the viewer, which sends it as text in every mode. The hook is installed with the first grab
 and removed with the last. Ctrl+Alt+Del cannot be taken (Windows shows it to no hook); the Actions
 menu sends it in the helper modes.
 

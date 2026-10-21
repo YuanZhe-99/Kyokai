@@ -422,11 +422,12 @@ func TestViewerInputMapping(t *testing.T) {
 		{"a release never pressed is dropped", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyC}, "", nil},
 		{"enter", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyEnter}, "", &inputEvent{Kind: "key", Key: "enter", Down: true, Mods: &inputMods{}}},
 		{"touchpad scroll in pixels", ui.InputEvent{Kind: ui.InputScroll, DY: 80, Precise: true}, "", &inputEvent{Kind: "scroll", DY: 2}},
-		// While the core grabs the keyboard, keys come from the grab; text only
-		// in Translate mode, and a release whose press was sent still goes.
+		// While the core grabs the keyboard, keys come from the grab; text that
+		// still reaches the window (characters another program injects as text)
+		// goes as text, and a release whose press was sent still goes.
 		{"held before the grab", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyF5}, "", &inputEvent{Kind: "key", Key: "f5", Down: true, Mods: &inputMods{}}},
 		{"map: no keys", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyEnter}, "map", nil},
-		{"map: no text", ui.InputEvent{Kind: ui.InputText, Text: "a"}, "map", nil},
+		{"map: injected text", ui.InputEvent{Kind: ui.InputText, Text: "a"}, "map", &inputEvent{Kind: "text", Text: "a"}},
 		{"map: the release of a sent press", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyF5}, "map", &inputEvent{Kind: "key", Key: "f5", Mods: &inputMods{}}},
 		{"translate: no keys", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyC, Mods: ui.Ctrl}, "translate", nil},
 		{"translate: text", ui.InputEvent{Kind: ui.InputText, Text: "ü"}, "translate", &inputEvent{Kind: "text", Text: "ü"}},

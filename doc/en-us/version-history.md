@@ -20,7 +20,8 @@
   during a stall or a reconnect are dropped instead of arriving late, the keyboard grab steps aside
   while a session is stalled, and Map mode keeps the controller's input method out of the way while
   Translate mode lets it finish composing (Chinese and Japanese input could leave the controller's
-  keyboard dead).
+  keyboard dead). Kyokai running inside a RustDesk session takes the keys RustDesk types
+  (on Windows they were left to the window and lost).
 - Sign in with SSH-style Ed25519 keys: keys that can connect to this device, your own keys
   (generated or imported; a private key is shown once), a proof bound to the session.
 - SSH, Remote Desktop and VNC (Apple Screen Sharing too) of a device through tunnels inside Kyokai

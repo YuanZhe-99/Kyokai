@@ -96,6 +96,23 @@ const MODIFIERS: [u32; 6] = [0x2A, 0x36, 0x1D, 0xE01D, 0x38, 0xE038];
 /// The scan code of the right Alt key, AltGr on layouts that have one.
 const RIGHT_ALT: u32 = 0xE038;
 
+/// Windows' virtual key of a typed character injected as Unicode text.
+#[cfg_attr(not(windows), allow(dead_code))]
+const VK_PACKET: u32 = 0xE7;
+
+/// Whether the Windows hook leaves an injected key to the window in front
+/// instead of taking it for a grabbing viewer: Kyokai's own (a host on this
+/// computer; remote input never operates Kyokai's windows) and a character
+/// injected as text (`VK_PACKET`, as RustDesk's Translate and Legacy modes
+/// type), which reaches the viewer as text. Every other injected key — what
+/// another remote-control program operating this computer types — is taken
+/// like a typed one (regression: Kyokai inside a RustDesk session got none
+/// of its keys, and its keyboard seemed dead).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn leaves_injected(extra: usize, vk: u32) -> bool {
+    extra == crate::input::INJECTED_TAG || vk == VK_PACKET
+}
+
 /// The key's scan code as Windows numbers it (`MapVirtualKey`'s
 /// `MAPVK_VK_TO_VSC_EX`): the PC set-1 code, 0xE0 above it for extended
 /// keys, 0xE11D for Pause.
@@ -967,8 +984,10 @@ mod windows_impl {
                 st.windows.insert(w, g);
             }
         }
-        // Another program's injected keys stay the controller's.
-        if info.flags.0 & LLKHF_INJECTED.0 != 0 {
+        // Injected keys are taken like typed ones (another remote-control
+        // program operating this computer types through injection), but for
+        // those `leaves_injected` names.
+        if info.flags.0 & LLKHF_INJECTED.0 != 0 && leaves_injected(info.dwExtraInfo, info.vkCode) {
             return false;
         }
         // Nobody reads the keys (the GUI's reader ended or is stuck): take
@@ -1000,6 +1019,24 @@ mod windows_impl {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Keys another remote-control program injects (RustDesk operating
+    /// this computer) are taken for a grabbing viewer; Kyokai's own and
+    /// characters injected as text are left alone (regression: Kyokai
+    /// inside a RustDesk session got none of its keys).
+    #[test]
+    fn foreign_injected_keys_are_taken() {
+        use crate::input::INJECTED_TAG;
+        for (extra, vk, leave) in [
+            (0, 0x41, false),                // RustDesk's A, by scan code
+            (0x1234, 0x0D, false),           // another tool's Enter
+            (INJECTED_TAG, 0x41, true),      // Kyokai's own, as a host
+            (0, VK_PACKET, true),            // a character as Unicode text
+            (INJECTED_TAG, VK_PACKET, true), // both
+        ] {
+            assert_eq!(leaves_injected(extra, vk), leave, "{extra:#x} {vk:#x}");
+        }
+    }
 
     #[test]
     fn hook_events_get_windows_scan_codes() {

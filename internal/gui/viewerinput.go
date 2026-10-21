@@ -93,7 +93,10 @@ func pictureBox(box ui.Rect, pw, ph int) (ox, oy, w, h float32) {
 // for one to leave alone. held tracks keys sent down, so a key's release is
 // sent exactly when its press was. grabbed is the keyboard mode the core
 // grabs keys in for this viewer ("" for none): then keys come from the
-// grab, and text only in Translate mode.
+// grab, and text is whatever still reaches the window — Translate mode's
+// committed text, or characters another program injects as text (the
+// grab leaves those alone; regression: Kyokai inside a RustDesk session
+// dropped them in Map mode).
 func toEvent(ev ui.InputEvent, box ui.Rect, pw, ph int, held map[ui.Key]bool, grabbed string) (inputEvent, bool) {
 	ox, oy, w, h := pictureBox(box, pw, ph)
 	pos := func() (float32, float32, bool) {
@@ -148,7 +151,7 @@ func toEvent(ev ui.InputEvent, box ui.Rect, pw, ph int, held map[ui.Key]bool, gr
 		delete(held, ev.Key)
 		return inputEvent{Kind: "key", Key: name, Down: false, Mods: mods}, true
 	case ui.InputText:
-		if ev.Text == "" || grabbed == "map" {
+		if ev.Text == "" {
 			return inputEvent{}, false
 		}
 		return inputEvent{Kind: "text", Text: ev.Text}, true
