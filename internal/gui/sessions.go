@@ -594,6 +594,14 @@ func permissionLabel(p string) string {
 		return L.PermFiles()
 	case localapi.PermHearSound:
 		return L.PermHearSound()
+	case localapi.PermSeeStatus:
+		return L.PermSeeStatus()
+	case localapi.PermUseSSH:
+		return L.PermUseSSH()
+	case localapi.PermUseRDP:
+		return L.PermUseRDP()
+	case localapi.PermUseVNC:
+		return L.PermUseVNC()
 	}
 	return p
 }
@@ -815,6 +823,7 @@ func (a *App) byAddressSettings(c *ui.Context) {
 var allPermissions = []string{
 	localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard,
 	localapi.PermFiles, localapi.PermHearSound, localapi.PermRunAITask, localapi.PermApproveAIAction,
+	localapi.PermSeeStatus, localapi.PermUseSSH, localapi.PermUseRDP, localapi.PermUseVNC,
 }
 
 // passwordGrants is the Permissions page's choice of what a correct password

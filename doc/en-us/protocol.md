@@ -136,11 +136,30 @@ is injected; pointer moves alone are dropped while a task acts. The controller's
 `ai-task`, `ai-error` and `ai-draft` to its GUI as media packets 5, 6 and 10; a newer task replaces one still
 waiting, like the stats (packet 4).
 
+## Compatibility
+
+The wire stays protocol 10; abilities added since 0.4.0 are announced, never assumed. `host_hello`
+and `client_hello` carry `features`, a list of tokens; a build that sends the list (even empty)
+ignores message types, permission names, session actions and AI commands it does not know, while
+0.4.0 and older send none and end a session on them. So a newer build sends a new message type, a
+new permission (in `want` or `granted`) or a new refusal only to a peer that announced the token it
+belongs to, and a missing list means the 0.4.0 set. Both hellos are otherwise unchanged, and 0.4.0
+ignores fields it does not know, so the two talk with what both have. A peer whose protocol lies
+outside the range this build speaks (10 to 10) is refused as incompatible.
+
+| Token | Brings |
+|---|---|
+| `key-login` | sign-in with an SSH-style key ([identity-and-access.md](identity-and-access.md)) |
+| `tunnel` | tunnels to the host's own SSH, Remote Desktop and VNC; permissions `use-ssh`, `use-rdp`, `use-vnc` |
+| `status` | quiet status watchers and the `system` message; permission `see-status` |
+| `input-sync` | the controller's `sync` input event (the keys and buttons it holds) |
+
 ## Decoders
 
 Every frame is size-checked before it is read, decrypted before it is parsed, and parsed into
-fixed types; unknown message types close the session. The protocol is versioned: a mismatch closes
-the connection with a reason.
+fixed types; a message type or a name this build does not know is ignored (see Compatibility),
+anything else malformed closes the session. The protocol is versioned: a peer outside the range
+this build speaks is refused with a reason.
 Randomized tests feed both ends garbage, wrongly framed and truncated input, also after a real
 first handshake message, and damaged identity backups: every connection ends, nothing panics, and a
 damaged backup never changes the identity.

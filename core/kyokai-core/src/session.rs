@@ -20,8 +20,55 @@ use tokio::sync::{Notify, mpsc};
 
 use crate::{audio, media, video};
 
-/// Version of the wire protocol; a mismatch closes the connection.
+/// Version of the wire protocol. It stays 10 while newer abilities are
+/// announced as features (doc/en-us/protocol.md, "Compatibility").
 pub const PROTOCOL: u32 = 10;
+/// The oldest protocol this build speaks; a peer outside
+/// MIN_PROTOCOL..=PROTOCOL is refused.
+pub const MIN_PROTOCOL: u32 = 10;
+
+/// Feature tokens a hello may announce. Announcing the list at all (even
+/// empty) says the sender ignores message types and permission names it
+/// does not know; 0.4.0 and older send none and end a session on them.
+// Each token is used once the feature it names lands in this build.
+#[allow(dead_code)]
+pub mod feature {
+    /// Sign-in with an SSH-style key (doc/en-us/identity-and-access.md).
+    pub const KEY_LOGIN: &str = "key-login";
+    /// Tunnels to the host's own SSH, Remote Desktop and VNC.
+    pub const TUNNEL: &str = "tunnel";
+    /// Quiet status watchers and the `system` message.
+    pub const STATUS: &str = "status";
+    /// The controller's `sync` input event (the keys it holds).
+    pub const INPUT_SYNC: &str = "input-sync";
+}
+
+/// The features this build announces.
+pub const FEATURES: &[&str] = &[];
+
+/// What the other side of a session announced: its features, none for
+/// 0.4.0 and older.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Peer {
+    pub features: Vec<String>,
+}
+
+impl Peer {
+    /// Whether the peer announced a feature.
+    pub fn has(&self, feature: &str) -> bool {
+        self.features.iter().any(|f| f == feature)
+    }
+}
+
+/// Whether a peer's protocol is one this build speaks.
+fn speaks(protocol: u32) -> bool {
+    (MIN_PROTOCOL..=PROTOCOL).contains(&protocol)
+}
+
+/// The features this build announces, as a hello carries them.
+fn our_features() -> Vec<String> {
+    FEATURES.iter().map(|f| f.to_string()).collect()
+}
 
 /// How many frames the host sends ahead of the controller's
 /// acknowledgements: enough for the frame-rate cap over a relay's round
@@ -56,6 +103,10 @@ struct HostHello {
     source: String,
     device_key: String,
     signature: String,
+    /// What this build can do beyond protocol 10 (`feature`); absent from
+    /// 0.4.0 and older.
+    #[serde(default)]
+    features: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -64,6 +115,7 @@ struct ClientHello {
     version: String,
     device_key: String,
     signature: String,
+    #[serde(deserialize_with = "crate::access::known_permissions")]
     want: Vec<Permission>,
     /// One OPAQUE credential request per password slot; None asks the
     /// host's user without a password.
@@ -75,6 +127,9 @@ struct ClientHello {
     /// A resume token from an earlier session with this host.
     #[serde(default)]
     resume: Option<String>,
+    /// What this build can do beyond protocol 10 (`feature`).
+    #[serde(default)]
+    features: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -94,7 +149,7 @@ struct Login {
 #[derive(Serialize, Deserialize)]
 struct Verdict {
     accepted: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "crate::access::known_permissions")]
     granted: Vec<Permission>,
     #[serde(default)]
     reason: Option<Refusal>,
@@ -266,6 +321,10 @@ enum Message {
         blocked: bool,
         privacy: bool,
     },
+    /// A message type a newer peer sends that this build does not know:
+    /// ignored (0.4.0 and older ended the session on it).
+    #[serde(other)]
+    Unknown,
 }
 
 /// What a controller may do to the host's session (RustDesk's session
@@ -279,6 +338,9 @@ enum SessionAction {
     Unblock,
     PrivacyOn,
     PrivacyOff,
+    /// An action of a newer controller: ignored.
+    #[serde(other)]
+    Unknown,
 }
 
 /// The session actions as the host offers them now.
@@ -299,6 +361,9 @@ enum Steer {
     Resume,
     Cancel,
     Reply,
+    /// A command of a newer controller: ignored.
+    #[serde(other)]
+    Unknown,
 }
 
 /// How long a host waits for the controller's codecs before it starts the
@@ -493,6 +558,8 @@ struct Entry {
     peer_source: String,
     /// What the other device said about itself after the login.
     peer: About,
+    /// What the other device announced in its hello (`feature`).
+    features: Peer,
     stop: Arc<Notify>,
     /// Host side: notified when a resumed connection replaces this session,
     /// which then ends at once (`Sessions::supersede`).
@@ -632,6 +699,7 @@ impl Sessions {
             peer_version: String::new(),
             peer_source: String::new(),
             peer: About::default(),
+            features: Peer::default(),
             stop: stop.clone(),
             cut: Arc::default(),
             media: Arc::default(),
@@ -959,6 +1027,7 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             source: SOURCE_URL.into(),
             device_key: STANDARD.encode(ctx.identity.public_key()),
             signature: sign_static(&ctx.identity, &my_static),
+            features: our_features(),
         };
         let payload = serde_json::to_vec(&hello).map_err(|_| Failure::Broken)?;
         let n = hs.write_message(&payload, &mut buf)?;
@@ -967,7 +1036,7 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         let frame = step(read_frame(&mut stream)).await?;
         let n = hs.read_message(&frame, &mut buf)?;
         let client: ClientHello = serde_json::from_slice(&buf[..n]).map_err(|_| Failure::Broken)?;
-        if client.protocol != PROTOCOL {
+        if !speaks(client.protocol) {
             return Err(Failure::Incompatible);
         }
         let client_key = verify_static(
@@ -992,6 +1061,9 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let cut = ctx.sessions.cut(id);
     ctx.sessions.update(id, |e| {
         e.peer_version = client.version.clone();
+        e.features = Peer {
+            features: client.features.clone(),
+        };
     });
     let login = host_login(&ctx, &mut ch, &client, &client_key, &context, from, id).await;
     drop(incoming);
@@ -1252,7 +1324,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         let frame = step(read_frame(&mut stream)).await?;
         let n = hs.read_message(&frame, &mut buf)?;
         let host: HostHello = serde_json::from_slice(&buf[..n]).map_err(|_| Failure::Broken)?;
-        if host.protocol != PROTOCOL {
+        if !speaks(host.protocol) {
             // Not yet authenticated: kept only when it reads as a version,
             // so the controller can say which version the host runs.
             if is_version(&host.version) {
@@ -1262,6 +1334,9 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             return Err(Failure::Incompatible);
         }
         let host_key = verify_static(&host.device_key, &host.signature, hs.get_remote_static())?;
+        let peer = Peer {
+            features: host.features.clone(),
+        };
         if identity::device_id(&host_key) != device_id {
             return Err(Failure::WrongDevice);
         }
@@ -1275,6 +1350,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         ctx.sessions.update(id, |e| {
             e.peer_version = host.version.clone();
             e.peer_source = host.source.clone();
+            e.features = peer.clone();
         });
         // 3: -> s, se + client_hello with both credential requests, or
         // none (and this device's description) to ask without a password
@@ -1292,10 +1368,11 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             version: ctx.version.clone(),
             device_key: STANDARD.encode(ctx.identity.public_key()),
             signature: sign_static(&ctx.identity, &my_static),
-            want,
+            want: crate::access::wire_want(&want, &peer),
             about: half.is_none().then(|| ctx.about()),
             requests,
             resume: resume.as_ref().map(|t| t.to_string()),
+            features: our_features(),
         };
         let payload = serde_json::to_vec(&hello).map_err(|_| Failure::Broken)?;
         let n = hs.write_message(&payload, &mut buf)?;
@@ -1447,7 +1524,7 @@ pub async fn identify<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S) -> Resul
     let frame = step(read_frame(&mut stream)).await?;
     let n = hs.read_message(&frame, &mut buf)?;
     let host: HostHello = serde_json::from_slice(&buf[..n]).map_err(|_| Failure::Broken)?;
-    if host.protocol != PROTOCOL {
+    if !speaks(host.protocol) {
         return Err(Failure::Incompatible);
     }
     let key = verify_static(&host.device_key, &host.signature, hs.get_remote_static())?;
@@ -1532,6 +1609,7 @@ impl HostAi {
                 Steer::Resume => self.ai.resume(id),
                 Steer::Cancel => self.ai.cancel(id),
                 Steer::Reply => self.ai.reply(id, &text),
+                Steer::Unknown => Ok(()),
             },
             Message::AiDecide { id, approve } if self.approve => self.ai.decide(id, approve),
             Message::AiDraft { text } if self.run => self.ai.set_draft(&text),
@@ -2174,6 +2252,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 };
                 match serde_json::from_slice::<Message>(&whole).map_err(|_| Failure::Broken)? {
                     Message::Ping => seal_json(&mut noise, &mut buf, &mut wr, &Message::Pong).await?,
+                    // A newer peer's message: ignored, never the end of the session.
+                    Message::Unknown => {}
                     Message::Pong => {}
                     Message::Quality { preset, fps, i444 } => {
                         // Full colour switched: the video restarts when that
@@ -2437,6 +2517,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     #[cfg(not(any(windows, target_os = "macos")))]
                     Message::Input { .. } => {}
+                    // A newer controller's action this build does not know.
+                    Message::Action { action: SessionAction::Unknown } => {}
                     // Session actions need control-input, like input; a
                     // person acting takes over from the host's AI task.
                     #[cfg(windows)]
@@ -2456,6 +2538,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                                 SessionAction::PrivacyOn | SessionAction::PrivacyOff => {
                                     inj.privacy(action == SessionAction::PrivacyOn);
                                 }
+                                SessionAction::Unknown => {}
                             }
                             if matches!(action, SessionAction::Block | SessionAction::Unblock | SessionAction::PrivacyOn | SessionAction::PrivacyOff) {
                                 let now = offered(inj);
@@ -2493,6 +2576,177 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }
     }
     outcome
+}
+
+/// Frozen copies of what 0.4.0 (protocol 10, no features) parses, to check
+/// that everything a newer build sends it still reads.
+#[cfg(test)]
+mod legacy {
+    use serde::Deserialize;
+
+    /// 0.4.0's permissions.
+    #[derive(Deserialize, Debug, PartialEq)]
+    #[serde(rename_all = "kebab-case")]
+    pub enum Permission {
+        ViewScreen,
+        ControlInput,
+        RunAiTask,
+        ApproveAiAction,
+        Clipboard,
+        Files,
+        HearSound,
+    }
+
+    /// 0.4.0's host_hello.
+    #[derive(Deserialize)]
+    #[allow(dead_code)]
+    pub struct HostHello {
+        pub protocol: u32,
+        pub version: String,
+        pub source: String,
+        pub device_key: String,
+        pub signature: String,
+    }
+
+    /// 0.4.0's client_hello.
+    #[derive(Deserialize)]
+    #[allow(dead_code)]
+    pub struct ClientHello {
+        pub protocol: u32,
+        pub version: String,
+        pub device_key: String,
+        pub signature: String,
+        pub want: Vec<Permission>,
+        pub requests: Option<[String; 2]>,
+        #[serde(default)]
+        pub resume: Option<String>,
+    }
+
+    /// 0.4.0's verdict.
+    #[derive(Deserialize)]
+    #[allow(dead_code)]
+    pub struct Verdict {
+        pub accepted: bool,
+        #[serde(default)]
+        pub granted: Vec<Permission>,
+    }
+}
+
+#[cfg(test)]
+mod compat_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_peers_parse_the_hellos_a_new_build_sends() {
+        let host = HostHello {
+            protocol: PROTOCOL,
+            version: "0.4.1".into(),
+            source: SOURCE_URL.into(),
+            device_key: "k".into(),
+            signature: "s".into(),
+            features: vec![feature::STATUS.into(), feature::TUNNEL.into()],
+        };
+        let old: legacy::HostHello =
+            serde_json::from_value(serde_json::to_value(&host).unwrap()).unwrap();
+        assert_eq!(old.protocol, 10);
+        // What a new controller sends a legacy host: no permission it lacks.
+        let want = crate::access::wire_want(
+            &[
+                Permission::ViewScreen,
+                Permission::SeeStatus,
+                Permission::UseSsh,
+            ],
+            &Peer::default(),
+        );
+        let client = ClientHello {
+            protocol: PROTOCOL,
+            version: "0.4.1".into(),
+            device_key: "k".into(),
+            signature: "s".into(),
+            want,
+            requests: None,
+            about: None,
+            resume: None,
+            features: our_features(),
+        };
+        let old: legacy::ClientHello =
+            serde_json::from_value(serde_json::to_value(&client).unwrap()).unwrap();
+        assert_eq!(old.want, vec![legacy::Permission::ViewScreen]);
+        let verdict = Verdict {
+            accepted: true,
+            granted: vec![Permission::ViewScreen],
+            reason: None,
+            resume: None,
+            about: None,
+        };
+        let old: legacy::Verdict =
+            serde_json::from_value(serde_json::to_value(&verdict).unwrap()).unwrap();
+        assert!(old.accepted);
+    }
+
+    #[test]
+    fn want_is_filtered_by_what_the_host_announced() {
+        let want = [
+            Permission::ViewScreen,
+            Permission::SeeStatus,
+            Permission::UseRdp,
+        ];
+        let cases: [(&[&str], &[Permission]); 4] = [
+            (&[], &[Permission::ViewScreen]),
+            (
+                &[feature::STATUS],
+                &[Permission::ViewScreen, Permission::SeeStatus],
+            ),
+            (
+                &[feature::TUNNEL],
+                &[Permission::ViewScreen, Permission::UseRdp],
+            ),
+            (&[feature::STATUS, feature::TUNNEL], &want),
+        ];
+        for (features, expect) in cases {
+            let peer = Peer {
+                features: features.iter().map(|f| f.to_string()).collect(),
+            };
+            assert_eq!(
+                crate::access::wire_want(&want, &peer),
+                expect,
+                "{features:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn new_builds_ignore_unknown_types_and_names() {
+        // A hello from 0.4.0: no features.
+        let old =
+            r#"{"protocol":10,"version":"0.4.0","source":"s","device_key":"k","signature":"s"}"#;
+        let host: HostHello = serde_json::from_str(old).unwrap();
+        assert!(host.features.is_empty());
+        let m: Message = serde_json::from_str(r#"{"type":"from-the-future","x":1}"#).unwrap();
+        assert!(matches!(m, Message::Unknown));
+        let m: Message = serde_json::from_str(r#"{"type":"action","action":"teleport"}"#).unwrap();
+        assert!(matches!(
+            m,
+            Message::Action {
+                action: SessionAction::Unknown
+            }
+        ));
+        let m: Message =
+            serde_json::from_str(r#"{"type":"ai-command","id":1,"command":"dance"}"#).unwrap();
+        assert!(matches!(
+            m,
+            Message::AiCommand {
+                command: Steer::Unknown,
+                ..
+            }
+        ));
+        let v: Verdict =
+            serde_json::from_str(r#"{"accepted":true,"granted":["view-screen","levitate"]}"#)
+                .unwrap();
+        assert_eq!(v.granted, vec![Permission::ViewScreen]);
+        // A protocol outside the range is still refused.
+        assert!(speaks(10) && !speaks(9) && !speaks(PROTOCOL + 1));
+    }
 }
 
 #[cfg(test)]

@@ -103,6 +103,14 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | tab strip (the title bar) | 标签栏（即标题栏） |
 | toolbar (the viewer's) / Hide controls / Show controls | 控制栏 / 收起控制栏 / 展开控制栏 |
 | grip / handle (the folded toolbar) | 拖动柄 / 把手 |
+| feature token (protocol) | 标记 |
+| sign-in key / keys that can connect | 登录密钥 / 可连接的密钥 |
+| saved passwords and keys | 已保存的密码与密钥 |
+| tunnel (to a service) | 隧道 |
+| status watcher / see this computer's status | 状态查看者 / 查看本机状态 |
+| Remote Desktop (RDP) / Screen Sharing (VNC) | 远程桌面（RDP） / 屏幕共享（VNC） |
+| input paused | 输入已暂停 |
+| loading indicator | 加载指示器 |
 
 ## 6. 审阅清单
 

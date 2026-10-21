@@ -27,6 +27,48 @@ pub enum Permission {
     Files,
     /// Hearing what the host plays; `ViewScreen` does not include it.
     HearSound,
+    /// Seeing the host's system status (CPU, memory, disk, network) as a
+    /// quiet watcher; needs a peer announcing `status`.
+    SeeStatus,
+    /// A tunnel to the host's own SSH server; needs `tunnel`.
+    UseSsh,
+    /// A tunnel to the host's own Remote Desktop; needs `tunnel`.
+    UseRdp,
+    /// A tunnel to the host's own VNC or Screen Sharing; needs `tunnel`.
+    UseVnc,
+}
+
+impl Permission {
+    /// The feature a peer must announce before this permission crosses the
+    /// wire to it (older builds end a session on a name they do not know).
+    pub fn feature(self) -> Option<&'static str> {
+        use crate::session::feature;
+        match self {
+            Permission::SeeStatus => Some(feature::STATUS),
+            Permission::UseSsh | Permission::UseRdp | Permission::UseVnc => Some(feature::TUNNEL),
+            _ => None,
+        }
+    }
+}
+
+/// What of `want` may be sent to a peer: the permissions it knows.
+pub fn wire_want(want: &[Permission], peer: &crate::session::Peer) -> Vec<Permission> {
+    want.iter()
+        .copied()
+        .filter(|p| p.feature().is_none_or(|f| peer.has(f)))
+        .collect()
+}
+
+/// Reads a list of permissions, leaving out names this build does not know
+/// (a newer peer's), so they never end a session.
+pub fn known_permissions<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Vec<Permission>, D::Error> {
+    let names = Vec::<Value>::deserialize(d)?;
+    Ok(names
+        .into_iter()
+        .filter_map(|n| serde_json::from_value(n).ok())
+        .collect())
 }
 
 /// Why a host refused a controller (names cross the wire and the FFI).

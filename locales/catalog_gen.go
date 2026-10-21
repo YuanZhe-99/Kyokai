@@ -2566,6 +2566,46 @@ func (msgs Messages) PermHearSound() string {
 	return Catalog.Format(msgs.locale, "PermHearSound", nil)
 }
 
+// PermSeeStatus says "See this computer's status"
+// in the language the app shows.
+func PermSeeStatus() string { return In(i18n.Locale()).PermSeeStatus() }
+
+// PermSeeStatus says "See this computer's status"
+// in the language of msgs.
+func (msgs Messages) PermSeeStatus() string {
+	return Catalog.Format(msgs.locale, "PermSeeStatus", nil)
+}
+
+// PermUseSSH says "Connect to its SSH"
+// in the language the app shows.
+func PermUseSSH() string { return In(i18n.Locale()).PermUseSSH() }
+
+// PermUseSSH says "Connect to its SSH"
+// in the language of msgs.
+func (msgs Messages) PermUseSSH() string {
+	return Catalog.Format(msgs.locale, "PermUseSSH", nil)
+}
+
+// PermUseRDP says "Connect to its Remote Desktop"
+// in the language the app shows.
+func PermUseRDP() string { return In(i18n.Locale()).PermUseRDP() }
+
+// PermUseRDP says "Connect to its Remote Desktop"
+// in the language of msgs.
+func (msgs Messages) PermUseRDP() string {
+	return Catalog.Format(msgs.locale, "PermUseRDP", nil)
+}
+
+// PermUseVNC says "Connect to its VNC or Screen Sharing"
+// in the language the app shows.
+func PermUseVNC() string { return In(i18n.Locale()).PermUseVNC() }
+
+// PermUseVNC says "Connect to its VNC or Screen Sharing"
+// in the language of msgs.
+func (msgs Messages) PermUseVNC() string {
+	return Catalog.Format(msgs.locale, "PermUseVNC", nil)
+}
+
 // PermRunAITask says "Run AI tasks"
 // in the language the app shows.
 func PermRunAITask() string { return In(i18n.Locale()).PermRunAITask() }

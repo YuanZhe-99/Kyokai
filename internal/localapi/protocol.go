@@ -48,62 +48,77 @@ func UserSocketPath(profile string) string {
 type RequestType string
 
 const (
-	RequestStatus               RequestType = "status"                 // identity summary, never a secret
-	RequestPasswordReveal       RequestType = "password.reveal"        // the temporary password, for the host's own GUI
-	RequestPasswordRegenerate   RequestType = "password.regenerate"    // a new temporary password
-	RequestNetworkGet           RequestType = "network.get"            // the first network's settings without the secret (an older GUI, ctl)
-	RequestNetworkSet           RequestType = "network.set"            // the first network's new settings (Request.Network)
-	RequestNetworkProfiles      RequestType = "network.profiles"       // every network kept, without the secrets
-	RequestNetworkProfileSet    RequestType = "network.profile.set"    // add or change a network (Request.Profile)
-	RequestNetworkProfileRemove RequestType = "network.profile.remove" // forget a network (Request.Profile's ID)
-	RequestNetworkDirect        RequestType = "network.direct"         // try direct paths in every network (Request.Direct)
-	RequestPermanentSet         RequestType = "password.set_permanent" // set or remove the permanent password (Request.Permanent)
-	RequestConnect              RequestType = "session.connect"        // start a session with a device (Request.Connect)
-	RequestIdentify             RequestType = "session.identify"       // which device answers at an address (Request.Address → Response.DeviceID or Response.Failure)
-	RequestDeviceRemove         RequestType = "device.remove"          // take a host off Home: end its sessions from here, forget its key and saved password (Request.DeviceID)
-	RequestClose                RequestType = "session.close"          // end a session (Request.ID)
-	RequestDecide               RequestType = "request.decide"         // answer a host confirmation (Request.Decide)
-	RequestTrustedList          RequestType = "trusted.list"           // the trusted devices
-	RequestTrustedRemove        RequestType = "trusted.remove"         // forget a trusted device (Request.Key)
-	RequestHostForget           RequestType = "host.forget"            // forget a pinned host key (Request.DeviceID)
-	RequestForgetPassword       RequestType = "password.forget_saved"  // forget the password saved for a host (Request.DeviceID)
-	RequestIdentityExport       RequestType = "identity.export"        // an encrypted identity backup (Request.Backup.Passphrase)
-	RequestIdentityImport       RequestType = "identity.import"        // restore an identity backup (Request.Backup)
-	RequestIdentityReset        RequestType = "identity.reset"         // a new identity and Device ID
-	RequestNameSet              RequestType = "device.set_name"        // this device's friendly name (Request.Name; "" follows the computer's name)
-	RequestAccessSettings       RequestType = "access.settings"        // which passwords open this host (Request.PasswordMode), whether a password admits without asking (Request.WithoutAsking) and connections by address (Request.ByAddress)
-	RequestAgentRestart         RequestType = "helper.agent_restart"   // the helper's session agent starts anew (macOS counts new privacy grants only then)
-	RequestStartOver            RequestType = "secrets.start_over"     // the saved identity cannot be unlocked: move it aside and keep a new one
-	RequestPermission           RequestType = "system.permission"      // ask the system for a privacy permission (Request.Permission: "screen", "accessibility", "input-monitoring" or "keychain"; macOS)
-	RequestPasswordGrants       RequestType = "access.password_grants" // what a correct password grants without asking (Request.Grants)
-	RequestProtect              RequestType = "protect.set"            // protected mode on (needs a permanent password) or off (with it) (Request.Protect); while on, the engine serves only the status, the AI requests, confirmations, disconnecting, quitting and what the GUI sends as it attaches
-	RequestLogs                 RequestType = "logs.set"               // keep no logs, crash traces or connection history (Request.LogsOff), or keep them again; the GUI sends it as it attaches and when the setting changes
-	RequestCaptureShow          RequestType = "capture.show"           // whether captures show Kyokai's windows (Request.Show); hidden until a GUI says otherwise
-	RequestInputKyokai          RequestType = "input.kyokai"           // whether a person's remote input may reach Kyokai's windows (Request.KyokaiInput); refused until a GUI says otherwise
-	RequestSoundSource          RequestType = "sound.source"           // the sound to share (Request.SoundSource): "" what the computer plays, else an input device's id
-	RequestSoundDevices         RequestType = "sound.devices"          // the input devices that may be shared (Response.SoundDevices)
-	RequestBackground           RequestType = "helper.background"      // the helper serves from boot (Request.Background) or only while a GUI is attached
-	RequestStoreExport          RequestType = "store.export"           // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
-	RequestStoreImport          RequestType = "store.import"           // take over a store this device's other engine sealed (Request.Backup)
-	RequestStoreClear           RequestType = "store.clear"            // forget the moved store and stop: the other engine holds it now
-	RequestHelperRemove         RequestType = "helper.remove"          // the helper removes itself, its state included (macOS), after the store moved out
-	RequestHelperUpdate         RequestType = "helper.update"          // the helper installs the signed bundle in Request.From and restarts
-	RequestAIModels             RequestType = "ai.models.list"         // the models a source lists (Request.Source → Response.AIModels), only when asked
-	RequestMedia                RequestType = "session.media"          // a controller session's media (Request.ID); the connection then carries packets
-	RequestSessionAttach        RequestType = "session.attach"         // streaming; see package doc
-	RequestAISettingsGet        RequestType = "ai.settings.get"        // the AI settings and which keys are stored
-	RequestAISettingsSet        RequestType = "ai.settings.set"        // change the AI settings (Request.AISettings)
-	RequestAIKeySet             RequestType = "ai.key.set"             // store or remove a provider key (Request.AIKey)
-	RequestAITaskStart          RequestType = "ai.task.start"          // start an AI task (Request.AITask)
-	RequestAIDraft              RequestType = "ai.draft.set"           // the shared draft of the next instruction (Request.AITask.Text)
-	RequestAITaskReply          RequestType = "ai.task.reply"          // continue a finished task (Request.ID, Request.AITask.Text)
-	RequestAITaskPause          RequestType = "ai.task.pause"          // pause a task (Request.ID)
-	RequestAITaskResume         RequestType = "ai.task.resume"         // resume a paused task (Request.ID)
-	RequestAITaskCancel         RequestType = "ai.task.cancel"         // cancel a task (Request.ID)
-	RequestAITaskDecide         RequestType = "ai.task.decide"         // answer an approval (Request.ID, Request.AITask.Approve)
-	RequestAITasks              RequestType = "ai.tasks"               // every task, newest first
-	RequestAIHistoryClear       RequestType = "ai.history.clear"       // forget the finished tasks
-	RequestAIStop               RequestType = "ai.stop"                // the emergency stop: cancel every task
+	RequestStatus               RequestType = "status"                     // identity summary, never a secret
+	RequestPasswordReveal       RequestType = "password.reveal"            // the temporary password, for the host's own GUI
+	RequestPasswordRegenerate   RequestType = "password.regenerate"        // a new temporary password
+	RequestNetworkGet           RequestType = "network.get"                // the first network's settings without the secret (an older GUI, ctl)
+	RequestNetworkSet           RequestType = "network.set"                // the first network's new settings (Request.Network)
+	RequestNetworkProfiles      RequestType = "network.profiles"           // every network kept, without the secrets
+	RequestNetworkProfileSet    RequestType = "network.profile.set"        // add or change a network (Request.Profile)
+	RequestNetworkProfileRemove RequestType = "network.profile.remove"     // forget a network (Request.Profile's ID)
+	RequestNetworkDirect        RequestType = "network.direct"             // try direct paths in every network (Request.Direct)
+	RequestPermanentSet         RequestType = "password.set_permanent"     // set or remove the permanent password (Request.Permanent)
+	RequestConnect              RequestType = "session.connect"            // start a session with a device (Request.Connect)
+	RequestIdentify             RequestType = "session.identify"           // which device answers at an address (Request.Address → Response.DeviceID or Response.Failure)
+	RequestDeviceRemove         RequestType = "device.remove"              // take a host off Home: end its sessions from here, forget its key and saved password (Request.DeviceID)
+	RequestClose                RequestType = "session.close"              // end a session (Request.ID)
+	RequestDecide               RequestType = "request.decide"             // answer a host confirmation (Request.Decide)
+	RequestTrustedList          RequestType = "trusted.list"               // the trusted devices
+	RequestTrustedRemove        RequestType = "trusted.remove"             // forget a trusted device (Request.Key)
+	RequestHostForget           RequestType = "host.forget"                // forget a pinned host key (Request.DeviceID)
+	RequestForgetPassword       RequestType = "password.forget_saved"      // forget the password saved for a host (Request.DeviceID)
+	RequestIdentityExport       RequestType = "identity.export"            // an encrypted identity backup (Request.Backup.Passphrase)
+	RequestIdentityImport       RequestType = "identity.import"            // restore an identity backup (Request.Backup)
+	RequestIdentityReset        RequestType = "identity.reset"             // a new identity and Device ID
+	RequestNameSet              RequestType = "device.set_name"            // this device's friendly name (Request.Name; "" follows the computer's name)
+	RequestAccessSettings       RequestType = "access.settings"            // which passwords open this host (Request.PasswordMode), whether a password admits without asking (Request.WithoutAsking) and connections by address (Request.ByAddress)
+	RequestAgentRestart         RequestType = "helper.agent_restart"       // the helper's session agent starts anew (macOS counts new privacy grants only then)
+	RequestStartOver            RequestType = "secrets.start_over"         // the saved identity cannot be unlocked: move it aside and keep a new one
+	RequestPermission           RequestType = "system.permission"          // ask the system for a privacy permission (Request.Permission: "screen", "accessibility", "input-monitoring" or "keychain"; macOS)
+	RequestPasswordGrants       RequestType = "access.password_grants"     // what a correct password grants without asking (Request.Grants)
+	RequestProtect              RequestType = "protect.set"                // protected mode on (needs a permanent password) or off (with it) (Request.Protect); while on, the engine serves only the status, the AI requests, confirmations, disconnecting, quitting and what the GUI sends as it attaches
+	RequestLogs                 RequestType = "logs.set"                   // keep no logs, crash traces or connection history (Request.LogsOff), or keep them again; the GUI sends it as it attaches and when the setting changes
+	RequestCaptureShow          RequestType = "capture.show"               // whether captures show Kyokai's windows (Request.Show); hidden until a GUI says otherwise
+	RequestInputKyokai          RequestType = "input.kyokai"               // whether a person's remote input may reach Kyokai's windows (Request.KyokaiInput); refused until a GUI says otherwise
+	RequestSoundSource          RequestType = "sound.source"               // the sound to share (Request.SoundSource): "" what the computer plays, else an input device's id
+	RequestSoundDevices         RequestType = "sound.devices"              // the input devices that may be shared (Response.SoundDevices)
+	RequestBackground           RequestType = "helper.background"          // the helper serves from boot (Request.Background) or only while a GUI is attached
+	RequestStoreExport          RequestType = "store.export"               // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
+	RequestStoreImport          RequestType = "store.import"               // take over a store this device's other engine sealed (Request.Backup)
+	RequestStoreClear           RequestType = "store.clear"                // forget the moved store and stop: the other engine holds it now
+	RequestHelperRemove         RequestType = "helper.remove"              // the helper removes itself, its state included (macOS), after the store moved out
+	RequestHelperUpdate         RequestType = "helper.update"              // the helper installs the signed bundle in Request.From and restarts
+	RequestAIModels             RequestType = "ai.models.list"             // the models a source lists (Request.Source → Response.AIModels), only when asked
+	RequestMedia                RequestType = "session.media"              // a controller session's media (Request.ID); the connection then carries packets
+	RequestSessionAttach        RequestType = "session.attach"             // streaming; see package doc
+	RequestAISettingsGet        RequestType = "ai.settings.get"            // the AI settings and which keys are stored
+	RequestAISettingsSet        RequestType = "ai.settings.set"            // change the AI settings (Request.AISettings)
+	RequestAIKeySet             RequestType = "ai.key.set"                 // store or remove a provider key (Request.AIKey)
+	RequestAITaskStart          RequestType = "ai.task.start"              // start an AI task (Request.AITask)
+	RequestAIDraft              RequestType = "ai.draft.set"               // the shared draft of the next instruction (Request.AITask.Text)
+	RequestAITaskReply          RequestType = "ai.task.reply"              // continue a finished task (Request.ID, Request.AITask.Text)
+	RequestAITaskPause          RequestType = "ai.task.pause"              // pause a task (Request.ID)
+	RequestAITaskResume         RequestType = "ai.task.resume"             // resume a paused task (Request.ID)
+	RequestAITaskCancel         RequestType = "ai.task.cancel"             // cancel a task (Request.ID)
+	RequestAITaskDecide         RequestType = "ai.task.decide"             // answer an approval (Request.ID, Request.AITask.Approve)
+	RequestAITasks              RequestType = "ai.tasks"                   // every task, newest first
+	RequestAIHistoryClear       RequestType = "ai.history.clear"           // forget the finished tasks
+	RequestAIStop               RequestType = "ai.stop"                    // the emergency stop: cancel every task
+	RequestKeysList             RequestType = "keys.list"                  // this device's sign-in keys, public parts only (Response.Keys)
+	RequestKeysAdd              RequestType = "keys.add"                   // keep a sign-in key (Request.LoginKey, its private part towards the engine only)
+	RequestKeysRemove           RequestType = "keys.remove"                // forget a sign-in key (Request.LoginKey.ID)
+	RequestKeysSign             RequestType = "keys.sign"                  // sign an SSH user-auth request with a kept key (Request.Sign → Response.Signature); owner or operator only
+	RequestAuthorizedList       RequestType = "authorized.list"            // the keys that can connect to this device (Response.Authorized)
+	RequestAuthorizedAdd        RequestType = "authorized.add"             // let a public key connect (Request.Authorized)
+	RequestAuthorizedRemove     RequestType = "authorized.remove"          // stop a public key connecting (Request.Authorized.ID)
+	RequestCredentialsGet       RequestType = "credentials.get"            // a device's saved sign-in for one service (Request.DeviceID, Request.Service → Response.Credentials), at a client's sign-in only; owner or operator only
+	RequestCredentialsSet       RequestType = "credentials.set"            // save a device's sign-in for one service (Request.DeviceID, Request.Credentials)
+	RequestCredentialsForget    RequestType = "credentials.forget"         // forget one service's saved sign-in (Request.DeviceID, Request.Service), or all of them (no Service)
+	RequestWatchSet             RequestType = "watch.set"                  // watch these hosts' status for a while (Request.Watch): a lease the GUI renews
+	RequestTunnelOpen           RequestType = "tunnel.open"                // a tunnel to a device's own service (Request.Tunnel); the connection then carries its bytes
+	RequestNetworkLatencyFirst  RequestType = "network.latency_first"      // prefer the lowest-latency route in every network (Request.LatencyFirst)
+	RequestStoreForgetMove      RequestType = "store.forget_move"          // a parked engine (its store moved out) starts over with a new identity
+	RequestCloseControllers     RequestType = "sessions.close_controllers" // end this engine's controller sessions (a GUI that quits)
 	RequestShutdown             RequestType = "shutdown"
 )
 
@@ -182,6 +197,87 @@ type Request struct {
 	AISettings *AISettings    `json:"ai_settings,omitempty"`
 	AIKey      *AIKey         `json:"ai_key,omitempty"`
 	AITask     *AITaskRequest `json:"ai_task,omitempty"`
+	// LoginKey is RequestKeysAdd's key, or (its ID) RequestKeysRemove's.
+	LoginKey *LoginKey `json:"login_key,omitempty"`
+	// Sign is RequestKeysSign's.
+	Sign *SignRequest `json:"sign,omitempty"`
+	// Authorized is RequestAuthorizedAdd's key, or (its ID)
+	// RequestAuthorizedRemove's.
+	Authorized *AuthorizedKey `json:"authorized,omitempty"`
+	// Service names a service ("ssh", "rdp", "vnc") of the credential
+	// requests.
+	Service string `json:"service,omitempty"`
+	// Credentials are RequestCredentialsSet's.
+	Credentials *Credentials `json:"credentials,omitempty"`
+	// Watch are the Device IDs RequestWatchSet watches (empty: none).
+	Watch *[]string `json:"watch,omitempty"`
+	// Tunnel is RequestTunnelOpen's.
+	Tunnel *TunnelRequest `json:"tunnel,omitempty"`
+	// LatencyFirst is RequestNetworkLatencyFirst's.
+	LatencyFirst *bool `json:"latency_first,omitempty"`
+	// Replace lets RequestStoreImport replace an identity that has history.
+	Replace bool `json:"replace,omitempty"`
+	// MovedTo is where RequestStoreClear's store went ("helper" or "user").
+	MovedTo string `json:"moved_to,omitempty"`
+}
+
+// LoginKey is one of this device's sign-in keys. Private is set only in a
+// request towards the engine and is never returned.
+type LoginKey struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+	// Type is "ed25519", "rsa", "ecdsa-p256" or "ecdsa-p384"; only Ed25519
+	// keys sign in to Kyokai, every type to SSH.
+	Type string `json:"type,omitempty"`
+	// Public is the OpenSSH public key line.
+	Public string `json:"public,omitempty"`
+	// Private is the Ed25519 seed or the PKCS#8 DER, base64.
+	Private *string `json:"private,omitempty"`
+	Added   int64   `json:"added,omitempty"` // Unix seconds
+}
+
+// SignRequest asks the engine to sign an SSH user-auth request with a kept
+// key: the session id and the request's fields, never arbitrary data.
+type SignRequest struct {
+	KeyID string `json:"key_id"`
+	// Algorithm is the SSH signature algorithm ("ssh-ed25519",
+	// "rsa-sha2-256", "rsa-sha2-512", "ecdsa-sha2-nistp256", …).
+	Algorithm string `json:"algorithm"`
+	// Data is the exact SSH user-auth request to sign, base64.
+	Data string `json:"data"`
+}
+
+// AuthorizedKey is a public key that can connect to this device.
+type AuthorizedKey struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+	// Public is the OpenSSH public key line (Ed25519).
+	Public string `json:"public,omitempty"`
+	Added  int64  `json:"added,omitempty"` // Unix seconds
+	Last   int64  `json:"last,omitempty"`  // Unix seconds, its last sign-in
+}
+
+// Credentials are a device's saved sign-in for one of its services.
+// Password travels only in a request, and in Response.Credentials to the
+// engine's owner at a client's sign-in.
+type Credentials struct {
+	User     string  `json:"user,omitempty"`
+	Domain   string  `json:"domain,omitempty"`
+	Password *string `json:"password,omitempty"`
+	// KeyID names a kept sign-in key to use instead of a password (SSH).
+	KeyID string `json:"key_id,omitempty"`
+	// HostKey is the SSH server's key pinned on first use (authorized_keys
+	// form).
+	HostKey string `json:"host_key,omitempty"`
+}
+
+// TunnelRequest opens a tunnel to a device's own service.
+type TunnelRequest struct {
+	DeviceID string `json:"device_id"`
+	// Address dials that IP address or domain name instead of the network.
+	Address string `json:"address,omitempty"`
+	// Service is "ssh", "rdp" or "vnc".
+	Service string `json:"service"`
 }
 
 // AISettings are the host's AI settings. In a request, empty fields stay
@@ -356,10 +452,14 @@ const (
 	PermClipboard       = "clipboard"
 	PermFiles           = "files"
 	PermHearSound       = "hear-sound"
+	PermSeeStatus       = "see-status" // a quiet status watcher (needs the host's "status" feature)
+	PermUseSSH          = "use-ssh"    // a tunnel to the host's own SSH (needs "tunnel")
+	PermUseRDP          = "use-rdp"    // a tunnel to the host's own Remote Desktop
+	PermUseVNC          = "use-vnc"    // a tunnel to the host's own VNC or Screen Sharing
 )
 
 // AllPermissions in the order the interface lists them.
-var AllPermissions = []string{PermViewScreen, PermControlInput, PermRunAITask, PermApproveAIAction, PermClipboard, PermFiles, PermHearSound}
+var AllPermissions = []string{PermViewScreen, PermControlInput, PermRunAITask, PermApproveAIAction, PermClipboard, PermFiles, PermHearSound, PermSeeStatus, PermUseSSH, PermUseRDP, PermUseVNC}
 
 // Response is one line from the engine: an answer, or a pushed frame of a
 // session.
@@ -393,6 +493,14 @@ type Response struct {
 	AITasks []AITask `json:"ai_tasks,omitempty"`
 	// AIModels are the models a source listed (RequestAIModels).
 	AIModels []AIModel `json:"ai_models,omitempty"`
+	// Keys answers RequestKeysList (public parts only).
+	Keys []LoginKey `json:"keys,omitempty"`
+	// Signature answers RequestKeysSign: the SSH signature blob, base64.
+	Signature string `json:"signature,omitempty"`
+	// Authorized answers RequestAuthorizedList.
+	Authorized []AuthorizedKey `json:"authorized,omitempty"`
+	// Credentials answers RequestCredentialsGet.
+	Credentials *Credentials `json:"credentials,omitempty"`
 }
 
 // TrustedDevice is a controller this host accepted before.
@@ -430,6 +538,10 @@ type HostRequest struct {
 	Want     []string `json:"want"`
 	// About is what the controller says about itself.
 	About About `json:"about"`
+	// Key names the sign-in key the controller proved, if any.
+	Key string `json:"key,omitempty"`
+	// Service is a tunnel request's service, empty otherwise.
+	Service string `json:"service,omitempty"`
 }
 
 // RecentDevice is a host this device connected to.
@@ -444,6 +556,20 @@ type RecentDevice struct {
 	// Address is the address the last session dialed, empty over the
 	// network.
 	Address string `json:"address,omitempty"`
+	// Saved says what is kept for the host (flags only, never a secret).
+	Saved Saved `json:"saved"`
+	// Features are what the host announced in its last session
+	// ("key-login", "tunnel", "status", "input-sync"); none from 0.4.0.
+	Features []string `json:"features,omitempty"`
+}
+
+// Saved says which sign-ins this device keeps for a host.
+type Saved struct {
+	Password bool `json:"password,omitempty"`
+	Key      bool `json:"key,omitempty"`
+	SSH      bool `json:"ssh,omitempty"`
+	RDP      bool `json:"rdp,omitempty"`
+	VNC      bool `json:"vnc,omitempty"`
 }
 
 // SessionInfo is one session of this device, live or recently finished.
@@ -462,6 +588,9 @@ type SessionInfo struct {
 	PeerSource  string          `json:"peer_source"`
 	// Peer is what the other device said about itself after the login.
 	Peer About `json:"peer"`
+	// Service is a tunnel's service ("ssh", "rdp", "vnc"), empty for a
+	// desktop session.
+	Service string `json:"service,omitempty"`
 }
 
 // SoundDevice is an input device the host may share instead of what it
@@ -490,8 +619,10 @@ type NetworkSettings struct {
 // NetworkProfiles are the EasyTier networks the engine keeps, joined or
 // not, and whether every one tries direct paths (always in the helper).
 type NetworkProfiles struct {
-	Direct   bool             `json:"direct"`
-	Profiles []NetworkProfile `json:"profiles"`
+	Direct bool `json:"direct"`
+	// LatencyFirst prefers the lowest-latency route over the fewest hops.
+	LatencyFirst bool             `json:"latency_first,omitempty"`
+	Profiles     []NetworkProfile `json:"profiles"`
 }
 
 // NetworkProfile is one network kept: its ID, the name shown for it (empty:
@@ -618,7 +749,14 @@ type Status struct {
 	AI *AIActive `json:"ai,omitempty"`
 	// AIDraft is the shared draft of the next AI instruction, as anyone
 	// (this device's user or a controller) typed it last.
-	AIDraft string    `json:"ai_draft,omitempty"`
+	AIDraft string `json:"ai_draft,omitempty"`
+	// Watching are the hosts this device watches the status of, with the
+	// latest sample; Watchers the devices watching this one.
+	Watching []Watched `json:"watching,omitempty"`
+	Watchers []Watcher `json:"watchers,omitempty"`
+	// Moved: this engine gave its store to the other run mode and is parked
+	// ("helper" or "user"); it holds no identity.
+	Moved   string    `json:"moved,omitempty"`
 	Started time.Time `json:"started"`
 }
 
@@ -835,4 +973,67 @@ func (c *Client) Media(ctx context.Context, session uint64) (net.Conn, error) {
 		return nil, &RequestError{Code: resp.Code, Message: resp.Error}
 	}
 	return conn, nil
+}
+
+// Watched is a host whose status this device watches: how the watch goes
+// ("connecting", "watching", "no-credential", "unsupported", "refused",
+// "offline") and its latest sample, if any.
+type Watched struct {
+	DeviceID string        `json:"device_id"`
+	State    string        `json:"state"`
+	Sample   *SystemSample `json:"sample,omitempty"`
+	// ReceivedAt is when the sample arrived here (Unix milliseconds): the
+	// GUI never shows an old sample as current.
+	ReceivedAt int64 `json:"received_at,omitempty"`
+}
+
+// Watcher is a device watching this one's status.
+type Watcher struct {
+	DeviceID string `json:"device_id"`
+	About    About  `json:"about"`
+	Since    int64  `json:"since"` // Unix seconds
+}
+
+// SystemSample is a host's status at one moment (the `system` message).
+type SystemSample struct {
+	At      int64    `json:"at"` // Unix milliseconds, the host's clock
+	UptimeS uint64   `json:"uptime_s"`
+	CPU     CPUUse   `json:"cpu"`
+	Memory  Usage    `json:"memory"`
+	GPU     *GPUUse  `json:"gpu,omitempty"`
+	Disk    Usage    `json:"disk"`
+	Net     NetRates `json:"net"`
+	Battery *Battery `json:"battery,omitempty"`
+	// Services are the services listening on the host's loopback ("ssh",
+	// "rdp", "vnc").
+	Services []string `json:"services,omitempty"`
+}
+
+// CPUUse is the processor's load, 0–100, and its logical cores.
+type CPUUse struct {
+	Usage float64 `json:"usage"`
+	Cores int     `json:"cores"`
+}
+
+// GPUUse is the graphics processor's load, 0–100.
+type GPUUse struct {
+	Usage float64 `json:"usage"`
+}
+
+// Usage is bytes used of a total.
+type Usage struct {
+	Used  uint64 `json:"used"`
+	Total uint64 `json:"total"`
+}
+
+// NetRates are bytes per second received and sent.
+type NetRates struct {
+	RxBps uint64 `json:"rx_bps"`
+	TxBps uint64 `json:"tx_bps"`
+}
+
+// Battery is the host's charge and whether it charges.
+type Battery struct {
+	Percent  int  `json:"percent"`
+	Charging bool `json:"charging"`
 }
