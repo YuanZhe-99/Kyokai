@@ -1,8 +1,8 @@
 package gui
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"sync/atomic"
