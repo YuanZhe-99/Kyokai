@@ -1,5 +1,42 @@
 # Version history
 
+## 0.4.1 (2026-10-21, test build)
+
+- A run-mode switch moves everything: the move carried only the setting name networks had before
+  0.3.2, so networks, saved passwords and access settings stayed behind and Helper mode looked like
+  another device. The whole store and its files now move, another identity with its own settings
+  is never replaced unasked, an engine whose store moved out stays parked instead of making a new
+  identity, and the Windows helper removes itself without a prompt. The first start of 0.4.1 removes
+  what earlier switches left in the run mode not in use.
+- The picture never waits for one lost message: a key frame dropped at high latency (the helper
+  path at about 230 ms froze the picture while the delay looked normal) is asked for again at every
+  layer, a still screen still answers, a capture or encoder that fails reopens, unacknowledged
+  frames are released after 3 s, and capture waits for room. A dark display wakes; the viewer
+  offers Wake it and says when it is recovering the picture. In Helper mode the session agent
+  follows the input desktop (the lock screen) and keeps a log.
+- Input never jams: it never waits for a stalled session, releases always arrive, presses typed
+  during a stall or a reconnect are dropped instead of arriving late, the keyboard grab steps aside
+  while a session is stalled, and Map mode keeps the controller's input method out of the way while
+  Translate mode lets it finish composing (Chinese and Japanese input could leave the controller's
+  keyboard dead).
+- Sign in with SSH-style Ed25519 keys: keys that can connect to this device, your own keys
+  (generated or imported; a private key is shown once), a proof bound to the session.
+- SSH, Remote Desktop and VNC (Apple Screen Sharing too) of a device through tunnels inside Kyokai
+  sessions, with built-in clients (MyGo's terminal; RDP and VNC from open-screen-sharing,
+  GPL-3.0-or-later); each is a permission, off by default; their passwords and keys are saved with
+  the device's Kyokai password and forgotten together, and Security lists what is saved.
+- Home is a grid of device cards with the host's live status (CPU, memory, GPU, disk, network,
+  battery, uptime) for devices with a saved password or key, watched quietly.
+- Closing a window with connections asks first when it holds two or more, or one while Home is
+  shown, and disconnects them; closing the main window no longer leaves its connections running.
+- Network: every node refuses EasyTier's QUIC and KCP proxy input and foreign networks; Try direct
+  connections moves into Advanced with a warning; latency-first routing. Loading indicators from
+  MyGo's loading plugin everywhere.
+- Protocol 10 with feature announcements (`key-login`, `tunnel`, `status`, `input-sync`): 0.4.1 and
+  0.4.0 connect both ways with what both have (checked); local API 2; ABI 5.
+- Upstream versions: MyGo v0.6.2 (from v0.5.5); EasyTier v2.7.0, RustDesk 1.5.0 (vendored code),
+  Rust 1.99.1 checked, unchanged; vcpkg: see below.
+
 ## 0.4.0 (2026-10-19)
 
 - A Windows host is faster: a still screen no longer counts as a lost display (capture was torn
