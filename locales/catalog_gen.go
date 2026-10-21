@@ -3126,6 +3126,126 @@ func (msgs Messages) RunModeNote() string {
 	return Catalog.Format(msgs.locale, "RunModeNote", nil)
 }
 
+// RunModeReplaceIdentity says "The other run mode holds another identity of this computer, with its own settings. Replace it with this one? Its Devi…"
+// in the language the app shows.
+func RunModeReplaceIdentity() string { return In(i18n.Locale()).RunModeReplaceIdentity() }
+
+// RunModeReplaceIdentity says "The other run mode holds another identity of this computer, with its own settings. Replace it with this one? Its Devi…"
+// in the language of msgs.
+func (msgs Messages) RunModeReplaceIdentity() string {
+	return Catalog.Format(msgs.locale, "RunModeReplaceIdentity", nil)
+}
+
+// RunModeReplace says "Replace it"
+// in the language the app shows.
+func RunModeReplace() string { return In(i18n.Locale()).RunModeReplace() }
+
+// RunModeReplace says "Replace it"
+// in the language of msgs.
+func (msgs Messages) RunModeReplace() string {
+	return Catalog.Format(msgs.locale, "RunModeReplace", nil)
+}
+
+// RunModeKept says "Nothing was moved: each run mode keeps its own identity."
+// in the language the app shows.
+func RunModeKept() string { return In(i18n.Locale()).RunModeKept() }
+
+// RunModeKept says "Nothing was moved: each run mode keeps its own identity."
+// in the language of msgs.
+func (msgs Messages) RunModeKept() string {
+	return Catalog.Format(msgs.locale, "RunModeKept", nil)
+}
+
+// RunModeMovedTitle says "This computer's identity is in Kyokai Helper"
+// in the language the app shows.
+func RunModeMovedTitle() string { return In(i18n.Locale()).RunModeMovedTitle() }
+
+// RunModeMovedTitle says "This computer's identity is in Kyokai Helper"
+// in the language of msgs.
+func (msgs Messages) RunModeMovedTitle() string {
+	return Catalog.Format(msgs.locale, "RunModeMovedTitle", nil)
+}
+
+// RunModeMovedHint says "Its Device ID, networks and saved passwords moved to Kyokai Helper, which is not installed now. Install it again to g…"
+// in the language the app shows.
+func RunModeMovedHint() string { return In(i18n.Locale()).RunModeMovedHint() }
+
+// RunModeMovedHint says "Its Device ID, networks and saved passwords moved to Kyokai Helper, which is not installed now. Install it again to g…"
+// in the language of msgs.
+func (msgs Messages) RunModeMovedHint() string {
+	return Catalog.Format(msgs.locale, "RunModeMovedHint", nil)
+}
+
+// RunModeMovedInstall says "Install Kyokai Helper"
+// in the language the app shows.
+func RunModeMovedInstall() string { return In(i18n.Locale()).RunModeMovedInstall() }
+
+// RunModeMovedInstall says "Install Kyokai Helper"
+// in the language of msgs.
+func (msgs Messages) RunModeMovedInstall() string {
+	return Catalog.Format(msgs.locale, "RunModeMovedInstall", nil)
+}
+
+// RunModeMovedStartOver says "Start over here"
+// in the language the app shows.
+func RunModeMovedStartOver() string { return In(i18n.Locale()).RunModeMovedStartOver() }
+
+// RunModeMovedStartOver says "Start over here"
+// in the language of msgs.
+func (msgs Messages) RunModeMovedStartOver() string {
+	return Catalog.Format(msgs.locale, "RunModeMovedStartOver", nil)
+}
+
+// RunModeMovedStartOverConfirm says "Start over with a new Device ID? Devices that knew this computer will see a new one, and its networks and saved passw…"
+// in the language the app shows.
+func RunModeMovedStartOverConfirm() string { return In(i18n.Locale()).RunModeMovedStartOverConfirm() }
+
+// RunModeMovedStartOverConfirm says "Start over with a new Device ID? Devices that knew this computer will see a new one, and its networks and saved passw…"
+// in the language of msgs.
+func (msgs Messages) RunModeMovedStartOverConfirm() string {
+	return Catalog.Format(msgs.locale, "RunModeMovedStartOverConfirm", nil)
+}
+
+// CleanupUserSet says "Removed the settings No privileges mode had left behind: Kyokai Helper holds this computer's."
+// in the language the app shows.
+func CleanupUserSet() string { return In(i18n.Locale()).CleanupUserSet() }
+
+// CleanupUserSet says "Removed the settings No privileges mode had left behind: Kyokai Helper holds this computer's."
+// in the language of msgs.
+func (msgs Messages) CleanupUserSet() string {
+	return Catalog.Format(msgs.locale, "CleanupUserSet", nil)
+}
+
+// CleanupHelper says "Removed Kyokai Helper and the settings it had left behind: this run mode holds this computer's."
+// in the language the app shows.
+func CleanupHelper() string { return In(i18n.Locale()).CleanupHelper() }
+
+// CleanupHelper says "Removed Kyokai Helper and the settings it had left behind: this run mode holds this computer's."
+// in the language of msgs.
+func (msgs Messages) CleanupHelper() string {
+	return Catalog.Format(msgs.locale, "CleanupHelper", nil)
+}
+
+// CleanupHelperHasMore says "Kyokai Helper on this computer holds devices, networks or a permanent password, and this run mode holds none. Use Kyo…"
+// in the language the app shows.
+func CleanupHelperHasMore() string { return In(i18n.Locale()).CleanupHelperHasMore() }
+
+// CleanupHelperHasMore says "Kyokai Helper on this computer holds devices, networks or a permanent password, and this run mode holds none. Use Kyo…"
+// in the language of msgs.
+func (msgs Messages) CleanupHelperHasMore() string {
+	return Catalog.Format(msgs.locale, "CleanupHelperHasMore", nil)
+}
+
+// CleanupUseHelper says "Use Kyokai Helper's"
+// in the language the app shows.
+func CleanupUseHelper() string { return In(i18n.Locale()).CleanupUseHelper() }
+
+// CleanupUseHelper says "Use Kyokai Helper's"
+// in the language of msgs.
+func (msgs Messages) CleanupUseHelper() string {
+	return Catalog.Format(msgs.locale, "CleanupUseHelper", nil)
+}
+
 // RunModeOutdated says "The helper is {helper}; this app is {app}."
 // in the language the app shows.
 func RunModeOutdated(helper string, app string) string {

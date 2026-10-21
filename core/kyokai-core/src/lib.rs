@@ -876,7 +876,12 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 serde_json::from_value(req.params["passphrase"].take())
                     .map_err(|e| format!("bad passphrase: {e}"))?;
             try_core(|c| {
-                let doc = backup::export_store(c.ctx.access.secrets(), &c.state_dir, &passphrase)?;
+                let doc = backup::export_store(
+                    c.ctx.access.secrets(),
+                    c.ctx.access.held_history(),
+                    &c.state_dir,
+                    &passphrase,
+                )?;
                 Ok(json!({"document": doc}))
             })
         }
@@ -888,17 +893,26 @@ fn call(input: &[u8]) -> Result<Value, String> {
             let passphrase: zeroize::Zeroizing<String> =
                 serde_json::from_value(req.params["passphrase"].take())
                     .map_err(|e| format!("bad passphrase: {e}"))?;
+            let replace = req.params["replace"].as_bool().unwrap_or(false);
             let dir = try_core(|c| Ok(json!(c.state_dir)))?;
             let dir = PathBuf::from(dir.as_str().unwrap_or_default());
-            replace_identity(|s| backup::import_store(s, &dir, &document, &passphrase))
+            replace_identity(|s| backup::import_store(s, &dir, &document, &passphrase, replace))
         }
-        "store.clear" => try_core(|c| {
-            // The caller stops this engine next: it must not serve the
-            // identity the other engine now holds.
-            c.ctx.access.set_serve(access::Serve::None);
-            c.ctx.sessions.close_hosts();
-            backup::clear_store(c.ctx.access.secrets(), &c.state_dir).map(|()| json!({}))
-        }),
+        "store.clear" => {
+            let to = match req.params["to"].as_str() {
+                Some(to @ ("helper" | "user")) => to.to_owned(),
+                _ => return Err("bad destination".into()),
+            };
+            try_core(|c| {
+                // The caller stops this engine next: it must not serve the
+                // identity the other engine now holds.
+                c.ctx.access.set_serve(access::Serve::None);
+                c.ctx.sessions.close_hosts();
+                let id = c.ctx.identity.device_id();
+                backup::clear_store(c.ctx.access.secrets(), &c.state_dir, &to, &id)
+                    .map(|()| json!({}))
+            })
+        }
         "device.set_name" => {
             let name = req.params["name"].as_str().ok_or("bad name")?.to_owned();
             if name.chars().count() > about::MAX_NAME {
@@ -1049,6 +1063,10 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 Ok(json!({}))
             })
         }
+        "sessions.close_controllers" => try_core(|c| {
+            c.ctx.sessions.close_controllers();
+            Ok(json!({}))
+        }),
         "agent.restart" => match agent::link() {
             Some(link) => link.restart().map(|()| json!({})),
             None => Err("this engine has no session agent".into()),

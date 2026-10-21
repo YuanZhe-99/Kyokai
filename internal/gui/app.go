@@ -71,6 +71,9 @@ type App struct {
 	asked            map[string]bool
 	// helperUpdated: this run already updated an older helper (modes.go).
 	helperUpdated bool
+	// cleaning: the one-time cleanup of the other run mode's store runs
+	// (cleanup.go).
+	cleaning bool
 	// soundDevices are the engine's input devices for Sound to share,
 	// asked once Permissions shows.
 	soundDevices       []localapi.SoundDevice
@@ -131,13 +134,15 @@ func New(profile, stateDir, socket string) *App {
 	}
 	a.main = &viewerWindow{app: a, main: true, home: true}
 	a.lastWin = a.main
-	a.socket = startSocket(a.prefs.Helper, helper.Installed(), socket)
+	a.socket = startSocket(a.prefs.Helper || movedToHelper(stateDir), helper.Installed(), socket)
 	return a
 }
 
 // startSocket chooses the engine the GUI attaches to as it starts: the
 // helper when this profile switched to Follow GUI or Background service
-// and the helper is installed, else its own engine on `own`.
+// and the helper is installed, else its own engine on `own`. A user
+// engine whose store moved to the helper counts as that choice too, so a
+// lost gui.json never starts an identity beside the helper's.
 // Notes: a development profile follows its own choice too; ignoring it
 // started an empty engine beside the helper, which then held the identity.
 func startSocket(helperMode, installed bool, own string) string {

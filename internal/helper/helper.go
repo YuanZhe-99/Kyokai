@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/YuanZhe-99/Kyokai/internal/bundlesig"
 	"github.com/YuanZhe-99/Kyokai/internal/core"
@@ -193,4 +194,33 @@ func deepestFirst(dir string) []string {
 		all[i], all[j] = all[j], all[i]
 	}
 	return all
+}
+
+// dropPending leaves out of Windows' pending file operations
+// (PendingFileRenameOperations: source and destination in pairs, an empty
+// destination deleting the source) the deletions of anything under dirs,
+// which a retired helper scheduled for the next restart: a helper installed
+// again before that restart would otherwise lose its files then.
+// Returns: the pairs to keep, and whether any were left out.
+func dropPending(ops []string, dirs []string) ([]string, bool) {
+	under := func(p string) bool {
+		p = strings.ToLower(strings.TrimPrefix(p, `\??\`))
+		for _, d := range dirs {
+			d = strings.ToLower(strings.TrimRight(d, `\`))
+			if p == d || strings.HasPrefix(p, d+`\`) {
+				return true
+			}
+		}
+		return false
+	}
+	var keep []string
+	dropped := false
+	for i := 0; i+1 < len(ops); i += 2 {
+		if ops[i+1] == "" && under(ops[i]) {
+			dropped = true
+			continue
+		}
+		keep = append(keep, ops[i], ops[i+1])
+	}
+	return keep, dropped
 }

@@ -70,8 +70,12 @@ func (a *App) engineState(c *ui.Context) bool {
 	a.mu.Lock()
 	connected, errText, st := a.connected, a.engineErr, a.status
 	a.mu.Unlock()
-	if connected && st != nil {
+	if connected && st != nil && st.Moved == "" {
 		return true
+	}
+	if connected && st != nil {
+		a.movedCard(c)
+		return false
 	}
 	card(c).Children(func() {
 		if errText == "" {

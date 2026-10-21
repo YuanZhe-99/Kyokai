@@ -414,6 +414,18 @@ impl Access {
         Ok(())
     }
 
+    /// The history held in memory while No logs is on (none otherwise):
+    /// what a run-mode move carries besides the store.
+    pub fn held_history(&self) -> Vec<(String, zeroize::Zeroizing<String>)> {
+        match self.memory.lock().ok().as_deref() {
+            Some(Some(held)) => held
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.clone()))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
     /// A history entry, from memory while No logs is on.
     fn history(&self, name: &'static str) -> Option<zeroize::Zeroizing<String>> {
         match self.memory.lock().ok()?.as_ref() {

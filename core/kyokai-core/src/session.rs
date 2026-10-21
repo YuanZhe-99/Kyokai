@@ -820,6 +820,15 @@ impl Sessions {
         }
     }
 
+    /// Ends this device's controller sessions (a GUI that quit or went
+    /// away from the helper: nobody looks at them any more).
+    pub fn close_controllers(&self) {
+        let s = self.inner.lock().expect("sessions lock");
+        for e in s.1.iter().filter(|e| e.role == Role::Controller) {
+            e.stop.notify_one();
+        }
+    }
+
     /// Ends every session, each with a goodbye to its peer, so the other
     /// device ends it at once instead of waiting for the connection to die.
     pub fn close_all(&self) {

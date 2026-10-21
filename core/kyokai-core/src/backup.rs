@@ -91,45 +91,44 @@ pub fn import(secrets: &Secrets, document: &str, passphrase: &str) -> Result<(),
     Ok(())
 }
 
-/// What a move between run modes carries besides the identity: the network
-/// settings, every AI source's key (`ai.<source>.key`), and the state files
-/// that belong to the device.
-const MOVE_SECRETS: &[&str] = &["network"];
+/// What a 0.3/0.4.0 move document (version 1) carried besides the identity;
+/// version 2 carries the whole store.
+const MOVE_SECRETS_V1: &[&str] = &["network"];
 
 /// Whether a secret's name is an AI source's key.
 fn is_ai_key(name: &str) -> bool {
     name.starts_with("ai.") && name.ends_with(".key")
 }
 
-/// The secrets a move carries from `secrets`.
-fn moved(secrets: &Secrets) -> Vec<String> {
-    secrets
-        .names()
-        .into_iter()
-        .filter(|n| {
-            IDENTITY_SECRETS.contains(&n.as_str())
-                || MOVE_SECRETS.contains(&n.as_str())
-                || is_ai_key(n)
-        })
-        .collect()
-}
-const MOVE_FILES: &[&str] = &["device.json", "ai.json"];
+/// The state files a move carries (version 1 carried the first two).
+const MOVE_FILES: &[&str] = &["device.json", "ai.json", "ai-tasks.json"];
+const MOVE_FILES_V1: &[&str] = &["device.json", "ai.json"];
 const MOVE_FORMAT: &str = "kyokai-move";
 const MOVE_AAD: &[u8] = b"kyokai/store-move/v1";
+/// Version 2: the whole store and every state file; the importer replaces
+/// everything it holds.
+const MOVE_VERSION: u32 = 2;
+/// The marker a moved-out engine leaves in its state folder.
+pub const MOVED_MARKER: &str = "moved.json";
 
 /// Seals this engine's whole store for another engine of the same device
-/// (a run-mode change, doc/en-us/run-modes.md): the identity, the network
-/// secret, the AI keys, the friendly name and the AI settings.
+/// (a run-mode change, doc/en-us/run-modes.md): every secret (the identity,
+/// networks, passwords and settings, saved sign-ins, keys, AI keys), the
+/// connection history held in memory under No logs, and the state files.
+/// Inputs: `held` — history entries kept in memory (`Access::held_history`).
 /// Returns: the document; `passphrase` is a one-time secret of the caller.
 pub fn export_store(
     secrets: &Secrets,
+    held: Vec<(String, Zeroizing<String>)>,
     state_dir: &Path,
     passphrase: &str,
 ) -> Result<String, String> {
-    let mut entries: BTreeMap<String, Zeroizing<String>> = moved(secrets)
+    let mut entries: BTreeMap<String, Zeroizing<String>> = secrets
+        .names()
         .into_iter()
         .filter_map(|name| secrets.get(&name).map(|v| (name, v)))
         .collect();
+    entries.extend(held);
     if !entries.contains_key("device_key") {
         return Err("there is no identity to move".into());
     }
@@ -138,42 +137,94 @@ pub fn export_store(
             entries.insert(format!("file:{f}"), Zeroizing::new(text));
         }
     }
-    seal(&entries, passphrase, MOVE_FORMAT, MOVE_AAD)
+    seal_version(&entries, passphrase, MOVE_FORMAT, MOVE_AAD, MOVE_VERSION)
+}
+
+/// Whether a store holds more than a bare identity: anything a person set
+/// up or this device learned, which a move must not silently replace.
+pub fn has_history(secrets: &Secrets) -> bool {
+    secrets.names().iter().any(|n| {
+        matches!(
+            n.as_str(),
+            "trusted_devices"
+                | "known_hosts"
+                | "networks"
+                | "network"
+                | "opaque_permanent"
+                | "login_keys"
+                | "authorized_keys"
+        ) || is_ai_key(n)
+            || n.starts_with("saved_password.")
+            || n.starts_with("saved.")
+    })
 }
 
 /// Takes over a store another engine of this device sealed.
-/// Side effects: replaces every moved secret and file (absent ones are
-/// removed); the caller restarts the core.
-/// Notes: the document is checked completely before anything is written.
+/// Inputs: `replace` — the person chose to replace an identity of this
+/// engine that differs from the document's and has history.
+/// Side effects: a version 2 document replaces the whole store in one
+/// write and every state file (absent ones are removed); version 1 replaces
+/// what it carried. The caller restarts the core.
+/// Notes: the document is checked completely before anything is written;
+/// another identity with history is refused unless `replace`.
 pub fn import_store(
     secrets: &Secrets,
     state_dir: &Path,
     document: &str,
     passphrase: &str,
+    replace: bool,
 ) -> Result<(), String> {
-    let entries = open(document, passphrase, MOVE_FORMAT, MOVE_AAD)?;
+    let (version, entries) = open_versioned(
+        document,
+        passphrase,
+        MOVE_FORMAT,
+        MOVE_AAD,
+        &[1, MOVE_VERSION],
+    )?;
+    let files: &[&str] = if version == 1 {
+        MOVE_FILES_V1
+    } else {
+        MOVE_FILES
+    };
     check_identity(&entries, |k| {
-        IDENTITY_SECRETS.contains(&k)
-            || MOVE_SECRETS.contains(&k)
+        if let Some(f) = k.strip_prefix("file:") {
+            return files.contains(&f);
+        }
+        version == MOVE_VERSION
+            || IDENTITY_SECRETS.contains(&k)
+            || MOVE_SECRETS_V1.contains(&k)
             || is_ai_key(k)
-            || k.strip_prefix("file:")
-                .is_some_and(|f| MOVE_FILES.contains(&f))
     })?;
-    // What this engine held and the document does not is removed.
-    for name in moved(secrets) {
-        if !entries.contains_key(&name) {
-            secrets.remove(&name)?;
+    if !replace
+        && let Some(mine) = secrets.get("device_key")
+        && entries
+            .get("device_key")
+            .is_some_and(|theirs| theirs.as_str() != mine.as_str())
+        && has_history(secrets)
+    {
+        return Err("another identity with its own settings is here".into());
+    }
+    let secret = |(k, v): (&String, &Zeroizing<String>)| {
+        (!k.starts_with("file:")).then(|| (k.clone(), v.clone()))
+    };
+    if version == MOVE_VERSION {
+        secrets.replace_all(entries.iter().filter_map(secret).collect())?;
+    } else {
+        // Version 1: what this engine held of the moved names and the
+        // document lacks is removed, the rest stays.
+        for name in secrets.names() {
+            let carried = IDENTITY_SECRETS.contains(&name.as_str())
+                || MOVE_SECRETS_V1.contains(&name.as_str())
+                || is_ai_key(&name);
+            if carried && !entries.contains_key(&name) {
+                secrets.remove(&name)?;
+            }
+        }
+        for (name, v) in entries.iter().filter_map(secret) {
+            secrets.set(&name, &v)?;
         }
     }
-    for (name, v) in entries.iter().filter(|(k, _)| !k.starts_with("file:")) {
-        secrets.set(name, v)?;
-    }
-    for name in IDENTITY_SECRETS.iter().chain(MOVE_SECRETS) {
-        if !entries.contains_key(*name) {
-            secrets.remove(name)?;
-        }
-    }
-    for f in MOVE_FILES {
+    for f in files {
         let path = state_dir.join(f);
         match entries.get(&format!("file:{f}")) {
             Some(text) => crate::store::write_atomic(&path, text.as_bytes())?,
@@ -182,16 +233,31 @@ pub fn import_store(
             }
         }
     }
+    let _ = std::fs::remove_file(state_dir.join(MOVED_MARKER));
     Ok(())
 }
 
-/// Forgets everything a move carried, once the other engine holds it, so
-/// one identity is never served by two engines.
-/// Side effects: removes the secrets and files; the caller stops the engine.
-pub fn clear_store(secrets: &Secrets, state_dir: &Path) -> Result<(), String> {
-    for name in moved(secrets) {
-        secrets.remove(&name)?;
-    }
+/// Forgets everything once the other engine holds it, so one identity is
+/// never served by two engines, and leaves a marker saying where it went.
+/// Inputs: `to` — "helper" or "user"; `device_id` — the identity moved.
+/// Side effects: empties the store, removes the state files, writes
+/// `moved.json`; the caller stops the engine.
+pub fn clear_store(
+    secrets: &Secrets,
+    state_dir: &Path,
+    to: &str,
+    device_id: &str,
+) -> Result<(), String> {
+    let marker = serde_json::json!({
+        "to": to,
+        "device_id": device_id,
+        "at": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+    });
+    crate::store::write_atomic(&state_dir.join(MOVED_MARKER), marker.to_string().as_bytes())?;
+    secrets.replace_all(BTreeMap::new())?;
     for f in MOVE_FILES {
         let _ = std::fs::remove_file(state_dir.join(f));
     }
@@ -221,6 +287,17 @@ fn seal(
     format: &str,
     aad: &[u8],
 ) -> Result<String, String> {
+    seal_version(entries, passphrase, format, aad, VERSION)
+}
+
+/// `seal` with a document version of the format's own.
+fn seal_version(
+    entries: &BTreeMap<String, Zeroizing<String>>,
+    passphrase: &str,
+    format: &str,
+    aad: &[u8],
+    version: u32,
+) -> Result<String, String> {
     let plain = Zeroizing::new(
         serde_json::to_vec(
             &entries
@@ -241,7 +318,7 @@ fn seal(
         .map_err(|_| "encryption failed")?;
     let file = File {
         format: format.into(),
-        version: VERSION,
+        version,
         kdf: Kdf {
             alg: "argon2id".into(),
             m: KDF_M,
@@ -263,9 +340,21 @@ fn open(
     format: &str,
     aad: &[u8],
 ) -> Result<BTreeMap<String, Zeroizing<String>>, String> {
+    open_versioned(document, passphrase, format, aad, &[VERSION]).map(|(_, e)| e)
+}
+
+/// Decrypts a document of `format` in one of `versions` with `passphrase`.
+/// Returns: its version and entries.
+fn open_versioned(
+    document: &str,
+    passphrase: &str,
+    format: &str,
+    aad: &[u8],
+    versions: &[u32],
+) -> Result<(u32, BTreeMap<String, Zeroizing<String>>), String> {
     let file: File =
         serde_json::from_str(document).map_err(|_| "this is not a Kyokai identity backup")?;
-    if file.format != format || file.version != VERSION || file.kdf.alg != "argon2id" {
+    if file.format != format || !versions.contains(&file.version) || file.kdf.alg != "argon2id" {
         return Err("this backup comes from an unsupported version".into());
     }
     // Bounded so a crafted file cannot make the KDF exhaust memory or time.
@@ -287,7 +376,8 @@ fn open(
             .decrypt(&XNonce::from(nonce), Payload { msg: &sealed, aad })
             .map_err(|_| "wrong passphrase, or the backup is damaged")?,
     );
-    serde_json::from_slice(&plain).map_err(|_| bad())
+    let entries = serde_json::from_slice(&plain).map_err(|_| bad())?;
+    Ok((file.version, entries))
 }
 
 /// Forgets this device's identity; the next start creates a new one (a new
@@ -343,58 +433,137 @@ mod tests {
         assert!(b.get("trusted_devices").is_some());
     }
 
+    /// A fresh folder for a test's state files.
+    fn dir(n: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("kyokai-move-{n}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
     #[test]
-    fn a_move_carries_the_whole_store_once_and_is_no_identity_backup() {
-        let dir = |n: &str| {
-            let d = std::env::temp_dir().join(format!("kyokai-move-{n}-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&d);
-            std::fs::create_dir_all(&d).unwrap();
-            d
-        };
-        let (from_dir, to_dir) = (dir("from"), dir("to"));
+    fn a_v2_move_carries_every_secret_and_file() {
+        // Regression (0.4.0): networks, saved passwords, access settings and
+        // the AI history stayed behind in a run-mode switch.
+        let (from_dir, to_dir) = (dir("v2-from"), dir("v2-to"));
         let from = Secrets::memory();
         let id = Identity::load_or_create(&from).unwrap().device_id();
-        from.set("network", "{\"name\":\"n\"}").unwrap();
-        from.set("ai.claude.key", "sk-test").unwrap();
-        from.set("ai.openrouter.key", "sk-or").unwrap();
-        std::fs::write(from_dir.join("device.json"), "{\"name\":\"Office\"}").unwrap();
-        let doc = export_store(&from, &from_dir, "one-time passphrase").unwrap();
+        let names = [
+            ("networks", "{\"profiles\":[]}"),
+            ("saved_password.123456789", "pw"),
+            ("saved.123456789", "{\"ssh\":{}}"),
+            ("password_mode", "both"),
+            ("connect_without_asking", "true"),
+            ("password_grants", "[]"),
+            ("protected", "true"),
+            ("login_keys", "[]"),
+            ("ai.claude.key", "sk-test"),
+        ];
+        for (k, v) in names {
+            from.set(k, v).unwrap();
+        }
+        for f in MOVE_FILES {
+            std::fs::write(from_dir.join(f), format!("{{\"{f}\":1}}")).unwrap();
+        }
+        let held = vec![(
+            "known_hosts".to_string(),
+            Zeroizing::new("{\"9\":1}".to_string()),
+        )];
+        let doc = export_store(&from, held, &from_dir, "one-time passphrase").unwrap();
         assert!(!doc.contains("sk-test"), "never in the clear");
         // An identity backup and a move are not interchangeable.
         assert!(import(&Secrets::memory(), &doc, "one-time passphrase").is_err());
-        let backup = export(&from, "one-time passphrase").unwrap();
-        assert!(import_store(&Secrets::memory(), &to_dir, &backup, "one-time passphrase").is_err());
 
         let to = Secrets::memory();
-        Identity::load_or_create(&to).unwrap();
+        to.set("networks", "stale").unwrap();
         to.set("ai.openai.key", "left over").unwrap();
-        import_store(&to, &to_dir, &doc, "one-time passphrase").unwrap();
+        import_store(&to, &to_dir, &doc, "one-time passphrase", false).unwrap();
         assert_eq!(Identity::load_or_create(&to).unwrap().device_id(), id);
-        assert_eq!(
-            to.get("ai.claude.key").as_deref().map(String::as_str),
-            Some("sk-test")
-        );
+        for (k, v) in names {
+            assert_eq!(to.get(k).as_deref().map(String::as_str), Some(v), "{k}");
+        }
         assert!(
-            to.get("ai.openai.key").is_none(),
-            "absent entries are removed"
+            to.get("known_hosts").is_some(),
+            "history held in memory moves too"
         );
-        assert!(to.get("network").is_some());
-        assert!(
-            to.get("ai.openrouter.key").is_some(),
-            "every source's key moves"
-        );
+        assert!(to.get("ai.openai.key").is_none(), "nothing stale stays");
+        for f in MOVE_FILES {
+            assert!(to_dir.join(f).exists(), "{f}");
+        }
+        // The source lets go and says where its identity went.
+        clear_store(&from, &from_dir, "helper", &id).unwrap();
+        assert!(from.names().is_empty());
+        assert!(!from_dir.join("ai-tasks.json").exists());
+        let marker: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(from_dir.join(MOVED_MARKER)).unwrap())
+                .unwrap();
         assert_eq!(
-            std::fs::read_to_string(to_dir.join("device.json")).unwrap(),
-            "{\"name\":\"Office\"}"
+            (marker["to"].as_str(), marker["device_id"].as_str()),
+            (Some("helper"), Some(id.as_str()))
         );
-        // The source lets go, so one identity has one engine.
-        clear_store(&from, &from_dir).unwrap();
-        assert!(from.get("device_key").is_none() && from.get("ai.claude.key").is_none());
-        assert!(!from_dir.join("device.json").exists());
+        // Taking a store in again clears the marker.
+        import_store(&from, &from_dir, &doc, "one-time passphrase", false).unwrap();
+        assert!(!from_dir.join(MOVED_MARKER).exists());
         let _ = (
             std::fs::remove_dir_all(&from_dir),
             std::fs::remove_dir_all(&to_dir),
         );
+    }
+
+    #[test]
+    fn an_import_never_replaces_another_identity_with_history_unasked() {
+        let d = dir("guard");
+        let from = Secrets::memory();
+        Identity::load_or_create(&from).unwrap();
+        let doc = export_store(&from, vec![], &d, "one-time passphrase").unwrap();
+        // (destination set-up, replace, accepted)
+        type Case<'a> = (&'a [(&'a str, &'a str)], bool, bool);
+        let cases: [Case; 4] = [
+            (&[], false, true),                       // a bare identity: replaced
+            (&[("known_hosts", "{}")], false, false), // history: refused
+            (&[("networks", "[]")], true, true),      // history, the person chose
+            (&[("saved_password.1", "x")], false, false),
+        ];
+        for (setup, replace, accepted) in cases {
+            let to = Secrets::memory();
+            Identity::load_or_create(&to).unwrap();
+            for (k, v) in setup {
+                to.set(k, v).unwrap();
+            }
+            let r = import_store(&to, &d, &doc, "one-time passphrase", replace);
+            assert_eq!(r.is_ok(), accepted, "{setup:?} replace={replace}");
+        }
+        // The same identity with history is simply brought up to date.
+        let same = Secrets::memory();
+        same.set("device_key", &from.get("device_key").unwrap())
+            .unwrap();
+        same.set("known_hosts", "{}").unwrap();
+        assert!(import_store(&same, &d, &doc, "one-time passphrase", false).is_ok());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_v1_document_keeps_its_meaning() {
+        let d = dir("v1");
+        let from = Secrets::memory();
+        let id = Identity::load_or_create(&from).unwrap().device_id();
+        let mut entries: BTreeMap<String, Zeroizing<String>> = BTreeMap::new();
+        entries.insert("device_key".into(), from.get("device_key").unwrap());
+        entries.insert("network".into(), Zeroizing::new("{}".into()));
+        let doc = seal_version(&entries, "one-time passphrase", MOVE_FORMAT, MOVE_AAD, 1).unwrap();
+        let to = Secrets::memory();
+        to.set("password_mode", "permanent").unwrap();
+        import_store(&to, &d, &doc, "one-time passphrase", false).unwrap();
+        assert_eq!(Identity::load_or_create(&to).unwrap().device_id(), id);
+        assert!(to.get("network").is_some());
+        assert!(
+            to.get("password_mode").is_some(),
+            "version 1 replaced only what it carried"
+        );
+        // A document of an unknown version is refused without writing.
+        let doc = seal_version(&entries, "one-time passphrase", MOVE_FORMAT, MOVE_AAD, 3).unwrap();
+        assert!(import_store(&Secrets::memory(), &d, &doc, "one-time passphrase", false).is_err());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

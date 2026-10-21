@@ -123,16 +123,34 @@ func Run(ctx context.Context, opts Options) error {
 			cfg.Agent = opts.AgentSocket
 		}
 	}
-	st, err := lib.Start(cfg)
-	if err != nil {
-		ln.Close()
-		return fmt.Errorf("start core: %w", err)
-	}
-	defer lib.Stop()
-	logf("engine %s started: device %s, secrets %s", opts.Version, st.DeviceID, st.Persistence)
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	var started atomic.Bool
+	defer func() {
+		if started.Load() {
+			lib.Stop()
+		}
+	}()
+	// start starts the core and makes the engine's handler.
+	start := func() (*handler, error) {
+		st, err := lib.Start(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("start core: %w", err)
+		}
+		started.Store(true)
+		logf("engine %s started: device %s, secrets %s", opts.Version, st.DeviceID, st.Persistence)
+		h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}, runMode: runMode, stateDir: opts.StateDir, update: opts.Update, remove: opts.Remove}
+		if runMode == "helper" {
+			var m struct {
+				Background bool `json:"background"`
+			}
+			_, _ = fsutil.ReadJSON(filepath.Join(opts.StateDir, "mode.json"), &m)
+			h.background = m.Background
+		}
+		h.updateServe()
+		_, _ = h.status() // reads protected mode
+		return h, nil
+	}
 	switch {
 	case opts.Lifeline != nil:
 		go func() {
@@ -150,16 +168,19 @@ func Run(ctx context.Context, opts Options) error {
 		}()
 	}
 
-	h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}, runMode: runMode, stateDir: opts.StateDir, update: opts.Update, remove: opts.Remove}
-	if runMode == "helper" {
-		var m struct {
-			Background bool `json:"background"`
-		}
-		_, _ = fsutil.ReadJSON(filepath.Join(opts.StateDir, "mode.json"), &m)
-		h.background = m.Background
+	// An engine whose store moved to the other run mode makes no identity
+	// of its own: it waits, parked, until a store comes back or the person
+	// starts over (doc/en-us/run-modes.md, "Switching").
+	if to := movedTo(opts.StateDir); to != "" {
+		logf("engine %s parked: its store moved to the %s engine", opts.Version, to)
+		p := &parked{moved: to, runMode: runMode, stateDir: opts.StateDir, version: opts.Version, started: time.Now(), stop: cancel, start: start}
+		return localapi.ServeWith(ctx, ln, p, authz)
 	}
-	h.updateServe()
-	_, _ = h.status() // reads protected mode
+	h, err := start()
+	if err != nil {
+		ln.Close()
+		return err
+	}
 	return localapi.ServeWith(ctx, ln, h, authz)
 }
 
@@ -169,7 +190,7 @@ func Run(ctx context.Context, opts Options) error {
 // quitting, and turning the mode off. Everything else is refused, ctl
 // included.
 var protectedAllows = map[localapi.RequestType]bool{
-	localapi.RequestStatus: true, localapi.RequestProtect: true, localapi.RequestShutdown: true,
+	localapi.RequestStatus: true, localapi.RequestProtect: true, localapi.RequestShutdown: true, localapi.RequestCloseControllers: true,
 	localapi.RequestDecide: true, localapi.RequestClose: true,
 	localapi.RequestCaptureShow: true, localapi.RequestInputKyokai: true, localapi.RequestSoundSource: true, localapi.RequestLogs: true,
 	localapi.RequestPermission: true, localapi.RequestAgentRestart: true, localapi.RequestHelperUpdate: true,
@@ -441,6 +462,8 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "%v", err)
 		}
 		return localapi.Response{OK: true}
+	case localapi.RequestCloseControllers:
+		return h.command("sessions.close_controllers", nil)
 	case localapi.RequestStoreExport:
 		if req.Backup == nil {
 			return localapi.Fail(localapi.CodeInvalid, "passphrase missing")
@@ -454,9 +477,9 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 		if req.Backup == nil {
 			return localapi.Fail(localapi.CodeInvalid, "store missing")
 		}
-		return h.command("store.import", req.Backup)
+		return h.command("store.import", map[string]any{"document": req.Backup.Document, "passphrase": req.Backup.Passphrase, "replace": req.Replace})
 	case localapi.RequestStoreClear:
-		if err := h.lib.Call("store.clear", nil, nil); err != nil {
+		if err := h.lib.Call("store.clear", map[string]string{"to": req.MovedTo}, nil); err != nil {
 			return localapi.Fail(localapi.CodeInvalid, "%v", err)
 		}
 		// This engine no longer holds the identity: it stops.
@@ -627,6 +650,12 @@ func (h *handler) Stream(ctx context.Context, _ localapi.Request, send func(loca
 		delete(h.sessions, poke)
 		h.mu.Unlock()
 		h.updateServe()
+		// The helper's controller sessions belong to a GUI: one that went
+		// away (it quit, crashed, or Windows logged off) and did not come
+		// back within a moment leaves nobody to look at them.
+		if h.runMode == "helper" {
+			time.AfterFunc(controllersGrace, h.closeOrphans)
+		}
 	}()
 	tick := time.NewTicker(statusPoll)
 	defer tick.Stop()
@@ -648,6 +677,22 @@ func (h *handler) Stream(ctx context.Context, _ localapi.Request, send func(loca
 		case <-poke:
 		case <-tick.C:
 		}
+	}
+}
+
+// controllersGrace is how long the helper keeps its controller sessions
+// after its last GUI detached: a GUI restarting (an update, Reopen) comes
+// back in time.
+const controllersGrace = 15 * time.Second
+
+// closeOrphans ends the helper's controller sessions when no GUI is
+// attached.
+func (h *handler) closeOrphans() {
+	h.mu.Lock()
+	attached := len(h.sessions) > 0
+	h.mu.Unlock()
+	if !attached {
+		_ = h.lib.Call("sessions.close_controllers", nil, nil)
 	}
 }
 

@@ -522,6 +522,18 @@
   "RunModeHint": "Where this device runs: in Kyokai itself, or in a helper that can also show and operate sign-in and administrator prompts.",
   "RunModeNoHelper": "The helper did not start.",
   "RunModeNote": "Follow Kyokai and Background service install a helper once, after one administrator prompt; with Background service the permanent password also lets a device in before anyone signs in (while Connect without asking is on). Your Device ID, trusted devices and settings move with it.",
+  "RunModeReplaceIdentity": "The other run mode holds another identity of this computer, with its own settings. Replace it with this one? Its Device ID, networks and saved passwords are then gone.",
+  "RunModeReplace": "Replace it",
+  "RunModeKept": "Nothing was moved: each run mode keeps its own identity.",
+  "RunModeMovedTitle": "This computer's identity is in Kyokai Helper",
+  "RunModeMovedHint": "Its Device ID, networks and saved passwords moved to Kyokai Helper, which is not installed now. Install it again to get them back, or start over here with a new identity.",
+  "RunModeMovedInstall": "Install Kyokai Helper",
+  "RunModeMovedStartOver": "Start over here",
+  "RunModeMovedStartOverConfirm": "Start over with a new Device ID? Devices that knew this computer will see a new one, and its networks and saved passwords have to be set up again.",
+  "CleanupUserSet": "Removed the settings No privileges mode had left behind: Kyokai Helper holds this computer's.",
+  "CleanupHelper": "Removed Kyokai Helper and the settings it had left behind: this run mode holds this computer's.",
+  "CleanupHelperHasMore": "Kyokai Helper on this computer holds devices, networks or a permanent password, and this run mode holds none. Use Kyokai Helper's? Otherwise they are removed with it.",
+  "CleanupUseHelper": "Use Kyokai Helper's",
   "RunModeOutdated": "The helper is {helper}; this app is {app}.",
   "@RunModeOutdated": {
     "placeholders": {

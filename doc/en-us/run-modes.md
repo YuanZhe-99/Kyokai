@@ -19,20 +19,46 @@ permanent password (while Connect without asking is on) and Follow GUI no one, e
 ## Switching
 
 General, Run mode, switches between the three. Leaving No privileges installs the helper when it
-is missing (the one administrator prompt), waits for it, and **moves the store**
-(`localapi.MoveStore`): the user engine seals its identity, trusted devices, known hosts,
-permanent password, network secret, AI keys, friendly name and AI settings under a one-time
-passphrase (`store.export`), the helper takes them over (`store.import`), and only once the helper
-reports the same Device ID does the user engine forget them and stop (`store.clear`), so one
-identity is never served twice and never lost. The GUI then uses the helper's socket (`gui.json`
-`helper`, saved per profile, so a development profile that switched follows the helper too), also
-when it starts again. Follow GUI and Background service switch with `helper.background`. Going back moves the
-store the other way and removes the helper and its state: on Windows with a second prompt; on
-macOS the helper, root already, removes itself when its operator asks (`helper.remove`, retried
-while launchd restarts the engine that gave up the store), with the administrator prompt only as
-the fallback. `ctl move --to SOCKET`
-does the same move from the command line. When the GUI quits, only its own engine stops; the
-helper keeps running.
+is missing (the one administrator prompt), waits for it, brings it to the app's build when it is
+behind (the signed update, [Updates](#updates)), and **moves the store** (`localapi.MoveStore`):
+the user engine seals its whole store — every secret (the identity, trusted devices and known
+hosts, the permanent password, networks with their secrets, access settings, saved passwords and
+sign-ins, keys, AI keys) and the state files `device.json`, `ai.json` and `ai-tasks.json`, plus the
+connection history held in memory under No logs — under a one-time passphrase (`store.export`,
+document version 2); the helper replaces its own store with it in one write (`store.import`); and
+only once the helper reports the same Device ID does the user engine forget everything, leave
+`moved.json` in its state folder saying where its identity went, and stop (`store.clear`). So one
+identity is never served twice and never lost, and nothing of the other run mode is left behind.
+Both engines must be the same build: a 0.4.0 engine refuses the version 2 document without
+writing anything.
+
+A move never replaces, unasked, another identity that has history (trusted devices, known hosts,
+networks, a permanent password, AI keys, saved sign-ins or keys): the GUI asks the person, who may
+keep each run mode's own instead. An engine that finds `moved.json` in its state folder is
+**parked**: it starts no core and makes no identity of its own, serves only its status (`moved`),
+taking a store back (`store.import`) and starting over with a new identity after the person
+confirms (`store.forget_move`); before 0.4.1 such an engine made a fresh identity, which a later
+switch could move over the real one. The GUI uses the helper's socket when `gui.json` says so
+(`helper`, per profile) or when its own engine's marker says the identity moved to the helper; if
+the helper is gone, Home offers to install it again or to start over here. Follow GUI and
+Background service switch with `helper.background`, after the GUI already uses the helper.
+
+Going back moves the store the other way, then the helper removes itself without a prompt
+(`helper.remove`: on Windows through the same path as its self-disable, on macOS as before; retried
+while the service manager restarts the engine that gave up the store), with the administrator
+prompt only as the fallback. `ctl move --to SOCKET` does the same move from the command line. When
+the GUI quits, only its own engine stops; the helper keeps running and ends the GUI's controller
+sessions 15 seconds after its last GUI detached (a GUI that quits asks for that at once,
+`sessions.close_controllers`).
+
+**Cleanup after updating.** The first start of 0.4.1 (once per version, `gui.json`
+`stores_unified`) removes the store of the run mode not in use, which earlier switches left
+behind: attached to the helper, the GUI deletes the user engine's `secrets.bin`, `master.key`,
+`device.json`, `ai.json` and `ai-tasks.json` and leaves the marker (on macOS the Keychain item
+stays, opening nothing); attached to its own engine with the helper installed, it brings the
+helper to its build with the signed update (never a prompt; an unsigned build tries again at the
+next start) and asks it to remove itself. When the helper holds devices, networks or a permanent
+password and this run mode none (a lost choice of run mode), the person chooses which set stays.
 
 ## The helper (Windows)
 
@@ -142,6 +168,9 @@ missing there at two checks a minute apart (an app update replacing its files is
 the helper deletes its service, its state and its socket, schedules its own files for deletion at
 the next restart of Windows and exits, so removing the app leaves no running helper. On macOS it
 unloads the agent, deletes its plists, folder and key and unloads itself last.
+In the helper modes the helper holds the only copy of the identity, so removing the app removes
+it too. A helper installed again before Windows restarts first drops the deletions an earlier
+removal scheduled under its folders, which would otherwise take its new files at that restart.
 
 ## Current implementation
 

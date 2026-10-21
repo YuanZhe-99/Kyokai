@@ -36,7 +36,8 @@ pub enum Persistence {
     Denied,
 }
 
-type Map = BTreeMap<String, Zeroizing<String>>;
+/// Every secret by name.
+pub type Map = BTreeMap<String, Zeroizing<String>>;
 
 /// The secrets of this installation.
 pub struct Secrets {
@@ -99,6 +100,11 @@ impl Secrets {
         self.write(|map| {
             map.insert(name.to_owned(), Zeroizing::new(value.to_owned()));
         })
+    }
+
+    /// Replaces every secret at once with `entries`, in one write.
+    pub fn replace_all(&self, entries: Map) -> Result<(), String> {
+        self.write(|map| *map = entries)
     }
 
     /// Removes a secret, rewriting the file like `set`.

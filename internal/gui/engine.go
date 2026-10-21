@@ -228,6 +228,7 @@ func (a *App) statusPushed(st *localapi.Status) {
 		}
 		a.permissionsChanged(st)
 		a.helperChanged(st)
+		a.storesChanged(st)
 		a.status, a.connected, a.engineErr = st, true, ""
 	})
 	if asking != "" {

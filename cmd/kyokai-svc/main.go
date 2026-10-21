@@ -59,6 +59,7 @@ import (
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
 	"github.com/YuanZhe-99/Kyokai/internal/engine"
+	"github.com/YuanZhe-99/Kyokai/internal/helper"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	"github.com/YuanZhe-99/Kyokai/internal/version"
 )
@@ -214,7 +215,11 @@ func ctl(args []string) error {
 	}
 	cmd := args[0]
 	if cmd == "move" {
-		id, err := localapi.MoveStore(context.Background(), localapi.NewClient(*socket), localapi.NewClient(*to))
+		dest := "user"
+		if *to == helper.SocketPath {
+			dest = "helper"
+		}
+		id, err := localapi.MoveStore(context.Background(), localapi.NewClient(*socket), localapi.NewClient(*to), localapi.MoveOptions{To: dest})
 		if err == nil {
 			fmt.Println("moved: device", id, "is now served by", *to)
 		}

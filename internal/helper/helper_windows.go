@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
@@ -81,6 +82,7 @@ func Install(o InstallOptions) error {
 		return fmt.Errorf("operator %q: %w", o.OperatorSID, err)
 	}
 	stopService()
+	keepPending()
 	if err := os.MkdirAll(BinDir, 0o755); err != nil {
 		return err
 	}
@@ -292,4 +294,28 @@ func Retire() error {
 		}
 	}
 	return nil
+}
+
+// keepPending drops the deletions a retired helper scheduled for the next
+// restart of Windows under the helper's folders (dropPending), so a helper
+// installed again before that restart keeps its files.
+// Side effects: rewrites PendingFileRenameOperations when it held some.
+func keepPending() {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SYSTEM\CurrentControlSet\Control\Session Manager`, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return
+	}
+	defer k.Close()
+	ops, _, err := k.GetStringsValue("PendingFileRenameOperations")
+	if err != nil {
+		return
+	}
+	keep, dropped := dropPending(ops, []string{root, filepath.Dir(BinDir)})
+	switch {
+	case !dropped:
+	case len(keep) == 0:
+		_ = k.DeleteValue("PendingFileRenameOperations")
+	default:
+		_ = k.SetStringsValue("PendingFileRenameOperations", keep)
+	}
 }

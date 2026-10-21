@@ -78,18 +78,18 @@ func runHelper(ctx context.Context, opts engine.Options) error {
 	opts.Update = func(from string) error { return helper.SelfUpdate(from, version.Version) }
 	if runtime.GOOS == "darwin" {
 		opts.AgentSocket = helper.AgentSocket
-		// Removing privileges needs no administrator: the helper, root
-		// already, removes itself when its operator asks.
-		opts.Remove = func() error {
-			go func() {
-				time.Sleep(time.Second) // the reply goes out first
-				if err := helper.Retire(); err != nil {
-					opts.Logf("removing the helper: %v", err)
-				}
-				os.Exit(0)
-			}()
-			return nil
-		}
+	}
+	// Removing privileges needs no administrator: the helper, SYSTEM or
+	// root already, removes itself when its operator asks.
+	opts.Remove = func() error {
+		go func() {
+			time.Sleep(time.Second) // the reply goes out first
+			if err := helper.Retire(); err != nil {
+				opts.Logf("removing the helper: %v", err)
+			}
+			os.Exit(0)
+		}()
+		return nil
 	}
 	go watchApp(ctx, opts.Logf)
 	return engine.Run(ctx, opts)

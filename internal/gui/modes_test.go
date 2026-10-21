@@ -1,6 +1,8 @@
 package gui
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/egoist/mygo"
@@ -56,6 +58,57 @@ func TestAIPanelNeverHidesAnApproval(t *testing.T) {
 	} {
 		if got := c.st.aiShown(); got != c.want {
 			t.Errorf("%s: shown = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// A user engine whose store moved to the helper makes the GUI start on the
+// helper even when gui.json lost the choice (regression: a fresh identity
+// started beside the helper's and a later switch moved it over the real one).
+func TestMovedToHelper(t *testing.T) {
+	dir := t.TempDir()
+	if movedToHelper(dir) {
+		t.Fatal("no marker, no move")
+	}
+	for _, c := range []struct {
+		marker string
+		want   bool
+	}{
+		{`{"to":"helper","device_id":"123456789"}`, true},
+		{`{"to":"user"}`, false},
+		{`not json`, false},
+	} {
+		if err := os.WriteFile(filepath.Join(dir, "moved.json"), []byte(c.marker), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := movedToHelper(dir); got != c.want {
+			t.Errorf("%s: got %v", c.marker, got)
+		}
+	}
+}
+
+// The first start of a version removes the store of the run mode not in
+// use: the user set while attached to the helper, the helper while
+// attached to this profile's own engine.
+func TestCleanupAction(t *testing.T) {
+	helperSt := &localapi.Status{RunMode: "helper", DeviceID: "123456789"}
+	userSt := &localapi.Status{RunMode: "user", DeviceID: "123456789"}
+	parked := &localapi.Status{RunMode: "user", Moved: "helper"}
+	for _, c := range []struct {
+		name             string
+		st               *localapi.Status
+		installed, users bool
+		want             cleanup
+	}{
+		{"no status", nil, true, true, cleanupNone},
+		{"helper with a user set left", helperSt, true, true, cleanupUserSet},
+		{"helper, nothing left", helperSt, true, false, cleanupNone},
+		{"user engine, helper installed", userSt, true, true, cleanupHelper},
+		{"user engine, no helper", userSt, false, true, cleanupNone},
+		{"parked engine", parked, true, false, cleanupNone},
+	} {
+		if got := cleanupAction(c.st, c.installed, c.users); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
 		}
 	}
 }

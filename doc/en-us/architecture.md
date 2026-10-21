@@ -89,7 +89,7 @@ history in the secrets store, or in memory only for No logs, [security.md](secur
 `host.forget`, `identity.export` (`{passphrase}` → `{document}`), `identity.import`
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
 name; the status carries `name` and this device's `about`), `access.settings` (`{password_mode?: temporary|permanent|both, without_asking?, by_address?: {on, ranges}}`; `by_address` starts or stops the listener at once), `permission.request` (`{name}`: `screen`, `accessibility`, `input-monitoring` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens; in the helper the agent asks), `store.start_over` (the saved store cannot be unlocked: it is moved aside and the core rebuilt on a new one → `{kept}`), `agent.restart` (the helper's session agent exits and its supervisor starts it again), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
-passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
+passphrase, replace?}`: the whole store, version 2; another identity with history only with `replace`), `store.clear` (`{to}`: a run-mode change; leaves `moved.json`, [run-modes.md](run-modes.md)), `sessions.close_controllers` (ends this engine's controller sessions), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
 mode), `capture.show` (`{show}`: whether captures show Kyokai's windows, as Security's Hide Kyokai
 from capture says; macOS's capture follows it, live; the helper passes it to its agent; hidden
 until a GUI says), `input.kyokai` (`{allow}`: whether a person's remote input may reach Kyokai's
@@ -130,7 +130,7 @@ runtime statically, so nothing is resolved through the search path.
   of them together, so an older GUI reads it as before),
   `password.set_permanent`, `session.connect`, `session.identify`, `device.remove`, `protect.set` (while protected mode is on the engine answers only the requests in `protectedAllows` and refuses the rest as `invalid`; the status says `protected`), `logs.set` (`{logs_off}`: No logs; the engine writes or removes its state directory's `no-logs` marker, closes or reopens its log, deletes the logs and calls `access.history`; the status says `logs_off`; the GUI sends it as it attaches and when the setting changes), `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
-  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `input.kyokai` (`{kyokai_input}`; sent with `capture.show`; an engine that does not know it keeps Kyokai's windows guarded), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
+  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `input.kyokai` (`{kyokai_input}`; sent with `capture.show`; an engine that does not know it keeps Kyokai's windows guarded), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; after the store moved out), `store.forget_move` (a parked engine starts over), `sessions.close_controllers`, `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,
   `session.media`, `shutdown`, and the AI requests named after the core's
   methods (`ai.settings.get` … `ai.stop`, `ai.draft.set`). `session.media` (`{id}` of a live controller
@@ -153,6 +153,7 @@ runtime statically, so nothing is resolved through the search path.
 |---|---|
 | `%APPDATA%\Kyokai\` / `~/Library/Application Support/Kyokai/` | The state directory (`Kyokai-<profile>` for a profile) |
 | `secrets.bin` | The secrets store, encrypted ([security.md](security.md)) |
+| `moved.json` | Where this engine's store went in a run-mode switch: while it is there the engine is parked and makes no identity ([run-modes.md](run-modes.md)) |
 | `master.key` (Windows) | The store's key as a DPAPI blob; on macOS the key is in the login Keychain |
 | `gui.json` | GUI preferences |
 | `ai.json` | AI settings: provider, models, approval policy (no key) |

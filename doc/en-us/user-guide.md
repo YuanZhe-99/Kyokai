@@ -143,8 +143,12 @@ General, **Run mode**, chooses where this device runs. **No privileges** (the de
 nothing. **Follow Kyokai** and **Background service** install a helper once, after one
 administrator prompt, so the other side can also see and use sign-in screens and administrator
 prompts on this computer; Background service also lets devices you allowed to connect without
-asking in before anyone signs in. Your Device ID, trusted devices and settings move along.
-Choosing No privileges again removes the helper.
+asking in before anyone signs in. Everything moves along — your Device ID, trusted devices,
+networks, passwords saved for other devices, keys and settings — and nothing stays behind in the
+other mode. Choosing No privileges again moves it all back and removes the helper, without another
+prompt. If the other mode already holds a different identity with its own settings, Kyokai asks
+which one to keep. The first start of 0.4.1 removes what earlier switches left behind in the mode
+not in use.
 
 On a Mac the helper sees and controls the screen as **Kyokai Helper**, which needs its own Screen
 Recording and Accessibility (Device Control and Data Access) permissions: after switching, open

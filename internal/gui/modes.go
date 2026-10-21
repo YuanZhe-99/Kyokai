@@ -14,6 +14,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/YuanZhe-99/Kyokai/internal/fsutil"
 	"github.com/YuanZhe-99/Kyokai/internal/helper"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	"github.com/YuanZhe-99/Kyokai/internal/version"
@@ -226,11 +227,11 @@ func (a *App) doSwitch(from, to int) error {
 	case from != modeUser && to != modeUser:
 		return background()
 	case from == modeUser:
+		bin, err := engineBinary()
+		if err != nil {
+			return err
+		}
 		if !helper.Installed() {
-			bin, err := engineBinary()
-			if err != nil {
-				return err
-			}
 			if err := runPrivileged(append([]string{"install", "--from", filepath.Dir(bin)}, operatorArgs()...)...); err != nil {
 				return err
 			}
@@ -238,35 +239,84 @@ func (a *App) doSwitch(from, to int) error {
 		if err := waitFor(ctx, hlp); err != nil {
 			return err
 		}
-		if _, err := localapi.MoveStore(ctx, user, hlp); err != nil {
+		// Both engines must be the same build to move the whole store: an
+		// older helper is brought up to this app first.
+		if st, err := hlp.Do(ctx, localapi.Request{Type: localapi.RequestStatus}); err == nil && helperBehind(st.Status, version.Build()) {
+			if err := a.signedHelperUpdate(); err != nil {
+				if err := runPrivileged(append([]string{"install", "--from", filepath.Dir(bin)}, operatorArgs()...)...); err != nil {
+					return err
+				}
+			}
+			if err := waitForBuild(ctx, hlp); err != nil {
+				return err
+			}
+		}
+		if err := a.move(ctx, user, hlp, "helper"); err != nil {
 			return err
+		}
+		// The GUI follows the identity before anything else can fail.
+		if err := a.useSocket(helper.SocketPath, true); err != nil {
+			a.update(func() { a.setToast(err.Error(), true) })
 		}
 		if err := background(); err != nil {
-			return err
+			a.update(func() { a.setToast(err.Error(), true) })
 		}
-		a.useSocket(helper.SocketPath, true)
 		return nil
 	default: // back to No privileges
+		// The user engine may be parked (its store moved out): it starts
+		// and takes the store back.
 		if err := a.engine.ensure(ctx, a.userSocket); err != nil {
 			return err
 		}
-		if _, err := localapi.MoveStore(ctx, hlp, user); err != nil {
+		if err := a.move(ctx, hlp, user, "user"); err != nil {
 			return err
 		}
-		a.useSocket(a.userSocket, false)
-		// The helper holds nothing any more: remove it and its state. On
-		// macOS it removes itself (no prompt); elsewhere, or when that
-		// fails, the administrator removes it.
-		if runtime.GOOS == "darwin" && removeHelper(ctx, hlp) {
+		if err := a.useSocket(a.userSocket, false); err != nil {
+			a.update(func() { a.setToast(err.Error(), true) })
+		}
+		// The helper holds nothing any more: it removes itself, without a
+		// prompt; only when that fails does the administrator remove it.
+		if removeHelper(ctx, hlp) {
 			return nil
 		}
 		return runPrivileged("uninstall", "--purge")
 	}
 }
 
-// removeHelper asks the macOS helper to remove itself, again while it is
-// still installed: the engine that gave up the store exits and launchd
-// starts it anew, so one request may reach an engine on its way out.
+// move moves the whole store between this device's engines; when the
+// destination holds another identity with its own settings, the person
+// chooses whether it goes.
+// Inputs: dest is "helper" or "user", for the source's marker.
+func (a *App) move(ctx context.Context, from, to *localapi.Client, dest string) error {
+	_, err := localapi.MoveStore(ctx, from, to, localapi.MoveOptions{To: dest})
+	if !errors.Is(err, localapi.ErrOtherIdentity) {
+		return err
+	}
+	if !a.confirm(L.RunModeReplaceIdentity(), L.RunModeReplace()) {
+		return errors.New(L.RunModeKept())
+	}
+	_, err = localapi.MoveStore(ctx, from, to, localapi.MoveOptions{To: dest, Replace: true})
+	return err
+}
+
+// waitForBuild waits until the helper restarted on this app's build.
+func waitForBuild(ctx context.Context, hlp *localapi.Client) error {
+	for {
+		if st, err := hlp.Do(ctx, localapi.Request{Type: localapi.RequestStatus}); err == nil && !helperBehind(st.Status, version.Build()) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+}
+
+// removeHelper asks the helper to remove itself, again while it is still
+// installed: the engine that gave up the store exits and the service
+// manager starts it anew, so one request may reach an engine on its way
+// out.
 // Returns: whether the helper is gone.
 func removeHelper(ctx context.Context, hlp *localapi.Client) bool {
 	for range 20 {
@@ -283,18 +333,25 @@ func removeHelper(ctx context.Context, hlp *localapi.Client) bool {
 	return !helper.Installed()
 }
 
-// useSocket points the GUI at another engine and remembers the choice.
-func (a *App) useSocket(socket string, helperMode bool) {
+// useSocket points the GUI at another engine and remembers the choice; the
+// pages forget what the previous engine told them.
+// Returns: an error when the choice could not be saved (the next start
+// may then use the other engine).
+func (a *App) useSocket(socket string, helperMode bool) error {
 	a.mu.Lock()
 	a.socket = socket
 	p := a.prefs
 	reattach := a.reattach
+	a.net = netState{}
+	a.ai = aiState{}
+	a.soundDevices, a.soundDevicesLoaded = nil, false
 	a.mu.Unlock()
 	p.Helper = helperMode
-	a.setPrefs(p)
+	err := a.setPrefs(p)
 	if reattach != nil {
 		reattach()
 	}
+	return err
 }
 
 // waitFor waits until an engine answers on its socket.
@@ -414,4 +471,76 @@ func windowsArg(s string) string {
 	b.WriteString(strings.Repeat(`\`, slashes))
 	b.WriteByte('"')
 	return b.String()
+}
+
+// movedToHelper reports whether this profile's user engine gave its store
+// to the helper (the marker `moved.json` in its state folder says so).
+func movedToHelper(stateDir string) bool {
+	var m struct {
+		To string `json:"to"`
+	}
+	ok, err := fsutil.ReadJSON(filepath.Join(stateDir, "moved.json"), &m)
+	return ok && err == nil && m.To == "helper"
+}
+
+// movedCard is shown while this profile's own engine is parked: its
+// identity and settings moved to Kyokai Helper, which is not there. The
+// person installs the helper again (its state may still be there) or starts
+// over here with a new identity.
+func (a *App) movedCard(c *ui.Context) {
+	t := c.Theme()
+	a.mu.Lock()
+	busy := a.busy["mode"]
+	a.mu.Unlock()
+	card(c).Children(func() {
+		ui.Text(c, L.RunModeMovedTitle()).FontSize(sizeHeading).Bold()
+		ui.Text(c, L.RunModeMovedHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			if ui.PrimaryButton(c.Key("moved-install"), L.RunModeMovedInstall()).Disabled(busy).Clicked() {
+				a.reinstallHelper()
+			}
+			if ui.Button(c.Key("moved-start-over"), L.RunModeMovedStartOver()).Disabled(busy).Clicked() {
+				go func() {
+					if !a.confirm(L.RunModeMovedStartOverConfirm(), L.RunModeMovedStartOver()) {
+						return
+					}
+					if _, err := a.requestWith(localapi.Request{Type: localapi.RequestStoreForgetMove}); err != nil {
+						a.update(func() { a.setToast(err.Error(), true) })
+					}
+				}()
+			}
+			if busy {
+				busyMark(c, L.RunModeSwitching(), busySize)
+			}
+		})
+	})
+}
+
+// reinstallHelper installs Kyokai Helper again (one administrator prompt)
+// and attaches to it.
+func (a *App) reinstallHelper() {
+	a.update(func() { a.busy["mode"] = true })
+	go func() {
+		err := func() error {
+			bin, err := engineBinary()
+			if err != nil {
+				return err
+			}
+			if err := runPrivileged(append([]string{"install", "--from", filepath.Dir(bin)}, operatorArgs()...)...); err != nil {
+				return err
+			}
+			ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
+			defer cancel()
+			if err := waitFor(ctx, localapi.NewClient(helper.SocketPath)); err != nil {
+				return err
+			}
+			return a.useSocket(helper.SocketPath, true)
+		}()
+		a.update(func() {
+			delete(a.busy, "mode")
+			if err != nil {
+				a.setToast(err.Error(), true)
+			}
+		})
+	}()
 }

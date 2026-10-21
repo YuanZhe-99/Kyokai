@@ -99,8 +99,10 @@ when `SCREENSHOT_DIR` is set.
   the engine in use cannot do it yet.
 - **General:** language, appearance, open at login — off by default; started at login, Kyokai shows no window, only its tray icon (on a Mac, as a login item, asked once the app is ready: asked earlier, macOS answered no) — and the close button; Run
   mode: No privileges / Follow Kyokai / Background service, a note on the one administrator prompt
-  and what moves along; switching runs in the background with a toast
-  ([run-modes.md](run-modes.md)); Windows and macOS.
+  and what moves along; switching runs in the background with a loading indicator and a toast
+  ([run-modes.md](run-modes.md)); Windows and macOS. While this profile's own engine is parked
+  (its identity moved to Kyokai Helper, which is gone), every page shows a card to install the helper
+  again or start over here.
 - **About:** version, license, source code and app updates; Diagnostics (version and ABI, engine
   start time, run mode, data folder with Open folder, logs folder, or "Off" with No logs); Open
   source licenses (the shipped notices).

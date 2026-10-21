@@ -44,6 +44,9 @@ type Prefs struct {
 	// edge, as a share of the room it has: -0.5 at the left, 0 (the zero
 	// value) in the middle, 0.5 at the right.
 	ToolbarAt float32 `json:"toolbar_at,omitempty"`
+	// StoresUnified is the app version whose first start removed the store
+	// of the run mode not in use (cleanup.go).
+	StoresUnified string `json:"stores_unified,omitempty"`
 	// AskedPermissions is the app version that last asked macOS for the
 	// privacy permissions on its own.
 	AskedPermissions string `json:"asked_permissions,omitempty"`
@@ -161,7 +164,9 @@ func (a *App) setAlias(device, name string) {
 }
 
 // setPrefs stores new prefs (caller does not hold a.mu).
-func (a *App) setPrefs(p Prefs) {
+// Returns: the error writing gui.json, if any (the change holds for this
+// run).
+func (a *App) setPrefs(p Prefs) error {
 	a.update(func() { a.prefs = p })
-	_ = savePrefs(a.stateDir, p)
+	return savePrefs(a.stateDir, p)
 }

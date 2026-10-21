@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/YuanZhe-99/Kyokai/internal/bundlesig"
@@ -135,5 +136,29 @@ func TestDeepestFirst(t *testing.T) {
 	log, logs, state := filepath.Join(dir, "state", "logs", "engine.log"), filepath.Join(dir, "state", "logs"), filepath.Join(dir, "state")
 	if !(pos[log] < pos[logs] && pos[logs] < pos[state] && pos[state] < pos[dir]) || len(got) != 4 {
 		t.Fatalf("order %v", got)
+	}
+}
+
+// A helper installed again before Windows restarts keeps its files: the
+// deletions a retired helper scheduled under its folders are dropped, and
+// every other pending operation stays.
+func TestDropPending(t *testing.T) {
+	dirs := []string{`C:\ProgramData\Kyokai`, `C:\Program Files\Kyokai`}
+	for _, c := range []struct {
+		name    string
+		ops     []string
+		keep    []string
+		dropped bool
+	}{
+		{"nothing pending", nil, nil, false},
+		{"another program's", []string{`\??\C:\Other\a.dll`, ""}, []string{`\??\C:\Other\a.dll`, ""}, false},
+		{"the helper's deletions", []string{`\??\C:\Program Files\Kyokai\helper\kyokai-svc.exe`, "", `\??\c:\programdata\kyokai`, ""}, nil, true},
+		{"a rename stays", []string{`\??\C:\ProgramData\Kyokai\x`, `\??\C:\y`}, []string{`\??\C:\ProgramData\Kyokai\x`, `\??\C:\y`}, false},
+		{"a sibling folder stays", []string{`\??\C:\ProgramData\KyokaiOther\x`, ""}, []string{`\??\C:\ProgramData\KyokaiOther\x`, ""}, false},
+	} {
+		keep, dropped := dropPending(c.ops, dirs)
+		if !slices.Equal(keep, c.keep) || dropped != c.dropped {
+			t.Errorf("%s: got %q %v, want %q %v", c.name, keep, dropped, c.keep, c.dropped)
+		}
 	}
 }
