@@ -540,8 +540,8 @@ func TestFrontFollowsTheWindowUsedLast(t *testing.T) {
 		return v
 	}
 	x, y, z := newV("111111111"), newV("222222222"), newV("333333333")
-	a.main = &viewerWindow{app: a, main: true, tabs: []*viewer{x, y}, cur: 1}
-	other := &viewerWindow{app: a, tabs: []*viewer{z}}
+	a.main = &viewerWindow{app: a, main: true, tabs: []tab{x, y}, cur: 1}
+	other := &viewerWindow{app: a, tabs: []tab{z}}
 	sent := func(v *viewer) string {
 		select {
 		case p := <-v.out:

@@ -48,6 +48,7 @@ func (a *App) sidebar(c *ui.Context) {
 				a.mu.Lock()
 				a.page = p
 				a.mu.Unlock()
+				a.homeVisibilityChanged()
 			}
 		}
 		if protected {
@@ -99,7 +100,7 @@ func (a *App) homeView(c *ui.Context) {
 	a.mu.Unlock()
 	// This device on the left, the device to control on the right, as
 	// RustDesk lays them out; recent devices below.
-	ui.Row(c).FillWidth().MaxWidth(contentMaxW).Gap(gap).AlignItems(ui.Stretch).Children(func() {
+	ui.Row(c).FillWidth().MaxWidth(homeMaxW).Gap(gap).AlignItems(ui.Stretch).Children(func() {
 		card(c).Width(thisDeviceW).Children(func() {
 			ui.Text(c, L.HomeThisDevice()).FontSize(sizeHeading).Bold()
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
@@ -193,6 +194,7 @@ func (a *App) permissionsView(c *ui.Context) {
 	}
 	a.permissionsCard(c, true)
 	a.accessSettings(c)
+	a.watchersCard(c)
 	a.trustedCard(c)
 	a.mu.Lock()
 	p := a.prefs
@@ -207,6 +209,7 @@ func (a *App) securityView(c *ui.Context) {
 		return
 	}
 	a.identitySettings(c)
+	a.keysSettings(c)
 	card(c).Children(func() { a.protectedSetting(c) })
 	a.privacySettings(c)
 }

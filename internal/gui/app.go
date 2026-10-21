@@ -16,7 +16,6 @@ import (
 	"github.com/YuanZhe-99/Kyokai/internal/engine"
 	"github.com/YuanZhe-99/Kyokai/internal/helper"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
-	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
 type page int
@@ -93,6 +92,14 @@ type App struct {
 	passphrase string
 	// Open viewer windows by session id (viewer.go).
 	viewers map[string]*viewer
+	// The services' tabs by serviceKey (servicetab.go), and how they reach
+	// the services and their sign-ins (remote.go).
+	services map[string]*serviceTab
+	link     serviceLink
+	// Home's status watch (home.go).
+	watch watchState
+	// The Security page's keys and saved sign-ins (keys.go).
+	keys keysState
 	// The viewer windows, oldest first; a new viewer opens as a tab of the
 	// newest (viewerwin.go).
 	viewerWins []*viewerWindow
@@ -128,7 +135,9 @@ func New(profile, stateDir, socket string) *App {
 	a := &App{
 		profile: profile, stateDir: stateDir, socket: socket, userSocket: socket, ctx: ctx, cancel: cancel,
 		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{}, viewers: map[string]*viewer{},
+		services: map[string]*serviceTab{},
 	}
+	a.link = newServiceLink(a)
 	a.main = &viewerWindow{app: a, main: true, home: true}
 	a.lastWin = a.main
 	a.socket = startSocket(a.prefs.Helper, helper.Installed(), socket)
@@ -270,6 +279,7 @@ func (a *App) SetVisible(v bool) {
 	a.visible = v
 	a.mu.Unlock()
 	a.syncDock()
+	a.homeVisibilityChanged()
 }
 
 // syncDock shows the Dock icon while a Kyokai window is open and hides it
@@ -296,6 +306,7 @@ func (a *App) Start() {
 	go a.connectLoop()
 	go a.appUpdateLoop()
 	go a.watchMain()
+	go a.watchLoop()
 }
 
 // How often the GUI makes sure its main thread still answers, and how long
@@ -385,28 +396,6 @@ func (a *App) MarkQuitting() {
 	a.mu.Lock()
 	a.quitting = true
 	a.mu.Unlock()
-}
-
-// HandleClose hides the window into the tray unless the user chose that
-// closing quits (or there is no tray).
-func (a *App) HandleClose(e *mygo.CloseEvent) {
-	a.mu.Lock()
-	quit := a.quitting || a.prefs.CloseQuits || a.tray == nil
-	w := a.window
-	first := !a.prefs.TrayHintShown
-	a.prefs.TrayHintShown = true
-	p := a.prefs
-	a.mu.Unlock()
-	if quit {
-		return
-	}
-	e.PreventDefault()
-	w.Hide()
-	a.SetVisible(false)
-	if first {
-		_ = savePrefs(a.stateDir, p)
-		a.notify("tray-hint", L.NotifyStillRunningTitle(), L.NotifyStillRunningBody())
-	}
 }
 
 // update changes state under the lock and redraws the window and the tray.

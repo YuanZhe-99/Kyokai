@@ -111,6 +111,12 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | Remote Desktop (RDP) / Screen Sharing (VNC) | 远程桌面（RDP） / 屏幕共享（VNC） |
 | input paused | 输入已暂停 |
 | loading indicator | 加载指示器 |
+| Your keys / Generate a key / Import a key / Generate a pair | 你的密钥 / 生成密钥 / 导入密钥 / 生成密钥对 |
+| passphrase (of a key) | 口令 |
+| service tab / Sign in / Trust the new key | 服务标签页 / 登录 / 信任新密钥 |
+| live status / sparkline / Getting its status… | 实时状态 / 走势线 / 正在获取状态… |
+| watch lease (Home's status watch) | 查看租约 |
+| Disconnect and close / Disconnect and quit | 断开并关闭 / 断开并退出 |
 
 ## 6. 审阅清单
 

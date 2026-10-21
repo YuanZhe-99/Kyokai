@@ -25,16 +25,32 @@ when `SCREENSHOT_DIR` is set.
   Keychain is missing, "Privacy permissions" with Allow for each (Permissions always shows it there);
   a permission asked for in this run also offers "Reopen Kyokai", since macOS counts a new grant
   only in an engine started after it. In the helper modes the card says the permissions are
-  Kyokai Helper's, and a missing one offers Restart Kyokai Helper. Below, **Recent**: one card per
-  device — never one per session — with its avatar, its name (the one given here, else its
-  friendly name) and Device ID, a dot (green
-  while the device is on the network), its state (connected, connecting, waiting, why the last
-  attempt failed, or when it was last connected; cut short with "…") and "Password saved"; a
-  click connects (or shows its tab), by the address it was last reached at if any, and its ⋯ menu
-  has Connect, Connect with AI, Rename… (a name shown only on this device, edited in a card above
-  the devices; empty goes back to the device's own), Forget password, Forget old identity (after a
+  Kyokai Helper's, and a missing one offers Restart Kyokai Helper. Home is wider than the other
+  pages (`homeMaxW`, 1120). Below, **Recent**: a grid of device cards — one per device, never one
+  per session — each at least 300 wide, one to three side by side (`homeColumnsFor`). A card has a
+  header (avatar, its name — the one given here, else its friendly name — and Device ID, its state
+  as a chip: connected, connecting, online or offline, and ⋯); how the network reaches it (a dot
+  and "Direct · 12 ms", "Relayed · 231 ms" in the warning colour, "By address", why the last
+  attempt failed, or when it was last connected); its live status; chips for what is saved for it
+  (Kyokai password, key, SSH, Remote Desktop, VNC; flags only); and its actions: Connect (Show
+  while connected or connecting), then SSH, Remote Desktop and VNC for the services its status
+  reports listening (disabled, with a tooltip, for a device without Kyokai 0.4.1's tunnels), and AI
+  (Connect with AI). Its ⋯ menu has Connect, Connect with AI, Open SSH / Remote Desktop / VNC,
+  Rename… (a name shown only on this device, edited in a card above the devices; empty goes back to
+  the device's own), Saved passwords and keys… (the Security page), Forget old identity (after a
   key change) and Remove (disconnects it, takes it and its finished connections off Recent, and
-  forgets its pinned key, saved password and the name given here).
+  forgets its pinned key, saved sign-ins and the name given here).
+- **Live status on Home:** while Home shows (the main window visible, on its Kyokai tab and the
+  Home page), the GUI leases a watch of the recent devices (`watch.set`, eight at most, renewed
+  every 10 s and dropped as Home hides). A watched device's card shows tiles in two columns: CPU
+  (a meter, warning from 80 %, critical from 95 %, and a sparkline of the last 60 samples),
+  memory and disk (used of total), GPU (hidden when the host has none to report), network (↓ and ↑
+  with a sparkline of what arrives), battery (warning from 20 %, critical from 10 %; hidden
+  without one) and uptime. Never stale data as current: a sample up to 6 s old shows as it is;
+  from 6 to 60 s the tiles are dimmed with "Updated N s ago"; older, no values show, only "Status
+  from HH:MM", and the sparklines are cleared. Without a sample the card says how the watch goes:
+  "Getting its status…" with the loading indicator, no saved password or key, needs Kyokai 0.4.1
+  there, or refused.
 
 - **Confirmations:** a controller waiting for this host's user shows at the top of every page with
   its Device ID, whether it is known or a new key claiming a known ID, a warning when it gave no
@@ -85,11 +101,22 @@ when `SCREENSHOT_DIR` is set.
 - **Permissions:** on macOS "Privacy permissions" first; Passwords (permanent password: set,
   change or remove; Accepted passwords: Temporary, Permanent or Both; Connect without asking, on by
   default, and below it "With a correct password": a switch per permission a password grants
-  without asking); trusted devices with their last connection and Remove; Sound to share — what
+  without asking, among them See this computer's status, on by default, and Connect to its SSH,
+  Remote Desktop, and VNC or Screen Sharing, off by default); the devices watching this computer's
+  status, with since when; trusted devices with their last connection and Remove; Sound to share — what
   this computer plays unless an input device is chosen, a device that is gone shown as not
   connected, an input asking macOS for the Microphone permission.
 - **Security:** Device identity (Device ID, friendly name, fingerprint; back up and restore with a
-  passphrase through a file dialog; reset, after a warning); Protected mode (only with a permanent
+  passphrase through a file dialog; reset, after a warning); the keys, the one page where keys and
+  their fingerprints show: Your keys (name, type and `SHA256:` fingerprint, Copy public key, Remove
+  after a confirmation; Generate a key — Ed25519, its private part shown once in OpenSSH form with
+  Copy and Save to a file…, encrypted with the passphrase given, then kept by the engine; Import a
+  key — pasted or from a file, OpenSSH or PEM, the passphrase asked for an encrypted one; Ed25519,
+  RSA of 2048 bits or more, ECDSA P-256 or P-384), Keys that can connect to this device (the same
+  rows; Add a key from an OpenSSH line or a `.pub` file, its comment naming it; Generate a pair —
+  the public key may connect here, the private part shown once and never stored) and Saved
+  passwords and keys (each device with something kept: a chip per sign-in with × to forget it, and
+  Forget all); Protected mode (only with a permanent
   password, after a confirmation); Privacy: hide Kyokai from screen capture — on by default,
   applied to the main window and every viewer at once and told to the engine, whose macOS capture
   follows it; turned off (after a warning), Kyokai's windows also take the input of the people
@@ -123,7 +150,17 @@ when `SCREENSHOT_DIR` is set.
   Reconnect. An empty password uses the one saved for the device, else asks its user. Closing a
   tab (×) disconnects. A tab dragged onto another Kyokai window's tabs moves there; dropped
   outside Kyokai, or with its ⧉, it gets a window of its own, which closes with its last tab;
-  closing such a window disconnects its tabs. Keys grabbed for a window go to the tab shown.
+  closing such a window disconnects its tabs. Keys grabbed for a window go to the tab shown. A tab
+  is a desktop or one of a device's services (SSH, Remote Desktop, VNC; `tab`, `serviceTab`), one
+  per device and kind, and every kind drags, moves and closes alike.
+- A service tab ([remote-services.md](remote-services.md), "Clients") is titled "SSH · device"
+  and the like. It shows "Connecting to SSH…" with the loading indicator, then, when nothing saved
+  works, a sign-in form (user name; domain for Remote Desktop; for VNC a user name only a Mac asks
+  for; password; Remember password; Cancel and Sign in), then the client: MyGo's terminal for SSH,
+  in the app's light or dark theme, or the other desktop's picture for Remote Desktop and VNC, with
+  a toolbar of Display (Fit or Original size), Keyboard (the keyboard mode), Actions
+  (Ctrl+Alt+Del) and Full screen. When it ends it says why, with Reconnect, and after an SSH
+  server's key changed, Trust the new key.
 - The picture is scaled to fit on black, or with Original size at one point per pixel of the
   host, scrolled both ways when larger than the window (its scroll bars' thumbs move it; the wheel
   goes to the host while the session controls it) and centred when smaller; the host's pointer is
@@ -176,7 +213,8 @@ when `SCREENSHOT_DIR` is set.
 
 - Copy is written for the person using the app.
 - Never shown: reason codes, keys, socket paths, internal identifiers other than the Device ID (the
-  fingerprint appears only on the identity card).
+  fingerprint, sign-in keys and their fingerprints appear only on the Security page; saved
+  sign-ins show as flags, never their passwords).
 
 ## Visual language
 
@@ -201,7 +239,14 @@ when `SCREENSHOT_DIR` is set.
   never reaches them).
 - Closing the window hides it to the tray and says so the first time; without a tray, or with
   "Quit" chosen for the close button, closing quits. Quitting the app itself (its menu, the Dock,
-  logging out or shutting down) always quits.
+  logging out or shutting down) always quits, never asks, and has the engine end this GUI's
+  connections (`sessions.close_controllers`, waiting a second at most).
+- Closing a window decides by `decideClose`: the main window with Quit chosen asks while any
+  connection is live anywhere, then quits; otherwise a window asks when it holds two live
+  connections or more (connecting, waiting, connected or reconnecting; desktops and services
+  alike), or one it does not show (the main window on Home), then disconnects its tabs and hides
+  (the main window) or closes. The question is a dialog naming the connections, with "Disconnect
+  and close" (or "Disconnect and quit") and Cancel.
 - On macOS the Dock icon is shown only while a Kyokai window is open (the main window or a
   connection's own window); with only the menu bar icon left, Kyokai leaves the Dock and the app
   switcher, and opening the window brings the icon back.

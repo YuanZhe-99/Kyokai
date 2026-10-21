@@ -12,6 +12,35 @@ import (
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
+// tab is one connection shown as a tab of a viewer window: a device's
+// desktop (*viewer) or one of its services (*serviceTab), doc/en-us/gui.md,
+// "Connections". Methods run on the main thread unless they say otherwise.
+type tab interface {
+	// tabKey identifies the tab among every window's: the Device ID for a
+	// desktop, the Device ID and the service for a service (serviceKey).
+	tabKey() string
+	// tabTitle names the tab and its window.
+	tabTitle() string
+	// tabWindow is the window the tab is in now (nil once it closed);
+	// setTabWindow moves it. Safe from any goroutine.
+	tabWindow() *viewerWindow
+	setTabWindow(w *viewerWindow)
+	// view draws the tab's content.
+	view(c *ui.Context)
+	// live reports whether the connection is under way or connected, as
+	// closing a window counts them (decideClose). Safe from any goroutine.
+	live() bool
+	// disconnect ends the connection as its tab closes.
+	disconnect()
+	// syncGrab follows whether the tab's picture has the keyboard; endGrab
+	// ends its keyboard grab: a tab not shown takes no keys.
+	syncGrab(focused bool)
+	endGrab()
+	// setFront makes the tab the one in front, which alone exchanges the
+	// clipboard, or not.
+	setFront(on bool)
+}
+
 // viewerWindow holds connections as tabs, as a browser holds pages
 // (doc/en-us/gui.md, "Connections"). The main window is one, with Home as
 // its first tab, which cannot close; a tab moves to another window when
@@ -26,16 +55,19 @@ type viewerWindow struct {
 	main bool
 
 	mu   sync.Mutex
-	tabs []*viewer
+	tabs []tab
 	cur  int
 	// home: the main window shows Home rather than a connection.
 	home bool
 	// full: the window is in full screen, which hides the tabs.
 	full bool
+	// agreed: its user agreed to disconnect its connections, so closing it
+	// once more does not ask again (closing.go).
+	agreed bool
 }
 
-// tabDrag is what a dragged tab carries: its connection's Device ID.
-type tabDrag struct{ device string }
+// tabDrag is what a dragged tab carries: its tabKey.
+type tabDrag struct{ key string }
 
 // TitleBarOptions hides a window's title bar, so that the tab strip is the
 // title bar: the window's own controls (the traffic lights on macOS;
@@ -51,7 +83,8 @@ func TitleBarOptions(o mygo.WindowOptions) mygo.WindowOptions {
 // newViewerWindow makes an empty window for connection tabs, shown as its
 // first tab comes (add).
 // Side effects: a native window, kept out of capture unless Security says
-// otherwise; closing it disconnects its tabs.
+// otherwise; closing it asks first when it holds several connections
+// (closing.go), then disconnects its tabs.
 func (a *App) newViewerWindow() *viewerWindow {
 	vw := &viewerWindow{app: a}
 	vw.win = mygo.NewWindow(TitleBarOptions(mygo.WindowOptions{
@@ -69,6 +102,7 @@ func (a *App) newViewerWindow() *viewerWindow {
 	vw.win.SetContentProtection(!show)
 	vw.watchFullScreen()
 	a.watchFocus(vw)
+	vw.win.OnClose(func(e *mygo.CloseEvent) { a.closeViewerWindow(vw, e) })
 	vw.win.OnClosed(func() {
 		a.mu.Lock()
 		a.viewerWins = slices.DeleteFunc(a.viewerWins, func(w *viewerWindow) bool { return w == vw })
@@ -81,8 +115,8 @@ func (a *App) newViewerWindow() *viewerWindow {
 		tabs := vw.tabs
 		vw.tabs = nil
 		vw.mu.Unlock()
-		for _, v := range tabs {
-			v.disconnect()
+		for _, t := range tabs {
+			t.disconnect()
 		}
 	})
 	return vw
@@ -110,9 +144,9 @@ func (vw *viewerWindow) fullScreen() bool {
 	return vw.full
 }
 
-// add puts a viewer in this window as the last tab, shown.
+// add puts a tab in this window as the last tab, shown.
 // Notes: call on the main thread.
-func (vw *viewerWindow) add(v *viewer) {
+func (vw *viewerWindow) add(v tab) {
 	vw.mu.Lock()
 	prev := vw.shown()
 	vw.tabs = append(vw.tabs, v)
@@ -121,16 +155,16 @@ func (vw *viewerWindow) add(v *viewer) {
 	if prev != nil && prev != v {
 		prev.endGrab()
 	}
-	v.home.Store(vw)
+	v.setTabWindow(vw)
 	vw.retitle()
 	vw.win.Show()
 	vw.win.Focus()
 	vw.app.syncFront()
 }
 
-// show brings a viewer's tab to the front of its window.
+// show brings a tab to the front of its window.
 // Notes: call on the main thread.
-func (vw *viewerWindow) show(v *viewer) {
+func (vw *viewerWindow) show(v tab) {
 	vw.mu.Lock()
 	prev := vw.shown()
 	if i := slices.Index(vw.tabs, v); i >= 0 {
@@ -146,11 +180,11 @@ func (vw *viewerWindow) show(v *viewer) {
 	vw.app.syncFront()
 }
 
-// remove takes a viewer's tab out of this window. A window of its own
-// closes when it has no tab left; the main window shows Home.
+// remove takes a tab out of this window. A window of its own closes when it
+// has no tab left; the main window shows Home.
 // Returns: whether the tab was here.
 // Notes: call on the main thread.
-func (vw *viewerWindow) remove(v *viewer) bool {
+func (vw *viewerWindow) remove(v tab) bool {
 	vw.mu.Lock()
 	i := slices.Index(vw.tabs, v)
 	if i < 0 {
@@ -164,6 +198,8 @@ func (vw *viewerWindow) remove(v *viewer) bool {
 	empty := len(vw.tabs) == 0
 	if empty {
 		vw.home = true
+		// A window of its own that closes with its last tab never asks.
+		vw.agreed = true
 	}
 	full := vw.full
 	vw.mu.Unlock()
@@ -181,9 +217,8 @@ func (vw *viewerWindow) remove(v *viewer) bool {
 	return true
 }
 
-// shown is the viewer of the tab shown, or nil for Home. Notes: the
-// caller holds vw.mu.
-func (vw *viewerWindow) shown() *viewer {
+// shown is the tab shown, or nil for Home. Notes: the caller holds vw.mu.
+func (vw *viewerWindow) shown() tab {
 	if vw.home || vw.cur >= len(vw.tabs) {
 		return nil
 	}
@@ -196,21 +231,22 @@ func (vw *viewerWindow) retitle() {
 	v := vw.shown()
 	vw.mu.Unlock()
 	if v != nil {
-		vw.win.SetTitle(L.ViewerTitle(v.title))
+		vw.win.SetTitle(L.ViewerTitle(v.tabTitle()))
 	} else {
 		vw.win.SetTitle("Kyokai")
 	}
 }
 
-// moveTab moves a device's tab into another window (a new one for nil).
+// moveTab moves a tab, by its tabKey, into another window (a new one for
+// nil).
 // Notes: call on the main thread; a tab alone in a window of its own stays
 // when it would only get a window of its own again.
-func (a *App) moveTab(device string, to *viewerWindow) {
-	v := a.viewerFor(device)
+func (a *App) moveTab(key string, to *viewerWindow) {
+	v := a.tabFor(key)
 	if v == nil {
 		return
 	}
-	from := v.home.Load()
+	from := v.tabWindow()
 	if from == to {
 		return
 	}
@@ -231,8 +267,8 @@ func (a *App) moveTab(device string, to *viewerWindow) {
 	to.add(v)
 }
 
-// closeTab closes a tab, which disconnects its device.
-func (vw *viewerWindow) closeTab(v *viewer) {
+// closeTab closes a tab, which disconnects it.
+func (vw *viewerWindow) closeTab(v tab) {
 	if vw.remove(v) {
 		v.disconnect()
 	}
@@ -254,7 +290,7 @@ func (vw *viewerWindow) view(c *ui.Context) {
 			ui.Column(c.Key("home")).Grow(1).FillWidth().Children(func() { vw.app.View(c) })
 		case cur < len(tabs):
 			v := tabs[cur]
-			ui.Column(c.Key("tab-" + v.device)).Grow(1).FillWidth().Children(func() { v.view(c) })
+			ui.Column(c.Key("tab-" + v.tabKey())).Grow(1).FillWidth().Children(func() { v.view(c) })
 		}
 	})
 	// A tab not shown takes no keys (regression: a grab stayed on behind
@@ -271,7 +307,7 @@ func (vw *viewerWindow) view(c *ui.Context) {
 // one tab per connection with Open in new window and Close, and an empty
 // part that moves the window (a double click zooms it, as a title bar
 // does). Dragging a tab moves it; a tab dropped on the strip comes here.
-func (vw *viewerWindow) tabBar(c *ui.Context, tabs []*viewer, cur int, home bool) {
+func (vw *viewerWindow) tabBar(c *ui.Context, tabs []tab, cur int, home bool) {
 	t := c.Theme()
 	first := 0 // the index of the first connection's tab
 	if vw.main {
@@ -289,7 +325,7 @@ func (vw *viewerWindow) tabBar(c *ui.Context, tabs []*viewer, cur int, home bool
 		strip.Background(t.Accent.Alpha(0.14))
 	}
 	if d, ok := ui.Drop[tabDrag](strip); ok {
-		vw.app.moveTab(d.device, vw)
+		vw.app.moveTab(d.key, vw)
 	}
 	strip.Children(func() {
 		bar := ui.TabsBase(c.Key("tabs"), &sel, len(tabs)+first)
@@ -313,11 +349,14 @@ func (vw *viewerWindow) tabBar(c *ui.Context, tabs []*viewer, cur int, home bool
 	}
 	vw.retitle()
 	vw.app.syncFront()
+	if vw.main {
+		vw.app.homeVisibilityChanged()
+	}
 }
 
 // tabList fills the strip's tab list: Home (the Kyokai tab) in the main
 // window, then each connection's tab, which drags into another window.
-func (vw *viewerWindow) tabList(c *ui.Context, bar ui.TabsParts, tabs []*viewer, cur int, home bool, first int) {
+func (vw *viewerWindow) tabList(c *ui.Context, bar ui.TabsParts, tabs []tab, cur int, home bool, first int) {
 	t := c.Theme()
 	bar.List.Children(func() {
 		if vw.main {
@@ -337,23 +376,23 @@ func (vw *viewerWindow) tabList(c *ui.Context, bar ui.TabsParts, tabs []*viewer,
 			if i == cur && !home {
 				tab.Background(t.Surface)
 			}
-			device := v.device
-			tab.Drag(tabDrag{device}).DragData(transfer.TextData(v.title), transfer.DragOptions{
+			key, title := v.tabKey(), v.tabTitle()
+			tab.Drag(tabDrag{key}).DragData(transfer.TextData(title), transfer.DragOptions{
 				// Dropped where no Kyokai window took it: a window of its own;
 				// a drag given up with Escape leaves the tab where it is.
 				Done: func(r transfer.Result) {
 					if r.Operation == transfer.None && !r.Escaped {
-						vw.app.moveTab(device, nil)
+						vw.app.moveTab(key, nil)
 					}
 				},
 			})
 			tab.Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, v.title).FontSize(sizeSmall).SingleLine().MaxWidth(tabTitleMaxW)
-					if (vw.main || len(tabs) > 1) && tabIcon(c, "tab-out-"+device, "⧉", L.ViewerTabOut()) {
-						vw.app.moveTab(device, nil)
+					ui.Text(c, title).FontSize(sizeSmall).SingleLine().MaxWidth(tabTitleMaxW)
+					if (vw.main || len(tabs) > 1) && tabIcon(c, "tab-out-"+key, "⧉", L.ViewerTabOut()) {
+						vw.app.moveTab(key, nil)
 					}
-					if tabIcon(c, "tab-close-"+device, "×", L.ViewerTabClose()) {
+					if tabIcon(c, "tab-close-"+key, "×", L.ViewerTabClose()) {
 						vw.closeTab(v)
 					}
 				})
@@ -377,4 +416,43 @@ func (v *viewer) disconnect() {
 	id := v.session()
 	v.close()
 	go func() { _, _ = v.app.requestWith(localapi.Request{Type: localapi.RequestClose, ID: id}) }()
+}
+
+// tabKey is the viewer's tab's identity: the Device ID.
+func (v *viewer) tabKey() string { return v.device }
+
+// tabTitle names the viewer's tab: the device's name and Device ID.
+func (v *viewer) tabTitle() string { return v.title }
+
+// tabWindow is the window the viewer's tab is in, nil once it closed.
+func (v *viewer) tabWindow() *viewerWindow { return v.home.Load() }
+
+// setTabWindow records the window the viewer's tab moved to.
+func (v *viewer) setTabWindow(w *viewerWindow) { v.home.Store(w) }
+
+// tabFor is the open tab with a tabKey, desktop or service, or nil.
+func (a *App) tabFor(key string) tab {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if v := a.viewers[key]; v != nil {
+		return v
+	}
+	if s := a.services[key]; s != nil {
+		return s
+	}
+	return nil
+}
+
+// allTabs are every open tab, desktops and services, in no order.
+func (a *App) allTabs() []tab {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]tab, 0, len(a.viewers)+len(a.services))
+	for _, v := range a.viewers {
+		out = append(out, v)
+	}
+	for _, s := range a.services {
+		out = append(out, s)
+	}
+	return out
 }

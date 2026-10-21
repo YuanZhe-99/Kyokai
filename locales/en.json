@@ -295,6 +295,40 @@
   "ByAddressRangesHint": "Address ranges (192.168.0.0/16) or single addresses, one per line. By default: local networks and Tailscale (100.64.0.0/10). Connections from anywhere else are closed at once.",
   "ByAddressSaved": "Address ranges saved.",
   "ByAddressTitle": "Accept connections by address",
+  "CardAI": "AI",
+  "CardByAddress": "By address · {address}",
+  "@CardByAddress": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
+  "CardConnected": "Connected",
+  "CardNeedsUpdate": "Needs Kyokai 0.4.1 or later on that device",
+  "CardNotOnNetwork": "Not on the network",
+  "CardOffline": "Offline",
+  "CardOnline": "Online",
+  "CardOpenService": "Open {service}",
+  "@CardOpenService": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "CardSaved": "Saved passwords and keys…",
+  "CloseAskDetail": "Closing ends these connections:\n{names}",
+  "@CloseAskDetail": {
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "CloseAskTitle": "Disconnect from the devices in this window?",
+  "CloseDisconnect": "Disconnect and close",
+  "CloseDisconnectQuit": "Disconnect and quit",
   "CloseHide": "Keep running in the tray",
   "CloseQuit": "Quit",
   "ConnectIdentifying": "Looking for the device at that address…",
@@ -371,6 +405,51 @@
   "IdentityFingerprint": "Fingerprint",
   "IdentityFingerprintHint": "The full identity behind the Device ID. Compare it when another computer asks you to confirm this device.",
   "IdentityReplaced": "Identity replaced.",
+  "KeysAuthorize": "Add a key",
+  "KeysAuthorized": "The key can connect to this device now.",
+  "KeysAuthorizedHint": "A device signing in with one of these keys is admitted as a correct password is. Their public keys stay visible here.",
+  "KeysAuthorizedTitle": "Keys that can connect to this device",
+  "KeysChooseFile": "Choose a file…",
+  "KeysCopyPublic": "Copy public key",
+  "KeysDefaultName": "Kyokai key",
+  "KeysDone": "Done",
+  "KeysFailed": "The key could not be made.",
+  "KeysFileFilter": "Public keys",
+  "KeysGenerate": "Generate a key",
+  "KeysImport": "Import a key",
+  "KeysImported": "Key imported.",
+  "KeysMineHint": "This device signs in with these keys to other Kyokai devices (Ed25519) and to SSH. Their private parts stay in Kyokai's store and never leave it.",
+  "KeysMineTitle": "Your keys",
+  "KeysName": "Name",
+  "KeysNone": "None yet.",
+  "KeysPair": "Generate a pair",
+  "KeysPassphrase": "The key's passphrase",
+  "KeysPassphraseOptional": "Passphrase for the copy you take (optional)",
+  "KeysPastePrivate": "Paste a private key (OpenSSH or PEM), or choose its file.",
+  "KeysPastePublic": "Paste a public key line (ssh-ed25519 …), or choose a .pub file.",
+  "KeysRemoveConfirm": "Remove the key “{name}”?",
+  "@KeysRemoveConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "KeysSave": "Save to a file…",
+  "KeysSaveFailed": "The file could not be written.",
+  "KeysSaved": "Private key saved.",
+  "KeysShownHint": "This private key is shown only now. Copy it or save it to a file; once you choose Done it is gone from this page.",
+  "KeysShownOnce": "Private key of “{name}”",
+  "@KeysShownOnce": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "KeysUnreadable": "This is not a key Kyokai can read.",
+  "KeysUnsupported": "Kyokai keeps Ed25519 keys, RSA keys of 2048 bits or more, and ECDSA P-256 or P-384 keys.",
+  "KeysWrongPassphrase": "The passphrase is not right.",
   "LanguageSystem": "System",
   "LatencyMS": "{ms} ms",
   "@LatencyMS": {
@@ -452,11 +531,11 @@
   "PermControlInput": "Use the mouse and keyboard",
   "PermFiles": "Copy files",
   "PermHearSound": "Hear sound",
-  "PermSeeStatus": "See this computer's status",
-  "PermUseSSH": "Connect to its SSH",
-  "PermUseRDP": "Connect to its Remote Desktop",
-  "PermUseVNC": "Connect to its VNC or Screen Sharing",
   "PermRunAITask": "Run AI tasks",
+  "PermSeeStatus": "See this computer's status",
+  "PermUseRDP": "Connect to its Remote Desktop",
+  "PermUseSSH": "Connect to its SSH",
+  "PermUseVNC": "Connect to its VNC or Screen Sharing",
   "PermViewScreen": "See the screen",
   "PermanentNotSet": "Not set. Other devices can connect only with the temporary password on the Home page.",
   "PermanentSaved": "Permanent password saved.",
@@ -538,10 +617,67 @@
   "RunModeUpdate": "Update the helper",
   "RunModeUpdated": "Helper updated.",
   "RunModeUser": "No privileges",
+  "SavedForget": "Forget {what}",
+  "@SavedForget": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "SavedForgetAll": "Forget all",
+  "SavedForgotten": "Forgotten.",
+  "SavedHint": "What this device keeps to sign in to others. Only that something is kept shows here, never a password.",
+  "SavedKey": "Key",
+  "SavedNone": "Nothing is saved.",
+  "SavedPassword": "Kyokai password",
+  "SavedTitle": "Saved passwords and keys",
   "SecretsDenied": "Access to the Keychain was denied: secrets are kept only until Kyokai quits. Allow it under Privacy permissions.",
   "SecretsMemoryOnly": "In memory only: this computer's credential store is not available, so the Device ID changes on the next start.",
   "SecretsOSStore": "Encrypted with this computer's credential store",
   "SecretsUnreadable": "The saved identity cannot be unlocked. Kyokai uses a temporary one this time and leaves the saved one untouched.",
+  "ServiceConnecting": "Connecting to {service}…",
+  "@ServiceConnecting": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "ServiceDomain": "Domain (optional)",
+  "ServiceEnded": "The connection ended.",
+  "ServiceFailed": "The connection could not be opened.",
+  "ServiceHostKeyChanged": "This device's SSH key is not the one it had before. Kyokai sent no password. Trust the new key only if you know why it changed.",
+  "ServiceNoTunnel": "This version of Kyokai cannot open connections to a device's services yet.",
+  "ServicePassword": "Password",
+  "ServiceRDP": "Remote Desktop",
+  "ServiceReplaced": "Someone else signed in to that desktop, so this connection ended.",
+  "ServiceSSH": "SSH",
+  "ServiceSignIn": "Sign in",
+  "ServiceSignInHint": "Sign in to {service} on that device. With Remember password, Kyokai keeps it for the next time.",
+  "@ServiceSignInHint": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "ServiceTabTitle": "{service} · {device}",
+  "@ServiceTabTitle": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      },
+      "service": {
+        "type": "String"
+      }
+    }
+  },
+  "ServiceTrustKey": "Trust the new key",
+  "ServiceUser": "User name",
+  "ServiceUserMac": "User name (a Mac asks for one)",
+  "ServiceVNC": "VNC",
+  "ServiceWrongSignIn": "The user name or password was not accepted.",
   "SessionClosed": "Ended",
   "SessionConfirmingHere": "Waiting for you to allow it",
   "SessionConfirmingThere": "Waiting for the other device to allow it…",
@@ -583,6 +719,52 @@
   "SettingsTheme": "Appearance",
   "StartOverDone": "This device has a new identity, kept from now on.",
   "StartOverHint": "Without a backup it cannot come back. Start over to keep a new identity from now on; the old file stays aside, untouched.",
+  "StatusBattery": "Battery",
+  "StatusCPU": "CPU",
+  "StatusCharging": "{value} · charging",
+  "@StatusCharging": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "StatusDisk": "Disk",
+  "StatusFrom": "Status from {time}",
+  "@StatusFrom": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "StatusGPU": "GPU",
+  "StatusGetting": "Getting its status…",
+  "StatusMemory": "Memory",
+  "StatusNetwork": "Network",
+  "StatusNoCredential": "Save a password or a key for this device to see its status here.",
+  "StatusOf": "{used} of {total}",
+  "@StatusOf": {
+    "placeholders": {
+      "total": {
+        "type": "String"
+      },
+      "used": {
+        "type": "String"
+      }
+    }
+  },
+  "StatusRefused": "That device does not share its status with this one.",
+  "StatusUnsupported": "Its status shows once that device runs Kyokai 0.4.1 or later.",
+  "StatusUpdatedAgo": "Updated {seconds} s ago",
+  "@StatusUpdatedAgo": {
+    "placeholders": {
+      "seconds": {
+        "type": "String"
+      }
+    }
+  },
+  "StatusUptime": "Up",
   "StorageLocation": "Data folder",
   "StorageSecrets": "Secrets",
   "ThemeDark": "Dark",
@@ -769,6 +951,17 @@
     }
   },
   "ViewerWaiting": "Waiting for the picture…",
+  "WatchersHint": "These devices show this computer's processor, memory, disk and network use on their Home page. Turn off “See this computer's status” above to stop them.",
+  "WatchersNone": "No device is watching this computer's status.",
+  "WatchersSince": "Since {time}",
+  "@WatchersSince": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "WatchersTitle": "Watching this computer's status",
   "WithoutAskingHint": "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Background service), only the permanent password does. Off: you are always asked.",
   "WithoutAskingTitle": "Connect without asking"
 }

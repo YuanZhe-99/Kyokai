@@ -1,0 +1,57 @@
+package gui
+
+// remoteKey is a key as Remote Desktop and VNC name it: its PC set-1 scan
+// code (0xE000 above it for an extended key, as the keyboard grab reports
+// it) and its X11 keysym, for a US layout; name is the viewer's name for
+// it (keyNames), empty for keys the toolkit does not send by name.
+type remoteKey struct {
+	name string
+	scan uint32
+	sym  uint32
+}
+
+// remoteKeys are the keys a Remote Desktop or VNC tab sends.
+var remoteKeys = []remoteKey{
+	{"escape", 0x01, 0xff1b}, {"1", 0x02, '1'}, {"2", 0x03, '2'}, {"3", 0x04, '3'}, {"4", 0x05, '4'},
+	{"5", 0x06, '5'}, {"6", 0x07, '6'}, {"7", 0x08, '7'}, {"8", 0x09, '8'}, {"9", 0x0A, '9'}, {"0", 0x0B, '0'},
+	{"minus", 0x0C, '-'}, {"equal", 0x0D, '='}, {"backspace", 0x0E, 0xff08}, {"tab", 0x0F, 0xff09},
+	{"q", 0x10, 'q'}, {"w", 0x11, 'w'}, {"e", 0x12, 'e'}, {"r", 0x13, 'r'}, {"t", 0x14, 't'}, {"y", 0x15, 'y'},
+	{"u", 0x16, 'u'}, {"i", 0x17, 'i'}, {"o", 0x18, 'o'}, {"p", 0x19, 'p'}, {"bracket-left", 0x1A, '['},
+	{"bracket-right", 0x1B, ']'}, {"enter", 0x1C, 0xff0d}, {"", 0x1D, 0xffe3}, {"a", 0x1E, 'a'}, {"s", 0x1F, 's'},
+	{"d", 0x20, 'd'}, {"f", 0x21, 'f'}, {"g", 0x22, 'g'}, {"h", 0x23, 'h'}, {"j", 0x24, 'j'}, {"k", 0x25, 'k'},
+	{"l", 0x26, 'l'}, {"semicolon", 0x27, ';'}, {"quote", 0x28, '\''}, {"backquote", 0x29, '`'}, {"", 0x2A, 0xffe1},
+	{"backslash", 0x2B, '\\'}, {"z", 0x2C, 'z'}, {"x", 0x2D, 'x'}, {"c", 0x2E, 'c'}, {"v", 0x2F, 'v'}, {"b", 0x30, 'b'},
+	{"n", 0x31, 'n'}, {"m", 0x32, 'm'}, {"comma", 0x33, ','}, {"period", 0x34, '.'}, {"slash", 0x35, '/'},
+	{"", 0x36, 0xffe2}, {"", 0x37, 0xffaa}, {"", 0x38, 0xffe9}, {"space", 0x39, ' '}, {"", 0x3A, 0xffe5},
+	{"f1", 0x3B, 0xffbe}, {"f2", 0x3C, 0xffbf}, {"f3", 0x3D, 0xffc0}, {"f4", 0x3E, 0xffc1}, {"f5", 0x3F, 0xffc2},
+	{"f6", 0x40, 0xffc3}, {"f7", 0x41, 0xffc4}, {"f8", 0x42, 0xffc5}, {"f9", 0x43, 0xffc6}, {"f10", 0x44, 0xffc7},
+	{"", 0x45, 0xff7f}, {"", 0x46, 0xff14}, {"", 0x47, 0xffb7}, {"", 0x48, 0xffb8}, {"", 0x49, 0xffb9}, {"", 0x4A, 0xffad},
+	{"", 0x4B, 0xffb4}, {"", 0x4C, 0xffb5}, {"", 0x4D, 0xffb6}, {"", 0x4E, 0xffab}, {"", 0x4F, 0xffb1}, {"", 0x50, 0xffb2},
+	{"", 0x51, 0xffb3}, {"", 0x52, 0xffb0}, {"", 0x53, 0xffae}, {"f11", 0x57, 0xffc8}, {"f12", 0x58, 0xffc9},
+	{"", 0xE01C, 0xff8d}, {"", 0xE01D, 0xffe4}, {"", 0xE035, 0xffaf}, {"", 0xE037, 0xff61}, {"", 0xE038, 0xffea},
+	{"home", 0xE047, 0xff50}, {"up", 0xE048, 0xff52}, {"page-up", 0xE049, 0xff55}, {"left", 0xE04B, 0xff51},
+	{"right", 0xE04D, 0xff53}, {"end", 0xE04F, 0xff57}, {"down", 0xE050, 0xff54}, {"page-down", 0xE051, 0xff56},
+	{"insert", 0xE052, 0xff63}, {"delete", 0xE053, 0xffff}, {"", 0xE05B, 0xffeb}, {"", 0xE05C, 0xffec},
+	{"context-menu", 0xE05D, 0xff67},
+}
+
+// The modifiers' keys, pressed around a named key in Legacy mode.
+var (
+	keyShift = remoteKey{scan: 0x2A, sym: 0xffe1}
+	keyCtrl  = remoteKey{scan: 0x1D, sym: 0xffe3}
+	keyAlt   = remoteKey{scan: 0x38, sym: 0xffe9}
+	keyMeta  = remoteKey{scan: 0xE05B, sym: 0xffeb}
+	keyDel   = remoteKey{scan: 0xE053, sym: 0xffff}
+)
+
+// remoteKeysByName and remoteKeysByScan find a remoteKey.
+var remoteKeysByName, remoteKeysByScan = func() (map[string]remoteKey, map[uint32]remoteKey) {
+	byName, byScan := map[string]remoteKey{}, map[uint32]remoteKey{}
+	for _, k := range remoteKeys {
+		if k.name != "" {
+			byName[k.name] = k
+		}
+		byScan[k.scan] = k
+	}
+	return byName, byScan
+}()

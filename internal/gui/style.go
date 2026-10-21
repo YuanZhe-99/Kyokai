@@ -115,6 +115,13 @@ const (
 	logoSize      float32 = 22  // a vendor logo inside it (about 64%)
 	busySize      float32 = 16  // a loading indicator beside text
 	busySizeLarge float32 = 28  // a loading indicator on its own
+	chipRadius    float32 = 10  // a chip (a saved sign-in, a state)
+	homeMaxW      float32 = 1120
+	homeCardMinW  float32 = 300 // a device's card on Home, at least
+	homeColumns   int     = 3   // Home's device cards side by side, at most
+	tileGap       float32 = 8   // between a card's status tiles
+	sparkH        float32 = 22  // a status tile's sparkline
+	sparkStroke   float32 = 1.5
 )
 
 // Where the macOS traffic lights sit in the tab strip: the close button's

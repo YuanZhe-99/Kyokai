@@ -32,6 +32,7 @@ func TestStartSocketFollowsTheRunModeChoice(t *testing.T) {
 // window's close-to-tray: macOS would otherwise see the quit cancelled.
 func TestQuitIsNotHiddenIntoTheTray(t *testing.T) {
 	a := &App{tray: &Tray{}}
+	a.main = &viewerWindow{app: a, main: true}
 	a.MarkQuitting()
 	e := &mygo.CloseEvent{}
 	a.HandleClose(e)
