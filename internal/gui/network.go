@@ -100,7 +100,7 @@ func (a *App) networksCard(c *ui.Context) {
 		ui.Text(c, L.NetworkTitle()).FontSize(sizeHeading).Bold()
 		ui.Text(c, L.NetworksHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		if !st.loaded {
-			ui.Spinner(c)
+			busyMark(c, L.NetworkTitle(), busySizeLarge)
 			return
 		}
 		if len(st.profiles) == 0 && st.form == nil {
@@ -173,7 +173,7 @@ func (a *App) networkEntry(c *ui.Context, p localapi.NetworkProfile, s localapi.
 			ui.Text(c, L.NetworkOnline()).FontSize(sizeSmall).TextColor(t.Success)
 		case "connecting":
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Spinner(c)
+				busyMark(c, L.NetworkConnecting(), busySize)
 				ui.Text(c, L.NetworkConnecting()).FontSize(sizeSmall).TextColor(t.TextMuted)
 			})
 		case "error":

@@ -120,7 +120,7 @@ func (a *App) appUpdateSettings(c *ui.Context) {
 	switch {
 	case updating:
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Spinner(c)
+			busyMark(c, L.AppUpdateInstalling(int(progress*100)), busySize)
 			ui.Text(c, L.AppUpdateInstalling(int(progress*100))).FontSize(sizeSmall).TextColor(t.TextMuted)
 		})
 	case up != nil:

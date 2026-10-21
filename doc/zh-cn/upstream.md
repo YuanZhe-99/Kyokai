@@ -3,7 +3,14 @@
 Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版本的源码或官方文档核实。Phase 0 可行性验证运行后，
 会把实测结果补充到对应小节；这里没有列出的内容一律不作假设。
 
-## MyGo v0.5.5
+## MyGo v0.6.2
+
+- **0.6 起（2026-10-21 核实）。** `plugins/loading` 原生绘制 loading-dev 的 29 种加载指示器
+  （`loading.Arc(c, loading.Options{Size, Color}).Label(...)`；系统要求减少动态效果时保持静止）；
+  `transfer.Result.Escaped` 区分按 Escape 放弃的拖动与拖到所有窗口之外的拖动；`ui.Tester.Click`、`ClickWith`
+  与 `RightClick` 对窗口外的元素返回错误；位于屏幕外的窗口不绘制。`plugins/terminal`（0.5 起）显示由任意
+  `io.ReadWriteCloser` 供数据的终端（`Options.Conn`；带 `Resize(cols, rows int) error` 的会被告知尺寸），由
+  libghostty-vt 绘制，`mygo build` 会把它打包进应用。插件是 mygo 模块中的包。
 
 - **渲染。** 自带 GPU 渲染器：Windows 上为 Direct3D 11，macOS 上为 Metal，CPU 光栅化作为回退。系统调用经由
   purego 与手写的 COM；全部可用 `CGO_ENABLED=0` 构建。界面为即时模式并按标识保留状态；`Window.Update(fn)`

@@ -3,6 +3,7 @@ package gui
 import (
 	_ "embed"
 
+	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -112,6 +113,8 @@ const (
 	barIconSize   float32 = 16  // its icons
 	avatarSize    float32 = 36  // a device's round avatar
 	logoSize      float32 = 22  // a vendor logo inside it (about 64%)
+	busySize      float32 = 16  // a loading indicator beside text
+	busySizeLarge float32 = 28  // a loading indicator on its own
 )
 
 // Where the macOS traffic lights sit in the tab strip: the close button's
@@ -120,6 +123,21 @@ const (
 	trafficX = 14
 	trafficY = 12
 )
+
+// busyMark is the loading indicator shown while something is under way:
+// loading.dev's Arc (MyGo's loading plugin) in the theme's accent, named
+// for assistive technology.
+// Inputs: label says what is loading; size is busySize beside text or
+// busySizeLarge on its own.
+func busyMark(c *ui.Context, label string, size float32) ui.Element {
+	return busyMarkIn(c, label, size, c.Theme().Accent)
+}
+
+// busyMarkIn is busyMark in another colour, such as white on the viewer's black
+// stage.
+func busyMarkIn(c *ui.Context, label string, size float32, col ui.Color) ui.Element {
+	return loading.Arc(c, loading.Options{Size: size, Color: col}).Label(label)
+}
 
 // card is a rounded panel.
 func card(c *ui.Context) ui.Element {

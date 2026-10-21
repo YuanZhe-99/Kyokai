@@ -123,7 +123,7 @@ func (a *App) aiTaskDetail(c *ui.Context, task *localapi.AITask) {
 		ui.Text(c, task.Instruction).Bold().Selectable()
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if task.State == "running" {
-				ui.Spinner(c)
+				busyMark(c, aiStateLabel(task), busySize)
 			}
 			col := t.TextMuted
 			switch task.State {

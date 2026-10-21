@@ -53,6 +53,8 @@
 
 - MyGo 浅色/深色主题加系统强调色；布局数字是 `style.go` 中的命名常量。
 - 正文 14，标题 20–24，不小于 12；设备 ID 为 34，使用等宽数字。
+- 正在进行的事情都显示同一个加载指示器：MyGo 加载插件中 loading-dev 的 Arc，使用强调色（在查看器的黑色背景上为
+  白色），并以正在加载的内容为辅助技术命名。
 - 应用图标为原创作品：一个被边界线（鏡界）分开的圆环，一侧实心、一侧描边，一个指针跨过边界。托盘以单色模板图形
   显示同一标志：白色；Windows 以浅色绘制任务栏时（`SystemUsesLightTheme`，每次状态更新时检查）改用黑色（`tray-black.png`）；macOS 自行为模板着色。
   `go run ./tools/icon resources/icon.png internal/gui/assets/tray.png` 按其几何形状绘制全部图形。

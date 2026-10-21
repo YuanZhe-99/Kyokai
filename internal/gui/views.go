@@ -76,7 +76,7 @@ func (a *App) engineState(c *ui.Context) bool {
 	card(c).Children(func() {
 		if errText == "" {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Spinner(c)
+				busyMark(c, L.EngineStarting(), busySize)
 				ui.Text(c, L.EngineStarting()).TextColor(t.TextMuted)
 			})
 			return

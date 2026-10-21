@@ -159,7 +159,7 @@ func (v *viewer) aiTask(c *ui.Context, task *localapi.AITask, approve bool) {
 		ui.Text(c, task.Instruction).Bold().Selectable()
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if task.State == "running" {
-				ui.Spinner(c)
+				busyMark(c, aiStateLabel(task), busySize)
 			}
 			ui.Text(c, aiStateLabel(task)).FontSize(sizeSmall).TextColor(t.TextMuted)
 		})

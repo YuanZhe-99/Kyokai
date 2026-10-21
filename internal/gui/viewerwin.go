@@ -339,9 +339,10 @@ func (vw *viewerWindow) tabList(c *ui.Context, bar ui.TabsParts, tabs []*viewer,
 			}
 			device := v.device
 			tab.Drag(tabDrag{device}).DragData(transfer.TextData(v.title), transfer.DragOptions{
-				// Dropped where no Kyokai window took it: a window of its own.
+				// Dropped where no Kyokai window took it: a window of its own;
+				// a drag given up with Escape leaves the tab where it is.
 				Done: func(r transfer.Result) {
-					if r.Operation == transfer.None {
+					if r.Operation == transfer.None && !r.Escaped {
 						vw.app.moveTab(device, nil)
 					}
 				},

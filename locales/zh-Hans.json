@@ -426,7 +426,7 @@
   "ViewerSoundHint": "播放对方电脑正在播放的声音。按设备记住。",
   "ViewerSwapKeys": "交换 Ctrl 与 Cmd",
   "ViewerSwapKeysHint": "一台电脑上的 Ctrl 在另一台上作为 Cmd（Windows 键），反之亦然，因此 Mac 上的 Cmd+C 在 Windows 上也是复制。Mac 与 Windows 之间默认打开；按设备记住。",
-  "ViewerTabClose": "关闭此标签页（会话继续）",
+  "ViewerTabClose": "断开连接并关闭此标签页",
   "ViewerTabOut": "在新窗口中打开",
   "ViewerTimes": "对方电脑编码用时 {encode} 毫秒，网络 {network} 毫秒；本机解码 {decode} 毫秒、绘制 {draw} 毫秒。每秒 {fps} 帧，上限 {target} 帧。",
   "ViewerTitle": "{device} — Kyokai",

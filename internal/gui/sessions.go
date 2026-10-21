@@ -197,7 +197,7 @@ func (a *App) connectCard(c *ui.Context) {
 			switch {
 			case f.identifying:
 				ui.Row(c).Grow(1).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Spinner(c)
+					busyMark(c, L.ConnectIdentifying(), busySize)
 					ui.Text(c, L.ConnectIdentifying()).FontSize(sizeSmall).TextColor(t.TextMuted)
 				})
 			case !online && address == "":
@@ -427,7 +427,11 @@ func (a *App) deviceCard(c *ui.Context, t *ui.Theme, r deviceRow, online bool) {
 				if online {
 					dot = t.Success
 				}
-				ui.Box(c).Width(onlineDot).Height(onlineDot).Radius(onlineDot / 2).Background(dot)
+				if s := r.session; s != nil && (s.State == "connecting" || s.State == "confirming" || s.State == "reconnecting") {
+					busyMark(c, state, busySize)
+				} else {
+					ui.Box(c).Width(onlineDot).Height(onlineDot).Radius(onlineDot / 2).Background(dot)
+				}
 				// The card's width less its padding, the dot and the gap.
 				ui.Text(c, state).FontSize(sizeSmall).TextColor(col).SingleLine().MaxWidth(deviceCardW - 24 - onlineDot - 6).Tooltip(state)
 			})

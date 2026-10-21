@@ -4248,11 +4248,11 @@ func (msgs Messages) ViewerSwapKeysHint() string {
 	return Catalog.Format(msgs.locale, "ViewerSwapKeysHint", nil)
 }
 
-// ViewerTabClose says "Close this tab (the session goes on)"
+// ViewerTabClose says "Disconnect and close this tab"
 // in the language the app shows.
 func ViewerTabClose() string { return In(i18n.Locale()).ViewerTabClose() }
 
-// ViewerTabClose says "Close this tab (the session goes on)"
+// ViewerTabClose says "Disconnect and close this tab"
 // in the language of msgs.
 func (msgs Messages) ViewerTabClose() string {
 	return Catalog.Format(msgs.locale, "ViewerTabClose", nil)

@@ -853,13 +853,13 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 			switch phase.State {
 			case "", "connecting", "reconnecting":
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Spinner(c)
+					busyMark(c, sessionState(phase, behind), busySize)
 					ui.Text(c, sessionState(phase, behind)).TextColor(t.TextMuted)
 				})
 			case "confirming":
 				waiting = true
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Spinner(c)
+					busyMark(c, L.SessionConfirmingThere(), busySize)
 					ui.Text(c, L.SessionConfirmingThere()).TextColor(t.TextMuted)
 				})
 			default:
@@ -916,7 +916,7 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 			ui.Text(c, state).TextColor(ui.Hex("#ffffff"))
 		case bm == nil:
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Spinner(c)
+				busyMarkIn(c, L.ViewerWaiting(), busySize, ui.Hex("#ffffff"))
 				ui.Text(c, L.ViewerWaiting()).TextColor(ui.Hex("#ffffff"))
 			})
 		default:

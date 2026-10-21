@@ -4,7 +4,15 @@ What Kyokai relies on from each upstream, verified by reading the pinned source 
 documentation on 2026-10-16. Measured results from the Phase 0 spikes are added to each section
 when they run; anything not listed here is not assumed.
 
-## MyGo v0.5.5
+## MyGo v0.6.2
+
+- **Since 0.6 (checked 2026-10-21).** `plugins/loading` draws loading-dev's 29 indicators natively
+  (`loading.Arc(c, loading.Options{Size, Color}).Label(...)`; a static pose when the system asks for reduced
+  motion); `transfer.Result.Escaped` tells a drag given up with Escape from one dropped outside every window;
+  `ui.Tester.Click`, `ClickWith` and `RightClick` return an error for an element outside the window; a
+  window that is off screen draws nothing. `plugins/terminal` (since 0.5) shows a terminal fed by any
+  `io.ReadWriteCloser` (`Options.Conn`; one with `Resize(cols, rows int) error` is told its size), drawn by
+  libghostty-vt, which `mygo build` bundles. Plugins are packages of the mygo module.
 
 - **Rendering.** Own GPU renderer: Direct3D 11 on Windows, Metal on macOS, a CPU rasterizer as
   fallback. OS calls go through purego and hand-written COM; everything builds with

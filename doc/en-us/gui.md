@@ -183,6 +183,8 @@ when `SCREENSHOT_DIR` is set.
 - MyGo light/dark themes plus the desktop accent; layout numbers are named constants in
   `style.go`.
 - Body text 14, titles 20–24, nothing below 12; the Device ID is 34 with tabular digits.
+- Whatever is under way shows one loading indicator, loading-dev's Arc from MyGo's loading plugin in the
+  accent colour (white on the viewer's black stage), named for assistive technology by what is loading.
 - The app icon is original artwork: a ring split by a boundary line (鏡界), solid on one side and
   an outline on the other, with a pointer reaching across. The tray shows the same mark as a
   one-colour template glyph: white, or black (`tray-black.png`) while Windows draws the taskbar

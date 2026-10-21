@@ -158,7 +158,7 @@ func (a *App) aiProviderCard(c *ui.Context) {
 		ui.Text(c, L.AISettingsTitle()).FontSize(sizeHeading).Bold()
 		ui.Text(c, L.AISettingsHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		if s == nil {
-			ui.Spinner(c)
+			busyMark(c, L.AISettingsTitle(), busySizeLarge)
 			return
 		}
 		// The model: every model of every source.

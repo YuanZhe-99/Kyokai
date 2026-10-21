@@ -7,7 +7,7 @@ what it uses, and what that obliges. `THIRD_PARTY_NOTICES.md` holds the notices 
 
 | Component | Repository and version | Used for | License | Modifications | Obligations |
 |---|---|---|---|---|---|
-| MyGo | `egoist/mygo` v0.5.5 | GUI framework, packaging, updater | MIT | none | keep the copyright notice; its embedded Kage compiler and MingCute icon are Apache-2.0 |
+| MyGo | `egoist/mygo` v0.6.2 | GUI framework, packaging, updater, loading indicators | MIT | none | keep the copyright notice; its embedded Kage compiler and MingCute icon are Apache-2.0; its loading plugin follows loading-dev (MIT, Jakub Krehel) |
 | Easytier-MyGo files | `YuanZhe-99/Easytier-MyGo` | `tools/checkdocs`, `internal/fsutil`, the `internal/version` pattern, the MyGo maintenance skill, the conventions, the vendor-logo matcher (`internal/gui/vendorlogo.go`), the helper (`internal/helper`) and bundle signing (`internal/bundlesig`) | GPL-3.0, relicensed under AGPL-3.0 by its author | adapted names and comments; the matcher reads a device's description instead of a hostname | none beyond Kyokai's own license |
 | MyApps-AI | `YuanZhe-99/MyApps-AI` (same author) | model naming rules (`internal/gui/modelname.go`, ported from `model_naming.dart` with its test cases) and the provider templates' addresses (`internal/gui/aisources.go`) | GPL-3.0, relicensed under AGPL-3.0 by its author | ported to Go; templates without image and tool support left out | none beyond Kyokai's own license |
 | Vendor logos | Simple Icons and Wikimedia Commons, through EasyTier MyGo | device avatars (`internal/gui/assets/logos/`) | CC0 1.0 (18 files), public domain (1); trademarks of their owners | none | keep `SOURCES.md`; nominative use only, removed if an owner asks |

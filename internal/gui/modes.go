@@ -76,7 +76,12 @@ func (a *App) runModeCard(c *ui.Context) {
 		case busy:
 			note = L.RunModeSwitching()
 		}
-		ui.Text(c, note).FontSize(sizeSmall).TextColor(t.TextMuted)
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			if busy {
+				busyMark(c, note, busySize)
+			}
+			ui.Text(c, note).FontSize(sizeSmall).TextColor(t.TextMuted)
+		})
 		// A helper behind the app is updated on request too: from a signed
 		// build without a prompt, from an unsigned one with one.
 		if behind := a.outdatedHelper(); behind.helper != "" {
