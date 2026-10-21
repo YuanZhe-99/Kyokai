@@ -173,7 +173,7 @@ The viewer sends input only for a session granted `control-input`; the host chec
 
 | Event | Sent as |
 |---|---|
-| pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses and moves on the black bars around it are dropped (the toolbar over it takes its own), releases always sent; a move with no button held goes with button 0 (the host knows what it holds). The viewer sends the newest move at most every 8 ms, and any other event sends a waiting move first; the controller's engine may leave out a move while the session is behind (a newer one follows), and every other event waits for the session |
+| pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses and moves on the black bars around it are dropped (the toolbar over it takes its own), releases always sent; a move with no button held goes with button 0 (the host knows what it holds). The viewer sends the newest move at most every 8 ms, and any other event sends a waiting move first (see "Input is a stream" below) |
 | scroll | `{kind: "scroll", dx, dy}` in lines (touchpad pixels ÷ 40); positive `dy` moves the content down |
 | a key, in Map or Translate mode | `{kind: "scan", code, down, caps, num}`: the key's scan code as Windows numbers it (the set-1 code, 0xE0xx for extended keys, 0xE11D for Pause) with the controller's CapsLock and NumLock ([Keyboard modes](#keyboard-modes)) |
 | text | `{kind: "text", text}`: typed as Unicode characters, so the controller's layout and dead keys decide (Translate and Legacy) |
@@ -193,6 +193,32 @@ host user's answer nor the AI for an approval; the session decides per event and
 agent follows what it is told with each event. Kyokai's windows are left out of capture, so a check by focus alone refused
 clicks on windows the viewer and the model do see while Kyokai's unseen window was in front.
 Whatever a session holds is released when it ends. Malformed events are dropped without ending the session.
+
+**Input is a stream.** When the path stalls, input that waited would arrive late, as a burst
+of stale keys, so the controller's engine never lets the GUI wait (`kyokai_media_write`): while
+the session cannot take input — it is reconnecting, or a host that sends video has said nothing
+for 1.5 seconds, or the session's queue is full — pointer moves, presses, clicks and text are
+refused as behind and dropped. Releases are never refused: the engine keeps the keys and buttons
+the session holds on the host, and a release it cannot deliver it owes. Once the path moves and
+the queue is empty, it reconciles: to a host that announced `input-sync` ([protocol.md](protocol.md))
+one `{"kind": "sync", held}` event with what is held now, and the host lets go of whatever else
+this session holds; to a 0.4.0 host the releases themselves (those pressed again since left out).
+Input and AI commands queued while a session reconnected are dropped as it resumes, never
+delivered late (the host sends its current AI task instead; the viewer's quality, codec, sound and
+clipboard choices among them are kept), and a resumed host session starts holding nothing: the
+connection it replaces let go of what it held as it ended. The GUI hears whether input is paused
+(media packet 15) and its toolbar says "Input paused — the connection is behind"; the viewer's
+queue to the engine never drops a release either (a full queue keeps it aside and sends it once
+the queue drained).
+
+The keyboard grab steps aside while the session stalls: the viewer ends it while the session is
+reconnecting, input was paused for more than half a second, or no frame and no stats came for 3
+seconds from a host that sends video, and grabs again once input flows; meanwhile the
+controller's keyboard is its own (Alt+Tab, the Windows key, its input method, other programs), and
+what is typed in the picture goes as in Legacy mode, refused while behind. The grab takes keys only
+while the GUI read one within the last second (a GUI that stopped reading never traps the
+keyboard), and the hook never waits for its lock: a key that comes while the GUI's call holds it
+passes on.
 
 ### Keyboard modes
 
@@ -221,8 +247,8 @@ with Ctrl or Cmd).
 
 | Mode | On the controller | On the host |
 |---|---|---|
-| Map | while the picture has the focus and its window is in front, a low-level keyboard hook in the core takes every key by scan code before the controller's windows see it: Win, Alt+Tab, Alt+F4 and every shortcut go to the host; CapsLock, NumLock and ScrollLock act on the controller too | each key by scan code, so the host's layout decides what it types |
-| Translate | a key that makes a character on the controller's layout with the modifiers held (a dead key too; not with Win, or with Ctrl or Alt alone) stays with the controller, whose layout and input method type it, and its text is sent; Shift, Ctrl, Alt and the lock keys go both ways; AltGr stays the controller's; every other key and shortcut is taken by scan code | text as Unicode, the other keys by scan code |
+| Map | while the picture has the focus and its window is in front, a low-level keyboard hook in the core takes every key by scan code before the controller's windows see it: Win, Alt+Tab, Alt+F4 and every shortcut go to the host; CapsLock, NumLock and ScrollLock act on the controller too. The picture takes no input method while it grabs (Windows: the window's input context is detached and an open composition ended; macOS: nothing composes), so the controller's input method never catches keys: Chinese and Japanese are typed with the host's own input method, as in RustDesk | each key by scan code, so the host's layout decides what it types |
+| Translate | a key that makes a character on the controller's layout with the modifiers held (a dead key too; not with Win, or with Ctrl or Alt alone) stays with the controller, whose layout and input method type it, and its text is sent; Shift, Ctrl, Alt and the lock keys go both ways; AltGr stays the controller's; every other key and shortcut is taken by scan code. While the controller's input method composes (the picture gets a composition), every key passes to it (the grab's `pass` state) and only the committed text goes to the host; after a key that typed on a Chinese, Japanese or Korean layout, Enter, Esc, Backspace, Tab, the arrows, Space and the digits pass too until the GUI says no composition is open (a second at most), as the composition may begin after the next key | text as Unicode, the other keys by scan code |
 | Legacy | the GUI toolkit's key events as above: no Win key, no shortcut the window consumes, no left or right modifier, numpad keys by their meaning | named keys and Unicode |
 
 Each key the grab takes carries the controller's CapsLock and NumLock: before a letter the host

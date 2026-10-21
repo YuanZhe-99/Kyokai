@@ -114,6 +114,9 @@ and Latin words only where it helps readability.
 | status watcher / see this computer's status | 状态查看者 / 查看本机状态 |
 | Remote Desktop (RDP) / Screen Sharing (VNC) | 远程桌面（RDP） / 屏幕共享（VNC） |
 | input paused | 输入已暂停 |
+| input method / composition (IME) | 输入法 / 输入组合 |
+| keyboard grab / the grab steps aside | 键盘抓取 / 抓取让开 |
+| wake (a display) | 唤醒（显示器） |
 | loading indicator | 加载指示器 |
 
 ## 6. Review checklist

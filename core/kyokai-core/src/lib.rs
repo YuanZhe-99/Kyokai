@@ -255,10 +255,14 @@ pub unsafe extern "C" fn kyokai_media_read(
 /// (`media::packet::CONTROL` + JSON) for the host.
 /// Inputs: `ptr`/`len` — the packet, borrowed for the call.
 /// Returns: 0; -1 for a malformed packet; -2 when there is no such session
-/// or it ended; -3 when a pointer move was left out because the session is
-/// behind.
-/// Notes: any message but a pointer move waits until the session takes it,
-/// so it blocks while the session is behind; call it outside a Tokio runtime.
+/// or it ended; -3 when the session is behind and refused it (input: a
+/// pointer move, press, click or text while it cannot take input; another
+/// message that found no room within CONTROL_WAIT).
+/// Notes: input never waits (`session::InputGate`): a release is never
+/// refused, and what could not be delivered is reconciled with the host
+/// later. Other messages wait CONTROL_WAIT at most, so the caller (the
+/// engine's media thread, outside any runtime) never hangs on a stalled
+/// session.
 ///
 /// # Safety
 /// `ptr` points to `len` readable bytes.
@@ -273,36 +277,42 @@ pub unsafe extern "C" fn kyokai_media_write(session: u64, ptr: *const u8, len: u
         let Some((&media::packet::CONTROL, json)) = packet.split_first() else {
             return -1;
         };
-        let Ok(msg) = serde_json::from_slice::<Value>(json) else {
+        let Ok(mut msg) = serde_json::from_slice::<Value>(json) else {
             return -1;
         };
-        let sender = CORE
+        let Some((tx, gate)) = CORE
             .lock()
             .ok()
-            .and_then(|c| c.as_ref()?.ctx.sessions.media(session))
-            .map(|(_, tx)| tx);
-        // A pointer move may be left out when the session is behind (a
-        // newer one follows); any other message waits for room, so a click
-        // or a key is never lost. The caller is the engine's media thread,
-        // outside any runtime.
-        let hover = msg["type"] == "input"
-            && msg["event"]["kind"] == "pointer"
-            && msg["event"]["action"] == "move";
-        match sender {
-            None => -2,
-            Some(tx) if hover => match tx.try_send(msg) {
-                Ok(()) => 0,
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => -3,
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => -2,
-            },
-            Some(tx) => match tx.blocking_send(msg) {
-                Ok(()) => 0,
-                Err(_) => -2,
-            },
+            .and_then(|c| c.as_ref()?.ctx.sessions.input(session))
+        else {
+            return -2;
+        };
+        // Input is a stream: the gate decides at once (a malformed event
+        // goes on, and the host drops it).
+        if msg["type"] == "input"
+            && let Ok(e) = serde_json::from_value::<input::Event>(msg["event"].clone())
+        {
+            return gate.write(&e, || tx.try_send(msg).is_ok());
+        }
+        let until = std::time::Instant::now() + CONTROL_WAIT;
+        loop {
+            match tx.try_send(msg) {
+                Ok(()) => return 0,
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => return -2,
+                Err(tokio::sync::mpsc::error::TrySendError::Full(m)) => msg = m,
+            }
+            if std::time::Instant::now() >= until {
+                return -3;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
         }
     })
     .unwrap_or(-2)
 }
+
+/// Longest a control message other than input waits for room in its
+/// session (a quality, codec or AI request while the session is behind).
+const CONTROL_WAIT: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// Opens a viewer decoder for a stream described by `media::VideoStart`
 /// JSON (`start`/`len`, borrowed). Needs no started core.
@@ -497,7 +507,8 @@ pub extern "C" fn kyokai_decoder_close(id: u64) {
 /// Grabs the keyboard for a viewer window, or ends its grab
 /// (doc/en-us/computer-use.md, "Keyboard modes"). Needs no started core.
 /// Inputs: `window` — the viewer's native window handle; `mode`/`len` — the
-/// mode's name (`map`, `translate`, `off`), borrowed for the call.
+/// mode's name (`map`, `translate`, `pass` while the controller's input
+/// method composes, `off`), borrowed for the call.
 /// Returns: 0; -1 for an unknown mode or no window; -2 when the keyboard cannot be
 /// grabbed here (no hook; on macOS, no Accessibility permission).
 ///
@@ -510,20 +521,21 @@ pub unsafe extern "C" fn kyokai_keyboard_grab(window: usize, mode: *const u8, le
     }
     // SAFETY: the caller guarantees `len` readable bytes at `mode`.
     let name = unsafe { std::slice::from_raw_parts(mode, len) };
-    let Some(mode) = std::str::from_utf8(name)
+    let Some(ask) = std::str::from_utf8(name)
         .ok()
-        .and_then(keyboard::Mode::from_name)
+        .and_then(keyboard::Ask::from_name)
     else {
         return -1;
     };
+    let off = ask == keyboard::Ask::Off;
     // No window is in front at times (handle 0): a grab for it would take
     // keys from whatever comes next.
-    if window == 0 && mode.is_some() {
+    if window == 0 && !off {
         return -1;
     }
-    match catch_unwind(|| keyboard::grab(window, mode)) {
+    match catch_unwind(|| keyboard::grab(window, ask)) {
         Ok(true) => 0,
-        Ok(false) if mode.is_none() => 0,
+        Ok(false) if off => 0,
         _ => -2,
     }
 }

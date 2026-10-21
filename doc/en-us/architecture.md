@@ -57,7 +57,7 @@ integers and pointers only:
 | `kyokai_free(ptr, len)` | Frees a response buffer |
 | `kyokai_stop()` | Ends every session (each connected one with a goodbye, waiting up to a second), then drops the core's state, including its in-memory secrets |
 | `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | Waits for a controller session's next media packet and copies it into the caller's buffer; -1 timeout, -2 ended, -3 too large |
-| `kyokai_media_write(session, ptr, len) -> i32` | Passes a control packet from the GUI (input, key-frame request) to the session: 0, -1 malformed, -2 ended; a pointer move may be left out while the session is behind (-3), anything else waits until the session takes it |
+| `kyokai_media_write(session, ptr, len) -> i32` | Passes a control packet from the GUI (input, key-frame request) to the session: 0, -1 malformed, -2 ended, -3 refused as behind; input never waits — moves, presses, clicks and text are refused while the session cannot take input, releases never are (`session::InputGate`) — and other messages wait 200 ms at most |
 | `kyokai_decoder_open(json, len) -> u64` | Opens a viewer decoder for a stream (`{codec, width, height}`); 0 when the codec is not available. Needs no started core |
 | `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | Decodes one frame into the caller's RGBA buffer: 1 picture, 0 needs more input, -1 error, -3 too large |
 | `kyokai_decoder_info(id, out, cap) -> i32` | Writes `{decoder, hardware}` JSON into the caller's buffer: which decoder it is (`videotoolbox`, `media-foundation`, `libvpx`, `libaom`) and whether it decodes in hardware, as it reports; the length, -1 unknown handle, -3 too large |
@@ -135,11 +135,12 @@ runtime statically, so nothing is resolved through the search path.
   `session.media`, `shutdown`, and the AI requests named after the core's
   methods (`ai.settings.get` … `ai.stop`, `ai.draft.set`). `session.media` (`{id}` of a live controller
   session) answers OK and then carries length-prefixed packets both ways: video, stats, the
-  host's codec offer, its AI task and what crossed the clipboard (packet 13) from the engine, control
+  host's codec offer, its AI task, what crossed the clipboard (packet 13) and whether input is
+  paused (packet 15, `{paused}`) from the engine, control
   and AI messages from the GUI, among them `clipboard-use`, which the engine keeps for the session
   and never forwards; the GUI asks for a key frame first. These additions change no request's
   meaning, so the local API stays at version 2: an older engine ignores `clipboard-use` and an
-  older GUI ignores packet 13. The status includes the open host
+  older GUI ignores packets 13 and 15. The status includes the open host
   confirmations and the sessions; secrets travel only towards the engine (the network secret, the
   permanent password, a typed password, a provider's API key). A session receives the status after every command that changes it
   and whenever the network's status moves.

@@ -96,7 +96,12 @@ computer: **Map** (the default) sends each key by its place, so the other comput
 decides what it types and shortcuts such as the Windows key, Alt+Tab or Cmd+Tab go there too;
 **Translate** types with your own layout and input method; **Legacy** sends only the keys the
 viewer window receives. On a Mac, Map and Translate need **Accessibility** for Kyokai in System
-Settings, Privacy & Security. Between a Mac and Windows, **Swap Ctrl and Cmd** (on by default) makes
+Settings, Privacy & Security. To type Chinese or Japanese, either use **Map** and the other
+computer's own input method (switch it there, for example with Win+Space; your own input method
+stays out of the way while the picture has the keyboard), or use **Translate** with your own input
+method: compose, choose and commit as usual — Enter, Esc and the arrows stay with your input method
+while it composes — and the committed text is typed there. If the connection stalls, typing pauses
+("Input paused" in the toolbar) instead of arriving late, and your own keyboard keeps working. Between a Mac and Windows, **Swap Ctrl and Cmd** (on by default) makes
 your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. Keys go there only
 while the picture has the focus: click it first. You hear what the other computer plays (or the input
 its user chose in Permissions, **Sound to share**, such as a microphone; a Mac asks for its

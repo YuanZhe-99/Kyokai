@@ -372,6 +372,9 @@ func (v *viewer) sendInput(ev ui.InputEvent) bool {
 	grabbed := v.grabbed
 	e, ok := toEvent(ev, box, start.Width, start.Height, v.held, v.grabbed)
 	v.mu.Unlock()
+	if grabbed == "translate" && (ev.Kind == ui.InputCompose || ev.Kind == ui.InputText) {
+		v.followComposition(ev.Kind == ui.InputCompose && ev.Text != "")
+	}
 	// A Mac's menu takes Cmd+C and the like before the picture sees the
 	// keys: they come back as the menu's commands (Legacy mode; a grab
 	// takes the keys first).
@@ -395,10 +398,23 @@ func (v *viewer) sendInput(ev ui.InputEvent) bool {
 // most; the moves between are left out.
 const moveEvery = 8 * time.Millisecond
 
+// release reports whether an event lets go of a key or a button: those are
+// never dropped, so nothing stays held on the host.
+func release(e inputEvent) bool {
+	switch e.Kind {
+	case "pointer":
+		return e.Action == "up"
+	case "key", "scan":
+		return !e.Down
+	}
+	return false
+}
+
 // queue passes one input event to the media connection's writer. A move
 // becomes the pending one (a newer move replaces it before it is sent);
 // any other event sends the pending move first, so the order holds.
-// Notes: a full queue drops the event rather than stall the window.
+// Notes: a full queue drops a press rather than stall the window; a
+// release it keeps aside, and the writer sends it once the queue drains.
 func (v *viewer) queue(e inputEvent) {
 	v.mu.Lock()
 	if e.Kind == "pointer" && e.Action == "move" {
@@ -423,13 +439,32 @@ func (v *viewer) queue(e inputEvent) {
 		select {
 		case v.out <- controlPacket(*p):
 		default:
+			if release(*p) {
+				v.mu.Lock()
+				v.releases = append(v.releases, *p)
+				v.mu.Unlock()
+				select {
+				case v.moved <- struct{}{}:
+				default:
+				}
+			}
 		}
 	}
 }
 
+// takeReleases hands over the releases a full queue kept aside.
+func (v *viewer) takeReleases() []inputEvent {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	r := v.releases
+	v.releases = nil
+	return r
+}
+
 // writer is the media connection's one writer, which keeps packets whole
-// and in order: the queued packets, and the pending move at most every
-// moveEvery, until done closes or a write fails.
+// and in order: the queued packets, the releases a full queue kept aside
+// once it drained, and the pending move at most every moveEvery, until
+// done closes or a write fails.
 func (v *viewer) writer(w io.Writer, done <-chan struct{}) {
 	var last time.Time
 	var later <-chan time.Time
@@ -444,12 +479,28 @@ func (v *viewer) writer(w io.Writer, done <-chan struct{}) {
 		last = time.Now()
 		return localapi.WritePacket(w, controlPacket(*m))
 	}
+	sendReleases := func() error {
+		if len(v.out) > 0 {
+			return nil // after the queue, which came first
+		}
+		for _, r := range v.takeReleases() {
+			if err := localapi.WritePacket(w, controlPacket(r)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	for {
 		var err error
 		select {
 		case p := <-v.out:
-			err = localapi.WritePacket(w, p)
+			if err = localapi.WritePacket(w, p); err == nil {
+				err = sendReleases()
+			}
 		case <-v.moved:
+			if err = sendReleases(); err != nil {
+				return
+			}
 			if wait := moveEvery - time.Since(last); wait > 0 {
 				if later == nil {
 					later = time.After(wait)
@@ -535,14 +586,61 @@ func (a *App) keyboardMode() string {
 	return "map"
 }
 
+// followComposition tells a Translate grab whether the controller's input
+// method composes now (the picture got a composition, or committed text):
+// while it does, the grab passes every key to it (the core's `pass`
+// state), so its Enter, Esc, Backspace and arrows commit, cancel and edit
+// the composition instead of going to the host (regression: they went to
+// the host, the composition never ended and swallowed every later key);
+// text that comes ends it, and confirms to the core that no composition is
+// open.
+func (v *viewer) followComposition(composing bool) {
+	v.mu.Lock()
+	changed, window := composing != v.composing, v.window
+	v.composing = composing
+	v.mu.Unlock()
+	if !changed && composing {
+		return
+	}
+	mode := "translate"
+	if composing {
+		mode = "pass"
+	}
+	if lib, err := coreLib(); err == nil {
+		_ = lib.KeyboardGrab(window, mode)
+	}
+}
+
+// inputStalled reports whether the session cannot take input now: it is
+// reconnecting, the engine has refused input for more than
+// inputPauseGrace, or no frame nor stats came for stalledFeed while the
+// host sends video. The keyboard grab steps aside meanwhile, so the
+// controller's own keyboard keeps working (Alt+Tab, the Windows key, its
+// input method, other programs) instead of feeding a session that drops
+// what it is given.
+// Notes: the caller holds v.mu.
+func (v *viewer) inputStalled(now time.Time) bool {
+	return v.phase.State == "reconnecting" ||
+		v.paused && now.Sub(v.pausedAt) > inputPauseGrace ||
+		v.start.Width > 0 && now.Sub(v.heardAt) > stalledFeed
+}
+
+// inputPauseGrace is how long the engine may refuse input before the
+// keyboard grab steps aside.
+const inputPauseGrace = 500 * time.Millisecond
+
 // syncGrab has the core grab the keyboard for this viewer's window while
-// its picture has the focus in Map or Translate mode, and ends the grab
-// otherwise. A grab the core refuses leaves the viewer in Legacy mode.
+// its picture has the focus in Map or Translate mode and the session takes
+// input, and ends the grab otherwise. A grab the core refuses leaves the
+// viewer in Legacy mode.
 // Side effects: starts the app's key reader with the first grab. Call it
 // on the main thread.
 func (v *viewer) syncGrab(focused bool) {
 	want := ""
-	if focused && v.control {
+	v.mu.Lock()
+	stalled := v.inputStalled(time.Now())
+	v.mu.Unlock()
+	if focused && v.control && !stalled {
 		if mode := v.app.keyboardMode(); mode != "legacy" {
 			want = mode
 		}
@@ -572,7 +670,10 @@ func (v *viewer) syncGrab(focused bool) {
 	if v.noGrab = err != nil; v.noGrab {
 		want = ""
 	}
-	v.grabbed = want
+	if have != "" && want == "" {
+		v.ungrabbed = time.Now()
+	}
+	v.grabbed, v.composing = want, false
 	v.mu.Unlock()
 	if want != "" {
 		v.app.keyReader.Do(func() { go v.app.readKeys(lib) })
@@ -585,6 +686,9 @@ func (v *viewer) endGrab() {
 	v.mu.Lock()
 	window, grabbed := v.window, v.grabbed
 	v.grabbed = ""
+	if grabbed != "" {
+		v.ungrabbed = time.Now()
+	}
 	v.mu.Unlock()
 	if lib, err := coreLib(); err == nil && grabbed != "" {
 		_ = lib.KeyboardGrab(window, "off")
@@ -594,11 +698,13 @@ func (v *viewer) endGrab() {
 // readKeys passes the keys the core's keyboard grab takes to the viewer
 // whose window they were taken for, as scan-code input events.
 // Notes: runs for the app's lifetime once a viewer grabbed the keyboard;
-// keys for a window that closed are dropped (its session ends).
+// keys for a window that closed are dropped (its session ends). It asks
+// again well within the core's READER_GONE (a second), which takes keys
+// only while the GUI reads them.
 func (a *App) readKeys(lib *core.Lib) {
 	kb := lib.Keyboard()
 	for {
-		ev, ok, err := kb.Read(time.Second)
+		ev, ok, err := kb.Read(250 * time.Millisecond)
 		if err != nil {
 			return
 		}
@@ -611,17 +717,33 @@ func (a *App) readKeys(lib *core.Lib) {
 			viewers = append(viewers, v)
 		}
 		a.mu.Unlock()
-		for _, v := range viewers {
-			v.mu.Lock()
-			// Several tabs share a window: the one holding the grab takes it.
-			mine, may := v.window == ev.Window && v.grabbed != "", v.control
-			v.mu.Unlock()
-			if mine && may {
-				v.queue(scanEvent(ev))
-				break
-			}
+		if v := grabFor(viewers, ev); v != nil {
+			v.queue(scanEvent(ev))
 		}
 	}
+}
+
+// grabFor is the viewer a key the grab took belongs to: of the tabs that
+// share its window, the one holding the grab; a release, which the core
+// also queues as a grab ends, goes to the tab whose grab there ended last
+// (regression: those releases were dropped, and a key stayed held on the
+// host when the grab stepped aside). Nil for none that may control input.
+func grabFor(viewers []*viewer, ev core.KeyEvent) *viewer {
+	var ended *viewer
+	var at time.Time
+	for _, v := range viewers {
+		v.mu.Lock()
+		here, grabbing, ungrabbed, may := v.window == ev.Window, v.grabbed != "", v.ungrabbed, v.control
+		v.mu.Unlock()
+		switch {
+		case !here || !may:
+		case grabbing:
+			return v
+		case ev.Down == 0 && ungrabbed.After(at):
+			ended, at = v, ungrabbed
+		}
+	}
+	return ended
 }
 
 // scanEvent is the host's input event for a key the grab took.

@@ -96,7 +96,10 @@ sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (
 sends a key frame) — its GUI's requests (as it opens, after a frame it lost or failed to decode,
 each second until a key frame comes), and the controller's own while its queue leaves frames out
 (at most once a second, on a timer of its own, so also while no frame comes) — and,
-with `control-input`, `{"type": "input", event}`. While it sends video the host sends `{"type":
+with `control-input`, `{"type": "input", event}`; to a host that announced `input-sync` an
+event may be `{"kind": "sync", held: {scans, keys, buttons}}`, the keys (by scan code and by
+name) and buttons the controller holds after a stall or a resume, and the host lets go of
+whatever else that session holds (at most 64 entries, all of them known, or it is dropped). While it sends video the host sends `{"type":
 "test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":
 "stats", delay_ms, fps, bitrate, encode_ms, frames}` (`encode_ms`: the last second's frames' average from
 picture to frame; `frames`: how many frames it sent that second, which 0.4.0 leaves out) ([computer-use.md](computer-use.md)); the controller may set

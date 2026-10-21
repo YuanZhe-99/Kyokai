@@ -34,6 +34,7 @@ const (
 	packetActions    byte = 9
 	packetCodecs     byte = 11
 	packetAudio      byte = 12
+	packetInput      byte = 15
 )
 
 // keyFrame flags a frame that decodes on its own (media::KEY_FRAME).
@@ -191,14 +192,23 @@ type viewer struct {
 	box     ui.Rect
 	control bool
 	held    map[ui.Key]bool
-	// The newest pointer move the writer has not sent yet.
-	move *inputEvent
+	// The newest pointer move the writer has not sent yet, and the
+	// releases a full queue kept aside for it.
+	move     *inputEvent
+	releases []inputEvent
 	// The keyboard grab (viewerinput.go): the mode the core grabs keys in for
-	// this window ("" for none), whether the core refused to, and the
-	// window's native handle the grab is for.
-	grabbed string
-	noGrab  bool
-	window  uintptr
+	// this window ("" for none), whether the core refused to, the
+	// window's native handle the grab is for, and whether the controller's
+	// input method composes (Translate passes every key to it meanwhile).
+	grabbed   string
+	noGrab    bool
+	window    uintptr
+	composing bool
+	// ungrabbed: when this tab's grab last ended (grabFor).
+	ungrabbed time.Time
+	// The engine refuses input as behind (media INPUT), since when.
+	paused   bool
+	pausedAt time.Time
 	// The host's pointer, which the picture leaves out.
 	pointer hostPointer
 	// The host's displays, to choose which one shows.
@@ -221,6 +231,9 @@ type viewer struct {
 	heardAt    time.Time
 	recovering bool
 	asleep     bool
+	// stalled: the session took no input at the watchdog's last look
+	// (inputStalled); a change rebuilds the view, which grabs again.
+	stalled bool
 	// gate leaves out the frames the decoder cannot use (its own lock).
 	gate videoGate
 	// The tab's password field while the device waits or refused, and
@@ -596,6 +609,23 @@ func (v *viewer) pump() {
 				v.host = s
 				v.mu.Unlock()
 			}
+		case packetInput:
+			// The engine refuses presses while the session is behind; the
+			// toolbar says so, and the keyboard grab steps aside after a
+			// moment (inputStalled), checked again by the watchdog.
+			var in struct {
+				Paused bool `json:"paused"`
+			}
+			if json.Unmarshal(p[1:], &in) == nil {
+				v.update(func() {
+					v.mu.Lock()
+					if in.Paused && !v.paused {
+						v.pausedAt = time.Now()
+					}
+					v.paused = in.Paused
+					v.mu.Unlock()
+				})
+			}
 		}
 		pool.put(p)
 	}
@@ -620,9 +650,10 @@ type videoGate struct {
 // frames counts as a lost picture, and after how long without a picture
 // the viewer offers to wake the host's screen.
 const (
-	keyAgain  = time.Second
-	noPicture = 2 * time.Second
-	wakeAfter = 3 * time.Second
+	keyAgain    = time.Second
+	noPicture   = 2 * time.Second
+	wakeAfter   = 3 * time.Second
+	stalledFeed = 3 * time.Second
 )
 
 // pass queues frame p unless it must be left out.
@@ -705,8 +736,10 @@ func (v *viewer) watchdog(done <-chan struct{}, keyRequest []byte) {
 			since := now.Sub(v.pictureAt)
 			need := viewerNeedsKey(since, v.host.Frames)
 			recovering, asleep := need && v.bm != nil, since >= wakeAfter && v.control
-			changed := recovering != v.recovering || asleep != v.asleep
-			v.recovering, v.asleep = recovering, asleep
+			// The keyboard grab follows the stall rule (inputStalled).
+			stalled := v.inputStalled(now)
+			changed := recovering != v.recovering || asleep != v.asleep || stalled != v.stalled
+			v.recovering, v.asleep, v.stalled = recovering, asleep, stalled
 			v.mu.Unlock()
 			if v.gate.again(need, now) {
 				v.askKey(keyRequest)
@@ -917,7 +950,7 @@ func (v *viewer) view(c *ui.Context) {
 	bm, state, start, original, control := v.bm, v.state, v.start, v.original, v.control
 	withAI, withClip, ptr, actions := v.ai.aiShown(), v.clip.may && v.clip.shown, v.pointer, v.actions
 	b := bar{start: start, fps: v.fps, kbps: v.kbps, decodeMS: v.decodeMS, drawMS: v.drawMS, host: v.host,
-		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec, decoder: v.decoder}
+		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec, decoder: v.decoder, paused: v.paused && control}
 	v.mu.Unlock()
 	b.showPtr = v.app == nil || v.app.showPointer()
 	if !b.showPtr {
@@ -1034,7 +1067,7 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 	focused := false
 	defer func() { v.syncGrab(focused) }()
 	v.mu.Lock()
-	recovering, asleep := v.recovering, v.asleep
+	recovering, asleep, mapped := v.recovering, v.asleep, v.grabbed == "map"
 	v.mu.Unlock()
 	area.Children(func() {
 		switch {
@@ -1054,7 +1087,7 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 			// mode sends letters as that text (regression: no key reached a
 			// Mac's host from a Mac). Candidate windows open at its corner.
 			img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().
-				TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(v.sendInput).Bind(&v.pic)
+				TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(!mapped).HandleInput(v.sendInput).Bind(&v.pic)
 			focused = img.Focused()
 			box := img.LayoutBounds()
 			v.mu.Lock()
@@ -1152,6 +1185,8 @@ type bar struct {
 	// path is the device's entry in the network status ("" Path when the
 	// network lists no route to it).
 	path localapi.NetworkDevice
+	// paused: the engine refuses input as behind (media INPUT).
+	paused bool
 }
 
 // pathTo is how the network reaches a device now: direct or through the
@@ -1438,12 +1473,20 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 	}
 }
 
-// pathChip is how the stream reaches this computer: a dot and Direct or
+// pathChip is how the stream reaches this computer, after "Input paused"
+// while the engine refuses input: a dot and Direct or
 // Relayed (in the warning colour, with what to do about it) with the
 // latency, or a warning that the host sends its test pattern. Its tooltip
 // has the stream's numbers and where the time goes.
 func pathChip(c *ui.Context, b bar) {
 	t := c.Theme()
+	// Presses are dropped while the connection is behind; releases still go.
+	if b.paused {
+		ui.Row(c.Key("bar-paused")).Gap(6).Padding(0, 6).AlignItems(ui.Center).Shrink(0).Children(func() {
+			ui.Column(c).Size(onlineDot, onlineDot).Radius(onlineDot / 2).Background(t.Warning)
+			ui.Text(c, L.ViewerInputPaused()).FontSize(sizeSmall).TextColor(t.Warning).SingleLine()
+		})
+	}
 	start := b.start
 	if start.Codec == "raw-rgba" {
 		// The host sends its test pattern: it may not record its screen.

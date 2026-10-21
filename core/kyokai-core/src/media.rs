@@ -57,6 +57,9 @@ pub mod packet {
     /// for what this side sent, "host" for what the host's side put here;
     /// `at`: Unix milliseconds).
     pub const CLIPBOARD: u8 = 13;
+    /// engine → GUI: `{paused}` JSON, whether the session refuses input as
+    /// behind now (`session::InputGate`); a newer one replaces one waiting.
+    pub const INPUT: u8 = 15;
 }
 
 /// What a video stream carries, sent before its first frame.
@@ -257,7 +260,8 @@ impl Queue {
                 | packet::CURSOR
                 | packet::DISPLAYS
                 | packet::ACTIONS
-                | packet::CODECS),
+                | packet::CODECS
+                | packet::INPUT),
             ) => q.packets.retain(|p| p.first() != Some(&kind)),
             Some(&kind @ (packet::AUDIO | packet::CLIPBOARD)) => {
                 let keep = if kind == packet::AUDIO {
