@@ -85,7 +85,12 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
   TLS，此时显示 Windows 的登录界面；图形管道除 macOS（VideoToolbox）外不使用 H.264。服务器的证书不固定即接受：
   隧道是在经过认证的 Kyokai 会话中到达设备自己的端口。按键以扫描码发送。
 - **VNC**（复用代码，`internal/rfb`）：安全类型 None、VNC 密码（2），服务器提供时还有 Apple 的 Diffie-Hellman（30）、
-  RSA（33）与 SRP（36）用户名加密码登录；按键以 keysym 发送。已由他人登录的 Mac 共享其屏幕（控制台会话）。
+  RSA（33）与 SRP（36）用户名加密码登录；按键以 keysym 发送。已由他人登录的 Mac 共享其屏幕（控制台会话）。在 Windows 上，
+  TigerVNC 安装后即可使用；TightVNC 与 UltraVNC 会拒绝来自本机的连接，直到打开“Allow loopback connections”（TightVNC）
+  或 `AllowLoopback`（UltraVNC），并且需要 VNC 密码（UltraVNC：关闭 MS-Logon 与加密插件）；不支持 RealVNC Server 自己的登录方式（RA2），
+  只支持允许关闭加密时使用其 VNC 密码。标签页会说明是哪种情况：在问候之前就关闭的服务器（`rfb.ErrClosedBeforeGreeting`）
+  会提示回环设置，拒绝时显示服务器自己的原因（`rfb.RefusedError`），不提供任何受支持登录方式的服务器
+  （`rfb.ErrUnsupportedServer`，RFB 3.3 中超出一个字节、按整体命名的类型）会要求使用 VNC 密码认证。
 - **两种画面**（`screenClient`）：帧缓冲在协议的 goroutine 中转换为 RGBA，并在主线程显示，像查看窗口一样适应窗口
   或以原始大小显示；指针、按键与滚轮以对方桌面的像素发送。在映射与翻译模式下，键盘抓取像桌面一样获取按键
   （`App.takeKey`）；传统模式下按名称的键连同其修饰键发送，文字以文字发送。标签页位于前台期间剪贴板的文本互通：

@@ -47,6 +47,7 @@ func (a *App) sidebar(c *ui.Context) {
 			if row.Clicked() {
 				a.mu.Lock()
 				a.page = p
+				a.statusOf = ""
 				a.mu.Unlock()
 				a.homeVisibilityChanged()
 			}
@@ -98,6 +99,11 @@ func (a *App) homeView(c *ui.Context) {
 		return
 	}
 	a.mu.Lock()
+	if device := a.statusOf; device != "" {
+		a.mu.Unlock()
+		a.hostStatusView(c, device)
+		return
+	}
 	st := *a.status
 	pw, show := a.password, a.showPassword && a.passwordFor == a.status.PasswordSerial
 	startingOver := a.busy["start-over"]

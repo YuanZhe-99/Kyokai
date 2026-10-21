@@ -318,6 +318,10 @@
     }
   },
   "CardSaved": "Saved passwords and keys…",
+  "CleanupHelper": "Removed Kyokai Helper and the settings it had left behind: this run mode holds this computer's.",
+  "CleanupHelperHasMore": "Kyokai Helper on this computer holds devices, networks or a permanent password, and this run mode holds none. Use Kyokai Helper's? Otherwise they are removed with it.",
+  "CleanupUseHelper": "Use Kyokai Helper's",
+  "CleanupUserSet": "Removed the settings No privileges mode had left behind: Kyokai Helper holds this computer's.",
   "CloseAskDetail": "Closing ends these connections:\n{names}",
   "@CloseAskDetail": {
     "placeholders": {
@@ -472,21 +476,21 @@
   "NavSecurity": "Security",
   "NetworkAdd": "Add a network",
   "NetworkAddress": "Virtual address",
+  "NetworkAdvanced": "Advanced",
   "NetworkConnecting": "Connecting…",
   "NetworkConnections": "How devices reach this one",
   "NetworkDevices": "Kyokai devices in this network",
   "NetworkDevicesHint": "A Device ID here is what a device announces. Kyokai checks who a device really is when it connects.",
   "NetworkDirect": "Try direct connections",
   "NetworkDirectHelper": "The helper always tries direct connections: its installer allowed it through the firewall.",
-  "NetworkAdvanced": "Advanced",
-  "NetworkDirectWarning": "This makes Kyokai listen on network ports and answer other devices' packets: Windows Firewall may ask, and other devices on your networks can find this one more easily. It changes what this device exposes, not just a protocol.",
-  "NetworkLatencyFirst": "Latency-first routing",
-  "NetworkLatencyFirstHint": "Prefer the route with the lowest delay over the one with the fewest hops, in every network.",
   "NetworkDirectHint": "Faster when both networks allow it. Windows may ask to let Kyokai through its firewall; while this is off, connections go through the server.",
+  "NetworkDirectWarning": "This makes Kyokai listen on network ports and answer other devices' packets: Windows Firewall may ask, and other devices on your networks can find this one more easily. It changes what this device exposes, not just a protocol.",
   "NetworkError": "Could not connect",
   "NetworkJoin": "Join",
   "NetworkLabel": "Name shown here",
   "NetworkLabelHint": "Optional; the network name shows otherwise.",
+  "NetworkLatencyFirst": "Latency-first routing",
+  "NetworkLatencyFirstHint": "Prefer the route with the lowest delay over the one with the fewest hops, in every network.",
   "NetworkNAT": "NAT type",
   "NetworkName": "Network name",
   "NetworkNoDevices": "No other Kyokai device is online in this network.",
@@ -603,20 +607,14 @@
   "RunModeChanged": "Run mode changed.",
   "RunModeFollow": "Follow Kyokai",
   "RunModeHint": "Where this device runs: in Kyokai itself, or in a helper that can also show and operate sign-in and administrator prompts.",
-  "RunModeNoHelper": "The helper did not start.",
-  "RunModeNote": "Follow Kyokai and Background service install a helper once, after one administrator prompt; with Background service the permanent password also lets a device in before anyone signs in (while Connect without asking is on). Your Device ID, trusted devices and settings move with it.",
-  "RunModeReplaceIdentity": "The other run mode holds another identity of this computer, with its own settings. Replace it with this one? Its Device ID, networks and saved passwords are then gone.",
-  "RunModeReplace": "Replace it",
   "RunModeKept": "Nothing was moved: each run mode keeps its own identity.",
-  "RunModeMovedTitle": "This computer's identity is in Kyokai Helper",
   "RunModeMovedHint": "Its Device ID, networks and saved passwords moved to Kyokai Helper, which is not installed now. Install it again to get them back, or start over here with a new identity.",
   "RunModeMovedInstall": "Install Kyokai Helper",
   "RunModeMovedStartOver": "Start over here",
   "RunModeMovedStartOverConfirm": "Start over with a new Device ID? Devices that knew this computer will see a new one, and its networks and saved passwords have to be set up again.",
-  "CleanupUserSet": "Removed the settings No privileges mode had left behind: Kyokai Helper holds this computer's.",
-  "CleanupHelper": "Removed Kyokai Helper and the settings it had left behind: this run mode holds this computer's.",
-  "CleanupHelperHasMore": "Kyokai Helper on this computer holds devices, networks or a permanent password, and this run mode holds none. Use Kyokai Helper's? Otherwise they are removed with it.",
-  "CleanupUseHelper": "Use Kyokai Helper's",
+  "RunModeMovedTitle": "This computer's identity is in Kyokai Helper",
+  "RunModeNoHelper": "The helper did not start.",
+  "RunModeNote": "Follow Kyokai and Background service install a helper once, after one administrator prompt; with Background service the permanent password also lets a device in before anyone signs in (while Connect without asking is on). Your Device ID, trusted devices and settings move with it.",
   "RunModeOutdated": "The helper is {helper}; this app is {app}.",
   "@RunModeOutdated": {
     "placeholders": {
@@ -628,6 +626,8 @@
       }
     }
   },
+  "RunModeReplace": "Replace it",
+  "RunModeReplaceIdentity": "The other run mode holds another identity of this computer, with its own settings. Replace it with this one? Its Device ID, networks and saved passwords are then gone.",
   "RunModeSwitching": "Switching…",
   "RunModeUnavailable": "Only No privileges is available on this system yet.",
   "RunModeUpdate": "Update the helper",
@@ -661,11 +661,11 @@
     }
   },
   "ServiceDomain": "Domain (optional)",
+  "ServiceDown": "That service is not running on the other device.",
   "ServiceEnded": "The connection ended.",
   "ServiceFailed": "The connection could not be opened.",
   "ServiceHostKeyChanged": "This device's SSH key is not the one it had before. Kyokai sent no password. Trust the new key only if you know why it changed.",
   "ServiceNoTunnel": "That device runs an older Kyokai: update it there to reach its services.",
-  "ServiceDown": "That service is not running on the other device.",
   "ServicePassword": "Password",
   "ServiceRDP": "Remote Desktop",
   "ServiceReplaced": "Someone else signed in to that desktop, so this connection ended.",
@@ -694,6 +694,16 @@
   "ServiceUser": "User name",
   "ServiceUserMac": "User name (a Mac asks for one)",
   "ServiceVNC": "VNC",
+  "ServiceVNCLoopback": "The VNC server closed the connection at once. It may refuse connections from its own computer: on that computer, turn on “Allow loopback connections” (TightVNC) or AllowLoopback (UltraVNC).",
+  "ServiceVNCRefused": "The VNC server refused: {reason}",
+  "@ServiceVNCRefused": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "ServiceVNCUnsupported": "That VNC server asks for a kind of sign-in Kyokai does not support. On that computer, turn on VNC password authentication (RealVNC Server: VNC password, with encryption allowed off; UltraVNC: MS-Logon off).",
   "ServiceWrongSignIn": "The user name or password was not accepted.",
   "SessionClosed": "Ended",
   "SessionConfirmingHere": "Waiting for you to allow it",
@@ -736,17 +746,26 @@
   "SettingsTheme": "Appearance",
   "StartOverDone": "This device has a new identity, kept from now on.",
   "StartOverHint": "Without a backup it cannot come back. Start over to keep a new identity from now on; the old file stays aside, untouched.",
+  "StatusApps": "Apps",
+  "StatusAvailable": "Available",
+  "StatusAverage": "Average",
+  "StatusBack": "Back to Home",
   "StatusBattery": "Battery",
   "StatusCPU": "CPU",
-  "StatusCharging": "{value} · charging",
-  "@StatusCharging": {
+  "StatusChargingNow": "Charging",
+  "StatusCores": "Cores",
+  "StatusDetails": "Details",
+  "StatusDisk": "Disk",
+  "StatusDownloading": "Downloading",
+  "StatusEvery": "Live, every 2 seconds",
+  "StatusFreeOf": "Free of {total}",
+  "@StatusFreeOf": {
     "placeholders": {
-      "value": {
+      "total": {
         "type": "String"
       }
     }
   },
-  "StatusDisk": "Disk",
   "StatusFrom": "Status from {time}",
   "@StatusFrom": {
     "placeholders": {
@@ -757,22 +776,35 @@
   },
   "StatusGPU": "GPU",
   "StatusGetting": "Getting its status…",
-  "StatusMemory": "Memory",
-  "StatusNetwork": "Network",
-  "StatusNoCredential": "Save a password or a key for this device to see its status here.",
-  "StatusOf": "{used} of {total}",
-  "@StatusOf": {
+  "StatusInUseOf": "In use of {total}",
+  "@StatusInUseOf": {
     "placeholders": {
       "total": {
-        "type": "String"
-      },
-      "used": {
         "type": "String"
       }
     }
   },
+  "StatusMemory": "Memory",
+  "StatusNetwork": "Network",
+  "StatusNoCredential": "Save a password or a key for this device to see its status here.",
+  "StatusNow": "Now",
+  "StatusOnBattery": "On battery",
+  "StatusPeak": "Peak",
+  "StatusReading": "Reading",
+  "StatusReceived": "Received",
   "StatusRefused": "That device does not share its status with this one.",
+  "StatusSent": "Sent",
+  "StatusSystem": "System",
+  "StatusTotal": "Total",
   "StatusUnsupported": "Its status shows once that device runs Kyokai 0.4.1 or later.",
+  "StatusUpFor": "Up {time}",
+  "@StatusUpFor": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
   "StatusUpdatedAgo": "Updated {seconds} s ago",
   "@StatusUpdatedAgo": {
     "placeholders": {
@@ -781,7 +813,9 @@
       }
     }
   },
-  "StatusUptime": "Up",
+  "StatusUploading": "Uploading",
+  "StatusUsed": "Used",
+  "StatusWriting": "Writing",
   "StorageLocation": "Data folder",
   "StorageSecrets": "Secrets",
   "ThemeDark": "Dark",
@@ -971,6 +1005,7 @@
     }
   },
   "ViewerWaiting": "Waiting for the picture…",
+  "ViewerWake": "Wake it",
   "WatchersHint": "These devices show this computer's processor, memory, disk and network use on their Home page. Turn off “See this computer's status” above to stop them.",
   "WatchersNone": "No device is watching this computer's status.",
   "WatchersSince": "Since {time}",
@@ -982,7 +1017,6 @@
     }
   },
   "WatchersTitle": "Watching this computer's status",
-  "ViewerWake": "Wake it",
   "WithoutAskingHint": "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Background service), only the permanent password does. Off: you are always asked.",
   "WithoutAskingTitle": "Connect without asking"
 }

@@ -32,9 +32,14 @@ Foundation's encoders (Windows N, Server editions without Media Foundation) send
 screen or a UAC prompt — the host releases it and opens the primary display again every half
 second; the stream keeps its size and a new mode is scaled into it (a changed aspect ratio shows
 stretched until the next session). In the helper modes, where the agent follows the desktop that
-receives input ([run-modes.md](run-modes.md), "The session agent"), a capture with nothing new
-also compares that desktop with its own every half second and takes a change — the lock screen,
-the sign-in screen or a UAC prompt coming or going — for a lost display.
+receives input ([run-modes.md](run-modes.md), "The session agent"), a capture also compares that
+desktop with its own every half second, whatever it captured (GDI goes on copying the old
+desktop's black), and takes a change — the lock screen, the sign-in screen or a UAC prompt coming
+or going — for a lost display; a display that opened while the input desktop moved, or a GDI
+capture whose retry of desktop duplication had to move the thread, opens again on the new desktop.
+A new desktop duplication that hands over no picture for a second (a still lock or sign-in screen
+draws nothing) gets one from GDI, and duplication is tried again 2 seconds later. Each failure to
+open the display again is logged once.
 
 With more than one display the host sends the list (the primary first, the others left to
 right) with the stream, and the viewer offers them by number; choosing one restarts capture on it
@@ -370,14 +375,17 @@ each sample as a `system` message:
 
 | Field | Windows | macOS |
 |---|---|---|
-| `cpu` `{usage, cores}` | `GetSystemTimes` | `host_statistics` (`HOST_CPU_LOAD_INFO`) |
+| `cpu` `{usage, cores, user, system}` | `GetSystemTimes` (system: kernel time less idle) | `host_statistics` (`HOST_CPU_LOAD_INFO`; user with nice) |
 | `memory` `{used, total}` | `GlobalMemoryStatusEx` | `hw.memsize`; app memory, wired and compressed from `host_statistics64` |
 | `gpu` `{usage}` or null | the 3D engines' `Utilization Percentage` counters (PDH), as Task Manager sums them | the busiest `IOAccelerator`'s `Device Utilization %` |
 | `disk` `{used, total}` | the disk Windows is on | the data volume |
-| `net` `{rx_bps, tx_bps}` | `GetIfTable2`, the hardware interfaces that are up | `getifaddrs`, the interfaces that are up, loopback left out |
+| `disk_io` `{read_bps, write_bps}` or null | the `PhysicalDisk(_Total)` read and write byte counters (PDH) | the `IOBlockStorageDriver`s' `Statistics`, turned into rates |
+| `net` `{rx_bps, tx_bps, rx_total, tx_total}` | `GetIfTable2`, the hardware interfaces that are up | `getifaddrs`, the interfaces that are up, loopback left out |
 | `battery` `{percent, charging}` or null | `GetSystemPowerStatus` | the power sources (IOKit) |
 | `uptime_s`, `at` | `GetTickCount64`; the host's clock (Unix milliseconds) | `kern.boottime` |
 | `services` | which of SSH, Remote Desktop and VNC accept a connection on its loopback, looked at every 30 seconds ([remote-services.md](remote-services.md)) | the same |
+| `offers` | per watcher: the permissions its password or key grants without asking (the password grants while Connect without asking is on, else none), so the controller offers only what will work | the same |
+| `ai` | per watcher: whether the host's AI could start a task now (a model chosen and, unless its server is on the host, its provider's key present) | the same |
 
 The controller's GUI holds a lease on the hosts it shows (`watch.set` `{devices}`, at most 8,
 renewed every 10 seconds while Home is visible; it lapses after 30 seconds). The engine watches

@@ -2,7 +2,7 @@
 // internal/rfb/handshake.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: Kerberos removed, default security types and dialect choice, standard-library helpers.
+// prior consent. Modified by Kyokai: Kerberos removed, default security types and dialect choice, standard-library helpers, named greeting and refusal errors.
 
 package rfb
 
@@ -22,6 +22,15 @@ import (
 var ErrAuthenticationFailed = E.New("rfb: authentication failed")
 
 var ErrPermissionDenied = E.New("rfb: the request to share the screen was declined")
+
+// ErrClosedBeforeGreeting is a server that ended the connection before its greeting (Kyokai): what TightVNC
+// and UltraVNC do on Windows to a connection from their own computer while loopback connections are off.
+var ErrClosedBeforeGreeting = E.New("rfb: the server closed the connection before greeting")
+
+// RefusedError is a server refusing the connection with its own reason (Kyokai).
+type RefusedError struct{ Reason string }
+
+func (e *RefusedError) Error() string { return "rfb: server refused the connection: " + e.Reason }
 
 type ProtocolVersion struct {
 	Major int
@@ -81,7 +90,7 @@ type handshake struct {
 func (h *handshake) negotiateVersion() error {
 	banner, err := h.stream.bytes(12)
 	if err != nil {
-		return E.Cause(err, "read protocol version")
+		return E.Extend(ErrClosedBeforeGreeting, err)
 	}
 	var server ProtocolVersion
 	_, err = fmt.Sscanf(string(banner), "RFB %03d.%03d\n", &server.Major, &server.Minor)
@@ -126,16 +135,34 @@ func (h *handshake) negotiateVersion() error {
 	return nil
 }
 
+// refused reads the reason of a server's refusal (Kyokai).
+func (h *handshake) refused() error {
+	reason, err := h.reason()
+	if err != nil {
+		return E.Cause(err, "server refused the connection")
+	}
+	return &RefusedError{Reason: reason}
+}
+
 func (h *handshake) readReason() error {
-	length, err := h.stream.u32()
+	reason, err := h.reason()
 	if err != nil {
 		return err
+	}
+	return E.New(reason)
+}
+
+// reason reads a length-prefixed reason string.
+func (h *handshake) reason() (string, error) {
+	length, err := h.stream.u32()
+	if err != nil {
+		return "", err
 	}
 	reason, err := h.stream.bytes(int(min(length, 1<<16)))
 	if err != nil {
-		return err
+		return "", err
 	}
-	return E.New(string(reason))
+	return string(reason), nil
 }
 
 func (h *handshake) readSecurityTypes() error {
@@ -145,7 +172,11 @@ func (h *handshake) readSecurityTypes() error {
 			return E.Cause(err, "read security type")
 		}
 		if securityType == 0 {
-			return E.Cause(h.readReason(), "server refused the connection")
+			return h.refused()
+		}
+		// Kyokai: a type beyond a byte (UltraVNC's MS-Logon) is named whole, not cut to one.
+		if securityType > 255 {
+			return E.Extend(ErrUnsupportedServer, "it requires security type ", securityType)
 		}
 		h.info.SecurityTypes = []SecurityType{SecurityType(securityType)}
 		return nil
@@ -155,7 +186,7 @@ func (h *handshake) readSecurityTypes() error {
 		return E.Cause(err, "read security types")
 	}
 	if count == 0 {
-		return E.Cause(h.readReason(), "server refused the connection")
+		return h.refused()
 	}
 	offered, err := h.stream.bytes(int(count))
 	if err != nil {

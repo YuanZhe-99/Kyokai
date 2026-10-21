@@ -59,6 +59,9 @@ type Prefs struct {
 	// Device ID: shown here instead of the names the devices give
 	// themselves, and never sent anywhere.
 	Aliases map[string]string `json:"aliases,omitempty"`
+	// Uses count how often each of a device card's actions ("rdp", "ssh",
+	// "vnc", "ai") was used, by Device ID: the card shows the most used first.
+	Uses map[string]map[string]int `json:"uses,omitempty"`
 }
 
 // named is what a device says about itself, with the name this device's
@@ -169,4 +172,39 @@ func (a *App) setAlias(device, name string) {
 func (a *App) setPrefs(p Prefs) error {
 	a.update(func() { a.prefs = p })
 	return savePrefs(a.stateDir, p)
+}
+
+// noteUse counts a use of a device card's action (Prefs.Uses).
+// Side effects: writes gui.json.
+func (a *App) noteUse(device, action string) {
+	a.mu.Lock()
+	p := a.prefs
+	a.mu.Unlock()
+	uses := maps.Clone(p.Uses)
+	if uses == nil {
+		uses = map[string]map[string]int{}
+	}
+	counts := maps.Clone(uses[device])
+	if counts == nil {
+		counts = map[string]int{}
+	}
+	counts[action]++
+	uses[device] = counts
+	p.Uses = uses
+	a.setPrefs(p)
+}
+
+// forgetUses drops what a removed device's card counted.
+// Side effects: writes gui.json when there was something.
+func (a *App) forgetUses(device string) {
+	a.mu.Lock()
+	p := a.prefs
+	a.mu.Unlock()
+	if _, ok := p.Uses[device]; !ok {
+		return
+	}
+	uses := maps.Clone(p.Uses)
+	delete(uses, device)
+	p.Uses = uses
+	a.setPrefs(p)
 }

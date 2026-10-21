@@ -126,6 +126,7 @@ and Latin words only where it helps readability.
 | service tab / Sign in / Trust the new key | 服务标签页 / 登录 / 信任新密钥 |
 | live status / sparkline / Getting its status… | 实时状态 / 走势线 / 正在获取状态… |
 | watch lease (Home's status watch) | 查看租约 |
+| dot history / status details | 点阵历史 / 状态详情 |
 | Disconnect and close / Disconnect and quit | 断开并关闭 / 断开并退出 |
 
 ## 6. Review checklist

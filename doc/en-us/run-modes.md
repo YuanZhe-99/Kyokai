@@ -59,6 +59,8 @@ stays, opening nothing); attached to its own engine with the helper installed, i
 helper to its build with the signed update (never a prompt; an unsigned build tries again at the
 next start) and asks it to remove itself. When the helper holds devices, networks or a permanent
 password and this run mode none (a lost choice of run mode), the person chooses which set stays.
+The helper belongs to the installed app: a development profile (`KYOKAI_PROFILE`) never removes
+it.
 
 ## The helper (Windows)
 
@@ -112,8 +114,9 @@ the desktop's work there: capture and encoding, input, the pointer, the clipboar
 desktop calls. The helper's video, input, pointer, clipboard and AI desktop send their work to it
 (`agent::link`); the session and AI code are the same in every mode.
 
-A capture with nothing new compares the input desktop with its own every half second and follows
-a change as a lost display. A thread that cannot move to the input desktop (Windows refuses
+A capture compares the input desktop with its own every half second, whatever it captured, and
+follows a change as a lost display ([computer-use.md](computer-use.md), "Video", has the lock
+screen's details). A thread that cannot move to the input desktop (Windows refuses
 `SetThreadDesktop` to one that owns a window or a hook) logs it once per desktop; a capture thread
 that cannot then ends, the agent tells the helper (`{"ended": stream}`), the session's frames end
 and it opens the video again on a fresh thread ([computer-use.md](computer-use.md), "Video"). The

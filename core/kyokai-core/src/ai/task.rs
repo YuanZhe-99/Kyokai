@@ -479,6 +479,17 @@ impl Ai {
         Ok(super::parse_models(&doc))
     }
 
+    /// Whether a task could start now: a model chosen and, unless its
+    /// server is on this computer, its provider's key present.
+    pub fn ready(&self) -> bool {
+        let settings = self.shared.settings.lock().expect("settings").clone();
+        settings
+            .source(&settings.model.source)
+            .is_some_and(|source| {
+                keyless(source) || self.shared.secrets.get(&key_name(&source.id)).is_some()
+            })
+    }
+
     /// Stores a source's API key, or removes it (`None`).
     /// Side effects: writes the secrets store; never logs the key.
     pub fn set_key(&self, source: &str, key: Option<&str>) -> Result<(), String> {

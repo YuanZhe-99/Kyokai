@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/chart"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	L "github.com/YuanZhe-99/Kyokai/locales"
@@ -87,14 +86,35 @@ func (r *ring) values() []float32 {
 	return out
 }
 
-// hostRings are a watched host's sparklines and the sample they took last.
+// hostRings are a watched host's histories and the sample they took last.
 type hostRings struct {
-	cpu, rx ring
-	last    int64 // ReceivedAt of the newest sample pushed
+	cpuUser, cpuSys, memory, gpu ring
+	diskRead, diskWrite, rx, tx  ring
+	battery                      ring
+	last                         int64 // ReceivedAt of the newest sample pushed
+}
+
+// push adds a sample to every history.
+func (r *hostRings) push(s *localapi.SystemSample) {
+	r.cpuUser.push(float32(s.CPU.User))
+	r.cpuSys.push(float32(s.CPU.System))
+	r.memory.push(float32(share(s.Memory)))
+	if s.GPU != nil {
+		r.gpu.push(float32(s.GPU.Usage))
+	}
+	if s.DiskIO != nil {
+		r.diskRead.push(float32(s.DiskIO.ReadBps))
+		r.diskWrite.push(float32(s.DiskIO.WriteBps))
+	}
+	r.rx.push(float32(s.Net.RxBps))
+	r.tx.push(float32(s.Net.TxBps))
+	if s.Battery != nil {
+		r.battery.push(float32(s.Battery.Percent))
+	}
 }
 
 // watchState is Home's status watch: the lease last sent and the hosts'
-// sparklines. Fields are guarded by a.mu, sent and at by the lease too.
+// histories. Fields are guarded by a.mu, sent and at by the lease too.
 type watchState struct {
 	rings map[string]*hostRings
 	sent  []string
@@ -104,7 +124,7 @@ type watchState struct {
 }
 
 // recordSamples pushes the new samples of a status onto the hosts'
-// sparklines and clears those of hosts whose status went too old.
+// histories and clears those of hosts whose status went too old.
 // Notes: the caller holds a.mu.
 func (a *App) recordSamples(st *localapi.Status, now time.Time) {
 	if a.watch.rings == nil {
@@ -124,8 +144,7 @@ func (a *App) recordSamples(st *localapi.Status, now time.Time) {
 			continue
 		}
 		r.last = w.ReceivedAt
-		r.cpu.push(float32(w.Sample.CPU.Usage))
-		r.rx.push(float32(w.Sample.Net.RxBps))
+		r.push(w.Sample)
 	}
 }
 
@@ -275,14 +294,18 @@ func (a *App) deviceCard(c *ui.Context, r deviceRow, path localapi.NetworkDevice
 	live := r.session != nil && (r.session.State == "connecting" || r.session.State == "confirming" || r.session.State == "reconnecting")
 	connected := r.session != nil && r.session.State == "connected"
 	tunnels := slices.Contains(r.features, "tunnel")
-	var services []string
 	fresh := statusNone
+	var sample *localapi.SystemSample
 	if w != nil {
 		fresh = statusFreshness(w.ReceivedAt, now)
-		if w.Sample != nil && fresh != statusNone {
-			services = w.Sample.Services
+		if fresh != statusNone {
+			sample = w.Sample
 		}
 	}
+	a.mu.Lock()
+	uses := a.prefs.Uses[r.id]
+	a.mu.Unlock()
+	actions := cardActions(sample, tunnels, uses)
 	ui.Column(c.Key("device-"+r.id)).MinWidth(0).Padding(cardPad).Gap(10).Radius(cardRadius).
 		Background(t.Surface).Border(1, t.Border).Children(func() {
 		a.cardHeader(c, r, online, live, connected, tunnels)
@@ -295,31 +318,73 @@ func (a *App) deviceCard(c *ui.Context, r deviceRow, path localapi.NetworkDevice
 				}
 			})
 		}
-		ui.Row(c).Wrap().Gap(6).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().Wrap().Gap(6).AlignItems(ui.Center).Children(func() {
 			label := L.ActionConnect()
 			if connected || live {
 				label = L.ActionShow()
 			}
-			if ui.PrimaryButton(c.Key("device-go-"+r.id), label).Clicked() {
+			if ui.PrimaryButton(c.Key("device-go-"+r.id), label).Grow(1).Clicked() {
 				a.connectDevice(r.id, r.address, r.about, nil)
 			}
-			for _, s := range []string{serviceSSH, serviceRDP, serviceVNC} {
-				if !slices.Contains(services, s) {
-					continue
+			for _, act := range actions {
+				name, tip := L.CardAI(), L.ActionConnectAI()
+				if act != actionAI {
+					name, tip = serviceName(act), L.CardOpenService(serviceName(act))
 				}
-				b := ui.Button(c.Key("device-"+s+"-"+r.id), serviceName(s)).Disabled(!tunnels)
-				if !tunnels {
-					b.Tooltip(L.CardNeedsUpdate())
+				if ui.Button(c.Key("device-"+act+"-"+r.id), name).Grow(1).Tooltip(tip).Clicked() {
+					a.runAction(r, act)
 				}
-				if b.Clicked() {
-					a.openService(r.id, r.address, s)
-				}
-			}
-			if ui.Button(c.Key("device-ai-"+r.id), L.CardAI()).Tooltip(L.ActionConnectAI()).Clicked() {
-				a.connectDevice(r.id, r.address, r.about, connectWant(true))
 			}
 		})
 	})
+}
+
+// actionAI is the AI action of a device card, beside its services.
+const actionAI = "ai"
+
+// cardActions are the actions a device card offers beside Connect: the
+// services the host reports answering, and its AI when it is ready, each
+// only when the saved password or key grants it without asking (what
+// needs the host's user stays in the ⋯ menu); the most used first, then
+// Remote Desktop, SSH, VNC and AI.
+// Inputs: s is the host's current sample (nil: none, so nothing); uses
+// counts how often each action was used for this device.
+func cardActions(s *localapi.SystemSample, tunnels bool, uses map[string]int) []string {
+	if s == nil {
+		return nil
+	}
+	perm := map[string]string{serviceRDP: localapi.PermUseRDP, serviceSSH: localapi.PermUseSSH, serviceVNC: localapi.PermUseVNC, actionAI: localapi.PermRunAITask}
+	var out []string
+	for _, act := range []string{serviceRDP, serviceSSH, serviceVNC, actionAI} {
+		ready := tunnels && slices.Contains(s.Services, act)
+		if act == actionAI {
+			ready = s.AI
+		}
+		if ready && slices.Contains(s.Offers, perm[act]) {
+			out = append(out, act)
+		}
+	}
+	slices.SortStableFunc(out, func(x, y string) int { return uses[y] - uses[x] })
+	return out
+}
+
+// runAction opens a device's service or connects to it with its AI, and
+// counts the use (cardActions orders by it).
+func (a *App) runAction(r deviceRow, act string) {
+	a.noteUse(r.id, act)
+	if act == actionAI {
+		a.connectDevice(r.id, r.address, r.about, connectWant(true))
+		return
+	}
+	a.openService(r.id, r.address, act)
+}
+
+// name is the device's name, or its Device ID when it gave none.
+func (r deviceRow) name() string {
+	if r.about.Name != "" {
+		return r.about.Name
+	}
+	return groupDigits(r.id)
 }
 
 // cardHeader is a device card's top: avatar, name and Device ID, its state
@@ -329,11 +394,7 @@ func (a *App) cardHeader(c *ui.Context, r deviceRow, online, live, connected, tu
 	ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
 		deviceAvatar(c, r.about)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-			name := r.about.Name
-			if name == "" {
-				name = groupDigits(r.id)
-			}
-			ui.Text(c, name).Bold().SingleLine()
+			ui.Text(c, r.name()).Bold().SingleLine()
 			if r.about.Name != "" {
 				ui.Text(c, groupDigits(r.id)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
 			}
@@ -364,11 +425,11 @@ func (a *App) deviceMenu(c *ui.Context, r deviceRow, tunnels bool) {
 			a.connectDevice(r.id, r.address, r.about, nil)
 		}
 		if m.Item(L.ActionConnectAI()).Chosen() {
-			a.connectDevice(r.id, r.address, r.about, connectWant(true))
+			a.runAction(r, actionAI)
 		}
-		for _, s := range []string{serviceSSH, serviceRDP, serviceVNC} {
+		for _, s := range []string{serviceRDP, serviceSSH, serviceVNC} {
 			if m.Item(L.CardOpenService(serviceName(s))).Disabled(!tunnels).Chosen() {
-				a.openService(r.id, r.address, s)
+				a.runAction(r, s)
 			}
 		}
 		m.Separator()
@@ -423,124 +484,73 @@ func cardPath(c *ui.Context, r deviceRow, path localapi.NetworkDevice, online, l
 	})
 }
 
-// cardStatus is a device's live status: tiles while its sample is fresh,
-// dimmed with its age while stale, else the watch's state in words.
+// cardStatus is a device's live status: compact tiles while its sample is
+// fresh (one clicked opens the details), dimmed with its age while stale,
+// else the watch's state in words.
 func (a *App) cardStatus(c *ui.Context, r deviceRow, w *localapi.Watched, rings *hostRings, fresh freshness, cardW float32, now time.Time) {
 	t := c.Theme()
 	if w == nil {
 		return
 	}
 	if fresh == statusNone || w.Sample == nil {
-		text := ""
-		switch w.State {
-		case "connecting":
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				busyMark(c, L.StatusGetting(), busySize)
-				ui.Text(c, L.StatusGetting()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			})
-			return
-		case "no-credential":
-			text = L.StatusNoCredential()
-		case "unsupported":
-			text = L.StatusUnsupported()
-		case "refused":
-			text = L.StatusRefused()
-		}
-		if text == "" && w.ReceivedAt != 0 {
-			text = L.StatusFrom(time.UnixMilli(w.ReceivedAt).Local().Format("15:04"))
-		}
-		if text != "" {
-			ui.Text(c, text).FontSize(sizeSmall).TextColor(t.TextMuted)
-		}
+		a.statusWords(c, w)
 		return
 	}
-	s := w.Sample
 	// Fixed columns: the tiles share the card's width, whatever they hold.
 	tileW := (cardW - 2*cardPad - 2 - tileGap) / 2
 	tiles := ui.Grid(c.Key("tiles-"+r.id)).ColumnTracks(ui.Fixed(tileW), ui.Fixed(tileW)).Gap(tileGap)
 	if fresh == statusDim {
 		tiles.Opacity(0.5)
 	}
+	open := false
 	tiles.Children(func() {
-		statusTile(c, "cpu", L.StatusCPU(), fmt.Sprintf("%.0f %%", s.CPU.Usage), func() {
-			ui.Meter(c, s.CPU.Usage, 0, 100, &ui.MeterLevels{Warning: 80, Critical: 95}).Label(L.StatusCPU()).FillWidth()
-			sparkline(c, rings.cpu.values(), 100, t.Accent)
-		})
-		usageTile(c, "memory", L.StatusMemory(), s.Memory, 0.8, 0.95)
-		if s.GPU != nil {
-			statusTile(c, "gpu", L.StatusGPU(), fmt.Sprintf("%.0f %%", s.GPU.Usage), func() {
-				ui.Meter(c, s.GPU.Usage, 0, 100, &ui.MeterLevels{Warning: 80, Critical: 95}).Label(L.StatusGPU()).FillWidth()
-			})
-		}
-		usageTile(c, "disk", L.StatusDisk(), s.Disk, 0.85, 0.95)
-		statusTile(c, "net", L.StatusNetwork(), "↓"+rate(s.Net.RxBps)+" ↑"+rate(s.Net.TxBps), func() {
-			sparkline(c, rings.rx.values(), 0, t.Accent)
-		})
-		if b := s.Battery; b != nil {
-			value := strconv.Itoa(b.Percent) + " %"
-			if b.Charging {
-				value = L.StatusCharging(value)
+		for _, m := range hostMetrics(w.Sample, rings) {
+			if metricTile(c, "tile-"+r.id+"-"+m.key, m, false) {
+				open = true
 			}
-			statusTile(c, "battery", L.StatusBattery(), value, func() {
-				ui.Meter(c, float64(b.Percent), 0, 100, &ui.MeterLevels{Warning: 20, Critical: 10}).Label(L.StatusBattery()).FillWidth()
-			})
 		}
-		statusTile(c, "uptime", L.StatusUptime(), uptime(s.UptimeS), nil)
 	})
-	if fresh == statusDim {
-		age := int(now.Sub(time.UnixMilli(w.ReceivedAt)).Seconds())
-		ui.Text(c, L.StatusUpdatedAgo(strconv.Itoa(age))).FontSize(sizeSmall).TextColor(t.TextMuted)
+	if open {
+		a.mu.Lock()
+		a.statusOf = r.id
+		a.mu.Unlock()
 	}
+	line := L.StatusUpFor(uptime(w.Sample.UptimeS))
+	if fresh == statusDim {
+		line = L.StatusUpdatedAgo(strconv.Itoa(int(now.Sub(time.UnixMilli(w.ReceivedAt)).Seconds())))
+	}
+	ui.Text(c, line).FontSize(sizeSmall).TextColor(t.TextMuted)
 }
 
-// statusTile is one status value: its name and value, then what more draws
-// below (a meter, a sparkline).
-func statusTile(c *ui.Context, key, name, value string, more func()) {
+// statusWords says in words why a host's status does not show: getting
+// it, no saved password or key, an older Kyokai, refused, or how old the
+// last one is.
+func (a *App) statusWords(c *ui.Context, w *localapi.Watched) {
 	t := c.Theme()
-	ui.Column(c.Key("tile-" + key)).Gap(4).MinWidth(0).Children(func() {
-		ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, name).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
-			ui.Text(c, value).FontSize(sizeSmall).FontFeatures("tnum").SingleLine()
+	if w == nil {
+		return
+	}
+	text := ""
+	switch w.State {
+	case "connecting":
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			busyMark(c, L.StatusGetting(), busySize)
+			ui.Text(c, L.StatusGetting()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		})
-		if more != nil {
-			more()
-		}
-	})
-}
-
-// usageTile is a tile of bytes used of a total, with a meter that warns
-// from warn and turns critical from crit (fractions).
-func usageTile(c *ui.Context, key, name string, u localapi.Usage, warn, crit float64) {
-	total := float64(u.Total)
-	statusTile(c, key, name, L.StatusOf(bytesText(u.Total), bytesText(u.Used)), func() {
-		ui.Meter(c, float64(u.Used), 0, max(total, 1), &ui.MeterLevels{Warning: warn * total, Critical: crit * total}).Label(name).FillWidth()
-	})
-}
-
-// sparkline draws values as a line, from 0 to top (0: to their highest).
-func sparkline(c *ui.Context, values []float32, top float32, col ui.Color) {
-	ui.Box(c).FillWidth().Height(sparkH).Draw(func(p *ui.Painter, r ui.Rect) {
-		if len(values) < 2 {
-			return
-		}
-		hi := top
-		if hi <= 0 {
-			for _, v := range values {
-				hi = max(hi, v)
-			}
-		}
-		if hi <= 0 {
-			hi = 1
-		}
-		xs := make([]float32, len(values))
-		ys := make([]float32, len(values))
-		for i, v := range values {
-			xs[i] = float32(i+ringLen-len(values)) / float32(ringLen-1)
-			ys[i] = min(v/hi, 1)
-		}
-		p.FillPath(chart.Area(r, xs, nil, ys, chart.CurveMonotone), col.Alpha(0.12))
-		p.StrokePath(chart.Line(r, xs, ys, chart.CurveMonotone), sparkStroke, col)
-	})
+		return
+	case "no-credential":
+		text = L.StatusNoCredential()
+	case "unsupported":
+		text = L.StatusUnsupported()
+	case "refused":
+		text = L.StatusRefused()
+	}
+	if text == "" && w.ReceivedAt != 0 {
+		text = L.StatusFrom(time.UnixMilli(w.ReceivedAt).Local().Format("15:04"))
+	}
+	if text != "" {
+		ui.Text(c, text).FontSize(sizeSmall).TextColor(t.TextMuted)
+	}
 }
 
 // bytesText writes a size in bytes, one decimal below ten: "8.1 GB", "470 GB".

@@ -13,7 +13,9 @@
   layer, a still screen still answers, a capture or encoder that fails reopens, unacknowledged
   frames are released after 3 s, and capture waits for room. A dark display wakes; the viewer
   offers Wake it and says when it is recovering the picture. In Helper mode the session agent
-  follows the input desktop (the lock screen) and keeps a log.
+  follows the input desktop and keeps a log; the lock and sign-in screens show (a capture checks the
+  input desktop whatever it captured, never keeps copying the old desktop, and gets a still screen's
+  first picture from GDI).
 - Input never jams: it never waits for a stalled session, releases always arrive, presses typed
   during a stall or a reconnect are dropped instead of arriving late, the keyboard grab steps aside
   while a session is stalled, and Map mode keeps the controller's input method out of the way while
@@ -24,9 +26,15 @@
 - SSH, Remote Desktop and VNC (Apple Screen Sharing too) of a device through tunnels inside Kyokai
   sessions, with built-in clients (MyGo's terminal; RDP and VNC from open-screen-sharing,
   GPL-3.0-or-later); each is a permission, off by default; their passwords and keys are saved with
-  the device's Kyokai password and forgotten together, and Security lists what is saved.
-- Home is a grid of device cards with the host's live status (CPU, memory, GPU, disk, network,
-  battery, uptime) for devices with a saved password or key, watched quietly.
+  the device's Kyokai password and forgotten together, and Security lists what is saved. A VNC
+  server on Windows that refuses its own computer or offers no supported sign-in says which setting
+  to change.
+- Home is a grid of device cards with the host's live status for devices with a saved password or
+  key, watched quietly: Pulse-style tiles (a large figure and a dot history of two minutes) for CPU
+  (apps and system), memory, GPU, disk (with reads and writes), network (with totals) and battery,
+  and a details page per device. A card offers Remote Desktop, SSH, VNC and AI only when they work
+  without the other device's user (the host says what the saved password grants and whether its AI
+  is ready), the most used first.
 - Closing a window with connections asks first when it holds two or more, or one while Home is
   shown, and disconnects them; closing the main window no longer leaves its connections running.
 - Network: every node refuses EasyTier's QUIC and KCP proxy input and foreign networks; Try direct

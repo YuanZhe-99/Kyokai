@@ -115,7 +115,15 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
   session. Keys go as scan codes.
 - **VNC** (vendored, `internal/rfb`): security None, VNC password (2), Apple's Diffie-Hellman (30),
   RSA (33) and SRP (36) sign-ins with a user name and password when the server offers them; keys go
-  as keysyms. A Mac signed in by someone else shares its screen (the console session).
+  as keysyms. A Mac signed in by someone else shares its screen (the console session). On Windows,
+  TigerVNC works as installed; TightVNC and UltraVNC refuse connections from their own computer
+  until "Allow loopback connections" (TightVNC) or `AllowLoopback` (UltraVNC) is on, and need a VNC
+  password (UltraVNC: MS-Logon and encryption plugins off); RealVNC Server's own sign-ins (RA2) are
+  not supported, only its VNC password with encryption allowed off. The tab says which: a server
+  that closes before its greeting (`rfb.ErrClosedBeforeGreeting`) is named with the loopback
+  setting, a refusal shows the server's own reason (`rfb.RefusedError`), and a server offering no
+  supported sign-in (`rfb.ErrUnsupportedServer`, an RFB 3.3 type beyond a byte named whole) asks
+  for VNC password authentication.
 - **Both pictures** (`screenClient`): the framebuffer is converted to RGBA on the protocol's
   goroutine and shown on the main thread, fitted or at its original size as the viewer's; the
   pointer, its buttons and the wheel go in the other desktop's pixels. In Map and Translate the

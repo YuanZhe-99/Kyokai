@@ -169,3 +169,46 @@ func TestClientVNCPasswordRejected(t *testing.T) {
 		t.Fatalf("Dial error %v, want ErrAuthenticationFailed", err)
 	}
 }
+
+// TestClientServerRefusals names the ways a Windows VNC server turns a
+// connection away (Kyokai): closing before its greeting, as TightVNC and
+// UltraVNC do to their own computer while loopback connections are off; a
+// refusal with its reason; and RFB 3.3's MS-Logon type, kept whole.
+func TestClientServerRefusals(t *testing.T) {
+	refusal := func(w io.Writer) {
+		_, _ = io.WriteString(w, "RFB 003.008\n")
+		_, _ = w.Write([]byte{0})
+		_ = binary.Write(w, binary.BigEndian, uint32(len("Loopback connections are not enabled")))
+		_, _ = io.WriteString(w, "Loopback connections are not enabled")
+	}
+	msLogon := func(w io.Writer) {
+		_, _ = io.WriteString(w, "RFB 003.003\n")
+		_ = binary.Write(w, binary.BigEndian, uint32(0xFFFFFFFA))
+	}
+	for _, c := range []struct {
+		name  string
+		serve func(io.Writer)
+		check func(error) bool
+	}{
+		{"closed before greeting", func(io.Writer) {}, func(err error) bool { return errors.Is(err, ErrClosedBeforeGreeting) }},
+		{"refused with a reason", refusal, func(err error) bool {
+			var r *RefusedError
+			return errors.As(err, &r) && r.Reason == "Loopback connections are not enabled"
+		}},
+		{"MS-Logon on RFB 3.3", msLogon, func(err error) bool { return errors.Is(err, ErrUnsupportedServer) }},
+	} {
+		clientConn, serverConn := net.Pipe()
+		go func() {
+			// The client's version reply is read and dropped.
+			go func() { _, _ = io.Copy(io.Discard, serverConn) }()
+			c.serve(serverConn)
+			_ = serverConn.Close()
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_, err := Dial(ctx, Options{Conn: clientConn, Password: "secret"}, &testHandler{})
+		cancel()
+		if !c.check(err) {
+			t.Errorf("%s: Dial error %v", c.name, err)
+		}
+	}
+}

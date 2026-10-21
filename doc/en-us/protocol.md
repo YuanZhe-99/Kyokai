@@ -164,7 +164,7 @@ to a host that did not announce `status`, and stops after frame 2 instead (`unsu
 admits a watcher only with a correct password or a key within its password grants while Connect
 without asking is on, and never asks its user: anything else is refused as `denied`. A watcher's
 verdict carries no resume token. After it the host sends `{"type": "system", at, uptime_s, cpu,
-memory, gpu, disk, net, battery, services}` with each sample, every 2 seconds, besides `ping`,
+memory, gpu, disk, disk_io, net, battery, services, offers, ai}` with each sample, every 2 seconds, besides `ping`,
 `pong` and `bye`; there is no video, input or other message. The host ends the watch with `bye`
 when `see-status` leaves its password grants, and either side closes one with no frame for 15
 seconds.

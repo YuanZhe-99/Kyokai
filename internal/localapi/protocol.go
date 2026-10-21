@@ -969,17 +969,26 @@ type SystemSample struct {
 	Memory  Usage    `json:"memory"`
 	GPU     *GPUUse  `json:"gpu,omitempty"`
 	Disk    Usage    `json:"disk"`
+	DiskIO  *DiskIO  `json:"disk_io,omitempty"`
 	Net     NetRates `json:"net"`
 	Battery *Battery `json:"battery,omitempty"`
 	// Services are the services listening on the host's loopback ("ssh",
 	// "rdp", "vnc").
 	Services []string `json:"services,omitempty"`
+	// Offers are the permissions the watcher's password or key grants
+	// without asking (empty while the host asks for everything).
+	Offers []string `json:"offers,omitempty"`
+	// AI says whether the host's AI can start a task.
+	AI bool `json:"ai,omitempty"`
 }
 
-// CPUUse is the processor's load, 0–100, and its logical cores.
+// CPUUse is the processor's load, 0–100, its logical cores, and the
+// parts spent in programs (User) and in the system.
 type CPUUse struct {
-	Usage float64 `json:"usage"`
-	Cores int     `json:"cores"`
+	Usage  float64 `json:"usage"`
+	Cores  int     `json:"cores"`
+	User   float64 `json:"user"`
+	System float64 `json:"system"`
 }
 
 // GPUUse is the graphics processor's load, 0–100.
@@ -993,10 +1002,19 @@ type Usage struct {
 	Total uint64 `json:"total"`
 }
 
-// NetRates are bytes per second received and sent.
+// DiskIO is bytes per second read from and written to the disks.
+type DiskIO struct {
+	ReadBps  uint64 `json:"read_bps"`
+	WriteBps uint64 `json:"write_bps"`
+}
+
+// NetRates are bytes per second received and sent, and the bytes the
+// interfaces' counters hold.
 type NetRates struct {
-	RxBps uint64 `json:"rx_bps"`
-	TxBps uint64 `json:"tx_bps"`
+	RxBps   uint64 `json:"rx_bps"`
+	TxBps   uint64 `json:"tx_bps"`
+	RxTotal uint64 `json:"rx_total"`
+	TxTotal uint64 `json:"tx_total"`
 }
 
 // Battery is the host's charge and whether it charges.

@@ -33,22 +33,33 @@ when `SCREENSHOT_DIR` is set.
   and "Direct · 12 ms", "Relayed · 231 ms" in the warning colour, "By address", why the last
   attempt failed, or when it was last connected); its live status; chips for what is saved for it
   (Kyokai password, key, SSH, Remote Desktop, VNC; flags only); and its actions: Connect (Show
-  while connected or connecting), then SSH, Remote Desktop and VNC for the services its status
-  reports listening (disabled, with a tooltip, for a device without Kyokai 0.4.1's tunnels), and AI
-  (Connect with AI). Its ⋯ menu has Connect, Connect with AI, Open SSH / Remote Desktop / VNC,
+  while connected or connecting), then only what will work without the other device's user
+  (`cardActions`): Remote Desktop, SSH and VNC for the services its status reports answering, and
+  AI (Connect with AI) while its AI is ready, each only when its status says the saved password or
+  key grants it (`offers`); the most used for that device first (`Prefs.Uses`, counted on this
+  device only), else in that order; the buttons share the row. Everything else stays in the ⋯
+  menu, which has Connect, Connect with AI, Open Remote Desktop / SSH / VNC,
   Rename… (a name shown only on this device, edited in a card above the devices; empty goes back to
   the device's own), Saved passwords and keys… (the Security page), Forget old identity (after a
   key change) and Remove (disconnects it, takes it and its finished connections off Recent, and
   forgets its pinned key, saved sign-ins and the name given here).
 - **Live status on Home:** while Home shows (the main window visible, on its Kyokai tab and the
   Home page), the GUI leases a watch of the recent devices (`watch.set`, eight at most, renewed
-  every 10 s and dropped as Home hides). A watched device's card shows tiles in two columns: CPU
-  (a meter, warning from 80 %, critical from 95 %, and a sparkline of the last 60 samples),
-  memory and disk (used of total), GPU (hidden when the host has none to report), network (↓ and ↑
-  with a sparkline of what arrives), battery (warning from 20 %, critical from 10 %; hidden
-  without one) and uptime. Never stale data as current: a sample up to 6 s old shows as it is;
-  from 6 to 60 s the tiles are dimmed with "Updated N s ago"; older, no values show, only "Status
-  from HH:MM", and the sparklines are cleared. Without a sample the card says how the watch goes:
+  every 10 s and dropped as Home hides). A watched device's card shows compact tiles in two
+  columns, after the system monitor Pulse: each metric's icon and name in its own colour (CPU
+  blue, its system share red; memory green; GPU red; disk orange, writes blue; network teal, sent
+  blue; battery green, orange when low), a large figure with its unit (CPU now, memory in use, GPU
+  now, disk free, download rate, battery), and the last two minutes as a dot history — columns of
+  dots, newest on the right, each lit from the bottom as far as its value reaches, the parts of a
+  stacked metric in their colours (`dotHistory`). GPU and battery are hidden when the host has
+  none to report; uptime follows the tiles. A tile opens the device's **status details**
+  (`hostStatusView`, Home's own page until Back to Home or another page): every tile in full, up
+  to three side by side, with its caption ("Now", "In use of 16 GB", "Free of 512 GB",
+  "Downloading", "Charging"), the figure, three smaller ones (CPU: apps, system, cores; memory:
+  used, available, total; GPU: average and peak of the history; disk: reading, writing, used;
+  network: uploading, received, sent) and a taller history. Never stale data as current: a sample
+  up to 6 s old shows as it is; from 6 to 60 s the tiles are dimmed with "Updated N s ago"; older,
+  no values show, only "Status from HH:MM", and the histories are cleared. Without a sample the card says how the watch goes:
   "Getting its status…" with the loading indicator, no saved password or key, needs Kyokai 0.4.1
   there, or refused.
 

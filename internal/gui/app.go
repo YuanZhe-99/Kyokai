@@ -83,6 +83,8 @@ type App struct {
 	// Sessions (sessions.go): the connect form, the permissions chosen per
 	// open host confirmation, the access card.
 	connect connectForm
+	// statusOf is the host whose status Home shows in full, or "".
+	statusOf string
 	// rename is the name being given to a recent device on Home.
 	rename renameForm
 	// unlock is the permanent password typed to leave protected mode.

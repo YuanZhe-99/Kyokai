@@ -395,6 +395,7 @@ func (a *App) removeDevice(device string) {
 		}
 	}
 	a.setAlias(device, "")
+	a.forgetUses(device)
 	go func() {
 		_, err := a.requestWith(localapi.Request{Type: localapi.RequestDeviceRemove, DeviceID: device})
 		if err != nil {

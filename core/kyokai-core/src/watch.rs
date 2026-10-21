@@ -37,7 +37,7 @@ enum Message {
     Pong,
     Bye,
     /// host → watcher: the host's status, every SAMPLE_EVERY.
-    System(Sample),
+    System(Box<Sample>),
     /// Anything else a peer sends: ignored.
     #[serde(other)]
     Unknown,
@@ -75,7 +75,9 @@ fn reader<R: AsyncRead + Unpin + Send + 'static>(
 }
 
 /// Serves an admitted watcher until either side ends, as the host: a
-/// `system` message with each sample, the heartbeat, and the end when
+/// `system` message with each sample (with what the watcher's password
+/// grants without asking and whether the host's AI is ready), the
+/// heartbeat, and the end when
 /// `see-status` leaves the password grants.
 /// Notes: no capture, no input, no awake request.
 pub async fn host<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
@@ -83,6 +85,7 @@ pub async fn host<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     mut noise: snow::TransportState,
     stop: &Notify,
     access: &crate::access::Access,
+    ai: &crate::ai::Ai,
 ) -> Result<(), Failure> {
     let (rd, mut wr) = tokio::io::split(stream);
     let (mut frames, reading) = reader(rd);
@@ -112,7 +115,10 @@ pub async fn host<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     let sample = status.samples.borrow_and_update().clone();
                     if let Some(s) = sample {
-                        send(&mut noise, &mut buf, &mut wr, &Message::System((*s).clone())).await?;
+                        let mut s = (*s).clone();
+                        s.offers = if access.without_asking() { access.password_grants() } else { Vec::new() };
+                        s.ai = ai.ready();
+                        send(&mut noise, &mut buf, &mut wr, &Message::System(Box::new(s))).await?;
                     }
                 }
                 frame = frames.recv() => {
@@ -166,7 +172,7 @@ pub async fn follow<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     heard = Instant::now();
                     let n = noise.read_message(&frame, &mut plain)?;
                     match serde_json::from_slice::<Message>(&plain[..n]) {
-                        Ok(Message::System(s)) => sampled(s),
+                        Ok(Message::System(s)) => sampled(*s),
                         Ok(Message::Ping) => send(&mut noise, &mut buf, &mut wr, &Message::Pong).await?,
                         Ok(Message::Bye) => return Ok(()),
                         Ok(_) => {}

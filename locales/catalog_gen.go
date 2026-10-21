@@ -1492,6 +1492,46 @@ func (msgs Messages) CardSaved() string {
 	return Catalog.Format(msgs.locale, "CardSaved", nil)
 }
 
+// CleanupHelper says "Removed Kyokai Helper and the settings it had left behind: this run mode holds this computer's."
+// in the language the app shows.
+func CleanupHelper() string { return In(i18n.Locale()).CleanupHelper() }
+
+// CleanupHelper says "Removed Kyokai Helper and the settings it had left behind: this run mode holds this computer's."
+// in the language of msgs.
+func (msgs Messages) CleanupHelper() string {
+	return Catalog.Format(msgs.locale, "CleanupHelper", nil)
+}
+
+// CleanupHelperHasMore says "Kyokai Helper on this computer holds devices, networks or a permanent password, and this run mode holds none. Use Kyo…"
+// in the language the app shows.
+func CleanupHelperHasMore() string { return In(i18n.Locale()).CleanupHelperHasMore() }
+
+// CleanupHelperHasMore says "Kyokai Helper on this computer holds devices, networks or a permanent password, and this run mode holds none. Use Kyo…"
+// in the language of msgs.
+func (msgs Messages) CleanupHelperHasMore() string {
+	return Catalog.Format(msgs.locale, "CleanupHelperHasMore", nil)
+}
+
+// CleanupUseHelper says "Use Kyokai Helper's"
+// in the language the app shows.
+func CleanupUseHelper() string { return In(i18n.Locale()).CleanupUseHelper() }
+
+// CleanupUseHelper says "Use Kyokai Helper's"
+// in the language of msgs.
+func (msgs Messages) CleanupUseHelper() string {
+	return Catalog.Format(msgs.locale, "CleanupUseHelper", nil)
+}
+
+// CleanupUserSet says "Removed the settings No privileges mode had left behind: Kyokai Helper holds this computer's."
+// in the language the app shows.
+func CleanupUserSet() string { return In(i18n.Locale()).CleanupUserSet() }
+
+// CleanupUserSet says "Removed the settings No privileges mode had left behind: Kyokai Helper holds this computer's."
+// in the language of msgs.
+func (msgs Messages) CleanupUserSet() string {
+	return Catalog.Format(msgs.locale, "CleanupUserSet", nil)
+}
+
 // CloseAskDetail says "Closing ends these connections:\n{names}"
 // in the language the app shows.
 func CloseAskDetail(names string) string { return In(i18n.Locale()).CloseAskDetail(names) }
@@ -2486,6 +2526,16 @@ func (msgs Messages) NetworkAddress() string {
 	return Catalog.Format(msgs.locale, "NetworkAddress", nil)
 }
 
+// NetworkAdvanced says "Advanced"
+// in the language the app shows.
+func NetworkAdvanced() string { return In(i18n.Locale()).NetworkAdvanced() }
+
+// NetworkAdvanced says "Advanced"
+// in the language of msgs.
+func (msgs Messages) NetworkAdvanced() string {
+	return Catalog.Format(msgs.locale, "NetworkAdvanced", nil)
+}
+
 // NetworkConnecting says "Connecting…"
 // in the language the app shows.
 func NetworkConnecting() string { return In(i18n.Locale()).NetworkConnecting() }
@@ -2546,14 +2596,14 @@ func (msgs Messages) NetworkDirectHelper() string {
 	return Catalog.Format(msgs.locale, "NetworkDirectHelper", nil)
 }
 
-// NetworkAdvanced says "Advanced"
+// NetworkDirectHint says "Faster when both networks allow it. Windows may ask to let Kyokai through its firewall; while this is off, connection…"
 // in the language the app shows.
-func NetworkAdvanced() string { return In(i18n.Locale()).NetworkAdvanced() }
+func NetworkDirectHint() string { return In(i18n.Locale()).NetworkDirectHint() }
 
-// NetworkAdvanced says "Advanced"
+// NetworkDirectHint says "Faster when both networks allow it. Windows may ask to let Kyokai through its firewall; while this is off, connection…"
 // in the language of msgs.
-func (msgs Messages) NetworkAdvanced() string {
-	return Catalog.Format(msgs.locale, "NetworkAdvanced", nil)
+func (msgs Messages) NetworkDirectHint() string {
+	return Catalog.Format(msgs.locale, "NetworkDirectHint", nil)
 }
 
 // NetworkDirectWarning says "This makes Kyokai listen on network ports and answer other devices' packets: Windows Firewall may ask, and other devi…"
@@ -2564,36 +2614,6 @@ func NetworkDirectWarning() string { return In(i18n.Locale()).NetworkDirectWarni
 // in the language of msgs.
 func (msgs Messages) NetworkDirectWarning() string {
 	return Catalog.Format(msgs.locale, "NetworkDirectWarning", nil)
-}
-
-// NetworkLatencyFirst says "Latency-first routing"
-// in the language the app shows.
-func NetworkLatencyFirst() string { return In(i18n.Locale()).NetworkLatencyFirst() }
-
-// NetworkLatencyFirst says "Latency-first routing"
-// in the language of msgs.
-func (msgs Messages) NetworkLatencyFirst() string {
-	return Catalog.Format(msgs.locale, "NetworkLatencyFirst", nil)
-}
-
-// NetworkLatencyFirstHint says "Prefer the route with the lowest delay over the one with the fewest hops, in every network."
-// in the language the app shows.
-func NetworkLatencyFirstHint() string { return In(i18n.Locale()).NetworkLatencyFirstHint() }
-
-// NetworkLatencyFirstHint says "Prefer the route with the lowest delay over the one with the fewest hops, in every network."
-// in the language of msgs.
-func (msgs Messages) NetworkLatencyFirstHint() string {
-	return Catalog.Format(msgs.locale, "NetworkLatencyFirstHint", nil)
-}
-
-// NetworkDirectHint says "Faster when both networks allow it. Windows may ask to let Kyokai through its firewall; while this is off, connection…"
-// in the language the app shows.
-func NetworkDirectHint() string { return In(i18n.Locale()).NetworkDirectHint() }
-
-// NetworkDirectHint says "Faster when both networks allow it. Windows may ask to let Kyokai through its firewall; while this is off, connection…"
-// in the language of msgs.
-func (msgs Messages) NetworkDirectHint() string {
-	return Catalog.Format(msgs.locale, "NetworkDirectHint", nil)
 }
 
 // NetworkError says "Could not connect"
@@ -2634,6 +2654,26 @@ func NetworkLabelHint() string { return In(i18n.Locale()).NetworkLabelHint() }
 // in the language of msgs.
 func (msgs Messages) NetworkLabelHint() string {
 	return Catalog.Format(msgs.locale, "NetworkLabelHint", nil)
+}
+
+// NetworkLatencyFirst says "Latency-first routing"
+// in the language the app shows.
+func NetworkLatencyFirst() string { return In(i18n.Locale()).NetworkLatencyFirst() }
+
+// NetworkLatencyFirst says "Latency-first routing"
+// in the language of msgs.
+func (msgs Messages) NetworkLatencyFirst() string {
+	return Catalog.Format(msgs.locale, "NetworkLatencyFirst", nil)
+}
+
+// NetworkLatencyFirstHint says "Prefer the route with the lowest delay over the one with the fewest hops, in every network."
+// in the language the app shows.
+func NetworkLatencyFirstHint() string { return In(i18n.Locale()).NetworkLatencyFirstHint() }
+
+// NetworkLatencyFirstHint says "Prefer the route with the lowest delay over the one with the fewest hops, in every network."
+// in the language of msgs.
+func (msgs Messages) NetworkLatencyFirstHint() string {
+	return Catalog.Format(msgs.locale, "NetworkLatencyFirstHint", nil)
 }
 
 // NetworkNAT says "NAT type"
@@ -3586,46 +3626,6 @@ func (msgs Messages) RunModeHint() string {
 	return Catalog.Format(msgs.locale, "RunModeHint", nil)
 }
 
-// RunModeNoHelper says "The helper did not start."
-// in the language the app shows.
-func RunModeNoHelper() string { return In(i18n.Locale()).RunModeNoHelper() }
-
-// RunModeNoHelper says "The helper did not start."
-// in the language of msgs.
-func (msgs Messages) RunModeNoHelper() string {
-	return Catalog.Format(msgs.locale, "RunModeNoHelper", nil)
-}
-
-// RunModeNote says "Follow Kyokai and Background service install a helper once, after one administrator prompt; with Background service t…"
-// in the language the app shows.
-func RunModeNote() string { return In(i18n.Locale()).RunModeNote() }
-
-// RunModeNote says "Follow Kyokai and Background service install a helper once, after one administrator prompt; with Background service t…"
-// in the language of msgs.
-func (msgs Messages) RunModeNote() string {
-	return Catalog.Format(msgs.locale, "RunModeNote", nil)
-}
-
-// RunModeReplaceIdentity says "The other run mode holds another identity of this computer, with its own settings. Replace it with this one? Its Devi…"
-// in the language the app shows.
-func RunModeReplaceIdentity() string { return In(i18n.Locale()).RunModeReplaceIdentity() }
-
-// RunModeReplaceIdentity says "The other run mode holds another identity of this computer, with its own settings. Replace it with this one? Its Devi…"
-// in the language of msgs.
-func (msgs Messages) RunModeReplaceIdentity() string {
-	return Catalog.Format(msgs.locale, "RunModeReplaceIdentity", nil)
-}
-
-// RunModeReplace says "Replace it"
-// in the language the app shows.
-func RunModeReplace() string { return In(i18n.Locale()).RunModeReplace() }
-
-// RunModeReplace says "Replace it"
-// in the language of msgs.
-func (msgs Messages) RunModeReplace() string {
-	return Catalog.Format(msgs.locale, "RunModeReplace", nil)
-}
-
 // RunModeKept says "Nothing was moved: each run mode keeps its own identity."
 // in the language the app shows.
 func RunModeKept() string { return In(i18n.Locale()).RunModeKept() }
@@ -3634,16 +3634,6 @@ func RunModeKept() string { return In(i18n.Locale()).RunModeKept() }
 // in the language of msgs.
 func (msgs Messages) RunModeKept() string {
 	return Catalog.Format(msgs.locale, "RunModeKept", nil)
-}
-
-// RunModeMovedTitle says "This computer's identity is in Kyokai Helper"
-// in the language the app shows.
-func RunModeMovedTitle() string { return In(i18n.Locale()).RunModeMovedTitle() }
-
-// RunModeMovedTitle says "This computer's identity is in Kyokai Helper"
-// in the language of msgs.
-func (msgs Messages) RunModeMovedTitle() string {
-	return Catalog.Format(msgs.locale, "RunModeMovedTitle", nil)
 }
 
 // RunModeMovedHint says "Its Device ID, networks and saved passwords moved to Kyokai Helper, which is not installed now. Install it again to g…"
@@ -3686,44 +3676,34 @@ func (msgs Messages) RunModeMovedStartOverConfirm() string {
 	return Catalog.Format(msgs.locale, "RunModeMovedStartOverConfirm", nil)
 }
 
-// CleanupUserSet says "Removed the settings No privileges mode had left behind: Kyokai Helper holds this computer's."
+// RunModeMovedTitle says "This computer's identity is in Kyokai Helper"
 // in the language the app shows.
-func CleanupUserSet() string { return In(i18n.Locale()).CleanupUserSet() }
+func RunModeMovedTitle() string { return In(i18n.Locale()).RunModeMovedTitle() }
 
-// CleanupUserSet says "Removed the settings No privileges mode had left behind: Kyokai Helper holds this computer's."
+// RunModeMovedTitle says "This computer's identity is in Kyokai Helper"
 // in the language of msgs.
-func (msgs Messages) CleanupUserSet() string {
-	return Catalog.Format(msgs.locale, "CleanupUserSet", nil)
+func (msgs Messages) RunModeMovedTitle() string {
+	return Catalog.Format(msgs.locale, "RunModeMovedTitle", nil)
 }
 
-// CleanupHelper says "Removed Kyokai Helper and the settings it had left behind: this run mode holds this computer's."
+// RunModeNoHelper says "The helper did not start."
 // in the language the app shows.
-func CleanupHelper() string { return In(i18n.Locale()).CleanupHelper() }
+func RunModeNoHelper() string { return In(i18n.Locale()).RunModeNoHelper() }
 
-// CleanupHelper says "Removed Kyokai Helper and the settings it had left behind: this run mode holds this computer's."
+// RunModeNoHelper says "The helper did not start."
 // in the language of msgs.
-func (msgs Messages) CleanupHelper() string {
-	return Catalog.Format(msgs.locale, "CleanupHelper", nil)
+func (msgs Messages) RunModeNoHelper() string {
+	return Catalog.Format(msgs.locale, "RunModeNoHelper", nil)
 }
 
-// CleanupHelperHasMore says "Kyokai Helper on this computer holds devices, networks or a permanent password, and this run mode holds none. Use Kyo…"
+// RunModeNote says "Follow Kyokai and Background service install a helper once, after one administrator prompt; with Background service t…"
 // in the language the app shows.
-func CleanupHelperHasMore() string { return In(i18n.Locale()).CleanupHelperHasMore() }
+func RunModeNote() string { return In(i18n.Locale()).RunModeNote() }
 
-// CleanupHelperHasMore says "Kyokai Helper on this computer holds devices, networks or a permanent password, and this run mode holds none. Use Kyo…"
+// RunModeNote says "Follow Kyokai and Background service install a helper once, after one administrator prompt; with Background service t…"
 // in the language of msgs.
-func (msgs Messages) CleanupHelperHasMore() string {
-	return Catalog.Format(msgs.locale, "CleanupHelperHasMore", nil)
-}
-
-// CleanupUseHelper says "Use Kyokai Helper's"
-// in the language the app shows.
-func CleanupUseHelper() string { return In(i18n.Locale()).CleanupUseHelper() }
-
-// CleanupUseHelper says "Use Kyokai Helper's"
-// in the language of msgs.
-func (msgs Messages) CleanupUseHelper() string {
-	return Catalog.Format(msgs.locale, "CleanupUseHelper", nil)
+func (msgs Messages) RunModeNote() string {
+	return Catalog.Format(msgs.locale, "RunModeNote", nil)
 }
 
 // RunModeOutdated says "The helper is {helper}; this app is {app}."
@@ -3736,6 +3716,26 @@ func RunModeOutdated(helper string, app string) string {
 // in the language of msgs.
 func (msgs Messages) RunModeOutdated(helper string, app string) string {
 	return Catalog.Format(msgs.locale, "RunModeOutdated", map[string]any{"helper": helper, "app": app})
+}
+
+// RunModeReplace says "Replace it"
+// in the language the app shows.
+func RunModeReplace() string { return In(i18n.Locale()).RunModeReplace() }
+
+// RunModeReplace says "Replace it"
+// in the language of msgs.
+func (msgs Messages) RunModeReplace() string {
+	return Catalog.Format(msgs.locale, "RunModeReplace", nil)
+}
+
+// RunModeReplaceIdentity says "The other run mode holds another identity of this computer, with its own settings. Replace it with this one? Its Devi…"
+// in the language the app shows.
+func RunModeReplaceIdentity() string { return In(i18n.Locale()).RunModeReplaceIdentity() }
+
+// RunModeReplaceIdentity says "The other run mode holds another identity of this computer, with its own settings. Replace it with this one? Its Devi…"
+// in the language of msgs.
+func (msgs Messages) RunModeReplaceIdentity() string {
+	return Catalog.Format(msgs.locale, "RunModeReplaceIdentity", nil)
 }
 
 // RunModeSwitching says "Switching…"
@@ -3928,6 +3928,16 @@ func (msgs Messages) ServiceDomain() string {
 	return Catalog.Format(msgs.locale, "ServiceDomain", nil)
 }
 
+// ServiceDown says "That service is not running on the other device."
+// in the language the app shows.
+func ServiceDown() string { return In(i18n.Locale()).ServiceDown() }
+
+// ServiceDown says "That service is not running on the other device."
+// in the language of msgs.
+func (msgs Messages) ServiceDown() string {
+	return Catalog.Format(msgs.locale, "ServiceDown", nil)
+}
+
 // ServiceEnded says "The connection ended."
 // in the language the app shows.
 func ServiceEnded() string { return In(i18n.Locale()).ServiceEnded() }
@@ -3966,16 +3976,6 @@ func ServiceNoTunnel() string { return In(i18n.Locale()).ServiceNoTunnel() }
 // in the language of msgs.
 func (msgs Messages) ServiceNoTunnel() string {
 	return Catalog.Format(msgs.locale, "ServiceNoTunnel", nil)
-}
-
-// ServiceDown says "That service is not running on the other device."
-// in the language the app shows.
-func ServiceDown() string { return In(i18n.Locale()).ServiceDown() }
-
-// ServiceDown says "That service is not running on the other device."
-// in the language of msgs.
-func (msgs Messages) ServiceDown() string {
-	return Catalog.Format(msgs.locale, "ServiceDown", nil)
 }
 
 // ServicePassword says "Password"
@@ -4088,6 +4088,36 @@ func ServiceVNC() string { return In(i18n.Locale()).ServiceVNC() }
 // in the language of msgs.
 func (msgs Messages) ServiceVNC() string {
 	return Catalog.Format(msgs.locale, "ServiceVNC", nil)
+}
+
+// ServiceVNCLoopback says "The VNC server closed the connection at once. It may refuse connections from its own computer: on that computer, turn…"
+// in the language the app shows.
+func ServiceVNCLoopback() string { return In(i18n.Locale()).ServiceVNCLoopback() }
+
+// ServiceVNCLoopback says "The VNC server closed the connection at once. It may refuse connections from its own computer: on that computer, turn…"
+// in the language of msgs.
+func (msgs Messages) ServiceVNCLoopback() string {
+	return Catalog.Format(msgs.locale, "ServiceVNCLoopback", nil)
+}
+
+// ServiceVNCRefused says "The VNC server refused: {reason}"
+// in the language the app shows.
+func ServiceVNCRefused(reason string) string { return In(i18n.Locale()).ServiceVNCRefused(reason) }
+
+// ServiceVNCRefused says "The VNC server refused: {reason}"
+// in the language of msgs.
+func (msgs Messages) ServiceVNCRefused(reason string) string {
+	return Catalog.Format(msgs.locale, "ServiceVNCRefused", map[string]any{"reason": reason})
+}
+
+// ServiceVNCUnsupported says "That VNC server asks for a kind of sign-in Kyokai does not support. On that computer, turn on VNC password authentica…"
+// in the language the app shows.
+func ServiceVNCUnsupported() string { return In(i18n.Locale()).ServiceVNCUnsupported() }
+
+// ServiceVNCUnsupported says "That VNC server asks for a kind of sign-in Kyokai does not support. On that computer, turn on VNC password authentica…"
+// in the language of msgs.
+func (msgs Messages) ServiceVNCUnsupported() string {
+	return Catalog.Format(msgs.locale, "ServiceVNCUnsupported", nil)
 }
 
 // ServiceWrongSignIn says "The user name or password was not accepted."
@@ -4444,6 +4474,46 @@ func (msgs Messages) StartOverHint() string {
 	return Catalog.Format(msgs.locale, "StartOverHint", nil)
 }
 
+// StatusApps says "Apps"
+// in the language the app shows.
+func StatusApps() string { return In(i18n.Locale()).StatusApps() }
+
+// StatusApps says "Apps"
+// in the language of msgs.
+func (msgs Messages) StatusApps() string {
+	return Catalog.Format(msgs.locale, "StatusApps", nil)
+}
+
+// StatusAvailable says "Available"
+// in the language the app shows.
+func StatusAvailable() string { return In(i18n.Locale()).StatusAvailable() }
+
+// StatusAvailable says "Available"
+// in the language of msgs.
+func (msgs Messages) StatusAvailable() string {
+	return Catalog.Format(msgs.locale, "StatusAvailable", nil)
+}
+
+// StatusAverage says "Average"
+// in the language the app shows.
+func StatusAverage() string { return In(i18n.Locale()).StatusAverage() }
+
+// StatusAverage says "Average"
+// in the language of msgs.
+func (msgs Messages) StatusAverage() string {
+	return Catalog.Format(msgs.locale, "StatusAverage", nil)
+}
+
+// StatusBack says "Back to Home"
+// in the language the app shows.
+func StatusBack() string { return In(i18n.Locale()).StatusBack() }
+
+// StatusBack says "Back to Home"
+// in the language of msgs.
+func (msgs Messages) StatusBack() string {
+	return Catalog.Format(msgs.locale, "StatusBack", nil)
+}
+
 // StatusBattery says "Battery"
 // in the language the app shows.
 func StatusBattery() string { return In(i18n.Locale()).StatusBattery() }
@@ -4464,14 +4534,34 @@ func (msgs Messages) StatusCPU() string {
 	return Catalog.Format(msgs.locale, "StatusCPU", nil)
 }
 
-// StatusCharging says "{value} · charging"
+// StatusChargingNow says "Charging"
 // in the language the app shows.
-func StatusCharging(value string) string { return In(i18n.Locale()).StatusCharging(value) }
+func StatusChargingNow() string { return In(i18n.Locale()).StatusChargingNow() }
 
-// StatusCharging says "{value} · charging"
+// StatusChargingNow says "Charging"
 // in the language of msgs.
-func (msgs Messages) StatusCharging(value string) string {
-	return Catalog.Format(msgs.locale, "StatusCharging", map[string]any{"value": value})
+func (msgs Messages) StatusChargingNow() string {
+	return Catalog.Format(msgs.locale, "StatusChargingNow", nil)
+}
+
+// StatusCores says "Cores"
+// in the language the app shows.
+func StatusCores() string { return In(i18n.Locale()).StatusCores() }
+
+// StatusCores says "Cores"
+// in the language of msgs.
+func (msgs Messages) StatusCores() string {
+	return Catalog.Format(msgs.locale, "StatusCores", nil)
+}
+
+// StatusDetails says "Details"
+// in the language the app shows.
+func StatusDetails() string { return In(i18n.Locale()).StatusDetails() }
+
+// StatusDetails says "Details"
+// in the language of msgs.
+func (msgs Messages) StatusDetails() string {
+	return Catalog.Format(msgs.locale, "StatusDetails", nil)
 }
 
 // StatusDisk says "Disk"
@@ -4482,6 +4572,36 @@ func StatusDisk() string { return In(i18n.Locale()).StatusDisk() }
 // in the language of msgs.
 func (msgs Messages) StatusDisk() string {
 	return Catalog.Format(msgs.locale, "StatusDisk", nil)
+}
+
+// StatusDownloading says "Downloading"
+// in the language the app shows.
+func StatusDownloading() string { return In(i18n.Locale()).StatusDownloading() }
+
+// StatusDownloading says "Downloading"
+// in the language of msgs.
+func (msgs Messages) StatusDownloading() string {
+	return Catalog.Format(msgs.locale, "StatusDownloading", nil)
+}
+
+// StatusEvery says "Live, every 2 seconds"
+// in the language the app shows.
+func StatusEvery() string { return In(i18n.Locale()).StatusEvery() }
+
+// StatusEvery says "Live, every 2 seconds"
+// in the language of msgs.
+func (msgs Messages) StatusEvery() string {
+	return Catalog.Format(msgs.locale, "StatusEvery", nil)
+}
+
+// StatusFreeOf says "Free of {total}"
+// in the language the app shows.
+func StatusFreeOf(total string) string { return In(i18n.Locale()).StatusFreeOf(total) }
+
+// StatusFreeOf says "Free of {total}"
+// in the language of msgs.
+func (msgs Messages) StatusFreeOf(total string) string {
+	return Catalog.Format(msgs.locale, "StatusFreeOf", map[string]any{"total": total})
 }
 
 // StatusFrom says "Status from {time}"
@@ -4514,6 +4634,16 @@ func (msgs Messages) StatusGetting() string {
 	return Catalog.Format(msgs.locale, "StatusGetting", nil)
 }
 
+// StatusInUseOf says "In use of {total}"
+// in the language the app shows.
+func StatusInUseOf(total string) string { return In(i18n.Locale()).StatusInUseOf(total) }
+
+// StatusInUseOf says "In use of {total}"
+// in the language of msgs.
+func (msgs Messages) StatusInUseOf(total string) string {
+	return Catalog.Format(msgs.locale, "StatusInUseOf", map[string]any{"total": total})
+}
+
 // StatusMemory says "Memory"
 // in the language the app shows.
 func StatusMemory() string { return In(i18n.Locale()).StatusMemory() }
@@ -4544,14 +4674,54 @@ func (msgs Messages) StatusNoCredential() string {
 	return Catalog.Format(msgs.locale, "StatusNoCredential", nil)
 }
 
-// StatusOf says "{used} of {total}"
+// StatusNow says "Now"
 // in the language the app shows.
-func StatusOf(total string, used string) string { return In(i18n.Locale()).StatusOf(total, used) }
+func StatusNow() string { return In(i18n.Locale()).StatusNow() }
 
-// StatusOf says "{used} of {total}"
+// StatusNow says "Now"
 // in the language of msgs.
-func (msgs Messages) StatusOf(total string, used string) string {
-	return Catalog.Format(msgs.locale, "StatusOf", map[string]any{"total": total, "used": used})
+func (msgs Messages) StatusNow() string {
+	return Catalog.Format(msgs.locale, "StatusNow", nil)
+}
+
+// StatusOnBattery says "On battery"
+// in the language the app shows.
+func StatusOnBattery() string { return In(i18n.Locale()).StatusOnBattery() }
+
+// StatusOnBattery says "On battery"
+// in the language of msgs.
+func (msgs Messages) StatusOnBattery() string {
+	return Catalog.Format(msgs.locale, "StatusOnBattery", nil)
+}
+
+// StatusPeak says "Peak"
+// in the language the app shows.
+func StatusPeak() string { return In(i18n.Locale()).StatusPeak() }
+
+// StatusPeak says "Peak"
+// in the language of msgs.
+func (msgs Messages) StatusPeak() string {
+	return Catalog.Format(msgs.locale, "StatusPeak", nil)
+}
+
+// StatusReading says "Reading"
+// in the language the app shows.
+func StatusReading() string { return In(i18n.Locale()).StatusReading() }
+
+// StatusReading says "Reading"
+// in the language of msgs.
+func (msgs Messages) StatusReading() string {
+	return Catalog.Format(msgs.locale, "StatusReading", nil)
+}
+
+// StatusReceived says "Received"
+// in the language the app shows.
+func StatusReceived() string { return In(i18n.Locale()).StatusReceived() }
+
+// StatusReceived says "Received"
+// in the language of msgs.
+func (msgs Messages) StatusReceived() string {
+	return Catalog.Format(msgs.locale, "StatusReceived", nil)
 }
 
 // StatusRefused says "That device does not share its status with this one."
@@ -4564,6 +4734,36 @@ func (msgs Messages) StatusRefused() string {
 	return Catalog.Format(msgs.locale, "StatusRefused", nil)
 }
 
+// StatusSent says "Sent"
+// in the language the app shows.
+func StatusSent() string { return In(i18n.Locale()).StatusSent() }
+
+// StatusSent says "Sent"
+// in the language of msgs.
+func (msgs Messages) StatusSent() string {
+	return Catalog.Format(msgs.locale, "StatusSent", nil)
+}
+
+// StatusSystem says "System"
+// in the language the app shows.
+func StatusSystem() string { return In(i18n.Locale()).StatusSystem() }
+
+// StatusSystem says "System"
+// in the language of msgs.
+func (msgs Messages) StatusSystem() string {
+	return Catalog.Format(msgs.locale, "StatusSystem", nil)
+}
+
+// StatusTotal says "Total"
+// in the language the app shows.
+func StatusTotal() string { return In(i18n.Locale()).StatusTotal() }
+
+// StatusTotal says "Total"
+// in the language of msgs.
+func (msgs Messages) StatusTotal() string {
+	return Catalog.Format(msgs.locale, "StatusTotal", nil)
+}
+
 // StatusUnsupported says "Its status shows once that device runs Kyokai 0.4.1 or later."
 // in the language the app shows.
 func StatusUnsupported() string { return In(i18n.Locale()).StatusUnsupported() }
@@ -4572,6 +4772,16 @@ func StatusUnsupported() string { return In(i18n.Locale()).StatusUnsupported() }
 // in the language of msgs.
 func (msgs Messages) StatusUnsupported() string {
 	return Catalog.Format(msgs.locale, "StatusUnsupported", nil)
+}
+
+// StatusUpFor says "Up {time}"
+// in the language the app shows.
+func StatusUpFor(time_ string) string { return In(i18n.Locale()).StatusUpFor(time_) }
+
+// StatusUpFor says "Up {time}"
+// in the language of msgs.
+func (msgs Messages) StatusUpFor(time_ string) string {
+	return Catalog.Format(msgs.locale, "StatusUpFor", map[string]any{"time": time_})
 }
 
 // StatusUpdatedAgo says "Updated {seconds} s ago"
@@ -4584,14 +4794,34 @@ func (msgs Messages) StatusUpdatedAgo(seconds string) string {
 	return Catalog.Format(msgs.locale, "StatusUpdatedAgo", map[string]any{"seconds": seconds})
 }
 
-// StatusUptime says "Up"
+// StatusUploading says "Uploading"
 // in the language the app shows.
-func StatusUptime() string { return In(i18n.Locale()).StatusUptime() }
+func StatusUploading() string { return In(i18n.Locale()).StatusUploading() }
 
-// StatusUptime says "Up"
+// StatusUploading says "Uploading"
 // in the language of msgs.
-func (msgs Messages) StatusUptime() string {
-	return Catalog.Format(msgs.locale, "StatusUptime", nil)
+func (msgs Messages) StatusUploading() string {
+	return Catalog.Format(msgs.locale, "StatusUploading", nil)
+}
+
+// StatusUsed says "Used"
+// in the language the app shows.
+func StatusUsed() string { return In(i18n.Locale()).StatusUsed() }
+
+// StatusUsed says "Used"
+// in the language of msgs.
+func (msgs Messages) StatusUsed() string {
+	return Catalog.Format(msgs.locale, "StatusUsed", nil)
+}
+
+// StatusWriting says "Writing"
+// in the language the app shows.
+func StatusWriting() string { return In(i18n.Locale()).StatusWriting() }
+
+// StatusWriting says "Writing"
+// in the language of msgs.
+func (msgs Messages) StatusWriting() string {
+	return Catalog.Format(msgs.locale, "StatusWriting", nil)
 }
 
 // StorageLocation says "Data folder"
@@ -5412,6 +5642,16 @@ func (msgs Messages) ViewerWaiting() string {
 	return Catalog.Format(msgs.locale, "ViewerWaiting", nil)
 }
 
+// ViewerWake says "Wake it"
+// in the language the app shows.
+func ViewerWake() string { return In(i18n.Locale()).ViewerWake() }
+
+// ViewerWake says "Wake it"
+// in the language of msgs.
+func (msgs Messages) ViewerWake() string {
+	return Catalog.Format(msgs.locale, "ViewerWake", nil)
+}
+
 // WatchersHint says "These devices show this computer's processor, memory, disk and network use on their Home page. Turn off “See this c…"
 // in the language the app shows.
 func WatchersHint() string { return In(i18n.Locale()).WatchersHint() }
@@ -5450,16 +5690,6 @@ func WatchersTitle() string { return In(i18n.Locale()).WatchersTitle() }
 // in the language of msgs.
 func (msgs Messages) WatchersTitle() string {
 	return Catalog.Format(msgs.locale, "WatchersTitle", nil)
-}
-
-// ViewerWake says "Wake it"
-// in the language the app shows.
-func ViewerWake() string { return In(i18n.Locale()).ViewerWake() }
-
-// ViewerWake says "Wake it"
-// in the language of msgs.
-func (msgs Messages) ViewerWake() string {
-	return Catalog.Format(msgs.locale, "ViewerWake", nil)
 }
 
 // WithoutAskingHint says "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Back…"

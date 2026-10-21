@@ -35,7 +35,8 @@ const (
 var userSetFiles = []string{"secrets.bin", "master.key", "device.json", "ai.json", "ai-tasks.json"}
 
 // cleanupAction decides the cleanup from the engine the GUI attached to.
-// Inputs: st — its status; installed — whether Kyokai Helper is installed;
+// Inputs: st — its status; installed — whether Kyokai Helper is installed
+// for this profile (only the installed app's, never a development one);
 // userSet — whether this profile's state folder still holds a store.
 func cleanupAction(st *localapi.Status, installed, userSet bool) cleanup {
 	switch {
@@ -62,7 +63,10 @@ func (a *App) storesChanged(st *localapi.Status) {
 		return
 	}
 	_, err := os.Stat(filepath.Join(a.stateDir, "secrets.bin"))
-	act := cleanupAction(st, helper.Installed(), err == nil)
+	// Kyokai Helper serves the installed app's profile: a development
+	// profile (KYOKAI_PROFILE) never removes it (regression: one in No
+	// privileges offered to).
+	act := cleanupAction(st, a.profile == "" && helper.Installed(), err == nil)
 	a.cleaning = true
 	st2 := *st
 	go func() {

@@ -83,46 +83,88 @@ var (
 	barUnfold         = ui.MustParseSVG(unfoldSVG)
 )
 
+// A host's status tiles: their icons, in the same style, and their
+// colours, one per metric, the second part of a history in its own.
+var (
+	//go:embed assets/icons/cpu.svg
+	cpuSVG []byte
+	//go:embed assets/icons/memory.svg
+	memorySVG []byte
+	//go:embed assets/icons/gpu.svg
+	gpuSVG []byte
+	//go:embed assets/icons/disk.svg
+	diskSVG []byte
+	//go:embed assets/icons/globe.svg
+	globeSVG []byte
+	//go:embed assets/icons/battery.svg
+	batterySVG []byte
+
+	statusIconCPU     = ui.MustParseSVG(cpuSVG)
+	statusIconMemory  = ui.MustParseSVG(memorySVG)
+	statusIconGPU     = ui.MustParseSVG(gpuSVG)
+	statusIconDisk    = ui.MustParseSVG(diskSVG)
+	statusIconNetwork = ui.MustParseSVG(globeSVG)
+	statusIconBattery = ui.MustParseSVG(batterySVG)
+
+	statusCPU        = ui.Hex("#3b82f6") // programs' share; the system's in statusCPUSystem
+	statusCPUSystem  = ui.Hex("#ef4444")
+	statusMemory     = ui.Hex("#22a35a")
+	statusGPU        = ui.Hex("#e5484d")
+	statusDisk       = ui.Hex("#f08c1a") // reads; writes in statusDiskWrite
+	statusDiskWrite  = ui.Hex("#3b82f6")
+	statusNetwork    = ui.Hex("#14a3a3") // received; sent in statusNetworkUp
+	statusNetworkUp  = ui.Hex("#3b82f6")
+	statusBattery    = ui.Hex("#22a35a")
+	statusBatteryLow = ui.Hex("#f08c1a")
+)
+
 // Layout and type scale (doc/en-us/gui.md: body 14, titles 20–24, nothing
 // below 12).
 const (
-	sizeSmall     float32 = 12
-	sizeBody      float32 = 14
-	sizeHeading   float32 = 16
-	sizeTitle     float32 = 22
-	sizeDeviceID  float32 = 34
-	sidebarW      float32 = 168
-	navIconSize   float32 = 16 // the sidebar's icons
-	cardRadius    float32 = 12
-	cardPad       float32 = 16
-	gap           float32 = 12
-	contentMaxW   float32 = 760
-	inputAreaH    float32 = 72  // a multi-line input of about three lines
-	aiPanelW      float32 = 320 // the viewer's AI panel
-	clipPanelW    float32 = 300 // the viewer's clipboard panel
-	tabTitleMaxW  float32 = 220 // a viewer tab's title
-	tabStripH     float32 = 38  // the tab strip, which is the windows' title bar
-	thisDeviceW   float32 = 300 // Home's This device column
-	deviceCardW   float32 = 236 // a recent device's card on Home
-	onlineDot     float32 = 8   // a device's online dot
-	connectPanelW float32 = 420 // a connection tab's panel before the picture
-	pointerR      float32 = 6   // the host's pointer marker in the viewer
-	barTop        float32 = 8   // the viewer toolbar, from the picture's top edge
-	barMargin     float32 = 8   // the least room it keeps from the picture's sides
-	barRadius     float32 = 10  // its corners
-	barIconSize   float32 = 16  // its icons
-	avatarSize    float32 = 36  // a device's round avatar
-	logoSize      float32 = 22  // a vendor logo inside it (about 64%)
-	busySize      float32 = 16  // a loading indicator beside text
-	busySizeLarge float32 = 28  // a loading indicator on its own
-	chipRadius    float32 = 10  // a chip (a saved sign-in, a state)
-	homeMaxW      float32 = 1120
-	homeCardMinW  float32 = 300 // a device's card on Home, at least
-	homeColumns   int     = 3   // Home's device cards side by side, at most
-	tileGap       float32 = 8   // between a card's status tiles
-	sparkH        float32 = 22  // a status tile's sparkline
-	sparkStroke   float32 = 1.5
-	noticeBottom  float32 = 24 // the viewer's notices over the picture, from its bottom edge
+	sizeSmall      float32 = 12
+	sizeBody       float32 = 14
+	sizeHeading    float32 = 16
+	sizeTitle      float32 = 22
+	sizeDeviceID   float32 = 34
+	sidebarW       float32 = 168
+	navIconSize    float32 = 16 // the sidebar's icons
+	cardRadius     float32 = 12
+	cardPad        float32 = 16
+	gap            float32 = 12
+	contentMaxW    float32 = 760
+	inputAreaH     float32 = 72  // a multi-line input of about three lines
+	aiPanelW       float32 = 320 // the viewer's AI panel
+	clipPanelW     float32 = 300 // the viewer's clipboard panel
+	tabTitleMaxW   float32 = 220 // a viewer tab's title
+	tabStripH      float32 = 38  // the tab strip, which is the windows' title bar
+	thisDeviceW    float32 = 300 // Home's This device column
+	deviceCardW    float32 = 236 // a recent device's card on Home
+	onlineDot      float32 = 8   // a device's online dot
+	connectPanelW  float32 = 420 // a connection tab's panel before the picture
+	pointerR       float32 = 6   // the host's pointer marker in the viewer
+	barTop         float32 = 8   // the viewer toolbar, from the picture's top edge
+	barMargin      float32 = 8   // the least room it keeps from the picture's sides
+	barRadius      float32 = 10  // its corners
+	barIconSize    float32 = 16  // its icons
+	avatarSize     float32 = 36  // a device's round avatar
+	logoSize       float32 = 22  // a vendor logo inside it (about 64%)
+	busySize       float32 = 16  // a loading indicator beside text
+	busySizeLarge  float32 = 28  // a loading indicator on its own
+	chipRadius     float32 = 10  // a chip (a saved sign-in, a state)
+	homeMaxW       float32 = 1120
+	homeCardMinW   float32 = 300 // a device's card on Home, at least
+	homeColumns    int     = 3   // Home's device cards side by side, at most
+	tileGap        float32 = 8   // between a card's status tiles
+	sizeMetric     float32 = 34  // a status figure in a host's details
+	statusIconSize float32 = 14  // a status tile's icon
+	tileRadius     float32 = 10  // a status tile's corners
+	statusTileMinW float32 = 280 // a status tile in a host's details, at least
+	dotSize        float32 = 4   // a dot of a status history
+	dotPitch       float32 = 6   // from one dot to the next
+	dotInset       float32 = 6   // around the dots
+	dotRowsCard    int     = 4   // a history's rows on a device card
+	dotRowsFull    int     = 6   // and in a host's details
+	noticeBottom   float32 = 24  // the viewer's notices over the picture, from its bottom edge
 )
 
 // Where the macOS traffic lights sit in the tab strip: the close button's

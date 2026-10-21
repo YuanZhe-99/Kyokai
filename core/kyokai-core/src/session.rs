@@ -1525,7 +1525,7 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 e.since = since;
             });
             let Channel { stream, noise, .. } = ch;
-            let failure = crate::watch::host(stream, noise, &stop, &ctx.access)
+            let failure = crate::watch::host(stream, noise, &stop, &ctx.access, &ctx.ai)
                 .await
                 .err();
             ctx.sessions.end(id, failure);
@@ -6521,6 +6521,12 @@ mod watch_tests {
         }
         assert_eq!(listed[0]["device_id"], json!(dialed), "{listed}");
         assert!(listed[0]["sample"]["memory"]["total"].as_u64().unwrap() > 0);
+        // The sample says what the password grants without asking, so the
+        // controller offers only that, and whether the host's AI is ready.
+        let offers = listed[0]["sample"]["offers"].as_array().unwrap();
+        assert!(offers.contains(&json!("view-screen")), "{listed}");
+        assert!(!offers.contains(&json!("run-ai-task")), "{listed}");
+        assert!(listed[0]["sample"]["ai"].is_boolean(), "{listed}");
         // Quiet on both sides: not among the sessions, no trace among the
         // host's trusted devices, nobody asked; the host lists its watcher.
         assert_eq!(controller.sessions.list(), json!([]));

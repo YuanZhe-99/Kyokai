@@ -836,7 +836,7 @@ mod capture {
     /// How often a key frame that has not come out is asked of the encoder
     /// again.
     const KEY_FORCE_AGAIN: Duration = Duration::from_millis(500);
-    /// How often a capture with nothing new compares the input desktop with
+    /// How often a capture compares the input desktop with
     /// its own (the agent's, in the helper modes).
     const DESK_CHECK: Duration = Duration::from_millis(500);
 
@@ -1016,6 +1016,8 @@ mod capture {
             let mut desk_checked = t0;
             // The encoder failed once and was opened again.
             let mut reopened = false;
+            // Why the display last failed to open again, logged once.
+            let mut open_failed = String::new();
             // None while the display is lost: the old capturer is released
             // before a new one is made. The stream keeps its size; a new
             // display mode is scaled into it.
@@ -1039,9 +1041,34 @@ mod capture {
                         log::info!("capture: ends to start again on a fresh thread");
                         return;
                     }
-                    capturer = G::open(display).ok().map(|(c, _, _)| c);
+                    capturer = match G::open(display) {
+                        Ok((c, _, _)) => {
+                            open_failed.clear();
+                            Some(c)
+                        }
+                        Err(why) => {
+                            if why != open_failed {
+                                log::info!("capture: the display does not open again: {why}");
+                                open_failed = why;
+                            }
+                            None
+                        }
+                    };
                     continue;
                 };
+                // The lock screen, the sign-in screen or a UAC prompt took
+                // the input desktop, which a capture does not always report
+                // (GDI keeps copying the old desktop's black): followed as a
+                // lost display, whatever the capture gives.
+                if desk_checked.elapsed() >= DESK_CHECK {
+                    desk_checked = Instant::now();
+                    if crate::agent::input_desktop_moved() {
+                        log::info!("capture: the input desktop moved");
+                        capturer = None;
+                        dark_since.get_or_insert_with(Instant::now);
+                        continue;
+                    }
+                }
                 // Room for the frame first: a picture is taken only when the
                 // session can send it, so what goes out is the newest picture
                 // rather than one that waited behind the network.
@@ -1089,17 +1116,6 @@ mod capture {
                         continue;
                     }
                     Got::Nothing => {
-                        // The lock screen, the sign-in screen or a UAC
-                        // prompt took the input desktop, which a capture
-                        // does not always report: followed as a lost display.
-                        if desk_checked.elapsed() >= DESK_CHECK {
-                            desk_checked = Instant::now();
-                            if crate::agent::input_desktop_moved() {
-                                log::info!("capture: the input desktop moved");
-                                capturer = None;
-                                continue;
-                            }
-                        }
                         // GDI answers at once instead of waiting the timeout.
                         if let Some(rest) = period.checked_sub(begun.elapsed()) {
                             nap(rest, &stop);
@@ -1222,6 +1238,10 @@ mod screen {
     /// How often a capture that fell back to GDI tries desktop duplication
     /// again (it fails for a moment around a UAC prompt or the lock screen).
     const GDI_RETRY: Duration = Duration::from_secs(2);
+    /// How long a new desktop duplication may give no picture before GDI
+    /// copies one: duplication hands a frame over only once something is
+    /// drawn, and a still lock or sign-in screen may draw nothing for long.
+    const FIRST_PICTURE: Duration = Duration::from_secs(1);
 
     /// A display through desktop duplication (or GDI), scaled on the GPU to
     /// the stream's size.
@@ -1233,6 +1253,9 @@ mod screen {
         size: (usize, usize),
         /// When desktop duplication was last tried while on GDI.
         tried: Instant,
+        /// When the capture opened, and whether it gave a picture since.
+        opened: Instant,
+        pictured: bool,
     }
 
     impl Grab for Dxgi {
@@ -1253,6 +1276,12 @@ mod screen {
                 .ok_or("the display is gone")?;
             let (dw, dh) = (display.width() as u32, display.height() as u32);
             let mut cap = Capturer::new(display).map_err(|e| format!("capturer: {e}"))?;
+            // The input desktop moved while the capture opened (around the
+            // lock screen DXGI refuses, and GDI would copy the old desktop):
+            // opened again on the new one.
+            if crate::agent::input_desktop_moved() {
+                return Err("the input desktop moved while the display opened".into());
+            }
             let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
             let size = (w as usize, h as usize);
             cap.scale_to(size.0, size.1);
@@ -1271,6 +1300,8 @@ mod screen {
                     want,
                     size,
                     tried,
+                    opened: tried,
+                    pictured: false,
                 },
                 w,
                 h,
@@ -1280,10 +1311,27 @@ mod screen {
         fn frame(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got {
             if self.cap.is_gdi() && self.tried.elapsed() >= GDI_RETRY {
                 self.tried = Instant::now();
-                self.duplicate_again();
+                // Duplication opens only on the input desktop: a capture
+                // whose thread had to move there is opened again, never
+                // kept on what it copied before (regression: GDI made on the
+                // user's desktop went on copying it under the lock screen).
+                if self.duplicate_again() {
+                    return Got::Lost;
+                }
+            }
+            // A still lock or sign-in screen gives a new duplication nothing
+            // to hand over: GDI copies a picture, and duplication is tried
+            // again GDI_RETRY later.
+            if !self.pictured && !self.cap.is_gdi() && self.opened.elapsed() >= FIRST_PICTURE {
+                self.pictured = true;
+                if self.cap.set_gdi() {
+                    self.tried = Instant::now();
+                    log::info!("capture: no picture yet: GDI copies one");
+                }
             }
             match self.cap.frame(timeout.as_millis() as u32) {
                 Ok(Frame::PixelBuffer(pb)) => {
+                    self.pictured = true;
                     take(pb.data, pb.width, pb.height, pb.stride);
                     Got::Picture
                 }
@@ -1306,14 +1354,18 @@ mod screen {
         /// that DXGI does not list (no GPU output, some virtual machines) is
         /// left on GDI without trying. The thread follows the input desktop
         /// first: duplication opens only on the desktop that has the input.
-        fn duplicate_again(&mut self) {
-            if crate::agent::follow_input_desktop() == crate::agent::Desk::Failed {
-                return;
+        /// Returns: whether the thread moved to another desktop, where this
+        /// capture must open again.
+        fn duplicate_again(&mut self) -> bool {
+            match crate::agent::follow_input_desktop() {
+                crate::agent::Desk::Failed => return false,
+                crate::agent::Desk::Switched => return true,
+                crate::agent::Desk::Same => {}
             }
             let Some(display) = Displays::new().ok().and_then(|mut all| {
                 all.find(|d| d.attached_to_desktop() && d.origin() == (self.want.x, self.want.y))
             }) else {
-                return;
+                return false;
             };
             if let Ok(mut cap) = Capturer::new(display)
                 && !cap.is_gdi()
@@ -1322,6 +1374,7 @@ mod screen {
                 self.cap = cap;
                 log::info!("capture: desktop duplication is back");
             }
+            false
         }
     }
 

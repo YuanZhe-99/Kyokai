@@ -1,10 +1,11 @@
 //! The host's own status for quiet status watchers (doc/en-us/computer-use.md,
-//! "Host status"): the processor, memory, graphics, the system disk, the
-//! network's rates, the battery, the uptime, and which of its SSH, Remote
-//! Desktop and VNC listen on loopback. Sampled on a thread of its own every
-//! SAMPLE_EVERY while anyone watches, with the system's own counters (no
-//! crate of its own).
+//! "Host status"): the processor, memory, graphics, the system disk and its
+//! reads and writes, the network's rates, the battery, the uptime, and which
+//! of its SSH, Remote Desktop and VNC answer on loopback. Sampled on a thread
+//! of its own every SAMPLE_EVERY while anyone watches, with the system's own
+//! counters (no crate of its own).
 
+use crate::access::Permission;
 use crate::tunnel::Service;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,19 +31,36 @@ pub struct Sample {
     /// None where the system reports no graphics load.
     pub gpu: Option<Load>,
     pub disk: Usage,
+    /// The disks' reads and writes; None where the system reports none.
+    #[serde(default)]
+    pub disk_io: Option<DiskIo>,
     pub net: Rates,
     /// None without a battery.
     pub battery: Option<Battery>,
-    /// The services listening on the host's loopback.
+    /// The services answering on the host's loopback.
     #[serde(default)]
     pub services: Vec<Service>,
+    /// What the watcher's password or key grants without asking, filled
+    /// in per watcher (empty while the host asks for everything), so the
+    /// controller offers only what will work.
+    #[serde(default)]
+    pub offers: Vec<Permission>,
+    /// Whether the host's AI can start a task (a model chosen, its key
+    /// present), filled in per watcher.
+    #[serde(default)]
+    pub ai: bool,
 }
 
-/// The processor's load, 0–100, over its logical cores.
+/// The processor's load, 0–100, over its logical cores: in all, and the
+/// parts spent in programs (user) and in the system.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Cpu {
     pub usage: f64,
     pub cores: u32,
+    #[serde(default)]
+    pub user: f64,
+    #[serde(default)]
+    pub system: f64,
 }
 
 /// A load, 0–100.
@@ -58,11 +76,23 @@ pub struct Usage {
     pub total: u64,
 }
 
-/// Bytes per second received and sent, over the physical interfaces.
+/// Bytes per second received and sent, over the physical interfaces, and
+/// the bytes their counters hold (since they came up).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Rates {
     pub rx_bps: u64,
     pub tx_bps: u64,
+    #[serde(default)]
+    pub rx_total: u64,
+    #[serde(default)]
+    pub tx_total: u64,
+}
+
+/// Bytes per second read from and written to the disks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DiskIo {
+    pub read_bps: u64,
+    pub write_bps: u64,
 }
 
 /// The battery's charge and whether it charges.
@@ -161,11 +191,12 @@ fn listening() -> Vec<Service> {
 
 /// What the counters were at the last sample, to turn them into rates.
 struct Probe {
-    /// Busy and total processor time.
-    cpu: Option<(u64, u64)>,
+    /// User, system and total processor time.
+    cpu: Option<(u64, u64, u64)>,
     /// Bytes received and sent, and when.
     net: Option<(u64, u64, Instant)>,
     gpu: imp::Gpu,
+    disk: imp::DiskCounters,
 }
 
 impl Probe {
@@ -174,6 +205,7 @@ impl Probe {
             cpu: imp::cpu_times(),
             net: imp::net_bytes().map(|(rx, tx)| (rx, tx, Instant::now())),
             gpu: imp::Gpu::open(),
+            disk: imp::DiskCounters::open(),
         }
     }
 
@@ -181,11 +213,14 @@ impl Probe {
     /// the last sample (zero for the first).
     fn sample(&mut self) -> Sample {
         let cpu = imp::cpu_times();
-        let usage = match (self.cpu, cpu) {
-            (Some((b0, t0)), Some((b1, t1))) if t1 > t0 => {
-                (b1.saturating_sub(b0) as f64 * 100.0 / (t1 - t0) as f64).clamp(0.0, 100.0)
+        let (user, system) = match (self.cpu, cpu) {
+            (Some((u0, s0, t0)), Some((u1, s1, t1))) if t1 > t0 => {
+                let share = |a: u64, b: u64| {
+                    (b.saturating_sub(a) as f64 * 100.0 / (t1 - t0) as f64).clamp(0.0, 100.0)
+                };
+                (share(u0, u1), share(s0, s1))
             }
-            _ => 0.0,
+            _ => (0.0, 0.0),
         };
         self.cpu = cpu.or(self.cpu);
         let now = Instant::now();
@@ -196,6 +231,8 @@ impl Probe {
                 Rates {
                     rx_bps: (r1.saturating_sub(r0) as f64 / secs) as u64,
                     tx_bps: (t1.saturating_sub(t0) as f64 / secs) as u64,
+                    rx_total: r1,
+                    tx_total: t1,
                 }
             }
             _ => Rates::default(),
@@ -207,15 +244,20 @@ impl Probe {
                 .map_or(0, |d| d.as_millis() as u64),
             uptime_s: imp::uptime(),
             cpu: Cpu {
-                usage,
+                usage: (user + system).min(100.0),
                 cores: std::thread::available_parallelism().map_or(1, |n| n.get() as u32),
+                user,
+                system,
             },
             memory: imp::memory(),
             gpu: self.gpu.load().map(|usage| Load { usage }),
             disk: imp::disk(),
+            disk_io: self.disk.rates(),
             net: rates,
             battery: imp::battery(),
             services: Vec::new(),
+            offers: Vec::new(),
+            ai: false,
         }
     }
 }
@@ -228,9 +270,9 @@ mod imp {
     use windows::Win32::NetworkManagement::Ndis::IfOperStatusUp;
     use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
     use windows::Win32::System::Performance::{
-        PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY, PDH_MORE_DATA,
-        PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterArrayW,
-        PdhOpenQueryW,
+        PDH_FMT_COUNTERVALUE, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER,
+        PDH_HQUERY, PDH_MORE_DATA, PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData,
+        PdhGetFormattedCounterArrayW, PdhGetFormattedCounterValue, PdhOpenQueryW,
     };
     use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
     use windows::Win32::System::SystemInformation::{
@@ -243,8 +285,9 @@ mod imp {
         (u64::from(f.dwHighDateTime) << 32) | u64::from(f.dwLowDateTime)
     }
 
-    /// Busy and total processor time of every core, in 100 ns ticks.
-    pub fn cpu_times() -> Option<(u64, u64)> {
+    /// User, system and total processor time of every core, in 100 ns
+    /// ticks.
+    pub fn cpu_times() -> Option<(u64, u64, u64)> {
         let (mut idle, mut kernel, mut user) = Default::default();
         // SAFETY: three valid out pointers for the call.
         unsafe {
@@ -257,7 +300,11 @@ mod imp {
         .ok()?;
         // Kernel time includes the idle time.
         let total = ticks(kernel) + ticks(user);
-        Some((total.saturating_sub(ticks(idle)), total))
+        Some((
+            ticks(user),
+            ticks(kernel).saturating_sub(ticks(idle)),
+            total,
+        ))
     }
 
     pub fn memory() -> Usage {
@@ -432,6 +479,77 @@ mod imp {
             }
         }
     }
+
+    /// The physical disks' reads and writes, through the performance
+    /// counters Task Manager reads.
+    pub struct DiskCounters(Option<(PDH_HQUERY, PDH_HCOUNTER, PDH_HCOUNTER)>);
+
+    // SAFETY: the query is used and closed only on the sampler's thread.
+    unsafe impl Send for DiskCounters {}
+
+    impl DiskCounters {
+        pub fn open() -> DiskCounters {
+            let mut query = PDH_HQUERY::default();
+            let (mut read, mut write) = (PDH_HCOUNTER::default(), PDH_HCOUNTER::default());
+            // SAFETY: out pointers for the query and the counters; the query
+            // is closed on drop.
+            let opened = unsafe {
+                PdhOpenQueryW(PCWSTR::null(), 0, &mut query) == 0
+                    && PdhAddEnglishCounterW(
+                        query,
+                        w!(r"\PhysicalDisk(_Total)\Disk Read Bytes/sec"),
+                        0,
+                        &mut read,
+                    ) == 0
+                    && PdhAddEnglishCounterW(
+                        query,
+                        w!(r"\PhysicalDisk(_Total)\Disk Write Bytes/sec"),
+                        0,
+                        &mut write,
+                    ) == 0
+                    && PdhCollectQueryData(query) == 0
+            };
+            if !opened {
+                if !query.is_invalid() {
+                    // SAFETY: the query opened above, closed once.
+                    unsafe { PdhCloseQuery(query) };
+                }
+                return DiskCounters(None);
+            }
+            DiskCounters(Some((query, read, write)))
+        }
+
+        /// Bytes per second read and written since the last look.
+        pub fn rates(&mut self) -> Option<super::DiskIo> {
+            let (query, read, write) = self.0?;
+            // SAFETY: the open query.
+            if unsafe { PdhCollectQueryData(query) } != 0 {
+                return None;
+            }
+            let value = |counter| {
+                let mut v = PDH_FMT_COUNTERVALUE::default();
+                // SAFETY: a counter of the open query and an out value.
+                let r =
+                    unsafe { PdhGetFormattedCounterValue(counter, PDH_FMT_DOUBLE, None, &mut v) };
+                // SAFETY: PDH_FMT_DOUBLE fills the double.
+                (r == 0 && v.CStatus <= 1)
+                    .then(|| unsafe { v.Anonymous.doubleValue }.max(0.0) as u64)
+            };
+            Some(super::DiskIo {
+                read_bps: value(read)?,
+                write_bps: value(write)?,
+            })
+        }
+    }
+
+    impl Drop for DiskCounters {
+        fn drop(&mut self) {
+            if let Some((query, ..)) = self.0 {
+                // SAFETY: the query opened in `open`, closed once.
+                unsafe { PdhCloseQuery(query) };
+            }
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -459,8 +577,8 @@ mod imp {
         (r == 0 && len == size_of::<T>()).then(|| unsafe { value.assume_init() })
     }
 
-    /// Busy and total processor ticks of every core.
-    pub fn cpu_times() -> Option<(u64, u64)> {
+    /// User (with nice), system and total processor ticks of every core.
+    pub fn cpu_times() -> Option<(u64, u64, u64)> {
         // SAFETY: a plain structure of integers.
         let mut info: libc::host_cpu_load_info = unsafe { std::mem::zeroed() };
         let mut count = libc::HOST_CPU_LOAD_INFO_COUNT;
@@ -479,7 +597,8 @@ mod imp {
         let ticks = info.cpu_ticks.map(u64::from);
         let total: u64 = ticks.iter().sum();
         Some((
-            total.saturating_sub(ticks[libc::CPU_STATE_IDLE as usize]),
+            ticks[libc::CPU_STATE_USER as usize] + ticks[libc::CPU_STATE_NICE as usize],
+            ticks[libc::CPU_STATE_SYSTEM as usize],
             total,
         ))
     }
@@ -736,12 +855,77 @@ mod imp {
             }
         }
     }
+
+    /// The disks' reads and writes: the block storage drivers' byte
+    /// counters, turned into rates between looks.
+    pub struct DiskCounters(Option<(u64, u64, std::time::Instant)>);
+
+    impl DiskCounters {
+        pub fn open() -> DiskCounters {
+            DiskCounters(totals().map(|(r, w)| (r, w, std::time::Instant::now())))
+        }
+
+        /// Bytes per second read and written since the last look.
+        pub fn rates(&mut self) -> Option<super::DiskIo> {
+            let (r1, w1) = totals()?;
+            let now = std::time::Instant::now();
+            let last = self.0.replace((r1, w1, now));
+            let (r0, w0, at) = last?;
+            let secs = now.duration_since(at).as_secs_f64().max(0.001);
+            Some(super::DiskIo {
+                read_bps: (r1.saturating_sub(r0) as f64 / secs) as u64,
+                write_bps: (w1.saturating_sub(w0) as f64 / secs) as u64,
+            })
+        }
+    }
+
+    /// Bytes read and written by every block storage driver.
+    fn totals() -> Option<(u64, u64)> {
+        let stats = CFString::from_static_str("Statistics");
+        // SAFETY: the matching dictionary is consumed by the call; the
+        // iterator, its entries and the properties are released here.
+        unsafe {
+            let matching = IOServiceMatching(c"IOBlockStorageDriver".as_ptr());
+            let mut found = 0u32;
+            if matching.is_null() || IOServiceGetMatchingServices(0, matching, &mut found) != 0 {
+                return None;
+            }
+            let (mut read, mut written, mut any) = (0u64, 0u64, false);
+            loop {
+                let entry = IOIteratorNext(found);
+                if entry == 0 {
+                    break;
+                }
+                let p = IORegistryEntryCreateCFProperty(
+                    entry,
+                    (&*stats as *const CFString).cast(),
+                    std::ptr::null(),
+                    0,
+                );
+                if !p.is_null() {
+                    if CFGetTypeID(p) == CFDictionaryGetTypeID() {
+                        if let Some(n) = number(value(p, "Bytes (Read)")) {
+                            read += n.max(0) as u64;
+                            any = true;
+                        }
+                        if let Some(n) = number(value(p, "Bytes (Write)")) {
+                            written += n.max(0) as u64;
+                        }
+                    }
+                    CFRelease(p);
+                }
+                IOObjectRelease(entry);
+            }
+            IOObjectRelease(found);
+            any.then_some((read, written))
+        }
+    }
 }
 
 #[cfg(not(any(windows, target_os = "macos")))]
 mod imp {
     use super::{Battery, Usage};
-    pub fn cpu_times() -> Option<(u64, u64)> {
+    pub fn cpu_times() -> Option<(u64, u64, u64)> {
         None
     }
     pub fn memory() -> Usage {
@@ -765,6 +949,15 @@ mod imp {
             Gpu
         }
         pub fn load(&mut self) -> Option<f64> {
+            None
+        }
+    }
+    pub struct DiskCounters;
+    impl DiskCounters {
+        pub fn open() -> DiskCounters {
+            DiskCounters
+        }
+        pub fn rates(&mut self) -> Option<super::DiskIo> {
             None
         }
     }

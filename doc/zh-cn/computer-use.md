@@ -24,8 +24,10 @@
 SSH 会话）会改为发送 320×180 的测试图案（`raw-rgba`）；没有 Media Foundation 编码器的被控端（Windows N、未安装 Media Foundation
 的 Server 版）用软件编码发送。显示器丢失时（显示模式变化、锁屏或 UAC 提示），被控端会释放它，并每半秒重新打开主显示器；
 视频流保持原尺寸，新的显示模式被缩放进去（宽高比变化时，画面会被拉伸，直到下一个会话）。在助手模式下，代理会跟随正在接收输入的桌面
-（[run-modes.md](run-modes.md) 的“会话代理”），没有新内容的采集还会每半秒把该桌面与自己的桌面比较，并把变化——锁屏、登录屏幕或
-UAC 提示的出现或消失——视为显示器丢失。
+（[run-modes.md](run-modes.md) 的“会话代理”），无论采集到什么，采集都会每半秒把该桌面与自己的桌面比较（GDI 会一直复制旧桌面的黑色画面），
+并把变化——锁屏、登录屏幕或 UAC 提示的出现或消失——视为显示器丢失；在输入桌面切换期间打开的显示器，或重试桌面复制时不得不移动线程的
+GDI 采集，会在新桌面上重新打开。新的桌面复制若一秒内交不出画面（静止的锁屏或登录屏幕不绘制任何内容），则改由 GDI 取得一幅，
+2 秒后再尝试桌面复制。每种重新打开显示器的失败只记录一次。
 
 有多个显示器时，被控端随视频流发送显示器列表（主显示器在前，其余从左到右），查看窗口按编号提供选择；选择后会在该显示器上重新开始采集，
 并把输入与指针移到那里。AI 任务始终使用主显示器。
@@ -230,14 +232,17 @@ Windows 上的 Ctrl+C 在 Mac 上也是复制（RustDesk 有同样的开关，�
 
 | 字段 | Windows | macOS |
 |---|---|---|
-| `cpu` `{usage, cores}` | `GetSystemTimes` | `host_statistics`（`HOST_CPU_LOAD_INFO`） |
+| `cpu` `{usage, cores, user, system}` | `GetSystemTimes`（system：内核时间减去空闲时间） | `host_statistics`（`HOST_CPU_LOAD_INFO`；user 含 nice） |
 | `memory` `{used, total}` | `GlobalMemoryStatusEx` | `hw.memsize`；来自 `host_statistics64` 的应用内存、联动内存与压缩内存 |
 | `gpu` `{usage}` 或 null | 3D 引擎的 `Utilization Percentage` 计数器（PDH），按任务管理器的方式求和 | 最忙的 `IOAccelerator` 的 `Device Utilization %` |
 | `disk` `{used, total}` | Windows 所在的磁盘 | 数据卷 |
-| `net` `{rx_bps, tx_bps}` | `GetIfTable2`，处于启用状态的硬件接口 | `getifaddrs`，处于启用状态的接口，不含回环 |
+| `disk_io` `{read_bps, write_bps}` 或 null | `PhysicalDisk(_Total)` 的读写字节计数器（PDH） | 各 `IOBlockStorageDriver` 的 `Statistics`，换算为速率 |
+| `net` `{rx_bps, tx_bps, rx_total, tx_total}` | `GetIfTable2`，处于启用状态的硬件接口 | `getifaddrs`，处于启用状态的接口，不含回环 |
 | `battery` `{percent, charging}` 或 null | `GetSystemPowerStatus` | 电源（IOKit） |
 | `uptime_s`、`at` | `GetTickCount64`；被控端的时钟（Unix 毫秒） | `kern.boottime` |
 | `services` | SSH、远程桌面与 VNC 中哪些在其回环地址上接受连接，每 30 秒查看一次（[remote-services.md](remote-services.md)） | 相同 |
+| `offers` | 每个查看者：其密码或密钥无需询问即可授予的权限（“无需确认即可连接”开启时为密码授予的权限，否则为无），使控制端只提供能用的操作 | 相同 |
+| `ai` | 每个查看者：被控端的 AI 现在能否开始任务（已选择模型，且除非其服务器在被控端上，否则其提供方的密钥存在） | 相同 |
 
 控制端界面为它显示的被控端持有租约（`watch.set` `{devices}`，最多 8 个，主页可见时每 10 秒续一次；30 秒后失效）。引擎只查看声明了 `status`、
 且为其保存了密码或可用密钥的最近设备；否则说明原因，不拨号（`unsupported`、`no-credential`）。它像桌面会话一样拨号，从不续接，断开后等待

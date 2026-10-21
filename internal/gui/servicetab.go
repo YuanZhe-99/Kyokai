@@ -12,6 +12,7 @@ import (
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	"github.com/YuanZhe-99/Kyokai/internal/rfb"
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
@@ -215,6 +216,16 @@ func (s *serviceTab) settle(client serviceClient, err error, typed *credForm) {
 
 // serviceFailure words why a service could not be reached.
 func serviceFailure(err error) string {
+	// What a VNC server said or did (internal/rfb).
+	var said *rfb.RefusedError
+	switch {
+	case errors.Is(err, rfb.ErrClosedBeforeGreeting):
+		return L.ServiceVNCLoopback()
+	case errors.As(err, &said):
+		return L.ServiceVNCRefused(said.Reason)
+	case errors.Is(err, rfb.ErrUnsupportedServer):
+		return L.ServiceVNCUnsupported()
+	}
 	var refused *localapi.RequestError
 	if !errors.As(err, &refused) {
 		return L.ServiceFailed()

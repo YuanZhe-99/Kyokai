@@ -76,31 +76,71 @@ func TestWatchLease(t *testing.T) {
 	}
 }
 
-// Sparklines take each new sample once and are cleared when the status
+// Histories take each new sample once and are cleared when the status
 // goes too old.
 func TestRecordSamples(t *testing.T) {
 	a := &App{}
 	now := time.Now()
 	sample := func(cpu float64, at time.Time) *localapi.Status {
 		return &localapi.Status{Watching: []localapi.Watched{{DeviceID: "1", State: "watching",
-			Sample: &localapi.SystemSample{CPU: localapi.CPUUse{Usage: cpu}}, ReceivedAt: at.UnixMilli()}}}
+			Sample: &localapi.SystemSample{CPU: localapi.CPUUse{Usage: cpu, User: cpu}}, ReceivedAt: at.UnixMilli()}}}
 	}
 	a.recordSamples(sample(10, now), now)
 	a.recordSamples(sample(10, now), now) // the same sample again
 	a.recordSamples(sample(20, now.Add(2*time.Second)), now.Add(2*time.Second))
-	if got := a.watch.rings["1"].cpu.values(); !slices.Equal(got, []float32{10, 20}) {
+	if got := a.watch.rings["1"].cpuUser.values(); !slices.Equal(got, []float32{10, 20}) {
 		t.Fatalf("cpu ring %v", got)
 	}
 	for i := range ringLen + 5 {
 		at := now.Add(time.Duration(3+i) * time.Second)
 		a.recordSamples(sample(float64(i), at), at)
 	}
-	if got := a.watch.rings["1"].cpu.values(); len(got) != ringLen || got[ringLen-1] != ringLen+4 {
+	if got := a.watch.rings["1"].cpuUser.values(); len(got) != ringLen || got[ringLen-1] != ringLen+4 {
 		t.Fatalf("a full ring keeps the newest %d: %v", ringLen, got)
 	}
 	a.recordSamples(sample(1, now), now.Add(10*time.Minute))
-	if a.watch.rings["1"].cpu.n != 0 {
+	if a.watch.rings["1"].cpuUser.n != 0 {
 		t.Fatal("a ring outlived its status")
+	}
+}
+
+// A card offers a service only when it answers and the saved sign-in
+// grants it without asking, and the AI only when it is also ready there;
+// the most used come first.
+func TestCardActions(t *testing.T) {
+	all := []string{"use-ssh", "use-rdp", "use-vnc", "run-ai-task"}
+	for _, c := range []struct {
+		name    string
+		sample  *localapi.SystemSample
+		tunnels bool
+		uses    map[string]int
+		want    []string
+	}{
+		{"no status", nil, true, nil, nil},
+		{"all granted, default order", &localapi.SystemSample{Services: []string{"ssh", "rdp", "vnc"}, Offers: all, AI: true}, true, nil, []string{"rdp", "ssh", "vnc", "ai"}},
+		{"AI not granted", &localapi.SystemSample{Services: []string{"rdp"}, Offers: []string{"use-rdp"}, AI: true}, true, nil, []string{"rdp"}},
+		{"AI granted but not ready", &localapi.SystemSample{Offers: all}, true, nil, nil},
+		{"service not answering", &localapi.SystemSample{Services: []string{"ssh"}, Offers: all}, true, nil, []string{"ssh"}},
+		{"service needs the host's user", &localapi.SystemSample{Services: []string{"ssh", "vnc"}, Offers: []string{"use-vnc"}}, true, nil, []string{"vnc"}},
+		{"host without tunnels", &localapi.SystemSample{Services: []string{"ssh"}, Offers: all, AI: true}, false, nil, []string{"ai"}},
+		{"most used first", &localapi.SystemSample{Services: []string{"ssh", "rdp", "vnc"}, Offers: all, AI: true}, true,
+			map[string]int{"vnc": 2, "ai": 5, "ssh": 2}, []string{"ai", "ssh", "vnc", "rdp"}},
+	} {
+		if got := cardActions(c.sample, c.tunnels, c.uses); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// Tile figures keep three digits.
+func TestSizeParts(t *testing.T) {
+	for _, c := range []struct {
+		n          uint64
+		value, uni string
+	}{{512, "512", "B"}, {1_020, "1.02", "KB"}, {6_100_000_000, "6.10", "GB"}, {79_900_000_000, "79.9", "GB"}, {470_000_000_000, "470", "GB"}} {
+		if v, u := sizeParts(c.n); v != c.value || u != c.uni {
+			t.Errorf("sizeParts(%d) = %s %s, want %s %s", c.n, v, u, c.value, c.uni)
+		}
 	}
 }
 
@@ -120,12 +160,14 @@ func demoHome(a *App) {
 		{DeviceID: "100000005", Last: 1797000000, Features: tunnel, Saved: localapi.Saved{Password: true}},
 		{DeviceID: "100000006", Last: 1796900000, Features: tunnel, Saved: localapi.Saved{Password: true}, About: localapi.About{Name: "Media box"}},
 	}
-	sample := &localapi.SystemSample{UptimeS: 3*86400 + 4*3600, CPU: localapi.CPUUse{Usage: 37, Cores: 8},
+	sample := &localapi.SystemSample{UptimeS: 3*86400 + 4*3600, CPU: localapi.CPUUse{Usage: 37, Cores: 8, User: 26, System: 11},
 		Memory: localapi.Usage{Used: 8_100_000_000, Total: 16_000_000_000}, GPU: &localapi.GPUUse{Usage: 12},
-		Disk: localapi.Usage{Used: 470_000_000_000, Total: 512_000_000_000}, Net: localapi.NetRates{RxBps: 1_200_000, TxBps: 80_000},
-		Battery: &localapi.Battery{Percent: 82, Charging: true}, Services: []string{"ssh", "vnc"}}
+		Disk: localapi.Usage{Used: 470_000_000_000, Total: 512_000_000_000}, Net: localapi.NetRates{RxBps: 1_200_000, TxBps: 80_000, RxTotal: 1_520_000_000, TxTotal: 2_510_000_000},
+		DiskIO:  &localapi.DiskIO{ReadBps: 4_420_000, WriteBps: 1_250_000},
+		Battery: &localapi.Battery{Percent: 82, Charging: true}, Services: []string{"ssh", "vnc"},
+		Offers: []string{"view-screen", "control-input", "see-status", "use-ssh", "use-vnc", "run-ai-task"}, AI: true}
 	desktop := *sample
-	desktop.GPU, desktop.Battery, desktop.Services = nil, nil, []string{"rdp"}
+	desktop.GPU, desktop.Battery, desktop.Services, desktop.Offers, desktop.AI = nil, nil, []string{"rdp", "ssh"}, []string{"see-status", "use-rdp"}, false
 	a.status.Watching = []localapi.Watched{
 		{DeviceID: "657365333", State: "watching", Sample: sample, ReceivedAt: now.Add(-time.Second).UnixMilli()},
 		{DeviceID: "213559601", State: "watching", Sample: &desktop, ReceivedAt: now.Add(-25 * time.Second).UnixMilli()},
@@ -139,7 +181,11 @@ func demoHome(a *App) {
 		at := now.Add(time.Duration(i-40) * 2 * time.Second)
 		w := a.status.Watching[0]
 		s := *w.Sample
-		s.CPU.Usage = 20 + float64((i*7)%40)
+		s.CPU.User = 14 + float64((i*7)%30)
+		s.CPU.System = 4 + float64((i*3)%10)
+		s.Memory.Used = uint64(7_000_000_000 + (i*90_000_000)%2_000_000_000)
+		s.DiskIO = &localapi.DiskIO{ReadBps: uint64((i * 1_700_000) % 9_000_000), WriteBps: uint64((i * 600_000) % 3_000_000)}
+		s.Net.TxBps = uint64(40_000 + (i*50_000)%400_000)
 		s.Net.RxBps = uint64(200_000 + (i*130_000)%1_500_000)
 		w.Sample, w.ReceivedAt = &s, at.UnixMilli()
 		a.recordSamples(&localapi.Status{Watching: []localapi.Watched{w}}, at)
@@ -161,6 +207,7 @@ func TestHomeCardsRender(t *testing.T) {
 	}{
 		{"home-grid", 1280, 1500, demoHome, false},
 		{"home-grid-narrow", 820, 2600, demoHome, false},
+		{"host-status", 1100, 1100, func(a *App) { demoHome(a); a.statusOf = "657365333" }, false},
 		{"security-keys", 1000, 1900, func(a *App) {
 			a.page = pageSecurity
 			demoHome(a)
