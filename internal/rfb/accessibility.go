@@ -1,0 +1,98 @@
+// Vendored from open-screen-sharing (https://github.com/nekohasekai/open-screen-sharing),
+// internal/rfb/accessibility.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
+// Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
+// derivative work may use the name of that application or imply association with it without
+// prior consent. Modified by Kyokai: import paths.
+
+package rfb
+
+import (
+	"encoding/binary"
+
+	E "github.com/YuanZhe-99/Kyokai/internal/exceptions"
+)
+
+type AccessibilityFeature uint32
+
+const (
+	AccessibilityNone                      AccessibilityFeature = 0
+	AccessibilityVoiceOver                 AccessibilityFeature = 1
+	AccessibilityZoom                      AccessibilityFeature = 2
+	AccessibilityIncreaseContrast          AccessibilityFeature = 3
+	AccessibilityReduceMotion              AccessibilityFeature = 4
+	AccessibilityDifferentiateWithoutColor AccessibilityFeature = 5
+	AccessibilityReduceTransparency        AccessibilityFeature = 6
+	AccessibilityToolbarButtonShapes       AccessibilityFeature = 7
+	AccessibilityShowBorders               AccessibilityFeature = 8
+)
+
+// ScreenSharing writes the integer fields of client messages 36 and 37 without byte swaps
+// (ScreenSharing 776.27, macOS 27.0.1 26A434, UUID EC0B2C20-F816-3FCE-822D-F9403C09EB50,
+// _RFBEnableAccessibilityFeature 0x1cc149c24..0x1cc149c34,
+// _RFBSendAccessibilityViewerMessage 0x1cc149d78..0x1cc149d90).
+const (
+	clientMessageEnableAccessibilityFeature = 36
+	accessibilityServerHeaderSize           = 14
+)
+
+// ScreensharingAgent's EnableAccessibilityFeature handler returns without applying the
+// setting when the settings data is empty (ScreensharingAgent 756.36.5.2, macOS 27.0.1 26A434,
+// UUID DA1CD9BA-97A1-3758-B425-00FA34B428A3, sub_10001d6a8 0x10001d6d8, 0x10001d778).
+var accessibilityEmptySettings = []byte{
+	0x62, 0x70, 0x6c, 0x69, 0x73, 0x74, 0x30, 0x30, 0xd4, 0x01, 0x02, 0x03,
+	0x04, 0x05, 0x06, 0x07, 0x0a, 0x58, 0x24, 0x76, 0x65, 0x72, 0x73, 0x69,
+	0x6f, 0x6e, 0x59, 0x24, 0x61, 0x72, 0x63, 0x68, 0x69, 0x76, 0x65, 0x72,
+	0x54, 0x24, 0x74, 0x6f, 0x70, 0x58, 0x24, 0x6f, 0x62, 0x6a, 0x65, 0x63,
+	0x74, 0x73, 0x12, 0x00, 0x01, 0x86, 0xa0, 0x5f, 0x10, 0x0f, 0x4e, 0x53,
+	0x4b, 0x65, 0x79, 0x65, 0x64, 0x41, 0x72, 0x63, 0x68, 0x69, 0x76, 0x65,
+	0x72, 0xd1, 0x08, 0x09, 0x54, 0x72, 0x6f, 0x6f, 0x74, 0x80, 0x01, 0xa3,
+	0x0b, 0x0c, 0x13, 0x55, 0x24, 0x6e, 0x75, 0x6c, 0x6c, 0xd3, 0x0d, 0x0e,
+	0x0f, 0x10, 0x11, 0x12, 0x57, 0x4e, 0x53, 0x2e, 0x6b, 0x65, 0x79, 0x73,
+	0x5a, 0x4e, 0x53, 0x2e, 0x6f, 0x62, 0x6a, 0x65, 0x63, 0x74, 0x73, 0x56,
+	0x24, 0x63, 0x6c, 0x61, 0x73, 0x73, 0xa0, 0xa0, 0x80, 0x02, 0xd2, 0x14,
+	0x15, 0x16, 0x17, 0x5a, 0x24, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x6e, 0x61,
+	0x6d, 0x65, 0x58, 0x24, 0x63, 0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x5c,
+	0x4e, 0x53, 0x44, 0x69, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x61, 0x72, 0x79,
+	0xa2, 0x16, 0x18, 0x58, 0x4e, 0x53, 0x4f, 0x62, 0x6a, 0x65, 0x63, 0x74,
+	0x08, 0x11, 0x1a, 0x24, 0x29, 0x32, 0x37, 0x49, 0x4c, 0x51, 0x53, 0x57,
+	0x5d, 0x64, 0x6c, 0x77, 0x7e, 0x7f, 0x80, 0x82, 0x87, 0x92, 0x9b, 0xa8,
+	0xab, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4,
+}
+
+func (c *Client) receiveAccessibility() error {
+	header, err := c.stream.bytes(accessibilityServerHeaderSize)
+	if err != nil {
+		return err
+	}
+	length := int(binary.LittleEndian.Uint16(header[12:]))
+	c.logger.Debug("accessibility message", "feature", AccessibilityFeature(binary.LittleEndian.Uint32(header[0:])),
+		"message", binary.LittleEndian.Uint32(header[4:]), "reply-to", binary.LittleEndian.Uint32(header[8:]), "bytes", length)
+	return c.stream.discard(length)
+}
+
+func (c *Client) SetAccessibilitySetting(feature AccessibilityFeature, enabled bool) error {
+	switch feature {
+	case AccessibilityIncreaseContrast, AccessibilityReduceMotion, AccessibilityDifferentiateWithoutColor,
+		AccessibilityReduceTransparency, AccessibilityShowBorders:
+	default:
+		return E.New("rfb: accessibility feature ", uint32(feature), " is not a display setting")
+	}
+	if !c.info.Accepts(clientMessageEnableAccessibilityFeature) {
+		return E.New("rfb: the server does not offer accessibility messages")
+	}
+	bit := uint32(1) << feature
+	c.access.Lock()
+	if (c.accessibilitySettings&bit != 0) == enabled {
+		c.access.Unlock()
+		return nil
+	}
+	c.accessibilitySettings ^= bit
+	c.access.Unlock()
+	message := []byte{clientMessageEnableAccessibilityFeature}
+	message = binary.LittleEndian.AppendUint32(message, uint32(feature))
+	message = binary.LittleEndian.AppendUint32(message, uint32(boolByte(enabled)))
+	message = binary.LittleEndian.AppendUint16(message, uint16(len(accessibilityEmptySettings)))
+	return c.send(append(message, accessibilityEmptySettings...))
+}

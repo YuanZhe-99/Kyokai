@@ -17,5 +17,12 @@
     "tag": "2026.07.29",
     "commit": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
     "license": "MIT"
+  },
+  "open-screen-sharing": {
+    "repository": "nekohasekai/open-screen-sharing",
+    "commit": "ce6408d4fcb27a68974b7f374b1f55283aa75ac9",
+    "license": "GPL-3.0-or-later",
+    "licenseTerms": "no derivative work may use the name of that application or imply association with it without prior consent",
+    "vendored": "internal/rdp, internal/rfb, internal/bgra, internal/outbox"
   }
 }
