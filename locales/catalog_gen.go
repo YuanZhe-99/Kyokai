@@ -3958,14 +3958,24 @@ func (msgs Messages) ServiceHostKeyChanged() string {
 	return Catalog.Format(msgs.locale, "ServiceHostKeyChanged", nil)
 }
 
-// ServiceNoTunnel says "This version of Kyokai cannot open connections to a device's services yet."
+// ServiceNoTunnel says "That device runs an older Kyokai: update it there to reach its services."
 // in the language the app shows.
 func ServiceNoTunnel() string { return In(i18n.Locale()).ServiceNoTunnel() }
 
-// ServiceNoTunnel says "This version of Kyokai cannot open connections to a device's services yet."
+// ServiceNoTunnel says "That device runs an older Kyokai: update it there to reach its services."
 // in the language of msgs.
 func (msgs Messages) ServiceNoTunnel() string {
 	return Catalog.Format(msgs.locale, "ServiceNoTunnel", nil)
+}
+
+// ServiceDown says "That service is not running on the other device."
+// in the language the app shows.
+func ServiceDown() string { return In(i18n.Locale()).ServiceDown() }
+
+// ServiceDown says "That service is not running on the other device."
+// in the language of msgs.
+func (msgs Messages) ServiceDown() string {
+	return Catalog.Format(msgs.locale, "ServiceDown", nil)
 }
 
 // ServicePassword says "Password"

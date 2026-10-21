@@ -41,16 +41,10 @@ type serviceLink interface {
 	Sign(ctx context.Context, keyID, algorithm string, data []byte) ([]byte, error)
 }
 
-// errNoTunnel says the engine in use opens no tunnels yet.
-var errNoTunnel = errors.New("the engine opens no tunnels")
-
-// openTunnel opens a tunnel through the engine on socket.
-// Notes: until the engine serves tunnel.open (localapi.Client.Tunnel, WP6)
-// it refuses, never reaching this computer's own services in a device's
-// place: WP11 replaces the body with
-// `return localapi.NewClient(socket).Tunnel(ctx, req)`.
+// openTunnel opens a tunnel through the engine on socket
+// (localapi.Client.Tunnel). Tests replace it.
 var openTunnel = func(ctx context.Context, socket string, req localapi.TunnelRequest) (net.Conn, error) {
-	return nil, errNoTunnel
+	return localapi.NewClient(socket).Tunnel(ctx, req)
 }
 
 // engineLink is the engine as a serviceLink: tunnels and credentials over

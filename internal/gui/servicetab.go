@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"encoding/json"
 	"context"
 	"errors"
 	"sync"
@@ -215,11 +216,19 @@ func (s *serviceTab) settle(client serviceClient, err error, typed *credForm) {
 // serviceFailure words why a service could not be reached.
 func serviceFailure(err error) string {
 	var refused *localapi.RequestError
-	switch {
-	case errors.As(err, &refused):
-		return refused.Message
-	case errors.Is(err, errNoTunnel):
+	if !errors.As(err, &refused) {
+		return L.ServiceFailed()
+	}
+	// The engine names why (localapi.Client.Tunnel): never shown as such.
+	switch name := refused.Message; name {
+	case "unsupported":
 		return L.ServiceNoTunnel()
+	case "service-down":
+		return L.ServiceDown()
+	case "password", "denied", "timeout", "busy", "rate-limited", "absent":
+		return failureText(localapi.SessionInfo{Failure: json.RawMessage(`{"refused":"` + name + `"}`)}, helperGap{})
+	case "unreachable", "wrong-device", "key-changed", "incompatible":
+		return failureText(localapi.SessionInfo{Failure: json.RawMessage(`"` + name + `"`)}, helperGap{})
 	}
 	return L.ServiceFailed()
 }
