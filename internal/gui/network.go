@@ -16,10 +16,11 @@ import (
 // once loaded, whether every one tries direct connections, and the form open
 // for adding a network (id "") or editing one.
 type netState struct {
-	loaded   bool
-	direct   bool
-	profiles []localapi.NetworkProfile
-	form     *netForm
+	loaded       bool
+	direct       bool
+	latencyFirst bool
+	profiles     []localapi.NetworkProfile
+	form         *netForm
 }
 
 // netForm is one network's editable settings. The secret field is
@@ -49,19 +50,31 @@ func (a *App) networkView(c *ui.Context) {
 	}
 	a.networksCard(c)
 	a.connectionsCard(c)
+	a.advancedCard(c)
 }
 
-// connectionsCard is how other devices reach this one: Try direct
-// connections in every network (applied at once; the helper always tries
-// them, so it is on and fixed in its modes) and Accept connections by
-// address.
+// connectionsCard is how other devices reach this one: Accept connections
+// by address.
 func (a *App) connectionsCard(c *ui.Context) {
+	card(c).Children(func() {
+		ui.Text(c, L.NetworkConnections()).FontSize(sizeHeading).Bold()
+		a.byAddressSettings(c)
+	})
+}
+
+// advancedCard holds the network choices few people need: Try direct
+// connections in every network (applied at once; the helper always tries
+// them, so it is on and fixed in its modes), which makes this device listen
+// and is said to, and Latency-first routing, which only changes how routes
+// are chosen.
+func (a *App) advancedCard(c *ui.Context) {
+	t := c.Theme()
 	a.mu.Lock()
 	net, netBusy, modeBusy := a.net, a.busy["network"], a.busy["mode"]
 	a.mu.Unlock()
 	helperMode := a.currentMode() != modeUser
 	card(c).Children(func() {
-		ui.Text(c, L.NetworkConnections()).FontSize(sizeHeading).Bold()
+		ui.Text(c, L.NetworkAdvanced()).FontSize(sizeHeading).Bold()
 		directHint := L.NetworkDirectHint()
 		if helperMode {
 			directHint = L.NetworkDirectHelper()
@@ -73,8 +86,30 @@ func (a *App) connectionsCard(c *ui.Context) {
 				a.setDirect(direct)
 			}
 		})
+		// Unlike a choice of protocol, direct connections make this device
+		// listen on the network and answer strangers' packets: said plainly.
+		if !helperMode {
+			ui.Text(c, L.NetworkDirectWarning()).FontSize(sizeSmall).TextColor(t.Warning)
+		}
 		ui.Divider(c)
-		a.byAddressSettings(c)
+		latency := net.latencyFirst
+		settingRow(c, "net-latency", L.NetworkLatencyFirst(), L.NetworkLatencyFirstHint(), func() {
+			if ui.Switch(c.Key("net-latency-sw"), &latency).Label(L.NetworkLatencyFirst()).
+				Disabled(modeBusy || netBusy || !net.loaded).Changed() {
+				a.setLatencyFirst(latency)
+			}
+		})
+	})
+}
+
+// setLatencyFirst prefers the lowest-latency route in every network, or
+// the fewest hops; the engine restarts its networks.
+func (a *App) setLatencyFirst(on bool) {
+	a.mu.Lock()
+	a.net.latencyFirst = on
+	a.mu.Unlock()
+	a.changeNetworks(localapi.Request{Type: localapi.RequestNetworkLatencyFirst, LatencyFirst: &on}, func() {
+		a.setToast(L.NetworkSaved(), false)
 	})
 }
 
@@ -314,7 +349,7 @@ func (a *App) loadNetworks() {
 				a.setToast(L.EngineDown(), true)
 				return
 			}
-			a.net.direct, a.net.profiles = resp.Networks.Direct, resp.Networks.Profiles
+			a.net.direct, a.net.latencyFirst, a.net.profiles = resp.Networks.Direct, resp.Networks.LatencyFirst, resp.Networks.Profiles
 		})
 	}()
 }
@@ -341,7 +376,7 @@ func (a *App) changeNetworks(req localapi.Request, done func()) {
 				a.setToast(L.EngineDown(), true)
 				a.net.loaded = false
 			default:
-				a.net.direct, a.net.profiles = resp.Networks.Direct, resp.Networks.Profiles
+				a.net.direct, a.net.latencyFirst, a.net.profiles = resp.Networks.Direct, resp.Networks.LatencyFirst, resp.Networks.Profiles
 				if done != nil {
 					done()
 				}

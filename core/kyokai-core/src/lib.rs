@@ -951,6 +951,15 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 Ok(c.network.profiles())
             })
         }
+        "network.latency_first" => {
+            let on = req.params["latency_first"]
+                .as_bool()
+                .ok_or("bad latency choice")?;
+            try_core(|c| {
+                c.network.set_latency_first(c.ctx.access.secrets(), on)?;
+                Ok(c.network.profiles())
+            })
+        }
         "network.direct" => {
             let direct = req.params["direct"].as_bool().ok_or("bad direct choice")?;
             try_core(|c| {

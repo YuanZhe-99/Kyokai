@@ -69,10 +69,11 @@ when `SCREENSHOT_DIR` is set.
   Edit open the same form in place: the name shown here (optional), servers (one URL per line),
   network name, and a write-only secret field (empty keeps the stored secret; a weak secret is
   flagged), Save (once there is a server and a name) and Cancel; refused settings show the
-  engine's reason. A note says announced Device IDs are not proof. Last, how devices reach this one: Try direct
-  connections (off by default; on and fixed in the helper modes; applied as it is switched,
-  [networking.md](networking.md)) and Accept connections by address, off by default, and while on
+  engine's reason. A note says announced Device IDs are not proof. Then how devices reach this one: Accept connections by address, off by default, and while on
   the accepted ranges, one per line, with Save and Cancel, and a warning when it cannot listen.
+  Last, **Advanced**: Try direct connections (off by default; on and fixed in the helper modes;
+  applied as it is switched, [networking.md](networking.md)), with a warning that it makes this
+  device listen and easier to find, which a protocol choice does not; and Latency-first routing.
 - **Device names:** wherever a device appears (a confirmation, Recent, the connection tabs, trusted
   devices, the viewer's title, the Network page) its name — the one this device's user gave it
   (`gui.json` `aliases`, never sent anywhere), else the friendly name it gives itself — goes beside

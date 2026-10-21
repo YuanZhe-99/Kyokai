@@ -2106,6 +2106,46 @@ func (msgs Messages) NetworkDirectHelper() string {
 	return Catalog.Format(msgs.locale, "NetworkDirectHelper", nil)
 }
 
+// NetworkAdvanced says "Advanced"
+// in the language the app shows.
+func NetworkAdvanced() string { return In(i18n.Locale()).NetworkAdvanced() }
+
+// NetworkAdvanced says "Advanced"
+// in the language of msgs.
+func (msgs Messages) NetworkAdvanced() string {
+	return Catalog.Format(msgs.locale, "NetworkAdvanced", nil)
+}
+
+// NetworkDirectWarning says "This makes Kyokai listen on network ports and answer other devices' packets: Windows Firewall may ask, and other devi…"
+// in the language the app shows.
+func NetworkDirectWarning() string { return In(i18n.Locale()).NetworkDirectWarning() }
+
+// NetworkDirectWarning says "This makes Kyokai listen on network ports and answer other devices' packets: Windows Firewall may ask, and other devi…"
+// in the language of msgs.
+func (msgs Messages) NetworkDirectWarning() string {
+	return Catalog.Format(msgs.locale, "NetworkDirectWarning", nil)
+}
+
+// NetworkLatencyFirst says "Latency-first routing"
+// in the language the app shows.
+func NetworkLatencyFirst() string { return In(i18n.Locale()).NetworkLatencyFirst() }
+
+// NetworkLatencyFirst says "Latency-first routing"
+// in the language of msgs.
+func (msgs Messages) NetworkLatencyFirst() string {
+	return Catalog.Format(msgs.locale, "NetworkLatencyFirst", nil)
+}
+
+// NetworkLatencyFirstHint says "Prefer the route with the lowest delay over the one with the fewest hops, in every network."
+// in the language the app shows.
+func NetworkLatencyFirstHint() string { return In(i18n.Locale()).NetworkLatencyFirstHint() }
+
+// NetworkLatencyFirstHint says "Prefer the route with the lowest delay over the one with the fewest hops, in every network."
+// in the language of msgs.
+func (msgs Messages) NetworkLatencyFirstHint() string {
+	return Catalog.Format(msgs.locale, "NetworkLatencyFirstHint", nil)
+}
+
 // NetworkDirectHint says "Faster when both networks allow it. Windows may ask to let Kyokai through its firewall; while this is off, connection…"
 // in the language the app shows.
 func NetworkDirectHint() string { return In(i18n.Locale()).NetworkDirectHint() }

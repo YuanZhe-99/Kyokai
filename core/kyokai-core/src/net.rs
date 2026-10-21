@@ -33,6 +33,13 @@ const MAX_LABEL: usize = 64;
 /// whitelists drop everything else. A host that accepts connections by
 /// address listens on it (TCP) on this computer's own addresses too.
 pub const KYOKAI_PORT: u16 = 47_310;
+/// The worker threads of the runtime the nodes and sessions share: half the
+/// logical processors, at least 2 and at most 4.
+fn net_workers() -> usize {
+    let n = std::thread::available_parallelism().map_or(2, |n| n.get());
+    (n / 2).clamp(2, 4)
+}
+
 /// The ports the nodes may listen on for direct connections (TCP and UDP,
 /// the first free one each): with direct connections on, devices on the
 /// same network reach each other by their local addresses, which hole
@@ -109,6 +116,10 @@ impl Profile {
 struct Stored {
     #[serde(default)]
     direct: bool,
+    /// Prefer the lowest-latency route over the fewest hops (EasyTier's
+    /// `latency_first`), in every network; absent in older settings: off.
+    #[serde(default)]
+    latency_first: bool,
     #[serde(default)]
     profiles: Vec<Profile>,
 }
@@ -211,7 +222,7 @@ impl Network {
     /// its own executable through the firewall.
     pub fn start(secrets: &Secrets, ctx: Arc<Ctx>, always_direct: bool) -> Result<Self, String> {
         let rt = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
+            .worker_threads(net_workers())
             .thread_name("kyokai-net")
             .enable_all()
             .build()
@@ -278,7 +289,7 @@ impl Network {
                 })
             })
             .collect();
-        json!({"direct": self.direct(), "profiles": profiles})
+        json!({"direct": self.direct(), "latency_first": self.stored.latency_first, "profiles": profiles})
     }
 
     /// Sets the first network as an older GUI or `ctl network-set` does
@@ -347,13 +358,23 @@ impl Network {
         self.apply(secrets, stored)
     }
 
+    /// Prefers the lowest-latency route in every network, or the fewest
+    /// hops (EasyTier's default).
+    /// Side effects: rewrites the secrets store; restarts every node.
+    pub fn set_latency_first(&mut self, secrets: &Secrets, on: bool) -> Result<(), String> {
+        let mut stored = self.stored.clone();
+        stored.latency_first = on;
+        self.apply(secrets, stored)
+    }
+
     /// Stores `stored` and brings the nodes in line with it: a network left,
     /// removed or changed stops, one joined or changed starts, and every one
     /// restarts when whether to try direct paths changed.
     fn apply(&mut self, secrets: &Secrets, stored: Stored) -> Result<(), String> {
         save(secrets, &stored)?;
         let old = std::mem::replace(&mut self.stored, stored);
-        let restart_all = old.direct != self.stored.direct;
+        let restart_all =
+            old.direct != self.stored.direct || old.latency_first != self.stored.latency_first;
         let running: Vec<String> = self
             .nodes
             .lock()
@@ -495,7 +516,15 @@ impl Network {
             failed: failed.clone(),
             listen,
         };
-        match config(p, &self.device_id, direct, listen).and_then(create_native_instance) {
+        match config(
+            p,
+            &self.device_id,
+            direct,
+            self.stored.latency_first,
+            listen,
+        )
+        .and_then(create_native_instance)
+        {
             Ok(instance) => {
                 node.serving = Some(self.rt.spawn(serve_node(
                     instance.clone(),
@@ -817,6 +846,7 @@ fn migrate(old: OldSettings) -> Stored {
     };
     Stored {
         direct: old.direct,
+        latency_first: false,
         profiles,
     }
 }
@@ -1179,10 +1209,16 @@ fn free_port(taken: &[u16]) -> Option<u16> {
 /// listens or waits for unsolicited packets, but the node still dials a
 /// device that listens (TCP first, an outgoing connection no firewall asks
 /// about), so a device with direct connections on reaches it directly too.
+/// Every node refuses EasyTier's QUIC and KCP proxy input (a network member
+/// could otherwise open a connection to this computer's loopback, guarded
+/// only by the port whitelist) and peers of other networks at its listener
+/// (`private_mode`: no relaying of foreign networks); Kyokai's sessions
+/// never use those proxies.
 fn config(
     s: &Profile,
     device_id: &str,
     direct: bool,
+    latency_first: bool,
     listen: Option<u16>,
 ) -> anyhow::Result<TomlConfig> {
     // JSON string literals are valid TOML basic strings, which keeps user
@@ -1215,6 +1251,10 @@ disable_udp_hole_punching = {off}
 disable_tcp_hole_punching = {off}
 disable_sym_hole_punching = {off}
 disable_upnp = {off}
+latency_first = {latency_first}
+disable_quic_input = true
+disable_kcp_input = true
+private_mode = true
 "#,
         off = !direct,
         protocol = if direct { "udp" } else { "tcp" },
@@ -1446,8 +1486,8 @@ mod tests {
             ..profile(&["tcp://b:1"], "office", "t")
         };
         let (ca, cb) = (
-            config(&a, "100000002", false, None).unwrap(),
-            config(&b, "100000002", false, None).unwrap(),
+            config(&a, "100000002", false, false, None).unwrap(),
+            config(&b, "100000002", false, false, None).unwrap(),
         );
         assert_eq!(ca.get_id(), cb.get_id());
         assert_eq!(ca.get_id(), instance_id("100000002"));
@@ -1561,7 +1601,7 @@ mod tests {
         use easytier_core::config::toml::ConfigLoader;
         let name = "n\"\nnetwork_secret = \"x";
         let s = profile(&["tcp://a:1"], name, "p\"w\\");
-        let cfg = config(&s, "100000002", false, None).unwrap();
+        let cfg = config(&s, "100000002", false, false, None).unwrap();
         let identity = cfg.get_network_identity();
         assert_eq!(identity.network_name, name);
         assert_eq!(identity.network_secret.as_deref(), Some("p\"w\\"));
@@ -1577,11 +1617,39 @@ mod tests {
     }
 
     #[test]
+    fn every_node_refuses_proxy_input_and_foreign_networks() {
+        use easytier_core::config::toml::ConfigLoader;
+        let s = profile(&["tcp://a:1"], "n", "p");
+        for (direct, latency_first) in [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let f = config(&s, "100000002", direct, latency_first, Some(47_311))
+                .unwrap()
+                .get_flags();
+            // A network member must never reach this computer's loopback
+            // through EasyTier's QUIC or KCP proxy, nor use a listening node as
+            // a relay for its own network.
+            assert!(f.disable_quic_input && f.disable_kcp_input && f.private_mode);
+            assert_eq!(f.latency_first, latency_first);
+        }
+    }
+
+    #[test]
+    fn latency_first_reads_as_off_from_older_settings() {
+        let s: Stored = serde_json::from_str(r#"{"direct":true,"profiles":[]}"#).unwrap();
+        assert!(s.direct && !s.latency_first);
+    }
+
+    #[test]
+    fn the_runtime_uses_half_the_processors_within_bounds() {
+        assert!((2..=4).contains(&net_workers()));
+    }
+
+    #[test]
     fn direct_paths_are_off_unless_chosen() {
         use easytier_core::config::toml::ConfigLoader;
         let s = profile(&["tcp://a:1"], "n", "p");
         for direct in [false, true] {
-            let cfg = config(&s, "100000002", direct, Some(47_311)).unwrap();
+            let cfg = config(&s, "100000002", direct, false, Some(47_311)).unwrap();
             let f = cfg.get_flags();
             // Off: nothing waits for unsolicited packets, so no firewall
             // prompt; the node still dials a device that listens (regression:
@@ -1614,7 +1682,7 @@ mod tests {
             assert!(f.no_tun);
         }
         // No free port: direct paths without a listener.
-        let cfg = config(&s, "100000002", true, None).unwrap();
+        let cfg = config(&s, "100000002", true, false, None).unwrap();
         assert!(cfg.get_listeners().unwrap_or_default().is_empty());
     }
 

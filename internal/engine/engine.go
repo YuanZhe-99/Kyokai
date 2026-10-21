@@ -296,6 +296,11 @@ func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Respo
 			return localapi.Fail(localapi.CodeInvalid, "direct choice missing")
 		}
 		return h.networks("network.direct", map[string]bool{"direct": *req.Direct})
+	case localapi.RequestNetworkLatencyFirst:
+		if req.LatencyFirst == nil {
+			return localapi.Fail(localapi.CodeInvalid, "latency choice missing")
+		}
+		return h.networks("network.latency_first", map[string]bool{"latency_first": *req.LatencyFirst})
 	case localapi.RequestNameSet:
 		if req.Name == nil {
 			return localapi.Fail(localapi.CodeInvalid, "name missing")

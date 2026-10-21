@@ -48,7 +48,7 @@ who a device is gets proven when you connect. Connecting by Device ID tries ever
 that lists the device, direct paths first. **Edit** changes a network; **Remove** leaves it and
 forgets its settings.
 
-Connections go through the server unless you switch on **Try direct connections** (on the Network page; it applies
+Connections go through the server unless you switch on **Try direct connections** (under Advanced on the Network page; it applies
 at once), which is faster where both networks allow it; Windows may then ask to let Kyokai through
 its firewall, and a Mac to let it find devices on the local network. On one network it is enough on
 one of the two computers; turn it on on both for computers on different networks. Each device in
@@ -217,7 +217,7 @@ warning and can choose **Forget old identity**.
 - "The Kyokai engine is not running.": its background part stopped; the reason is shown, and Kyokai
   starts it again. Logs are in the folder that About, Diagnostics, opens.
 - The network shows an error: check the server addresses, the name and the secret.
-- The other device is reached through a relay: turn on **Try direct connections** (the Network
+- The other device is reached through a relay: turn on **Try direct connections** (Advanced on the Network
   page) on both devices; if it stays relayed, the networks block direct paths: it works, a little slower.
 - An AI task stops with an error: the reason (an unaccepted key, a provider that did not answer)
   is shown with the task.

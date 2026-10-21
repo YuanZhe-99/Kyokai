@@ -15,9 +15,11 @@ administrator right and no custom coordination server.
 | TUN | none (`no_tun`); traffic uses EasyTier's in-process data plane (smoltcp) |
 | Address | IPv4 from the network's DHCP |
 | Listeners | none, or with direct paths TCP and UDP on every address at the first port of 47311–47320 free for both and not another of this engine's nodes' (none when all are taken, as by other engines on the computer) |
-| Direct paths | off by default: no UDP, TCP or symmetric hole punching, no UPnP, no STUN and no listener, so nothing waits for unsolicited packets and Windows Firewall does not ask (the NAT type then reads "unknown"); the node still dials a peer that listens (TCP first, an outgoing connection), and otherwise traffic goes through the server's relay. On with "Try direct connections" (`direct`, on the Network page, for every network), and always in the helper (see below): hole punching, UPnP, the listeners and direct connections, preferring UDP (`default_protocol`) |
+| Direct paths | off by default: no UDP or symmetric hole punching, no STUN and no listener, so nothing waits for unsolicited packets and Windows Firewall does not ask (the NAT type then reads "unknown"); the node still dials a peer that listens (TCP first, an outgoing connection), and otherwise traffic goes through the server's relay. On with "Try direct connections" (`direct`, under Advanced on the Network page, for every network), and always in the helper (see below): UDP hole punching, the listeners and direct connections, preferring UDP (`default_protocol`). TCP hole punching and UPnP are not part of the build (EasyTier's `tcp-hole-punching` and `upnp` features are off), so their switches change nothing |
 | Data plane whitelists | TCP and UDP port 47310 only; everything else from the network is dropped |
-| Runtime | a two-thread Tokio runtime owned by the core, shared by the nodes |
+| Proxy input and foreign networks | every node refuses EasyTier's QUIC and KCP proxy input (`disable_quic_input`, `disable_kcp_input`: a network member could otherwise open a connection to this computer's loopback through them, guarded only by the whitelist) and peers of other networks at its listener (`private_mode`: a listening node relays no foreign network). Kyokai's sessions never use those proxies: the data plane always carries them over smoltcp |
+| Routing | the fewest hops, or with "Latency-first routing" (`latency_first`, under Advanced, for every network) the lowest delay |
+| Runtime | a Tokio runtime owned by the core, shared by the nodes and sessions: half the logical processors as worker threads, at least 2 and at most 4 |
 
 A node runs for each joined network while the engine runs. Changing a network restarts its node
 only, leaving it stops it, and changing Try direct connections restarts them all.
@@ -54,7 +56,7 @@ joined then. A host serves sessions from every joined network.
 
 ## Direct paths
 
-Hole punching binds a UDP socket on every address (`0.0.0.0:port`, with a UPnP mapping) and waits
+Hole punching binds a UDP socket on every address (`0.0.0.0:port`) and waits
 for the other side's packets; Windows Firewall treats that as accepting inbound traffic and asks to
 allow the program, a prompt a standard user cannot approve (seen on the test VM; this machine had
 rules from earlier answers). STUN, which finds the NAT type for punching, does the same at
@@ -65,7 +67,7 @@ holds only its TCP connection to the server and dials a peer that listens (TCP f
 `default_protocol`; an outgoing connection no firewall asks about), and otherwise sessions use the
 server's relay. It does not set `disable_p2p`, which would also refuse a direct connection a
 listening peer offers: a device left off then kept a LAN peer that listens on the relay
-(2026-10-18). **Try direct connections** on the Network page (`direct`, one choice for every
+(2026-10-18). **Try direct connections** under Advanced on the Network page (`direct`, one choice for every
 network, applied at once) turns punching on and has every node listen, each on a port of its own,
 accepting that Windows may ask. EasyTier's direct
 connector reaches only peers that listen: it tries each of their interface addresses and their
