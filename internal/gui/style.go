@@ -115,6 +115,7 @@ const (
 	logoSize      float32 = 22  // a vendor logo inside it (about 64%)
 	busySize      float32 = 16  // a loading indicator beside text
 	busySizeLarge float32 = 28  // a loading indicator on its own
+	noticeBottom  float32 = 24  // the viewer's notices over the picture, from its bottom edge
 )
 
 // Where the macOS traffic lights sit in the tab strip: the close button's

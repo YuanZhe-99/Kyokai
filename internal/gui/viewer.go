@@ -54,6 +54,9 @@ type hostStats struct {
 	Bitrate int `json:"bitrate"`
 	// EncodeMS is how long the host takes from a picture to its frame.
 	EncodeMS int `json:"encode_ms"`
+	// Frames is how many frames the host sent the last second (0 from a
+	// 0.4.0 host, which does not say).
+	Frames int `json:"frames"`
 }
 
 // hostPointer is where the host's pointer is (media CURSOR), as fractions
@@ -209,6 +212,17 @@ type viewer struct {
 	// stream is running (pump).
 	phase   localapi.SessionInfo
 	pumping bool
+	// The stream's health (watchdog): when the last picture was decoded
+	// (the stream's start until the first), when a frame or the host's
+	// stats last came, whether the picture is being recovered (none for a
+	// while although the host sends frames), and whether to offer waking
+	// the host's screen (nothing new for wakeAfter).
+	pictureAt  time.Time
+	heardAt    time.Time
+	recovering bool
+	asleep     bool
+	// gate leaves out the frames the decoder cannot use (its own lock).
+	gate videoGate
 	// The tab's password field while the device waits or refused, and
 	// whether to remember what is typed there.
 	password string
@@ -471,6 +485,7 @@ func (v *viewer) pump() {
 	}
 	v.mu.Lock()
 	v.conn = conn
+	v.pictureAt, v.heardAt = time.Now(), time.Now()
 	v.mu.Unlock()
 	defer conn.Close()
 	keyRequest := append([]byte{packetControl}, `{"type":"key-frame"}`...)
@@ -484,17 +499,17 @@ func (v *viewer) pump() {
 	done := make(chan struct{})
 	defer close(done)
 	go v.writer(conn, done)
+	go v.watchdog(done, keyRequest)
 	pool := make(packetPool, videoWaiting+soundWaiting+4)
 	video := make(chan []byte, videoWaiting)
 	sound := make(chan []byte, soundWaiting)
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); v.decodeVideo(lib, video, pool) }()
+	go func() { defer wg.Done(); v.decodeVideo(lib, video, pool, keyRequest) }()
 	go func() { defer wg.Done(); v.playSound(lib, sound, pool) }()
 	defer wg.Wait()
 	defer close(sound)
 	defer close(video)
-	var gate videoGate
 	for {
 		p, err := localapi.ReadPacket(conn, pool.get())
 		if err != nil {
@@ -505,22 +520,24 @@ func (v *viewer) pump() {
 			pool.put(p)
 			continue
 		}
+		if p[0] == packetFrame || p[0] == packetStats {
+			v.mu.Lock()
+			v.heardAt = time.Now()
+			v.mu.Unlock()
+		}
 		switch p[0] {
 		case packetVideoStart:
-			// A new stream always reaches the decoder.
-			gate.lost = false
+			// A new stream always reaches the decoder (which starts it at
+			// its key frame; only a key frame clears the gate).
 			video <- p
 			continue
 		case packetFrame:
-			sent, ask := gate.pass(p, video)
+			sent, ask := v.gate.pass(p, video, time.Now())
 			if !sent {
 				pool.put(p)
 			}
 			if ask {
-				select {
-				case v.out <- keyRequest:
-				default:
-				}
+				v.askKey(keyRequest)
 			}
 			continue
 		case packetAudio:
@@ -584,18 +601,38 @@ func (v *viewer) pump() {
 	}
 }
 
-// videoGate passes frames to the video goroutine's queue. Once the queue
-// was full and a frame was left out, the frames after it refer to a
-// picture the decoder never had: they are left out too, until a key frame.
+// videoGate passes frames to the video goroutine's queue. Once a frame was
+// left out (the queue was full) or the decoder failed on one, the frames
+// after it refer to a picture the decoder does not have: they are left out
+// too, until a key frame, which alone opens the gate again; the host is
+// asked for one at once and again every keyAgain until it comes
+// (regression: it was asked once, and a key frame lost too stopped the
+// picture for good).
+// Notes: the pump, the decoder and the watchdog share it, under mu.
 type videoGate struct {
-	lost bool
+	mu    sync.Mutex
+	lost  bool
+	asked time.Time
 }
+
+// Picture health (viewer.watchdog): how often the viewer asks the host for
+// a key frame at most, how long without a picture while the host sends
+// frames counts as a lost picture, and after how long without a picture
+// the viewer offers to wake the host's screen.
+const (
+	keyAgain  = time.Second
+	noPicture = 2 * time.Second
+	wakeAfter = 3 * time.Second
+)
 
 // pass queues frame p unless it must be left out.
 // Returns: whether it was queued (the caller keeps it otherwise), and
-// whether to ask the host for a key frame (once per loss).
-func (g *videoGate) pass(p []byte, video chan<- []byte) (sent, ask bool) {
-	if g.lost && (len(p) < 2 || p[1]&keyFrame == 0) {
+// whether to ask the host for a key frame now.
+func (g *videoGate) pass(p []byte, video chan<- []byte, now time.Time) (sent, ask bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	key := len(p) > 1 && p[1]&keyFrame != 0
+	if g.lost && !key {
 		return false, false
 	}
 	select {
@@ -603,16 +640,90 @@ func (g *videoGate) pass(p []byte, video chan<- []byte) (sent, ask bool) {
 		g.lost = false
 		return true, false
 	default:
-		ask = !g.lost
 		g.lost = true
-		return false, ask
+		return false, g.ask(now)
+	}
+}
+
+// broke closes the gate after the decoder failed on a frame.
+// Returns: whether to ask the host for a key frame now.
+func (g *videoGate) broke(now time.Time) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.lost = true
+	return g.ask(now)
+}
+
+// again is the watchdog's check: whether to ask for a key frame now, while
+// the gate waits for one or the picture needs one (viewerNeedsKey).
+func (g *videoGate) again(need bool, now time.Time) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return (g.lost || need) && g.ask(now)
+}
+
+// ask reports whether the host may be asked again now, and if so counts
+// the request (the caller holds g.mu).
+func (g *videoGate) ask(now time.Time) bool {
+	if now.Sub(g.asked) < keyAgain {
+		return false
+	}
+	g.asked = now
+	return true
+}
+
+// viewerNeedsKey reports whether the picture needs a key frame although
+// the gate is open: no picture came for noPicture while the host says it
+// sent frames (a key frame lost on the way, a decoder that gave up). A
+// still screen sends none, and a 0.4.0 host does not say.
+func viewerNeedsKey(sincePicture time.Duration, hostFrames int) bool {
+	return sincePicture >= noPicture && hostFrames > 0
+}
+
+// askKey asks the host for a key frame; a full queue leaves the request
+// to the watchdog's next look.
+func (v *viewer) askKey(keyRequest []byte) {
+	select {
+	case v.out <- keyRequest:
+	default:
+	}
+}
+
+// watchdog looks at the stream each second until done closes: it asks for
+// a key frame again while the gate waits for one or the picture needs one,
+// and has the window show "Recovering the picture…" and offer to wake the
+// host's screen when that changes.
+func (v *viewer) watchdog(done <-chan struct{}, keyRequest []byte) {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case now := <-t.C:
+			v.mu.Lock()
+			since := now.Sub(v.pictureAt)
+			need := viewerNeedsKey(since, v.host.Frames)
+			recovering, asleep := need && v.bm != nil, since >= wakeAfter && v.control
+			changed := recovering != v.recovering || asleep != v.asleep
+			v.recovering, v.asleep = recovering, asleep
+			v.mu.Unlock()
+			if v.gate.again(need, now) {
+				v.askKey(keyRequest)
+			}
+			if changed {
+				v.update(func() {})
+			}
+		}
 	}
 }
 
 // decodeVideo opens a decoder for each stream the host describes and shows
-// its frames, until video closes.
+// its frames, until video closes. A frame the decoder fails on closes the
+// gate and asks for a key frame (at most each keyAgain); the decoder takes
+// nothing but a key frame next.
 // Notes: runs on one locked OS thread, which the decoder is tied to.
-func (v *viewer) decodeVideo(lib *core.Lib, video <-chan []byte, pool packetPool) {
+func (v *viewer) decodeVideo(lib *core.Lib, video <-chan []byte, pool packetPool, keyRequest []byte) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	var dec *core.Decoder
@@ -659,7 +770,12 @@ func (v *viewer) decodeVideo(lib *core.Lib, video <-chan []byte, pool packetPool
 			}
 			first := fresh
 			fresh = false
-			v.show(dec, p[10:])
+			if v.show(dec, p[10:]) != nil {
+				fresh = true
+				if v.gate.broke(time.Now()) {
+					v.askKey(keyRequest)
+				}
+			}
 			// The decoder knows how it decodes once it has a key frame.
 			if first {
 				name, hw, _ := dec.Info()
@@ -716,11 +832,11 @@ func (v *viewer) begin(s videoStart) {
 // show decodes one frame into the picture neither shown nor waiting, which
 // becomes the waiting one, and has the main thread show the newest one
 // waiting: decoding never waits for drawing, and a picture not drawn yet
-// gives way to a newer one. Frames the decoder holds (or cannot decode)
-// show nothing.
+// gives way to a newer one. Frames the decoder holds show nothing.
+// Returns: the decoder's error (a picture of another size is one too).
 // Notes: the bitmap takes a picture without a copy, so the one shown is
 // never decoded into.
-func (v *viewer) show(dec *core.Decoder, data []byte) {
+func (v *viewer) show(dec *core.Decoder, data []byte) error {
 	v.mu.Lock()
 	free := 0
 	for free == v.shown || free == v.ready {
@@ -730,16 +846,22 @@ func (v *viewer) show(dec *core.Decoder, data []byte) {
 	v.bytes += len(data)
 	v.mu.Unlock()
 	if pic == nil {
-		return
+		return nil
 	}
 	began := time.Now()
 	w, h, ok, err := dec.Decode(data, pic.Pix)
-	if err != nil || !ok || w != pic.Rect.Dx() || h != pic.Rect.Dy() {
-		return
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return nil
+	case w != pic.Rect.Dx() || h != pic.Rect.Dy():
+		return fmt.Errorf("a %d×%d picture in a %d×%d stream", w, h, pic.Rect.Dx(), pic.Rect.Dy())
 	}
 	decoded := time.Now()
 	v.mu.Lock()
 	v.frames++
+	v.pictureAt = decoded
 	v.decoding += decoded.Sub(began)
 	v.ready, v.readyAt = free, decoded
 	if el := decoded.Sub(v.counted); el >= time.Second {
@@ -767,6 +889,7 @@ func (v *viewer) show(dec *core.Decoder, data []byte) {
 		v.drawn++
 		v.shown, v.ready = v.ready, -1
 	})
+	return nil
 }
 
 func (v *viewer) setState(s string) {
@@ -910,6 +1033,9 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 	at := area.LayoutBounds()
 	focused := false
 	defer func() { v.syncGrab(focused) }()
+	v.mu.Lock()
+	recovering, asleep := v.recovering, v.asleep
+	v.mu.Unlock()
 	area.Children(func() {
 		switch {
 		case state != "":
@@ -919,6 +1045,9 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 				busyMarkIn(c, L.ViewerWaiting(), busySize, ui.Hex("#ffffff"))
 				ui.Text(c, L.ViewerWaiting()).TextColor(ui.Hex("#ffffff"))
 			})
+			if asleep {
+				v.wakeOffer(c)
+			}
 		default:
 			// The picture takes text: macOS turns keys into text (and input
 			// methods compose) only for an element that does, and Legacy
@@ -933,6 +1062,38 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 			v.mu.Unlock()
 			if ox, oy, w, h := pictureBox(box, start.Width, start.Height); ptr.Visible && w > 0 {
 				pointerRing(c, box.X-at.X+ox+ptr.X*w, box.Y-at.Y+oy+ptr.Y*h)
+			}
+			// The picture shown is old while the host sends frames that
+			// do not reach it: said over it until a new one comes.
+			if recovering {
+				ui.Column(c.Key("recovering")).Absolute().Bottom(noticeBottom).Left(0).Right(0).AlignItems(ui.Center).PassThrough().Children(func() {
+					notice(c, func() {
+						busyMarkIn(c, L.ViewerRecovering(), busySize, ui.Hex("#ffffff"))
+						ui.Text(c, L.ViewerRecovering()).TextColor(ui.Hex("#ffffff"))
+						if asleep {
+							v.wakeOffer(c)
+						}
+					})
+				})
+			}
+		}
+	})
+}
+
+// notice is a dark rounded strip of text over the viewer's picture.
+func notice(c *ui.Context, children func()) {
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(6, 12).Radius(barRadius).Background(ui.RGBA(0, 0, 0, 0.7)).Children(children)
+}
+
+// wakeOffer says the host's screen may be asleep and offers to wake it,
+// for a session that may control input: a Shift press and release, which
+// wakes a display as a key does (a 0.4.0 host takes it too).
+func (v *viewer) wakeOffer(c *ui.Context) {
+	ui.Row(c.Key("wake")).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, L.ViewerAsleep()).TextColor(ui.Hex("#ffffff"))
+		if ui.Button(c.Key("wake-it"), L.ViewerWake()).Clicked() {
+			for _, down := range []bool{true, false} {
+				v.queue(inputEvent{Kind: "scan", Code: 0x2A, Down: down})
 			}
 		}
 	})

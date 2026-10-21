@@ -4,8 +4,11 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
+	"github.com/YuanZhe-99/Kyokai/internal/engine"
+	helperpkg "github.com/YuanZhe-99/Kyokai/internal/helper"
 )
 
 // agentCmd is the session agent's life (doc/en-us/run-modes.md): on
@@ -16,6 +19,10 @@ import (
 //
 //	kyokai-svc agent --down PIPE --up PIPE --helper-pid N   (Windows)
 //	kyokai-svc agent --socket PATH                          (macOS)
+//
+// Side effects: on Windows its stderr, with the core's log lines and any
+// crash trace, goes to the helper's logs\agent.log unless No logs is on
+// (macOS: launchd's own log for the agent).
 func agentCmd(args []string) error {
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 	down := fs.String("down", "", "the pipe the helper writes requests to (Windows)")
@@ -23,6 +30,9 @@ func agentCmd(args []string) error {
 	helper := fs.Uint("helper-pid", 0, "the helper that started this agent (Windows)")
 	socket := fs.String("socket", "", "the helper's socket for its agent (macOS)")
 	fs.Parse(args)
+	if runtime.GOOS == "windows" {
+		engine.CrashLog(filepath.Join(helperpkg.StateDir, "logs", "agent.log"))
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return err

@@ -13,7 +13,7 @@
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--address A] [--want P,P…] | identify --address A | remove --device ID
-//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--codec C] [--text T] [--click X,Y] [--type T] [--keys K,K…] [--action A,A…] [--display N]
+//	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--codec C] [--text T] [--click X,Y] [--type T] [--keys K,K… [--keys-every D]] [--action A,A…] [--display N]
 //	kyokai-svc ctl allow --id N [--grant P,P…] | deny --id N
 //	kyokai-svc ctl untrust --key K | forget --device ID | access [--mode temporary|permanent|both] [--without-asking=true|false] [--by-address=true|false --ranges R,R…]
 //	kyokai-svc ctl password-grants --grant P,P…   (what a correct password grants without asking; empty: none)
@@ -54,6 +54,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -197,6 +198,7 @@ func ctl(args []string) error {
 	click := fs.String("click", "", "watch: click at X,Y (fractions of the picture) after 2 s")
 	typed := fs.String("type", "", "watch: type this text after 3 s, as the viewer's text input")
 	keys := fs.String("keys", "", "watch: press these keys by name after 3 s, after --type (e.g. meta+a,backspace,enter)")
+	keysEvery := fs.Duration("keys-every", 0, "watch: press the --keys again at this interval until the watch ends (0: once)")
 	display := fs.Int("display", -1, "watch: show the host's display N (0 first) from the start")
 	actions := fs.String("action", "", "watch: session actions to send, 4 s apart from 2 s on (lock, ctrl-alt-del, block, unblock, privacy-on, privacy-off)")
 	source := fs.String("source", "", "ai-key, ai-models: the AI source's id")
@@ -221,7 +223,7 @@ func ctl(args []string) error {
 		return err
 	}
 	if cmd == "watch" {
-		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *codec, *text, *click, *typed, *keys, *actions, *display)
+		return watch(*socket, *id, time.Duration(*seconds)*time.Second, *snapshot, *quality, *fpsCap, *codec, *text, *click, *typed, *keys, *keysEvery, *actions, *display)
 	}
 	req := localapi.Request{Type: map[string]localapi.RequestType{
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
@@ -563,7 +565,7 @@ func printStatus(s *localapi.Status) {
 // viewer's decoder) and saves the last picture; with a text it first asks
 // the host's AI to do it (the viewer's AI panel); with actions it sends them
 // as the viewer's action bar does and prints the host's reports.
-func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, codec, aiText, click, typed, keys, actions string, display int) error {
+func watch(socket string, id uint64, d time.Duration, snapshot, quality string, fpsCap int, codec, aiText, click, typed, keys string, keysEvery time.Duration, actions string, display int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), d+10*time.Second)
 	defer cancel()
 	conn, err := localapi.NewClient(socket).Media(ctx, id)
@@ -634,18 +636,24 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 			if typed != "" {
 				send(map[string]any{"kind": "text", "text": typed})
 			}
-			for k := range strings.SplitSeq(keys, ",") {
-				if k == "" {
-					continue
+			for {
+				for k := range strings.SplitSeq(keys, ",") {
+					if k == "" {
+						continue
+					}
+					parts := strings.Split(k, "+")
+					mods := map[string]bool{}
+					for _, m := range parts[:len(parts)-1] {
+						mods[m] = true
+					}
+					for _, down := range []bool{true, false} {
+						send(map[string]any{"kind": "key", "key": parts[len(parts)-1], "down": down, "mods": mods})
+					}
 				}
-				parts := strings.Split(k, "+")
-				mods := map[string]bool{}
-				for _, m := range parts[:len(parts)-1] {
-					mods[m] = true
+				if keysEvery <= 0 || ctx.Err() != nil {
+					return
 				}
-				for _, down := range []bool{true, false} {
-					send(map[string]any{"kind": "key", "key": parts[len(parts)-1], "down": down, "mods": mods})
-				}
+				time.Sleep(keysEvery)
 			}
 		}()
 	}
@@ -687,12 +695,64 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	var decodeErr error
 	printedDisplays := map[byte]bool{}
 	start := time.Now()
+	// Each second: the frames that came, the longest gap between two (or
+	// since the last), and "stall" when that passed a second while the
+	// host says it sent frames ("still" when it sent none: a still screen).
+	var pace struct {
+		sync.Mutex
+		frames, hostFrames int
+		last               time.Time
+		gap, worst         time.Duration
+	}
+	pace.last = start
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-t.C:
+				pace.Lock()
+				gap := max(pace.gap, now.Sub(pace.last))
+				n, host := pace.frames, pace.hostFrames
+				pace.frames, pace.gap, pace.worst = 0, 0, max(pace.worst, gap)
+				pace.Unlock()
+				note := ""
+				switch {
+				case gap > time.Second && host > 0:
+					note = " stall"
+				case n == 0 && host == 0:
+					note = " still"
+				}
+				fmt.Printf("%s %d frames, longest gap %d ms%s\n", now.Format("15:04:05"), n, gap.Milliseconds(), note)
+			}
+		}
+	}()
 	for {
 		p, err := localapi.ReadPacket(conn, buf)
 		if err != nil {
 			break
 		}
 		buf = p
+		switch {
+		case len(p) >= 10 && p[0] == 2:
+			now := time.Now()
+			pace.Lock()
+			pace.frames++
+			pace.gap = max(pace.gap, now.Sub(pace.last))
+			pace.last = now
+			pace.Unlock()
+		case len(p) > 0 && p[0] == 4:
+			var s struct {
+				Frames int `json:"frames"`
+			}
+			if json.Unmarshal(p[1:], &s) == nil {
+				pace.Lock()
+				pace.hostFrames = s.Frames
+				pace.Unlock()
+			}
+		}
 		switch {
 		case len(p) > 0 && p[0] == 1:
 			fmt.Printf("stream %s\n", p[1:])
@@ -753,6 +813,9 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	}
 	el := time.Since(start).Seconds()
 	fmt.Printf("%d frames in %.1f s: %.1f fps, %.0f kbit/s\n", frames, el, float64(frames)/el, float64(bytes)*8/1000/el)
+	pace.Lock()
+	fmt.Printf("longest gap between frames %d ms\n", pace.worst.Milliseconds())
+	pace.Unlock()
 	fmt.Printf("%d sound packets (%d ms, %.0f bytes each), longest gap %d ms, %d gaps over 30 ms\n", sounds, sounds*10, float64(soundBytes)/float64(max(sounds, 1)), soundGap.Milliseconds(), soundLate)
 	if dec != nil {
 		dec.Close()

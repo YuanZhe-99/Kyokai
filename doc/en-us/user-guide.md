@@ -107,7 +107,8 @@ this computer, newest first, with **Copy** for text — kept only until the tab 
 devices connected, only the one whose tab is in front (in the Kyokai window you used last) shares
 the clipboard; switching to a tab sends what you copied meanwhile. Quality, frame rate, Fit or
 Original size, codec, sound, the swap and the clipboard switch are remembered for each device. While you are connected the other computer does not go to
-sleep by itself. Closing the tab (×) disconnects; when a connection ends, its tab says why and offers
+sleep by itself, and a screen that was dark already is woken; if the picture still does not come,
+**Wake it** presses Shift there for you. Closing the tab (×) disconnects; when a connection ends, its tab says why and offers
 **Reconnect**. A connection that drops reconnects by itself for a minute without asking again.
 **Remove** in a device's menu takes it off Recent and forgets its saved password. **Rename…** gives
 it a name of your own, shown only on this device; leave it empty to use the device's own name

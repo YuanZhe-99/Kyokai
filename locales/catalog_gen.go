@@ -3752,6 +3752,16 @@ func (msgs Messages) ViewerActions() string {
 	return Catalog.Format(msgs.locale, "ViewerActions", nil)
 }
 
+// ViewerAsleep says "The screen there may be asleep."
+// in the language the app shows.
+func ViewerAsleep() string { return In(i18n.Locale()).ViewerAsleep() }
+
+// ViewerAsleep says "The screen there may be asleep."
+// in the language of msgs.
+func (msgs Messages) ViewerAsleep() string {
+	return Catalog.Format(msgs.locale, "ViewerAsleep", nil)
+}
+
 // ViewerBlockInput says "Block their keyboard and mouse"
 // in the language the app shows.
 func ViewerBlockInput() string { return In(i18n.Locale()).ViewerBlockInput() }
@@ -4028,6 +4038,16 @@ func (msgs Messages) ViewerImplUnknown() string {
 	return Catalog.Format(msgs.locale, "ViewerImplUnknown", nil)
 }
 
+// ViewerInputPaused says "Input paused — the connection is behind"
+// in the language the app shows.
+func ViewerInputPaused() string { return In(i18n.Locale()).ViewerInputPaused() }
+
+// ViewerInputPaused says "Input paused — the connection is behind"
+// in the language of msgs.
+func (msgs Messages) ViewerInputPaused() string {
+	return Catalog.Format(msgs.locale, "ViewerInputPaused", nil)
+}
+
 // ViewerKeyboard says "Keyboard"
 // in the language the app shows.
 func ViewerKeyboard() string { return In(i18n.Locale()).ViewerKeyboard() }
@@ -4218,6 +4238,16 @@ func (msgs Messages) ViewerReconnect() string {
 	return Catalog.Format(msgs.locale, "ViewerReconnect", nil)
 }
 
+// ViewerRecovering says "Recovering the picture…"
+// in the language the app shows.
+func ViewerRecovering() string { return In(i18n.Locale()).ViewerRecovering() }
+
+// ViewerRecovering says "Recovering the picture…"
+// in the language of msgs.
+func (msgs Messages) ViewerRecovering() string {
+	return Catalog.Format(msgs.locale, "ViewerRecovering", nil)
+}
+
 // ViewerRelayedHint says "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices."
 // in the language the app shows.
 func ViewerRelayedHint() string { return In(i18n.Locale()).ViewerRelayedHint() }
@@ -4358,6 +4388,16 @@ func ViewerWaiting() string { return In(i18n.Locale()).ViewerWaiting() }
 // in the language of msgs.
 func (msgs Messages) ViewerWaiting() string {
 	return Catalog.Format(msgs.locale, "ViewerWaiting", nil)
+}
+
+// ViewerWake says "Wake it"
+// in the language the app shows.
+func ViewerWake() string { return In(i18n.Locale()).ViewerWake() }
+
+// ViewerWake says "Wake it"
+// in the language of msgs.
+func (msgs Messages) ViewerWake() string {
+	return Catalog.Format(msgs.locale, "ViewerWake", nil)
 }
 
 // WithoutAskingHint says "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Back…"

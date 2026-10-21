@@ -1011,30 +1011,71 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 // ends when closed; what waits to be heard stays within a target that grows
 // when playing runs dry while sound comes (up to 300 ms), shrinks after a
 // calm spell, and drops the oldest sound beyond it.
-// A full video queue leaves frames out until a key frame, asking the host
-// for one once.
+// A full video queue or a decoder error leaves frames out until a key
+// frame, which alone opens the gate again; the host is asked for one at
+// once and again each second while it does not come (regression: asked
+// once, a lost key frame stopped the picture for good).
 func TestVideoGate(t *testing.T) {
 	video := make(chan []byte, 1)
 	var g videoGate
 	key, delta := []byte{packetFrame, keyFrame}, []byte{packetFrame, 0}
+	t0 := time.Unix(1000, 0)
 	for i, c := range []struct {
 		p         []byte
+		at        time.Duration
 		drain     bool
 		sent, ask bool
 	}{
-		{delta, false, true, false}, // room: queued
-		{delta, false, false, true}, // full: left out, a key frame asked for
-		{delta, false, false, false},
-		{delta, true, false, false}, // room again, but it needs its reference
-		{key, false, true, false},   // a key frame starts over
-		{delta, true, true, false},
+		{delta, 0, false, true, false},                       // room: queued
+		{delta, 0, false, false, true},                       // full: left out, a key frame asked for
+		{delta, 100 * time.Millisecond, false, false, false}, // left out
+		{key, 200 * time.Millisecond, false, false, false},   // the key frame finds it full: too soon to ask
+		{key, 1200 * time.Millisecond, false, false, true},   // full again: asked again
+		{delta, 1300 * time.Millisecond, true, false, false}, // room again, but it needs its reference
+		{key, 1400 * time.Millisecond, false, true, false},   // a key frame starts over
+		{delta, 1500 * time.Millisecond, true, true, false},
 	} {
 		if c.drain {
 			<-video
 		}
-		sent, ask := g.pass(c.p, video)
+		sent, ask := g.pass(c.p, video, t0.Add(c.at))
 		if sent != c.sent || ask != c.ask {
 			t.Fatalf("step %d: sent %v ask %v", i, sent, ask)
+		}
+	}
+	<-video
+	// A frame the decoder failed on closes the gate; the watchdog asks
+	// again each second until a key frame comes.
+	if !g.broke(t0.Add(3 * time.Second)) {
+		t.Fatal("a decoder error asks for a key frame")
+	}
+	if sent, _ := g.pass(delta, video, t0.Add(3100*time.Millisecond)); sent {
+		t.Fatal("a delta frame after a decoder error")
+	}
+	if g.again(false, t0.Add(3500*time.Millisecond)) || !g.again(false, t0.Add(4*time.Second)) {
+		t.Fatal("the watchdog asks once a second while the gate is closed")
+	}
+	if sent, _ := g.pass(key, video, t0.Add(4100*time.Millisecond)); !sent || g.again(false, t0.Add(9*time.Second)) {
+		t.Fatal("a key frame opens the gate, and nothing more is asked")
+	}
+}
+
+// TestViewerNeedsKey: a picture that stopped while the host says it sends
+// frames needs a key frame; a still screen (no frames) and a 0.4.0 host
+// (which does not say) do not.
+func TestViewerNeedsKey(t *testing.T) {
+	for _, c := range []struct {
+		since  time.Duration
+		frames int
+		want   bool
+	}{
+		{500 * time.Millisecond, 30, false},
+		{2 * time.Second, 30, true},
+		{10 * time.Second, 0, false},
+		{3 * time.Second, 1, true},
+	} {
+		if got := viewerNeedsKey(c.since, c.frames); got != c.want {
+			t.Errorf("%v %d: %v", c.since, c.frames, got)
 		}
 	}
 }

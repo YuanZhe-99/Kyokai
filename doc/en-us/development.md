@@ -106,7 +106,21 @@ scripts/build.sh`) once it is in the login keychain: ad hoc builds get a new ide
 which drops the privacy grants. Start the app with `open`, not from a shell, so that macOS counts
 its engine as part of Kyokai; an engine started from a shell has no grants and sends the
 placeholder picture. `ctl watch --type T --keys meta+a,enter` types into the host as the viewer
-does.
+does (`--keys-every D` presses the keys again every D until the watch ends).
+
+`ctl watch` prints a line each second: the frames that came, the longest gap between two, and
+"stall" when that passed a second while the host says it sent frames ("still" for a still
+screen, which sends none), and at the end the longest gap of the watch. `tools/netdelay` turns a
+fast path into a slow, uneven one for trying sessions over high latency on one machine: a TCP
+proxy that delays each direction by half the round trip, limits it to a rate, adds random jitter
+and freezes the path now and then, keeping the bytes in order and the bytes waiting bounded.
+With a development host accepting connections by address (including `127.0.0.1/32`):
+
+```bash
+go run ./tools/netdelay -listen 127.0.0.1:47400 -to 127.0.0.1:47310 -rtt 230ms -rate 3mbit -jitter 20ms -stall 45s/3s
+KYOKAI_PROFILE=ctl KYOKAI_PASSWORD=… kyokai-svc ctl connect --device 482916735 --address 127.0.0.1:47400
+KYOKAI_PROFILE=ctl kyokai-svc ctl watch --id 1 --seconds 600 --keys shift --keys-every 300ms
+```
 
 ## Spikes
 

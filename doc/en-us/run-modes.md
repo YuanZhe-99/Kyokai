@@ -86,6 +86,18 @@ the desktop's work there: capture and encoding, input, the pointer, the clipboar
 desktop calls. The helper's video, input, pointer, clipboard and AI desktop send their work to it
 (`agent::link`); the session and AI code are the same in every mode.
 
+A capture with nothing new compares the input desktop with its own every half second and follows
+a change as a lost display. A thread that cannot move to the input desktop (Windows refuses
+`SetThreadDesktop` to one that owns a window or a hook) logs it once per desktop; a capture thread
+that cannot then ends, the agent tells the helper (`{"ended": stream}`), the session's frames end
+and it opens the video again on a fresh thread ([computer-use.md](computer-use.md), "Video"). The
+helper passes the session's room for frames to the agent with the frame rate and bitrate
+(`video.targets`), so the agent captures only what the session can send; its channel from the agent
+holds as many frames as the host keeps ahead. The agent writes its log — the core's lines and
+any crash trace — to `logs\agent.log` in the helper's state folder unless No logs is on
+([security.md](security.md), "Logging"); switching No logs restarts the agent, which follows the
+choice.
+
 They talk over two one-way named pipes (synchronous I/O on one pipe handle is serialized, so a
 waiting read would block every write), each with a random name, created as the first instance
 with a SYSTEM-only DACL; the helper checks that the client is the agent process it started, and

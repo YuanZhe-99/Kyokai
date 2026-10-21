@@ -70,11 +70,7 @@ fn our_features() -> Vec<String> {
     FEATURES.iter().map(|f| f.to_string()).collect()
 }
 
-/// How many frames the host sends ahead of the controller's
-/// acknowledgements: enough for the frame-rate cap over a relay's round
-/// trip, few enough that a slow path delays the picture by a few frames,
-/// not seconds.
-const IN_FLIGHT: u32 = 3;
+use video::IN_FLIGHT;
 const PATTERN: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
@@ -198,15 +194,18 @@ enum Message {
         #[serde(default)]
         i444: bool,
     },
-    /// host → controller: what QoS measured and chose, for the viewer, and
-    /// how long the host took from a picture to its frame (the average of
-    /// the last second's frames).
+    /// host → controller: what QoS measured and chose, for the viewer, how
+    /// long the host took from a picture to its frame (the average of the
+    /// last second's frames), and how many frames it sent that second (a
+    /// viewer that gets none of them asks for a key frame; 0 from 0.4.0).
     Stats {
         delay_ms: u32,
         fps: u32,
         bitrate: u32,
         #[serde(default)]
         encode_ms: u32,
+        #[serde(default)]
+        frames: u32,
     },
     /// controller → host (`run-ai-task`): start an AI task on the host; the
     /// key makes a repeated start (after a reconnect) start one task.
@@ -490,6 +489,48 @@ fn boosted(qos_fps: u32, cap: u32, input_at: Option<Instant>, delay_ms: u32) -> 
 /// How often a controller whose GUI lost frames asks the host for a key
 /// frame at most.
 const KEY_AGAIN: Duration = Duration::from_secs(1);
+
+/// Whether a controller asks the host for a key frame now: its GUI lost
+/// frames and it last asked KEY_AGAIN ago or never. Checked as frames come
+/// and once a second, so a still screen, which sends nothing, is asked too
+/// (regression: the request went out only as a frame arrived).
+fn key_due(waiting: bool, asked: Option<Instant>, now: Instant) -> bool {
+    waiting && asked.is_none_or(|t| now.saturating_duration_since(t) >= KEY_AGAIN)
+}
+
+/// How long the host waits for the controller's acknowledgements before it
+/// takes the frames in flight for lost: it sends again from a key frame
+/// (RustDesk's bounded wait), rather than waiting for acknowledgements that
+/// may never come.
+const ACK_WAIT: Duration = Duration::from_secs(3);
+
+/// How soon after its last end a host's video opens again, and how many
+/// ends within REOPEN_WINDOW give the test pattern instead.
+const REOPEN_EVERY: Duration = Duration::from_secs(2);
+const REOPEN_WINDOW: Duration = Duration::from_secs(30);
+const REOPEN_LIMIT: usize = 3;
+
+/// What a host does when its video's frames ended by themselves (the
+/// capture or its agent ended): open it again, or send the test pattern.
+#[derive(Debug, PartialEq, Eq)]
+enum Reopen {
+    After(Duration),
+    Pattern,
+}
+
+/// Decides how a host's video goes on after its frames ended.
+/// Inputs: the times its frames ended, this one last (older ones beyond
+/// REOPEN_WINDOW are dropped).
+fn reopen_plan(ends: &mut Vec<Instant>, now: Instant) -> Reopen {
+    ends.retain(|t| now.saturating_duration_since(*t) < REOPEN_WINDOW);
+    if ends.len() >= REOPEN_LIMIT {
+        return Reopen::Pattern;
+    }
+    let previous = ends.iter().rev().nth(1);
+    Reopen::After(previous.map_or(Duration::ZERO, |t| {
+        (*t + REOPEN_EVERY).saturating_duration_since(now)
+    }))
+}
 
 /// How often the host looks for changes of a controller's AI task.
 const AI_SYNC: Duration = Duration::from_millis(400);
@@ -1901,8 +1942,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut frame_no: u32 = 0;
     // The newest frame the controller acknowledged: frames wait at the
     // capture (which keeps only the newest picture) instead of piling up in
-    // the transport's buffers on a slow path.
+    // the transport's buffers on a slow path. Since when the frames in
+    // flight have waited for an acknowledgement (ACK_WAIT).
     let mut acked: u32 = 0;
+    let mut acked_at = Instant::now();
+    // When the video's frames ended by themselves, and when it opens again.
+    let mut ends: Vec<Instant> = Vec::new();
+    let mut reopen_at: Option<tokio::time::Instant> = None;
     let mut ping = tokio::time::interval(PING_EVERY);
     // RustDesk's QoS on the host: one probe a second, frames counted per
     // second, frame rate and bitrate applied to the source.
@@ -1936,8 +1982,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // The microseconds this second's frames took from picture to frame.
     let mut took_this_second = 0u64;
     // When this controller last asked for a key frame after its queue left
-    // frames out.
+    // frames out, and its own check for that each second (`key_due`).
     let mut key_asked: Option<Instant> = None;
+    let mut key_check = tokio::time::interval(KEY_AGAIN);
     let mut heard = Instant::now();
     let mut plain = vec![0u8; MAX_FRAME];
     // Whether this session holds the block or privacy mode; checked every
@@ -1971,8 +2018,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             if let Some(p) = pointer.as_mut() {
                 p.show(s.display.map(area));
             }
+            // The new stream starts with the window open: frames of the
+            // old one still unacknowledged are not waited for.
+            acked = frame_no;
+            s.set_room(IN_FLIGHT);
             source = Some(s);
             pointer_sent = None;
+            reopen_at = None;
         }};
     }
     let outcome: Result<(), Failure> = async { loop {
@@ -2098,6 +2150,18 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
                 seal_json(&mut noise, &mut buf, &mut wr, &Message::Ping).await?;
             }
+            // A controller whose GUI lost frames asks again each second,
+            // also while no frame comes (a still screen sends none).
+            tick = key_check.tick(), if queue.is_some() => {
+                // By the tick's time, so the next tick is a whole KEY_AGAIN later.
+                let now = tick.into_std();
+                if let Some(q) = &queue
+                    && key_due(q.waiting_for_key(), key_asked, now)
+                {
+                    key_asked = Some(now);
+                    seal_json(&mut noise, &mut buf, &mut wr, &Message::KeyFrame).await?;
+                }
+            }
             _ = probe.tick(), if source.is_some() => {
                 match probe_sent {
                     None => {
@@ -2108,6 +2172,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
                 qos.update_display_data(QOS_DISPLAY, sent_this_second);
                 let encode_ms = (took_this_second / sent_this_second.max(1) as u64 / 1000) as u32;
+                let frames = sent_this_second as u32;
                 sent_this_second = 0;
                 took_this_second = 0;
                 let fps = boosted(qos.fps(), fps_cap, input_at, last_delay);
@@ -2116,17 +2181,62 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 qos.store_bitrate(kbps);
                 if let Some(s) = &source {
                     s.set_targets(fps, kbps.saturating_mul(1000));
+                    // Acknowledgements that stopped coming (a path that
+                    // lost them, a controller that dropped the frames):
+                    // the frames in flight are taken for lost and the
+                    // video goes on from a key frame.
+                    if frame_no != acked && acked_at.elapsed() >= ACK_WAIT {
+                        log::info!("host session: no acknowledgement for {} s: sending again from a key frame", ACK_WAIT.as_secs());
+                        acked = frame_no;
+                        s.set_room(IN_FLIGHT);
+                        s.key_frame();
+                    }
                 }
-                let stats = Message::Stats { delay_ms: last_delay, fps, bitrate: kbps.saturating_mul(1000), encode_ms };
+                let stats = Message::Stats { delay_ms: last_delay, fps, bitrate: kbps.saturating_mul(1000), encode_ms, frames };
                 seal_json(&mut noise, &mut buf, &mut wr, &stats).await?;
             }
-            Some(f) = async {
+            () = async {
+                match reopen_at {
+                    Some(t) => tokio::time::sleep_until(t).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                reopen!(source.as_ref().and_then(|s| s.display));
+            }
+            f = async {
                 match source.as_mut() {
                     Some(s) => s.frames.recv().await,
                     None => std::future::pending().await,
                 }
-            }, if frame_no.wrapping_sub(acked) < IN_FLIGHT => {
+            }, if reopen_at.is_none() && frame_no.wrapping_sub(acked) < IN_FLIGHT => {
+                let Some(f) = f else {
+                    // The capture ended by itself (its encoder failed twice,
+                    // its thread could not follow the input desktop, the
+                    // helper's agent went): it opens again, the test
+                    // pattern after too many ends.
+                    ends.push(Instant::now());
+                    match reopen_plan(&mut ends, Instant::now()) {
+                        Reopen::After(wait) => {
+                            log::info!("host session: the video ended: opening it again in {} ms", wait.as_millis());
+                            reopen_at = Some(tokio::time::Instant::now() + wait);
+                        }
+                        Reopen::Pattern => {
+                            log::info!("host session: the video ended {REOPEN_LIMIT} times: sending the test pattern");
+                            let s = video::Source::pattern();
+                            announce(&mut noise, &mut buf, &mut wr, &s, &displays).await?;
+                            acked = frame_no;
+                            source = Some(s);
+                        }
+                    }
+                    continue;
+                };
+                if frame_no == acked {
+                    acked_at = Instant::now();
+                }
                 frame_no = frame_no.wrapping_add(1);
+                if let Some(s) = &source {
+                    s.set_room(IN_FLIGHT.saturating_sub(frame_no.wrapping_sub(acked)));
+                }
                 sent_this_second += 1;
                 took_this_second += u64::from(f.took_us);
                 for chunk in media::chunks(frame_no, f.flags, f.pts, &f.data, MAX_PLAINTEXT) {
@@ -2218,8 +2328,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         q.push(packet);
                         // The GUI fell behind and lost frames: the host starts
                         // a new group of pictures (asked again each second
-                        // until it comes).
-                        if q.waiting_for_key() && key_asked.is_none_or(|t| t.elapsed() >= KEY_AGAIN) {
+                        // until it comes, `key_check`).
+                        if key_due(q.waiting_for_key(), key_asked, Instant::now()) {
                             key_asked = Some(Instant::now());
                             seal_json(&mut noise, &mut buf, &mut wr, &Message::KeyFrame).await?;
                         }
@@ -2285,6 +2395,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::Received { frame } => {
                         if frame_no.wrapping_sub(frame) < frame_no.wrapping_sub(acked) {
                             acked = frame;
+                            acked_at = Instant::now();
+                            if let Some(s) = &source {
+                                s.set_room(IN_FLIGHT.saturating_sub(frame_no.wrapping_sub(acked)));
+                            }
                         }
                     }
                     // The controller echoes probes at once; the host measures them.
@@ -2317,10 +2431,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             qos.user_network_delay(QOS_VIEWER, last_delay);
                         }
                     }
-                    Message::Stats { delay_ms, fps, bitrate, encode_ms } => {
+                    Message::Stats { delay_ms, fps, bitrate, encode_ms, frames } => {
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::STATS];
-                            packet.extend(serde_json::to_vec(&json!({"delay_ms": delay_ms, "fps": fps, "bitrate": bitrate, "encode_ms": encode_ms})).map_err(|_| Failure::Broken)?);
+                            packet.extend(serde_json::to_vec(&json!({"delay_ms": delay_ms, "fps": fps, "bitrate": bitrate, "encode_ms": encode_ms, "frames": frames})).map_err(|_| Failure::Broken)?);
                             q.push(packet);
                         }
                     }
@@ -4661,6 +4775,129 @@ mod tests {
         );
         stop.notify_one();
         let _ = task.await;
+    }
+
+    /// Acknowledgements that stop coming hold the frames back for ACK_WAIT
+    /// only: the host then takes those in flight for lost and sends again,
+    /// from a key frame (regression: a lost acknowledgement stopped the
+    /// picture for good).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stalled_acknowledgements_release_the_window_after_a_while() {
+        let (host_end, mut peer) = raw_channels();
+        let stop = Arc::new(Notify::new());
+        let host = device("1.0.0");
+        let side = Side::Host {
+            video: true,
+            sound: false,
+            input: false,
+            ai: HostAi {
+                ai: host.ai.clone(),
+                peer: "123456789".into(),
+                run: false,
+                approve: false,
+            },
+            access: host.access.clone(),
+        };
+        let stopped = stop.clone();
+        let task = tokio::spawn(async move { run(host_end, &stopped, side, None).await });
+        peer.send(&Message::Codecs {
+            decode: vec!["none".into()],
+            i444: vec![],
+        })
+        .await
+        .unwrap();
+        let (count, _) = raw_frames(&mut peer, Duration::from_millis(800)).await;
+        assert_eq!(count, IN_FLIGHT as usize);
+        assert_eq!(raw_frames(&mut peer, ACK_WAIT / 2).await.0, 0, "too soon");
+        let (count, _) = raw_frames(&mut peer, ACK_WAIT).await;
+        assert_eq!(count, IN_FLIGHT as usize, "sent again once");
+        stop.notify_one();
+        let _ = task.await;
+    }
+
+    /// A controller whose viewer lost frames asks for a key frame each
+    /// second while none comes, a still screen sending nothing (regression:
+    /// it asked only as a frame arrived).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_controller_asks_for_a_key_frame_each_second_without_frames() {
+        let (ctl_end, mut peer) = raw_channels();
+        let stop = Arc::new(Notify::new());
+        let queue: Arc<media::Queue> = Arc::default();
+        // A viewer reads, and fell behind: frames were left out.
+        queue.push(vec![media::packet::STATS]);
+        queue.pop(Duration::ZERO).unwrap();
+        for _ in 0..4 {
+            queue.push(vec![media::packet::FRAME, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        }
+        assert!(queue.waiting_for_key());
+        let reader = queue.clone();
+        let reading = std::thread::spawn(move || {
+            for _ in 0..20 {
+                reader.push(vec![media::packet::STATS]);
+                let _ = reader.pop(Duration::from_millis(200));
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        });
+        let (_control_tx, control_rx) = mpsc::channel(4);
+        let side = Side::Controller {
+            queue,
+            control: Arc::new(tokio::sync::Mutex::new(control_rx)),
+            choices: Arc::default(),
+        };
+        let stopped = stop.clone();
+        let task = tokio::spawn(async move { run(ctl_end, &stopped, side, None).await });
+        let until = Instant::now() + Duration::from_millis(3500);
+        let mut asked = 0;
+        while let Some(left) = until.checked_duration_since(Instant::now()) {
+            let Ok(Ok(m)) = tokio::time::timeout(left, peer.recv::<Value>()).await else {
+                break;
+            };
+            asked += usize::from(m["type"] == "key-frame");
+        }
+        assert!((2..=4).contains(&asked), "asked {asked} times in 3.5 s");
+        stop.notify_one();
+        let _ = task.await;
+        reading.join().unwrap();
+    }
+
+    #[test]
+    fn key_frames_are_asked_for_at_most_each_second() {
+        let now = Instant::now() + Duration::from_secs(10);
+        let ago = |ms| Some(now - Duration::from_millis(ms));
+        for (waiting, asked, want) in [
+            (false, None, false),
+            (true, None, true),
+            (true, ago(400), false),
+            (true, ago(1000), true),
+            (false, ago(5000), false),
+        ] {
+            assert_eq!(key_due(waiting, asked, now), want, "{waiting} {asked:?}");
+        }
+    }
+
+    /// A video whose frames end opens again at once, then no sooner than
+    /// REOPEN_EVERY after the last end; the third end in REOPEN_WINDOW
+    /// gives the test pattern.
+    #[test]
+    fn an_ended_video_opens_again_then_falls_back_to_the_pattern() {
+        let t0 = Instant::now();
+        let at = |ms| t0 + Duration::from_millis(ms);
+        let mut ends = vec![at(0)];
+        assert_eq!(reopen_plan(&mut ends, at(0)), Reopen::After(Duration::ZERO));
+        ends.push(at(500));
+        assert_eq!(
+            reopen_plan(&mut ends, at(500)),
+            Reopen::After(Duration::from_millis(1500))
+        );
+        ends.push(at(9000));
+        assert_eq!(reopen_plan(&mut ends, at(9000)), Reopen::Pattern);
+        // Ends long ago are forgotten.
+        let mut ends = vec![at(0), at(20_000), at(45_000)];
+        assert_eq!(
+            reopen_plan(&mut ends, at(45_000)),
+            Reopen::After(Duration::ZERO)
+        );
+        assert_eq!(ends.len(), 2);
     }
 
     /// Reads from a raw channel until a message of `kind` arrives.
