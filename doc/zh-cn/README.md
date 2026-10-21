@@ -15,6 +15,7 @@ AI 任务在被操作的那台电脑上运行。支持 Windows（x64、ARM64）�
 | [protocol.md](protocol.md) | 会话线路协议：分帧、Noise 握手、OPAQUE 登录、消息 |
 | [identity-and-access.md](identity-and-access.md) | 密码、权限、准入与被控端确认、固定的密钥、速率限制 |
 | [computer-use.md](computer-use.md) | 查看并操作被控端：视频、画质、输入、剪贴板、AI 任务 |
+| [remote-services.md](remote-services.md) | 通过隧道使用被控端自身的 SSH、远程桌面与 VNC，以及保存的登录信息 |
 | [gui.md](gui.md) | 界面结构、措辞、托盘、语言 |
 | [upstream.md](upstream.md) | 已核实的上游契约与特殊行为：MyGo、EasyTier、RustDesk、OpenAI、Claude |
 | [third-party.md](third-party.md) | 复用的代码与依赖、许可证与义务 |

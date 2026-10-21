@@ -31,12 +31,15 @@
 //	kyokai-svc ctl ai-pause | ai-resume | ai-cancel | ai-approve | ai-decline --id N
 //	kyokai-svc ctl keys | keys-generate [--name N] | keys-remove --id K   (this device's sign-in keys)
 //	kyokai-svc ctl authorized | authorized-add --public LINE [--name N] | authorized-remove --id K
+//	kyokai-svc ctl tunnel --device ID [--address A] --service ssh|rdp|vnc   (pipes the tunnel to stdin and stdout)
+//	kyokai-svc ctl credentials-set --device ID --service S [--user U] [--domain D] [--key-id K] | credentials-get --device ID --service S | credentials-forget --device ID [--service S|key]
 //
 // Secrets come from the environment, never the command line: network-set
 // and network-profile read KYOKAI_NETWORK_SECRET (unset keeps the stored
 // one), permanent reads
 // KYOKAI_PERMANENT_PASSWORD, connect reads KYOKAI_PASSWORD, backup and restore read
-// KYOKAI_BACKUP_PASSPHRASE, ai-key reads KYOKAI_AI_KEY.
+// KYOKAI_BACKUP_PASSPHRASE, ai-key reads KYOKAI_AI_KEY, credentials-set reads
+// KYOKAI_SERVICE_PASSWORD.
 //
 // The GUI starts `run` as its child; `ctl` is for scripts and development.
 // KYOKAI_PROFILE selects a separate development instance.

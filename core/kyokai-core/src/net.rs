@@ -553,79 +553,19 @@ impl Network {
     /// joined network, or with the one at `address` (an IP address or domain
     /// name, with or without a port), which must prove to be that device.
     /// Returns: the session's id at once; its progress shows in the status.
-    /// Notes: every route that announces the Device ID is a candidate (up to
-    /// MAX_CANDIDATES in each network), direct paths first; the handshake
-    /// decides which one is the device. A session by address needs no
-    /// network.
-    pub fn connect(
-        &self,
-        device_id: &str,
-        address: Option<String>,
-        password: zeroize::Zeroizing<String>,
-        want: Vec<Permission>,
-        remember: session::Remember,
-    ) -> Result<u64, String> {
-        let route = match address {
-            Some(address) => {
-                split_address(&address)?;
-                Route::Address(address)
-            }
-            None if running(&self.nodes).is_empty() => {
-                return Err("not connected to a network".into());
-            }
-            None => Route::Network(self.nodes.clone()),
-        };
-        let (id, stop) = session::begin(&self.ctx, device_id, remember);
-        if let Route::Address(address) = &route {
-            session::dials_address(&self.ctx, id, address);
-        }
-        let ctx = self.ctx.clone();
-        let device_id = device_id.to_owned();
-        self.rt.spawn(async move {
-            let mut resume: Option<zeroize::Zeroizing<String>> = None;
-            let mut lost_at = None;
-            loop {
-                if resume.is_some() {
-                    session::reconnecting(&ctx, id);
-                    // Between attempts a local stop ends the session at once.
-                    tokio::select! {
-                        _ = stop.notified() => return session::give_up(&ctx, id, session::Failure::Broken),
-                        _ = tokio::time::sleep(RESUME_RETRY) => {}
-                    }
-                }
-                let resume_with = resume.take();
-                let dialed = match &route {
-                    // The networks joined now: a resumed session may go
-                    // through another one.
-                    Route::Network(nodes) => dial(&running(nodes), &ctx, id, &stop, &device_id, &password, &want, resume_with).await,
-                    Route::Address(address) => match dial_address(address).await {
-                        Ok(stream) => Dialed::Outcome(
-                            session::connect(ctx.clone(), id, stop.clone(), stream, device_id.clone(), password.clone(), want.clone(), resume_with).await,
-                        ),
-                        Err(_) => Dialed::Nothing(session::Failure::Unreachable, resume_with),
-                    },
-                };
-                let (failure, connected) = match dialed {
-                    Dialed::Outcome(session::Outcome::Done) => return,
-                    Dialed::Outcome(session::Outcome::Lost { token, connected }) => {
-                        resume = Some(token);
-                        (session::Failure::Broken, connected)
-                    }
-                    Dialed::Outcome(session::Outcome::WrongDevice) => (session::Failure::WrongDevice, false),
-                    Dialed::Nothing(f, token) => {
-                        resume = token;
-                        (f, false)
-                    }
-                };
-                // Keep resuming only while a token is held and the window lasts.
-                let (since, keep) = keep_resuming(lost_at, connected, std::time::Instant::now());
-                lost_at = Some(since);
-                if resume.is_none() || !keep {
-                    return session::give_up(&ctx, id, failure);
-                }
-            }
-        });
+    /// Notes: see `Dialer::start`.
+    pub fn connect(&self, ask: Ask) -> Result<u64, String> {
+        let (id, work) = self.dialer().start(ask)?;
+        self.rt.spawn(work);
         Ok(id)
+    }
+
+    /// What dials devices for the core's own connections (status watches).
+    pub fn dialer(&self) -> Dialer {
+        Dialer {
+            nodes: self.nodes.clone(),
+            ctx: self.ctx.clone(),
+        }
     }
 
     /// Starts or stops accepting sessions by address, as the host's user
@@ -1077,6 +1017,134 @@ fn keep_resuming(
         _ => now,
     };
     (since, now.duration_since(since) <= RESUME_FOR)
+}
+
+/// A session to start: with whom, how to reach it, the password (empty
+/// asks without one, or relies on a sign-in key), what to ask for, what to
+/// do with the password, and what the session carries.
+pub struct Ask {
+    pub device_id: String,
+    pub address: Option<String>,
+    pub password: zeroize::Zeroizing<String>,
+    pub want: Vec<Permission>,
+    pub remember: session::Remember,
+    pub kind: session::Kind,
+}
+
+/// Dials devices through the networks joined when it dials (a resumed
+/// session may go through another one) or by address.
+#[derive(Clone)]
+pub struct Dialer {
+    nodes: Nodes,
+    ctx: Arc<Ctx>,
+}
+
+impl Dialer {
+    /// Registers a session and returns the work that dials and runs it,
+    /// resuming a dropped one while its window lasts.
+    /// Returns: the session's id, and the work, which ends with the session
+    /// (its entry records how).
+    /// Notes: every route that announces the Device ID is a candidate (up to
+    /// MAX_CANDIDATES in each network), direct paths first; the handshake
+    /// decides which one is the device. A session by address needs no
+    /// network.
+    pub fn start(
+        &self,
+        ask: Ask,
+    ) -> Result<(u64, impl Future<Output = ()> + Send + 'static), String> {
+        let Ask {
+            device_id,
+            address,
+            password,
+            want,
+            remember,
+            kind,
+        } = ask;
+        let route = match address {
+            Some(address) => {
+                split_address(&address)?;
+                Route::Address(address)
+            }
+            None if running(&self.nodes).is_empty() => {
+                return Err("not connected to a network".into());
+            }
+            None => Route::Network(self.nodes.clone()),
+        };
+        let (id, stop) = session::begin_as(&self.ctx, &device_id, remember, kind);
+        if let Route::Address(address) = &route {
+            session::dials_address(&self.ctx, id, address);
+        }
+        let ctx = self.ctx.clone();
+        let work = async move {
+            let mut resume: Option<zeroize::Zeroizing<String>> = None;
+            let mut lost_at = None;
+            loop {
+                if resume.is_some() {
+                    session::reconnecting(&ctx, id);
+                    // Between attempts a local stop ends the session at once.
+                    tokio::select! {
+                        _ = stop.notified() => return session::give_up(&ctx, id, session::Failure::Broken),
+                        _ = tokio::time::sleep(RESUME_RETRY) => {}
+                    }
+                }
+                let resume_with = resume.take();
+                let dialed = match &route {
+                    // The networks joined now: a resumed session may go
+                    // through another one.
+                    Route::Network(nodes) => {
+                        dial(
+                            &running(nodes),
+                            &ctx,
+                            id,
+                            &stop,
+                            &device_id,
+                            &password,
+                            &want,
+                            resume_with,
+                        )
+                        .await
+                    }
+                    Route::Address(address) => match dial_address(address).await {
+                        Ok(stream) => Dialed::Outcome(
+                            session::connect(
+                                ctx.clone(),
+                                id,
+                                stop.clone(),
+                                stream,
+                                device_id.clone(),
+                                password.clone(),
+                                want.clone(),
+                                resume_with,
+                            )
+                            .await,
+                        ),
+                        Err(_) => Dialed::Nothing(session::Failure::Unreachable, resume_with),
+                    },
+                };
+                let (failure, connected) = match dialed {
+                    Dialed::Outcome(session::Outcome::Done) => return,
+                    Dialed::Outcome(session::Outcome::Lost { token, connected }) => {
+                        resume = Some(token);
+                        (session::Failure::Broken, connected)
+                    }
+                    Dialed::Outcome(session::Outcome::WrongDevice) => {
+                        (session::Failure::WrongDevice, false)
+                    }
+                    Dialed::Nothing(f, token) => {
+                        resume = token;
+                        (f, false)
+                    }
+                };
+                // Keep resuming only while a token is held and the window lasts.
+                let (since, keep) = keep_resuming(lost_at, connected, std::time::Instant::now());
+                lost_at = Some(since);
+                if resume.is_none() || !keep {
+                    return session::give_up(&ctx, id, failure);
+                }
+            }
+        };
+        Ok((id, work))
+    }
 }
 
 /// What one round of dialing a Device ID came to.

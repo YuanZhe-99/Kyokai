@@ -23,7 +23,7 @@ static key per session and prove their device identity by signing it.
 |---|---|---|---|
 | 1 | controller → host | `e` | none |
 | 2 | host → controller | `e, ee, s, es` | `host_hello`: protocol, product version, source URL, device key, signature |
-| 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests (or none, with the controller's description `about`, to ask without a password), a resume token when resuming, and proofs with sign-in keys (see Key login) |
+| 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests (or none, with the controller's description `about`, to ask without a password), a resume token when resuming, proofs with sign-in keys (see Key login), and the service of a tunnel (see Tunnels) |
 
 The signature is Ed25519 by the device key over `kyokai/noise-static/v1` followed by the sender's
 Noise static public key. To learn whom an address reaches, the controller sends frame 1, reads
@@ -44,7 +44,7 @@ the controller sends one credential request per slot, both from the password the
 |---|---|---|
 | 4 | host → controller | `challenge`: one credential response per slot; an unset slot answers with a fake record, so a controller cannot tell which slots exist |
 | 5 | controller → host | `login`: the slot whose response the password opened and its credential finalization with the controller's description (`about`: name, maker, model, system), or no slot when neither opened |
-| 6 | host → controller | `verdict`: accepted with the granted permissions, a resume token, the host's description (`about`) and how the controller got in (`via`: `key` with the admitting `key`, `password`, `confirmation` or `resume`; absent from 0.4.0), or refused with a reason name (`password`, `denied`, `timeout`, `busy`, `rate-limited`, `absent`: nobody can confirm) |
+| 6 | host → controller | `verdict`: accepted with the granted permissions, a resume token, the host's description (`about`) and how the controller got in (`via`: `key` with the admitting `key`, `password`, `confirmation` or `resume`; absent from 0.4.0), or refused with a reason name (`password`, `denied`, `timeout`, `busy`, `rate-limited`, `absent`: nobody can confirm, `service-down`: a tunnel's service did not answer) |
 
 A failed `login` counts as one failure ([identity-and-access.md](identity-and-access.md)). After a
 correct password the host answers at once when the request is within its password grants, and
@@ -133,6 +133,21 @@ as plaintexts that start with byte `0x03` and the offer's id (u64, big-endian), 
 file of the offer in its order, each exactly its `size`; a newer offer replaces an older one. The host sends video only while the
 controller may view the screen: its screen in the codec chosen from `codecs`, or the 320×180 raw RGBA test pattern (codec
 `raw-rgba`) on a host that cannot capture.
+
+## Tunnels
+
+A session may carry a tunnel to one of the host's own services instead of the desktop
+([remote-services.md](remote-services.md)). To a host that announced `tunnel` the controller names
+the service in `client_hello` (`tunnel`: `ssh`, `rdp` or `vnc`) and asks for its permission alone
+(`use-ssh`, `use-rdp` or `use-vnc`); a controller never sends it to a host that did not announce
+`tunnel`, and stops after frame 2 instead (`unsupported`). The host admits it like any permission,
+then connects to its service on its loopback (127.0.0.1, then ::1) and sends the accepting verdict
+only once that connection is open; when the service does not answer within 3 seconds it refuses
+with `service-down`. A tunnel's verdict carries no resume token. After it the bytes travel as
+plaintexts that start with byte `0x05`, each followed by up to one frame's worth of the stream, in
+order, both ways, besides `ping`, `pong` and `bye`; there is no video, input or other message. A
+side whose service or client ends sends `bye` after the bytes it read, and the other side ends
+too. A tunnel with no frame from its peer for 60 seconds is closed.
 
 ## AI tasks
 

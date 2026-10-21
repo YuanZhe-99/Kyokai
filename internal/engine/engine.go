@@ -542,6 +542,9 @@ const mediaPoll = 500 * time.Millisecond
 // packets from the core (video) go to the GUI, packets from the GUI
 // (control messages) go to the core, until either side ends.
 func (h *handler) Media(ctx context.Context, req localapi.Request, open func() io.ReadWriter) localapi.Response {
+	if req.Type == localapi.RequestTunnelOpen {
+		return h.tunnel(ctx, req, open)
+	}
 	st, err := h.status()
 	if err != nil {
 		return localapi.Fail(localapi.CodeInternal, "%v", err)
@@ -552,7 +555,14 @@ func (h *handler) Media(ctx context.Context, req localapi.Request, open func() i
 	if !live {
 		return localapi.Fail(localapi.CodeInvalid, "no live session %d", req.ID)
 	}
-	rw := open()
+	h.pump(ctx, req.ID, open())
+	return localapi.Response{OK: true}
+}
+
+// pump carries a controller session's packets between the core and a
+// client until either ends: the core's (video, a tunnel's bytes) to the
+// client, the client's (control messages, a tunnel's bytes) to the core.
+func (h *handler) pump(ctx context.Context, session uint64, rw io.ReadWriter) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
@@ -564,25 +574,24 @@ func (h *handler) Media(ctx context.Context, req localapi.Request, open func() i
 				return
 			}
 			buf = p
-			if errors.Is(h.lib.MediaWrite(req.ID, p), core.ErrMediaEnded) {
+			if errors.Is(h.lib.MediaWrite(session, p), core.ErrMediaEnded) {
 				return
 			}
 		}
 	}()
 	buf := make([]byte, localapi.MaxPacket)
 	for ctx.Err() == nil {
-		n, err := h.lib.MediaRead(req.ID, buf, mediaPoll)
+		n, err := h.lib.MediaRead(session, buf, mediaPoll)
 		switch {
 		case errors.Is(err, core.ErrMediaTimeout), errors.Is(err, core.ErrMediaTooBig):
 			continue
 		case err != nil:
-			return localapi.Response{OK: true}
+			return
 		}
 		if localapi.WritePacket(rw, buf[:n]) != nil {
-			return localapi.Response{OK: true}
+			return
 		}
 	}
-	return localapi.Response{OK: true}
 }
 
 // aiSettings runs a core method that answers the AI settings.

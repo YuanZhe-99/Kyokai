@@ -57,6 +57,8 @@ pub mod packet {
     /// for what this side sent, "host" for what the host's side put here;
     /// `at`: Unix milliseconds).
     pub const CLIPBOARD: u8 = 13;
+    /// Either way, for a tunnel's session: its bytes (doc/en-us/remote-services.md).
+    pub const TUNNEL: u8 = 14;
 }
 
 /// What a video stream carries, sent before its first frame.

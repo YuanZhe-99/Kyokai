@@ -22,7 +22,8 @@ store under `saved_password.<Device ID>`, encrypted like every other secret and 
 returned: the status says only which recent hosts have one (`saved_password`, and `saved` with a
 flag per kind of sign-in kept). An empty password field then uses it. When the host refuses a saved
 password (it changed), the controller forgets it. What else is kept for a host — the sign-in key
-it admitted (see Keys) — lives under `saved.<Device ID>`; Forget password on the recent row
+it admitted (see Keys) and its services' sign-ins ([remote-services.md](remote-services.md)) —
+lives under `saved.<Device ID>`; Forget password on the recent row
 (`password.forget_saved`) and removing the device forget both at once.
 
 ## Keys
@@ -62,7 +63,8 @@ login").
 
 `view-screen`, `control-input`, `run-ai-task`, `approve-ai-action`, `clipboard`, `files`
 (copying files through the clipboard; `clipboard` does not include it), `hear-sound` (the host's
-sound; `view-screen` does not include it). A controller asks
+sound; `view-screen` does not include it), and `use-ssh`, `use-rdp` and `use-vnc` (a tunnel to the
+host's own SSH, Remote Desktop or VNC, [remote-services.md](remote-services.md)). A controller asks
 for a set; the host's user grants a subset; none implies another. Network membership grants none of
 them. `run-ai-task` lets a controller start AI tasks on the host, which run with the host's key, and
 steer the host's task whoever started it (the host keeps one AI record for every controller);
@@ -93,7 +95,8 @@ one switch per permission, kept in the secrets store: by default `view-screen`, 
 ## Host confirmation
 
 The host's user sees the controller's friendly name and Device ID, whether its key is known, whether
-it gave no password, the name of the sign-in key it proved, and the permissions it asks for, and allows (choosing permissions) or denies
+it gave no password, the name of the sign-in key it proved, the permissions it asks for and a
+tunnel's service, and allows (choosing permissions) or denies
 within 60 seconds. Silence denies. At most one confirmation is open per controller key and 4 in
 total; further attempts are answered `busy`.
 
@@ -175,6 +178,7 @@ served.
 | All failed logins | more than 20 in a minute makes every unpinned controller wait 30 seconds; pinned keys are exempt, so guessing cannot lock the real user out |
 | Incoming connections in their handshake or login | 16 at once; more are dropped |
 | Connected sessions on a host | 4 at once (each may hold a capture and an encoder); more are refused as busy |
+| Tunnels on a host | 8 at once, besides the desktop sessions; more are refused as busy |
 | Host confirmations waiting | 4; more are refused as busy |
 
 Limits are counted per source virtual address, since keys cost nothing to create before they are

@@ -44,7 +44,7 @@ pub mod feature {
 }
 
 /// The features this build announces.
-pub const FEATURES: &[&str] = &[feature::KEY_LOGIN];
+pub const FEATURES: &[&str] = &[feature::KEY_LOGIN, feature::TUNNEL];
 
 /// What the other side of a session announced: its features, none for
 /// 0.4.0 and older.
@@ -80,12 +80,12 @@ const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
 /// Shown to controllers (AGPL-3.0 section 13).
 pub const SOURCE_URL: &str = "https://github.com/YuanZhe-99/Kyokai";
-const MAX_FRAME: usize = 65_535;
+pub(crate) const MAX_FRAME: usize = 65_535;
 /// Noise adds a 16-byte tag to every message.
-const MAX_PLAINTEXT: usize = MAX_FRAME - 16;
+pub(crate) const MAX_PLAINTEXT: usize = MAX_FRAME - 16;
 /// How long one handshake step may take.
 const STEP_TIMEOUT: Duration = Duration::from_secs(15);
-const PING_EVERY: Duration = Duration::from_secs(5);
+pub(crate) const PING_EVERY: Duration = Duration::from_secs(5);
 const IDLE_LIMIT: Duration = Duration::from_secs(15);
 /// How long a session that says goodbye waits for the peer to close.
 const BYE_WAIT: Duration = Duration::from_millis(500);
@@ -133,6 +133,10 @@ struct ClientHello {
     /// Proofs with sign-in keys, only to a host announcing `key-login`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     keys: Vec<crate::keys::Proof>,
+    /// A tunnel to this service instead of the desktop, only to a host
+    /// announcing `tunnel`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tunnel: Option<crate::tunnel::Service>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -536,6 +540,9 @@ pub enum Failure {
     Incompatible,
     /// The connection broke or a message was malformed.
     Broken,
+    /// The host announced no support for what was asked (a tunnel, a
+    /// status watch): nothing was asked of it.
+    Unsupported,
 }
 
 impl From<std::io::Error> for Failure {
@@ -571,11 +578,33 @@ pub enum Role {
     Controller,
 }
 
+/// What a session carries.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Kind {
+    /// The desktop: video, input, sound, the clipboard and AI tasks.
+    #[default]
+    Desktop,
+    /// A tunnel to the host's own service (doc/en-us/remote-services.md).
+    Tunnel(crate::tunnel::Service),
+}
+
+impl Kind {
+    /// A tunnel's service.
+    fn service(self) -> Option<crate::tunnel::Service> {
+        match self {
+            Kind::Tunnel(s) => Some(s),
+            Kind::Desktop => None,
+        }
+    }
+}
+
 /// One session as the interface sees it.
 #[derive(Clone)]
 struct Entry {
     id: u64,
     role: Role,
+    /// What it carries.
+    kind: Kind,
     device_id: String,
     state: State,
     failure: Option<Failure>,
@@ -603,6 +632,10 @@ struct Entry {
     /// Removed from the interface's list (Home's Remove): left out of the
     /// status, and dropped once it ends.
     removed: bool,
+    /// Controller side of a tunnel: the GUI's ends, and the session's,
+    /// which it takes once connected.
+    tunnel: Option<crate::tunnel::Ends>,
+    wire: Arc<Mutex<Option<crate::tunnel::Wire>>>,
 }
 
 /// A viewer's latest quality and codec messages: sent again when its
@@ -718,6 +751,7 @@ impl Sessions {
         s.1.push(Entry {
             id,
             role,
+            kind: Kind::Desktop,
             device_id: device_id.to_owned(),
             state: State::Connecting,
             failure: None,
@@ -735,8 +769,40 @@ impl Sessions {
             remember: Remember::default(),
             address: String::new(),
             removed: false,
+            tunnel: None,
+            wire: Arc::default(),
         });
         (id, stop)
+    }
+
+    /// A controller tunnel's ends for the GUI.
+    pub fn tunnel(&self, id: u64) -> Option<crate::tunnel::Ends> {
+        let s = self.inner.lock().ok()?;
+        s.1.iter()
+            .find(|e| e.id == id && e.role == Role::Controller)?
+            .tunnel
+            .clone()
+    }
+
+    /// Takes a controller tunnel's session ends, once.
+    fn take_wire(&self, id: u64) -> Option<crate::tunnel::Wire> {
+        let s = self.inner.lock().ok()?;
+        let e = s.1.iter().find(|e| e.id == id)?;
+        e.wire.lock().ok()?.take()
+    }
+
+    /// How many host sessions of a kind are connected (`desktop`: desktop
+    /// sessions, else tunnels).
+    fn connected(&self, desktop: bool) -> usize {
+        self.inner.lock().map_or(usize::MAX, |s| {
+            s.1.iter()
+                .filter(|e| {
+                    e.role == Role::Host
+                        && e.state == State::Connected
+                        && (e.kind == Kind::Desktop) == desktop
+                })
+                .count()
+        })
     }
 
     fn update(&self, id: u64, f: impl FnOnce(&mut Entry)) {
@@ -759,9 +825,38 @@ impl Sessions {
         }
     }
 
+    /// Waits until a session is connected or has ended, at most `wait`
+    /// (`tunnel.wait`; called outside any runtime).
+    /// Returns: `{state, failure}` as it then is, `connecting` or
+    /// `confirming` when the wait ran out.
+    pub fn wait(&self, id: u64, wait: Duration) -> Value {
+        let until = Instant::now() + wait;
+        loop {
+            let now = self.inner.lock().ok().and_then(|s| {
+                s.1.iter()
+                    .find(|e| e.id == id)
+                    .map(|e| (e.state, e.failure))
+            });
+            match now {
+                None => return json!({"state": State::Closed}),
+                Some((state, failure))
+                    if !matches!(state, State::Connecting | State::Confirming)
+                        || Instant::now() >= until =>
+                {
+                    return json!({"state": state, "failure": failure});
+                }
+                _ => std::thread::sleep(Duration::from_millis(50)),
+            }
+        }
+    }
+
     fn end(&self, id: u64, failure: Option<Failure>) {
         self.update(id, |e| {
             e.media.close();
+            // A tunnel that never connected lets go of its GUI's reads.
+            if let Ok(mut w) = e.wire.lock() {
+                w.take();
+            }
             e.state = if failure.is_some() {
                 State::Failed
             } else {
@@ -790,13 +885,10 @@ impl Sessions {
         })
     }
 
-    /// How many host sessions are connected.
+    /// How many host desktop sessions are connected (tunnels have a limit
+    /// of their own).
     fn connected_hosts(&self) -> usize {
-        self.inner.lock().map_or(MAX_HOST_SESSIONS, |s| {
-            s.1.iter()
-                .filter(|e| e.role == Role::Host && e.state == State::Connected)
-                .count()
-        })
+        self.connected(true)
     }
 
     /// Ends a live host session that a resumed connection replaces, at once
@@ -905,6 +997,7 @@ impl Sessions {
                     "peer_version": e.peer_version,
                     "peer_source": e.peer_source,
                     "peer": e.peer,
+                    "service": e.kind.service(),
                 })
             })
             .collect()
@@ -957,14 +1050,17 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Channel<S> {
     }
 }
 
-async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Vec<u8>, Failure> {
+pub(crate) async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Vec<u8>, Failure> {
     let len = r.read_u16().await? as usize;
     let mut frame = vec![0; len];
     r.read_exact(&mut frame).await?;
     Ok(frame)
 }
 
-async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, frame: &[u8]) -> Result<(), Failure> {
+pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(
+    w: &mut W,
+    frame: &[u8],
+) -> Result<(), Failure> {
     let len = u16::try_from(frame.len()).map_err(|_| Failure::Broken)?;
     w.write_u16(len).await?;
     w.write_all(frame).await?;
@@ -1088,7 +1184,9 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let device_id = identity::device_id(&client_key);
     let (id, stop) = ctx.sessions.open(Role::Host, &device_id);
     let cut = ctx.sessions.cut(id);
+    let kind = client.tunnel.map_or(Kind::Desktop, Kind::Tunnel);
     ctx.sessions.update(id, |e| {
+        e.kind = kind;
         e.peer_version = client.version.clone();
         e.features = Peer {
             features: client.features.clone(),
@@ -1105,11 +1203,33 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         },
         from,
         id,
+        kind,
     )
     .await;
     drop(incoming);
     match login {
-        Ok((granted, peer)) => {
+        // A tunnel carries the service's bytes until either side ends; the
+        // host stays awake meanwhile.
+        Ok(Admitted {
+            granted,
+            peer,
+            service: Some(service),
+        }) => {
+            ctx.sessions.update(id, |e| {
+                e.peer = peer;
+                e.state = State::Connected;
+                e.granted = granted;
+            });
+            let _awake = crate::power::keep_awake();
+            let (from_service, to_service, reading) = crate::tunnel::bridge(service);
+            let Channel { stream, noise, .. } = ch;
+            let failure = crate::tunnel::relay(stream, noise, &stop, from_service, to_service)
+                .await
+                .err();
+            reading.abort();
+            ctx.sessions.end(id, failure);
+        }
+        Ok(Admitted { granted, peer, .. }) => {
             ctx.sessions.update(id, |e| e.peer = peer);
             let video = granted.contains(&Permission::ViewScreen);
             let input = granted.contains(&Permission::ControlInput);
@@ -1167,12 +1287,23 @@ enum Proven {
     Key(crate::keys::Authorized),
 }
 
+/// A controller the host let in.
+struct Admitted {
+    granted: Vec<Permission>,
+    /// What it said about itself.
+    peer: About,
+    /// A tunnel's connection to the host's own service.
+    service: Option<tokio::net::TcpStream>,
+}
+
 /// The host's side of login and confirmation.
-/// Returns: the granted permissions and the controller's description,
-/// after telling the controller.
+/// Returns: the controller as admitted, after telling it.
 /// Notes: a correct password or an authorized key admits at once within
 /// the host's password grants (or an unattended grant); anything more, and
-/// a controller that asks without a password, waits for the host's user.
+/// a controller that asks without a password, waits for the host's user. A
+/// tunnel asks for its service's permission alone, is admitted like any
+/// permission, and only once its service answers; it is never resumed.
+#[allow(clippy::too_many_arguments)]
 async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     ctx: &Ctx,
     ch: &mut Channel<S>,
@@ -1181,7 +1312,8 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     hs: Handshake<'_>,
     from: Source,
     id: u64,
-) -> Result<(Vec<Permission>, About), Failure> {
+    kind: Kind,
+) -> Result<Admitted, Failure> {
     let key_b64 = STANDARD.encode(client_key);
     let pinned = ctx.access.trusted().contains_key(&key_b64);
     let refuse = |reason| Verdict {
@@ -1206,6 +1338,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     // yet: it would hold its capture and the hardware encoder until its idle
     // limit. A resume takes that session's place, so it is never busy.
     if let Some(token) = &client.resume
+        && kind == Kind::Desktop
         && let Some((granted, old)) = ctx.access.take_resume(token, &key_b64)
     {
         ctx.sessions.supersede(old);
@@ -1227,9 +1360,17 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             .remove(&key_b64)
             .map(|t| t.about)
             .unwrap_or_default();
-        return Ok((granted, peer));
+        return Ok(Admitted {
+            granted,
+            peer,
+            service: None,
+        });
     }
-    if ctx.sessions.connected_hosts() >= MAX_HOST_SESSIONS {
+    let busy = match kind {
+        Kind::Desktop => ctx.sessions.connected_hosts() >= MAX_HOST_SESSIONS,
+        Kind::Tunnel(_) => ctx.sessions.connected(false) >= crate::tunnel::MAX_TUNNELS,
+    };
+    if busy {
         let _ = ch.send(&refuse(Refusal::Busy)).await;
         return Err(Failure::Refused(Refusal::Busy));
     }
@@ -1285,7 +1426,11 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     };
     let peer = about.unwrap_or_default().clean();
     let device_id = identity::device_id(client_key);
-    let mut want = client.want.clone();
+    // A tunnel asks for its service's permission, whatever it named.
+    let mut want = match kind {
+        Kind::Tunnel(s) => vec![s.permission()],
+        Kind::Desktop => client.want.clone(),
+    };
     want.sort();
     want.dedup();
     // Nobody at the computer (Background service): the permanent password
@@ -1324,6 +1469,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
                 &peer,
                 proven.is_some(),
                 key_name,
+                kind.service(),
             ) {
                 Ok(v) => v,
                 Err(reason) => {
@@ -1351,19 +1497,41 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             }
         }
     };
+    // A tunnel goes ahead only with its permission and once its service
+    // answers.
+    let service = match kind {
+        Kind::Tunnel(s) => {
+            if !granted.contains(&s.permission()) {
+                let _ = ch.send(&refuse(Refusal::Denied)).await;
+                return Err(Failure::Refused(Refusal::Denied));
+            }
+            match crate::tunnel::reach(s).await {
+                Some(stream) => Some(stream),
+                None => {
+                    let _ = ch.send(&refuse(Refusal::ServiceDown)).await;
+                    return Err(Failure::Refused(Refusal::ServiceDown));
+                }
+            }
+        }
+        Kind::Desktop => None,
+    };
     let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
-    let resume = ctx.access.issue_resume(&key_b64, &granted, id);
+    let resume = (kind == Kind::Desktop).then(|| ctx.access.issue_resume(&key_b64, &granted, id));
     step(ch.send(&Verdict {
         accepted: true,
         granted: granted.clone(),
         reason: None,
-        resume: Some(resume),
+        resume,
         about: Some(ctx.about()),
         via: Some(via),
         key: admitting_key,
     }))
     .await?;
-    Ok((granted, peer))
+    Ok(Admitted {
+        granted,
+        peer,
+        service,
+    })
 }
 
 /// The base64 Ed25519 key of an authorized key's line, as a proof names it.
@@ -1452,11 +1620,17 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         {
             return Err(Failure::KeyChanged);
         }
+        let mut kind = Kind::Desktop;
         ctx.sessions.update(id, |e| {
             e.peer_version = host.version.clone();
             e.peer_source = host.source.clone();
             e.features = peer.clone();
+            kind = e.kind;
         });
+        // A host that announced no tunnels never gets asked for one.
+        if matches!(kind, Kind::Tunnel(_)) && !peer.has(feature::TUNNEL) {
+            return Err(Failure::Unsupported);
+        }
         // 3: -> s, se + client_hello with both credential requests, or
         // none (and this device's description) to ask without a password
         let half = if password.is_empty() {
@@ -1486,7 +1660,10 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             version: ctx.version.clone(),
             device_key: STANDARD.encode(ctx.identity.public_key()),
             signature: sign_static(&ctx.identity, &my_static),
-            want: crate::access::wire_want(&want, &peer),
+            want: match kind {
+                Kind::Tunnel(s) => vec![s.permission()],
+                Kind::Desktop => crate::access::wire_want(&want, &peer),
+            },
             // Its description goes with a key or without a password, as
             // the host may admit or ask before any login.
             about: (half.is_none() || !keys.is_empty()).then(|| ctx.about()),
@@ -1494,6 +1671,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             resume: resume.as_ref().map(|t| t.to_string()),
             features: our_features(),
             keys,
+            tunnel: kind.service(),
         };
         let offered_keys = !hello.keys.is_empty();
         let payload = serde_json::to_vec(&hello).map_err(|_| Failure::Broken)?;
@@ -1586,11 +1764,28 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             let _ = ctx.access.save_password(&device_id, &password);
         }
         ctx.sessions.update(id, |e| e.peer = peer);
-        Ok((ch, verdict.granted, verdict.resume))
+        Ok((ch, verdict.granted, verdict.resume, kind))
     }
     .await;
     match result {
-        Ok((ch, granted, token)) => {
+        // A tunnel carries the GUI's bytes until either side ends; it is
+        // never resumed.
+        Ok((ch, granted, _, Kind::Tunnel(_))) => {
+            ctx.sessions.update(id, |e| {
+                e.state = State::Connected;
+                e.granted = granted;
+            });
+            let result = match ctx.sessions.take_wire(id) {
+                Some(wire) => {
+                    let Channel { stream, noise, .. } = ch;
+                    crate::tunnel::relay(stream, noise, &stop, wire.up, wire.down).await
+                }
+                None => Err(Failure::Broken),
+            };
+            ctx.sessions.end(id, result.err());
+            Outcome::Done
+        }
+        Ok((ch, granted, token, Kind::Desktop)) => {
             let clipboard = shared(&ctx, &granted);
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
@@ -1654,11 +1849,25 @@ pub fn reconnecting(ctx: &Ctx, id: u64) {
     ctx.sessions.update(id, |e| e.state = State::Reconnecting);
 }
 
-/// Registers an outgoing session before its connection is opened, so the
-/// interface sees it at once.
+/// `begin_as` for a desktop session, as the tests start one.
+#[cfg(test)]
 pub fn begin(ctx: &Ctx, device_id: &str, remember: Remember) -> (u64, Arc<Notify>) {
+    begin_as(ctx, device_id, remember, Kind::Desktop)
+}
+
+/// Registers an outgoing session before its connection is opened, so the
+/// interface sees it at once; a tunnel's gets its pipes.
+pub fn begin_as(ctx: &Ctx, device_id: &str, remember: Remember, kind: Kind) -> (u64, Arc<Notify>) {
     let (id, stop) = ctx.sessions.open(Role::Controller, device_id);
-    ctx.sessions.update(id, |e| e.remember = remember);
+    let pipes = matches!(kind, Kind::Tunnel(_)).then(crate::tunnel::pipe);
+    ctx.sessions.update(id, |e| {
+        e.remember = remember;
+        e.kind = kind;
+        if let Some((ends, wire)) = pipes {
+            e.tunnel = Some(ends);
+            e.wire = Arc::new(Mutex::new(Some(wire)));
+        }
+    });
     (id, stop)
 }
 
@@ -2828,6 +3037,7 @@ mod compat_tests {
                 key: "k".into(),
                 signature: "s".into(),
             }],
+            tunnel: Some(crate::tunnel::Service::Ssh),
         };
         let old: legacy::ClientHello =
             serde_json::from_value(serde_json::to_value(&client).unwrap()).unwrap();
@@ -5207,5 +5417,237 @@ mod login_tests {
         let new = hello_to(&[feature::KEY_LOGIN]).await;
         assert_eq!(new["keys"].as_array().map(Vec::len), Some(1), "{new}");
         assert!(new["about"].is_object(), "a key may admit before any login");
+    }
+}
+
+/// Tunnels to a host's own services (doc/en-us/remote-services.md).
+#[cfg(test)]
+mod tunnel_tests {
+    use super::tests::{device, session};
+    use super::*;
+    use crate::tunnel::Service;
+    use crate::tunnel::tests::serve_on;
+
+    /// A listener standing in for a service on this computer, which `reach`
+    /// dials for `s`.
+    async fn service(s: Service) -> tokio::net::TcpListener {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        serve_on(s, l.local_addr().unwrap().port());
+        l
+    }
+
+    /// Lets a host's temporary password admit within `grants`.
+    fn host_with(grants: Vec<Permission>) -> Arc<Ctx> {
+        let host = device("1.0.0");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        host.access.set_password_grants(grants).unwrap();
+        host
+    }
+
+    /// Opens a tunnel to `s` from the controller over an in-memory pipe and
+    /// lets `decide` answer the host's confirmation.
+    /// Returns: the controller's session id once it settled, and the
+    /// confirmation the host showed, if any.
+    async fn open(
+        host: &Arc<Ctx>,
+        controller: &Arc<Ctx>,
+        s: Service,
+        password: &str,
+        decide: Option<Vec<Permission>>,
+    ) -> (u64, Option<Value>) {
+        let (a, b) = tokio::io::duplex(1 << 16);
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.2".parse().unwrap(),
+        };
+        tokio::spawn(serve(host.clone(), b, from));
+        let dialed = host.identity.device_id();
+        let (id, stop) = begin_as(controller, &dialed, Remember::default(), Kind::Tunnel(s));
+        let password = zeroize::Zeroizing::new(password.to_owned());
+        let want = vec![s.permission()];
+        tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop,
+            a,
+            dialed,
+            password,
+            want,
+            None,
+        ));
+        let mut asked = None;
+        for _ in 0..400 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            if asked.is_none()
+                && let Some(q) = host
+                    .access
+                    .pending()
+                    .as_array()
+                    .and_then(|a| a.first().cloned())
+            {
+                host.access
+                    .decide(q["id"].as_u64().unwrap(), decide.clone())
+                    .unwrap();
+                asked = Some(q);
+            }
+            let st = session(controller, id)["state"].clone();
+            if st != "connecting" && st != "confirming" {
+                break;
+            }
+        }
+        (id, asked)
+    }
+
+    /// Reads the host's next bytes through the GUI's end of a tunnel.
+    async fn next(ends: &crate::tunnel::Ends) -> Option<Vec<u8>> {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            ends.down.lock().await.recv().await
+        })
+        .await
+        .expect("bytes or the end in time")
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_tunnel_carries_bytes_and_ends_with_its_service() {
+        let listener = service(Service::Ssh).await;
+        let served = tokio::spawn(async move {
+            let (mut s, _) = listener.accept().await.unwrap();
+            s.write_all(b"SSH-2.0-test\r\n").await.unwrap();
+            let mut hello = [0u8; 5];
+            s.read_exact(&mut hello).await.unwrap();
+            s.write_all(&hello.to_ascii_uppercase()).await.unwrap();
+            // The service ends the connection.
+        });
+        let host = host_with(vec![Permission::UseSsh]);
+        let controller = device("1.0.1");
+        let (id, asked) = open(&host, &controller, Service::Ssh, "k7mq2xpa", None).await;
+        assert!(asked.is_none(), "within the grants: nobody is asked");
+        let s = session(&controller, id);
+        assert_eq!(s["state"], "connected", "{s}");
+        assert_eq!(s["service"], "ssh");
+        assert_eq!(s["granted"], json!(["use-ssh"]));
+        // The host lists it with its service, apart from desktop sessions.
+        let listed = host.sessions.list();
+        assert_eq!(listed[0]["service"], "ssh", "{listed}");
+        assert_eq!(host.sessions.connected_hosts(), 0, "not a desktop session");
+        assert_eq!(host.sessions.connected(false), 1);
+        let ends = controller.sessions.tunnel(id).unwrap();
+        assert_eq!(next(&ends).await.unwrap(), b"SSH-2.0-test\r\n");
+        ends.up.send(b"hello".to_vec()).await.unwrap();
+        assert_eq!(next(&ends).await.unwrap(), b"HELLO");
+        served.await.unwrap();
+        assert!(next(&ends).await.is_none(), "it ends with the service");
+        let until = Instant::now() + Duration::from_secs(5);
+        while session(&controller, id)["state"] == "connected" && Instant::now() < until {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(session(&controller, id)["state"], "closed");
+    }
+
+    /// A service's permission works like any other: outside the password
+    /// grants the host's user is asked, and with nobody there it is refused.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn outside_the_grants_the_host_user_is_asked() {
+        let listener = service(Service::Rdp).await;
+        // A service that keeps its connections open.
+        tokio::spawn(async move {
+            let mut open = Vec::new();
+            while let Ok((s, _)) = listener.accept().await {
+                open.push(s);
+            }
+        });
+        let host = host_with(vec![Permission::ViewScreen]);
+        let controller = device("1.0.1");
+        let rdp = Some(vec![Permission::UseRdp]);
+        let (id, asked) = open(&host, &controller, Service::Rdp, "k7mq2xpa", rdp).await;
+        let asked = asked.expect("the host's user is asked");
+        assert_eq!(asked["service"], "rdp");
+        assert_eq!(asked["want"], json!(["use-rdp"]));
+        assert_eq!(session(&controller, id)["granted"], json!(["use-rdp"]));
+        // Denied, or allowed without the service's permission: refused.
+        let (id, _) = open(&host, &controller, Service::Rdp, "k7mq2xpa", Some(vec![])).await;
+        assert_eq!(
+            session(&controller, id)["failure"],
+            json!({"refused": "denied"})
+        );
+        // Nobody at the computer: refused, the permanent password too.
+        host.access.set_serve(Serve::Unattended);
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_permanent(
+                host.access.secrets(),
+                Some("long-lived-pw"),
+                &host.identity.public_key(),
+            )
+            .unwrap();
+        let (id, _) = open(&host, &controller, Service::Rdp, "long-lived-pw", None).await;
+        assert_eq!(
+            session(&controller, id)["failure"],
+            json!({"refused": "absent"})
+        );
+        // Within the grants it goes unattended.
+        host.access
+            .set_password_grants(vec![Permission::UseRdp])
+            .unwrap();
+        let (id, _) = open(&host, &controller, Service::Rdp, "long-lived-pw", None).await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_service_that_is_down_is_refused_by_name() {
+        // A port nothing listens on.
+        drop(service(Service::Vnc).await);
+        let host = host_with(vec![Permission::UseVnc]);
+        let controller = device("1.0.1");
+        let (id, _) = open(&host, &controller, Service::Vnc, "k7mq2xpa", None).await;
+        assert_eq!(
+            session(&controller, id)["failure"],
+            json!({"refused": "service-down"})
+        );
+    }
+
+    /// A host that announced no tunnels never gets asked for one: the
+    /// controller stops after its hello, before frame 3.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn legacy_hosts_never_get_a_tunnel_request() {
+        let host = device("0.4.0");
+        let controller = device("1.0.1");
+        let dialed = host.identity.device_id();
+        let (a, mut b) = tokio::io::duplex(1 << 16);
+        let kind = Kind::Tunnel(Service::Ssh);
+        let (id, stop) = begin_as(&controller, &dialed, Remember::default(), kind);
+        let password = zeroize::Zeroizing::new("k7mq2xpa".to_owned());
+        let want = vec![Permission::UseSsh];
+        let c = controller.clone();
+        let dialing =
+            tokio::spawn(
+                async move { connect(c, id, stop, a, dialed, password, want, None).await },
+            );
+        let (mut hs, my_static) = noise(false).unwrap();
+        let mut buf = vec![0u8; MAX_FRAME];
+        let f = read_frame(&mut b).await.unwrap();
+        hs.read_message(&f, &mut buf).unwrap();
+        let hello = HostHello {
+            protocol: PROTOCOL,
+            version: "0.4.0".into(),
+            source: SOURCE_URL.into(),
+            device_key: STANDARD.encode(host.identity.public_key()),
+            signature: sign_static(&host.identity, &my_static),
+            features: Vec::new(),
+        };
+        let n = hs
+            .write_message(&serde_json::to_vec(&hello).unwrap(), &mut buf)
+            .unwrap();
+        write_frame(&mut b, &buf[..n]).await.unwrap();
+        assert!(matches!(dialing.await.unwrap(), Outcome::Done));
+        assert!(read_frame(&mut b).await.is_err(), "no frame 3");
+        assert_eq!(session(&controller, id)["failure"], "unsupported");
     }
 }
