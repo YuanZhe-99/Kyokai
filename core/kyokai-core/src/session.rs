@@ -90,6 +90,9 @@ pub(crate) const PING_EVERY: Duration = Duration::from_secs(5);
 pub(crate) const IDLE_LIMIT: Duration = Duration::from_secs(15);
 /// How long a session that says goodbye waits for the peer to close.
 const BYE_WAIT: Duration = Duration::from_millis(500);
+/// How long a host that refused a controller waits for its refusal to
+/// leave (and the controller to close) before it drops the connection.
+const REFUSAL_WAIT: Duration = Duration::from_secs(3);
 /// The QoS viewer id and display name of a session (one viewer, the primary
 /// display).
 const QOS_VIEWER: i32 = 1;
@@ -1305,6 +1308,20 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Channel<S> {
         step(write_frame(&mut self.stream, &self.buf[..n])).await
     }
 
+    /// Lets what was written reach the peer before the connection closes:
+    /// EasyTier's data plane drops what it has not sent when its socket is
+    /// dropped, and frames are never flushed as they are written. Waits
+    /// until the peer closed its end (it does once it read a refusal), or
+    /// REFUSAL_WAIT passed.
+    async fn linger(&mut self) {
+        let _ = tokio::time::timeout(REFUSAL_WAIT, async {
+            let _ = self.stream.flush().await;
+            let mut sink = [0u8; 512];
+            while matches!(self.stream.read(&mut sink).await, Ok(1..)) {}
+        })
+        .await;
+    }
+
     async fn recv<T: DeserializeOwned>(&mut self) -> Result<T, Failure> {
         let frame = read_frame(&mut self.stream).await?;
         let n = self.noise.read_message(&frame, &mut self.buf)?;
@@ -1554,6 +1571,10 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             ctx.sessions.end(id, failure);
         }
         Err(f) => {
+            // A refusal reaches the controller before the connection closes.
+            if matches!(f, Failure::Refused(_)) {
+                ch.linger().await;
+            }
             ctx.sessions.end(id, Some(f));
             if kind.hidden() {
                 ctx.sessions.forget(id);
@@ -6575,6 +6596,147 @@ mod watch_tests {
         assert_eq!(
             failure(&controller, id),
             Some(Failure::Refused(Refusal::Busy))
+        );
+    }
+}
+
+/// Refusals over a connection that loses what it has not sent when it
+/// closes, as EasyTier's data plane does.
+#[cfg(test)]
+mod refusal_tests {
+    use super::tests::{device, session};
+    use super::*;
+    use std::pin::Pin;
+    use std::task::{Context, Poll, Waker};
+
+    /// A real TCP connection whose writes leave a little later, on a task of
+    /// their own, and whose unsent bytes are lost when it is dropped; a
+    /// flush waits until they left.
+    struct Lossy {
+        rd: tokio::net::tcp::OwnedReadHalf,
+        tx: mpsc::UnboundedSender<Vec<u8>>,
+        pending: Arc<AtomicUsize>,
+        waker: Arc<Mutex<Option<Waker>>>,
+        sending: tokio::task::JoinHandle<()>,
+    }
+
+    impl Lossy {
+        fn new(stream: tokio::net::TcpStream) -> Lossy {
+            let (rd, mut wr) = stream.into_split();
+            let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
+            let pending = Arc::new(AtomicUsize::new(0));
+            let waker: Arc<Mutex<Option<Waker>>> = Arc::default();
+            let (left, wake) = (pending.clone(), waker.clone());
+            let sending = tokio::spawn(async move {
+                while let Some(bytes) = rx.recv().await {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    if wr.write_all(&bytes).await.is_err() {
+                        return;
+                    }
+                    if left.fetch_sub(bytes.len(), Ordering::SeqCst) == bytes.len()
+                        && let Some(w) = wake.lock().unwrap().take()
+                    {
+                        w.wake();
+                    }
+                }
+            });
+            Lossy {
+                rd,
+                tx,
+                pending,
+                waker,
+                sending,
+            }
+        }
+    }
+
+    impl Drop for Lossy {
+        fn drop(&mut self) {
+            // What has not left is lost with the socket.
+            self.sending.abort();
+        }
+    }
+
+    impl AsyncRead for Lossy {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.rd).poll_read(cx, buf)
+        }
+    }
+
+    impl AsyncWrite for Lossy {
+        fn poll_write(
+            self: Pin<&mut Self>,
+            _: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            self.pending.fetch_add(buf.len(), Ordering::SeqCst);
+            let _ = self.tx.send(buf.to_vec());
+            Poll::Ready(Ok(buf.len()))
+        }
+
+        fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            if self.pending.load(Ordering::SeqCst) == 0 {
+                return Poll::Ready(Ok(()));
+            }
+            *self.waker.lock().unwrap() = Some(cx.waker().clone());
+            if self.pending.load(Ordering::SeqCst) == 0 {
+                Poll::Ready(Ok(()))
+            } else {
+                Poll::Pending
+            }
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            self.poll_flush(cx)
+        }
+    }
+
+    /// Regression: the host dropped the connection right after writing its
+    /// refusal, and over EasyTier the refusal never left: the controller's
+    /// tunnel ended `broken` instead of naming why it was refused.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_refusal_reaches_the_controller_before_the_connection_closes() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.access.set_serve(Serve::None);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let at = listener.local_addr().unwrap();
+        let h = host.clone();
+        tokio::spawn(async move {
+            let (stream, from) = listener.accept().await.unwrap();
+            let from = Source {
+                network: 0,
+                ip: from.ip(),
+            };
+            serve(h, Lossy::new(stream), from).await;
+        });
+        let stream = tokio::net::TcpStream::connect(at).await.unwrap();
+        let dialed = host.identity.device_id();
+        let kind = Kind::Tunnel(crate::tunnel::Service::Ssh);
+        let (id, stop) = begin_as(&controller, &dialed, Remember::default(), kind);
+        let password = zeroize::Zeroizing::new("k7mq2xpa".to_owned());
+        let want = vec![Permission::UseSsh];
+        let done = connect(
+            controller.clone(),
+            id,
+            stop,
+            stream,
+            dialed,
+            password,
+            want,
+            None,
+        );
+        let outcome = tokio::time::timeout(Duration::from_secs(10), done)
+            .await
+            .expect("the controller hears back");
+        assert!(matches!(outcome, Outcome::Done));
+        assert_eq!(
+            session(&controller, id)["failure"],
+            json!({"refused": "absent"})
         );
     }
 }
