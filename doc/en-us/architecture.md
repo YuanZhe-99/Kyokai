@@ -83,10 +83,13 @@ keeps its value, the secret too; answers the networks), `network.profile.remove`
 once, progress shows in the status), `session.identify` (`{address}` → `{device_id}` or
 `{failure}`: `unreachable`, `incompatible`, `broken` or `self`; dials without holding the core's
 lock), `device.remove` (`{device_id}`: ends this device's sessions with that host, leaves them out of
-the list, forgets its pinned key and saved password), `protect.set` (`{on, password?}`: protected mode, on with a permanent password set, off with it, [identity-and-access.md](identity-and-access.md)), `access.history` (`{keep}`: the connection
+the list, forgets its pinned key and everything saved for it), `protect.set` (`{on, password?}`: protected mode, on with a permanent password set, off with it, [identity-and-access.md](identity-and-access.md)), `access.history` (`{keep}`: the connection
 history in the secrets store, or in memory only for No logs, [security.md](security.md)), `password.forget_saved`
-(`{device_id}`), `session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,
-`host.forget`, `identity.export` (`{passphrase}` → `{document}`), `identity.import`
+(`{device_id}`: its password and everything else saved for it), `session.close`, `request.decide` (`{id, allow, permissions}`), `trusted.list`, `trusted.remove`,
+`host.forget`, the sign-in keys ([identity-and-access.md](identity-and-access.md), "Keys"): `keys.list`
+(public parts only), `keys.add` (`{name, private}`), `keys.remove` (`{id}`), `keys.sign`
+(`{key_id, algorithm, data}` → `{signature}`), `authorized.list`, `authorized.add`
+(`{name, public}`), `authorized.remove` (`{id}`), `identity.export` (`{passphrase}` → `{document}`), `identity.import`
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
 name; the status carries `name` and this device's `about`), `access.settings` (`{password_mode?: temporary|permanent|both, without_asking?, by_address?: {on, ranges}}`; `by_address` starts or stops the listener at once), `permission.request` (`{name}`: `screen`, `accessibility`, `input-monitoring` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens; in the helper the agent asks), `store.start_over` (the saved store cannot be unlocked: it is moved aside and the core rebuilt on a new one → `{kept}`), `agent.restart` (the helper's session agent exits and its supervisor starts it again), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
 passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
@@ -109,8 +112,9 @@ carries `permanent_password`, `permissions` (macOS: `{screen, accessibility, inp
 `password_mode` and `without_asking` (the access settings), `by_address` (`{on, ranges, port, error}`: connections by address, [networking.md](networking.md)), `keeps_history`, `protected`, `ai_draft` (the shared draft),
 `password_grants` (what a correct password grants without asking;
 set with `access.password_grants` `{grants}`), `requests` (open host confirmations, each with
-`password`: whether the controller gave one), `sessions`, `recent` (hosts
-connected to, newest first, each with the `address` its last session dialed) and `ai` (the task in progress with its state and origin, or null). The Go binding keeps the response slots it passes to the core in heap memory,
+`password`: whether the controller gave a password or a key, and `key`: the key's name), `sessions`, `recent` (hosts
+connected to, newest first, each with the `address` its last session dialed, the `features` the
+host announced and `saved`, a flag per kind of sign-in kept for it) and `ai` (the task in progress with its state and origin, or null). The Go binding keeps the response slots it passes to the core in heap memory,
 never on a goroutine stack, which may move between taking an address and the call. On Windows the
 library is loaded by absolute path with
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` and links the C
@@ -129,7 +133,8 @@ runtime statically, so nothing is resolved through the search path.
   (refused settings answer `invalid` with the reason; the status's `network` adds `networks`, each network's own, to all
   of them together, so an older GUI reads it as before),
   `password.set_permanent`, `session.connect`, `session.identify`, `device.remove`, `protect.set` (while protected mode is on the engine answers only the requests in `protectedAllows` and refuses the rest as `invalid`; the status says `protected`), `logs.set` (`{logs_off}`: No logs; the engine writes or removes its state directory's `no-logs` marker, closes or reopens its log, deletes the logs and calls `access.history`; the status says `logs_off`; the GUI sends it as it attaches and when the setting changes), `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
-  `trusted.remove`, `host.forget`, `identity.export`, `identity.import`, `identity.reset`,
+  `trusted.remove`, `host.forget`, `keys.list`, `keys.add`, `keys.remove`, `keys.sign`,
+  `authorized.list`, `authorized.add`, `authorized.remove`, `identity.export`, `identity.import`, `identity.reset`,
   `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `input.kyokai` (`{kyokai_input}`; sent with `capture.show`; an engine that does not know it keeps Kyokai's windows guarded), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,
   `session.media`, `shutdown`, and the AI requests named after the core's
@@ -145,7 +150,10 @@ runtime statically, so nothing is resolved through the search path.
   and whenever the network's status moves.
 - Authorization comes from the operating system's peer credentials (`LOCAL_PEERCRED` on macOS;
   `SIO_AF_UNIX_GETPEERPID` and the process token's SID on Windows), never from the request: only
-  the engine's own user is served; an unreadable identity is refused.
+  the engine's own user is served; an unreadable identity is refused. The server marks each
+  connection's tier in the request's context (`localapi.IsOwner`): the owner, or the helper's
+  operator, may also sign with the engine's keys (`keys.sign`) and read a saved service password
+  (`credentials.get`); the helper's `kyokai` group may not.
 
 ## State
 

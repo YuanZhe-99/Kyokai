@@ -50,6 +50,9 @@ zeroize = "1.9.1"
 png = "0.18.1"
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "json", "http2"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+# SSH user-auth signatures with RSA and ECDSA sign-in keys (keys.rs); in the
+# tree already through rustls.
+ring = "0.17.14"
 arboard = { version = "3.7.0", default-features = false, features = ["image-data"] }
 
 [target."cfg(windows)".dependencies]

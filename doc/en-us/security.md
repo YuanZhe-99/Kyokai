@@ -18,13 +18,17 @@
 - Secrets are zeroized when dropped; `kyokai_stop` drops them all.
 - The store holds the device key, the networks kept with their network secrets
   ([networking.md](networking.md)), the OPAQUE server key and the permanent password's record, the
-  trusted devices, the known hosts and the hosts' saved passwords
+  trusted devices, the known hosts, the hosts' saved passwords and what else is saved for them, the
+  sign-in keys (this device's, private parts included, and those that can connect to it)
   ([identity-and-access.md](identity-and-access.md)) and the AI
   providers' API keys. The local API carries the network secret only from the GUI (or
   `ctl`) to the engine, never back; `ctl` reads it from the environment, not the command line. The same
   holds for the permanent password and the password typed to connect (`KYOKAI_PERMANENT_PASSWORD`,
   `KYOKAI_PASSWORD`); the core keeps a typed password in memory only until that session ends and then zeroizes it.
   A provider key travels the same way (`KYOKAI_AI_KEY` for `ctl ai-key`) and is never returned.
+  A sign-in key's private part goes only from the GUI to the engine (`keys.add`) and never leaves the
+  core again: the engine signs with it — a Kyokai key login, or an SSH user-auth request for the
+  engine's owner — and never returns it.
 
 ## Clipboard
 
@@ -123,7 +127,9 @@ Only the engine's own user is served (peer credentials, never the request body);
 [architecture.md](architecture.md). The privileged helper's socket can be opened by every local
 user, and the helper serves only SYSTEM, its operator and the `kyokai` group, judged by the
 caller's token (its user and its enabled groups); an administrator outside them is refused too
-([run-modes.md](run-modes.md)).
+([run-modes.md](run-modes.md)). Signing with the engine's keys (`keys.sign`) and reading a saved service
+password (`credentials.get`) are served only to the owner or the operator, never to the group, by
+the tier the server marks on each connection from the same peer credentials.
 
 ## Threat model
 
@@ -136,6 +142,7 @@ caller's token (its user and its enabled groups); an administrator outside them 
 | The host's desktop under AI | a model (or text on the screen steering it) acting against the user | proposals are only input, validated and executed by the host; approvals; local input and take-over pause at once; late responses never act; Kyokai's windows are neither captured nor injected into by the AI (people controlling the host reach them only while the host user lets it, and never while a request or an approval waits) |
 | Old messages | replaying input, commands or logins | Noise nonces; resume tokens single-use, bound to the controller's key and valid 2 minutes; commands never re-sent after a reconnect; idempotent task start |
 | A revoked device | coming back | revoking ends its live sessions and drops its resume tokens; its task pauses when its session ends |
+| Sign-in keys | a proof replayed into another session, a key put to other uses, a private key leaking | a proof signs the handshake after frame 2 and both device keys; private keys never leave the core; the engine signs SSH only for an SSH user-auth request with that key, for the owner or operator only; removing a key that can connect keeps it out at once |
 | The local API | another local user driving the engine | peer credentials, the engine's own user only |
 | The helper | a local user driving the SYSTEM service, or swapping what it runs | peer credentials, the operator and the `kyokai` group only; its files are administrator-owned copies; the state folder is SYSTEM and Administrators only |
 | Helper updates | a local user swapping the app's files to have SYSTEM run them | the release key's signature over every file's hash, read once and installed as verified; unsigned builds need an administrator prompt |

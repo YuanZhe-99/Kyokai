@@ -200,6 +200,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, authz Authorizer) 
 		// No identity, or not authorized: answer nothing at all.
 		return
 	}
+	ctx = context.WithValue(ctx, ownerKey{}, authz.Owner(peer))
 	reader := bufio.NewReaderSize(conn, maxRequestSize)
 	for {
 		if ctx.Err() != nil {

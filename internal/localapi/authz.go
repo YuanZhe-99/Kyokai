@@ -1,6 +1,9 @@
 package localapi
 
-import "slices"
+import (
+	"context"
+	"slices"
+)
 
 // Authorization for the local API.
 //
@@ -51,21 +54,38 @@ type Authorizer struct {
 // never fails open: an unknown identity, or a SID-less peer on Windows, is
 // refused.
 func (a Authorizer) Allows(p Peer) bool {
+	if a.Owner(p) {
+		return true
+	}
 	if !p.Known {
 		return false
 	}
 	if p.SID != "" || a.OwnerSID != "" {
-		switch {
-		case p.SID == "":
-			return false
-		case p.SID == a.OwnerSID, a.OperatorSID != "" && p.SID == a.OperatorSID:
-			return true
-		}
-		return a.GroupSID != "" && slices.Contains(p.GroupSIDs, a.GroupSID)
-	}
-	switch {
-	case p.UID == a.OwnerUID, a.OperatorUID != nil && p.UID == *a.OperatorUID:
-		return true
+		return p.SID != "" && a.GroupSID != "" && slices.Contains(p.GroupSIDs, a.GroupSID)
 	}
 	return a.GroupGID != nil && slices.Contains(p.Groups, *a.GroupGID)
+}
+
+// Owner reports whether p is the socket's owner or the helper's operator:
+// the tier served the engine's sign-in keys and saved service passwords
+// (keys.sign, credentials.get), which the kyokai group is not.
+func (a Authorizer) Owner(p Peer) bool {
+	if !p.Known {
+		return false
+	}
+	if p.SID != "" || a.OwnerSID != "" {
+		return p.SID != "" && (p.SID == a.OwnerSID || a.OperatorSID != "" && p.SID == a.OperatorSID)
+	}
+	return p.UID == a.OwnerUID || a.OperatorUID != nil && p.UID == *a.OperatorUID
+}
+
+// ownerKey marks a request context whose connection is the owner tier.
+type ownerKey struct{}
+
+// IsOwner reports whether a request came from the engine's owner or the
+// helper's operator (Authorizer.Owner), as the server put it in the
+// request's context.
+func IsOwner(ctx context.Context) bool {
+	owner, _ := ctx.Value(ownerKey{}).(bool)
+	return owner
 }

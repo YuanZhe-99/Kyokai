@@ -23,7 +23,7 @@ static key per session and prove their device identity by signing it.
 |---|---|---|---|
 | 1 | controller → host | `e` | none |
 | 2 | host → controller | `e, ee, s, es` | `host_hello`: protocol, product version, source URL, device key, signature |
-| 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests (or none, with the controller's description `about`, to ask without a password), and a resume token when resuming |
+| 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests (or none, with the controller's description `about`, to ask without a password), a resume token when resuming, and proofs with sign-in keys (see Key login) |
 
 The signature is Ed25519 by the device key over `kyokai/noise-static/v1` followed by the sender's
 Noise static public key. To learn whom an address reaches, the controller sends frame 1, reads
@@ -44,12 +44,27 @@ the controller sends one credential request per slot, both from the password the
 |---|---|---|
 | 4 | host → controller | `challenge`: one credential response per slot; an unset slot answers with a fake record, so a controller cannot tell which slots exist |
 | 5 | controller → host | `login`: the slot whose response the password opened and its credential finalization with the controller's description (`about`: name, maker, model, system), or no slot when neither opened |
-| 6 | host → controller | `verdict`: accepted with the granted permissions, a resume token and the host's description (`about`), or refused with a reason name (`password`, `denied`, `timeout`, `busy`, `rate-limited`, `absent`: nobody can confirm) |
+| 6 | host → controller | `verdict`: accepted with the granted permissions, a resume token, the host's description (`about`) and how the controller got in (`via`: `key` with the admitting `key`, `password`, `confirmation` or `resume`; absent from 0.4.0), or refused with a reason name (`password`, `denied`, `timeout`, `busy`, `rate-limited`, `absent`: nobody can confirm) |
 
 A failed `login` counts as one failure ([identity-and-access.md](identity-and-access.md)). After a
 correct password the host answers at once when the request is within its password grants, and
 otherwise asks its user (up to 60 seconds) before the verdict. A `client_hello` without credential
 requests skips frames 4 and 5: the host asks its user and sends the verdict as frame 4.
+
+## Key login
+
+To a host that announces `key-login`, and never when resuming, the controller adds `keys` to its
+`client_hello`: for each key it offers, `{key, signature}`, the Ed25519 public key and its
+signature over `kyokai/key-login/v1` followed by h2, the host's device key and the controller's
+device key (32 bytes each), both base64. h2 is the Noise handshake hash after frame 2: the host
+reads it right after writing frame 2, the controller right after reading it, so a proof holds only
+in its own channel and between these two devices. With keys the hello carries the controller's
+description (`about`) too, since a key may admit before any login. The host looks at most at 8
+proofs ([identity-and-access.md](identity-and-access.md), "Keys"): a key that admits skips frames
+4 and 5, and the verdict follows at once, or after the host's user decided when more was asked
+for; otherwise the password login (or the request without one) goes on as above. An authorized
+key whose proof fails is refused as `password`. A controller that offered keys waits for its first
+answer as long as for a confirmation.
 
 ## Resuming
 

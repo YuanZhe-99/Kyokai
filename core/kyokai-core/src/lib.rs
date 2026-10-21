@@ -20,6 +20,7 @@ mod files;
 mod identity;
 mod input;
 mod keyboard;
+mod keys;
 #[cfg(target_os = "macos")]
 mod mac;
 mod media;
@@ -1015,15 +1016,58 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 .to_owned();
             try_core(|c| {
                 c.ctx.sessions.remove_host(&id);
-                c.ctx.access.forget_password(&id)?;
+                c.ctx.access.forget_saved(&id)?;
                 // A device never connected to has no pinned key.
                 let _ = c.ctx.access.forget_host(&id);
                 Ok(json!({}))
             })
         }
+        // Forgets everything kept for signing in to the host: its password,
+        // the key it admitted and its services' sign-ins.
         "password.forget_saved" => {
             let device = req.params["device_id"].as_str().ok_or("bad Device ID")?;
-            try_core(|c| c.ctx.access.forget_password(device).map(|()| json!({})))
+            try_core(|c| c.ctx.access.forget_saved(device).map(|()| json!({})))
+        }
+        "keys.list" => with_core(|c| keys::list_login(c.ctx.access.secrets())),
+        "keys.add" => {
+            let name = req.params["name"].as_str().unwrap_or("").to_owned();
+            let private: zeroize::Zeroizing<String> =
+                serde_json::from_value(req.params["private"].take())
+                    .map_err(|_| "the private key is missing")?;
+            try_core(|c| keys::add_login(c.ctx.access.secrets(), &name, &private))
+        }
+        "keys.remove" => {
+            let id = req.params["id"].as_str().ok_or("bad key")?.to_owned();
+            try_core(|c| keys::remove_login(c.ctx.access.secrets(), &id).map(|()| json!({})))
+        }
+        "keys.sign" => {
+            let p = &req.params;
+            let (Some(id), Some(algorithm), Some(data)) = (
+                p["key_id"].as_str(),
+                p["algorithm"].as_str(),
+                p["data"].as_str(),
+            ) else {
+                return Err("bad signing request".into());
+            };
+            try_core(|c| {
+                keys::sign_ssh(c.ctx.access.secrets(), id, algorithm, data)
+                    .map(|s| json!({"signature": s}))
+            })
+        }
+        "authorized.list" => with_core(|c| json!(keys::authorized(c.ctx.access.secrets()))),
+        "authorized.add" => {
+            let name = req.params["name"].as_str().unwrap_or("").to_owned();
+            let public = req.params["public"]
+                .as_str()
+                .ok_or("bad public key")?
+                .to_owned();
+            try_core(|c| {
+                keys::add_authorized(c.ctx.access.secrets(), &name, &public).map(|a| json!(a))
+            })
+        }
+        "authorized.remove" => {
+            let id = req.params["id"].as_str().ok_or("bad key")?.to_owned();
+            try_core(|c| keys::remove_authorized(c.ctx.access.secrets(), &id).map(|()| json!({})))
         }
         "session.close" => {
             let id = req.params["id"].as_u64().ok_or("bad session id")?;
@@ -1265,8 +1309,14 @@ fn status() -> Value {
                 .recent()
                 .into_iter()
                 .map(|(id, h)| {
-                    let saved = c.ctx.access.saved_password(&id).is_some();
-                    json!({"device_id": id, "last": h.last, "about": h.about, "saved_password": saved, "address": h.address})
+                    let password = c.ctx.access.saved_password(&id).is_some();
+                    let saved = c.ctx.access.saved(&id);
+                    let key = saved.key.is_some_and(|k| keys::is_login(c.ctx.access.secrets(), &k));
+                    json!({
+                        "device_id": id, "last": h.last, "about": h.about, "saved_password": password,
+                        "address": h.address, "features": h.features,
+                        "saved": {"password": password, "key": key},
+                    })
                 })
                 .collect::<Value>(),
             "name": c.ctx.about.lock().map(|l| l.chosen().to_owned()).unwrap_or_default(),

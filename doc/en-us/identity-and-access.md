@@ -19,9 +19,44 @@ slots are set.
 A controller may keep a host's password (Remember password on the connect form,
 `session.connect` `remember`). It is kept only after a login the host accepts, in the secrets
 store under `saved_password.<Device ID>`, encrypted like every other secret and never shown or
-returned: the status says only which recent hosts have one (`saved_password`). An empty password
-field then uses it. When the host refuses a saved password (it changed), the controller forgets it,
-and Forget password on the recent row forgets it at once (`password.forget_saved`).
+returned: the status says only which recent hosts have one (`saved_password`, and `saved` with a
+flag per kind of sign-in kept). An empty password field then uses it. When the host refuses a saved
+password (it changed), the controller forgets it. What else is kept for a host — the sign-in key
+it admitted (see Keys) — lives under `saved.<Device ID>`; Forget password on the recent row
+(`password.forget_saved`) and removing the device forget both at once.
+
+## Keys
+
+SSH-style Ed25519 keys sign in to Kyokai without a password ([protocol.md](protocol.md), "Key
+login").
+
+- **Keys that can connect** (host side, `authorized_keys` in the secrets store, at most 32):
+  OpenSSH public key lines (`ssh-ed25519 AAAA… comment`), each with a name (the comment unless one
+  is given), when it was added and when it last signed in; other key types are refused
+  (`authorized.list`, `authorized.add`, `authorized.remove`).
+- **This device's keys** (controller side, `login_keys`, at most 16): Ed25519 keys sign in to
+  Kyokai; Ed25519, RSA (2048 bits or more) and ECDSA P-256 or P-384 keys sign in to SSH servers
+  through the built-in client. The GUI generates or imports a key and hands its private part (the
+  Ed25519 seed or the PKCS#8 DER) to the engine once (`keys.add`); the engine checks it, keeps it
+  in the secrets store and never returns it: `keys.list` answers names, types and public lines. A
+  key is kept once: its id is the first 16 hex digits of the SHA-256 of its public key.
+- A controller offers keys only to a host that announces `key-login`, and never on a resume: the
+  key the host admitted last, else every Ed25519 key (at most 8). The host admits with the first
+  authorized key whose proof holds; keys it does not know are ignored, and an authorized key whose
+  proof fails counts as a failed login.
+- A key counts like the permanent password: it admits within the password grants while Connect
+  without asking is on, whichever passwords are accepted, and with nobody at the computer (see
+  Unattended access); it never turns protected mode off. When more is asked for, the host's user
+  is asked and sees the key's name.
+- The controller remembers the key a host admitted and offers only that one next time; when the
+  host admits another way, it forgets it. A typed password is saved only when the host admitted
+  with it.
+- `keys.sign` (`{key_id, algorithm, data}`) signs only an SSH public key user-auth request
+  (RFC 4252, section 7) for that very key, with `ssh-ed25519`, `rsa-sha2-256`, `rsa-sha2-512`,
+  `ecdsa-sha2-nistp256` or `ecdsa-sha2-nistp384` as the key's kind allows, and answers the SSH
+  signature (string format, string blob; base64); anything else is refused, so the engine is no
+  general signing oracle. It is served only to the engine's owner or the helper's operator, never
+  to the `kyokai` group.
 
 ## Permissions
 
@@ -42,6 +77,8 @@ sessions with this host end and its resume tokens are dropped.
 | gives a correct, accepted password and asks only for what a password grants | admits it at once with what it asked for (while Connect without asking is on) |
 | gives a correct password and asks for more | asks its user |
 | gives a correct password with a new key claiming a Device ID trusted under another key | asks its user |
+| proves a key that can connect and asks only for what a password grants | admits it at once with what it asked for (while Connect without asking is on) |
+| proves a key that can connect with a proof that fails | refuses it as a wrong password |
 | asks without a password | asks its user; a denial or no answer counts as a failed login |
 | gives the permanent password with nobody at the computer | admits it with what a password grants (see Unattended access) |
 | gives a correct password of a kind the host does not accept | refuses it as a wrong password |
@@ -56,7 +93,7 @@ one switch per permission, kept in the secrets store: by default `view-screen`, 
 ## Host confirmation
 
 The host's user sees the controller's friendly name and Device ID, whether its key is known, whether
-it gave no password, and the permissions it asks for, and allows (choosing permissions) or denies
+it gave no password, the name of the sign-in key it proved, and the permissions it asks for, and allows (choosing permissions) or denies
 within 60 seconds. Silence denies. At most one confirmation is open per controller key and 4 in
 total; further attempts are answered `busy`.
 
@@ -70,7 +107,9 @@ total; further attempts are answered `busy`.
   accepted session also records when, and the address it dialed when it connected by address, and
   the newest 8 are offered as recent devices. Connecting by address, the person names no Device
   ID: the first session pins whichever device answered there, and its Device ID shows in the tab
-  and on Recent. Removing a recent device forgets its pinned key and saved password and takes its
+  and on Recent. Each accepted session also records what the host announced (`features`), which
+  the status passes on (`recent[].features`) so Home knows what a host offers before dialing.
+  Removing a recent device forgets its pinned key and everything saved for it and takes its
   sessions off the list.
 - **No logs** keeps both lists in memory only ([security.md](security.md)): after a restart no
   key is pinned, so a changed key is not noticed.
@@ -116,7 +155,7 @@ sessions end and the network reconnects. Network settings are not part of the id
 ## Unattended access
 
 With nobody at the computer — a Background service helper without a GUI attached — the permanent
-password admits a device without confirmation while Connect without asking is on, with what a
+password or a key that can connect admits a device without confirmation while Connect without asking is on, with what a
 password grants within what it asks for; the temporary password, a request without a password and
 a new key claiming a trusted Device ID find nobody to ask. Background service is itself chosen
 explicitly (the helper is installed with an administrator prompt), so a computer is unattended
@@ -124,7 +163,7 @@ only when its user set it up so.
 
 Whom the host serves depends on its run mode ([run-modes.md](run-modes.md)): everyone in No
 privileges and while a GUI is attached to the helper; without a GUI, a Background service helper
-serves only the permanent password and a Follow GUI helper no one (its host sessions end). A login
+serves only the permanent password and keys, and a Follow GUI helper no one (its host sessions end). A login
 that nobody can confirm is refused at once with `absent`, before the password check when no one is
 served.
 

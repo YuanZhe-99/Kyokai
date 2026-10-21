@@ -103,6 +103,8 @@ const TRUSTED_NAME: &str = "trusted_devices";
 const KNOWN_HOSTS_NAME: &str = "known_hosts";
 /// A saved host password's secret is this prefix and the Device ID.
 const SAVED_PASSWORD_PREFIX: &str = "saved_password.";
+/// What else is saved for a host (`Saved`) is this prefix and the Device ID.
+const SAVED_PREFIX: &str = "saved.";
 const PASSWORD_GRANTS_NAME: &str = "password_grants";
 const PASSWORD_MODE_NAME: &str = "password_mode";
 const WITHOUT_ASKING_NAME: &str = "connect_without_asking";
@@ -283,6 +285,26 @@ pub struct KnownHost {
     /// next connection from Home goes the same way.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub address: String,
+    /// What the host announced in the last session accepted (`feature`),
+    /// so Home knows what it offers before dialing.
+    #[serde(default)]
+    pub features: Vec<String>,
+}
+
+/// What this device keeps for signing in to one host besides its password
+/// (`saved.<Device ID>` in the secrets store, controller side).
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct Saved {
+    /// The id of the login key the host last admitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+}
+
+impl Saved {
+    /// Whether nothing is kept.
+    fn is_empty(&self) -> bool {
+        self.key.is_none()
+    }
 }
 
 /// A resume token's grant: who may resume, with what, until when, and
@@ -301,10 +323,13 @@ struct Pending {
     device_id: String,
     known: bool,
     new_key: bool,
-    /// Whether the controller proved a password (false: it only asks).
+    /// Whether the controller proved a password or a key (false: it only
+    /// asks).
     password: bool,
     want: Vec<Permission>,
     about: About,
+    /// The name of the key the controller proved, if it proved one.
+    key_name: Option<String>,
     reply: oneshot::Sender<Option<Vec<Permission>>>,
 }
 
@@ -610,7 +635,8 @@ impl Access {
     }
 
     /// Opens a confirmation for the host's user.
-    /// Inputs: `password` says whether the controller proved a password.
+    /// Inputs: `password` says whether the controller proved a password or a
+    /// key; `key_name` names the key it proved.
     /// Returns: the receiver of the decision (granted permissions, or None
     /// for a denial), or `Busy` when too many are open.
     pub fn ask(
@@ -620,6 +646,7 @@ impl Access {
         want: Vec<Permission>,
         about: &About,
         password: bool,
+        key_name: Option<&str>,
     ) -> Result<(u64, Decision), Refusal> {
         let known = self.trusted().contains_key(key);
         let new_key = self.claims_other_key(key, device_id);
@@ -640,6 +667,7 @@ impl Access {
             password,
             want,
             about: about.clone(),
+            key_name: key_name.map(String::from),
             reply,
         });
         Ok((id, rx))
@@ -677,6 +705,7 @@ impl Access {
                     "password": q.password,
                     "want": q.want,
                     "about": q.about,
+                    "key": q.key_name,
                 })
             })
             .collect()
@@ -808,15 +837,54 @@ impl Access {
             .remove(&format!("{SAVED_PASSWORD_PREFIX}{device_id}"))
     }
 
+    /// What this device keeps for signing in to a host besides its password
+    /// (controller side).
+    pub fn saved(&self, device_id: &str) -> Saved {
+        self.secrets
+            .get(&format!("{SAVED_PREFIX}{device_id}"))
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keeps what this device saves for a host; an empty entry is removed.
+    /// Side effects: rewrites the secrets store.
+    pub fn set_saved(&self, device_id: &str, saved: &Saved) -> Result<(), String> {
+        let name = format!("{SAVED_PREFIX}{device_id}");
+        if saved.is_empty() {
+            return self.secrets.remove(&name);
+        }
+        self.store(&name, saved)
+    }
+
+    /// Remembers the login key a host admitted, or forgets the one
+    /// remembered (None) when the host admitted another way.
+    pub fn remember_key(&self, device_id: &str, key: Option<&str>) -> Result<(), String> {
+        let mut saved = self.saved(device_id);
+        if saved.key.as_deref() == key {
+            return Ok(());
+        }
+        saved.key = key.map(String::from);
+        self.set_saved(device_id, &saved)
+    }
+
+    /// Forgets everything kept for signing in to a host: its password and
+    /// its saved entry.
+    pub fn forget_saved(&self, device_id: &str) -> Result<(), String> {
+        self.forget_password(device_id)?;
+        self.secrets.remove(&format!("{SAVED_PREFIX}{device_id}"))
+    }
+
     /// Pins a host key for its Device ID, or refreshes its last connection
     /// (controller side).
-    /// Inputs: `address`, the address dialed, or empty over the network.
+    /// Inputs: `address`, the address dialed, or empty over the network;
+    /// `features`, what the host announced in this session.
     pub fn pin_host(
         &self,
         device_id: &str,
         key: &str,
         about: &About,
         address: &str,
+        features: &[String],
     ) -> Result<(), String> {
         let mut all = self.known_hosts();
         all.insert(
@@ -826,6 +894,7 @@ impl Access {
                 last: unix_now(),
                 about: about.clone(),
                 address: address.to_owned(),
+                features: features.to_vec(),
             },
         );
         self.store_history(KNOWN_HOSTS_NAME, &all)
@@ -928,6 +997,7 @@ mod tests {
                 vec![Permission::ViewScreen, Permission::ControlInput],
                 &About::default(),
                 false,
+                Some("laptop"),
             )
             .unwrap();
         // While a controller waits for the host user, nobody's input reaches
@@ -937,8 +1007,10 @@ mod tests {
         assert_eq!(open[0]["new_key"], true);
         assert_eq!(open[0]["known"], false);
         assert_eq!(open[0]["password"], false);
+        assert_eq!(open[0]["key"], "laptop", "the key it proved, by name");
+        assert_eq!(open[0]["key"], "laptop", "the key it proved, by name");
         assert_eq!(
-            a.ask("key-B", "100000002", vec![], &About::default(), true)
+            a.ask("key-B", "100000002", vec![], &About::default(), true, None)
                 .err(),
             Some(Refusal::Busy)
         );
@@ -1008,11 +1080,30 @@ mod tests {
         assert_eq!(a.take_resume(&t, "key-A"), None, "used once");
     }
 
+    /// Forgetting what is saved for a host forgets its password and its
+    /// saved entry together; other hosts keep theirs.
+    #[test]
+    fn forgetting_a_host_forgets_everything_saved_for_it() {
+        let a = access();
+        for id in ["100000002", "100000003"] {
+            a.save_password(id, "long-lived-pw").unwrap();
+            a.remember_key(id, Some("0123456789abcdef")).unwrap();
+        }
+        a.forget_saved("100000002").unwrap();
+        assert!(a.saved_password("100000002").is_none());
+        assert_eq!(a.saved("100000002").key, None);
+        assert!(a.saved_password("100000003").is_some());
+        assert!(a.saved("100000003").key.is_some());
+        // An entry left empty is not kept at all.
+        a.remember_key("100000003", None).unwrap();
+        assert!(a.secrets().get("saved.100000003").is_none());
+    }
+
     #[test]
     fn pinned_hosts_persist_and_can_be_forgotten() {
         let a = access();
         assert_eq!(a.known_host("100000002"), None);
-        a.pin_host("100000002", "key-H", &About::default(), "")
+        a.pin_host("100000002", "key-H", &About::default(), "", &[])
             .unwrap();
         assert_eq!(a.known_host("100000002").as_deref(), Some("key-H"));
         a.forget_host("100000002").unwrap();
@@ -1074,7 +1165,7 @@ mod tests {
     fn no_logs_keeps_the_history_in_memory() {
         let secrets = Arc::new(Secrets::memory());
         let a = Access::load(secrets.clone()).unwrap();
-        a.pin_host("100000002", "key-H", &About::default(), "")
+        a.pin_host("100000002", "key-H", &About::default(), "", &[])
             .unwrap();
         a.trust(
             "key-C",
@@ -1089,7 +1180,7 @@ mod tests {
         assert!(secrets.get(TRUSTED_NAME).is_none());
         // Still known for this run, and new connections stay in memory.
         assert_eq!(a.known_host("100000002").as_deref(), Some("key-H"));
-        a.pin_host("100000004", "key-J", &About::default(), "")
+        a.pin_host("100000004", "key-J", &About::default(), "", &[])
             .unwrap();
         assert!(secrets.get(KNOWN_HOSTS_NAME).is_none());
         assert_eq!(a.recent().len(), 2);

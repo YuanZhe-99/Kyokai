@@ -29,6 +29,8 @@
 //	kyokai-svc ctl ai-key --source S [--remove] | ai-models --source S
 //	kyokai-svc ctl ai-start --text T | ai-reply --id N --text T
 //	kyokai-svc ctl ai-pause | ai-resume | ai-cancel | ai-approve | ai-decline --id N
+//	kyokai-svc ctl keys | keys-generate [--name N] | keys-remove --id K   (this device's sign-in keys)
+//	kyokai-svc ctl authorized | authorized-add --public LINE [--name N] | authorized-remove --id K
 //
 // Secrets come from the environment, never the command line: network-set
 // and network-profile read KYOKAI_NETWORK_SECRET (unset keeps the stored
@@ -207,6 +209,9 @@ func ctl(args []string) error {
 	// The command comes first, its flags after it.
 	if len(args) == 0 {
 		usage()
+	}
+	if f, ok := ctlServices[args[0]]; ok {
+		return f(args)
 	}
 	fs.Parse(args[1:])
 	if fs.NArg() != 0 {

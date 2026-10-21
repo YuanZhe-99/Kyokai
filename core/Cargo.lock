@@ -2804,6 +2804,7 @@ dependencies = [
  "png",
  "rand_core 0.6.4",
  "reqwest",
+ "ring",
  "rustdesk-codec",
  "rustdesk-dxgi",
  "rustdesk-qos",

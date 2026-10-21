@@ -206,9 +206,12 @@ type handler struct {
 	sessions map[chan struct{}]bool // each is poked when the status changes
 }
 
-func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Response {
+func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Response {
 	if h.protected.Load() && !protectedAllows[req.Type] {
 		return localapi.Fail(localapi.CodeInvalid, "protected mode is on: turn it off with the permanent password first")
+	}
+	if resp, ok := h.services(ctx, req); ok {
+		return resp
 	}
 	switch req.Type {
 	case localapi.RequestProtect:

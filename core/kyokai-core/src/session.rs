@@ -44,7 +44,7 @@ pub mod feature {
 }
 
 /// The features this build announces.
-pub const FEATURES: &[&str] = &[];
+pub const FEATURES: &[&str] = &[feature::KEY_LOGIN];
 
 /// What the other side of a session announced: its features, none for
 /// 0.4.0 and older.
@@ -130,6 +130,9 @@ struct ClientHello {
     /// What this build can do beyond protocol 10 (`feature`).
     #[serde(default)]
     features: Vec<String>,
+    /// Proofs with sign-in keys, only to a host announcing `key-login`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    keys: Vec<crate::keys::Proof>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -160,6 +163,29 @@ struct Verdict {
     /// With an acceptance: the host's description.
     #[serde(default)]
     about: Option<About>,
+    /// With an acceptance: how the controller got in; absent from 0.4.0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    via: Option<Via>,
+    /// With an acceptance by key: the key that admitted (base64 Ed25519).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    key: Option<String>,
+}
+
+/// How a host admitted a controller (`Verdict.via`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum Via {
+    /// A sign-in key, with or without the host user's confirmation.
+    Key,
+    /// A password, with or without the host user's confirmation.
+    Password,
+    /// The host's user allowed a controller that gave no password.
+    Confirmation,
+    /// A resume token.
+    Resume,
+    /// A newer host's way: treated as none given.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Messages of an established session.
@@ -1032,6 +1058,9 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         let payload = serde_json::to_vec(&hello).map_err(|_| Failure::Broken)?;
         let n = hs.write_message(&payload, &mut buf)?;
         step(write_frame(&mut stream, &buf[..n])).await?;
+        // What a key login signs: the handshake as it stands after frame 2,
+        // which the controller reads right after reading it.
+        let h2 = hs.get_handshake_hash().to_vec();
         // 3: -> s, se + client_hello
         let frame = step(read_frame(&mut stream)).await?;
         let n = hs.read_message(&frame, &mut buf)?;
@@ -1050,10 +1079,10 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             noise: hs.into_transport_mode()?,
             buf,
         };
-        Ok::<_, Failure>((channel, client, client_key, context))
+        Ok::<_, Failure>((channel, client, client_key, context, h2))
     }
     .await;
-    let Ok((mut ch, client, client_key, context)) = result else {
+    let Ok((mut ch, client, client_key, context, h2)) = result else {
         return;
     };
     let device_id = identity::device_id(&client_key);
@@ -1065,7 +1094,19 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             features: client.features.clone(),
         };
     });
-    let login = host_login(&ctx, &mut ch, &client, &client_key, &context, from, id).await;
+    let login = host_login(
+        &ctx,
+        &mut ch,
+        &client,
+        &client_key,
+        Handshake {
+            context: &context,
+            h2: &h2,
+        },
+        from,
+        id,
+    )
+    .await;
     drop(incoming);
     match login {
         Ok((granted, peer)) => {
@@ -1111,18 +1152,33 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     }
 }
 
+/// What a login binds to: the handshake hash after the last handshake
+/// frame (OPAQUE's context) and after frame 2 (what a key login signs).
+struct Handshake<'a> {
+    context: &'a [u8],
+    h2: &'a [u8],
+}
+
+/// What a controller proved before the host decides.
+enum Proven {
+    /// A password of this slot.
+    Password(Slot),
+    /// An authorized sign-in key.
+    Key(crate::keys::Authorized),
+}
+
 /// The host's side of login and confirmation.
 /// Returns: the granted permissions and the controller's description,
 /// after telling the controller.
-/// Notes: a correct password admits at once within the host's password
-/// grants (or an unattended grant); anything more, and a controller that
-/// asks without a password, waits for the host's user.
+/// Notes: a correct password or an authorized key admits at once within
+/// the host's password grants (or an unattended grant); anything more, and
+/// a controller that asks without a password, waits for the host's user.
 async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     ctx: &Ctx,
     ch: &mut Channel<S>,
     client: &ClientHello,
     client_key: &[u8; 32],
-    context: &[u8],
+    hs: Handshake<'_>,
     from: Source,
     id: u64,
 ) -> Result<(Vec<Permission>, About), Failure> {
@@ -1134,6 +1190,8 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         reason: Some(reason),
         resume: None,
         about: None,
+        via: None,
+        key: None,
     };
     if let Err(reason) = ctx.access.admit(from, pinned) {
         let _ = ch.send(&refuse(reason)).await;
@@ -1158,6 +1216,8 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             reason: None,
             resume: Some(resume),
             about: Some(ctx.about()),
+            via: Some(Via::Resume),
+            key: None,
         }))
         .await?;
         // A resumed controller sent no description: the last one stands.
@@ -1173,21 +1233,41 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         let _ = ch.send(&refuse(Refusal::Busy)).await;
         return Err(Failure::Refused(Refusal::Busy));
     }
-    // The slot the password opened, or None when the controller only asks.
-    let (slot, about) = match &client.requests {
-        Some(requests) => {
-            let host_key = ctx.identity.public_key();
+    let host_key = ctx.identity.public_key();
+    // A sign-in key admits before any password; an authorized key whose
+    // proof fails is a failed login, keys this host does not know are
+    // ignored.
+    let by_key = match crate::keys::verify(
+        ctx.access.secrets(),
+        &client.keys,
+        hs.h2,
+        &host_key,
+        client_key,
+    ) {
+        crate::keys::Verified::Key(k) => Some(k),
+        crate::keys::Verified::None => None,
+        crate::keys::Verified::Bad => {
+            ctx.access.failed(from);
+            let _ = ch.send(&refuse(Refusal::Password)).await;
+            return Err(Failure::Refused(Refusal::Password));
+        }
+    };
+    // What the controller proved (None when it only asks), and its
+    // description: with a key or without a password it came in the hello.
+    let (proven, about) = match (by_key, &client.requests) {
+        (Some(k), _) => (Some(Proven::Key(k)), client.about.clone()),
+        (None, Some(requests)) => {
             let (responses, half) = ctx
                 .access
                 .slots
                 .lock()
                 .map_err(|_| Failure::Broken)?
-                .respond(requests, &host_key, context)
+                .respond(requests, &host_key, hs.context)
                 .map_err(|_| Failure::Broken)?;
             step(ch.send(&Challenge { responses })).await?;
             let login: Login = step(ch.recv()).await?;
             let opened = match (login.slot, login.finalization) {
-                (Some(slot), Some(fin)) if half.finish(slot, &fin, &host_key, context) => {
+                (Some(slot), Some(fin)) if half.finish(slot, &fin, &host_key, hs.context) => {
                     Some(slot)
                 }
                 _ => None,
@@ -1199,9 +1279,9 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
                 let _ = ch.send(&refuse(Refusal::Password)).await;
                 return Err(Failure::Refused(Refusal::Password));
             };
-            (Some(slot), login.about)
+            (Some(Proven::Password(slot)), login.about)
         }
-        None => (None, client.about.clone()),
+        (None, None) => (None, client.about.clone()),
     };
     let peer = about.unwrap_or_default().clean();
     let device_id = identity::device_id(client_key);
@@ -1209,58 +1289,66 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     want.sort();
     want.dedup();
     // Nobody at the computer (Background service): the permanent password
-    // admits while Connect without asking is on.
-    let unattended = (slot == Some(Slot::Permanent) && ctx.access.serve() != Serve::All)
+    // or a key admits while Connect without asking is on.
+    let lasting = matches!(
+        proven,
+        Some(Proven::Password(Slot::Permanent) | Proven::Key(_))
+    );
+    let unattended = (lasting && ctx.access.serve() != Serve::All)
         .then(|| ctx.access.unattended(&key_b64, &device_id, &want))
         .flatten();
     if unattended.is_none() && ctx.access.serve() != Serve::All {
         let _ = ch.send(&refuse(Refusal::Absent)).await;
         return Err(Failure::Refused(Refusal::Absent));
     }
-    // A correct password within what the host lets a password grant.
-    let by_password = (slot.is_some()
-        && ctx.access.admits_by_password(&key_b64, &device_id, &want))
-    .then(|| want.clone());
-    if let Some(granted) = unattended.or(by_password) {
-        let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
-        let resume = ctx.access.issue_resume(&key_b64, &granted, id);
-        step(ch.send(&Verdict {
-            accepted: true,
-            granted: granted.clone(),
-            reason: None,
-            resume: Some(resume),
-            about: Some(ctx.about()),
-        }))
-        .await?;
-        return Ok((granted, peer));
-    }
-    ctx.sessions.update(id, |e| e.state = State::Confirming);
-    let (ask_id, decision) = match ctx
-        .access
-        .ask(&key_b64, &device_id, want, &peer, slot.is_some())
-    {
-        Ok(v) => v,
-        Err(reason) => {
-            let _ = ch.send(&refuse(reason)).await;
-            return Err(Failure::Refused(reason));
-        }
+    let (via, admitting_key) = match &proven {
+        Some(Proven::Key(k)) => (Via::Key, ed25519_b64(&k.public)),
+        Some(Proven::Password(_)) => (Via::Password, None),
+        None => (Via::Confirmation, None),
     };
-    let answer = match tokio::time::timeout(CONFIRM_TIMEOUT, decision).await {
-        Ok(Ok(Some(granted))) => Ok(granted),
-        Ok(Ok(None)) | Ok(Err(_)) => Err(Refusal::Denied),
-        Err(_) => Err(Refusal::Timeout),
-    };
-    let granted = match answer {
-        Ok(granted) => granted,
-        Err(reason) => {
-            ctx.access.withdraw(ask_id);
-            // Asking without a password counts like a failed login, so
-            // requests cannot be repeated without end.
-            if slot.is_none() {
-                ctx.access.failed(from);
+    // A correct password or key within what the host lets it grant.
+    let by_proof = (proven.is_some() && ctx.access.admits_by_password(&key_b64, &device_id, &want))
+        .then(|| want.clone());
+    let granted = match unattended.or(by_proof) {
+        Some(granted) => granted,
+        None => {
+            ctx.sessions.update(id, |e| e.state = State::Confirming);
+            let key_name = match &proven {
+                Some(Proven::Key(k)) => Some(k.name.as_str()),
+                _ => None,
+            };
+            let (ask_id, decision) = match ctx.access.ask(
+                &key_b64,
+                &device_id,
+                want,
+                &peer,
+                proven.is_some(),
+                key_name,
+            ) {
+                Ok(v) => v,
+                Err(reason) => {
+                    let _ = ch.send(&refuse(reason)).await;
+                    return Err(Failure::Refused(reason));
+                }
+            };
+            let answer = match tokio::time::timeout(CONFIRM_TIMEOUT, decision).await {
+                Ok(Ok(Some(granted))) => Ok(granted),
+                Ok(Ok(None)) | Ok(Err(_)) => Err(Refusal::Denied),
+                Err(_) => Err(Refusal::Timeout),
+            };
+            match answer {
+                Ok(granted) => granted,
+                Err(reason) => {
+                    ctx.access.withdraw(ask_id);
+                    // Asking without a password counts like a failed login, so
+                    // requests cannot be repeated without end.
+                    if proven.is_none() {
+                        ctx.access.failed(from);
+                    }
+                    let _ = ch.send(&refuse(reason)).await;
+                    return Err(Failure::Refused(reason));
+                }
             }
-            let _ = ch.send(&refuse(reason)).await;
-            return Err(Failure::Refused(reason));
         }
     };
     let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
@@ -1271,9 +1359,19 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         reason: None,
         resume: Some(resume),
         about: Some(ctx.about()),
+        via: Some(via),
+        key: admitting_key,
     }))
     .await?;
     Ok((granted, peer))
+}
+
+/// The base64 Ed25519 key of an authorized key's line, as a proof names it.
+fn ed25519_b64(line: &str) -> Option<String> {
+    let b64 = line.split_whitespace().nth(1)?;
+    let blob = STANDARD.decode(b64).ok()?;
+    // string "ssh-ed25519" (4 + 11 bytes), then string key (4 + 32 bytes).
+    (blob.len() == 51).then(|| STANDARD.encode(&blob[19..]))
 }
 
 /// How a controller's attempt over one connection ended.
@@ -1328,6 +1426,8 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         // 2: <- e, ee, s, es + host_hello
         let frame = step(read_frame(&mut stream)).await?;
         let n = hs.read_message(&frame, &mut buf)?;
+        // What a key login signs: the handshake as it stands after frame 2.
+        let h2 = hs.get_handshake_hash().to_vec();
         let host: HostHello = serde_json::from_slice(&buf[..n]).map_err(|_| Failure::Broken)?;
         if !speaks(host.protocol) {
             // Not yet authenticated: kept only when it reads as a version,
@@ -1368,17 +1468,34 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             Some((half, requests)) => (Some(half), Some(requests)),
             None => (None, None),
         };
+        // Sign-in keys, only to a host that takes them and never on a
+        // resume: the one this host admitted last, else every Ed25519 key.
+        let keys = if peer.has(feature::KEY_LOGIN) && resume.is_none() {
+            crate::keys::proofs(
+                ctx.access.secrets(),
+                ctx.access.saved(&device_id).key.as_deref(),
+                &h2,
+                &host_key,
+                &ctx.identity.public_key(),
+            )
+        } else {
+            Vec::new()
+        };
         let hello = ClientHello {
             protocol: PROTOCOL,
             version: ctx.version.clone(),
             device_key: STANDARD.encode(ctx.identity.public_key()),
             signature: sign_static(&ctx.identity, &my_static),
             want: crate::access::wire_want(&want, &peer),
-            about: half.is_none().then(|| ctx.about()),
+            // Its description goes with a key or without a password, as
+            // the host may admit or ask before any login.
+            about: (half.is_none() || !keys.is_empty()).then(|| ctx.about()),
             requests,
             resume: resume.as_ref().map(|t| t.to_string()),
             features: our_features(),
+            keys,
         };
+        let offered_keys = !hello.keys.is_empty();
         let payload = serde_json::to_vec(&hello).map_err(|_| Failure::Broken)?;
         let n = hs.write_message(&payload, &mut buf)?;
         step(write_frame(&mut stream, &buf[..n])).await?;
@@ -1389,9 +1506,13 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             buf,
         };
         // 4: challenge, or at once a verdict (a refusal, or a resumption);
-        // without a password the verdict, after the host's user decided.
+        // without a password, or with a key the host may ask its user
+        // about, the verdict after the host's user decided.
         let first: Value = match &half {
-            Some(_) => step(ch.recv()).await?,
+            Some(_) if !offered_keys => step(ch.recv()).await?,
+            Some(_) => tokio::time::timeout(CONFIRM_TIMEOUT + STEP_TIMEOUT, ch.recv())
+                .await
+                .unwrap_or(Err(Failure::Broken))?,
             None => {
                 ctx.sessions.update(id, |e| e.state = State::Confirming);
                 tokio::time::timeout(CONFIRM_TIMEOUT + STEP_TIMEOUT, ch.recv())
@@ -1432,12 +1553,36 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         let peer = verdict.about.unwrap_or_default().clean();
         let mut address = String::new();
         ctx.sessions.update(id, |e| address.clone_from(&e.address));
-        let _ = ctx
-            .access
-            .pin_host(&device_id, &host.device_key, &peer, &address);
+        let _ = ctx.access.pin_host(
+            &device_id,
+            &host.device_key,
+            &peer,
+            &address,
+            &host.features,
+        );
+        // The key the host admitted is the one offered next time; a host
+        // that admitted another way no longer takes the one remembered.
+        match verdict.via {
+            Some(Via::Key) => {
+                let id = verdict
+                    .key
+                    .as_deref()
+                    .and_then(|k| crate::keys::login_id(ctx.access.secrets(), k));
+                let _ = ctx.access.remember_key(&device_id, id.as_deref());
+            }
+            Some(Via::Password | Via::Confirmation) => {
+                let _ = ctx.access.remember_key(&device_id, None);
+            }
+            Some(Via::Resume | Via::Unknown) | None => {}
+        }
+        // A password is kept only once it admitted (an older host does not
+        // say how; a password it accepted did).
         let mut remember = Remember::default();
         ctx.sessions.update(id, |e| remember = e.remember);
-        if remember.save && !password.is_empty() {
+        if remember.save
+            && !password.is_empty()
+            && matches!(verdict.via, None | Some(Via::Password))
+        {
             let _ = ctx.access.save_password(&device_id, &password);
         }
         ctx.sessions.update(id, |e| e.peer = peer);
@@ -2679,6 +2824,10 @@ mod compat_tests {
             about: None,
             resume: None,
             features: our_features(),
+            keys: vec![crate::keys::Proof {
+                key: "k".into(),
+                signature: "s".into(),
+            }],
         };
         let old: legacy::ClientHello =
             serde_json::from_value(serde_json::to_value(&client).unwrap()).unwrap();
@@ -2689,6 +2838,8 @@ mod compat_tests {
             reason: None,
             resume: None,
             about: None,
+            via: Some(Via::Key),
+            key: Some("k".into()),
         };
         let old: legacy::Verdict =
             serde_json::from_value(serde_json::to_value(&verdict).unwrap()).unwrap();
@@ -2910,7 +3061,7 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     /// A device whose AI runs on the fake desktop and reaches no provider.
-    fn device(version: &str) -> Arc<Ctx> {
+    pub(super) fn device(version: &str) -> Arc<Ctx> {
         static N: AtomicU32 = AtomicU32::new(0);
         let n = N.fetch_add(1, Ordering::Relaxed);
         let rig = fake::rig(&format!("session-{n}"), "claude", "http://127.0.0.1:9");
@@ -3316,7 +3467,7 @@ mod tests {
     }
 
     /// `attempt`, asking for `want`.
-    async fn attempt_with(
+    pub(super) async fn attempt_with(
         host: &Arc<Ctx>,
         controller: &Arc<Ctx>,
         dialed: &str,
@@ -3396,7 +3547,7 @@ mod tests {
         id
     }
 
-    fn session(ctx: &Ctx, id: u64) -> Value {
+    pub(super) fn session(ctx: &Ctx, id: u64) -> Value {
         ctx.sessions
             .list()
             .as_array()
@@ -4113,7 +4264,7 @@ mod tests {
         let dialed = host.identity.device_id();
         controller
             .access
-            .pin_host(&dialed, "c29tZW9uZSBlbHNl", &About::default(), "")
+            .pin_host(&dialed, "c29tZW9uZSBlbHNl", &About::default(), "", &[])
             .unwrap();
         let id = attempt(&host, &controller, &dialed, "x", None).await;
         assert_eq!(session(&controller, id)["failure"], "key-changed");
@@ -4881,5 +5032,180 @@ mod tests {
         host.access.set_by_address(ByAddress::default()).unwrap();
         net.accept_by_address();
         assert_eq!(identify(&net), Err("unreachable"), "off");
+    }
+}
+
+/// Sign-in with keys (doc/en-us/identity-and-access.md, "Keys").
+#[cfg(test)]
+mod login_tests {
+    use super::tests::{attempt_with, device, session};
+    use super::*;
+
+    /// Gives the controller an Ed25519 sign-in key from `seed` and lets it
+    /// connect to the host under `name`. Returns: the controller's key id.
+    fn pair(host: &Ctx, controller: &Ctx, seed: [u8; 32], name: &str) -> String {
+        let kept = crate::keys::add_login(controller.access.secrets(), "", &STANDARD.encode(seed))
+            .unwrap();
+        let line = kept["public"].as_str().unwrap();
+        crate::keys::add_authorized(host.access.secrets(), name, line).unwrap();
+        kept["id"].as_str().unwrap().to_owned()
+    }
+
+    /// Ends a controller's session that connected.
+    fn close(controller: &Ctx, id: u64) {
+        let _ = controller.sessions.close(id);
+    }
+
+    /// What a key login signs is the handshake after frame 2: the host
+    /// reads it right after writing frame 2, the controller right after
+    /// reading it, and both must see the same.
+    #[test]
+    fn both_sides_hash_frame_2_alike() {
+        let (mut i, _) = noise(true).unwrap();
+        let (mut r, _) = noise(false).unwrap();
+        let (mut msg, mut out) = (vec![0u8; MAX_FRAME], vec![0u8; MAX_FRAME]);
+        let n = i.write_message(&[], &mut msg).unwrap();
+        r.read_message(&msg[..n], &mut out).unwrap();
+        let n = r.write_message(b"{\"host_hello\":1}", &mut msg).unwrap();
+        let host_h2 = r.get_handshake_hash().to_vec();
+        i.read_message(&msg[..n], &mut out).unwrap();
+        let controller_h2 = i.get_handshake_hash().to_vec();
+        assert_eq!(host_h2, controller_h2);
+        let n = i.write_message(b"{\"client_hello\":1}", &mut msg).unwrap();
+        r.read_message(&msg[..n], &mut out).unwrap();
+        assert_eq!(i.get_handshake_hash(), r.get_handshake_hash());
+        assert_ne!(
+            i.get_handshake_hash(),
+            host_h2.as_slice(),
+            "frame 3 moves it on"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_key_admits_within_the_grants_and_is_remembered() {
+        use Permission::*;
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.access.set_password_grants(vec![ViewScreen]).unwrap();
+        let key = pair(&host, &controller, [11; 32], "laptop");
+        let dialed = host.identity.device_id();
+        // No password: the key admits within the grants, without asking.
+        let id = attempt_with(&host, &controller, &dialed, "", None, vec![ViewScreen]).await;
+        let s = session(&controller, id);
+        assert_eq!(s["state"], "connected", "{s}");
+        assert_eq!(s["granted"], json!(["view-screen"]));
+        assert_eq!(
+            controller.access.saved(&dialed).key.as_deref(),
+            Some(key.as_str())
+        );
+        assert!(crate::keys::authorized(host.access.secrets())[0].last > 0);
+        close(&controller, id);
+        // More than the grants: the host's user is asked (and allows).
+        let want = vec![ViewScreen, RunAiTask];
+        let id = attempt_with(&host, &controller, &dialed, "", Some(want.clone()), want).await;
+        let s = session(&controller, id);
+        assert_eq!(s["granted"], json!(["view-screen", "run-ai-task"]), "{s}");
+        close(&controller, id);
+        // The key no longer authorized: the password gets in, and the key
+        // remembered for this host is forgotten.
+        let a = crate::keys::authorized(host.access.secrets());
+        crate::keys::remove_authorized(host.access.secrets(), &a[0].id).unwrap();
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let id = attempt_with(
+            &host,
+            &controller,
+            &dialed,
+            "k7mq2xpa",
+            None,
+            vec![ViewScreen],
+        )
+        .await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        assert_eq!(controller.access.saved(&dialed).key, None);
+        close(&controller, id);
+    }
+
+    /// With nobody at the computer a key admits like the permanent
+    /// password, while Connect without asking is on.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn nobody_there_a_key_admits_like_the_permanent_password() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.access
+            .set_password_grants(vec![Permission::ViewScreen])
+            .unwrap();
+        pair(&host, &controller, [12; 32], "laptop");
+        host.access.set_serve(Serve::Unattended);
+        let dialed = host.identity.device_id();
+        let want = vec![Permission::ViewScreen, Permission::ControlInput];
+        let id = attempt_with(&host, &controller, &dialed, "", None, want.clone()).await;
+        let s = session(&controller, id);
+        assert_eq!(s["state"], "connected", "{s}");
+        assert_eq!(s["granted"], json!(["view-screen"]));
+        close(&controller, id);
+        host.access.set_without_asking(false).unwrap();
+        let id = attempt_with(&host, &controller, &dialed, "", None, want).await;
+        assert_eq!(
+            session(&controller, id)["failure"],
+            json!({"refused": "absent"})
+        );
+    }
+
+    /// Plays a host announcing `features` up to the controller's hello.
+    /// Returns: the hello as it came, as JSON.
+    async fn hello_to(features: &[&str]) -> Value {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        pair(&host, &controller, [13; 32], "laptop");
+        let dialed = host.identity.device_id();
+        let (a, mut b) = tokio::io::duplex(1 << 16);
+        let (id, stop) = begin(&controller, &dialed, Remember::default());
+        let password = zeroize::Zeroizing::new("k7mq2xpa".to_owned());
+        let want = vec![Permission::ViewScreen];
+        tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop,
+            a,
+            dialed,
+            password,
+            want,
+            None,
+        ));
+        let (mut hs, my_static) = noise(false).unwrap();
+        let mut buf = vec![0u8; MAX_FRAME];
+        let f = read_frame(&mut b).await.unwrap();
+        hs.read_message(&f, &mut buf).unwrap();
+        let hello = HostHello {
+            protocol: PROTOCOL,
+            version: "1.0.0".into(),
+            source: SOURCE_URL.into(),
+            device_key: STANDARD.encode(host.identity.public_key()),
+            signature: sign_static(&host.identity, &my_static),
+            features: features.iter().map(|f| f.to_string()).collect(),
+        };
+        let n = hs
+            .write_message(&serde_json::to_vec(&hello).unwrap(), &mut buf)
+            .unwrap();
+        write_frame(&mut b, &buf[..n]).await.unwrap();
+        let f = read_frame(&mut b).await.unwrap();
+        let n = hs.read_message(&f, &mut buf).unwrap();
+        serde_json::from_slice(&buf[..n]).unwrap()
+    }
+
+    /// Keys go only to a host that announced `key-login`: a 0.4.0 host
+    /// gets the hello it knows.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn keys_go_only_to_hosts_that_take_them() {
+        let old = hello_to(&[]).await;
+        assert!(old.get("keys").is_none(), "{old}");
+        let new = hello_to(&[feature::KEY_LOGIN]).await;
+        assert_eq!(new["keys"].as_array().map(Vec::len), Some(1), "{new}");
+        assert!(new["about"].is_object(), "a key may admit before any login");
     }
 }
