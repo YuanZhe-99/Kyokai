@@ -20,6 +20,7 @@ mod files;
 mod identity;
 mod input;
 mod keyboard;
+mod keys;
 #[cfg(target_os = "macos")]
 mod mac;
 mod media;
@@ -34,9 +35,12 @@ mod privacy;
 mod session;
 mod soft;
 mod store;
+mod system;
+mod tunnel;
 mod video;
 #[cfg(target_os = "macos")]
 mod vt;
+mod watch;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -211,7 +215,8 @@ pub extern "C" fn kyokai_stop() {
 const GOODBYE_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Waits for the next media packet of a controller session, for the GUI
-/// (doc/en-us/architecture.md, "FFI").
+/// (doc/en-us/architecture.md, "FFI"); a tunnel's session gives its bytes as
+/// packet 14.
 /// Inputs: `buf`/`cap` — memory the caller owns, written by the core.
 /// Returns: the packet's length; -1 when `timeout_ms` passed without one;
 /// -2 when the session's media ended or there is no such session; -3 when
@@ -226,7 +231,12 @@ pub unsafe extern "C" fn kyokai_media_read(
     cap: usize,
     timeout_ms: u32,
 ) -> i64 {
+    let wait = std::time::Duration::from_millis(timeout_ms.into());
     let got = catch_unwind(|| {
+        // A tunnel's bytes (packet 14).
+        if let Some(read) = tunnel_read(session, wait) {
+            return Some(read);
+        }
         // The core's lock is held only to find the queue, never while waiting.
         let queue = CORE
             .lock()
@@ -252,7 +262,8 @@ pub unsafe extern "C" fn kyokai_media_read(
 }
 
 /// Passes one packet from the GUI to a controller session: a control message
-/// (`media::packet::CONTROL` + JSON) for the host.
+/// (`media::packet::CONTROL` + JSON) for the host, or a tunnel's bytes
+/// (packet 14), which always wait for room.
 /// Inputs: `ptr`/`len` — the packet, borrowed for the call.
 /// Returns: 0; -1 for a malformed packet; -2 when there is no such session
 /// or it ended; -3 when a pointer move was left out because the session is
@@ -270,6 +281,10 @@ pub unsafe extern "C" fn kyokai_media_write(session: u64, ptr: *const u8, len: u
     // SAFETY: the caller guarantees `len` readable bytes at `ptr`.
     let packet = unsafe { std::slice::from_raw_parts(ptr, len) };
     catch_unwind(|| {
+        // A tunnel's bytes (packet 14), lossless: waits for room.
+        if let Some((&media::packet::TUNNEL, bytes)) = packet.split_first() {
+            return tunnel_write(session, bytes);
+        }
         let Some((&media::packet::CONTROL, json)) = packet.split_first() else {
             return -1;
         };
@@ -695,6 +710,7 @@ fn build_on(
         identity,
         access: Arc::new(access::Access::load(secrets.clone())?),
         sessions: Arc::default(),
+        watching: Arc::default(),
         version: cfg.version.clone(),
         about: std::sync::Mutex::new(about::Local::load(&cfg.state_dir)),
     });
@@ -987,12 +1003,115 @@ fn call(input: &[u8]) -> Result<Value, String> {
                     save: r.remember,
                     saved: saved.is_some(),
                 };
-                let password = saved.unwrap_or(r.password);
-                let address = r.address.filter(|a| !a.trim().is_empty());
-                let id = c
-                    .network
-                    .connect(&r.device_id, address, password, r.want, remember)?;
+                let id = c.network.connect(net::Ask {
+                    device_id: r.device_id,
+                    address: r.address.filter(|a| !a.trim().is_empty()),
+                    password: saved.unwrap_or(r.password),
+                    want: r.want,
+                    remember,
+                    kind: session::Kind::Desktop,
+                })?;
                 Ok(json!({"id": id}))
+            })
+        }
+        // A tunnel to a device's own service: the saved password if any,
+        // else sign-in keys or the host user's answer (doc/en-us/remote-services.md).
+        "tunnel.open" => {
+            #[derive(Deserialize)]
+            struct Open {
+                device_id: String,
+                #[serde(default)]
+                address: Option<String>,
+                service: tunnel::Service,
+            }
+            let r: Open = serde_json::from_value(req.params)
+                .map_err(|e| format!("bad tunnel request: {e}"))?;
+            try_core(|c| {
+                let saved = c.ctx.access.saved_password(&r.device_id);
+                let id = c.network.connect(net::Ask {
+                    remember: session::Remember {
+                        save: false,
+                        saved: saved.is_some(),
+                    },
+                    password: saved.unwrap_or_default(),
+                    device_id: r.device_id,
+                    address: r.address.filter(|a| !a.trim().is_empty()),
+                    want: vec![r.service.permission()],
+                    kind: session::Kind::Tunnel(r.service),
+                })?;
+                Ok(json!({"id": id}))
+            })
+        }
+        // Watches these hosts' status for a while: a lease the GUI renews
+        // (doc/en-us/computer-use.md, "Host status").
+        "watch.set" => {
+            let devices: Vec<String> = serde_json::from_value(req.params["devices"].take())
+                .map_err(|e| format!("bad devices: {e}"))?;
+            if devices
+                .iter()
+                .any(|d| d.len() != 9 || !d.bytes().all(|b| b.is_ascii_digit()))
+            {
+                return Err("a Device ID has 9 digits".into());
+            }
+            try_core(|c| {
+                c.ctx
+                    .watching
+                    .set(&devices, &c.network.dialer(), &c.network.handle());
+                Ok(json!({}))
+            })
+        }
+        // Waits (without the core's lock) until a session is connected or
+        // ended, for at most `timeout_ms`.
+        "tunnel.wait" => {
+            let id = req.params["id"].as_u64().ok_or("bad session id")?;
+            let wait = req.params["timeout_ms"]
+                .as_u64()
+                .unwrap_or(90_000)
+                .min(90_000);
+            let sessions = {
+                let guard = CORE.lock().map_err(|_| "core state poisoned")?;
+                guard
+                    .as_ref()
+                    .ok_or("the core is not started")?
+                    .ctx
+                    .sessions
+                    .clone()
+            };
+            Ok(sessions.wait(id, std::time::Duration::from_millis(wait)))
+        }
+        "credentials.get" => {
+            let (device, service) = device_service(&req.params)?;
+            try_core(|c| {
+                let mut saved = c.ctx.access.saved(&device);
+                Ok(json!(saved.service(service).take().unwrap_or_default()))
+            })
+        }
+        "credentials.set" => {
+            let (device, service) = device_service(&req.params)?;
+            let creds: access::Credentials =
+                serde_json::from_value(req.params["credentials"].take())
+                    .map_err(|e| format!("bad credentials: {e}"))?;
+            try_core(|c| {
+                c.ctx
+                    .access
+                    .save_credentials(&device, service, creds)
+                    .map(|()| json!({}))
+            })
+        }
+        // Forgets one service's sign-in, the key a host admitted (`key`),
+        // or everything saved for the host (no service).
+        "credentials.forget" => {
+            let device = req.params["device_id"]
+                .as_str()
+                .ok_or("bad Device ID")?
+                .to_owned();
+            let what = req.params["service"].as_str().unwrap_or("").to_owned();
+            try_core(|c| {
+                match what.as_str() {
+                    "" => c.ctx.access.forget_saved(&device),
+                    w => c.ctx.access.forget_credentials(&device, w),
+                }
+                .map(|()| json!({}))
             })
         }
         "session.identify" => {
@@ -1038,15 +1157,58 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 .to_owned();
             try_core(|c| {
                 c.ctx.sessions.remove_host(&id);
-                c.ctx.access.forget_password(&id)?;
+                c.ctx.access.forget_saved(&id)?;
                 // A device never connected to has no pinned key.
                 let _ = c.ctx.access.forget_host(&id);
                 Ok(json!({}))
             })
         }
+        // Forgets everything kept for signing in to the host: its password,
+        // the key it admitted and its services' sign-ins.
         "password.forget_saved" => {
             let device = req.params["device_id"].as_str().ok_or("bad Device ID")?;
-            try_core(|c| c.ctx.access.forget_password(device).map(|()| json!({})))
+            try_core(|c| c.ctx.access.forget_saved(device).map(|()| json!({})))
+        }
+        "keys.list" => with_core(|c| keys::list_login(c.ctx.access.secrets())),
+        "keys.add" => {
+            let name = req.params["name"].as_str().unwrap_or("").to_owned();
+            let private: zeroize::Zeroizing<String> =
+                serde_json::from_value(req.params["private"].take())
+                    .map_err(|_| "the private key is missing")?;
+            try_core(|c| keys::add_login(c.ctx.access.secrets(), &name, &private))
+        }
+        "keys.remove" => {
+            let id = req.params["id"].as_str().ok_or("bad key")?.to_owned();
+            try_core(|c| keys::remove_login(c.ctx.access.secrets(), &id).map(|()| json!({})))
+        }
+        "keys.sign" => {
+            let p = &req.params;
+            let (Some(id), Some(algorithm), Some(data)) = (
+                p["key_id"].as_str(),
+                p["algorithm"].as_str(),
+                p["data"].as_str(),
+            ) else {
+                return Err("bad signing request".into());
+            };
+            try_core(|c| {
+                keys::sign_ssh(c.ctx.access.secrets(), id, algorithm, data)
+                    .map(|s| json!({"signature": s}))
+            })
+        }
+        "authorized.list" => with_core(|c| json!(keys::authorized(c.ctx.access.secrets()))),
+        "authorized.add" => {
+            let name = req.params["name"].as_str().unwrap_or("").to_owned();
+            let public = req.params["public"]
+                .as_str()
+                .ok_or("bad public key")?
+                .to_owned();
+            try_core(|c| {
+                keys::add_authorized(c.ctx.access.secrets(), &name, &public).map(|a| json!(a))
+            })
+        }
+        "authorized.remove" => {
+            let id = req.params["id"].as_str().ok_or("bad key")?.to_owned();
+            try_core(|c| keys::remove_authorized(c.ctx.access.secrets(), &id).map(|()| json!({})))
         }
         "session.close" => {
             let id = req.params["id"].as_u64().ok_or("bad session id")?;
@@ -1249,6 +1411,59 @@ fn call(input: &[u8]) -> Result<Value, String> {
     }
 }
 
+/// A controller tunnel's next bytes for the GUI, as packet 14, for
+/// `kyokai_media_read`.
+/// Returns: None when `session` is no tunnel; else the packet, or why there
+/// is none (the wait ran out, or the tunnel ended).
+fn tunnel_read(session: u64, wait: std::time::Duration) -> Option<Result<Vec<u8>, media::Empty>> {
+    // The core's lock is held only to find the tunnel, never while waiting.
+    let (ends, rt) = {
+        let core = CORE.lock().ok()?;
+        let c = core.as_ref()?;
+        (c.ctx.sessions.tunnel(session)?, c.network.handle())
+    };
+    let next = rt.block_on(async {
+        tokio::time::timeout(wait, async { ends.down.lock().await.recv().await }).await
+    });
+    Some(match next {
+        Ok(Some(bytes)) => {
+            let mut packet = Vec::with_capacity(1 + bytes.len());
+            packet.push(media::packet::TUNNEL);
+            packet.extend_from_slice(&bytes);
+            Ok(packet)
+        }
+        Ok(None) => Err(media::Empty::Closed),
+        Err(_) => Err(media::Empty::Timeout),
+    })
+}
+
+/// Passes the GUI's bytes to a controller tunnel, waiting for room, for
+/// `kyokai_media_write` (outside any runtime).
+/// Returns: 0, or -2 when there is no such tunnel or it ended.
+fn tunnel_write(session: u64, bytes: &[u8]) -> i32 {
+    let ends = CORE
+        .lock()
+        .ok()
+        .and_then(|c| c.as_ref()?.ctx.sessions.tunnel(session));
+    let Some(ends) = ends else {
+        return -2;
+    };
+    for piece in bytes.chunks(tunnel::PIECE) {
+        if ends.up.blocking_send(piece.to_vec()).is_err() {
+            return -2;
+        }
+    }
+    0
+}
+
+/// Reads a credential request's `device_id` and `service`.
+fn device_service(params: &Value) -> Result<(String, tunnel::Service), String> {
+    let device = params["device_id"].as_str().ok_or("bad Device ID")?;
+    let service = serde_json::from_value(params["service"].clone())
+        .map_err(|_| "bad service: ssh, rdp or vnc")?;
+    Ok((device.to_owned(), service))
+}
+
 fn with_core(f: impl FnOnce(&mut Core) -> Value) -> Result<Value, String> {
     try_core(|c| Ok(f(c)))
 }
@@ -1286,14 +1501,28 @@ fn status() -> Value {
             "ai_draft": c.ctx.ai.draft().1,
             "requests": c.ctx.access.pending(),
             "sessions": c.ctx.sessions.list(),
+            "watching": c.ctx.watching.list(),
+            "watchers": c.ctx.sessions.watchers(),
             "recent": c
                 .ctx
                 .access
                 .recent()
                 .into_iter()
                 .map(|(id, h)| {
-                    let saved = c.ctx.access.saved_password(&id).is_some();
-                    json!({"device_id": id, "last": h.last, "about": h.about, "saved_password": saved, "address": h.address})
+                    let password = c.ctx.access.saved_password(&id).is_some();
+                    let saved = c.ctx.access.saved(&id);
+                    let key = saved
+                        .key
+                        .as_ref()
+                        .is_some_and(|k| keys::is_login(c.ctx.access.secrets(), k));
+                    json!({
+                        "device_id": id, "last": h.last, "about": h.about, "saved_password": password,
+                        "address": h.address, "features": h.features,
+                        "saved": {
+                            "password": password, "key": key, "ssh": saved.ssh.is_some(),
+                            "rdp": saved.rdp.is_some(), "vnc": saved.vnc.is_some(),
+                        },
+                    })
                 })
                 .collect::<Value>(),
             "name": c.ctx.about.lock().map(|l| l.chosen().to_owned()).unwrap_or_default(),

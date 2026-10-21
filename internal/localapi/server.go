@@ -200,6 +200,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, authz Authorizer) 
 		// No identity, or not authorized: answer nothing at all.
 		return
 	}
+	ctx = context.WithValue(ctx, ownerKey{}, authz.Owner(peer))
 	reader := bufio.NewReaderSize(conn, maxRequestSize)
 	for {
 		if ctx.Err() != nil {
@@ -230,7 +231,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, authz Authorizer) 
 		} else if req.Type == RequestSessionAttach {
 			stream(ctx, conn, reader, h, req)
 			return
-		} else if req.Type == RequestMedia {
+		} else if req.Type == RequestMedia || req.Type == RequestTunnelOpen {
 			media(ctx, conn, reader, h, req)
 			return
 		} else {

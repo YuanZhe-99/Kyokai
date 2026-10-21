@@ -1,6 +1,9 @@
 package localapi
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestAuthorizerServesOnlyTheOwner(t *testing.T) {
 	cases := []struct {
@@ -32,6 +35,34 @@ func TestAuthorizerServesOnlyTheOwner(t *testing.T) {
 		if got := c.a.Allows(c.p); got != c.want {
 			t.Errorf("%s: Allows = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// Only the owner and the helper's operator may use the engine's sign-in keys
+// and saved service passwords; the kyokai group is served the rest.
+func TestOwnerTierLeavesOutTheGroup(t *testing.T) {
+	cases := []struct {
+		name string
+		a    Authorizer
+		p    Peer
+		want bool
+	}{
+		{"unknown identity", Authorizer{OwnerUID: 501}, Peer{UID: 501}, false},
+		{"owner by uid", Authorizer{OwnerUID: 501}, Peer{UID: 501, Known: true}, true},
+		{"owner by SID", Authorizer{OwnerSID: "S-1-5-21-1"}, Peer{SID: "S-1-5-21-1", Known: true}, true},
+		{"Windows peer without a SID", Authorizer{OwnerSID: "S-1-5-21-1"}, Peer{Known: true}, false},
+		{"helper: the operator", helperAuthz, Peer{SID: "S-1-5-21-op", Known: true}, true},
+		{"helper: a group member", helperAuthz, Peer{SID: "S-1-5-21-m", GroupSIDs: []string{"S-1-5-21-g"}, Known: true}, false},
+		{"mac helper: the operator", macHelper, Peer{UID: 501, Groups: []uint32{20}, Known: true}, true},
+		{"mac helper: a group member", macHelper, Peer{UID: 502, Groups: []uint32{20, 600}, Known: true}, false},
+	}
+	for _, c := range cases {
+		if got := c.a.Owner(c.p); got != c.want {
+			t.Errorf("%s: Owner = %v, want %v", c.name, got, c.want)
+		}
+	}
+	if IsOwner(context.Background()) {
+		t.Error("a context without the server's mark is not the owner")
 	}
 }
 

@@ -113,6 +113,9 @@ type Status struct {
 	Requests json.RawMessage `json:"requests"`
 	Sessions json.RawMessage `json:"sessions"`
 	Recent   json.RawMessage `json:"recent"`
+	// Watching and Watchers are the status watches, decoded by the host.
+	Watching json.RawMessage `json:"watching"`
+	Watchers json.RawMessage `json:"watchers"`
 	// AI is the task in progress or null.
 	AI json.RawMessage `json:"ai"`
 	// AIDraft is the shared draft of the next AI instruction.

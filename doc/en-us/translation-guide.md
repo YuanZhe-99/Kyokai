@@ -115,6 +115,9 @@ and Latin words only where it helps readability.
 | Remote Desktop (RDP) / Screen Sharing (VNC) | 远程桌面（RDP） / 屏幕共享（VNC） |
 | input paused | 输入已暂停 |
 | loading indicator | 加载指示器 |
+| proof (with a sign-in key) | 证明 |
+| sample (of a host's status) / lease (on watching it) | 采样 / 租约 |
+| saved sign-in (of a service) | 保存的登录信息 |
 
 ## 6. Review checklist
 

@@ -18,13 +18,18 @@
 - Secrets are zeroized when dropped; `kyokai_stop` drops them all.
 - The store holds the device key, the networks kept with their network secrets
   ([networking.md](networking.md)), the OPAQUE server key and the permanent password's record, the
-  trusted devices, the known hosts and the hosts' saved passwords
+  trusted devices, the known hosts, the hosts' saved passwords and what else is saved for them (their
+  services' sign-ins, [remote-services.md](remote-services.md)), the
+  sign-in keys (this device's, private parts included, and those that can connect to it)
   ([identity-and-access.md](identity-and-access.md)) and the AI
   providers' API keys. The local API carries the network secret only from the GUI (or
   `ctl`) to the engine, never back; `ctl` reads it from the environment, not the command line. The same
   holds for the permanent password and the password typed to connect (`KYOKAI_PERMANENT_PASSWORD`,
   `KYOKAI_PASSWORD`); the core keeps a typed password in memory only until that session ends and then zeroizes it.
   A provider key travels the same way (`KYOKAI_AI_KEY` for `ctl ai-key`) and is never returned.
+  A sign-in key's private part goes only from the GUI to the engine (`keys.add`) and never leaves the
+  core again: the engine signs with it — a Kyokai key login, or an SSH user-auth request for the
+  engine's owner — and never returns it.
 
 ## Clipboard
 
@@ -38,6 +43,27 @@ with names it creates new (never overwriting), and deletes that folder when the 
 The sender never follows links or junctions. In the helper modes the files are read and written
 while impersonating the console's signed-in user, so a path put on the clipboard grants nothing
 that user could not read.
+
+## Remote services
+
+A tunnel reaches the host's own SSH, Remote Desktop or VNC on its loopback
+([remote-services.md](remote-services.md)). Those services trust that address as the host's own: one
+that treats local connections specially grants it to every controller admitted for it, so each
+service is a permission of its own, off by default, which asks the host's user. Inside a Remote
+Desktop or VNC session the controller works through the service, not Kyokai's capture and input:
+Hide Kyokai from capture and the guard on Kyokai's windows do not apply there, and the service's
+own sign-in decides what it may do. Saved service passwords are narrowed like the keys: kept in the
+engine's store, returned only by `credentials.get` to the owner or the operator for a client
+signing in right then, never in the status, a log or another device.
+
+## Status watchers
+
+A device that holds a password or a key within the password grants may watch this computer's
+status ([computer-use.md](computer-use.md), "Host status"): its load, memory, disk, network rates,
+battery, uptime and which of its remote services listen — nothing on the screen, no input, no
+files. Watchers are never asked about, so the host's user turns `see-status` off in the password
+grants to keep everyone out, and Permissions lists who watches now. On the controller the samples
+stay in memory, and only for the hosts its GUI shows.
 
 ## AI tasks
 
@@ -123,7 +149,9 @@ Only the engine's own user is served (peer credentials, never the request body);
 [architecture.md](architecture.md). The privileged helper's socket can be opened by every local
 user, and the helper serves only SYSTEM, its operator and the `kyokai` group, judged by the
 caller's token (its user and its enabled groups); an administrator outside them is refused too
-([run-modes.md](run-modes.md)).
+([run-modes.md](run-modes.md)). Signing with the engine's keys (`keys.sign`) and reading a saved service
+password (`credentials.get`) are served only to the owner or the operator, never to the group, by
+the tier the server marks on each connection from the same peer credentials.
 
 ## Threat model
 
@@ -136,6 +164,8 @@ caller's token (its user and its enabled groups); an administrator outside them 
 | The host's desktop under AI | a model (or text on the screen steering it) acting against the user | proposals are only input, validated and executed by the host; approvals; local input and take-over pause at once; late responses never act; Kyokai's windows are neither captured nor injected into by the AI (people controlling the host reach them only while the host user lets it, and never while a request or an approval waits) |
 | Old messages | replaying input, commands or logins | Noise nonces; resume tokens single-use, bound to the controller's key and valid 2 minutes; commands never re-sent after a reconnect; idempotent task start |
 | A revoked device | coming back | revoking ends its live sessions and drops its resume tokens; its task pauses when its session ends |
+| Services behind tunnels | a controller reaching a host's SSH, Remote Desktop or VNC, or a service trusting its loopback | each service its own permission, off by default and asking the host's user; tunnels only to the loopback port of the service named; a service that does not answer is refused by name; buffers bounded both ways; saved service passwords returned only to the owner or operator at a client's sign-in |
+| Sign-in keys | a proof replayed into another session, a key put to other uses, a private key leaking | a proof signs the handshake after frame 2 and both device keys; private keys never leave the core; the engine signs SSH only for an SSH user-auth request with that key, for the owner or operator only; removing a key that can connect keeps it out at once |
 | The local API | another local user driving the engine | peer credentials, the engine's own user only |
 | The helper | a local user driving the SYSTEM service, or swapping what it runs | peer credentials, the operator and the `kyokai` group only; its files are administrator-owned copies; the state folder is SYSTEM and Administrators only |
 | Helper updates | a local user swapping the app's files to have SYSTEM run them | the release key's signature over every file's hash, read once and installed as verified; unsigned builds need an administrator prompt |

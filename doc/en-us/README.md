@@ -17,6 +17,7 @@ embedded EasyTier P2P network, and AI tasks run on the computer being operated. 
 | [protocol.md](protocol.md) | The session wire protocol: framing, Noise handshake, OPAQUE login, messages |
 | [identity-and-access.md](identity-and-access.md) | Passwords, permissions, admission and host confirmation, pinned keys, rate limits |
 | [computer-use.md](computer-use.md) | Seeing and operating a host: video, quality, input, clipboard, AI tasks |
+| [remote-services.md](remote-services.md) | The host's own SSH, Remote Desktop and VNC through tunnels, and their saved sign-ins |
 | [gui.md](gui.md) | Interface structure, wording, tray, languages |
 | [upstream.md](upstream.md) | Verified upstream contracts and quirks: MyGo, EasyTier, RustDesk, OpenAI, Claude |
 | [third-party.md](third-party.md) | Reused code and dependencies, licenses and obligations |

@@ -227,9 +227,12 @@ type handler struct {
 	sessions map[chan struct{}]bool // each is poked when the status changes
 }
 
-func (h *handler) Handle(_ context.Context, req localapi.Request) localapi.Response {
+func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Response {
 	if h.protected.Load() && !protectedAllows[req.Type] {
 		return localapi.Fail(localapi.CodeInvalid, "protected mode is on: turn it off with the permanent password first")
+	}
+	if resp, ok := h.services(ctx, req); ok {
+		return resp
 	}
 	switch req.Type {
 	case localapi.RequestProtect:
@@ -567,6 +570,9 @@ const mediaPoll = 500 * time.Millisecond
 // packets from the core (video) go to the GUI, packets from the GUI
 // (control messages) go to the core, until either side ends.
 func (h *handler) Media(ctx context.Context, req localapi.Request, open func() io.ReadWriter) localapi.Response {
+	if req.Type == localapi.RequestTunnelOpen {
+		return h.tunnel(ctx, req, open)
+	}
 	st, err := h.status()
 	if err != nil {
 		return localapi.Fail(localapi.CodeInternal, "%v", err)
@@ -577,7 +583,14 @@ func (h *handler) Media(ctx context.Context, req localapi.Request, open func() i
 	if !live {
 		return localapi.Fail(localapi.CodeInvalid, "no live session %d", req.ID)
 	}
-	rw := open()
+	h.pump(ctx, req.ID, open())
+	return localapi.Response{OK: true}
+}
+
+// pump carries a controller session's packets between the core and a
+// client until either ends: the core's (video, a tunnel's bytes) to the
+// client, the client's (control messages, a tunnel's bytes) to the core.
+func (h *handler) pump(ctx context.Context, session uint64, rw io.ReadWriter) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
@@ -589,25 +602,24 @@ func (h *handler) Media(ctx context.Context, req localapi.Request, open func() i
 				return
 			}
 			buf = p
-			if errors.Is(h.lib.MediaWrite(req.ID, p), core.ErrMediaEnded) {
+			if errors.Is(h.lib.MediaWrite(session, p), core.ErrMediaEnded) {
 				return
 			}
 		}
 	}()
 	buf := make([]byte, localapi.MaxPacket)
 	for ctx.Err() == nil {
-		n, err := h.lib.MediaRead(req.ID, buf, mediaPoll)
+		n, err := h.lib.MediaRead(session, buf, mediaPoll)
 		switch {
 		case errors.Is(err, core.ErrMediaTimeout), errors.Is(err, core.ErrMediaTooBig):
 			continue
 		case err != nil:
-			return localapi.Response{OK: true}
+			return
 		}
 		if localapi.WritePacket(rw, buf[:n]) != nil {
-			return localapi.Response{OK: true}
+			return
 		}
 	}
-	return localapi.Response{OK: true}
 }
 
 // aiSettings runs a core method that answers the AI settings.
@@ -747,11 +759,13 @@ func (h *handler) status() (*localapi.Status, error) {
 	var about localapi.About
 	var permissions *localapi.Permissions
 	var byAddress localapi.ByAddress
+	var watching []localapi.Watched
+	var watchers []localapi.Watcher
 	for _, part := range []struct {
 		name string
 		raw  json.RawMessage
 		dst  any
-	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}, {"about", st.About, &about}, {"permissions", st.Permissions, &permissions}, {"by_address", st.ByAddress, &byAddress}} {
+	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}, {"about", st.About, &about}, {"permissions", st.Permissions, &permissions}, {"by_address", st.ByAddress, &byAddress}, {"watching", st.Watching, &watching}, {"watchers", st.Watchers, &watchers}} {
 		if err := json.Unmarshal(part.raw, part.dst); err != nil {
 			return nil, fmt.Errorf("%s status: %w", part.name, err)
 		}
@@ -762,7 +776,7 @@ func (h *handler) status() (*localapi.Status, error) {
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
 		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, ByAddress: byAddress, LogsOff: LogsOff(h.stateDir) || !st.KeepsHistory, Protected: st.Protected, AIDraft: st.AIDraft, Permissions: permissions,
 		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
-		Name: st.Name, About: about,
+		Name: st.Name, About: about, Watching: watching, Watchers: watchers,
 	}, nil
 }
 

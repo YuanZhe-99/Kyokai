@@ -34,6 +34,7 @@ about to change, verify against the code, then fix the docs in the same commit.
 | Passwords, permissions, confirmation, pinned keys, rate limits | `doc/en-us/identity-and-access.md` |
 | Run modes, the privileged helper and its authorization | `doc/en-us/run-modes.md` |
 | Seeing and operating a host: video, input, AI | `doc/en-us/computer-use.md` |
+| The host's own SSH, Remote Desktop and VNC through tunnels; saved service sign-ins | `doc/en-us/remote-services.md` |
 | How people use Kyokai, step by step | `doc/en-us/user-guide.md` |
 | Interface structure, wording, tray, languages | `doc/en-us/gui.md` |
 | Verified upstream contracts (MyGo, EasyTier, RustDesk, OpenAI, Claude) and quirks | `doc/en-us/upstream.md` |

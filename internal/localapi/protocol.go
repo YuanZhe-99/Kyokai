@@ -939,40 +939,7 @@ func ReadPacket(r io.Reader, buf []byte) ([]byte, error) {
 // answer the connection carries packets (ReadPacket / WritePacket) until
 // either side closes it.
 func (c *Client) Media(ctx context.Context, session uint64) (net.Conn, error) {
-	conn, err := c.dial(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := writeRequest(conn, Request{Type: RequestMedia, ID: session}); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	// Read the answer byte by byte: what follows it is packets, which a
-	// buffered reader would swallow.
-	var line []byte
-	one := make([]byte, 1)
-	_ = conn.SetReadDeadline(time.Now().Add(c.Timeout))
-	for len(line) < maxResponseSize {
-		if _, err := conn.Read(one); err != nil {
-			conn.Close()
-			return nil, err
-		}
-		if one[0] == '\n' {
-			break
-		}
-		line = append(line, one[0])
-	}
-	_ = conn.SetReadDeadline(time.Time{})
-	var resp Response
-	if err := json.Unmarshal(line, &resp); err != nil {
-		conn.Close()
-		return nil, err
-	}
-	if !resp.OK {
-		conn.Close()
-		return nil, &RequestError{Code: resp.Code, Message: resp.Error}
-	}
-	return conn, nil
+	return c.openStream(ctx, Request{Type: RequestMedia, ID: session}, c.Timeout)
 }
 
 // Watched is a host whose status this device watches: how the watch goes

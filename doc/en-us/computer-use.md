@@ -300,6 +300,44 @@ the console, so they are read with that user's rights and land in that user's te
 with nobody signed in, no files are shared. The helper only moves the bytes and never interprets
 them.
 
+## Host status
+
+A controller with a saved password for a host, or a sign-in key the host admitted, watches that
+host's status quietly while its Home shows ([protocol.md](protocol.md), "Status watchers"): a
+session of its own that asks only for `see-status`, carries no picture, input or sound, keeps no
+awake request on the host and shows no banner there. The host admits a watcher only with a
+correct password or key within its password grants while Connect without asking is on — it never
+asks its user, and refuses (`denied`) instead — and unattended only with the permanent password or
+a key. `see-status` is in the password grants by default; turned off there, a watch ends at its
+next sample. A host serves at most 16 watchers besides its other sessions; they are not listed
+among its sessions, leave no trace among its trusted devices, and the status lists them apart
+(`watchers`: `{device_id, about, since}`).
+
+While anyone watches, the host samples itself every 2 seconds on a thread of its own and sends
+each sample as a `system` message:
+
+| Field | Windows | macOS |
+|---|---|---|
+| `cpu` `{usage, cores}` | `GetSystemTimes` | `host_statistics` (`HOST_CPU_LOAD_INFO`) |
+| `memory` `{used, total}` | `GlobalMemoryStatusEx` | `hw.memsize`; app memory, wired and compressed from `host_statistics64` |
+| `gpu` `{usage}` or null | the 3D engines' `Utilization Percentage` counters (PDH), as Task Manager sums them | the busiest `IOAccelerator`'s `Device Utilization %` |
+| `disk` `{used, total}` | the disk Windows is on | the data volume |
+| `net` `{rx_bps, tx_bps}` | `GetIfTable2`, the hardware interfaces that are up | `getifaddrs`, the interfaces that are up, loopback left out |
+| `battery` `{percent, charging}` or null | `GetSystemPowerStatus` | the power sources (IOKit) |
+| `uptime_s`, `at` | `GetTickCount64`; the host's clock (Unix milliseconds) | `kern.boottime` |
+| `services` | which of SSH, Remote Desktop and VNC accept a connection on its loopback, looked at every 30 seconds ([remote-services.md](remote-services.md)) | the same |
+
+The controller's GUI holds a lease on the hosts it shows (`watch.set` `{devices}`, at most 8,
+renewed every 10 seconds while Home is visible; it lapses after 30 seconds). The engine watches
+only recent hosts that announced `status` and for which it keeps a password or a working key;
+otherwise it says why and dials nothing (`unsupported`, `no-credential`). It dials like a desktop
+session, never resumes, and after a drop waits 10 seconds, doubling up to 5 minutes; a refused
+password is forgotten and the watch stops (`refused`), and `rate-limited` waits 10 minutes. The
+status carries the result in memory only: `watching` `[{device_id, state, sample, received_at}]`,
+where `state` is `connecting`, `watching`, `no-credential`, `unsupported`, `refused` or `offline`
+and `received_at` (Unix milliseconds) when the sample arrived here, so that an old sample is never
+shown as current.
+
 ## AI tasks
 
 A task runs on the host, with the host's provider key, on the host's primary display. The host's

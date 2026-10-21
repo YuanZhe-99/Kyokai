@@ -83,6 +83,9 @@ pub enum Refusal {
     /// Nobody is at the host to confirm, and the controller has no
     /// unattended grant (or the host serves no one now).
     Absent,
+    /// A tunnel's service does not answer on the host (sent only to a
+    /// controller that asked for a tunnel).
+    ServiceDown,
 }
 
 /// Whom the host serves now (the engine decides from its run mode and
@@ -103,7 +106,11 @@ const TRUSTED_NAME: &str = "trusted_devices";
 const KNOWN_HOSTS_NAME: &str = "known_hosts";
 /// A saved host password's secret is this prefix and the Device ID.
 const SAVED_PASSWORD_PREFIX: &str = "saved_password.";
+/// What else is saved for a host (`Saved`) is this prefix and the Device ID.
+const SAVED_PREFIX: &str = "saved.";
 const PASSWORD_GRANTS_NAME: &str = "password_grants";
+/// The permissions this host knew when its password grants were stored.
+const PASSWORD_GRANTS_KNOWN_NAME: &str = "password_grants_known";
 const PASSWORD_MODE_NAME: &str = "password_mode";
 const WITHOUT_ASKING_NAME: &str = "connect_without_asking";
 const BY_ADDRESS_NAME: &str = "connect_by_address";
@@ -225,13 +232,30 @@ impl PasswordMode {
     }
 }
 /// What a correct password grants without asking until the host's user
-/// changes it: the manual session; AI tasks always ask.
-const DEFAULT_PASSWORD_GRANTS: [Permission; 5] = [
+/// changes it: the manual session and the status; AI tasks and the
+/// services ask.
+const DEFAULT_PASSWORD_GRANTS: [Permission; 6] = [
     Permission::ViewScreen,
     Permission::ControlInput,
     Permission::Clipboard,
     Permission::Files,
     Permission::HearSound,
+    Permission::SeeStatus,
+];
+/// Every permission this build knows: the password grants a host's user
+/// chose were chosen over these (`password_grants_known`).
+const ALL_PERMISSIONS: [Permission; 11] = [
+    Permission::ViewScreen,
+    Permission::ControlInput,
+    Permission::RunAiTask,
+    Permission::ApproveAiAction,
+    Permission::Clipboard,
+    Permission::Files,
+    Permission::HearSound,
+    Permission::SeeStatus,
+    Permission::UseSsh,
+    Permission::UseRdp,
+    Permission::UseVnc,
 ];
 /// Failed logins one source address may make in `FAIL_WINDOW`.
 pub(crate) const FAILS_PER_ADDRESS: usize = 5;
@@ -283,6 +307,59 @@ pub struct KnownHost {
     /// next connection from Home goes the same way.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub address: String,
+    /// What the host announced in the last session accepted (`feature`),
+    /// so Home knows what it offers before dialing.
+    #[serde(default)]
+    pub features: Vec<String>,
+}
+
+/// What this device keeps for signing in to one host besides its password
+/// (`saved.<Device ID>` in the secrets store, controller side).
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct Saved {
+    /// The id of the login key the host last admitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// The sign-ins of the host's own services, for the built-in clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh: Option<Credentials>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rdp: Option<Credentials>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vnc: Option<Credentials>,
+}
+
+impl Saved {
+    /// Whether nothing is kept.
+    fn is_empty(&self) -> bool {
+        self.key.is_none() && self.ssh.is_none() && self.rdp.is_none() && self.vnc.is_none()
+    }
+
+    /// A service's sign-in.
+    pub fn service(&mut self, s: crate::tunnel::Service) -> &mut Option<Credentials> {
+        match s {
+            crate::tunnel::Service::Ssh => &mut self.ssh,
+            crate::tunnel::Service::Rdp => &mut self.rdp,
+            crate::tunnel::Service::Vnc => &mut self.vnc,
+        }
+    }
+}
+
+/// A saved sign-in to one of a host's services (`credentials.set`): a
+/// user, an RDP domain, a password, an SSH key and the SSH server's key
+/// pinned on first use.
+#[derive(Clone, Default, Serialize, Deserialize)]
+pub struct Credentials {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub user: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub domain: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<zeroize::Zeroizing<String>>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub key_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub host_key: String,
 }
 
 /// A resume token's grant: who may resume, with what, until when, and
@@ -301,10 +378,15 @@ struct Pending {
     device_id: String,
     known: bool,
     new_key: bool,
-    /// Whether the controller proved a password (false: it only asks).
+    /// Whether the controller proved a password or a key (false: it only
+    /// asks).
     password: bool,
     want: Vec<Permission>,
     about: About,
+    /// The name of the key the controller proved, if it proved one.
+    key_name: Option<String>,
+    /// A tunnel request's service.
+    service: Option<crate::tunnel::Service>,
     reply: oneshot::Sender<Option<Vec<Permission>>>,
 }
 
@@ -346,7 +428,7 @@ impl Access {
     pub fn load(secrets: Arc<Secrets>) -> Result<Self, String> {
         let slots = Slots::load(&secrets)?;
         let memory = secrets.get(NO_HISTORY_NAME).map(|_| HashMap::new());
-        Ok(Access {
+        let access = Access {
             secrets,
             slots: Mutex::new(slots),
             limits: Mutex::default(),
@@ -354,7 +436,9 @@ impl Access {
             resumes: Mutex::default(),
             serve: Mutex::default(),
             memory: Mutex::new(memory),
-        })
+        };
+        access.roll_grants_forward()?;
+        Ok(access)
     }
 
     /// Whether the host is in protected mode.
@@ -557,7 +641,39 @@ impl Access {
     pub fn set_password_grants(&self, mut grants: Vec<Permission>) -> Result<(), String> {
         grants.sort();
         grants.dedup();
-        self.store(PASSWORD_GRANTS_NAME, &grants)
+        self.store(PASSWORD_GRANTS_NAME, &grants)?;
+        self.store(PASSWORD_GRANTS_KNOWN_NAME, &ALL_PERMISSIONS)
+    }
+
+    /// Brings password grants an older version stored up to this one: a
+    /// permission it did not know gets its default (`see-status` on, the
+    /// services off), and what the host's user chose stays.
+    /// Side effects: rewrites the secrets store when something was new.
+    fn roll_grants_forward(&self) -> Result<(), String> {
+        let Some(stored) = self.secrets.get(PASSWORD_GRANTS_NAME) else {
+            return Ok(());
+        };
+        let known: Vec<Permission> = match self.secrets.get(PASSWORD_GRANTS_KNOWN_NAME) {
+            Some(t) => serde_json::from_str::<Vec<Value>>(&t)
+                .map(|v| {
+                    v.into_iter()
+                        .filter_map(|p| serde_json::from_value(p).ok())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            // 0.4.0 and older knew the first seven.
+            None => ALL_PERMISSIONS[..7].to_vec(),
+        };
+        if ALL_PERMISSIONS.iter().all(|p| known.contains(p)) {
+            return Ok(());
+        }
+        let mut grants: Vec<Permission> = serde_json::from_str(&stored).unwrap_or_default();
+        grants.extend(
+            DEFAULT_PASSWORD_GRANTS
+                .iter()
+                .filter(|p| !known.contains(p)),
+        );
+        self.set_password_grants(grants)
     }
 
     /// Whether a controller that proved a password is admitted without
@@ -622,9 +738,12 @@ impl Access {
     }
 
     /// Opens a confirmation for the host's user.
-    /// Inputs: `password` says whether the controller proved a password.
+    /// Inputs: `password` says whether the controller proved a password or a
+    /// key; `key_name` names the key it proved; `service` is a tunnel
+    /// request's.
     /// Returns: the receiver of the decision (granted permissions, or None
     /// for a denial), or `Busy` when too many are open.
+    #[allow(clippy::too_many_arguments)]
     pub fn ask(
         &self,
         key: &str,
@@ -632,6 +751,8 @@ impl Access {
         want: Vec<Permission>,
         about: &About,
         password: bool,
+        key_name: Option<&str>,
+        service: Option<crate::tunnel::Service>,
     ) -> Result<(u64, Decision), Refusal> {
         let known = self.trusted().contains_key(key);
         let new_key = self.claims_other_key(key, device_id);
@@ -652,6 +773,8 @@ impl Access {
             password,
             want,
             about: about.clone(),
+            key_name: key_name.map(String::from),
+            service,
             reply,
         });
         Ok((id, rx))
@@ -689,6 +812,8 @@ impl Access {
                     "password": q.password,
                     "want": q.want,
                     "about": q.about,
+                    "key": q.key_name,
+                    "service": q.service,
                 })
             })
             .collect()
@@ -820,15 +945,94 @@ impl Access {
             .remove(&format!("{SAVED_PASSWORD_PREFIX}{device_id}"))
     }
 
+    /// What this device keeps for signing in to a host besides its password
+    /// (controller side).
+    pub fn saved(&self, device_id: &str) -> Saved {
+        self.secrets
+            .get(&format!("{SAVED_PREFIX}{device_id}"))
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
+    }
+
+    /// Keeps what this device saves for a host; an empty entry is removed.
+    /// Side effects: rewrites the secrets store.
+    pub fn set_saved(&self, device_id: &str, saved: &Saved) -> Result<(), String> {
+        let name = format!("{SAVED_PREFIX}{device_id}");
+        if saved.is_empty() {
+            return self.secrets.remove(&name);
+        }
+        self.store(&name, saved)
+    }
+
+    /// Remembers the login key a host admitted, or forgets the one
+    /// remembered (None) when the host admitted another way.
+    pub fn remember_key(&self, device_id: &str, key: Option<&str>) -> Result<(), String> {
+        let mut saved = self.saved(device_id);
+        if saved.key.as_deref() == key {
+            return Ok(());
+        }
+        saved.key = key.map(String::from);
+        self.set_saved(device_id, &saved)
+    }
+
+    /// Saves the sign-in of one of a host's services (`credentials.set`):
+    /// it replaces the one saved, except that a password or a server key
+    /// left out keeps the saved one and an empty password removes it.
+    /// Side effects: rewrites the secrets store.
+    pub fn save_credentials(
+        &self,
+        device_id: &str,
+        service: crate::tunnel::Service,
+        mut new: Credentials,
+    ) -> Result<(), String> {
+        let mut saved = self.saved(device_id);
+        let slot = saved.service(service);
+        let old = slot.take().unwrap_or_default();
+        new.password = match new.password {
+            Some(p) if p.is_empty() => None,
+            Some(p) => Some(p),
+            None => old.password,
+        };
+        if new.host_key.is_empty() {
+            new.host_key = old.host_key;
+        }
+        *slot = Some(new);
+        self.set_saved(device_id, &saved)
+    }
+
+    /// Forgets the sign-in of one of a host's services, or the key it
+    /// admitted (`key`).
+    pub fn forget_credentials(&self, device_id: &str, what: &str) -> Result<(), String> {
+        let mut saved = self.saved(device_id);
+        match what {
+            "key" => saved.key = None,
+            _ => {
+                let s: crate::tunnel::Service = serde_json::from_value(json!(what))
+                    .map_err(|_| format!("{what:?} is not a service"))?;
+                *saved.service(s) = None;
+            }
+        }
+        self.set_saved(device_id, &saved)
+    }
+
+    /// Forgets everything kept for signing in to a host: its password and
+    /// its saved entry.
+    pub fn forget_saved(&self, device_id: &str) -> Result<(), String> {
+        self.forget_password(device_id)?;
+        self.secrets.remove(&format!("{SAVED_PREFIX}{device_id}"))
+    }
+
     /// Pins a host key for its Device ID, or refreshes its last connection
     /// (controller side).
-    /// Inputs: `address`, the address dialed, or empty over the network.
+    /// Inputs: `address`, the address dialed, or empty over the network;
+    /// `features`, what the host announced in this session.
     pub fn pin_host(
         &self,
         device_id: &str,
         key: &str,
         about: &About,
         address: &str,
+        features: &[String],
     ) -> Result<(), String> {
         let mut all = self.known_hosts();
         all.insert(
@@ -838,8 +1042,25 @@ impl Access {
                 last: unix_now(),
                 about: about.clone(),
                 address: address.to_owned(),
+                features: features.to_vec(),
             },
         );
+        self.store_history(KNOWN_HOSTS_NAME, &all)
+    }
+
+    /// A host this device connected to (controller side).
+    pub fn known(&self, device_id: &str) -> Option<KnownHost> {
+        self.known_hosts().remove(device_id)
+    }
+
+    /// Notes what a known host announced (a status watch), leaving when it
+    /// was last connected to as it was.
+    pub fn note_features(&self, device_id: &str, features: &[String]) -> Result<(), String> {
+        let mut all = self.known_hosts();
+        match all.get_mut(device_id) {
+            Some(h) if h.features != features => h.features = features.to_vec(),
+            _ => return Ok(()),
+        }
         self.store_history(KNOWN_HOSTS_NAME, &all)
     }
 
@@ -940,6 +1161,8 @@ mod tests {
                 vec![Permission::ViewScreen, Permission::ControlInput],
                 &About::default(),
                 false,
+                Some("laptop"),
+                Some(crate::tunnel::Service::Ssh),
             )
             .unwrap();
         // While a controller waits for the host user, nobody's input reaches
@@ -949,9 +1172,19 @@ mod tests {
         assert_eq!(open[0]["new_key"], true);
         assert_eq!(open[0]["known"], false);
         assert_eq!(open[0]["password"], false);
+        assert_eq!(open[0]["key"], "laptop", "the key it proved, by name");
+        assert_eq!(open[0]["service"], "ssh");
         assert_eq!(
-            a.ask("key-B", "100000002", vec![], &About::default(), true)
-                .err(),
+            a.ask(
+                "key-B",
+                "100000002",
+                vec![],
+                &About::default(),
+                true,
+                None,
+                None
+            )
+            .err(),
             Some(Refusal::Busy)
         );
         a.decide(
@@ -1020,11 +1253,101 @@ mod tests {
         assert_eq!(a.take_resume(&t, "key-A"), None, "used once");
     }
 
+    /// Forgetting what is saved for a host forgets its password and its
+    /// saved entry together; other hosts keep theirs.
+    #[test]
+    fn forgetting_a_host_forgets_everything_saved_for_it() {
+        let a = access();
+        for id in ["100000002", "100000003"] {
+            a.save_password(id, "long-lived-pw").unwrap();
+            a.remember_key(id, Some("0123456789abcdef")).unwrap();
+        }
+        a.forget_saved("100000002").unwrap();
+        assert!(a.saved_password("100000002").is_none());
+        assert_eq!(a.saved("100000002").key, None);
+        assert!(a.saved_password("100000003").is_some());
+        assert!(a.saved("100000003").key.is_some());
+        // An entry left empty is not kept at all.
+        a.remember_key("100000003", None).unwrap();
+        assert!(a.secrets().get("saved.100000003").is_none());
+    }
+
+    /// A service's saved sign-in is replaced as a whole, except that a
+    /// password or a server key left out stays and an empty password goes.
+    #[test]
+    fn saved_service_sign_ins_keep_what_is_left_out() {
+        use crate::tunnel::Service;
+        let a = access();
+        let id = "100000002";
+        let pw = |p: &str| Some(zeroize::Zeroizing::new(p.to_owned()));
+        let creds = |user: &str, password, host_key: &str| Credentials {
+            user: user.into(),
+            password,
+            host_key: host_key.into(),
+            ..Credentials::default()
+        };
+        a.save_credentials(id, Service::Ssh, creds("me", pw("hunter2"), ""))
+            .unwrap();
+        // The server's key pinned later keeps the password.
+        a.save_credentials(id, Service::Ssh, creds("me", None, "ssh-ed25519 AAAA"))
+            .unwrap();
+        let ssh = a.saved(id).ssh.unwrap();
+        assert_eq!(ssh.password.as_deref().map(String::as_str), Some("hunter2"));
+        assert_eq!(ssh.host_key, "ssh-ed25519 AAAA");
+        // An empty password removes it; the server key stays.
+        a.save_credentials(id, Service::Ssh, creds("root", pw(""), ""))
+            .unwrap();
+        let ssh = a.saved(id).ssh.unwrap();
+        assert!(ssh.password.is_none());
+        assert_eq!(
+            (ssh.user.as_str(), ssh.host_key.as_str()),
+            ("root", "ssh-ed25519 AAAA")
+        );
+        a.save_credentials(id, Service::Vnc, creds("", pw("vnc-pw"), ""))
+            .unwrap();
+        a.forget_credentials(id, "ssh").unwrap();
+        assert!(a.saved(id).ssh.is_none() && a.saved(id).vnc.is_some());
+        assert!(a.forget_credentials(id, "ftp").is_err());
+        a.forget_credentials(id, "vnc").unwrap();
+        assert!(a.secrets().get("saved.100000002").is_none(), "nothing left");
+    }
+
+    /// Password grants an older version stored get the new permissions'
+    /// defaults once — `see-status` on, the services off — and what the
+    /// host's user chooses afterwards stays.
+    #[test]
+    fn new_permissions_roll_into_stored_grants() {
+        use Permission::*;
+        let secrets = Arc::new(Secrets::memory());
+        // As 0.4.0 stored them, files turned off by the host's user.
+        secrets
+            .set(
+                PASSWORD_GRANTS_NAME,
+                r#"["view-screen","control-input","clipboard","hear-sound"]"#,
+            )
+            .unwrap();
+        let a = Access::load(secrets.clone()).unwrap();
+        assert_eq!(
+            a.password_grants(),
+            vec![ViewScreen, ControlInput, Clipboard, HearSound, SeeStatus]
+        );
+        a.set_password_grants(vec![ViewScreen]).unwrap();
+        let again = Access::load(secrets).unwrap();
+        assert_eq!(
+            again.password_grants(),
+            vec![ViewScreen],
+            "the choice stays"
+        );
+        let fresh = access().password_grants();
+        assert!(fresh.contains(&SeeStatus));
+        assert!(!fresh.iter().any(|p| matches!(p, UseSsh | UseRdp | UseVnc)));
+    }
+
     #[test]
     fn pinned_hosts_persist_and_can_be_forgotten() {
         let a = access();
         assert_eq!(a.known_host("100000002"), None);
-        a.pin_host("100000002", "key-H", &About::default(), "")
+        a.pin_host("100000002", "key-H", &About::default(), "", &[])
             .unwrap();
         assert_eq!(a.known_host("100000002").as_deref(), Some("key-H"));
         a.forget_host("100000002").unwrap();
@@ -1086,7 +1409,7 @@ mod tests {
     fn no_logs_keeps_the_history_in_memory() {
         let secrets = Arc::new(Secrets::memory());
         let a = Access::load(secrets.clone()).unwrap();
-        a.pin_host("100000002", "key-H", &About::default(), "")
+        a.pin_host("100000002", "key-H", &About::default(), "", &[])
             .unwrap();
         a.trust(
             "key-C",
@@ -1101,7 +1424,7 @@ mod tests {
         assert!(secrets.get(TRUSTED_NAME).is_none());
         // Still known for this run, and new connections stay in memory.
         assert_eq!(a.known_host("100000002").as_deref(), Some("key-H"));
-        a.pin_host("100000004", "key-J", &About::default(), "")
+        a.pin_host("100000004", "key-J", &About::default(), "", &[])
             .unwrap();
         assert!(secrets.get(KNOWN_HOSTS_NAME).is_none());
         assert_eq!(a.recent().len(), 2);
