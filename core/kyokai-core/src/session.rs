@@ -646,14 +646,25 @@ pub struct InputGate {
     inner: Mutex<Gate>,
 }
 
+impl Gate {
+    /// Whether the session takes input now: a connection runs, and a host
+    /// that sends video said something within STALL.
+    fn takes(&self) -> bool {
+        self.open && self.heard.is_none_or(|t| t.elapsed() <= STALL)
+    }
+}
+
 /// The gate's state (`InputGate`).
 #[derive(Default)]
 struct Gate {
     /// What this session made the host hold, as sent.
     held: crate::input::Held,
-    /// A connection runs (`run`), and its path moved within STALL.
+    /// A connection runs (`run`).
     open: bool,
-    stalled: bool,
+    /// When the host last said anything, once it sends video (its stats):
+    /// silent for STALL, the path is stalled. Checked as input comes, so a
+    /// session busy writing to a stalled path refuses input too.
+    heard: Option<Instant>,
     /// Releases that could not be queued: the host is told what is held
     /// (or sent them again) once the path moves.
     owed: bool,
@@ -686,7 +697,7 @@ impl InputGate {
         let Ok(mut g) = self.inner.lock() else {
             return -2;
         };
-        let takes = g.open && !g.stalled;
+        let takes = g.takes();
         match e.hold() {
             Hold::Release => {
                 g.held.follow(e);
@@ -715,7 +726,7 @@ impl InputGate {
     fn start(&self) {
         if let Ok(mut g) = self.inner.lock() {
             g.open = true;
-            g.stalled = false;
+            g.heard = None;
             g.runs += 1;
             if g.runs > 1 {
                 g.held = Default::default();
@@ -731,19 +742,18 @@ impl InputGate {
         }
     }
 
-    /// Follows the path: stalled while a host that sends video said nothing
-    /// for STALL.
-    fn set_stalled(&self, stalled: bool) {
+    /// The host said something at `at` (it sends video).
+    fn heard(&self, at: Instant) {
         if let Ok(mut g) = self.inner.lock() {
-            g.stalled = stalled;
+            g.heard = Some(at);
         }
     }
 
     /// Whether the GUI should say input is paused now.
     fn paused(&self) -> bool {
-        self.inner.lock().is_ok_and(|g| {
-            !(g.open && !g.stalled) || g.refused.is_some_and(|t| t.elapsed() < PAUSE_LINGER)
-        })
+        self.inner
+            .lock()
+            .is_ok_and(|g| !g.takes() || g.refused.is_some_and(|t| t.elapsed() < PAUSE_LINGER))
     }
 
     /// What reconciles the host with this session once its queue is empty
@@ -755,7 +765,7 @@ impl InputGate {
         let Ok(mut g) = self.inner.lock() else {
             return Vec::new();
         };
-        if !g.owed || !g.open || g.stalled {
+        if !g.owed || !g.takes() {
             return Vec::new();
         }
         g.owed = false;
@@ -2191,10 +2201,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // frames out, and its own check for that each second (`key_due`).
     let mut key_asked: Option<Instant> = None;
     let mut key_check = tokio::time::interval(KEY_AGAIN);
-    // A controller's input gate: looked at every INPUT_TICK, it follows
-    // the path (stalled when a host that sends video, as its stats show,
-    // said nothing for STALL), tells the GUI whether input is paused, and
-    // reconciles what the host holds once the queue is empty.
+    // A controller's input gate, looked at every INPUT_TICK: it tells the
+    // GUI whether input is paused and reconciles what the host holds once
+    // the queue is empty; it hears of the host as frames come, once the
+    // host's stats show that it sends video.
     let mut input_tick = tokio::time::interval(INPUT_TICK);
     let mut told_paused: Option<bool> = None;
     let mut host_sends_video = false;
@@ -2371,7 +2381,6 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             }
             _ = input_tick.tick(), if gate.is_some() => {
                 let (g, sync) = gate.as_ref().expect("checked");
-                g.set_stalled(host_sends_video && heard.elapsed() > STALL);
                 let paused = g.paused();
                 if told_paused != Some(paused)
                     && let Some(q) = &queue
@@ -2552,6 +2561,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             frame = frames.recv() => {
                 let frame = frame.ok_or(Failure::Broken)?;
                 heard = Instant::now();
+                // The gate refuses input once a host that sends video falls
+                // silent (InputGate::takes).
+                if host_sends_video && let Some((g, _)) = &gate {
+                    g.heard(heard);
+                }
                 let n = noise.read_message(&frame, &mut plain)?;
                 let plain = &plain[..n];
                 if plain.first() == Some(&media::CHUNK_TAG) {
@@ -5167,12 +5181,12 @@ mod tests {
         assert_eq!(write(&text, false), -3);
         assert!(g.paused());
         // The path stalls: presses and text are refused, never sent late.
-        g.set_stalled(true);
+        g.heard(Instant::now() - 2 * STALL);
         assert_eq!(write(&key(0x30, true), true), -3);
         assert_eq!(write(&text, true), -3);
         // A release goes on into the queue, in order behind its press.
         assert_eq!(write(&key(0x1E, false), true), 0);
-        g.set_stalled(false);
+        g.heard(Instant::now());
         assert_eq!(queued.borrow().len(), 3, "{queued:?}");
         // The connection drops with Shift held: its release cannot be
         // delivered, and is owed.

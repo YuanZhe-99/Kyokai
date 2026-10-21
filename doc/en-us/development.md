@@ -98,8 +98,9 @@ command line; `ctl network` and `ctl networks` show the settings without it, `ct
 forgets one and `ctl network-direct` sets direct paths for all of them. Two engines with different
 profiles, state directories and sockets on one machine see each other through the same network:
 with no outside server, one engine with direct paths on lists a server that answers nowhere
-(`tcp://127.0.0.1:9`) and the other lists that engine's listen port (`tcp://127.0.0.1:<port>`,
-from its status).
+(`tcp://127.0.0.1:9`) and the other lists that engine's listen port at this machine's own address
+(`tcp://<address>:<port>`, the port from its status): EasyTier does not dial a loopback peer
+(2026-10-21). Its link can run through `tools/netdelay` (below) the same way.
 
 On macOS, sign local builds with the release identity (`MYGO_SIGN=<identity or its SHA-1>
 scripts/build.sh`) once it is in the login keychain: ad hoc builds get a new identity each time,
