@@ -14,7 +14,7 @@
   `export PROTOC=$(scripts/protoc.sh)`。没有 `PROTOC` 时，EasyTier 的构建会在 Windows 上下载未经校验的候选版本。
 - 依赖检查用 `cargo-deny`（`cargo install cargo-deny --locked`）；在 Windows ARM64 上要装好 clang 才能构建。
 - `scripts/build.sh` 放入每个安装包的许可证文件需要 `cargo-about`（`cargo install cargo-about --locked --features cli`）。
-- libvpx 1.16.0、libaom 3.13.3 与 Opus 1.5.2 静态链接进核心：`scripts/codecs.sh` 以清单模式用 vcpkg 构建它们（`core/vcpkg.json`，
+- libvpx 1.16.0、libaom 3.15.2 与 Opus 1.6.1 静态链接进核心：`scripts/codecs.sh` 以清单模式用 vcpkg 构建它们（`core/vcpkg.json`，
   注册表固定在 `core/vcpkg-configuration.json`，覆盖三元组在 `core/vcpkg-triplets`），装到
   `core/vcpkg_installed/<triplet>`（不提交）；每个目标在 cargo 之前运行一次，vcpkg 固定版本变动后再运行。它优先用
   `VCPKG_ROOT`，否则在 Windows 上用 Visual Studio 2026 自带的 vcpkg（“vcpkg package manager” 组件，在其安装目录中只读），

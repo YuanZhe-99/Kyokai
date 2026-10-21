@@ -20,7 +20,7 @@
   各处使用 MyGo 加载插件中的加载指示器。
 - 协议 10 并声明功能（`key-login`、`tunnel`、`status`、`input-sync`）：0.4.1 与 0.4.0 以双方共有的能力双向连接（已验证）；
   本地 API 2；ABI 5。
-- 上游版本：MyGo v0.6.2（原为 v0.5.5）；EasyTier v2.7.0、RustDesk 1.5.0（引入的代码）、Rust 1.99.1 已检查，未变；vcpkg：见下。
+- 上游版本：MyGo v0.6.2（原为 v0.5.5）；EasyTier v2.7.0、RustDesk 1.5.0（引入的代码）、Rust 1.99.1 已检查，未变；vcpkg 2026.10.16（原为 2026.07.29：aom 3.15.2、Opus 1.6.1，libvpx 1.16.0 未变）。
 
 ## 0.4.0 (2026-10-19)
 

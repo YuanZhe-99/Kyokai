@@ -171,7 +171,8 @@ when they run; anything not listed here is not assumed.
 - **Codecs in Kyokai.** `libs/scrap/src/common/{vpxcodec,vpx,aom}.rs` build on their own once
   their `hbb_common`, protobuf and libyuv uses are cut away (`core/third_party/rustdesk-codec`);
   the bindings are RustDesk's headers and bindgen settings, generated ahead of time. RustDesk
-  pins vcpkg at the same commit (`9e593bb`, release 2026.07.29: libvpx 1.16.0, aom 3.13.3).
+  pins vcpkg at `9e593bb` (release 2026.07.29: libvpx 1.16.0, aom 3.13.3); Kyokai follows the newer
+  2026.10.16 (`5d4a3dc`: libvpx 1.16.0, aom 3.15.2, Opus 1.6.1, checked 2026-10-21).
   Contracts relied on: libvpx and libaom take a forced key frame per call (`VPX_EFLAG_FORCE_KF`,
   `AOM_EFLAG_FORCE_KF`); `vpx_codec_enc_config_set` changes the bitrate of a running encoder;
   with no look-ahead (`g_lag_in_frames` 0, which Kyokai sets for libvpx; libaom's real-time

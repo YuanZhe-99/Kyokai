@@ -54,14 +54,14 @@ The core's direct dependencies; `RUST_LICENSES.txt` lists all of them, transitiv
 
 ## Native libraries (core library)
 
-Built by vcpkg (release 2026.07.29) and linked statically; packages ship their license texts and
+Built by vcpkg (release 2026.10.16) and linked statically; packages ship their license texts and
 patent grants in `licenses/`.
 
 | Library | License | Source |
 |---|---|---|
 | libvpx 1.16.0 (VP8, VP9) | BSD-3-Clause, with Google's additional patent grant (`libvpx-LICENSE.txt`, `libvpx-PATENTS.txt`) | https://github.com/webmproject/libvpx |
-| Opus 1.5.2 (sound) | BSD-3-Clause (`opus-LICENSE.txt`) | https://opus-codec.org |
-| libaom 3.13.3 (AV1) | BSD-2-Clause, with the Alliance for Open Media Patent License 1.0 (`libaom-LICENSE.txt`, `libaom-PATENTS.txt`) | https://aomedia.googlesource.com/aom |
+| Opus 1.6.1 (sound) | BSD-3-Clause (`opus-LICENSE.txt`) | https://opus-codec.org |
+| libaom 3.15.2 (AV1) | BSD-2-Clause, with the Alliance for Open Media Patent License 1.0 (`libaom-LICENSE.txt`, `libaom-PATENTS.txt`) | https://aomedia.googlesource.com/aom |
 
 ## Planned components
 

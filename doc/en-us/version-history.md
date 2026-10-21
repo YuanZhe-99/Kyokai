@@ -35,7 +35,8 @@
 - Protocol 10 with feature announcements (`key-login`, `tunnel`, `status`, `input-sync`): 0.4.1 and
   0.4.0 connect both ways with what both have (checked); local API 2; ABI 5.
 - Upstream versions: MyGo v0.6.2 (from v0.5.5); EasyTier v2.7.0, RustDesk 1.5.0 (vendored code),
-  Rust 1.99.1 checked, unchanged; vcpkg: see below.
+  Rust 1.99.1 checked, unchanged; vcpkg 2026.10.16 (from 2026.07.29: aom 3.15.2, Opus 1.6.1, libvpx
+  1.16.0 unchanged).
 
 ## 0.4.0 (2026-10-19)
 

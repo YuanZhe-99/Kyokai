@@ -38,11 +38,20 @@ pub const AOM_CODEC_USE_HIGHBITDEPTH: u32 = 262144;
 pub const AOM_ERROR_RESILIENT_DEFAULT: u32 = 1;
 pub const AOM_EFLAG_FORCE_KF: u32 = 1;
 pub const AOM_EFLAG_CALCULATE_PSNR: u32 = 2;
+pub const AOM_EFLAG_FREEZE_INTERNAL_STATE: u32 = 4;
 pub const AOM_USAGE_GOOD_QUALITY: u32 = 0;
 pub const AOM_USAGE_REALTIME: u32 = 1;
 pub const AOM_USAGE_ALL_INTRA: u32 = 2;
 pub const AOM_DECODER_ABI_VERSION: u32 = 22;
 pub const AOM_CODEC_CAP_EXTERNAL_FRAME_BUFFER: u32 = 2097152;
+pub const AOM_TPL_ABI_VERSION: u32 = 1;
+pub const AOM_RC_INTER_REFS_PER_FRAME: u32 = 7;
+pub const AOM_EXT_RATECTRL_ABI_VERSION: u32 = 3;
+pub const AOM_RC_MAX_STATIC_GF_GROUP_LENGTH: u32 = 250;
+pub const AOM_RC_MAX_REF_FRAMES: u32 = 8;
+pub const AOM_RC_MAX_ARF_LAYERS: u32 = 6;
+pub const AOM_DEFAULT_Q: i32 = -1;
+pub const AOM_DEFAULT_RDMULT: i32 = -1;
 pub const AOM_EFLAG_NO_REF_LAST: u32 = 65536;
 pub const AOM_EFLAG_NO_REF_LAST2: u32 = 131072;
 pub const AOM_EFLAG_NO_REF_LAST3: u32 = 262144;
@@ -157,6 +166,10 @@ pub enum aom_transfer_characteristics {
     AOM_CICP_TC_RESERVED_19 = 19,
 }
 pub use self::aom_transfer_characteristics as aom_transfer_characteristics_t;
+impl aom_matrix_coefficients {
+    pub const AOM_CICP_MC_IPT_C2: aom_matrix_coefficients =
+        aom_matrix_coefficients::AOM_CICP_MC_RESERVED_15;
+}
 #[repr(i32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum aom_matrix_coefficients {
@@ -176,6 +189,8 @@ pub enum aom_matrix_coefficients {
     AOM_CICP_MC_CHROMAT_CL = 13,
     AOM_CICP_MC_ICTCP = 14,
     AOM_CICP_MC_RESERVED_15 = 15,
+    AOM_CICP_MC_YCGCO_RE = 16,
+    AOM_CICP_MC_YCGCO_RO = 17,
 }
 pub use self::aom_matrix_coefficients as aom_matrix_coefficients_t;
 #[repr(i32)]
@@ -200,6 +215,9 @@ pub enum aom_metadata_insert_flags {
     AOM_MIF_NON_KEY_FRAME = 0,
     AOM_MIF_KEY_FRAME = 1,
     AOM_MIF_ANY_FRAME = 2,
+    AOM_MIF_NON_KEY_FRAME_LAYER_SPECIFIC = 16,
+    AOM_MIF_KEY_FRAME_LAYER_SPECIFIC = 17,
+    AOM_MIF_ANY_FRAME_LAYER_SPECIFIC = 18,
 }
 pub use self::aom_metadata_insert_flags as aom_metadata_insert_flags_t;
 #[repr(C)]
@@ -265,7 +283,7 @@ unsafe extern "C" {
         fmt: aom_img_fmt_t,
         d_w: ::std::os::raw::c_uint,
         d_h: ::std::os::raw::c_uint,
-        align: ::std::os::raw::c_uint,
+        stride_align: ::std::os::raw::c_uint,
         img_data: *mut ::std::os::raw::c_uchar,
     ) -> *mut aom_image_t;
 }
@@ -1033,6 +1051,338 @@ unsafe extern "C" {
         cb_priv: *mut ::std::os::raw::c_void,
     ) -> aom_codec_err_t;
 }
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_fullpel_mv {
+    pub row: i16,
+    pub col: i16,
+}
+pub type AOM_FULLPEL_MV = aom_fullpel_mv;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_mv {
+    pub row: i16,
+    pub col: i16,
+}
+pub type AOM_MV = aom_mv;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union aom_int_mv {
+    pub as_int: u32,
+    pub as_mv: AOM_MV,
+    pub as_fullmv: AOM_FULLPEL_MV,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct AomTplBlockStats {
+    pub row: i16,
+    pub col: i16,
+    pub srcrf_sse: i64,
+    pub srcrf_dist: i64,
+    pub recrf_sse: i64,
+    pub recrf_dist: i64,
+    pub intra_sse: i64,
+    pub intra_dist: i64,
+    pub cmp_recrf_dist: [i64; 2usize],
+    pub mc_dep_rate: i64,
+    pub mc_dep_dist: i64,
+    pub pred_error: [i64; 7usize],
+    pub intra_cost: i32,
+    pub inter_cost: i32,
+    pub srcrf_rate: i32,
+    pub recrf_rate: i32,
+    pub intra_rate: i32,
+    pub cmp_recrf_rate: [i32; 2usize],
+    pub mv: [aom_int_mv; 7usize],
+    pub ref_frame_index: [i8; 2usize],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AomTplFrameStats {
+    pub frame_width: ::std::os::raw::c_int,
+    pub frame_height: ::std::os::raw::c_int,
+    pub num_blocks: ::std::os::raw::c_int,
+    pub block_stats_list: *mut AomTplBlockStats,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct AomTplGopStats {
+    pub size: ::std::os::raw::c_int,
+    pub frame_stats_list: *mut AomTplFrameStats,
+}
+#[repr(i32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum aom_rc_type {
+    AOM_RC_NONE = 0,
+    AOM_RC_QP = 1,
+    AOM_RC_GOP = 2,
+    AOM_RC_RDMULT = 4,
+    AOM_RC_GOP_QP = 3,
+    AOM_RC_GOP_QP_RDMULT = 7,
+}
+pub use self::aom_rc_type as aom_rc_type_t;
+#[repr(i32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum aom_ext_rc_mode {
+    AOM_RC_QMODE = 0,
+    AOM_RC_VBR = 1,
+    AOM_RC_CQ = 2,
+}
+pub use self::aom_ext_rc_mode as aom_ext_rc_mode_t;
+#[repr(i32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum aom_rc_frame_update_type {
+    AOM_RC_INVALID_UPDATE_TYPE = -1,
+    AOM_RC_KF_UPDATE = 0,
+    AOM_RC_LF_UPDATE = 1,
+    AOM_RC_GF_UPDATE = 2,
+    AOM_RC_ARF_UPDATE = 3,
+    AOM_RC_OVERLAY_UPDATE = 4,
+    AOM_RC_INTNL_OVERLAY_UPDATE = 5,
+    AOM_RC_INTNL_ARF_UPDATE = 6,
+}
+pub use self::aom_rc_frame_update_type as aom_rc_frame_update_type_t;
+#[repr(i32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum aom_rc_ref_name {
+    AOM_RC_INVALID_REF_FRAME = -1,
+    AOM_RC_INTRA_FRAME = 0,
+    AOM_RC_LAST_FRAME = 1,
+    AOM_RC_LAST2_FRAME = 2,
+    AOM_RC_LAST3_FRAME = 3,
+    AOM_RC_GOLDEN_FRAME = 4,
+    AOM_RC_BWDREF_FRAME = 5,
+    AOM_RC_ALTREF2_FRAME = 6,
+    AOM_RC_ALTREF_FRAME = 7,
+}
+pub use self::aom_rc_ref_name as aom_rc_ref_name_t;
+pub type aom_rc_model_t = *mut ::std::os::raw::c_void;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_sb_parameters {
+    pub q_index: ::std::os::raw::c_int,
+    pub rdmult: ::std::os::raw::c_int,
+}
+pub type aom_sb_params = aom_sb_parameters;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_encodeframe_decision {
+    pub q_index: ::std::os::raw::c_int,
+    pub rdmult: ::std::os::raw::c_int,
+    pub use_delta_q: *mut ::std::os::raw::c_int,
+    pub sb_params_list: *mut aom_sb_params,
+}
+pub type aom_rc_encodeframe_decision_t = aom_rc_encodeframe_decision;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_encodeframe_info {
+    pub frame_type: ::std::os::raw::c_int,
+    pub show_index: ::std::os::raw::c_int,
+    pub coding_index: ::std::os::raw::c_int,
+    pub gop_index: ::std::os::raw::c_int,
+    pub ref_frame_coding_indexes: [::std::os::raw::c_int; 8usize],
+    pub ref_frame_valid_list: [::std::os::raw::c_int; 8usize],
+    pub gop_size: ::std::os::raw::c_int,
+    pub use_alt_ref: ::std::os::raw::c_int,
+}
+pub type aom_rc_encodeframe_info_t = aom_rc_encodeframe_info;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_encodeframe_result {
+    pub bit_count: i64,
+    pub actual_encoding_qindex: ::std::os::raw::c_int,
+}
+pub type aom_rc_encodeframe_result_t = aom_rc_encodeframe_result;
+#[repr(i32)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum aom_rc_status {
+    AOM_RC_OK = 0,
+    AOM_RC_ERROR = 1,
+}
+pub use self::aom_rc_status as aom_rc_status_t;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_frame_stats {
+    pub frame: f64,
+    pub weight: f64,
+    pub intra_error: f64,
+    pub frame_avg_wavelet_energy: f64,
+    pub coded_error: f64,
+    pub sr_coded_error: f64,
+    pub pcnt_inter: f64,
+    pub pcnt_motion: f64,
+    pub pcnt_second_ref: f64,
+    pub pcnt_neutral: f64,
+    pub intra_skip_pct: f64,
+    pub inactive_zone_rows: f64,
+    pub inactive_zone_cols: f64,
+    pub MVr: f64,
+    pub mvr_abs: f64,
+    pub MVc: f64,
+    pub mvc_abs: f64,
+    pub MVrv: f64,
+    pub MVcv: f64,
+    pub mv_in_out_count: f64,
+    pub new_mv_count: f64,
+    pub duration: f64,
+    pub count: f64,
+    pub raw_error_stdev: f64,
+    pub is_flash: i64,
+    pub noise_var: f64,
+    pub cor_coeff: f64,
+    pub log_intra_error: f64,
+    pub log_coded_error: f64,
+}
+pub type aom_rc_frame_stats_t = aom_rc_frame_stats;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_firstpass_stats {
+    pub frame_stats: *mut aom_rc_frame_stats_t,
+    pub num_frames: ::std::os::raw::c_int,
+}
+pub type aom_rc_firstpass_stats_t = aom_rc_firstpass_stats;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_config {
+    pub frame_width: ::std::os::raw::c_int,
+    pub frame_height: ::std::os::raw::c_int,
+    pub show_frame_count: ::std::os::raw::c_int,
+    pub max_gf_interval: ::std::os::raw::c_int,
+    pub min_gf_interval: ::std::os::raw::c_int,
+    pub target_bitrate_kbps: ::std::os::raw::c_int,
+    pub frame_rate_num: ::std::os::raw::c_int,
+    pub frame_rate_den: ::std::os::raw::c_int,
+    pub rc_mode: aom_ext_rc_mode_t,
+    pub overshoot_percent: ::std::os::raw::c_int,
+    pub undershoot_percent: ::std::os::raw::c_int,
+    pub min_base_q_index: ::std::os::raw::c_int,
+    pub max_base_q_index: ::std::os::raw::c_int,
+    pub base_qp: ::std::os::raw::c_int,
+    pub superblock_size: ::std::os::raw::c_int,
+}
+pub type aom_rc_config_t = aom_rc_config;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_ref_frame {
+    pub index: [::std::os::raw::c_int; 8usize],
+    pub name: [aom_rc_ref_name_t; 8usize],
+}
+pub type aom_rc_ref_frame_t = aom_rc_ref_frame;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_single_ref_frame {
+    pub index: ::std::os::raw::c_int,
+    pub name: aom_rc_ref_name_t,
+}
+pub type aom_rc_single_ref_frame_t = aom_rc_single_ref_frame;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_gop_frame {
+    pub order_idx: ::std::os::raw::c_int,
+    pub coding_idx: ::std::os::raw::c_int,
+    pub display_idx: ::std::os::raw::c_int,
+    pub order_hint: ::std::os::raw::c_int,
+    pub global_order_idx: ::std::os::raw::c_int,
+    pub global_coding_idx: ::std::os::raw::c_int,
+    pub is_key_frame: ::std::os::raw::c_int,
+    pub update_type: aom_rc_frame_update_type_t,
+    pub colocated_ref_idx: ::std::os::raw::c_int,
+    pub update_ref_idx: ::std::os::raw::c_int,
+    pub extra_refresh_frame_flags: ::std::os::raw::c_int,
+    pub ref_frame_list: aom_rc_ref_frame_t,
+    pub layer_depth: ::std::os::raw::c_int,
+    pub primary_ref_frame: aom_rc_single_ref_frame_t,
+}
+pub type aom_rc_gop_frame_t = aom_rc_gop_frame;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_gop_decision {
+    pub show_frame_count: ::std::os::raw::c_int,
+    pub order_hint_offset: ::std::os::raw::c_int,
+    pub global_order_idx_offset: ::std::os::raw::c_int,
+    pub global_coding_idx_offset: ::std::os::raw::c_int,
+    pub is_scene_cut: ::std::os::raw::c_int,
+    pub base_q_ratio: f64,
+    pub gop_frame_list: *mut aom_rc_gop_frame_t,
+    pub gop_frame_count: ::std::os::raw::c_int,
+}
+pub type aom_rc_gop_decision_t = aom_rc_gop_decision;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_key_frame_decision {
+    pub key_frame_show_index: ::std::os::raw::c_int,
+    pub key_frame_group_size: ::std::os::raw::c_int,
+}
+pub type aom_rc_key_frame_decision_t = aom_rc_key_frame_decision;
+pub type aom_rc_create_model_cb_fn_t = ::std::option::Option<
+    unsafe extern "C" fn(
+        priv_: *mut ::std::os::raw::c_void,
+        ratectrl_config: *const aom_rc_config_t,
+        rate_ctrl_model_ptr: *mut aom_rc_model_t,
+    ) -> aom_rc_status_t,
+>;
+pub type aom_rc_send_firstpass_stats_cb_fn_t = ::std::option::Option<
+    unsafe extern "C" fn(
+        rate_ctrl_model: aom_rc_model_t,
+        first_pass_stats: *const aom_rc_firstpass_stats_t,
+    ) -> aom_rc_status_t,
+>;
+pub type aom_rc_send_tpl_gop_stats_cb_fn_t = ::std::option::Option<
+    unsafe extern "C" fn(
+        rate_ctrl_model: aom_rc_model_t,
+        extrc_tpl_gop_stats: *const AomTplGopStats,
+    ) -> aom_rc_status_t,
+>;
+pub type aom_rc_get_encodeframe_decision_cb_fn_t = ::std::option::Option<
+    unsafe extern "C" fn(
+        rate_ctrl_model: aom_rc_model_t,
+        frame_gop_index: ::std::os::raw::c_int,
+        frame_decision: *mut aom_rc_encodeframe_decision_t,
+    ) -> aom_rc_status_t,
+>;
+pub type aom_rc_update_encodeframe_result_cb_fn_t = ::std::option::Option<
+    unsafe extern "C" fn(
+        rate_ctrl_model: aom_rc_model_t,
+        encode_frame_result: *const aom_rc_encodeframe_result_t,
+    ) -> aom_rc_status_t,
+>;
+pub type aom_rc_get_key_frame_decision_cb_fn_t = ::std::option::Option<
+    unsafe extern "C" fn(
+        rate_ctrl_model: aom_rc_model_t,
+        key_frame_decision: *mut aom_rc_key_frame_decision_t,
+    ) -> aom_rc_status_t,
+>;
+pub type aom_rc_get_gop_decision_cb_fn_t = ::std::option::Option<
+    unsafe extern "C" fn(
+        rate_ctrl_model: aom_rc_model_t,
+        gop_decision: *mut aom_rc_gop_decision_t,
+    ) -> aom_rc_status_t,
+>;
+pub type aom_rc_get_frame_rdmult_cb_fn_t = ::std::option::Option<
+    unsafe extern "C" fn(
+        rate_ctrl_model: aom_rc_model_t,
+        frame_info: *const aom_rc_encodeframe_info_t,
+        rdmult: *mut ::std::os::raw::c_int,
+    ) -> aom_rc_status_t,
+>;
+pub type aom_rc_delete_model_cb_fn_t =
+    ::std::option::Option<unsafe extern "C" fn(rate_ctrl_model: aom_rc_model_t) -> aom_rc_status_t>;
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_rc_funcs {
+    pub rc_type: aom_rc_type_t,
+    pub create_model: aom_rc_create_model_cb_fn_t,
+    pub send_firstpass_stats: aom_rc_send_firstpass_stats_cb_fn_t,
+    pub send_tpl_gop_stats: aom_rc_send_tpl_gop_stats_cb_fn_t,
+    pub get_encodeframe_decision: aom_rc_get_encodeframe_decision_cb_fn_t,
+    pub update_encodeframe_result: aom_rc_update_encodeframe_result_cb_fn_t,
+    pub get_key_frame_decision: aom_rc_get_key_frame_decision_cb_fn_t,
+    pub get_gop_decision: aom_rc_get_gop_decision_cb_fn_t,
+    pub get_frame_rdmult: aom_rc_get_frame_rdmult_cb_fn_t,
+    pub delete_model: aom_rc_delete_model_cb_fn_t,
+    pub priv_: *mut ::std::os::raw::c_void,
+}
+pub type aom_rc_funcs_t = aom_rc_funcs;
 unsafe extern "C" {
     pub static mut aom_codec_av1_cx_algo: aom_codec_iface_t;
 }
@@ -1201,6 +1551,10 @@ pub enum aome_enc_control_id {
     AV1E_SET_ENABLE_LOW_COMPLEXITY_DECODE = 170,
     AV1E_SET_SCREEN_CONTENT_DETECTION_MODE = 171,
     AV1E_SET_ENABLE_ADAPTIVE_SHARPNESS = 172,
+    AV1E_SET_EXTERNAL_RATE_CONTROL = 173,
+    AV1E_GET_GOP_INFO = 174,
+    AOME_SET_VALIDATE_HBD_INPUT = 175,
+    AV1E_SET_MODE_REF_DELTA_ENABLED = 176,
 }
 #[repr(i32)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -1328,6 +1682,15 @@ pub enum AOM_SVC_FRAME_DROP_MODE {
     AOM_LAYER_DROP = 0,
     AOM_FULL_SUPERFRAME_DROP = 1,
 }
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct aom_gop_info {
+    pub gop_size: ::std::os::raw::c_int,
+    pub coding_index: [::std::os::raw::c_int; 250usize],
+    pub display_index: [::std::os::raw::c_int; 250usize],
+    pub layer_depth: [::std::os::raw::c_int; 250usize],
+}
+pub type aom_gop_info_t = aom_gop_info;
 pub type aom_codec_control_type_AOME_USE_REFERENCE = ::std::os::raw::c_int;
 pub type aom_codec_control_type_AOME_SET_ROI_MAP = *mut aom_roi_map_t;
 pub type aom_codec_control_type_AOME_SET_ACTIVEMAP = *mut aom_active_map_t;
@@ -1467,6 +1830,7 @@ pub type aom_codec_control_type_AV1E_SET_SVC_REF_FRAME_COMP_PRED =
 pub type aom_codec_control_type_AV1E_SET_DELTAQ_STRENGTH = ::std::os::raw::c_uint;
 pub type aom_codec_control_type_AV1E_SET_LOOPFILTER_CONTROL = ::std::os::raw::c_int;
 pub type aom_codec_control_type_AOME_GET_LOOPFILTER_LEVEL = *mut ::std::os::raw::c_int;
+pub type aom_codec_control_type_AOME_SET_VALIDATE_HBD_INPUT = ::std::os::raw::c_int;
 pub type aom_codec_control_type_AV1E_SET_AUTO_INTRA_TOOLS_OFF = ::std::os::raw::c_uint;
 pub type aom_codec_control_type_AV1E_SET_RTC_EXTERNAL_RC = ::std::os::raw::c_int;
 pub type aom_codec_control_type_AV1E_SET_FP_MT = ::std::os::raw::c_uint;
@@ -1490,6 +1854,9 @@ pub type aom_codec_control_type_AV1E_SET_MAX_CONSEC_FRAME_DROP_MS_CBR = ::std::o
 pub type aom_codec_control_type_AV1E_SET_ENABLE_LOW_COMPLEXITY_DECODE = ::std::os::raw::c_uint;
 pub type aom_codec_control_type_AV1E_SET_SCREEN_CONTENT_DETECTION_MODE = ::std::os::raw::c_int;
 pub type aom_codec_control_type_AV1E_SET_ENABLE_ADAPTIVE_SHARPNESS = ::std::os::raw::c_uint;
+pub type aom_codec_control_type_AV1E_SET_EXTERNAL_RATE_CONTROL = *mut aom_rc_funcs_t;
+pub type aom_codec_control_type_AV1E_GET_GOP_INFO = *mut aom_gop_info_t;
+pub type aom_codec_control_type_AV1E_SET_MODE_REF_DELTA_ENABLED = ::std::os::raw::c_int;
 unsafe extern "C" {
     pub static mut aom_codec_av1_dx_algo: aom_codec_iface_t;
 }
@@ -1595,6 +1962,7 @@ pub enum aom_dec_control_id {
     AOMD_GET_BASE_Q_IDX = 293,
     AOMD_GET_ORDER_HINT = 294,
     AV1D_GET_MI_INFO = 295,
+    AOMD_SET_FRAME_SIZE_LIMIT = 296,
 }
 pub type aom_codec_control_type_AOMD_GET_LAST_REF_UPDATES = *mut ::std::os::raw::c_int;
 pub type aom_codec_control_type_AOMD_GET_FRAME_CORRUPTED = *mut ::std::os::raw::c_int;
@@ -1635,3 +2003,4 @@ pub type aom_codec_control_type_AOMD_GET_S_FRAME_INFO = *mut aom_s_frame_info;
 pub type aom_codec_control_type_AOMD_GET_SHOW_FRAME_FLAG = *mut ::std::os::raw::c_int;
 pub type aom_codec_control_type_AOMD_GET_BASE_Q_IDX = *mut ::std::os::raw::c_int;
 pub type aom_codec_control_type_AOMD_GET_ORDER_HINT = *mut ::std::os::raw::c_uint;
+pub type aom_codec_control_type_AOMD_SET_FRAME_SIZE_LIMIT = ::std::os::raw::c_uint;

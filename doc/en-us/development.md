@@ -21,7 +21,7 @@
   builds only once clang is installed.
 - `cargo-about` (`cargo install cargo-about --locked --features cli`) for the license file that
   `scripts/build.sh` puts into every package.
-- libvpx 1.16.0, libaom 3.13.3 and Opus 1.5.2, linked statically into the core: `scripts/codecs.sh`
+- libvpx 1.16.0, libaom 3.15.2 and Opus 1.6.1, linked statically into the core: `scripts/codecs.sh`
   builds them with vcpkg in manifest mode (`core/vcpkg.json`, the registry pinned in
   `core/vcpkg-configuration.json`, overlay triplets in `core/vcpkg-triplets`) into
   `core/vcpkg_installed/<triplet>` (not committed); run it once per target before cargo, and

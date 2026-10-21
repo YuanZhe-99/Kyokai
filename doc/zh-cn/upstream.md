@@ -129,7 +129,7 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   被控端会在每个静止的帧周期拆掉采集、半秒后重新打开（0.1.0–0.3.2）。上游还会为每一帧新建一个暂存纹理。
 - **Kyokai 中的编解码器。** 去掉对 `hbb_common`、protobuf 与 libyuv 的使用后，`libs/scrap/src/common/{vpxcodec,vpx,aom}.rs`
   可以独立构建（`core/third_party/rustdesk-codec`）；绑定使用 RustDesk 的头文件与 bindgen 设置，预先生成。RustDesk 把
-  vcpkg 固定在同一提交（`9e593bb`，发布版 2026.07.29：libvpx 1.16.0、aom 3.13.3）。依赖的约定：libvpx 与 libaom 每次调用
+  vcpkg 固定在 `9e593bb`（发布版 2026.07.29：libvpx 1.16.0、aom 3.13.3）；Kyokai 跟随更新的 2026.10.16（`5d4a3dc`：libvpx 1.16.0、aom 3.15.2、Opus 1.6.1，2026-10-21 核实）。依赖的约定：libvpx 与 libaom 每次调用
   都可强制关键帧（`VPX_EFLAG_FORCE_KF`、`AOM_EFLAG_FORCE_KF`）；`vpx_codec_enc_config_set` 可改变运行中编码器的码率；
   不做前瞻时（`g_lag_in_frames` 为 0，Kyokai 为 libvpx 设置它；libaom 的实时用法本就如此），两者每幅画面输出一帧或丢弃它，
   因此无需冲刷；VP9 profile 1 与 AV1 profile 1 接受 I444 输入，其解码器按格式报告 I444 画面。vcpkg 把 Windows ARM64 的
