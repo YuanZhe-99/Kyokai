@@ -53,7 +53,7 @@ requests skips frames 4 and 5: the host asks its user and sends the verdict as f
 
 ## Resuming
 
-A dropped connection (not a `bye`) can be resumed for 60 seconds: the controller dials again
+A dropped connection (not a `bye`) can be resumed for 60 seconds from that drop (a session that resumed and drops again has 60 seconds anew): the controller dials again
 every 3 seconds and sends the token from the last verdict. A token is single-use, bound to the
 controller's device key, kept in the host's memory only and valid for 2 minutes; a valid one
 answers frame 3 with an accepting verdict at once (same permissions, no password, no

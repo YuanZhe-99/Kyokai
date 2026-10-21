@@ -1284,8 +1284,13 @@ pub enum Outcome {
     /// Finished; the session's entry records how.
     Done,
     /// The connection dropped (or a resume attempt could not get through):
-    /// dial again and resume with this token.
-    Lost(zeroize::Zeroizing<String>),
+    /// dial again and resume with this token. `connected`: the session was
+    /// connected over this connection before it dropped (a resume that went
+    /// through starts a new resume window).
+    Lost {
+        token: zeroize::Zeroizing<String>,
+        connected: bool,
+    },
 }
 
 /// Reports whether a peer's unauthenticated version string looks like a
@@ -1454,7 +1459,10 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             match (result, token) {
                 (Err(Failure::Broken), Some(token)) => {
                     ctx.sessions.update(id, |e| e.state = State::Reconnecting);
-                    Outcome::Lost(zeroize::Zeroizing::new(token))
+                    Outcome::Lost {
+                        token: zeroize::Zeroizing::new(token),
+                        connected: true,
+                    }
                 }
                 (result, _) => {
                     ctx.sessions.end(id, result.err());
@@ -1464,7 +1472,10 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }
         Err(Failure::WrongDevice) => Outcome::WrongDevice,
         // A resume that could not get through keeps its (unused) token.
-        Err(Failure::Broken) if resume.is_some() => Outcome::Lost(resume.expect("checked")),
+        Err(Failure::Broken) if resume.is_some() => Outcome::Lost {
+            token: resume.expect("checked"),
+            connected: false,
+        },
         Err(f) => {
             if matches!(f, Failure::Refused(Refusal::Password)) {
                 let mut remember = Remember::default();
@@ -3778,7 +3789,7 @@ mod tests {
         until("connected").await;
         // The connection drops (the host side goes away).
         host_side.abort();
-        let Outcome::Lost(token) = first.await.unwrap() else {
+        let Outcome::Lost { token, .. } = first.await.unwrap() else {
             panic!("a dropped session should be resumable");
         };
         assert_eq!(session(&controller, id)["state"], "reconnecting");
@@ -3856,7 +3867,7 @@ mod tests {
         assert_eq!(old.len(), 1);
         // The network drops: the controller sees it, the host does not.
         line.cut();
-        let Outcome::Lost(token) = first.await.unwrap() else {
+        let Outcome::Lost { token, .. } = first.await.unwrap() else {
             panic!("a dropped session should be resumable");
         };
         assert_eq!(connected_hosts(&host), old, "the host has not noticed");
@@ -3975,7 +3986,7 @@ mod tests {
         // The connection drops and resumes: the host gets the choices again
         // before the video starts.
         host_side.abort();
-        let Outcome::Lost(token) = first.await.unwrap() else {
+        let Outcome::Lost { token, .. } = first.await.unwrap() else {
             panic!("a dropped session should be resumable");
         };
         while queue.pop(Duration::from_millis(50)).is_ok() {}
@@ -4088,7 +4099,10 @@ mod tests {
                 .await
                 .expect("the controller gives up on garbage")
                 .expect("no panic");
-            assert!(!matches!(outcome, Outcome::Lost(_)), "nothing to resume");
+            assert!(
+                !matches!(outcome, Outcome::Lost { .. }),
+                "nothing to resume"
+            );
         }
     }
 

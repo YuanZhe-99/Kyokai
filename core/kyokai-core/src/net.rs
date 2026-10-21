@@ -605,21 +605,22 @@ impl Network {
                         Err(_) => Dialed::Nothing(session::Failure::Unreachable, resume_with),
                     },
                 };
-                let failure = match dialed {
+                let (failure, connected) = match dialed {
                     Dialed::Outcome(session::Outcome::Done) => return,
-                    Dialed::Outcome(session::Outcome::Lost(token)) => {
-                        lost_at.get_or_insert_with(std::time::Instant::now);
+                    Dialed::Outcome(session::Outcome::Lost { token, connected }) => {
                         resume = Some(token);
-                        session::Failure::Broken
+                        (session::Failure::Broken, connected)
                     }
-                    Dialed::Outcome(session::Outcome::WrongDevice) => session::Failure::WrongDevice,
+                    Dialed::Outcome(session::Outcome::WrongDevice) => (session::Failure::WrongDevice, false),
                     Dialed::Nothing(f, token) => {
                         resume = token;
-                        f
+                        (f, false)
                     }
                 };
                 // Keep resuming only while a token is held and the window lasts.
-                if resume.is_none() || lost_at.is_some_and(|t: std::time::Instant| t.elapsed() > RESUME_FOR) {
+                let (since, keep) = keep_resuming(lost_at, connected, std::time::Instant::now());
+                lost_at = Some(since);
+                if resume.is_none() || !keep {
                     return session::give_up(&ctx, id, failure);
                 }
             }
@@ -1058,6 +1059,24 @@ pub async fn identify(address: &str) -> Result<String, &'static str> {
         session::Failure::Incompatible => "incompatible",
         _ => "broken",
     })
+}
+
+/// Decides whether a dropped session keeps resuming after an attempt.
+/// Inputs: when the current outage began (None before the first drop),
+/// whether this attempt's session was connected before it dropped (a
+/// resume that went through), and the time now.
+/// Returns: when the outage began, counted afresh after a session that
+/// was connected again, and whether the RESUME_FOR window still lasts.
+fn keep_resuming(
+    lost_at: Option<std::time::Instant>,
+    connected: bool,
+    now: std::time::Instant,
+) -> (std::time::Instant, bool) {
+    let since = match lost_at {
+        Some(t) if !connected => t,
+        _ => now,
+    };
+    (since, now.duration_since(since) <= RESUME_FOR)
 }
 
 /// What one round of dialing a Device ID came to.
@@ -1639,5 +1658,23 @@ mod tests {
             instance_id("100000002").to_string(),
             "d409b924-1be1-5f9e-b719-f4bdaa8608b1"
         );
+    }
+
+    /// Regression: the resume window started at the first drop and never
+    /// again, so a session that resumed and dropped a second time more than
+    /// RESUME_FOR after the first gave up at once.
+    #[test]
+    fn a_session_that_resumed_gets_a_fresh_resume_window() {
+        use std::time::{Duration, Instant};
+        let t0 = Instant::now();
+        let s = |n: u64| t0 + Duration::from_secs(n);
+        // The first drop opens the window.
+        assert_eq!(keep_resuming(None, true, s(0)), (s(0), true));
+        // Attempts that do not get through keep it, until it runs out.
+        assert_eq!(keep_resuming(Some(s(0)), false, s(30)), (s(0), true));
+        assert_eq!(keep_resuming(Some(s(0)), false, s(61)), (s(0), false));
+        // A resume that went through and dropped later starts anew.
+        assert_eq!(keep_resuming(Some(s(0)), true, s(300)), (s(300), true));
+        assert_eq!(keep_resuming(Some(s(300)), false, s(330)), (s(300), true));
     }
 }
