@@ -1402,6 +1402,136 @@ func (msgs Messages) ByAddressTitle() string {
 	return Catalog.Format(msgs.locale, "ByAddressTitle", nil)
 }
 
+// CardAI says "AI"
+// in the language the app shows.
+func CardAI() string { return In(i18n.Locale()).CardAI() }
+
+// CardAI says "AI"
+// in the language of msgs.
+func (msgs Messages) CardAI() string {
+	return Catalog.Format(msgs.locale, "CardAI", nil)
+}
+
+// CardByAddress says "By address · {address}"
+// in the language the app shows.
+func CardByAddress(address string) string { return In(i18n.Locale()).CardByAddress(address) }
+
+// CardByAddress says "By address · {address}"
+// in the language of msgs.
+func (msgs Messages) CardByAddress(address string) string {
+	return Catalog.Format(msgs.locale, "CardByAddress", map[string]any{"address": address})
+}
+
+// CardConnected says "Connected"
+// in the language the app shows.
+func CardConnected() string { return In(i18n.Locale()).CardConnected() }
+
+// CardConnected says "Connected"
+// in the language of msgs.
+func (msgs Messages) CardConnected() string {
+	return Catalog.Format(msgs.locale, "CardConnected", nil)
+}
+
+// CardNeedsUpdate says "Needs Kyokai 0.4.1 or later on that device"
+// in the language the app shows.
+func CardNeedsUpdate() string { return In(i18n.Locale()).CardNeedsUpdate() }
+
+// CardNeedsUpdate says "Needs Kyokai 0.4.1 or later on that device"
+// in the language of msgs.
+func (msgs Messages) CardNeedsUpdate() string {
+	return Catalog.Format(msgs.locale, "CardNeedsUpdate", nil)
+}
+
+// CardNotOnNetwork says "Not on the network"
+// in the language the app shows.
+func CardNotOnNetwork() string { return In(i18n.Locale()).CardNotOnNetwork() }
+
+// CardNotOnNetwork says "Not on the network"
+// in the language of msgs.
+func (msgs Messages) CardNotOnNetwork() string {
+	return Catalog.Format(msgs.locale, "CardNotOnNetwork", nil)
+}
+
+// CardOffline says "Offline"
+// in the language the app shows.
+func CardOffline() string { return In(i18n.Locale()).CardOffline() }
+
+// CardOffline says "Offline"
+// in the language of msgs.
+func (msgs Messages) CardOffline() string {
+	return Catalog.Format(msgs.locale, "CardOffline", nil)
+}
+
+// CardOnline says "Online"
+// in the language the app shows.
+func CardOnline() string { return In(i18n.Locale()).CardOnline() }
+
+// CardOnline says "Online"
+// in the language of msgs.
+func (msgs Messages) CardOnline() string {
+	return Catalog.Format(msgs.locale, "CardOnline", nil)
+}
+
+// CardOpenService says "Open {service}"
+// in the language the app shows.
+func CardOpenService(service string) string { return In(i18n.Locale()).CardOpenService(service) }
+
+// CardOpenService says "Open {service}"
+// in the language of msgs.
+func (msgs Messages) CardOpenService(service string) string {
+	return Catalog.Format(msgs.locale, "CardOpenService", map[string]any{"service": service})
+}
+
+// CardSaved says "Saved passwords and keys…"
+// in the language the app shows.
+func CardSaved() string { return In(i18n.Locale()).CardSaved() }
+
+// CardSaved says "Saved passwords and keys…"
+// in the language of msgs.
+func (msgs Messages) CardSaved() string {
+	return Catalog.Format(msgs.locale, "CardSaved", nil)
+}
+
+// CloseAskDetail says "Closing ends these connections:\n{names}"
+// in the language the app shows.
+func CloseAskDetail(names string) string { return In(i18n.Locale()).CloseAskDetail(names) }
+
+// CloseAskDetail says "Closing ends these connections:\n{names}"
+// in the language of msgs.
+func (msgs Messages) CloseAskDetail(names string) string {
+	return Catalog.Format(msgs.locale, "CloseAskDetail", map[string]any{"names": names})
+}
+
+// CloseAskTitle says "Disconnect from the devices in this window?"
+// in the language the app shows.
+func CloseAskTitle() string { return In(i18n.Locale()).CloseAskTitle() }
+
+// CloseAskTitle says "Disconnect from the devices in this window?"
+// in the language of msgs.
+func (msgs Messages) CloseAskTitle() string {
+	return Catalog.Format(msgs.locale, "CloseAskTitle", nil)
+}
+
+// CloseDisconnect says "Disconnect and close"
+// in the language the app shows.
+func CloseDisconnect() string { return In(i18n.Locale()).CloseDisconnect() }
+
+// CloseDisconnect says "Disconnect and close"
+// in the language of msgs.
+func (msgs Messages) CloseDisconnect() string {
+	return Catalog.Format(msgs.locale, "CloseDisconnect", nil)
+}
+
+// CloseDisconnectQuit says "Disconnect and quit"
+// in the language the app shows.
+func CloseDisconnectQuit() string { return In(i18n.Locale()).CloseDisconnectQuit() }
+
+// CloseDisconnectQuit says "Disconnect and quit"
+// in the language of msgs.
+func (msgs Messages) CloseDisconnectQuit() string {
+	return Catalog.Format(msgs.locale, "CloseDisconnectQuit", nil)
+}
+
 // CloseHide says "Keep running in the tray"
 // in the language the app shows.
 func CloseHide() string { return In(i18n.Locale()).CloseHide() }
@@ -1894,6 +2024,316 @@ func IdentityReplaced() string { return In(i18n.Locale()).IdentityReplaced() }
 // in the language of msgs.
 func (msgs Messages) IdentityReplaced() string {
 	return Catalog.Format(msgs.locale, "IdentityReplaced", nil)
+}
+
+// KeysAuthorize says "Add a key"
+// in the language the app shows.
+func KeysAuthorize() string { return In(i18n.Locale()).KeysAuthorize() }
+
+// KeysAuthorize says "Add a key"
+// in the language of msgs.
+func (msgs Messages) KeysAuthorize() string {
+	return Catalog.Format(msgs.locale, "KeysAuthorize", nil)
+}
+
+// KeysAuthorized says "The key can connect to this device now."
+// in the language the app shows.
+func KeysAuthorized() string { return In(i18n.Locale()).KeysAuthorized() }
+
+// KeysAuthorized says "The key can connect to this device now."
+// in the language of msgs.
+func (msgs Messages) KeysAuthorized() string {
+	return Catalog.Format(msgs.locale, "KeysAuthorized", nil)
+}
+
+// KeysAuthorizedHint says "A device signing in with one of these keys is admitted as a correct password is. Their public keys stay visible here."
+// in the language the app shows.
+func KeysAuthorizedHint() string { return In(i18n.Locale()).KeysAuthorizedHint() }
+
+// KeysAuthorizedHint says "A device signing in with one of these keys is admitted as a correct password is. Their public keys stay visible here."
+// in the language of msgs.
+func (msgs Messages) KeysAuthorizedHint() string {
+	return Catalog.Format(msgs.locale, "KeysAuthorizedHint", nil)
+}
+
+// KeysAuthorizedTitle says "Keys that can connect to this device"
+// in the language the app shows.
+func KeysAuthorizedTitle() string { return In(i18n.Locale()).KeysAuthorizedTitle() }
+
+// KeysAuthorizedTitle says "Keys that can connect to this device"
+// in the language of msgs.
+func (msgs Messages) KeysAuthorizedTitle() string {
+	return Catalog.Format(msgs.locale, "KeysAuthorizedTitle", nil)
+}
+
+// KeysChooseFile says "Choose a file…"
+// in the language the app shows.
+func KeysChooseFile() string { return In(i18n.Locale()).KeysChooseFile() }
+
+// KeysChooseFile says "Choose a file…"
+// in the language of msgs.
+func (msgs Messages) KeysChooseFile() string {
+	return Catalog.Format(msgs.locale, "KeysChooseFile", nil)
+}
+
+// KeysCopyPublic says "Copy public key"
+// in the language the app shows.
+func KeysCopyPublic() string { return In(i18n.Locale()).KeysCopyPublic() }
+
+// KeysCopyPublic says "Copy public key"
+// in the language of msgs.
+func (msgs Messages) KeysCopyPublic() string {
+	return Catalog.Format(msgs.locale, "KeysCopyPublic", nil)
+}
+
+// KeysDefaultName says "Kyokai key"
+// in the language the app shows.
+func KeysDefaultName() string { return In(i18n.Locale()).KeysDefaultName() }
+
+// KeysDefaultName says "Kyokai key"
+// in the language of msgs.
+func (msgs Messages) KeysDefaultName() string {
+	return Catalog.Format(msgs.locale, "KeysDefaultName", nil)
+}
+
+// KeysDone says "Done"
+// in the language the app shows.
+func KeysDone() string { return In(i18n.Locale()).KeysDone() }
+
+// KeysDone says "Done"
+// in the language of msgs.
+func (msgs Messages) KeysDone() string {
+	return Catalog.Format(msgs.locale, "KeysDone", nil)
+}
+
+// KeysFailed says "The key could not be made."
+// in the language the app shows.
+func KeysFailed() string { return In(i18n.Locale()).KeysFailed() }
+
+// KeysFailed says "The key could not be made."
+// in the language of msgs.
+func (msgs Messages) KeysFailed() string {
+	return Catalog.Format(msgs.locale, "KeysFailed", nil)
+}
+
+// KeysFileFilter says "Public keys"
+// in the language the app shows.
+func KeysFileFilter() string { return In(i18n.Locale()).KeysFileFilter() }
+
+// KeysFileFilter says "Public keys"
+// in the language of msgs.
+func (msgs Messages) KeysFileFilter() string {
+	return Catalog.Format(msgs.locale, "KeysFileFilter", nil)
+}
+
+// KeysGenerate says "Generate a key"
+// in the language the app shows.
+func KeysGenerate() string { return In(i18n.Locale()).KeysGenerate() }
+
+// KeysGenerate says "Generate a key"
+// in the language of msgs.
+func (msgs Messages) KeysGenerate() string {
+	return Catalog.Format(msgs.locale, "KeysGenerate", nil)
+}
+
+// KeysImport says "Import a key"
+// in the language the app shows.
+func KeysImport() string { return In(i18n.Locale()).KeysImport() }
+
+// KeysImport says "Import a key"
+// in the language of msgs.
+func (msgs Messages) KeysImport() string {
+	return Catalog.Format(msgs.locale, "KeysImport", nil)
+}
+
+// KeysImported says "Key imported."
+// in the language the app shows.
+func KeysImported() string { return In(i18n.Locale()).KeysImported() }
+
+// KeysImported says "Key imported."
+// in the language of msgs.
+func (msgs Messages) KeysImported() string {
+	return Catalog.Format(msgs.locale, "KeysImported", nil)
+}
+
+// KeysMineHint says "This device signs in with these keys to other Kyokai devices (Ed25519) and to SSH. Their private parts stay in Kyokai…"
+// in the language the app shows.
+func KeysMineHint() string { return In(i18n.Locale()).KeysMineHint() }
+
+// KeysMineHint says "This device signs in with these keys to other Kyokai devices (Ed25519) and to SSH. Their private parts stay in Kyokai…"
+// in the language of msgs.
+func (msgs Messages) KeysMineHint() string {
+	return Catalog.Format(msgs.locale, "KeysMineHint", nil)
+}
+
+// KeysMineTitle says "Your keys"
+// in the language the app shows.
+func KeysMineTitle() string { return In(i18n.Locale()).KeysMineTitle() }
+
+// KeysMineTitle says "Your keys"
+// in the language of msgs.
+func (msgs Messages) KeysMineTitle() string {
+	return Catalog.Format(msgs.locale, "KeysMineTitle", nil)
+}
+
+// KeysName says "Name"
+// in the language the app shows.
+func KeysName() string { return In(i18n.Locale()).KeysName() }
+
+// KeysName says "Name"
+// in the language of msgs.
+func (msgs Messages) KeysName() string {
+	return Catalog.Format(msgs.locale, "KeysName", nil)
+}
+
+// KeysNone says "None yet."
+// in the language the app shows.
+func KeysNone() string { return In(i18n.Locale()).KeysNone() }
+
+// KeysNone says "None yet."
+// in the language of msgs.
+func (msgs Messages) KeysNone() string {
+	return Catalog.Format(msgs.locale, "KeysNone", nil)
+}
+
+// KeysPair says "Generate a pair"
+// in the language the app shows.
+func KeysPair() string { return In(i18n.Locale()).KeysPair() }
+
+// KeysPair says "Generate a pair"
+// in the language of msgs.
+func (msgs Messages) KeysPair() string {
+	return Catalog.Format(msgs.locale, "KeysPair", nil)
+}
+
+// KeysPassphrase says "The key's passphrase"
+// in the language the app shows.
+func KeysPassphrase() string { return In(i18n.Locale()).KeysPassphrase() }
+
+// KeysPassphrase says "The key's passphrase"
+// in the language of msgs.
+func (msgs Messages) KeysPassphrase() string {
+	return Catalog.Format(msgs.locale, "KeysPassphrase", nil)
+}
+
+// KeysPassphraseOptional says "Passphrase for the copy you take (optional)"
+// in the language the app shows.
+func KeysPassphraseOptional() string { return In(i18n.Locale()).KeysPassphraseOptional() }
+
+// KeysPassphraseOptional says "Passphrase for the copy you take (optional)"
+// in the language of msgs.
+func (msgs Messages) KeysPassphraseOptional() string {
+	return Catalog.Format(msgs.locale, "KeysPassphraseOptional", nil)
+}
+
+// KeysPastePrivate says "Paste a private key (OpenSSH or PEM), or choose its file."
+// in the language the app shows.
+func KeysPastePrivate() string { return In(i18n.Locale()).KeysPastePrivate() }
+
+// KeysPastePrivate says "Paste a private key (OpenSSH or PEM), or choose its file."
+// in the language of msgs.
+func (msgs Messages) KeysPastePrivate() string {
+	return Catalog.Format(msgs.locale, "KeysPastePrivate", nil)
+}
+
+// KeysPastePublic says "Paste a public key line (ssh-ed25519 …), or choose a .pub file."
+// in the language the app shows.
+func KeysPastePublic() string { return In(i18n.Locale()).KeysPastePublic() }
+
+// KeysPastePublic says "Paste a public key line (ssh-ed25519 …), or choose a .pub file."
+// in the language of msgs.
+func (msgs Messages) KeysPastePublic() string {
+	return Catalog.Format(msgs.locale, "KeysPastePublic", nil)
+}
+
+// KeysRemoveConfirm says "Remove the key “{name}”?"
+// in the language the app shows.
+func KeysRemoveConfirm(name string) string { return In(i18n.Locale()).KeysRemoveConfirm(name) }
+
+// KeysRemoveConfirm says "Remove the key “{name}”?"
+// in the language of msgs.
+func (msgs Messages) KeysRemoveConfirm(name string) string {
+	return Catalog.Format(msgs.locale, "KeysRemoveConfirm", map[string]any{"name": name})
+}
+
+// KeysSave says "Save to a file…"
+// in the language the app shows.
+func KeysSave() string { return In(i18n.Locale()).KeysSave() }
+
+// KeysSave says "Save to a file…"
+// in the language of msgs.
+func (msgs Messages) KeysSave() string {
+	return Catalog.Format(msgs.locale, "KeysSave", nil)
+}
+
+// KeysSaveFailed says "The file could not be written."
+// in the language the app shows.
+func KeysSaveFailed() string { return In(i18n.Locale()).KeysSaveFailed() }
+
+// KeysSaveFailed says "The file could not be written."
+// in the language of msgs.
+func (msgs Messages) KeysSaveFailed() string {
+	return Catalog.Format(msgs.locale, "KeysSaveFailed", nil)
+}
+
+// KeysSaved says "Private key saved."
+// in the language the app shows.
+func KeysSaved() string { return In(i18n.Locale()).KeysSaved() }
+
+// KeysSaved says "Private key saved."
+// in the language of msgs.
+func (msgs Messages) KeysSaved() string {
+	return Catalog.Format(msgs.locale, "KeysSaved", nil)
+}
+
+// KeysShownHint says "This private key is shown only now. Copy it or save it to a file; once you choose Done it is gone from this page."
+// in the language the app shows.
+func KeysShownHint() string { return In(i18n.Locale()).KeysShownHint() }
+
+// KeysShownHint says "This private key is shown only now. Copy it or save it to a file; once you choose Done it is gone from this page."
+// in the language of msgs.
+func (msgs Messages) KeysShownHint() string {
+	return Catalog.Format(msgs.locale, "KeysShownHint", nil)
+}
+
+// KeysShownOnce says "Private key of “{name}”"
+// in the language the app shows.
+func KeysShownOnce(name string) string { return In(i18n.Locale()).KeysShownOnce(name) }
+
+// KeysShownOnce says "Private key of “{name}”"
+// in the language of msgs.
+func (msgs Messages) KeysShownOnce(name string) string {
+	return Catalog.Format(msgs.locale, "KeysShownOnce", map[string]any{"name": name})
+}
+
+// KeysUnreadable says "This is not a key Kyokai can read."
+// in the language the app shows.
+func KeysUnreadable() string { return In(i18n.Locale()).KeysUnreadable() }
+
+// KeysUnreadable says "This is not a key Kyokai can read."
+// in the language of msgs.
+func (msgs Messages) KeysUnreadable() string {
+	return Catalog.Format(msgs.locale, "KeysUnreadable", nil)
+}
+
+// KeysUnsupported says "Kyokai keeps Ed25519 keys, RSA keys of 2048 bits or more, and ECDSA P-256 or P-384 keys."
+// in the language the app shows.
+func KeysUnsupported() string { return In(i18n.Locale()).KeysUnsupported() }
+
+// KeysUnsupported says "Kyokai keeps Ed25519 keys, RSA keys of 2048 bits or more, and ECDSA P-256 or P-384 keys."
+// in the language of msgs.
+func (msgs Messages) KeysUnsupported() string {
+	return Catalog.Format(msgs.locale, "KeysUnsupported", nil)
+}
+
+// KeysWrongPassphrase says "The passphrase is not right."
+// in the language the app shows.
+func KeysWrongPassphrase() string { return In(i18n.Locale()).KeysWrongPassphrase() }
+
+// KeysWrongPassphrase says "The passphrase is not right."
+// in the language of msgs.
+func (msgs Messages) KeysWrongPassphrase() string {
+	return Catalog.Format(msgs.locale, "KeysWrongPassphrase", nil)
 }
 
 // LanguageSystem says "System"
@@ -2606,6 +3046,16 @@ func (msgs Messages) PermHearSound() string {
 	return Catalog.Format(msgs.locale, "PermHearSound", nil)
 }
 
+// PermRunAITask says "Run AI tasks"
+// in the language the app shows.
+func PermRunAITask() string { return In(i18n.Locale()).PermRunAITask() }
+
+// PermRunAITask says "Run AI tasks"
+// in the language of msgs.
+func (msgs Messages) PermRunAITask() string {
+	return Catalog.Format(msgs.locale, "PermRunAITask", nil)
+}
+
 // PermSeeStatus says "See this computer's status"
 // in the language the app shows.
 func PermSeeStatus() string { return In(i18n.Locale()).PermSeeStatus() }
@@ -2614,16 +3064,6 @@ func PermSeeStatus() string { return In(i18n.Locale()).PermSeeStatus() }
 // in the language of msgs.
 func (msgs Messages) PermSeeStatus() string {
 	return Catalog.Format(msgs.locale, "PermSeeStatus", nil)
-}
-
-// PermUseSSH says "Connect to its SSH"
-// in the language the app shows.
-func PermUseSSH() string { return In(i18n.Locale()).PermUseSSH() }
-
-// PermUseSSH says "Connect to its SSH"
-// in the language of msgs.
-func (msgs Messages) PermUseSSH() string {
-	return Catalog.Format(msgs.locale, "PermUseSSH", nil)
 }
 
 // PermUseRDP says "Connect to its Remote Desktop"
@@ -2636,6 +3076,16 @@ func (msgs Messages) PermUseRDP() string {
 	return Catalog.Format(msgs.locale, "PermUseRDP", nil)
 }
 
+// PermUseSSH says "Connect to its SSH"
+// in the language the app shows.
+func PermUseSSH() string { return In(i18n.Locale()).PermUseSSH() }
+
+// PermUseSSH says "Connect to its SSH"
+// in the language of msgs.
+func (msgs Messages) PermUseSSH() string {
+	return Catalog.Format(msgs.locale, "PermUseSSH", nil)
+}
+
 // PermUseVNC says "Connect to its VNC or Screen Sharing"
 // in the language the app shows.
 func PermUseVNC() string { return In(i18n.Locale()).PermUseVNC() }
@@ -2644,16 +3094,6 @@ func PermUseVNC() string { return In(i18n.Locale()).PermUseVNC() }
 // in the language of msgs.
 func (msgs Messages) PermUseVNC() string {
 	return Catalog.Format(msgs.locale, "PermUseVNC", nil)
-}
-
-// PermRunAITask says "Run AI tasks"
-// in the language the app shows.
-func PermRunAITask() string { return In(i18n.Locale()).PermRunAITask() }
-
-// PermRunAITask says "Run AI tasks"
-// in the language of msgs.
-func (msgs Messages) PermRunAITask() string {
-	return Catalog.Format(msgs.locale, "PermRunAITask", nil)
 }
 
 // PermViewScreen says "See the screen"
@@ -3348,6 +3788,86 @@ func (msgs Messages) RunModeUser() string {
 	return Catalog.Format(msgs.locale, "RunModeUser", nil)
 }
 
+// SavedForget says "Forget {what}"
+// in the language the app shows.
+func SavedForget(what string) string { return In(i18n.Locale()).SavedForget(what) }
+
+// SavedForget says "Forget {what}"
+// in the language of msgs.
+func (msgs Messages) SavedForget(what string) string {
+	return Catalog.Format(msgs.locale, "SavedForget", map[string]any{"what": what})
+}
+
+// SavedForgetAll says "Forget all"
+// in the language the app shows.
+func SavedForgetAll() string { return In(i18n.Locale()).SavedForgetAll() }
+
+// SavedForgetAll says "Forget all"
+// in the language of msgs.
+func (msgs Messages) SavedForgetAll() string {
+	return Catalog.Format(msgs.locale, "SavedForgetAll", nil)
+}
+
+// SavedForgotten says "Forgotten."
+// in the language the app shows.
+func SavedForgotten() string { return In(i18n.Locale()).SavedForgotten() }
+
+// SavedForgotten says "Forgotten."
+// in the language of msgs.
+func (msgs Messages) SavedForgotten() string {
+	return Catalog.Format(msgs.locale, "SavedForgotten", nil)
+}
+
+// SavedHint says "What this device keeps to sign in to others. Only that something is kept shows here, never a password."
+// in the language the app shows.
+func SavedHint() string { return In(i18n.Locale()).SavedHint() }
+
+// SavedHint says "What this device keeps to sign in to others. Only that something is kept shows here, never a password."
+// in the language of msgs.
+func (msgs Messages) SavedHint() string {
+	return Catalog.Format(msgs.locale, "SavedHint", nil)
+}
+
+// SavedKey says "Key"
+// in the language the app shows.
+func SavedKey() string { return In(i18n.Locale()).SavedKey() }
+
+// SavedKey says "Key"
+// in the language of msgs.
+func (msgs Messages) SavedKey() string {
+	return Catalog.Format(msgs.locale, "SavedKey", nil)
+}
+
+// SavedNone says "Nothing is saved."
+// in the language the app shows.
+func SavedNone() string { return In(i18n.Locale()).SavedNone() }
+
+// SavedNone says "Nothing is saved."
+// in the language of msgs.
+func (msgs Messages) SavedNone() string {
+	return Catalog.Format(msgs.locale, "SavedNone", nil)
+}
+
+// SavedPassword says "Kyokai password"
+// in the language the app shows.
+func SavedPassword() string { return In(i18n.Locale()).SavedPassword() }
+
+// SavedPassword says "Kyokai password"
+// in the language of msgs.
+func (msgs Messages) SavedPassword() string {
+	return Catalog.Format(msgs.locale, "SavedPassword", nil)
+}
+
+// SavedTitle says "Saved passwords and keys"
+// in the language the app shows.
+func SavedTitle() string { return In(i18n.Locale()).SavedTitle() }
+
+// SavedTitle says "Saved passwords and keys"
+// in the language of msgs.
+func (msgs Messages) SavedTitle() string {
+	return Catalog.Format(msgs.locale, "SavedTitle", nil)
+}
+
 // SecretsDenied says "Access to the Keychain was denied: secrets are kept only until Kyokai quits. Allow it under Privacy permissions."
 // in the language the app shows.
 func SecretsDenied() string { return In(i18n.Locale()).SecretsDenied() }
@@ -3386,6 +3906,188 @@ func SecretsUnreadable() string { return In(i18n.Locale()).SecretsUnreadable() }
 // in the language of msgs.
 func (msgs Messages) SecretsUnreadable() string {
 	return Catalog.Format(msgs.locale, "SecretsUnreadable", nil)
+}
+
+// ServiceConnecting says "Connecting to {service}…"
+// in the language the app shows.
+func ServiceConnecting(service string) string { return In(i18n.Locale()).ServiceConnecting(service) }
+
+// ServiceConnecting says "Connecting to {service}…"
+// in the language of msgs.
+func (msgs Messages) ServiceConnecting(service string) string {
+	return Catalog.Format(msgs.locale, "ServiceConnecting", map[string]any{"service": service})
+}
+
+// ServiceDomain says "Domain (optional)"
+// in the language the app shows.
+func ServiceDomain() string { return In(i18n.Locale()).ServiceDomain() }
+
+// ServiceDomain says "Domain (optional)"
+// in the language of msgs.
+func (msgs Messages) ServiceDomain() string {
+	return Catalog.Format(msgs.locale, "ServiceDomain", nil)
+}
+
+// ServiceEnded says "The connection ended."
+// in the language the app shows.
+func ServiceEnded() string { return In(i18n.Locale()).ServiceEnded() }
+
+// ServiceEnded says "The connection ended."
+// in the language of msgs.
+func (msgs Messages) ServiceEnded() string {
+	return Catalog.Format(msgs.locale, "ServiceEnded", nil)
+}
+
+// ServiceFailed says "The connection could not be opened."
+// in the language the app shows.
+func ServiceFailed() string { return In(i18n.Locale()).ServiceFailed() }
+
+// ServiceFailed says "The connection could not be opened."
+// in the language of msgs.
+func (msgs Messages) ServiceFailed() string {
+	return Catalog.Format(msgs.locale, "ServiceFailed", nil)
+}
+
+// ServiceHostKeyChanged says "This device's SSH key is not the one it had before. Kyokai sent no password. Trust the new key only if you know why i…"
+// in the language the app shows.
+func ServiceHostKeyChanged() string { return In(i18n.Locale()).ServiceHostKeyChanged() }
+
+// ServiceHostKeyChanged says "This device's SSH key is not the one it had before. Kyokai sent no password. Trust the new key only if you know why i…"
+// in the language of msgs.
+func (msgs Messages) ServiceHostKeyChanged() string {
+	return Catalog.Format(msgs.locale, "ServiceHostKeyChanged", nil)
+}
+
+// ServiceNoTunnel says "This version of Kyokai cannot open connections to a device's services yet."
+// in the language the app shows.
+func ServiceNoTunnel() string { return In(i18n.Locale()).ServiceNoTunnel() }
+
+// ServiceNoTunnel says "This version of Kyokai cannot open connections to a device's services yet."
+// in the language of msgs.
+func (msgs Messages) ServiceNoTunnel() string {
+	return Catalog.Format(msgs.locale, "ServiceNoTunnel", nil)
+}
+
+// ServicePassword says "Password"
+// in the language the app shows.
+func ServicePassword() string { return In(i18n.Locale()).ServicePassword() }
+
+// ServicePassword says "Password"
+// in the language of msgs.
+func (msgs Messages) ServicePassword() string {
+	return Catalog.Format(msgs.locale, "ServicePassword", nil)
+}
+
+// ServiceRDP says "Remote Desktop"
+// in the language the app shows.
+func ServiceRDP() string { return In(i18n.Locale()).ServiceRDP() }
+
+// ServiceRDP says "Remote Desktop"
+// in the language of msgs.
+func (msgs Messages) ServiceRDP() string {
+	return Catalog.Format(msgs.locale, "ServiceRDP", nil)
+}
+
+// ServiceReplaced says "Someone else signed in to that desktop, so this connection ended."
+// in the language the app shows.
+func ServiceReplaced() string { return In(i18n.Locale()).ServiceReplaced() }
+
+// ServiceReplaced says "Someone else signed in to that desktop, so this connection ended."
+// in the language of msgs.
+func (msgs Messages) ServiceReplaced() string {
+	return Catalog.Format(msgs.locale, "ServiceReplaced", nil)
+}
+
+// ServiceSSH says "SSH"
+// in the language the app shows.
+func ServiceSSH() string { return In(i18n.Locale()).ServiceSSH() }
+
+// ServiceSSH says "SSH"
+// in the language of msgs.
+func (msgs Messages) ServiceSSH() string {
+	return Catalog.Format(msgs.locale, "ServiceSSH", nil)
+}
+
+// ServiceSignIn says "Sign in"
+// in the language the app shows.
+func ServiceSignIn() string { return In(i18n.Locale()).ServiceSignIn() }
+
+// ServiceSignIn says "Sign in"
+// in the language of msgs.
+func (msgs Messages) ServiceSignIn() string {
+	return Catalog.Format(msgs.locale, "ServiceSignIn", nil)
+}
+
+// ServiceSignInHint says "Sign in to {service} on that device. With Remember password, Kyokai keeps it for the next time."
+// in the language the app shows.
+func ServiceSignInHint(service string) string { return In(i18n.Locale()).ServiceSignInHint(service) }
+
+// ServiceSignInHint says "Sign in to {service} on that device. With Remember password, Kyokai keeps it for the next time."
+// in the language of msgs.
+func (msgs Messages) ServiceSignInHint(service string) string {
+	return Catalog.Format(msgs.locale, "ServiceSignInHint", map[string]any{"service": service})
+}
+
+// ServiceTabTitle says "{service} · {device}"
+// in the language the app shows.
+func ServiceTabTitle(device string, service string) string {
+	return In(i18n.Locale()).ServiceTabTitle(device, service)
+}
+
+// ServiceTabTitle says "{service} · {device}"
+// in the language of msgs.
+func (msgs Messages) ServiceTabTitle(device string, service string) string {
+	return Catalog.Format(msgs.locale, "ServiceTabTitle", map[string]any{"device": device, "service": service})
+}
+
+// ServiceTrustKey says "Trust the new key"
+// in the language the app shows.
+func ServiceTrustKey() string { return In(i18n.Locale()).ServiceTrustKey() }
+
+// ServiceTrustKey says "Trust the new key"
+// in the language of msgs.
+func (msgs Messages) ServiceTrustKey() string {
+	return Catalog.Format(msgs.locale, "ServiceTrustKey", nil)
+}
+
+// ServiceUser says "User name"
+// in the language the app shows.
+func ServiceUser() string { return In(i18n.Locale()).ServiceUser() }
+
+// ServiceUser says "User name"
+// in the language of msgs.
+func (msgs Messages) ServiceUser() string {
+	return Catalog.Format(msgs.locale, "ServiceUser", nil)
+}
+
+// ServiceUserMac says "User name (a Mac asks for one)"
+// in the language the app shows.
+func ServiceUserMac() string { return In(i18n.Locale()).ServiceUserMac() }
+
+// ServiceUserMac says "User name (a Mac asks for one)"
+// in the language of msgs.
+func (msgs Messages) ServiceUserMac() string {
+	return Catalog.Format(msgs.locale, "ServiceUserMac", nil)
+}
+
+// ServiceVNC says "VNC"
+// in the language the app shows.
+func ServiceVNC() string { return In(i18n.Locale()).ServiceVNC() }
+
+// ServiceVNC says "VNC"
+// in the language of msgs.
+func (msgs Messages) ServiceVNC() string {
+	return Catalog.Format(msgs.locale, "ServiceVNC", nil)
+}
+
+// ServiceWrongSignIn says "The user name or password was not accepted."
+// in the language the app shows.
+func ServiceWrongSignIn() string { return In(i18n.Locale()).ServiceWrongSignIn() }
+
+// ServiceWrongSignIn says "The user name or password was not accepted."
+// in the language of msgs.
+func (msgs Messages) ServiceWrongSignIn() string {
+	return Catalog.Format(msgs.locale, "ServiceWrongSignIn", nil)
 }
 
 // SessionClosed says "Ended"
@@ -3730,6 +4432,156 @@ func StartOverHint() string { return In(i18n.Locale()).StartOverHint() }
 // in the language of msgs.
 func (msgs Messages) StartOverHint() string {
 	return Catalog.Format(msgs.locale, "StartOverHint", nil)
+}
+
+// StatusBattery says "Battery"
+// in the language the app shows.
+func StatusBattery() string { return In(i18n.Locale()).StatusBattery() }
+
+// StatusBattery says "Battery"
+// in the language of msgs.
+func (msgs Messages) StatusBattery() string {
+	return Catalog.Format(msgs.locale, "StatusBattery", nil)
+}
+
+// StatusCPU says "CPU"
+// in the language the app shows.
+func StatusCPU() string { return In(i18n.Locale()).StatusCPU() }
+
+// StatusCPU says "CPU"
+// in the language of msgs.
+func (msgs Messages) StatusCPU() string {
+	return Catalog.Format(msgs.locale, "StatusCPU", nil)
+}
+
+// StatusCharging says "{value} · charging"
+// in the language the app shows.
+func StatusCharging(value string) string { return In(i18n.Locale()).StatusCharging(value) }
+
+// StatusCharging says "{value} · charging"
+// in the language of msgs.
+func (msgs Messages) StatusCharging(value string) string {
+	return Catalog.Format(msgs.locale, "StatusCharging", map[string]any{"value": value})
+}
+
+// StatusDisk says "Disk"
+// in the language the app shows.
+func StatusDisk() string { return In(i18n.Locale()).StatusDisk() }
+
+// StatusDisk says "Disk"
+// in the language of msgs.
+func (msgs Messages) StatusDisk() string {
+	return Catalog.Format(msgs.locale, "StatusDisk", nil)
+}
+
+// StatusFrom says "Status from {time}"
+// in the language the app shows.
+func StatusFrom(time_ string) string { return In(i18n.Locale()).StatusFrom(time_) }
+
+// StatusFrom says "Status from {time}"
+// in the language of msgs.
+func (msgs Messages) StatusFrom(time_ string) string {
+	return Catalog.Format(msgs.locale, "StatusFrom", map[string]any{"time": time_})
+}
+
+// StatusGPU says "GPU"
+// in the language the app shows.
+func StatusGPU() string { return In(i18n.Locale()).StatusGPU() }
+
+// StatusGPU says "GPU"
+// in the language of msgs.
+func (msgs Messages) StatusGPU() string {
+	return Catalog.Format(msgs.locale, "StatusGPU", nil)
+}
+
+// StatusGetting says "Getting its status…"
+// in the language the app shows.
+func StatusGetting() string { return In(i18n.Locale()).StatusGetting() }
+
+// StatusGetting says "Getting its status…"
+// in the language of msgs.
+func (msgs Messages) StatusGetting() string {
+	return Catalog.Format(msgs.locale, "StatusGetting", nil)
+}
+
+// StatusMemory says "Memory"
+// in the language the app shows.
+func StatusMemory() string { return In(i18n.Locale()).StatusMemory() }
+
+// StatusMemory says "Memory"
+// in the language of msgs.
+func (msgs Messages) StatusMemory() string {
+	return Catalog.Format(msgs.locale, "StatusMemory", nil)
+}
+
+// StatusNetwork says "Network"
+// in the language the app shows.
+func StatusNetwork() string { return In(i18n.Locale()).StatusNetwork() }
+
+// StatusNetwork says "Network"
+// in the language of msgs.
+func (msgs Messages) StatusNetwork() string {
+	return Catalog.Format(msgs.locale, "StatusNetwork", nil)
+}
+
+// StatusNoCredential says "Save a password or a key for this device to see its status here."
+// in the language the app shows.
+func StatusNoCredential() string { return In(i18n.Locale()).StatusNoCredential() }
+
+// StatusNoCredential says "Save a password or a key for this device to see its status here."
+// in the language of msgs.
+func (msgs Messages) StatusNoCredential() string {
+	return Catalog.Format(msgs.locale, "StatusNoCredential", nil)
+}
+
+// StatusOf says "{used} of {total}"
+// in the language the app shows.
+func StatusOf(total string, used string) string { return In(i18n.Locale()).StatusOf(total, used) }
+
+// StatusOf says "{used} of {total}"
+// in the language of msgs.
+func (msgs Messages) StatusOf(total string, used string) string {
+	return Catalog.Format(msgs.locale, "StatusOf", map[string]any{"total": total, "used": used})
+}
+
+// StatusRefused says "That device does not share its status with this one."
+// in the language the app shows.
+func StatusRefused() string { return In(i18n.Locale()).StatusRefused() }
+
+// StatusRefused says "That device does not share its status with this one."
+// in the language of msgs.
+func (msgs Messages) StatusRefused() string {
+	return Catalog.Format(msgs.locale, "StatusRefused", nil)
+}
+
+// StatusUnsupported says "Its status shows once that device runs Kyokai 0.4.1 or later."
+// in the language the app shows.
+func StatusUnsupported() string { return In(i18n.Locale()).StatusUnsupported() }
+
+// StatusUnsupported says "Its status shows once that device runs Kyokai 0.4.1 or later."
+// in the language of msgs.
+func (msgs Messages) StatusUnsupported() string {
+	return Catalog.Format(msgs.locale, "StatusUnsupported", nil)
+}
+
+// StatusUpdatedAgo says "Updated {seconds} s ago"
+// in the language the app shows.
+func StatusUpdatedAgo(seconds string) string { return In(i18n.Locale()).StatusUpdatedAgo(seconds) }
+
+// StatusUpdatedAgo says "Updated {seconds} s ago"
+// in the language of msgs.
+func (msgs Messages) StatusUpdatedAgo(seconds string) string {
+	return Catalog.Format(msgs.locale, "StatusUpdatedAgo", map[string]any{"seconds": seconds})
+}
+
+// StatusUptime says "Up"
+// in the language the app shows.
+func StatusUptime() string { return In(i18n.Locale()).StatusUptime() }
+
+// StatusUptime says "Up"
+// in the language of msgs.
+func (msgs Messages) StatusUptime() string {
+	return Catalog.Format(msgs.locale, "StatusUptime", nil)
 }
 
 // StorageLocation says "Data folder"
@@ -4518,6 +5370,46 @@ func ViewerWaiting() string { return In(i18n.Locale()).ViewerWaiting() }
 // in the language of msgs.
 func (msgs Messages) ViewerWaiting() string {
 	return Catalog.Format(msgs.locale, "ViewerWaiting", nil)
+}
+
+// WatchersHint says "These devices show this computer's processor, memory, disk and network use on their Home page. Turn off “See this c…"
+// in the language the app shows.
+func WatchersHint() string { return In(i18n.Locale()).WatchersHint() }
+
+// WatchersHint says "These devices show this computer's processor, memory, disk and network use on their Home page. Turn off “See this c…"
+// in the language of msgs.
+func (msgs Messages) WatchersHint() string {
+	return Catalog.Format(msgs.locale, "WatchersHint", nil)
+}
+
+// WatchersNone says "No device is watching this computer's status."
+// in the language the app shows.
+func WatchersNone() string { return In(i18n.Locale()).WatchersNone() }
+
+// WatchersNone says "No device is watching this computer's status."
+// in the language of msgs.
+func (msgs Messages) WatchersNone() string {
+	return Catalog.Format(msgs.locale, "WatchersNone", nil)
+}
+
+// WatchersSince says "Since {time}"
+// in the language the app shows.
+func WatchersSince(time_ string) string { return In(i18n.Locale()).WatchersSince(time_) }
+
+// WatchersSince says "Since {time}"
+// in the language of msgs.
+func (msgs Messages) WatchersSince(time_ string) string {
+	return Catalog.Format(msgs.locale, "WatchersSince", map[string]any{"time": time_})
+}
+
+// WatchersTitle says "Watching this computer's status"
+// in the language the app shows.
+func WatchersTitle() string { return In(i18n.Locale()).WatchersTitle() }
+
+// WatchersTitle says "Watching this computer's status"
+// in the language of msgs.
+func (msgs Messages) WatchersTitle() string {
+	return Catalog.Format(msgs.locale, "WatchersTitle", nil)
 }
 
 // WithoutAskingHint says "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Back…"

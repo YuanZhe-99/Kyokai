@@ -611,6 +611,7 @@ func (a *App) readKeys(lib *core.Lib) {
 			viewers = append(viewers, v)
 		}
 		a.mu.Unlock()
+		taken := false
 		for _, v := range viewers {
 			v.mu.Lock()
 			// Several tabs share a window: the one holding the grab takes it.
@@ -618,8 +619,12 @@ func (a *App) readKeys(lib *core.Lib) {
 			v.mu.Unlock()
 			if mine && may {
 				v.queue(scanEvent(ev))
+				taken = true
 				break
 			}
+		}
+		if !taken {
+			a.takeKey(ev) // a Remote Desktop or VNC tab's (servicetab.go)
 		}
 	}
 }

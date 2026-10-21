@@ -1,0 +1,505 @@
+package gui
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+
+	"github.com/YuanZhe-99/Kyokai/internal/core"
+	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	L "github.com/YuanZhe-99/Kyokai/locales"
+)
+
+// A service tab's phases: connecting, asking for a sign-in, showing its
+// client, or ended (why is in serviceTab.note).
+const (
+	svcConnecting = "connecting"
+	svcForm       = "form"
+	svcRunning    = "running"
+	svcEnded      = "ended"
+)
+
+// How a service client's dial fails, beyond the connection's own errors.
+var (
+	// errNeedSignIn: nothing usable is saved; the tab asks for a sign-in.
+	errNeedSignIn = errors.New("a sign-in is needed")
+	// errSignInFailed: the service refused the sign-in.
+	errSignInFailed = errors.New("the sign-in was refused")
+	// errHostKeyChanged: the SSH server's key is not the one pinned; no
+	// password was sent.
+	errHostKeyChanged = errors.New("the host key changed")
+)
+
+// credForm is a service tab's sign-in form while it shows. The password is
+// handed to the client as the form is sent and cleared here.
+type credForm struct {
+	user, domain, password string
+	remember               bool
+}
+
+// serviceClient is what a running service tab shows: SSH's terminal, or a
+// Remote Desktop or VNC picture.
+type serviceClient interface {
+	// view draws the client in the tab.
+	view(c *ui.Context, s *serviceTab)
+	// close ends the client's connection (any goroutine).
+	close()
+	// grabs reports whether the client takes the keyboard through the
+	// core's grab (Map and Translate), rather than from the toolkit.
+	grabs() bool
+	// scan passes it a key the grab took.
+	scan(ev core.KeyEvent)
+	// setFront tells it whether its tab is the one in front, which alone
+	// exchanges the clipboard.
+	setFront(on bool)
+}
+
+// serviceDial connects a service's client: typed is the sign-in the form
+// sent, nil to use what is saved. Returns errNeedSignIn, errSignInFailed or
+// errHostKeyChanged as the tab should react.
+type serviceDial func(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient, error)
+
+// serviceDials are the clients by service; ssh.go and desktops.go
+// register theirs.
+var serviceDials = map[string]serviceDial{}
+
+// serviceTab is a connection to one of a device's own services (SSH,
+// Remote Desktop, VNC) through a tunnel inside a Kyokai session, shown as a
+// tab like a desktop's (doc/en-us/remote-services.md, "Clients"): a loading
+// indicator, the sign-in form when nothing saved works, then the client.
+// Fields after mu are guarded by it; credentials are never kept here.
+type serviceTab struct {
+	app     *App
+	device  string
+	service string
+	address string
+	title   string
+	home    atomic.Pointer[viewerWindow]
+
+	mu    sync.Mutex
+	phase string
+	note  string
+	form  credForm
+	// formUser: the form asks for a user name (VNC asks only for a Mac's).
+	formUser bool
+	// hostKey is a changed SSH key the person chose to trust (a public key
+	// line), accepted by the next dial.
+	hostKey string
+	changed string // the changed SSH key last seen, to trust on request
+	client  serviceClient
+	cancel  context.CancelFunc
+	// try counts dials: the result of an older one is dropped.
+	try int
+	// The keyboard grab, as the viewer's (viewerinput.go).
+	grabbed string
+	noGrab  bool
+	win     uintptr
+	front   bool
+}
+
+// serviceKey is a service tab's tabKey.
+func serviceKey(device, service string) string { return device + "/" + service }
+
+// serviceName words a service.
+func serviceName(service string) string {
+	switch service {
+	case serviceSSH:
+		return L.ServiceSSH()
+	case serviceRDP:
+		return L.ServiceRDP()
+	}
+	return L.ServiceVNC()
+}
+
+// openService opens a device's service in a tab of the main window, or
+// shows its tab when it is open; one that ended connects again.
+// Notes: call on the main thread.
+func (a *App) openService(device, address, service string) {
+	if t := a.tabFor(serviceKey(device, service)); t != nil {
+		s := t.(*serviceTab)
+		if w := s.tabWindow(); w != nil {
+			w.show(s)
+		}
+		s.mu.Lock()
+		ended := s.phase == svcEnded
+		s.mu.Unlock()
+		if ended {
+			s.connect(nil)
+		}
+		return
+	}
+	a.mu.Lock()
+	about := a.prefs.named(device, localapi.About{})
+	for _, r := range a.statusRecent() {
+		if r.DeviceID == device {
+			about = a.prefs.named(device, r.About)
+		}
+	}
+	s := &serviceTab{app: a, device: device, service: service, address: address,
+		title: L.ServiceTabTitle(deviceTitle(about, device), serviceName(service))}
+	a.services[serviceKey(device, service)] = s
+	a.mu.Unlock()
+	a.main.add(s)
+	s.connect(nil)
+}
+
+// statusRecent is the engine's recent devices (caller holds a.mu).
+func (a *App) statusRecent() []localapi.RecentDevice {
+	if a.status == nil {
+		return nil
+	}
+	return a.status.Recent
+}
+
+// connect dials the service anew with the sign-in typed (nil: what is
+// saved), ending a dial under way.
+// Side effects: a goroutine dials; the tab follows it on the main thread.
+func (s *serviceTab) connect(typed *credForm) {
+	s.mu.Lock()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	if s.client != nil {
+		go s.client.close()
+		s.client = nil
+	}
+	s.try++
+	try := s.try
+	s.phase, s.note = svcConnecting, ""
+	ctx, cancel := context.WithCancel(s.app.ctx)
+	s.cancel = cancel
+	dial := serviceDials[s.service]
+	s.mu.Unlock()
+	go func() {
+		client, err := dial(ctx, s, typed)
+		s.update(func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if try != s.try {
+				if client != nil {
+					go client.close()
+				}
+				return
+			}
+			s.settle(client, err, typed)
+		})
+	}()
+}
+
+// settle takes a dial's result. Notes: the caller holds s.mu.
+func (s *serviceTab) settle(client serviceClient, err error, typed *credForm) {
+	switch {
+	case err == nil:
+		s.phase, s.client = svcRunning, client
+		client.setFront(s.front)
+	case errors.Is(err, errNeedSignIn):
+		s.phase = svcForm
+	case errors.Is(err, errSignInFailed):
+		s.phase, s.note = svcForm, L.ServiceWrongSignIn()
+		if typed != nil {
+			s.form.user, s.form.domain, s.form.remember = typed.user, typed.domain, typed.remember
+		}
+	case errors.Is(err, errHostKeyChanged):
+		s.phase, s.note = svcEnded, L.ServiceHostKeyChanged()
+	case errors.Is(err, context.Canceled):
+		s.phase = svcEnded
+	default:
+		s.phase, s.note = svcEnded, serviceFailure(err)
+	}
+}
+
+// serviceFailure words why a service could not be reached.
+func serviceFailure(err error) string {
+	var refused *localapi.RequestError
+	switch {
+	case errors.As(err, &refused):
+		return refused.Message
+	case errors.Is(err, errNoTunnel):
+		return L.ServiceNoTunnel()
+	}
+	return L.ServiceFailed()
+}
+
+// ended shows that the client's connection ended, unless a newer dial
+// replaced it. Safe from any goroutine.
+func (s *serviceTab) ended(client serviceClient, note string) {
+	s.update(func() {
+		s.mu.Lock()
+		if s.client != client {
+			s.mu.Unlock()
+			return
+		}
+		s.phase, s.client, s.note = svcEnded, nil, note
+		s.mu.Unlock()
+		s.endGrab()
+		go client.close()
+	})
+}
+
+// update runs fn on the main thread of the tab's window and redraws it;
+// nothing once the tab closed.
+func (s *serviceTab) update(fn func()) {
+	if w := s.home.Load(); w != nil {
+		w.win.Update(fn)
+	}
+}
+
+// redraw draws the tab's window anew (a client's picture changed).
+func (s *serviceTab) redraw() { s.update(func() {}) }
+
+// The tab interface (viewerwin.go).
+
+func (s *serviceTab) tabKey() string               { return serviceKey(s.device, s.service) }
+func (s *serviceTab) tabTitle() string             { return s.title }
+func (s *serviceTab) tabWindow() *viewerWindow     { return s.home.Load() }
+func (s *serviceTab) setTabWindow(w *viewerWindow) { s.home.Store(w) }
+func (s *serviceTab) running() serviceClient       { s.mu.Lock(); defer s.mu.Unlock(); return s.client }
+func (s *serviceTab) formShown() (credForm, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.form, s.formUser
+}
+
+// live reports whether the tab is connecting or connected.
+func (s *serviceTab) live() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.phase == svcConnecting || s.phase == svcRunning
+}
+
+// disconnect ends the service's connection as its tab closes.
+func (s *serviceTab) disconnect() {
+	s.endGrab()
+	s.home.Store(nil)
+	s.app.mu.Lock()
+	if s.app.services[s.tabKey()] == s {
+		delete(s.app.services, s.tabKey())
+	}
+	s.app.mu.Unlock()
+	s.mu.Lock()
+	s.try++
+	cancel, client := s.cancel, s.client
+	s.client, s.phase = nil, svcEnded
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if client != nil {
+		go client.close()
+	}
+}
+
+// setFront tells the client whether its tab is in front.
+func (s *serviceTab) setFront(on bool) {
+	s.mu.Lock()
+	s.front = on
+	client := s.client
+	s.mu.Unlock()
+	if client != nil {
+		client.setFront(on)
+	}
+}
+
+// syncGrab has the core grab the keyboard for the tab's window while its
+// picture has the focus in Map or Translate mode, for a client that takes
+// keys that way, and ends the grab otherwise.
+// Side effects: starts the app's key reader with the first grab.
+func (s *serviceTab) syncGrab(focused bool) {
+	client := s.running()
+	want := ""
+	if focused && client != nil && client.grabs() {
+		if mode := s.app.keyboardMode(); mode != "legacy" {
+			want = mode
+		}
+	}
+	s.mu.Lock()
+	have, refused := s.grabbed, s.noGrab
+	s.mu.Unlock()
+	if want == have || refused && want != "" {
+		return
+	}
+	lib, err := coreLib()
+	if err != nil {
+		return
+	}
+	w := s.home.Load()
+	if w == nil {
+		return
+	}
+	window := w.win.NativeHandle()
+	mode := want
+	if mode == "" {
+		mode = "off"
+	}
+	err = lib.KeyboardGrab(window, mode)
+	s.mu.Lock()
+	s.win = window
+	if s.noGrab = err != nil; s.noGrab {
+		want = ""
+	}
+	s.grabbed = want
+	s.mu.Unlock()
+	if want != "" {
+		s.app.keyReader.Do(func() { go s.app.readKeys(lib) })
+	}
+}
+
+// endGrab ends the tab's keyboard grab, which releases the keys it held.
+func (s *serviceTab) endGrab() {
+	s.mu.Lock()
+	window, grabbed := s.win, s.grabbed
+	s.grabbed = ""
+	s.mu.Unlock()
+	if lib, err := coreLib(); err == nil && grabbed != "" {
+		_ = lib.KeyboardGrab(window, "off")
+	}
+}
+
+// takeKey passes a key the grab took to the service tab holding the grab
+// for its window. Returns: whether one took it.
+// Notes: readKeys calls it for keys no desktop's viewer took.
+func (a *App) takeKey(ev core.KeyEvent) bool {
+	a.mu.Lock()
+	tabs := make([]*serviceTab, 0, len(a.services))
+	for _, s := range a.services {
+		tabs = append(tabs, s)
+	}
+	a.mu.Unlock()
+	for _, s := range tabs {
+		s.mu.Lock()
+		mine, client := s.win == ev.Window && s.grabbed != "", s.client
+		s.mu.Unlock()
+		if mine && client != nil {
+			client.scan(ev)
+			return true
+		}
+	}
+	return false
+}
+
+// view is the tab: the client, or connecting, the sign-in form, or why it
+// ended with Reconnect.
+func (s *serviceTab) view(c *ui.Context) {
+	s.mu.Lock()
+	phase, note, client := s.phase, s.note, s.client
+	s.mu.Unlock()
+	if phase == svcRunning && client != nil {
+		client.view(c, s)
+		return
+	}
+	s.syncGrab(false)
+	t := c.Theme()
+	ui.Column(c).Fill().Background(t.Background).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+		card(c).Width(connectPanelW).Children(func() {
+			ui.Text(c, s.title).FontSize(sizeHeading).Bold()
+			switch phase {
+			case svcForm:
+				s.signInForm(c, note)
+			case svcEnded:
+				s.endedPanel(c, note)
+			default:
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					text := L.ServiceConnecting(serviceName(s.service))
+					busyMark(c, text, busySize)
+					ui.Text(c, text).TextColor(t.TextMuted)
+				})
+			}
+		})
+	})
+}
+
+// signInForm asks for the service's sign-in: a user name (a domain for
+// Remote Desktop), the password and whether to remember them.
+func (s *serviceTab) signInForm(c *ui.Context, note string) {
+	t := c.Theme()
+	f, askUser := s.formShown()
+	edit := func(e ui.Element) {
+		if e.Changed() {
+			s.mu.Lock()
+			s.form = f
+			s.mu.Unlock()
+		}
+	}
+	if note != "" {
+		ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Danger)
+	}
+	ui.Text(c, L.ServiceSignInHint(serviceName(s.service))).FontSize(sizeSmall).TextColor(t.TextMuted)
+	submit := false
+	if askUser || s.service != serviceVNC {
+		label := L.ServiceUser()
+		if s.service == serviceVNC {
+			label = L.ServiceUserMac()
+		}
+		edit(ui.TextInput(c.Key("svc-user"), &f.user).Placeholder(label).Label(label).FillWidth())
+	}
+	if s.service == serviceRDP {
+		edit(ui.TextInput(c.Key("svc-domain"), &f.domain).Placeholder(L.ServiceDomain()).Label(L.ServiceDomain()).FillWidth())
+	}
+	pw := ui.TextInput(c.Key("svc-password"), &f.password).Password().Placeholder(L.ServicePassword()).Label(L.ServicePassword()).FillWidth()
+	edit(pw)
+	if pw.Submitted() {
+		submit = true
+	}
+	labelled(c, func() {
+		edit(ui.Switch(c.Key("svc-remember"), &f.remember).Label(L.ConnectRemember()))
+	}, L.ConnectRemember())
+	ui.Row(c).Gap(gap).Children(func() {
+		ui.Row(c).Grow(1)
+		if ui.Button(c.Key("svc-cancel"), L.ActionCancel()).Clicked() {
+			if w := s.tabWindow(); w != nil {
+				w.closeTab(s)
+			}
+		}
+		if ui.PrimaryButton(c.Key("svc-go"), L.ServiceSignIn()).Clicked() {
+			submit = true
+		}
+	})
+	if submit {
+		typed := f
+		s.mu.Lock()
+		s.form.password = ""
+		s.mu.Unlock()
+		s.connect(&typed)
+	}
+}
+
+// endedPanel says why the connection ended, with Reconnect, and Trust the
+// new key after an SSH server's key changed.
+func (s *serviceTab) endedPanel(c *ui.Context, note string) {
+	t := c.Theme()
+	if note == "" {
+		note = L.ServiceEnded()
+	}
+	ui.Text(c, note).TextColor(t.Danger)
+	s.mu.Lock()
+	changed := s.changed
+	s.mu.Unlock()
+	ui.Row(c).Gap(gap).Children(func() {
+		ui.Row(c).Grow(1)
+		if changed != "" && ui.Button(c.Key("svc-trust"), L.ServiceTrustKey()).Clicked() {
+			s.mu.Lock()
+			s.hostKey, s.changed = changed, ""
+			s.mu.Unlock()
+			s.connect(nil)
+		}
+		if ui.PrimaryButton(c.Key("svc-again"), L.ViewerReconnect()).Clicked() {
+			s.connect(nil)
+		}
+	})
+}
+
+// savedCredential is the sign-in saved for the tab's service, nil when
+// none is or the engine keeps none; asked right before a client signs in.
+func (s *serviceTab) savedCredential(ctx context.Context) *localapi.Credentials {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cr, err := s.app.link.Credential(ctx, s.device, s.service)
+	if err != nil {
+		return nil
+	}
+	return cr
+}

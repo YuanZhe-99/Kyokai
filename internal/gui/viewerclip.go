@@ -210,18 +210,14 @@ func (v *viewer) setClipShare(on bool) {
 func (a *App) syncFront() {
 	a.mu.Lock()
 	w := a.lastWin
-	viewers := make([]*viewer, 0, len(a.viewers))
-	for _, v := range a.viewers {
-		viewers = append(viewers, v)
-	}
 	a.mu.Unlock()
-	var front *viewer
+	var front tab
 	if w != nil {
 		w.mu.Lock()
 		front = w.shown()
 		w.mu.Unlock()
 	}
-	for _, v := range viewers {
+	for _, v := range a.allTabs() {
 		v.setFront(v == front)
 	}
 }

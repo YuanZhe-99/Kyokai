@@ -62,7 +62,7 @@ default you ask to see the screen, use the mouse and keyboard, share the clipboa
 **Options** › **Also ask to run AI tasks there**, or **Connect with AI** in a device's ⋯ menu, asks
 for the AI permissions as well. The connection opens as a tab next to Home. While the other
 computer's user is asked, the tab offers to enter its password instead; with **Remember password**
-it is kept (encrypted) for next time, and **Forget password** in the device's menu forgets it. With
+it is kept (encrypted) for next time, and Security, **Saved passwords and keys**, forgets it. With
 the right password you are in at once with what the other computer lets a password grant; for
 anything more its user is asked. The other computer's user chooses what to allow:
 
@@ -109,6 +109,9 @@ the clipboard; switching to a tab sends what you copied meanwhile. Quality, fram
 Original size, codec, sound, the swap and the clipboard switch are remembered for each device. While you are connected the other computer does not go to
 sleep by itself. Closing the tab (×) disconnects; when a connection ends, its tab says why and offers
 **Reconnect**. A connection that drops reconnects by itself for a minute without asking again.
+Closing a window disconnects its tabs: Kyokai asks first when that ends two connections or more, or
+one you cannot see because Home is in front; with **Quit** chosen for the close button, closing the
+main window asks while any connection is open, then quits.
 **Remove** in a device's menu takes it off Recent and forgets its saved password. **Rename…** gives
 it a name of your own, shown only on this device; leave it empty to use the device's own name
 again.
@@ -122,6 +125,39 @@ connects to that device; Recent then remembers the address. The other computer m
 the Network page, **Accept connections by address** (off by default). It accepts them only from the
 listed address ranges — by default local networks and Tailscale — and still needs a password or
 its user's approval. Windows may ask to let Kyokai through its firewall.
+
+### SSH, Remote Desktop and VNC
+
+A device running Kyokai 0.4.1 or later lets you reach its own SSH, Remote Desktop or VNC (Screen
+Sharing on a Mac) through Kyokai, with no port opened to the network. Its card on Home shows
+**SSH**, **Remote Desktop** or **VNC** for the services it has switched on, and its ⋯ menu always
+offers them. Each opens as a tab like a desktop's. Its user allows each one like any other
+permission (Permissions, **With a correct password**, has a switch for each, off by default).
+Kyokai asks for the user name and password when nothing is saved; **Remember password** keeps them
+for next time. SSH signs in with your keys first (see below), then the password; the first time,
+Kyokai remembers the server's key, and if it ever changes, it sends no password and asks whether to
+trust the new one. Remote Desktop without a user name shows the Windows sign-in screen. The
+picture of Remote Desktop and VNC fits the window or shows at its original size (**Display**),
+takes the keyboard like a desktop's (**Keyboard**), sends **Ctrl+Alt+Del** from **Actions**, and
+shares the clipboard's text while its tab is in front.
+
+### Status on Home
+
+Home shows each device as a card. A device with a saved password or key that runs Kyokai 0.4.1 or
+later shows its processor, memory, graphics, disk and network use, its battery and how long it has
+been up, updated every two seconds while Home is in front, with a line of the last two minutes.
+Values older than six seconds are dimmed with their age, and after a minute they are no longer
+shown. The other computer sees who is watching on its Permissions page and can turn
+**See this computer's status** off; watching keeps nothing awake there.
+
+### Sign in with keys
+
+Security, **Your keys**: **Generate a key** makes an Ed25519 key and shows its private part once, to
+copy or save (with an optional passphrase) for other SSH clients; Kyokai keeps it and never lets it
+out. **Import a key** takes an existing OpenSSH or PEM key. To let a key sign in to this device, add
+its public key under **Keys that can connect to this device**, or **Generate a pair** there and take
+the private part away. A key that can connect counts as a correct password. **Saved passwords and
+keys** lists what is kept for each device you connect to, with × to forget one or **Forget all**.
 
 ## Let someone control this device
 
