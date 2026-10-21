@@ -56,6 +56,15 @@ own sign-in decides what it may do. Saved service passwords are narrowed like th
 engine's store, returned only by `credentials.get` to the owner or the operator for a client
 signing in right then, never in the status, a log or another device.
 
+## Status watchers
+
+A device that holds a password or a key within the password grants may watch this computer's
+status ([computer-use.md](computer-use.md), "Host status"): its load, memory, disk, network rates,
+battery, uptime and which of its remote services listen — nothing on the screen, no input, no
+files. Watchers are never asked about, so the host's user turns `see-status` off in the password
+grants to keep everyone out, and Permissions lists who watches now. On the controller the samples
+stay in memory, and only for the hosts its GUI shows.
+
 ## AI tasks
 
 - The model runs on the host's provider account: each source's key goes only to that source, over

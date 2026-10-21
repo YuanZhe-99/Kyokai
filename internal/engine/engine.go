@@ -709,11 +709,13 @@ func (h *handler) status() (*localapi.Status, error) {
 	var about localapi.About
 	var permissions *localapi.Permissions
 	var byAddress localapi.ByAddress
+	var watching []localapi.Watched
+	var watchers []localapi.Watcher
 	for _, part := range []struct {
 		name string
 		raw  json.RawMessage
 		dst  any
-	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}, {"about", st.About, &about}, {"permissions", st.Permissions, &permissions}, {"by_address", st.ByAddress, &byAddress}} {
+	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}, {"about", st.About, &about}, {"permissions", st.Permissions, &permissions}, {"by_address", st.ByAddress, &byAddress}, {"watching", st.Watching, &watching}, {"watchers", st.Watchers, &watchers}} {
 		if err := json.Unmarshal(part.raw, part.dst); err != nil {
 			return nil, fmt.Errorf("%s status: %w", part.name, err)
 		}
@@ -724,7 +726,7 @@ func (h *handler) status() (*localapi.Status, error) {
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
 		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, ByAddress: byAddress, LogsOff: LogsOff(h.stateDir) || !st.KeepsHistory, Protected: st.Protected, AIDraft: st.AIDraft, Permissions: permissions,
 		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
-		Name: st.Name, About: about,
+		Name: st.Name, About: about, Watching: watching, Watchers: watchers,
 	}, nil
 }
 

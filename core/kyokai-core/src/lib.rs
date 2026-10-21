@@ -35,10 +35,12 @@ mod privacy;
 mod session;
 mod soft;
 mod store;
+mod system;
 mod tunnel;
 mod video;
 #[cfg(target_os = "macos")]
 mod vt;
+mod watch;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -708,6 +710,7 @@ fn build_on(
         identity,
         access: Arc::new(access::Access::load(secrets.clone())?),
         sessions: Arc::default(),
+        watching: Arc::default(),
         version: cfg.version.clone(),
         about: std::sync::Mutex::new(about::Local::load(&cfg.state_dir)),
     });
@@ -1014,6 +1017,24 @@ fn call(input: &[u8]) -> Result<Value, String> {
                     kind: session::Kind::Tunnel(r.service),
                 })?;
                 Ok(json!({"id": id}))
+            })
+        }
+        // Watches these hosts' status for a while: a lease the GUI renews
+        // (doc/en-us/computer-use.md, "Host status").
+        "watch.set" => {
+            let devices: Vec<String> = serde_json::from_value(req.params["devices"].take())
+                .map_err(|e| format!("bad devices: {e}"))?;
+            if devices
+                .iter()
+                .any(|d| d.len() != 9 || !d.bytes().all(|b| b.is_ascii_digit()))
+            {
+                return Err("a Device ID has 9 digits".into());
+            }
+            try_core(|c| {
+                c.ctx
+                    .watching
+                    .set(&devices, &c.network.dialer(), &c.network.handle());
+                Ok(json!({}))
             })
         }
         // Waits (without the core's lock) until a session is connected or
@@ -1453,6 +1474,8 @@ fn status() -> Value {
             "ai_draft": c.ctx.ai.draft().1,
             "requests": c.ctx.access.pending(),
             "sessions": c.ctx.sessions.list(),
+            "watching": c.ctx.watching.list(),
+            "watchers": c.ctx.sessions.watchers(),
             "recent": c
                 .ctx
                 .access

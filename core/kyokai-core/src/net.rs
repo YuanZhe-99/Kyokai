@@ -1040,6 +1040,11 @@ pub struct Dialer {
 }
 
 impl Dialer {
+    /// The state its sessions share.
+    pub fn ctx(&self) -> &Arc<Ctx> {
+        &self.ctx
+    }
+
     /// Registers a session and returns the work that dials and runs it,
     /// resuming a dropped one while its window lasts.
     /// Returns: the session's id, and the work, which ends with the session

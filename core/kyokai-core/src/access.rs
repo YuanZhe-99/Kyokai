@@ -109,6 +109,8 @@ const SAVED_PASSWORD_PREFIX: &str = "saved_password.";
 /// What else is saved for a host (`Saved`) is this prefix and the Device ID.
 const SAVED_PREFIX: &str = "saved.";
 const PASSWORD_GRANTS_NAME: &str = "password_grants";
+/// The permissions this host knew when its password grants were stored.
+const PASSWORD_GRANTS_KNOWN_NAME: &str = "password_grants_known";
 const PASSWORD_MODE_NAME: &str = "password_mode";
 const WITHOUT_ASKING_NAME: &str = "connect_without_asking";
 const BY_ADDRESS_NAME: &str = "connect_by_address";
@@ -230,13 +232,30 @@ impl PasswordMode {
     }
 }
 /// What a correct password grants without asking until the host's user
-/// changes it: the manual session; AI tasks always ask.
-const DEFAULT_PASSWORD_GRANTS: [Permission; 5] = [
+/// changes it: the manual session and the status; AI tasks and the
+/// services ask.
+const DEFAULT_PASSWORD_GRANTS: [Permission; 6] = [
     Permission::ViewScreen,
     Permission::ControlInput,
     Permission::Clipboard,
     Permission::Files,
     Permission::HearSound,
+    Permission::SeeStatus,
+];
+/// Every permission this build knows: the password grants a host's user
+/// chose were chosen over these (`password_grants_known`).
+const ALL_PERMISSIONS: [Permission; 11] = [
+    Permission::ViewScreen,
+    Permission::ControlInput,
+    Permission::RunAiTask,
+    Permission::ApproveAiAction,
+    Permission::Clipboard,
+    Permission::Files,
+    Permission::HearSound,
+    Permission::SeeStatus,
+    Permission::UseSsh,
+    Permission::UseRdp,
+    Permission::UseVnc,
 ];
 /// Failed logins one source address may make in `FAIL_WINDOW`.
 pub(crate) const FAILS_PER_ADDRESS: usize = 5;
@@ -409,7 +428,7 @@ impl Access {
     pub fn load(secrets: Arc<Secrets>) -> Result<Self, String> {
         let slots = Slots::load(&secrets)?;
         let memory = secrets.get(NO_HISTORY_NAME).map(|_| HashMap::new());
-        Ok(Access {
+        let access = Access {
             secrets,
             slots: Mutex::new(slots),
             limits: Mutex::default(),
@@ -417,7 +436,9 @@ impl Access {
             resumes: Mutex::default(),
             serve: Mutex::default(),
             memory: Mutex::new(memory),
-        })
+        };
+        access.roll_grants_forward()?;
+        Ok(access)
     }
 
     /// Whether the host is in protected mode.
@@ -608,7 +629,39 @@ impl Access {
     pub fn set_password_grants(&self, mut grants: Vec<Permission>) -> Result<(), String> {
         grants.sort();
         grants.dedup();
-        self.store(PASSWORD_GRANTS_NAME, &grants)
+        self.store(PASSWORD_GRANTS_NAME, &grants)?;
+        self.store(PASSWORD_GRANTS_KNOWN_NAME, &ALL_PERMISSIONS)
+    }
+
+    /// Brings password grants an older version stored up to this one: a
+    /// permission it did not know gets its default (`see-status` on, the
+    /// services off), and what the host's user chose stays.
+    /// Side effects: rewrites the secrets store when something was new.
+    fn roll_grants_forward(&self) -> Result<(), String> {
+        let Some(stored) = self.secrets.get(PASSWORD_GRANTS_NAME) else {
+            return Ok(());
+        };
+        let known: Vec<Permission> = match self.secrets.get(PASSWORD_GRANTS_KNOWN_NAME) {
+            Some(t) => serde_json::from_str::<Vec<Value>>(&t)
+                .map(|v| {
+                    v.into_iter()
+                        .filter_map(|p| serde_json::from_value(p).ok())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            // 0.4.0 and older knew the first seven.
+            None => ALL_PERMISSIONS[..7].to_vec(),
+        };
+        if ALL_PERMISSIONS.iter().all(|p| known.contains(p)) {
+            return Ok(());
+        }
+        let mut grants: Vec<Permission> = serde_json::from_str(&stored).unwrap_or_default();
+        grants.extend(
+            DEFAULT_PASSWORD_GRANTS
+                .iter()
+                .filter(|p| !known.contains(p)),
+        );
+        self.set_password_grants(grants)
     }
 
     /// Whether a controller that proved a password is admitted without
@@ -983,6 +1036,22 @@ impl Access {
         self.store_history(KNOWN_HOSTS_NAME, &all)
     }
 
+    /// A host this device connected to (controller side).
+    pub fn known(&self, device_id: &str) -> Option<KnownHost> {
+        self.known_hosts().remove(device_id)
+    }
+
+    /// Notes what a known host announced (a status watch), leaving when it
+    /// was last connected to as it was.
+    pub fn note_features(&self, device_id: &str, features: &[String]) -> Result<(), String> {
+        let mut all = self.known_hosts();
+        match all.get_mut(device_id) {
+            Some(h) if h.features != features => h.features = features.to_vec(),
+            _ => return Ok(()),
+        }
+        self.store_history(KNOWN_HOSTS_NAME, &all)
+    }
+
     /// The hosts connected to most recently, newest first (controller side).
     pub fn recent(&self) -> Vec<(String, KnownHost)> {
         let mut all: Vec<_> = self.known_hosts().into_iter().collect();
@@ -1229,6 +1298,37 @@ mod tests {
         assert!(a.forget_credentials(id, "ftp").is_err());
         a.forget_credentials(id, "vnc").unwrap();
         assert!(a.secrets().get("saved.100000002").is_none(), "nothing left");
+    }
+
+    /// Password grants an older version stored get the new permissions'
+    /// defaults once — `see-status` on, the services off — and what the
+    /// host's user chooses afterwards stays.
+    #[test]
+    fn new_permissions_roll_into_stored_grants() {
+        use Permission::*;
+        let secrets = Arc::new(Secrets::memory());
+        // As 0.4.0 stored them, files turned off by the host's user.
+        secrets
+            .set(
+                PASSWORD_GRANTS_NAME,
+                r#"["view-screen","control-input","clipboard","hear-sound"]"#,
+            )
+            .unwrap();
+        let a = Access::load(secrets.clone()).unwrap();
+        assert_eq!(
+            a.password_grants(),
+            vec![ViewScreen, ControlInput, Clipboard, HearSound, SeeStatus]
+        );
+        a.set_password_grants(vec![ViewScreen]).unwrap();
+        let again = Access::load(secrets).unwrap();
+        assert_eq!(
+            again.password_grants(),
+            vec![ViewScreen],
+            "the choice stays"
+        );
+        let fresh = access().password_grants();
+        assert!(fresh.contains(&SeeStatus));
+        assert!(!fresh.iter().any(|p| matches!(p, UseSsh | UseRdp | UseVnc)));
     }
 
     #[test]

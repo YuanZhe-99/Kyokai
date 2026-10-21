@@ -44,7 +44,7 @@ pub mod feature {
 }
 
 /// The features this build announces.
-pub const FEATURES: &[&str] = &[feature::KEY_LOGIN, feature::TUNNEL];
+pub const FEATURES: &[&str] = &[feature::KEY_LOGIN, feature::TUNNEL, feature::STATUS];
 
 /// What the other side of a session announced: its features, none for
 /// 0.4.0 and older.
@@ -86,7 +86,7 @@ pub(crate) const MAX_PLAINTEXT: usize = MAX_FRAME - 16;
 /// How long one handshake step may take.
 const STEP_TIMEOUT: Duration = Duration::from_secs(15);
 pub(crate) const PING_EVERY: Duration = Duration::from_secs(5);
-const IDLE_LIMIT: Duration = Duration::from_secs(15);
+pub(crate) const IDLE_LIMIT: Duration = Duration::from_secs(15);
 /// How long a session that says goodbye waits for the peer to close.
 const BYE_WAIT: Duration = Duration::from_millis(500);
 /// The QoS viewer id and display name of a session (one viewer, the primary
@@ -137,6 +137,10 @@ struct ClientHello {
     /// announcing `tunnel`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tunnel: Option<crate::tunnel::Service>,
+    /// A quiet status watch instead of the desktop, only to a host
+    /// announcing `status`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    watch: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -586,6 +590,9 @@ pub enum Kind {
     Desktop,
     /// A tunnel to the host's own service (doc/en-us/remote-services.md).
     Tunnel(crate::tunnel::Service),
+    /// A quiet watch of the host's status (doc/en-us/computer-use.md,
+    /// "Host status"): left out of the sessions listed.
+    Watch,
 }
 
 impl Kind {
@@ -593,8 +600,13 @@ impl Kind {
     fn service(self) -> Option<crate::tunnel::Service> {
         match self {
             Kind::Tunnel(s) => Some(s),
-            Kind::Desktop => None,
+            Kind::Desktop | Kind::Watch => None,
         }
+    }
+
+    /// Whether sessions of this kind stay out of the interface's list.
+    fn hidden(self) -> bool {
+        self == Kind::Watch
     }
 }
 
@@ -636,6 +648,8 @@ struct Entry {
     /// which it takes once connected.
     tunnel: Option<crate::tunnel::Ends>,
     wire: Arc<Mutex<Option<crate::tunnel::Wire>>>,
+    /// Unix seconds when it connected (a host's watchers).
+    since: u64,
 }
 
 /// A viewer's latest quality and codec messages: sent again when its
@@ -771,8 +785,31 @@ impl Sessions {
             removed: false,
             tunnel: None,
             wire: Arc::default(),
+            since: 0,
         });
         (id, stop)
+    }
+
+    /// Takes a finished session off the books (a status watch, which the
+    /// interface never lists).
+    /// Returns: how it ended, or None while it is live or when unknown.
+    pub fn forget(&self, id: u64) -> Option<Option<Failure>> {
+        let mut s = self.inner.lock().ok()?;
+        let i =
+            s.1.iter()
+                .position(|e| e.id == id && matches!(e.state, State::Closed | State::Failed))?;
+        Some(s.1.remove(i).failure)
+    }
+
+    /// The devices watching this host's status, for the status.
+    pub fn watchers(&self) -> Value {
+        let s = self.inner.lock().expect("sessions lock");
+        s.1.iter()
+            .filter(|e| {
+                e.role == Role::Host && e.kind == Kind::Watch && e.state == State::Connected
+            })
+            .map(|e| json!({"device_id": e.device_id, "about": e.peer, "since": e.since}))
+            .collect()
     }
 
     /// A controller tunnel's ends for the GUI.
@@ -791,16 +828,11 @@ impl Sessions {
         e.wire.lock().ok()?.take()
     }
 
-    /// How many host sessions of a kind are connected (`desktop`: desktop
-    /// sessions, else tunnels).
-    fn connected(&self, desktop: bool) -> usize {
+    /// How many host sessions of the kinds `of` picks are connected.
+    fn connected(&self, of: fn(Kind) -> bool) -> usize {
         self.inner.lock().map_or(usize::MAX, |s| {
             s.1.iter()
-                .filter(|e| {
-                    e.role == Role::Host
-                        && e.state == State::Connected
-                        && (e.kind == Kind::Desktop) == desktop
-                })
+                .filter(|e| e.role == Role::Host && e.state == State::Connected && of(e.kind))
                 .count()
         })
     }
@@ -813,12 +845,13 @@ impl Sessions {
         s.1.retain(|e| !(e.removed && matches!(e.state, State::Closed | State::Failed)));
         let finished =
             s.1.iter()
-                .filter(|e| matches!(e.state, State::Closed | State::Failed))
+                .filter(|e| !e.kind.hidden() && matches!(e.state, State::Closed | State::Failed))
                 .count();
         if finished > KEEP_CLOSED {
-            let drop_first =
-                s.1.iter()
-                    .position(|e| matches!(e.state, State::Closed | State::Failed));
+            let drop_first = s
+                .1
+                .iter()
+                .position(|e| !e.kind.hidden() && matches!(e.state, State::Closed | State::Failed));
             if let Some(i) = drop_first {
                 s.1.remove(i);
             }
@@ -888,7 +921,7 @@ impl Sessions {
     /// How many host desktop sessions are connected (tunnels have a limit
     /// of their own).
     fn connected_hosts(&self) -> usize {
-        self.connected(true)
+        self.connected(|k| k == Kind::Desktop)
     }
 
     /// Ends a live host session that a resumed connection replaces, at once
@@ -985,7 +1018,7 @@ impl Sessions {
     pub fn list(&self) -> Value {
         let s = self.inner.lock().expect("sessions lock");
         s.1.iter()
-            .filter(|e| !e.removed)
+            .filter(|e| !e.removed && !e.kind.hidden())
             .map(|e| {
                 json!({
                     "id": e.id,
@@ -1013,6 +1046,8 @@ pub struct Ctx {
     pub identity: Arc<Identity>,
     pub access: Arc<Access>,
     pub sessions: Arc<Sessions>,
+    /// The hosts this device watches the status of (controller side).
+    pub watching: Arc<crate::watch::Watching>,
     pub version: String,
     /// This device's friendly name, maker and system.
     pub about: Mutex<crate::about::Local>,
@@ -1184,7 +1219,11 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let device_id = identity::device_id(&client_key);
     let (id, stop) = ctx.sessions.open(Role::Host, &device_id);
     let cut = ctx.sessions.cut(id);
-    let kind = client.tunnel.map_or(Kind::Desktop, Kind::Tunnel);
+    let kind = match (client.tunnel, client.watch) {
+        (Some(s), _) => Kind::Tunnel(s),
+        (None, true) => Kind::Watch,
+        (None, false) => Kind::Desktop,
+    };
     ctx.sessions.update(id, |e| {
         e.kind = kind;
         e.peer_version = client.version.clone();
@@ -1229,6 +1268,25 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             reading.abort();
             ctx.sessions.end(id, failure);
         }
+        // A watcher gets the host's status until either side ends; it
+        // holds no capture and no awake request, and is never listed.
+        Ok(Admitted { granted, peer, .. }) if kind == Kind::Watch => {
+            let since = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            ctx.sessions.update(id, |e| {
+                e.peer = peer;
+                e.state = State::Connected;
+                e.granted = granted;
+                e.since = since;
+            });
+            let Channel { stream, noise, .. } = ch;
+            let failure = crate::watch::host(stream, noise, &stop, &ctx.access)
+                .await
+                .err();
+            ctx.sessions.end(id, failure);
+            ctx.sessions.forget(id);
+        }
         Ok(Admitted { granted, peer, .. }) => {
             ctx.sessions.update(id, |e| e.peer = peer);
             let video = granted.contains(&Permission::ViewScreen);
@@ -1268,7 +1326,12 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             ctx.ai.controller_left(&device_id);
             ctx.sessions.end(id, failure);
         }
-        Err(f) => ctx.sessions.end(id, Some(f)),
+        Err(f) => {
+            ctx.sessions.end(id, Some(f));
+            if kind.hidden() {
+                ctx.sessions.forget(id);
+            }
+        }
     }
 }
 
@@ -1368,7 +1431,10 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     }
     let busy = match kind {
         Kind::Desktop => ctx.sessions.connected_hosts() >= MAX_HOST_SESSIONS,
-        Kind::Tunnel(_) => ctx.sessions.connected(false) >= crate::tunnel::MAX_TUNNELS,
+        Kind::Tunnel(_) => {
+            ctx.sessions.connected(|k| matches!(k, Kind::Tunnel(_))) >= crate::tunnel::MAX_TUNNELS
+        }
+        Kind::Watch => ctx.sessions.connected(|k| k == Kind::Watch) >= crate::watch::MAX_WATCHERS,
     };
     if busy {
         let _ = ch.send(&refuse(Refusal::Busy)).await;
@@ -1426,9 +1492,11 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     };
     let peer = about.unwrap_or_default().clean();
     let device_id = identity::device_id(client_key);
-    // A tunnel asks for its service's permission, whatever it named.
+    // A tunnel asks for its service's permission and a watcher for
+    // `see-status`, whatever they named.
     let mut want = match kind {
         Kind::Tunnel(s) => vec![s.permission()],
+        Kind::Watch => vec![Permission::SeeStatus],
         Kind::Desktop => client.want.clone(),
     };
     want.sort();
@@ -1456,6 +1524,11 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         .then(|| want.clone());
     let granted = match unattended.or(by_proof) {
         Some(granted) => granted,
+        // A watcher never asks the host's user.
+        None if kind == Kind::Watch => {
+            let _ = ch.send(&refuse(Refusal::Denied)).await;
+            return Err(Failure::Refused(Refusal::Denied));
+        }
         None => {
             ctx.sessions.update(id, |e| e.state = State::Confirming);
             let key_name = match &proven {
@@ -1513,9 +1586,12 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
                 }
             }
         }
-        Kind::Desktop => None,
+        Kind::Desktop | Kind::Watch => None,
     };
-    let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
+    // A watcher leaves no trace among the trusted devices.
+    if kind != Kind::Watch {
+        let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
+    }
     let resume = (kind == Kind::Desktop).then(|| ctx.access.issue_resume(&key_b64, &granted, id));
     step(ch.send(&Verdict {
         accepted: true,
@@ -1627,8 +1703,14 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             e.features = peer.clone();
             kind = e.kind;
         });
-        // A host that announced no tunnels never gets asked for one.
-        if matches!(kind, Kind::Tunnel(_)) && !peer.has(feature::TUNNEL) {
+        // A host that announced no tunnels never gets asked for one, nor
+        // for a status watch without `status`.
+        let offered = match kind {
+            Kind::Tunnel(_) => peer.has(feature::TUNNEL),
+            Kind::Watch => peer.has(feature::STATUS),
+            Kind::Desktop => true,
+        };
+        if !offered {
             return Err(Failure::Unsupported);
         }
         // 3: -> s, se + client_hello with both credential requests, or
@@ -1662,6 +1744,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             signature: sign_static(&ctx.identity, &my_static),
             want: match kind {
                 Kind::Tunnel(s) => vec![s.permission()],
+                Kind::Watch => vec![Permission::SeeStatus],
                 Kind::Desktop => crate::access::wire_want(&want, &peer),
             },
             // Its description goes with a key or without a password, as
@@ -1672,6 +1755,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             features: our_features(),
             keys,
             tunnel: kind.service(),
+            watch: kind == Kind::Watch,
         };
         let offered_keys = !hello.keys.is_empty();
         let payload = serde_json::to_vec(&hello).map_err(|_| Failure::Broken)?;
@@ -1731,13 +1815,19 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         let peer = verdict.about.unwrap_or_default().clean();
         let mut address = String::new();
         ctx.sessions.update(id, |e| address.clone_from(&e.address));
-        let _ = ctx.access.pin_host(
-            &device_id,
-            &host.device_key,
-            &peer,
-            &address,
-            &host.features,
-        );
+        // A status watch is no connection of the person's: it leaves when
+        // the host was last connected to as it was, and notes only what the
+        // host announced.
+        let _ = match kind {
+            Kind::Watch => ctx.access.note_features(&device_id, &host.features),
+            _ => ctx.access.pin_host(
+                &device_id,
+                &host.device_key,
+                &peer,
+                &address,
+                &host.features,
+            ),
+        };
         // The key the host admitted is the one offered next time; a host
         // that admitted another way no longer takes the one remembered.
         match verdict.via {
@@ -1782,6 +1872,20 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
                 None => Err(Failure::Broken),
             };
+            ctx.sessions.end(id, result.err());
+            Outcome::Done
+        }
+        // A status watch hands the host's samples to the watch manager.
+        Ok((ch, granted, _, Kind::Watch)) => {
+            ctx.sessions.update(id, |e| {
+                e.state = State::Connected;
+                e.granted = granted;
+            });
+            let Channel { stream, noise, .. } = ch;
+            let result = crate::watch::follow(stream, noise, &stop, |sample| {
+                ctx.watching.sampled(&device_id, sample)
+            })
+            .await;
             ctx.sessions.end(id, result.err());
             Outcome::Done
         }
@@ -3038,6 +3142,7 @@ mod compat_tests {
                 signature: "s".into(),
             }],
             tunnel: Some(crate::tunnel::Service::Ssh),
+            watch: true,
         };
         let old: legacy::ClientHello =
             serde_json::from_value(serde_json::to_value(&client).unwrap()).unwrap();
@@ -3299,6 +3404,7 @@ mod tests {
             identity: Arc::new(Identity::load_or_create(&secrets).unwrap()),
             access: Arc::new(access),
             sessions: Arc::new(Sessions::default()),
+            watching: Arc::default(),
             version: version.into(),
             about: Mutex::new(crate::about::Local::load(&test_dir())),
         })
@@ -5535,7 +5641,7 @@ mod tunnel_tests {
         let listed = host.sessions.list();
         assert_eq!(listed[0]["service"], "ssh", "{listed}");
         assert_eq!(host.sessions.connected_hosts(), 0, "not a desktop session");
-        assert_eq!(host.sessions.connected(false), 1);
+        assert_eq!(host.sessions.connected(|k| matches!(k, Kind::Tunnel(_))), 1);
         let ends = controller.sessions.tunnel(id).unwrap();
         assert_eq!(next(&ends).await.unwrap(), b"SSH-2.0-test\r\n");
         ends.up.send(b"hello".to_vec()).await.unwrap();
@@ -5649,5 +5755,174 @@ mod tunnel_tests {
         assert!(matches!(dialing.await.unwrap(), Outcome::Done));
         assert!(read_frame(&mut b).await.is_err(), "no frame 3");
         assert_eq!(session(&controller, id)["failure"], "unsupported");
+    }
+}
+
+/// Quiet status watchers (doc/en-us/computer-use.md, "Host status").
+#[cfg(test)]
+mod watch_tests {
+    use super::tests::device;
+    use super::*;
+
+    /// A host whose temporary and permanent passwords admit within
+    /// `grants`.
+    fn host_with(grants: Vec<Permission>) -> Arc<Ctx> {
+        let host = device("1.0.0");
+        {
+            let mut slots = host.access.slots.lock().unwrap();
+            let key = host.identity.public_key();
+            slots.set_temporary("k7mq2xpa", &key).unwrap();
+            slots
+                .set_permanent(host.access.secrets(), Some("long-lived-pw"), &key)
+                .unwrap();
+        }
+        host.access.set_password_grants(grants).unwrap();
+        host
+    }
+
+    /// Starts watching the host from the controller over an in-memory
+    /// pipe. Returns: the controller's session id, once it is connected or
+    /// has ended, and the task running it.
+    async fn watch(
+        host: &Arc<Ctx>,
+        controller: &Arc<Ctx>,
+        password: &str,
+    ) -> (u64, tokio::task::JoinHandle<Outcome>) {
+        let (a, b) = tokio::io::duplex(1 << 16);
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.2".parse().unwrap(),
+        };
+        tokio::spawn(serve(host.clone(), b, from));
+        let dialed = host.identity.device_id();
+        controller.watching.expect(&dialed);
+        let (id, stop) = begin_as(controller, &dialed, Remember::default(), Kind::Watch);
+        let password = zeroize::Zeroizing::new(password.to_owned());
+        let want = vec![Permission::SeeStatus];
+        let c = controller.clone();
+        let task =
+            tokio::spawn(
+                async move { connect(c, id, stop, a, dialed, password, want, None).await },
+            );
+        for _ in 0..200 {
+            if !matches!(
+                state(controller, id),
+                Some(State::Connecting | State::Confirming)
+            ) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        (id, task)
+    }
+
+    /// A session's state and failure from the books (watches are never
+    /// listed).
+    fn state(ctx: &Ctx, id: u64) -> Option<State> {
+        let s = ctx.sessions.inner.lock().unwrap();
+        s.1.iter().find(|e| e.id == id).map(|e| e.state)
+    }
+
+    fn failure(ctx: &Ctx, id: u64) -> Option<Failure> {
+        let s = ctx.sessions.inner.lock().unwrap();
+        s.1.iter().find(|e| e.id == id).and_then(|e| e.failure)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_watcher_gets_samples_quietly() {
+        let host = host_with(vec![Permission::ViewScreen, Permission::SeeStatus]);
+        let controller = device("1.0.1");
+        let (id, _task) = watch(&host, &controller, "k7mq2xpa").await;
+        assert_eq!(state(&controller, id), Some(State::Connected));
+        // Samples arrive, the first within a sampling period or so.
+        let dialed = host.identity.device_id();
+        let until = Instant::now() + crate::system::SAMPLE_EVERY * 3;
+        let mut listed = Value::Null;
+        while Instant::now() < until {
+            listed = controller.watching.list();
+            if listed[0]["state"] == "watching" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(listed[0]["device_id"], json!(dialed), "{listed}");
+        assert!(listed[0]["sample"]["memory"]["total"].as_u64().unwrap() > 0);
+        // Quiet on both sides: not among the sessions, no trace among the
+        // host's trusted devices, nobody asked; the host lists its watcher.
+        assert_eq!(controller.sessions.list(), json!([]));
+        assert_eq!(host.sessions.list(), json!([]));
+        assert!(host.access.trusted().is_empty());
+        let watchers = host.sessions.watchers();
+        assert_eq!(
+            watchers[0]["device_id"],
+            json!(controller.identity.device_id())
+        );
+        assert!(watchers[0]["since"].as_u64().unwrap() > 0);
+        // `see-status` turned off ends it at the next sample.
+        host.access
+            .set_password_grants(vec![Permission::ViewScreen])
+            .unwrap();
+        let until = Instant::now() + crate::system::SAMPLE_EVERY * 3;
+        while state(&controller, id) == Some(State::Connected) && Instant::now() < until {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(state(&controller, id), Some(State::Closed));
+        let until = Instant::now() + Duration::from_secs(2);
+        while host.sessions.watchers() != json!([]) && Instant::now() < until {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(host.sessions.watchers(), json!([]));
+    }
+
+    /// A watcher is admitted only by a password or key within the grants,
+    /// never by asking the host's user; with nobody at the computer only
+    /// the permanent password (or a key) admits.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_watcher_never_asks() {
+        let host = host_with(vec![Permission::ViewScreen]);
+        let controller = device("1.0.1");
+        let (id, _task) = watch(&host, &controller, "k7mq2xpa").await;
+        assert_eq!(
+            failure(&controller, id),
+            Some(Failure::Refused(Refusal::Denied))
+        );
+        let (id, _task) = watch(&host, &controller, "").await;
+        assert_eq!(
+            failure(&controller, id),
+            Some(Failure::Refused(Refusal::Denied))
+        );
+        assert_eq!(host.access.pending(), json!([]), "nobody was asked");
+        host.access
+            .set_password_grants(vec![Permission::SeeStatus])
+            .unwrap();
+        host.access.set_serve(Serve::Unattended);
+        let (id, _task) = watch(&host, &controller, "k7mq2xpa").await;
+        assert_eq!(
+            failure(&controller, id),
+            Some(Failure::Refused(Refusal::Absent))
+        );
+        let (id, task) = watch(&host, &controller, "long-lived-pw").await;
+        assert_eq!(state(&controller, id), Some(State::Connected));
+        task.abort();
+    }
+
+    /// Watchers have a limit of their own, apart from the desktop sessions.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn watchers_have_a_limit_of_their_own() {
+        let host = host_with(vec![Permission::SeeStatus]);
+        for _ in 0..crate::watch::MAX_WATCHERS {
+            let (id, _) = host.sessions.open(Role::Host, "100000009");
+            host.sessions.update(id, |e| {
+                e.kind = Kind::Watch;
+                e.state = State::Connected;
+            });
+        }
+        assert_eq!(host.sessions.connected_hosts(), 0, "not desktop sessions");
+        let controller = device("1.0.1");
+        let (id, _task) = watch(&host, &controller, "k7mq2xpa").await;
+        assert_eq!(
+            failure(&controller, id),
+            Some(Failure::Refused(Refusal::Busy))
+        );
     }
 }

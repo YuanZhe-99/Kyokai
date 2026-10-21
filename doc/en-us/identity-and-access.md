@@ -63,7 +63,8 @@ login").
 
 `view-screen`, `control-input`, `run-ai-task`, `approve-ai-action`, `clipboard`, `files`
 (copying files through the clipboard; `clipboard` does not include it), `hear-sound` (the host's
-sound; `view-screen` does not include it), and `use-ssh`, `use-rdp` and `use-vnc` (a tunnel to the
+sound; `view-screen` does not include it), `see-status` (a quiet watch of the host's status,
+[computer-use.md](computer-use.md), "Host status") and `use-ssh`, `use-rdp` and `use-vnc` (a tunnel to the
 host's own SSH, Remote Desktop or VNC, [remote-services.md](remote-services.md)). A controller asks
 for a set; the host's user grants a subset; none implies another. Network membership grants none of
 them. `run-ai-task` lets a controller start AI tasks on the host, which run with the host's key, and
@@ -81,6 +82,7 @@ sessions with this host end and its resume tokens are dropped.
 | gives a correct password with a new key claiming a Device ID trusted under another key | asks its user |
 | proves a key that can connect and asks only for what a password grants | admits it at once with what it asked for (while Connect without asking is on) |
 | proves a key that can connect with a proof that fails | refuses it as a wrong password |
+| watches the status with a password or key within the grants | admits it at once (while Connect without asking is on); never asks: anything else is refused as `denied` |
 | asks without a password | asks its user; a denial or no answer counts as a failed login |
 | gives the permanent password with nobody at the computer | admits it with what a password grants (see Unattended access) |
 | gives a correct password of a kind the host does not accept | refuses it as a wrong password |
@@ -90,7 +92,10 @@ Permanent or Both, by default Both); "Connect without asking" (on by default) le
 password admit without confirmation, and off, every connection asks. What a password grants
 without asking is chosen there too ("With a correct password"),
 one switch per permission, kept in the secrets store: by default `view-screen`, `control-input`,
-`clipboard`, `files` and `hear-sound` (a controller asks for these by default too); the AI permissions always ask unless turned on there.
+`clipboard`, `files`, `hear-sound` (a controller asks for these by default too) and `see-status`; the AI
+permissions and the services always ask unless turned on there. A host whose grants an older version
+stored gets a new permission's default once, as it starts (`password_grants_known` records which
+permissions the stored grants were chosen over): `see-status` on, the services off.
 
 ## Host confirmation
 
@@ -179,6 +184,7 @@ served.
 | Incoming connections in their handshake or login | 16 at once; more are dropped |
 | Connected sessions on a host | 4 at once (each may hold a capture and an encoder); more are refused as busy |
 | Tunnels on a host | 8 at once, besides the desktop sessions; more are refused as busy |
+| Status watchers on a host | 16 at once, besides the other sessions; more are refused as busy |
 | Host confirmations waiting | 4; more are refused as busy |
 
 Limits are counted per source virtual address, since keys cost nothing to create before they are

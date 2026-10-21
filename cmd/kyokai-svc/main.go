@@ -32,6 +32,7 @@
 //	kyokai-svc ctl keys | keys-generate [--name N] | keys-remove --id K   (this device's sign-in keys)
 //	kyokai-svc ctl authorized | authorized-add --public LINE [--name N] | authorized-remove --id K
 //	kyokai-svc ctl tunnel --device ID [--address A] --service ssh|rdp|vnc   (pipes the tunnel to stdin and stdout)
+//	kyokai-svc ctl watch-status --device ID[,ID…] [--seconds S]   (watches hosts' status, printing each sample)
 //	kyokai-svc ctl credentials-set --device ID --service S [--user U] [--domain D] [--key-id K] | credentials-get --device ID --service S | credentials-forget --device ID [--service S|key]
 //
 // Secrets come from the environment, never the command line: network-set
@@ -547,11 +548,14 @@ func printStatus(s *localapi.Status) {
 		fmt.Println()
 	}
 	for _, r := range s.Requests {
-		fmt.Printf("request %d  from %s %q  wants %s  known %v  new key %v  password %v\n",
-			r.ID, r.DeviceID, r.About.Name, strings.Join(r.Want, ","), r.Known, r.NewKey, r.Password)
+		fmt.Printf("request %d  from %s %q  wants %s  known %v  new key %v  password %v  key %q  service %q\n",
+			r.ID, r.DeviceID, r.About.Name, strings.Join(r.Want, ","), r.Known, r.NewKey, r.Password, r.Key, r.Service)
 	}
 	for _, r := range s.Recent {
-		fmt.Printf("recent %s %q  %s %s %s\n", r.DeviceID, r.About.Name, r.About.Maker, r.About.Model, r.Address)
+		fmt.Printf("recent %s %q  %s %s %s  saved %+v  features %s\n", r.DeviceID, r.About.Name, r.About.Maker, r.About.Model, r.Address, r.Saved, strings.Join(r.Features, ","))
+	}
+	for _, w := range s.Watchers {
+		fmt.Printf("watcher %s %q  since %d\n", w.DeviceID, w.About.Name, w.Since)
 	}
 	for _, x := range s.Sessions {
 		fmt.Printf("session %d  %s  %s %q  %s", x.ID, x.Role, x.DeviceID, x.Peer.Name, x.State)

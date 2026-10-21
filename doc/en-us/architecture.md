@@ -37,7 +37,7 @@ described in [run-modes.md](run-modes.md).
 | `internal/core` | purego binding to the Rust core |
 | `internal/fsutil` | Atomic writes and JSON documents |
 | `internal/version` | The single product version |
-| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and codecs (`video`, `mf` for Media Foundation, `vt` for VideoToolbox, `soft` for libvpx and libaom, `annexb` for the H.264 and HEVC framing), the host's sound (`audio`, `opus`), the input service (`input`), the viewer's keyboard grab (`keyboard`), AI tasks (`ai`: the providers, the task runtime, the desktop it drives), sign-in keys (`keys`), tunnels to the host's own services (`tunnel`) |
+| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and codecs (`video`, `mf` for Media Foundation, `vt` for VideoToolbox, `soft` for libvpx and libaom, `annexb` for the H.264 and HEVC framing), the host's sound (`audio`, `opus`), the input service (`input`), the viewer's keyboard grab (`keyboard`), AI tasks (`ai`: the providers, the task runtime, the desktop it drives), sign-in keys (`keys`), tunnels to the host's own services (`tunnel`), the host's status (`system`) and its watchers (`watch`) |
 | `core/third_party/rustdesk-codec` | RustDesk's libvpx and libaom codecs, vendored, with the static libraries vcpkg builds ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-dxgi` | RustDesk's DXGI and GDI screen capture, vendored ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-qos` | RustDesk's video QoS, vendored |
@@ -92,7 +92,8 @@ history in the secrets store, or in memory only for No logs, [security.md](secur
 (`{name, public}`), `authorized.remove` (`{id}`), the tunnels and saved service sign-ins
 ([remote-services.md](remote-services.md)): `tunnel.open` (`{device_id, address?, service}` →
 `{id}`), `tunnel.wait` (`{id, timeout_ms}` → `{state, failure}`, waiting without the core's lock),
-`credentials.get`, `credentials.set`, `credentials.forget`, `identity.export` (`{passphrase}` → `{document}`), `identity.import`
+`credentials.get`, `credentials.set`, `credentials.forget`, `watch.set` (`{devices}`: watch these hosts'
+status for 30 seconds, [computer-use.md](computer-use.md), "Host status"), `identity.export` (`{passphrase}` → `{document}`), `identity.import`
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
 name; the status carries `name` and this device's `about`), `access.settings` (`{password_mode?: temporary|permanent|both, without_asking?, by_address?: {on, ranges}}`; `by_address` starts or stops the listener at once), `permission.request` (`{name}`: `screen`, `accessibility`, `input-monitoring` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens; in the helper the agent asks), `store.start_over` (the saved store cannot be unlocked: it is moved aside and the core rebuilt on a new one → `{kept}`), `agent.restart` (the helper's session agent exits and its supervisor starts it again), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
 passphrase}`), `store.clear` (a run-mode change, [run-modes.md](run-modes.md)), `host.serve` (`{serve}`: `all`, `unattended` or `none`, set by the engine from its run
@@ -117,7 +118,8 @@ carries `permanent_password`, `permissions` (macOS: `{screen, accessibility, inp
 set with `access.password_grants` `{grants}`), `requests` (open host confirmations, each with
 `password`: whether the controller gave a password or a key, and `key`: the key's name), `sessions` (a tunnel's with its `service`), `recent` (hosts
 connected to, newest first, each with the `address` its last session dialed, the `features` the
-host announced and `saved`, a flag per kind of sign-in kept for it) and `ai` (the task in progress with its state and origin, or null). The Go binding keeps the response slots it passes to the core in heap memory,
+host announced and `saved`, a flag per kind of sign-in kept for it), `watching` and `watchers` (the
+status watches from and of this device) and `ai` (the task in progress with its state and origin, or null). The Go binding keeps the response slots it passes to the core in heap memory,
 never on a goroutine stack, which may move between taking an address and the call. On Windows the
 library is loaded by absolute path with
 `LoadLibraryEx(LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32)` and links the C
@@ -138,7 +140,7 @@ runtime statically, so nothing is resolved through the search path.
   `password.set_permanent`, `session.connect`, `session.identify`, `device.remove`, `protect.set` (while protected mode is on the engine answers only the requests in `protectedAllows` and refuses the rest as `invalid`; the status says `protected`), `logs.set` (`{logs_off}`: No logs; the engine writes or removes its state directory's `no-logs` marker, closes or reopens its log, deletes the logs and calls `access.history`; the status says `logs_off`; the GUI sends it as it attaches and when the setting changes), `password.forget_saved`, `session.close`, `request.decide`, `trusted.list`,
   `trusted.remove`, `host.forget`, `keys.list`, `keys.add`, `keys.remove`, `keys.sign`,
   `authorized.list`, `authorized.add`, `authorized.remove`, `credentials.get` (owner or operator
-  only), `credentials.set`, `credentials.forget`, `tunnel.open` (streaming, below), `identity.export`, `identity.import`, `identity.reset`,
+  only), `credentials.set`, `credentials.forget`, `watch.set`, `tunnel.open` (streaming, below), `identity.export`, `identity.import`, `identity.reset`,
   `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it as it attaches and when the setting changes), `input.kyokai` (`{kyokai_input}`; sent with `capture.show`; an engine that does not know it keeps Kyokai's windows guarded), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; `helper.remove` on macOS, after the store moved out), `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,
   `session.media`, `shutdown`, and the AI requests named after the core's

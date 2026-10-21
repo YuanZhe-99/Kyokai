@@ -29,6 +29,61 @@ var ctlServices = map[string]func(args []string) error{
 	"credentials-set":    ctlCredentials,
 	"credentials-get":    ctlCredentials,
 	"credentials-forget": ctlCredentials,
+	"watch-status":       ctlWatchStatus,
+}
+
+// ctlWatchStatus watches devices' status for a while, as Home does (a lease
+// renewed every 10 seconds), and prints each sample as it arrives.
+func ctlWatchStatus(args []string) error {
+	fs := flag.NewFlagSet("ctl watch-status", flag.ExitOnError)
+	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "local API socket path")
+	devices := fs.String("device", "", "the Device IDs to watch (comma-separated)")
+	seconds := fs.Int("seconds", 20, "how long to watch")
+	fs.Parse(args[1:])
+	client := localapi.NewClient(*socket)
+	ctx := context.Background()
+	lease := func(ids []string) error {
+		_, err := client.Do(ctx, localapi.Request{Type: localapi.RequestWatchSet, Watch: &ids})
+		return err
+	}
+	ids := list(*devices)
+	if err := lease(ids); err != nil {
+		return err
+	}
+	defer lease([]string{})
+	renewed, end := time.Now(), time.Now().Add(time.Duration(*seconds)*time.Second)
+	seen := map[string]int64{}
+	for time.Now().Before(end) {
+		if time.Since(renewed) >= 10*time.Second {
+			if err := lease(ids); err != nil {
+				return err
+			}
+			renewed = time.Now()
+		}
+		resp, err := client.Do(ctx, localapi.Request{Type: localapi.RequestStatus})
+		if err != nil {
+			return err
+		}
+		for _, w := range resp.Status.Watching {
+			if w.Sample == nil || seen[w.DeviceID] == w.ReceivedAt {
+				if w.Sample == nil {
+					fmt.Printf("%s %s\n", w.DeviceID, w.State)
+				}
+				continue
+			}
+			seen[w.DeviceID] = w.ReceivedAt
+			s := w.Sample
+			gpu := "-"
+			if s.GPU != nil {
+				gpu = fmt.Sprintf("%.0f%%", s.GPU.Usage)
+			}
+			fmt.Printf("%s %s  cpu %.0f%% of %d  memory %d/%d MiB  gpu %s  disk %d/%d GiB  net ↓%d ↑%d B/s  battery %v  up %ds  services %v\n",
+				w.DeviceID, w.State, s.CPU.Usage, s.CPU.Cores, s.Memory.Used>>20, s.Memory.Total>>20, gpu,
+				s.Disk.Used>>30, s.Disk.Total>>30, s.Net.RxBps, s.Net.TxBps, s.Battery, s.UptimeS, s.Services)
+		}
+		time.Sleep(time.Second)
+	}
+	return nil
 }
 
 // stdinGrace is how long `ctl tunnel` still prints the service's answer

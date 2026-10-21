@@ -23,7 +23,7 @@ static key per session and prove their device identity by signing it.
 |---|---|---|---|
 | 1 | controller → host | `e` | none |
 | 2 | host → controller | `e, ee, s, es` | `host_hello`: protocol, product version, source URL, device key, signature |
-| 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests (or none, with the controller's description `about`, to ask without a password), a resume token when resuming, proofs with sign-in keys (see Key login), and the service of a tunnel (see Tunnels) |
+| 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests (or none, with the controller's description `about`, to ask without a password), a resume token when resuming, proofs with sign-in keys (see Key login), the service of a tunnel (see Tunnels), and `watch` for a status watch (see Status watchers) |
 
 The signature is Ed25519 by the device key over `kyokai/noise-static/v1` followed by the sender's
 Noise static public key. To learn whom an address reaches, the controller sends frame 1, reads
@@ -148,6 +148,20 @@ plaintexts that start with byte `0x05`, each followed by up to one frame's worth
 order, both ways, besides `ping`, `pong` and `bye`; there is no video, input or other message. A
 side whose service or client ends sends `bye` after the bytes it read, and the other side ends
 too. A tunnel with no frame from its peer for 60 seconds is closed.
+
+## Status watchers
+
+A session may watch the host's status instead of carrying the desktop
+([computer-use.md](computer-use.md), "Host status"). To a host that announced `status` the
+controller sends `watch: true` in `client_hello` and asks for `see-status` alone; it never sends it
+to a host that did not announce `status`, and stops after frame 2 instead (`unsupported`). The host
+admits a watcher only with a correct password or a key within its password grants while Connect
+without asking is on, and never asks its user: anything else is refused as `denied`. A watcher's
+verdict carries no resume token. After it the host sends `{"type": "system", at, uptime_s, cpu,
+memory, gpu, disk, net, battery, services}` with each sample, every 2 seconds, besides `ping`,
+`pong` and `bye`; there is no video, input or other message. The host ends the watch with `bye`
+when `see-status` leaves its password grants, and either side closes one with no frame for 15
+seconds.
 
 ## AI tasks
 

@@ -189,6 +189,33 @@ Windows 上的 Ctrl+C 在 Mac 上也是复制（RustDesk 有同样的开关，�
 在助手模式下，代理读写剪贴板（管道上只传递路径列表），助手在模拟控制台上已登录用户身份的情况下读写文件，
 因此以该用户的权限读取，并写入该用户的临时文件夹；没有用户登录时不共享文件。助手只搬运字节，从不解释它们。
 
+## 被控端状态
+
+为某个被控端保存了密码、或保存了该被控端接受过的登录密钥的控制端，会在其主页显示时静默查看该被控端的状态（[protocol.md](protocol.md)，
+“状态查看者”）：这是一个单独的会话，只请求 `see-status`，不承载画面、输入或声音，不在被控端上保持唤醒请求，也不在那里显示横幅。被控端
+只在“无需确认即可连接”开启、且正确的密码或密钥在其密码授予的权限之内时才准入查看者——它从不询问其用户，而是拒绝（`denied`）——无人值守时
+只接受固定密码或密钥。`see-status` 默认在密码授予的权限之内；在那里关闭后，查看会在下一次采样时结束。被控端在其他会话之外最多服务 16 个
+查看者；它们不列在其会话中，不在其受信任设备中留下记录，状态会单独列出它们（`watchers`：`{device_id, about, since}`）。
+
+只要有人在查看，被控端就在自己的线程上每 2 秒采样一次，并以 `system` 消息发送每次采样：
+
+| 字段 | Windows | macOS |
+|---|---|---|
+| `cpu` `{usage, cores}` | `GetSystemTimes` | `host_statistics`（`HOST_CPU_LOAD_INFO`） |
+| `memory` `{used, total}` | `GlobalMemoryStatusEx` | `hw.memsize`；来自 `host_statistics64` 的应用内存、联动内存与压缩内存 |
+| `gpu` `{usage}` 或 null | 3D 引擎的 `Utilization Percentage` 计数器（PDH），按任务管理器的方式求和 | 最忙的 `IOAccelerator` 的 `Device Utilization %` |
+| `disk` `{used, total}` | Windows 所在的磁盘 | 数据卷 |
+| `net` `{rx_bps, tx_bps}` | `GetIfTable2`，处于启用状态的硬件接口 | `getifaddrs`，处于启用状态的接口，不含回环 |
+| `battery` `{percent, charging}` 或 null | `GetSystemPowerStatus` | 电源（IOKit） |
+| `uptime_s`、`at` | `GetTickCount64`；被控端的时钟（Unix 毫秒） | `kern.boottime` |
+| `services` | SSH、远程桌面与 VNC 中哪些在其回环地址上接受连接，每 30 秒查看一次（[remote-services.md](remote-services.md)） | 相同 |
+
+控制端界面为它显示的被控端持有租约（`watch.set` `{devices}`，最多 8 个，主页可见时每 10 秒续一次；30 秒后失效）。引擎只查看声明了 `status`、
+且为其保存了密码或可用密钥的最近设备；否则说明原因，不拨号（`unsupported`、`no-credential`）。它像桌面会话一样拨号，从不续接，断开后等待
+10 秒，加倍直到 5 分钟；被拒绝的密码会被忘记，查看随之停止（`refused`），`rate-limited` 则等待 10 分钟。状态只在内存中携带结果：
+`watching` `[{device_id, state, sample, received_at}]`，其中 `state` 为 `connecting`、`watching`、`no-credential`、`unsupported`、`refused`
+或 `offline`，`received_at`（Unix 毫秒）是采样到达本机的时间，这样旧的采样绝不会被当作当前显示。
+
 ## AI 任务
 
 任务在被控端上运行，使用被控端的服务商密钥，操作被控端的主显示器。被控端用户在 AI 页面（或用

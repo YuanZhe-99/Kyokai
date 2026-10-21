@@ -92,6 +92,12 @@ func (h *handler) services(ctx context.Context, req localapi.Request) (localapi.
 		return h.command("credentials.set", params), true
 	case localapi.RequestCredentialsForget:
 		return h.command("credentials.forget", map[string]string{"device_id": req.DeviceID, "service": req.Service}), true
+	case localapi.RequestWatchSet:
+		devices := []string{}
+		if req.Watch != nil {
+			devices = append(devices, *req.Watch...)
+		}
+		return h.command("watch.set", map[string][]string{"devices": devices}), true
 	}
 	return localapi.Response{}, false
 }
