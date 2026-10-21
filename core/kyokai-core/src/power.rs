@@ -9,8 +9,41 @@
 //! The hold is a power request on Windows and a pair of IOKit power
 //! assertions on macOS; in the helper modes the session agent, in the
 //! user's session, holds one too while it streams video.
+//!
+//! A display that is dark already gives the capture nothing to send: the
+//! capture wakes it (`wake_display`) when it has had no picture for a
+//! second, at most every five seconds.
 
 use std::sync::{Arc, Weak};
+use std::time::{Duration, Instant};
+
+/// How long a capture goes without a picture (none yet, or its display
+/// lost) before it wakes the display.
+const DARK_AFTER: Duration = Duration::from_secs(1);
+/// How often a capture wakes the display at most.
+const WAKE_EVERY: Duration = Duration::from_secs(5);
+
+/// Whether a capture should wake the display now.
+/// Inputs: since when it has had no picture (None: it has one), and when
+/// it last woke the display.
+pub fn wake_due(dark_since: Option<Instant>, woke: Option<Instant>, now: Instant) -> bool {
+    dark_since.is_some_and(|t| now.saturating_duration_since(t) > DARK_AFTER)
+        && woke.is_none_or(|w| now.saturating_duration_since(w) >= WAKE_EVERY)
+}
+
+/// Wakes the displays as a person's input would, so a capture that waits
+/// on a dark display gets a picture.
+/// Side effects: Windows: resets the display idle timer
+/// (`SetThreadExecutionState(ES_DISPLAY_REQUIRED)`) and moves the pointer
+/// one pixel and back, tagged as Kyokai's input (the local-input watch
+/// leaves it out); macOS: declares user activity
+/// (`IOPMAssertionDeclareUserActivity`). Elsewhere nothing.
+/// Notes: call it in the session that shows the display (the agent's, in
+/// the helper modes): a service's input reaches no desktop.
+pub fn wake_display() {
+    #[cfg(any(windows, target_os = "macos"))]
+    imp::wake();
+}
 
 #[cfg(windows)]
 use windows_impl as imp;
@@ -137,6 +170,33 @@ mod windows_impl {
         }
     }
 
+    /// Wakes the displays (`super::wake_display`).
+    pub fn wake() {
+        use windows::Win32::System::Power::{ES_DISPLAY_REQUIRED, SetThreadExecutionState};
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_MOVE, MOUSEINPUT, SendInput,
+        };
+        let step = |dx: i32| INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx,
+                    dy: 0,
+                    mouseData: 0,
+                    dwFlags: MOUSEEVENTF_MOVE,
+                    time: 0,
+                    dwExtraInfo: crate::input::INJECTED_TAG,
+                },
+            },
+        };
+        // SAFETY: a one-shot execution state and two relative moves from
+        // a local array, whose size is passed.
+        unsafe {
+            SetThreadExecutionState(ES_DISPLAY_REQUIRED);
+            SendInput(&[step(1), step(-1)], std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+
     /// Clears and closes the power request.
     pub fn release(h: isize) {
         let h = HANDLE(h as *mut c_void);
@@ -240,6 +300,24 @@ mod mac_impl {
             id: *mut u32,
         ) -> i32;
         fn IOPMAssertionRelease(id: u32) -> i32;
+        fn IOPMAssertionDeclareUserActivity(name: &CFString, kind: u32, id: *mut u32) -> i32;
+    }
+
+    /// The user-activity assertion, passed again so that each wake extends
+    /// it rather than making another (macOS lets it lapse by itself).
+    static ACTIVITY: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+    /// Wakes the displays (`super::wake_display`): local user activity
+    /// (kIOPMUserActiveLocal), as a key press would.
+    pub fn wake() {
+        use std::sync::atomic::Ordering;
+        let name = CFString::from_static_str("Kyokai: waking the display for a connection");
+        let mut id = ACTIVITY.load(Ordering::Relaxed);
+        // SAFETY: the name lives through the call; `id` is a valid in/out
+        // pointer to the assertion this function made before, or 0.
+        if unsafe { IOPMAssertionDeclareUserActivity(&name, 0, &mut id) } == 0 {
+            ACTIVITY.store(id, Ordering::Relaxed);
+        }
     }
 
     /// Takes the idle system sleep and idle display sleep assertions.
@@ -269,6 +347,30 @@ mod mac_impl {
             unsafe {
                 IOPMAssertionRelease(id);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod wake_tests {
+    use super::*;
+
+    /// A capture wakes the display after a second without a picture, then
+    /// at most every five seconds; never while it has a picture.
+    #[test]
+    fn a_dark_display_is_woken_at_a_bounded_rate() {
+        let now = Instant::now() + Duration::from_secs(60);
+        let ago = |ms: u64| Some(now - Duration::from_millis(ms));
+        let cases = [
+            (None, None, false),
+            (None, ago(10_000), false),
+            (ago(500), None, false),
+            (ago(1001), None, true),
+            (ago(30_000), ago(4_900), false),
+            (ago(30_000), ago(5_000), true),
+        ];
+        for (dark, woke, want) in cases {
+            assert_eq!(wake_due(dark, woke, now), want, "{dark:?} {woke:?}");
         }
     }
 }

@@ -122,6 +122,7 @@ const (
 	tileGap       float32 = 8   // between a card's status tiles
 	sparkH        float32 = 22  // a status tile's sparkline
 	sparkStroke   float32 = 1.5
+	noticeBottom  float32 = 24 // the viewer's notices over the picture, from its bottom edge
 )
 
 // Where the macOS traffic lights sit in the tab strip: the close button's

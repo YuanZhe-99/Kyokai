@@ -59,6 +59,9 @@ pub mod packet {
     pub const CLIPBOARD: u8 = 13;
     /// Either way, for a tunnel's session: its bytes (doc/en-us/remote-services.md).
     pub const TUNNEL: u8 = 14;
+    /// engine → GUI: `{paused}` JSON, whether the session refuses input as
+    /// behind now (`session::InputGate`); a newer one replaces one waiting.
+    pub const INPUT: u8 = 15;
 }
 
 /// What a video stream carries, sent before its first frame.
@@ -259,7 +262,8 @@ impl Queue {
                 | packet::CURSOR
                 | packet::DISPLAYS
                 | packet::ACTIONS
-                | packet::CODECS),
+                | packet::CODECS
+                | packet::INPUT),
             ) => q.packets.retain(|p| p.first() != Some(&kind)),
             Some(&kind @ (packet::AUDIO | packet::CLIPBOARD)) => {
                 let keep = if kind == packet::AUDIO {

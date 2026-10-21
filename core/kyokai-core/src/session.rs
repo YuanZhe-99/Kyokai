@@ -44,7 +44,12 @@ pub mod feature {
 }
 
 /// The features this build announces.
-pub const FEATURES: &[&str] = &[feature::KEY_LOGIN, feature::TUNNEL, feature::STATUS];
+pub const FEATURES: &[&str] = &[
+    feature::KEY_LOGIN,
+    feature::TUNNEL,
+    feature::STATUS,
+    feature::INPUT_SYNC,
+];
 
 /// What the other side of a session announced: its features, none for
 /// 0.4.0 and older.
@@ -70,11 +75,7 @@ fn our_features() -> Vec<String> {
     FEATURES.iter().map(|f| f.to_string()).collect()
 }
 
-/// How many frames the host sends ahead of the controller's
-/// acknowledgements: enough for the frame-rate cap over a relay's round
-/// trip, few enough that a slow path delays the picture by a few frames,
-/// not seconds.
-const IN_FLIGHT: u32 = 3;
+use video::IN_FLIGHT;
 const PATTERN: &str = "Noise_XX_25519_ChaChaPoly_BLAKE2s";
 const PROLOGUE: &[u8] = b"kyokai/session/v1";
 const STATIC_TAG: &[u8] = b"kyokai/noise-static/v1";
@@ -232,15 +233,18 @@ enum Message {
         #[serde(default)]
         i444: bool,
     },
-    /// host → controller: what QoS measured and chose, for the viewer, and
-    /// how long the host took from a picture to its frame (the average of
-    /// the last second's frames).
+    /// host → controller: what QoS measured and chose, for the viewer, how
+    /// long the host took from a picture to its frame (the average of the
+    /// last second's frames), and how many frames it sent that second (a
+    /// viewer that gets none of them asks for a key frame; 0 from 0.4.0).
     Stats {
         delay_ms: u32,
         fps: u32,
         bitrate: u32,
         #[serde(default)]
         encode_ms: u32,
+        #[serde(default)]
+        frames: u32,
     },
     /// controller → host (`run-ai-task`): start an AI task on the host; the
     /// key makes a repeated start (after a reconnect) start one task.
@@ -525,6 +529,48 @@ fn boosted(qos_fps: u32, cap: u32, input_at: Option<Instant>, delay_ms: u32) -> 
 /// frame at most.
 const KEY_AGAIN: Duration = Duration::from_secs(1);
 
+/// Whether a controller asks the host for a key frame now: its GUI lost
+/// frames and it last asked KEY_AGAIN ago or never. Checked as frames come
+/// and once a second, so a still screen, which sends nothing, is asked too
+/// (regression: the request went out only as a frame arrived).
+fn key_due(waiting: bool, asked: Option<Instant>, now: Instant) -> bool {
+    waiting && asked.is_none_or(|t| now.saturating_duration_since(t) >= KEY_AGAIN)
+}
+
+/// How long the host waits for the controller's acknowledgements before it
+/// takes the frames in flight for lost: it sends again from a key frame
+/// (RustDesk's bounded wait), rather than waiting for acknowledgements that
+/// may never come.
+const ACK_WAIT: Duration = Duration::from_secs(3);
+
+/// How soon after its last end a host's video opens again, and how many
+/// ends within REOPEN_WINDOW give the test pattern instead.
+const REOPEN_EVERY: Duration = Duration::from_secs(2);
+const REOPEN_WINDOW: Duration = Duration::from_secs(30);
+const REOPEN_LIMIT: usize = 3;
+
+/// What a host does when its video's frames ended by themselves (the
+/// capture or its agent ended): open it again, or send the test pattern.
+#[derive(Debug, PartialEq, Eq)]
+enum Reopen {
+    After(Duration),
+    Pattern,
+}
+
+/// Decides how a host's video goes on after its frames ended.
+/// Inputs: the times its frames ended, this one last (older ones beyond
+/// REOPEN_WINDOW are dropped).
+fn reopen_plan(ends: &mut Vec<Instant>, now: Instant) -> Reopen {
+    ends.retain(|t| now.saturating_duration_since(*t) < REOPEN_WINDOW);
+    if ends.len() >= REOPEN_LIMIT {
+        return Reopen::Pattern;
+    }
+    let previous = ends.iter().rev().nth(1);
+    Reopen::After(previous.map_or(Duration::ZERO, |t| {
+        (*t + REOPEN_EVERY).saturating_duration_since(now)
+    }))
+}
+
 /// How often the host looks for changes of a controller's AI task.
 const AI_SYNC: Duration = Duration::from_millis(400);
 
@@ -637,6 +683,8 @@ struct Entry {
     control_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<Value>>>,
     /// Controller side: the viewer's latest choices, for a resumed session.
     choices: Arc<Mutex<Choices>>,
+    /// Controller side: the gate its input passes (`InputGate`).
+    input: Arc<InputGate>,
     /// Controller side: what to do with the password once the host answers.
     remember: Remember,
     /// Controller side: the address dialed, or empty over the network.
@@ -662,6 +710,163 @@ pub struct Choices {
     audio: Option<Value>,
     /// The viewer's clipboard choice, which stays on this side.
     clipboard: ClipUse,
+}
+
+/// A controller session's input on its way to the host
+/// (doc/en-us/computer-use.md, "Input"): input is a stream, so the GUI's
+/// writes never wait. While the session cannot take input (reconnecting,
+/// or no word from a host that sends video for STALL) presses, clicks and
+/// text are refused as behind and dropped, never delivered late; releases
+/// are never refused: the gate keeps what the session holds on the host,
+/// and what it could not deliver is reconciled once the path moves.
+#[derive(Default)]
+pub struct InputGate {
+    inner: Mutex<Gate>,
+}
+
+impl Gate {
+    /// Whether the session takes input now: a connection runs, and a host
+    /// that sends video said something within STALL.
+    fn takes(&self) -> bool {
+        self.open && self.heard.is_none_or(|t| t.elapsed() <= STALL)
+    }
+}
+
+/// The gate's state (`InputGate`).
+#[derive(Default)]
+struct Gate {
+    /// What this session made the host hold, as sent.
+    held: crate::input::Held,
+    /// A connection runs (`run`).
+    open: bool,
+    /// When the host last said anything, once it sends video (its stats):
+    /// silent for STALL, the path is stalled. Checked as input comes, so a
+    /// session busy writing to a stalled path refuses input too.
+    heard: Option<Instant>,
+    /// Releases that could not be queued: the host is told what is held
+    /// (or sent them again) once the path moves.
+    owed: bool,
+    lost: Vec<crate::input::Event>,
+    /// When a press was last refused because the session's queue was full.
+    refused: Option<Instant>,
+    /// Connections that ran: a later one is a resume.
+    runs: u32,
+}
+
+/// What the GUI is told: input is paused while the session cannot take it,
+/// and for PAUSE_LINGER after a press found its queue full.
+const PAUSE_LINGER: Duration = Duration::from_millis(500);
+
+/// How long a controller whose host sends video waits for any word from it
+/// before it takes the path for stalled and refuses input.
+const STALL: Duration = Duration::from_millis(1500);
+
+/// How often a controller session looks at its input gate.
+const INPUT_TICK: Duration = Duration::from_millis(100);
+
+impl InputGate {
+    /// Passes one input event from the GUI on, or refuses it.
+    /// Inputs: `send` puts it into the session's queue without waiting
+    /// (false: the queue is full).
+    /// Returns: 0 when it was queued (a release always counts as handled);
+    /// -3 when it was refused as behind.
+    pub fn write(&self, e: &crate::input::Event, send: impl FnOnce() -> bool) -> i32 {
+        use crate::input::Hold;
+        let Ok(mut g) = self.inner.lock() else {
+            return -2;
+        };
+        let takes = g.takes();
+        match e.hold() {
+            Hold::Release => {
+                g.held.follow(e);
+                if !(g.open && send()) {
+                    g.owed = true;
+                    g.lost.push(e.clone());
+                }
+                0
+            }
+            _ if !takes => -3,
+            hold => {
+                if !send() {
+                    g.refused = Some(Instant::now());
+                    return -3;
+                }
+                if hold == Hold::Press {
+                    g.held.follow(e);
+                }
+                0
+            }
+        }
+    }
+
+    /// A connection starts: input flows again; after a resume the host
+    /// released what the last connection held, and is told so again.
+    fn start(&self) {
+        if let Ok(mut g) = self.inner.lock() {
+            g.open = true;
+            g.heard = None;
+            g.runs += 1;
+            if g.runs > 1 {
+                g.held = Default::default();
+                g.owed = true;
+            }
+        }
+    }
+
+    /// The connection ended: input is refused until the next.
+    fn stop(&self) {
+        if let Ok(mut g) = self.inner.lock() {
+            g.open = false;
+        }
+    }
+
+    /// The host said something at `at` (it sends video).
+    fn heard(&self, at: Instant) {
+        if let Ok(mut g) = self.inner.lock() {
+            g.heard = Some(at);
+        }
+    }
+
+    /// Whether the GUI should say input is paused now.
+    fn paused(&self) -> bool {
+        self.inner
+            .lock()
+            .is_ok_and(|g| !g.takes() || g.refused.is_some_and(|t| t.elapsed() < PAUSE_LINGER))
+    }
+
+    /// What reconciles the host with this session once its queue is empty
+    /// and the path moves: to a host that announced `input-sync` one `sync`
+    /// with what is held, to an older host the releases that were lost
+    /// (those pressed again since left out).
+    /// Returns: the input events to send, none when nothing is owed.
+    fn reconcile(&self, sync: bool) -> Vec<Value> {
+        let Ok(mut g) = self.inner.lock() else {
+            return Vec::new();
+        };
+        if !g.owed || !g.takes() {
+            return Vec::new();
+        }
+        g.owed = false;
+        let lost = std::mem::take(&mut g.lost);
+        if sync {
+            return vec![json!(crate::input::Sync {
+                held: g.held.clone()
+            })];
+        }
+        let mut released = crate::input::Held::default();
+        let mut at = (0.0, 0.0);
+        for e in &lost {
+            if let crate::input::Event::Pointer { x, y, .. } = e {
+                at = (*x, *y);
+            }
+            released.add(e);
+        }
+        released
+            .releases_beyond(&g.held, at)
+            .iter()
+            .filter_map(|e| serde_json::to_value(e).ok())
+            .collect()
+    }
 }
 
 /// A viewer's clipboard choice for its session (the GUI's local
@@ -780,6 +985,7 @@ impl Sessions {
             control_tx,
             control_rx: Arc::new(tokio::sync::Mutex::new(control_rx)),
             choices: Arc::default(),
+            input: Arc::default(),
             remember: Remember::default(),
             address: String::new(),
             removed: false,
@@ -908,6 +1114,16 @@ impl Sessions {
         Some((e.media.clone(), e.control_tx.clone()))
     }
 
+    /// A controller session's control sender and the gate its input passes,
+    /// for the GUI's input.
+    pub fn input(&self, id: u64) -> Option<(mpsc::Sender<Value>, Arc<InputGate>)> {
+        let s = self.inner.lock().ok()?;
+        let e =
+            s.1.iter()
+                .find(|e| e.id == id && e.role == Role::Controller)?;
+        Some((e.control_tx.clone(), e.input.clone()))
+    }
+
     fn side(&self, id: u64) -> Option<Side> {
         let s = self.inner.lock().ok()?;
         let e = s.1.iter().find(|e| e.id == id)?;
@@ -915,6 +1131,8 @@ impl Sessions {
             queue: e.media.clone(),
             control: e.control_rx.clone(),
             choices: e.choices.clone(),
+            input: e.input.clone(),
+            host: e.features.clone(),
         })
     }
 
@@ -2051,11 +2269,14 @@ pub enum Side {
     },
     /// The controller: puts media into the queue its GUI drains, and sends
     /// the GUI's control messages (input, key-frame requests) to the host;
-    /// `choices` are the viewer's latest quality and codec.
+    /// `choices` are the viewer's latest quality and codec, `input` the
+    /// gate its input passes (`InputGate`), `host` what the host announced.
     Controller {
         queue: Arc<media::Queue>,
         control: Arc<tokio::sync::Mutex<mpsc::Receiver<Value>>>,
         choices: Arc<Mutex<Choices>>,
+        input: Arc<InputGate>,
+        host: Peer,
     },
 }
 
@@ -2093,6 +2314,27 @@ impl HostAi {
             Message::AiDraft { text } if self.run => self.ai.set_draft(&text),
             _ => Err(not_allowed()),
         }
+    }
+}
+
+/// Keeps a viewer's setting (quality, codec, sound, the clipboard choice)
+/// from a control message that found the session reconnecting, for the
+/// connection that resumes it.
+fn keep_choice(choices: &Mutex<Choices>, m: &Value) {
+    let Ok(mut c) = choices.lock() else {
+        return;
+    };
+    match m["type"].as_str() {
+        Some("quality") => c.quality = Some(m.clone()),
+        Some("codec") => c.codec = Some(m.clone()),
+        Some("audio") => c.audio = Some(m.clone()),
+        Some("clipboard-use") => {
+            c.clipboard = ClipUse {
+                share: m["share"].as_bool().unwrap_or(true),
+                front: m["front"].as_bool().unwrap_or(true),
+            }
+        }
+        _ => {}
     }
 }
 
@@ -2267,6 +2509,23 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             p.input_monitoring
         );
     }
+    // Input and AI commands queued while a session reconnected are dropped,
+    // never delivered late (the host sends its current AI task instead);
+    // the viewer's settings among them are kept, and sent below. Input
+    // flows again.
+    if let Side::Controller {
+        control,
+        choices,
+        input,
+        ..
+    } = &side
+    {
+        let mut rx = control.lock().await;
+        while let Ok(m) = rx.try_recv() {
+            keep_choice(choices, &m);
+        }
+        input.start();
+    }
     // A controller says which codecs it decodes before anything else;
     // a resumed one first gives the viewer's quality and codec again, so
     // the host opens the video as the viewer chose.
@@ -2296,17 +2555,20 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         )
         .await?;
     }
-    let (queue, control, choices) = match &side {
+    let (queue, control, choices, gate) = match &side {
         Side::Controller {
             queue,
             control,
             choices,
+            input,
+            host,
         } => (
             Some(queue.clone()),
             Some(control.clone()),
             Some(choices.clone()),
+            Some((input.clone(), host.has(feature::INPUT_SYNC))),
         ),
-        Side::Host { .. } => (None, None, None),
+        Side::Host { .. } => (None, None, None, None),
     };
     let host_ai = match &side {
         Side::Host { ai, .. } if ai.run || ai.approve => Some(ai),
@@ -2379,8 +2641,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut frame_no: u32 = 0;
     // The newest frame the controller acknowledged: frames wait at the
     // capture (which keeps only the newest picture) instead of piling up in
-    // the transport's buffers on a slow path.
+    // the transport's buffers on a slow path. Since when the frames in
+    // flight have waited for an acknowledgement (ACK_WAIT).
     let mut acked: u32 = 0;
+    let mut acked_at = Instant::now();
+    // When the video's frames ended by themselves, and when it opens again.
+    let mut ends: Vec<Instant> = Vec::new();
+    let mut reopen_at: Option<tokio::time::Instant> = None;
     let mut ping = tokio::time::interval(PING_EVERY);
     // RustDesk's QoS on the host: one probe a second, frames counted per
     // second, frame rate and bitrate applied to the source.
@@ -2414,8 +2681,22 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // The microseconds this second's frames took from picture to frame.
     let mut took_this_second = 0u64;
     // When this controller last asked for a key frame after its queue left
-    // frames out.
+    // frames out, and its own check for that each second (`key_due`).
     let mut key_asked: Option<Instant> = None;
+    let mut key_check = tokio::time::interval(KEY_AGAIN);
+    // A controller's input gate, looked at every INPUT_TICK: it tells the
+    // GUI whether input is paused and reconciles what the host holds once
+    // the queue is empty; it hears of the host as frames come, once the
+    // host's stats show that it sends video.
+    let mut input_tick = tokio::time::interval(INPUT_TICK);
+    let mut told_paused: Option<bool> = None;
+    let mut host_sends_video = false;
+    // The host's record of what this session's input holds on it, and
+    // where the pointer was last, for a controller's `sync`.
+    #[cfg(any(windows, target_os = "macos"))]
+    let mut held = crate::input::Held::default();
+    #[cfg(any(windows, target_os = "macos"))]
+    let mut pointer_at = (0.5f32, 0.5f32);
     let mut heard = Instant::now();
     let mut plain = vec![0u8; MAX_FRAME];
     // Whether this session holds the block or privacy mode; checked every
@@ -2449,8 +2730,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             if let Some(p) = pointer.as_mut() {
                 p.show(s.display.map(area));
             }
+            // The new stream starts with the window open: frames of the
+            // old one still unacknowledged are not waited for.
+            acked = frame_no;
+            s.set_room(IN_FLIGHT);
             source = Some(s);
             pointer_sent = None;
+            reopen_at = None;
         }};
     }
     let outcome: Result<(), Failure> = async { loop {
@@ -2576,6 +2862,37 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
                 seal_json(&mut noise, &mut buf, &mut wr, &Message::Ping).await?;
             }
+            _ = input_tick.tick(), if gate.is_some() => {
+                let (g, sync) = gate.as_ref().expect("checked");
+                let paused = g.paused();
+                if told_paused != Some(paused)
+                    && let Some(q) = &queue
+                {
+                    told_paused = Some(paused);
+                    let mut packet = vec![media::packet::INPUT];
+                    packet.extend(serde_json::to_vec(&json!({"paused": paused})).map_err(|_| Failure::Broken)?);
+                    q.push(packet);
+                }
+                // Only behind what the GUI queued before: a release that
+                // could not be delivered must not overtake its press.
+                if control.as_ref().is_some_and(|rx| rx.is_empty()) {
+                    for event in g.reconcile(*sync) {
+                        seal_json(&mut noise, &mut buf, &mut wr, &Message::Input { event }).await?;
+                    }
+                }
+            }
+            // A controller whose GUI lost frames asks again each second,
+            // also while no frame comes (a still screen sends none).
+            tick = key_check.tick(), if queue.is_some() => {
+                // By the tick's time, so the next tick is a whole KEY_AGAIN later.
+                let now = tick.into_std();
+                if let Some(q) = &queue
+                    && key_due(q.waiting_for_key(), key_asked, now)
+                {
+                    key_asked = Some(now);
+                    seal_json(&mut noise, &mut buf, &mut wr, &Message::KeyFrame).await?;
+                }
+            }
             _ = probe.tick(), if source.is_some() => {
                 match probe_sent {
                     None => {
@@ -2586,6 +2903,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
                 qos.update_display_data(QOS_DISPLAY, sent_this_second);
                 let encode_ms = (took_this_second / sent_this_second.max(1) as u64 / 1000) as u32;
+                let frames = sent_this_second as u32;
                 sent_this_second = 0;
                 took_this_second = 0;
                 let fps = boosted(qos.fps(), fps_cap, input_at, last_delay);
@@ -2594,17 +2912,62 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 qos.store_bitrate(kbps);
                 if let Some(s) = &source {
                     s.set_targets(fps, kbps.saturating_mul(1000));
+                    // Acknowledgements that stopped coming (a path that
+                    // lost them, a controller that dropped the frames):
+                    // the frames in flight are taken for lost and the
+                    // video goes on from a key frame.
+                    if frame_no != acked && acked_at.elapsed() >= ACK_WAIT {
+                        log::info!("host session: no acknowledgement for {} s: sending again from a key frame", ACK_WAIT.as_secs());
+                        acked = frame_no;
+                        s.set_room(IN_FLIGHT);
+                        s.key_frame();
+                    }
                 }
-                let stats = Message::Stats { delay_ms: last_delay, fps, bitrate: kbps.saturating_mul(1000), encode_ms };
+                let stats = Message::Stats { delay_ms: last_delay, fps, bitrate: kbps.saturating_mul(1000), encode_ms, frames };
                 seal_json(&mut noise, &mut buf, &mut wr, &stats).await?;
             }
-            Some(f) = async {
+            () = async {
+                match reopen_at {
+                    Some(t) => tokio::time::sleep_until(t).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                reopen!(source.as_ref().and_then(|s| s.display));
+            }
+            f = async {
                 match source.as_mut() {
                     Some(s) => s.frames.recv().await,
                     None => std::future::pending().await,
                 }
-            }, if frame_no.wrapping_sub(acked) < IN_FLIGHT => {
+            }, if reopen_at.is_none() && frame_no.wrapping_sub(acked) < IN_FLIGHT => {
+                let Some(f) = f else {
+                    // The capture ended by itself (its encoder failed twice,
+                    // its thread could not follow the input desktop, the
+                    // helper's agent went): it opens again, the test
+                    // pattern after too many ends.
+                    ends.push(Instant::now());
+                    match reopen_plan(&mut ends, Instant::now()) {
+                        Reopen::After(wait) => {
+                            log::info!("host session: the video ended: opening it again in {} ms", wait.as_millis());
+                            reopen_at = Some(tokio::time::Instant::now() + wait);
+                        }
+                        Reopen::Pattern => {
+                            log::info!("host session: the video ended {REOPEN_LIMIT} times: sending the test pattern");
+                            let s = video::Source::pattern();
+                            announce(&mut noise, &mut buf, &mut wr, &s, &displays).await?;
+                            acked = frame_no;
+                            source = Some(s);
+                        }
+                    }
+                    continue;
+                };
+                if frame_no == acked {
+                    acked_at = Instant::now();
+                }
                 frame_no = frame_no.wrapping_add(1);
+                if let Some(s) = &source {
+                    s.set_room(IN_FLIGHT.saturating_sub(frame_no.wrapping_sub(acked)));
+                }
                 sent_this_second += 1;
                 took_this_second += u64::from(f.took_us);
                 for chunk in media::chunks(frame_no, f.flags, f.pts, &f.data, MAX_PLAINTEXT) {
@@ -2681,6 +3044,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             frame = frames.recv() => {
                 let frame = frame.ok_or(Failure::Broken)?;
                 heard = Instant::now();
+                // The gate refuses input once a host that sends video falls
+                // silent (InputGate::takes).
+                if host_sends_video && let Some((g, _)) = &gate {
+                    g.heard(heard);
+                }
                 let n = noise.read_message(&frame, &mut plain)?;
                 let plain = &plain[..n];
                 if plain.first() == Some(&media::CHUNK_TAG) {
@@ -2696,8 +3064,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         q.push(packet);
                         // The GUI fell behind and lost frames: the host starts
                         // a new group of pictures (asked again each second
-                        // until it comes).
-                        if q.waiting_for_key() && key_asked.is_none_or(|t| t.elapsed() >= KEY_AGAIN) {
+                        // until it comes, `key_check`).
+                        if key_due(q.waiting_for_key(), key_asked, Instant::now()) {
                             key_asked = Some(Instant::now());
                             seal_json(&mut noise, &mut buf, &mut wr, &Message::KeyFrame).await?;
                         }
@@ -2763,6 +3131,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::Received { frame } => {
                         if frame_no.wrapping_sub(frame) < frame_no.wrapping_sub(acked) {
                             acked = frame;
+                            acked_at = Instant::now();
+                            if let Some(s) = &source {
+                                s.set_room(IN_FLIGHT.saturating_sub(frame_no.wrapping_sub(acked)));
+                            }
                         }
                     }
                     // The controller echoes probes at once; the host measures them.
@@ -2795,10 +3167,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             qos.user_network_delay(QOS_VIEWER, last_delay);
                         }
                     }
-                    Message::Stats { delay_ms, fps, bitrate, encode_ms } => {
+                    Message::Stats { delay_ms, fps, bitrate, encode_ms, frames } => {
+                        host_sends_video = true;
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::STATS];
-                            packet.extend(serde_json::to_vec(&json!({"delay_ms": delay_ms, "fps": fps, "bitrate": bitrate, "encode_ms": encode_ms})).map_err(|_| Failure::Broken)?);
+                            packet.extend(serde_json::to_vec(&json!({"delay_ms": delay_ms, "fps": fps, "bitrate": bitrate, "encode_ms": encode_ms, "frames": frames})).map_err(|_| Failure::Broken)?);
                             q.push(packet);
                         }
                     }
@@ -2976,11 +3349,29 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // it pauses before the event is injected. Pointer moves
                     // alone (a hand resting on the viewer) neither take over
                     // nor reach the desktop while the AI acts.
+                    // A controller's `sync` (after a stall or a resume): the
+                    // host lets go of whatever else this session holds. It
+                    // only releases, so it takes nothing over.
+                    #[cfg(any(windows, target_os = "macos"))]
+                    Message::Input { event } if event["kind"] == "sync" => {
+                        if let (Some(inj), Ok(s), Side::Host { ai, access, .. }) = (injector.as_mut(), serde_json::from_value::<crate::input::Sync>(event), &side)
+                            && s.held.valid()
+                        {
+                            for e in held.releases_beyond(&s.held, pointer_at) {
+                                held.follow(&e);
+                                inj.inject(&e, kyokai_reachable(crate::input::kyokai_input(), access, &ai.ai));
+                            }
+                        }
+                    }
                     #[cfg(any(windows, target_os = "macos"))]
                     Message::Input { event } => {
                         if let (Some(inj), Ok(e), Side::Host { ai, access, .. }) = (injector.as_mut(), serde_json::from_value::<crate::input::Event>(event), &side) {
                             let hover = matches!(e, crate::input::Event::Pointer { action: crate::input::PointerAction::Move, .. });
+                            if let crate::input::Event::Pointer { x, y, .. } = e {
+                                pointer_at = (x, y);
+                            }
                             if !(hover && ai.ai.acting()) {
+                                held.follow(&e);
                                 ai.ai.take_over();
                                 inj.inject(&e, kyokai_reachable(crate::input::kyokai_input(), access, &ai.ai));
                                 // The first input after a quiet spell raises
@@ -3039,6 +3430,16 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }
     } }
     .await;
+    // Input waits for the next connection no more: it is refused until a
+    // resumed one opens the gate again, and the GUI says so.
+    if let Some((g, _)) = &gate {
+        g.stop();
+        if let Some(q) = &queue {
+            let mut packet = vec![media::packet::INPUT];
+            packet.extend(br#"{"paused":true}"#);
+            q.push(packet);
+        }
+    }
     // A write that failed because the peer left after saying bye (its bye
     // waiting behind our frames) is an orderly close, not a broken one.
     if outcome.is_err() {
@@ -4059,10 +4460,10 @@ mod tests {
         // Video flows: the stream description, then whole frames: the screen
         // through H.264 where this machine can capture, else the test pattern.
         let (queue, _) = controller.sessions.media(id).unwrap();
-        // The host's codec offer comes first.
+        // The host's codec offer comes first, with whether input is paused.
         let start = loop {
             let p = queue.pop(Duration::from_secs(5)).unwrap();
-            if p[0] != media::packet::CODECS {
+            if p[0] != media::packet::CODECS && p[0] != media::packet::INPUT {
                 break p;
             }
         };
@@ -4077,7 +4478,10 @@ mod tests {
                 stats += 1;
                 continue;
             }
-            if p[0] == media::packet::CURSOR || p[0] == media::packet::DISPLAYS {
+            if matches!(
+                p[0],
+                media::packet::CURSOR | media::packet::DISPLAYS | media::packet::INPUT
+            ) {
                 continue;
             }
             break p;
@@ -5151,6 +5555,245 @@ mod tests {
         );
         stop.notify_one();
         let _ = task.await;
+    }
+
+    /// Acknowledgements that stop coming hold the frames back for ACK_WAIT
+    /// only: the host then takes those in flight for lost and sends again,
+    /// from a key frame (regression: a lost acknowledgement stopped the
+    /// picture for good).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn stalled_acknowledgements_release_the_window_after_a_while() {
+        let (host_end, mut peer) = raw_channels();
+        let stop = Arc::new(Notify::new());
+        let host = device("1.0.0");
+        let side = Side::Host {
+            video: true,
+            sound: false,
+            input: false,
+            ai: HostAi {
+                ai: host.ai.clone(),
+                peer: "123456789".into(),
+                run: false,
+                approve: false,
+            },
+            access: host.access.clone(),
+        };
+        let stopped = stop.clone();
+        let task = tokio::spawn(async move { run(host_end, &stopped, side, None).await });
+        peer.send(&Message::Codecs {
+            decode: vec!["none".into()],
+            i444: vec![],
+        })
+        .await
+        .unwrap();
+        let (count, _) = raw_frames(&mut peer, Duration::from_millis(800)).await;
+        assert_eq!(count, IN_FLIGHT as usize);
+        assert_eq!(raw_frames(&mut peer, ACK_WAIT / 2).await.0, 0, "too soon");
+        let (count, _) = raw_frames(&mut peer, ACK_WAIT).await;
+        assert_eq!(count, IN_FLIGHT as usize, "sent again once");
+        stop.notify_one();
+        let _ = task.await;
+    }
+
+    /// A controller whose viewer lost frames asks for a key frame each
+    /// second while none comes, a still screen sending nothing (regression:
+    /// it asked only as a frame arrived).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_controller_asks_for_a_key_frame_each_second_without_frames() {
+        let (ctl_end, mut peer) = raw_channels();
+        let stop = Arc::new(Notify::new());
+        let queue: Arc<media::Queue> = Arc::default();
+        // A viewer reads, and fell behind: frames were left out.
+        queue.push(vec![media::packet::STATS]);
+        queue.pop(Duration::ZERO).unwrap();
+        for _ in 0..4 {
+            queue.push(vec![media::packet::FRAME, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        }
+        assert!(queue.waiting_for_key());
+        let reader = queue.clone();
+        let reading = std::thread::spawn(move || {
+            for _ in 0..20 {
+                reader.push(vec![media::packet::STATS]);
+                let _ = reader.pop(Duration::from_millis(200));
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        });
+        let (_control_tx, control_rx) = mpsc::channel(4);
+        let side = Side::Controller {
+            queue,
+            control: Arc::new(tokio::sync::Mutex::new(control_rx)),
+            choices: Arc::default(),
+            input: Arc::default(),
+            host: Peer::default(),
+        };
+        let stopped = stop.clone();
+        let task = tokio::spawn(async move { run(ctl_end, &stopped, side, None).await });
+        let until = Instant::now() + Duration::from_millis(3500);
+        let mut asked = 0;
+        while let Some(left) = until.checked_duration_since(Instant::now()) {
+            let Ok(Ok(m)) = tokio::time::timeout(left, peer.recv::<Value>()).await else {
+                break;
+            };
+            asked += usize::from(m["type"] == "key-frame");
+        }
+        assert!((2..=4).contains(&asked), "asked {asked} times in 3.5 s");
+        stop.notify_one();
+        let _ = task.await;
+        reading.join().unwrap();
+    }
+
+    /// Input never waits and never jams: presses are refused while the
+    /// session cannot take them (never delivered late), releases never are,
+    /// and what a release could not deliver is reconciled once the path
+    /// moves — as one `sync` to a host that announced `input-sync`, as the
+    /// releases themselves to an older host.
+    #[test]
+    fn input_is_refused_while_behind_and_releases_are_reconciled() {
+        use crate::input::Event;
+        let key = |code, down| Event::Scan {
+            code,
+            down,
+            caps: false,
+            num: false,
+        };
+        let text = Event::Text { text: "x".into() };
+        let g = InputGate::default();
+        let queued = std::cell::RefCell::new(Vec::new());
+        let write = |e: &Event, room: bool| {
+            g.write(e, || {
+                if room {
+                    queued.borrow_mut().push(e.clone());
+                }
+                room
+            })
+        };
+        // No connection yet: a press is refused, a release is not.
+        assert_eq!(write(&key(0x1E, true), true), -3);
+        g.start();
+        assert_eq!(write(&key(0x1E, true), true), 0);
+        assert_eq!(write(&key(0x2A, true), true), 0);
+        // A full queue refuses a press and the GUI hears input is paused.
+        assert_eq!(write(&text, false), -3);
+        assert!(g.paused());
+        // The path stalls: presses and text are refused, never sent late.
+        g.heard(Instant::now() - 2 * STALL);
+        assert_eq!(write(&key(0x30, true), true), -3);
+        assert_eq!(write(&text, true), -3);
+        // A release goes on into the queue, in order behind its press.
+        assert_eq!(write(&key(0x1E, false), true), 0);
+        g.heard(Instant::now());
+        assert_eq!(queued.borrow().len(), 3, "{queued:?}");
+        // The connection drops with Shift held: its release cannot be
+        // delivered, and is owed.
+        g.stop();
+        assert_eq!(write(&key(0x2A, false), true), 0);
+        assert_eq!(
+            queued.borrow().len(),
+            3,
+            "nothing queued for a dead connection"
+        );
+        assert!(
+            g.reconcile(true).is_empty(),
+            "not while there is no connection"
+        );
+        g.start();
+        let sync = g.reconcile(true);
+        assert_eq!(
+            sync,
+            vec![json!({"kind": "sync", "held": {"scans": [], "keys": [], "buttons": []}})]
+        );
+        assert!(g.reconcile(true).is_empty(), "reconciled once");
+        // To an older host the lost releases go again, unless pressed since.
+        g.stop();
+        assert_eq!(write(&key(0x1D, false), true), 0);
+        assert_eq!(write(&key(0x38, false), true), 0);
+        g.start();
+        assert_eq!(write(&key(0x38, true), true), 0);
+        assert_eq!(
+            g.reconcile(false),
+            vec![serde_json::to_value(key(0x1D, false)).unwrap()]
+        );
+    }
+
+    /// Input and AI commands queued while a session reconnected are dropped
+    /// at the resume, never delivered late; the viewer's settings among
+    /// them reach the host.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn input_queued_across_a_resume_is_dropped() {
+        let (ctl_end, mut peer) = raw_channels();
+        let stop = Arc::new(Notify::new());
+        let (control_tx, control_rx) = mpsc::channel(8);
+        for m in [
+            json!({"type": "input", "event": {"kind": "text", "text": "late"}}),
+            json!({"type": "ai-command", "id": 1, "command": "cancel"}),
+            json!({"type": "quality", "preset": "speed", "fps": 15, "i444": false}),
+        ] {
+            control_tx.try_send(m).unwrap();
+        }
+        let side = Side::Controller {
+            queue: Arc::default(),
+            control: Arc::new(tokio::sync::Mutex::new(control_rx)),
+            choices: Arc::default(),
+            input: Arc::default(),
+            host: Peer::default(),
+        };
+        let stopped = stop.clone();
+        let task = tokio::spawn(async move { run(ctl_end, &stopped, side, None).await });
+        let until = Instant::now() + Duration::from_millis(800);
+        let mut seen = Vec::new();
+        while let Some(left) = until.checked_duration_since(Instant::now()) {
+            let Ok(Ok(m)) = tokio::time::timeout(left, peer.recv::<Value>()).await else {
+                break;
+            };
+            seen.push(m["type"].as_str().unwrap_or_default().to_owned());
+        }
+        assert!(seen.contains(&"quality".to_owned()), "{seen:?}");
+        assert!(
+            !seen.iter().any(|t| t == "input" || t == "ai-command"),
+            "{seen:?}"
+        );
+        stop.notify_one();
+        let _ = task.await;
+    }
+
+    #[test]
+    fn key_frames_are_asked_for_at_most_each_second() {
+        let now = Instant::now() + Duration::from_secs(10);
+        let ago = |ms| Some(now - Duration::from_millis(ms));
+        for (waiting, asked, want) in [
+            (false, None, false),
+            (true, None, true),
+            (true, ago(400), false),
+            (true, ago(1000), true),
+            (false, ago(5000), false),
+        ] {
+            assert_eq!(key_due(waiting, asked, now), want, "{waiting} {asked:?}");
+        }
+    }
+
+    /// A video whose frames end opens again at once, then no sooner than
+    /// REOPEN_EVERY after the last end; the third end in REOPEN_WINDOW
+    /// gives the test pattern.
+    #[test]
+    fn an_ended_video_opens_again_then_falls_back_to_the_pattern() {
+        let t0 = Instant::now();
+        let at = |ms| t0 + Duration::from_millis(ms);
+        let mut ends = vec![at(0)];
+        assert_eq!(reopen_plan(&mut ends, at(0)), Reopen::After(Duration::ZERO));
+        ends.push(at(500));
+        assert_eq!(
+            reopen_plan(&mut ends, at(500)),
+            Reopen::After(Duration::from_millis(1500))
+        );
+        ends.push(at(9000));
+        assert_eq!(reopen_plan(&mut ends, at(9000)), Reopen::Pattern);
+        // Ends long ago are forgotten.
+        let mut ends = vec![at(0), at(20_000), at(45_000)];
+        assert_eq!(
+            reopen_plan(&mut ends, at(45_000)),
+            Reopen::After(Duration::ZERO)
+        );
+        assert_eq!(ends.len(), 2);
     }
 
     /// Reads from a raw channel until a message of `kind` arrives.

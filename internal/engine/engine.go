@@ -341,6 +341,9 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 		if req.LogsOff == nil {
 			return localapi.Fail(localapi.CodeInvalid, "logs choice missing")
 		}
+		// The helper's session agent keeps its own log: it starts again
+		// (its supervisor restarts it), and the new one follows the choice.
+		_ = h.lib.Call("agent.restart", nil, nil)
 		if err := SetLogsOff(h.stateDir, *req.LogsOff); err != nil {
 			return localapi.Fail(localapi.CodeInternal, "logs: %v", err)
 		}
@@ -894,7 +897,15 @@ func SetLogsOff(stateDir string, off bool) error {
 		_ = logFile.f.Close()
 		logFile.f = nil
 	}
-	if err := os.RemoveAll(filepath.Join(stateDir, "logs")); err != nil {
+	// The session agent's log is open until the agent that wrote it exits
+	// (Windows refuses to delete it meanwhile): a few seconds at most.
+	logs := filepath.Join(stateDir, "logs")
+	err := os.RemoveAll(logs)
+	for wait := 0; err != nil && wait < 30; wait++ {
+		time.Sleep(100 * time.Millisecond)
+		err = os.RemoveAll(logs)
+	}
+	if err != nil {
 		return err
 	}
 	if err := os.Remove(filepath.Join(stateDir, "helper.log")); err != nil && !errors.Is(err, os.ErrNotExist) {

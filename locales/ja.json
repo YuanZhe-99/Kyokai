@@ -472,6 +472,7 @@
   "ViewerAIPanel": "AI",
   "ViewerAITitle": "相手のコンピュータの AI",
   "ViewerActions": "アクション",
+  "ViewerAsleep": "相手の画面がスリープしている可能性があります。",
   "ViewerBlockInput": "相手のキーボードとマウスをブロック",
   "ViewerClipBehind": "現在は共有していません：ほかのタブか Kyokai タブが前面にあります。",
   "ViewerClipClear": "消去",
@@ -506,6 +507,7 @@
   "ViewerImplHardware": "{name}（ハードウェア）",
   "ViewerImplSoftware": "{name}（ソフトウェア）",
   "ViewerImplUnknown": "まだ不明",
+  "ViewerInputPaused": "入力を一時停止中 — 接続が遅れています",
   "ViewerKeyboard": "キーボード",
   "ViewerKeyboardHint": "マップ：キーの位置で送り、相手のキーボード配列で文字が決まります。翻訳：あなたの配列と入力方式で入力します。レガシー：このウィンドウが受け取るキーだけを送ります。",
   "ViewerKeyboardLegacy": "レガシー",
@@ -525,6 +527,7 @@
   "ViewerPrivacy": "プライバシーモード（相手の画面を黒くする）",
   "ViewerQuality": "画質",
   "ViewerReconnect": "再接続",
+  "ViewerRecovering": "画面を回復しています…",
   "ViewerRelayedHint": "接続はサーバーを経由しています。より速くするには、両方のデバイスで「直接接続を試す」（ネットワーク）をオンにしてください。",
   "ViewerScaleHint": "ウィンドウに合わせる：画面全体をウィンドウに表示します。原寸：相手のコンピューターの 1 ピクセルを 1 ポイントで表示します。スクロールバーをドラッグして移動します。",
   "ViewerShowBar": "コントロールを表示",
@@ -543,6 +546,7 @@
   "WatchersNone": "このコンピューターの状態を見ているデバイスはありません。",
   "WatchersSince": "{time} から",
   "WatchersTitle": "このコンピューターの状態を見ているデバイス",
+  "ViewerWake": "スリープを解除",
   "WithoutAskingHint": "正しいパスワードを入力したデバイスは、確認なしで、パスワードで許可される範囲で接続できます。このコンピュータに誰もいないとき（バックグラウンドサービス）は固定パスワードだけが使えます。オフにすると毎回確認します。",
   "WithoutAskingTitle": "確認なしで接続"
 }

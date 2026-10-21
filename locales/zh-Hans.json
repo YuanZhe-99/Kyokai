@@ -472,6 +472,7 @@
   "ViewerAIPanel": "AI",
   "ViewerAITitle": "对方电脑上的 AI",
   "ViewerActions": "操作",
+  "ViewerAsleep": "那边的屏幕可能已休眠。",
   "ViewerBlockInput": "阻止对方的键盘和鼠标",
   "ViewerClipBehind": "当前未共享：前台是其他标签页或 Kyokai 标签页。",
   "ViewerClipClear": "清除",
@@ -506,6 +507,7 @@
   "ViewerImplHardware": "{name} 硬件",
   "ViewerImplSoftware": "{name} 软件",
   "ViewerImplUnknown": "尚不知道",
+  "ViewerInputPaused": "输入已暂停——连接跟不上",
   "ViewerKeyboard": "键盘",
   "ViewerKeyboardHint": "映射：按键位发送，由对方的键盘布局决定输入的字符。翻译：用你的键盘布局和输入法输入。传统：只发送此窗口收到的按键。",
   "ViewerKeyboardLegacy": "传统",
@@ -525,6 +527,7 @@
   "ViewerPrivacy": "隐私模式（对方屏幕变黑）",
   "ViewerQuality": "画质",
   "ViewerReconnect": "重新连接",
+  "ViewerRecovering": "正在恢复画面…",
   "ViewerRelayedHint": "连接经由服务器中转。要更快，请在两台设备上都打开“尝试直接连接”（网络）。",
   "ViewerScaleHint": "适应窗口：在窗口中显示整个屏幕。原始大小：对方电脑的每个像素占一个点；拖动滚动条查看其他部分。",
   "ViewerShowBar": "展开控制栏",
@@ -543,6 +546,7 @@
   "WatchersNone": "没有设备在查看本机状态。",
   "WatchersSince": "自 {time} 起",
   "WatchersTitle": "正在查看本机状态的设备",
+  "ViewerWake": "唤醒",
   "WithoutAskingHint": "输入正确密码的设备无需你确认即可连接，获得密码可授予的权限。没有人在这台电脑前时（后台服务），只有固定密码可以。关闭后每次都会询问你。",
   "WithoutAskingTitle": "无需确认即可连接"
 }

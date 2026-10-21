@@ -655,7 +655,11 @@ impl Encoder {
     }
 
     /// Feeds a hardware transform one frame when it wants it and collects
-    /// the outputs it has, waiting a little for this frame's.
+    /// the outputs it has, waiting a little for this frame's own (an
+    /// output of a frame it held before does not end the wait).
+    /// Returns: the outputs, or the transform's error (`MEError`: it failed
+    /// and gives nothing more, which the capture answers by opening an
+    /// encoder again).
     fn pump(
         &mut self,
         events: &IMFMediaEventGenerator,
@@ -674,8 +678,15 @@ impl Encoder {
             // SAFETY: a non-blocking event query on the transform.
             match unsafe { events.GetEvent(MF_EVENT_FLAG_NO_WAIT) } {
                 Ok(ev) => {
-                    // SAFETY: reading the event's type.
-                    let kind = unsafe { ev.GetType()? };
+                    // SAFETY: reading the event's type and status.
+                    let (kind, status) = unsafe { (ev.GetType()?, ev.GetStatus()?) };
+                    if kind == MEError.0 as u32 || status.is_err() {
+                        return Err(if status.is_err() {
+                            status.into()
+                        } else {
+                            windows::Win32::Foundation::E_FAIL.into()
+                        });
+                    }
                     if kind == METransformNeedInput.0 as u32 {
                         self.wanted += 1;
                     } else if kind == METransformHaveOutput.0 as u32
@@ -687,7 +698,10 @@ impl Encoder {
                     }
                 }
                 Err(e) if e.code() == MF_E_NO_EVENTS_AVAILABLE => {
-                    if (fed && !out.is_empty()) || std::time::Instant::now() >= until {
+                    // This frame's own output came (outputs without a time
+                    // cannot tell: any output does).
+                    let own = self.out_frame >= self.n || self.out_frame < 0;
+                    if (fed && !out.is_empty() && own) || std::time::Instant::now() >= until {
                         return Ok(out);
                     }
                     std::thread::sleep(std::time::Duration::from_millis(1));

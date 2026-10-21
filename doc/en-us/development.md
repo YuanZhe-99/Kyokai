@@ -98,15 +98,30 @@ command line; `ctl network` and `ctl networks` show the settings without it, `ct
 forgets one and `ctl network-direct` sets direct paths for all of them. Two engines with different
 profiles, state directories and sockets on one machine see each other through the same network:
 with no outside server, one engine with direct paths on lists a server that answers nowhere
-(`tcp://127.0.0.1:9`) and the other lists that engine's listen port (`tcp://127.0.0.1:<port>`,
-from its status).
+(`tcp://127.0.0.1:9`) and the other lists that engine's listen port at this machine's own address
+(`tcp://<address>:<port>`, the port from its status): EasyTier does not dial a loopback peer
+(2026-10-21). Its link can run through `tools/netdelay` (below) the same way.
 
 On macOS, sign local builds with the release identity (`MYGO_SIGN=<identity or its SHA-1>
 scripts/build.sh`) once it is in the login keychain: ad hoc builds get a new identity each time,
 which drops the privacy grants. Start the app with `open`, not from a shell, so that macOS counts
 its engine as part of Kyokai; an engine started from a shell has no grants and sends the
 placeholder picture. `ctl watch --type T --keys meta+a,enter` types into the host as the viewer
-does.
+does (`--keys-every D` presses the keys again every D until the watch ends).
+
+`ctl watch` prints a line each second: the frames that came, the longest gap between two, and
+"stall" when that passed a second while the host says it sent frames ("still" for a still
+screen, which sends none), and at the end the longest gap of the watch. `tools/netdelay` turns a
+fast path into a slow, uneven one for trying sessions over high latency on one machine: a TCP
+proxy that delays each direction by half the round trip, limits it to a rate, adds random jitter
+and freezes the path now and then, keeping the bytes in order and the bytes waiting bounded.
+With a development host accepting connections by address (including `127.0.0.1/32`):
+
+```bash
+go run ./tools/netdelay -listen 127.0.0.1:47400 -to 127.0.0.1:47310 -rtt 230ms -rate 3mbit -jitter 20ms -stall 45s/3s
+KYOKAI_PROFILE=ctl KYOKAI_PASSWORD=… kyokai-svc ctl connect --device 482916735 --address 127.0.0.1:47400
+KYOKAI_PROFILE=ctl kyokai-svc ctl watch --id 1 --seconds 600 --keys shift --keys-every 300ms
+```
 
 ## Spikes
 

@@ -172,6 +172,142 @@ impl Event {
     }
 }
 
+/// What one event is to the keys and buttons held: a press starts holding
+/// one, a release ends it, the rest leave them alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hold {
+    Press,
+    Release,
+    Neither,
+}
+
+impl Event {
+    /// Whether the event presses or releases a key or a button.
+    pub fn hold(&self) -> Hold {
+        match self {
+            Event::Pointer {
+                action: PointerAction::Down,
+                ..
+            }
+            | Event::Key { down: true, .. }
+            | Event::Scan { down: true, .. } => Hold::Press,
+            Event::Pointer {
+                action: PointerAction::Up,
+                ..
+            }
+            | Event::Key { down: false, .. }
+            | Event::Scan { down: false, .. } => Hold::Release,
+            _ => Hold::Neither,
+        }
+    }
+}
+
+/// The keys and buttons a controller holds down on a host: its engine
+/// keeps them for what it sent, the host for what it injected, and the
+/// `sync` input event carries the controller's, so that the host lets go
+/// of whatever else it holds (doc/en-us/computer-use.md, "Input").
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Held {
+    /// Keys by scan code (Map and Translate).
+    #[serde(default)]
+    pub scans: std::collections::BTreeSet<u32>,
+    /// Keys by name (Legacy).
+    #[serde(default)]
+    pub keys: std::collections::BTreeSet<String>,
+    /// Pointer buttons (0 primary, 1 secondary, 2 middle).
+    #[serde(default)]
+    pub buttons: std::collections::BTreeSet<u8>,
+}
+
+/// Most keys and buttons a `sync` may name.
+const MAX_HELD: usize = 64;
+
+impl Held {
+    /// Follows one event: a press adds what it presses, a release takes it
+    /// away.
+    pub fn follow(&mut self, e: &Event) {
+        match e.hold() {
+            Hold::Press => self.add(e),
+            Hold::Release => match e {
+                Event::Pointer { button, .. } => {
+                    self.buttons.remove(button);
+                }
+                Event::Key { key, .. } => {
+                    self.keys.remove(key);
+                }
+                Event::Scan { code, .. } => {
+                    self.scans.remove(code);
+                }
+                _ => {}
+            },
+            Hold::Neither => {}
+        }
+    }
+
+    /// Counts the key or button an event names as held, whatever the event
+    /// does with it (the releases a session could not deliver, to send
+    /// again).
+    pub fn add(&mut self, e: &Event) {
+        match e {
+            Event::Pointer { button, .. } => {
+                self.buttons.insert(*button);
+            }
+            Event::Key { key, .. } => {
+                self.keys.insert(key.clone());
+            }
+            Event::Scan { code, .. } => {
+                self.scans.insert(*code);
+            }
+            _ => {}
+        }
+    }
+
+    /// The releases that let go of what this holds and `keep` does not;
+    /// buttons are let go at `at`, where the pointer was last.
+    pub fn releases_beyond(&self, keep: &Held, at: (f32, f32)) -> Vec<Event> {
+        let scans = self.scans.difference(&keep.scans).map(|&code| Event::Scan {
+            code,
+            down: false,
+            caps: false,
+            num: false,
+        });
+        let keys = self.keys.difference(&keep.keys).map(|key| Event::Key {
+            key: key.clone(),
+            down: false,
+            mods: Mods::default(),
+        });
+        let buttons = self
+            .buttons
+            .difference(&keep.buttons)
+            .map(|&button| Event::Pointer {
+                action: PointerAction::Up,
+                button,
+                x: at.0,
+                y: at.1,
+            });
+        scans.chain(keys).chain(buttons).collect()
+    }
+
+    /// Checks a `sync` at the protocol boundary: known keys and buttons,
+    /// and not too many of them.
+    pub fn valid(&self) -> bool {
+        self.scans.len() + self.keys.len() + self.buttons.len() <= MAX_HELD
+            && self.scans.iter().all(|&c| valid_scan(c))
+            && self.keys.iter().all(|k| vk(k).is_some())
+            && self.buttons.iter().all(|&b| b <= 2)
+    }
+}
+
+/// The controller's `sync` input event (`{"kind": "sync", held}`, for a
+/// host that announced `input-sync`): what it holds now.
+/// Notes: the tag is written, not checked: a session reads an event's
+/// kind before it takes it for a sync.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename = "sync")]
+pub struct Sync {
+    pub held: Held,
+}
+
 /// The Windows virtual-key code for a key name.
 pub fn vk(name: &str) -> Option<u16> {
     let b = name.as_bytes();
@@ -1056,6 +1192,64 @@ pub fn is_kyokai(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    /// What a host holds follows the presses and releases it injects, and
+    /// a controller's `sync` lets go of the rest: keys by code and by name
+    /// and buttons (at the pointer's last place), never what is still held.
+    #[test]
+    fn a_sync_releases_what_the_controller_no_longer_holds() {
+        let scan = |code, down| Event::Scan {
+            code,
+            down,
+            caps: false,
+            num: false,
+        };
+        let mut host = Held::default();
+        for e in [
+            scan(0x2A, true),
+            scan(0x1E, true),
+            Event::Key {
+                key: "enter".into(),
+                down: true,
+                mods: Mods::default(),
+            },
+            Event::Pointer {
+                action: PointerAction::Down,
+                button: 0,
+                x: 0.25,
+                y: 0.75,
+            },
+            scan(0x1E, false),
+            Event::Text { text: "x".into() },
+        ] {
+            host.follow(&e);
+        }
+        let sync: Sync =
+            serde_json::from_value(json!({"kind": "sync", "held": {"scans": [42]}})).unwrap();
+        assert!(sync.held.valid());
+        assert_eq!(
+            host.releases_beyond(&sync.held, (0.25, 0.75)),
+            vec![
+                Event::Key {
+                    key: "enter".into(),
+                    down: false,
+                    mods: Mods::default()
+                },
+                Event::Pointer {
+                    action: PointerAction::Up,
+                    button: 0,
+                    x: 0.25,
+                    y: 0.75
+                },
+            ]
+        );
+        // Names no host knows are refused (the session reads a sync by its
+        // kind first).
+        let bad: Sync =
+            serde_json::from_value(json!({"kind": "sync", "held": {"keys": ["nope"]}})).unwrap();
+        assert!(!bad.held.valid());
+    }
 
     /// Regression: a shortcut's modifiers stayed down on the host, so the
     /// letters typed after Ctrl+C came with Ctrl.

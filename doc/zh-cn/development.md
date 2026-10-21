@@ -80,9 +80,20 @@ KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
 与 `ctl network-profile`（添加一个网络，或修改 `--network` 指定的网络）从 `KYOKAI_NETWORK_SECRET` 读取网络密钥，从不从命令行读取；
 `ctl network` 和 `ctl networks` 显示不含密钥的设置，`ctl network-remove` 忘记一个网络，`ctl network-direct` 为所有网络设置直接路径。
 同一台机器上使用不同配置、状态目录和套接字的两个引擎，可以通过同一个网络互相看到：没有外部服务器时，一个打开直接路径的引擎列出一个不会
-应答的服务器（`tcp://127.0.0.1:9`），另一个列出前者的监听端口（`tcp://127.0.0.1:<端口>`，见其状态）。
+应答的服务器（`tcp://127.0.0.1:9`），另一个列出本机自己的地址上前者的监听端口（`tcp://<地址>:<端口>`，端口见其状态）：EasyTier 不会拨号回环地址上的对端（2026-10-21）。它们之间的链路也可以这样经过 `tools/netdelay`（见下文）。
 
-在 macOS 上，发布用的签名身份进入登录钥匙串后，请用它为本地构建签名（`MYGO_SIGN=<身份或其 SHA-1> scripts/build.sh`）：临时签名的构建每次都是新身份，会丢失隐私授权。请用 `open` 而不是从 shell 启动应用，这样 macOS 才会把它的引擎算作 Kyokai 的一部分；从 shell 启动的引擎没有授权，只会发送占位画面。`ctl watch --type T --keys meta+a,enter` 会像查看窗口那样向被控端输入。
+在 macOS 上，发布用的签名身份进入登录钥匙串后，请用它为本地构建签名（`MYGO_SIGN=<身份或其 SHA-1> scripts/build.sh`）：临时签名的构建每次都是新身份，会丢失隐私授权。请用 `open` 而不是从 shell 启动应用，这样 macOS 才会把它的引擎算作 Kyokai 的一部分；从 shell 启动的引擎没有授权，只会发送占位画面。`ctl watch --type T --keys meta+a,enter` 会像查看窗口那样向被控端输入（`--keys-every D` 在观察结束前每隔 D 再按一次这些键）。
+
+`ctl watch` 每秒打印一行：到达的帧数、两帧之间最长的间隔，以及在被控端说它发送了帧、该间隔却超过一秒时的“stall”（静止的屏幕
+不发送帧，打印“still”），结束时打印整个观察中最长的间隔。`tools/netdelay` 把一条快速的路径变成缓慢、不均匀的路径，用于在一台机器上
+测试高延迟下的会话：一个 TCP 代理，把每个方向延迟半个往返时间、限制到一个速率、加上随机抖动，并不时冻结路径，同时保持字节的顺序，
+等待的字节数有上限。开发用的被控端接受按地址连接（包括 `127.0.0.1/32`）时：
+
+```bash
+go run ./tools/netdelay -listen 127.0.0.1:47400 -to 127.0.0.1:47310 -rtt 230ms -rate 3mbit -jitter 20ms -stall 45s/3s
+KYOKAI_PROFILE=ctl KYOKAI_PASSWORD=… kyokai-svc ctl connect --device 482916735 --address 127.0.0.1:47400
+KYOKAI_PROFILE=ctl kyokai-svc ctl watch --id 1 --seconds 600 --keys shift --keys-every 300ms
+```
 
 ## 可行性验证
 

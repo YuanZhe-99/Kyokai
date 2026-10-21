@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -1011,30 +1012,179 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 // ends when closed; what waits to be heard stays within a target that grows
 // when playing runs dry while sound comes (up to 300 ms), shrinks after a
 // calm spell, and drops the oldest sound beyond it.
-// A full video queue leaves frames out until a key frame, asking the host
-// for one once.
+// A full video queue or a decoder error leaves frames out until a key
+// frame, which alone opens the gate again; the host is asked for one at
+// once and again each second while it does not come (regression: asked
+// once, a lost key frame stopped the picture for good).
 func TestVideoGate(t *testing.T) {
 	video := make(chan []byte, 1)
 	var g videoGate
 	key, delta := []byte{packetFrame, keyFrame}, []byte{packetFrame, 0}
+	t0 := time.Unix(1000, 0)
 	for i, c := range []struct {
 		p         []byte
+		at        time.Duration
 		drain     bool
 		sent, ask bool
 	}{
-		{delta, false, true, false}, // room: queued
-		{delta, false, false, true}, // full: left out, a key frame asked for
-		{delta, false, false, false},
-		{delta, true, false, false}, // room again, but it needs its reference
-		{key, false, true, false},   // a key frame starts over
-		{delta, true, true, false},
+		{delta, 0, false, true, false},                       // room: queued
+		{delta, 0, false, false, true},                       // full: left out, a key frame asked for
+		{delta, 100 * time.Millisecond, false, false, false}, // left out
+		{key, 200 * time.Millisecond, false, false, false},   // the key frame finds it full: too soon to ask
+		{key, 1200 * time.Millisecond, false, false, true},   // full again: asked again
+		{delta, 1300 * time.Millisecond, true, false, false}, // room again, but it needs its reference
+		{key, 1400 * time.Millisecond, false, true, false},   // a key frame starts over
+		{delta, 1500 * time.Millisecond, true, true, false},
 	} {
 		if c.drain {
 			<-video
 		}
-		sent, ask := g.pass(c.p, video)
+		sent, ask := g.pass(c.p, video, t0.Add(c.at))
 		if sent != c.sent || ask != c.ask {
 			t.Fatalf("step %d: sent %v ask %v", i, sent, ask)
+		}
+	}
+	<-video
+	// A frame the decoder failed on closes the gate; the watchdog asks
+	// again each second until a key frame comes.
+	if !g.broke(t0.Add(3 * time.Second)) {
+		t.Fatal("a decoder error asks for a key frame")
+	}
+	if sent, _ := g.pass(delta, video, t0.Add(3100*time.Millisecond)); sent {
+		t.Fatal("a delta frame after a decoder error")
+	}
+	if g.again(false, t0.Add(3500*time.Millisecond)) || !g.again(false, t0.Add(4*time.Second)) {
+		t.Fatal("the watchdog asks once a second while the gate is closed")
+	}
+	if sent, _ := g.pass(key, video, t0.Add(4100*time.Millisecond)); !sent || g.again(false, t0.Add(9*time.Second)) {
+		t.Fatal("a key frame opens the gate, and nothing more is asked")
+	}
+}
+
+// TestQueueKeepsReleases: a full input queue drops presses, never a
+// release (regression: a dropped release left a key or a button held on
+// the host); the releases kept aside go once the queue drained.
+func TestQueueKeepsReleases(t *testing.T) {
+	v := &viewer{out: make(chan []byte, 1), moved: make(chan struct{}, 1)}
+	press := inputEvent{Kind: "scan", Code: 0x1E, Down: true}
+	steps := []struct {
+		e    inputEvent
+		kept bool
+	}{
+		{press, false}, // queued: the queue is full now
+		{inputEvent{Kind: "pointer", Action: "down"}, false},
+		{inputEvent{Kind: "text", Text: "x"}, false},
+		{inputEvent{Kind: "scan", Code: 0x1E}, true},
+		{inputEvent{Kind: "pointer", Action: "up"}, true},
+		{inputEvent{Kind: "key", Key: "a"}, true},
+	}
+	var want []inputEvent
+	for _, s := range steps {
+		v.queue(s.e)
+		if s.kept {
+			want = append(want, s.e)
+		}
+	}
+	if len(v.out) != 1 {
+		t.Fatalf("queued %d", len(v.out))
+	}
+	if got := v.takeReleases(); !reflect.DeepEqual(got, want) {
+		t.Errorf("kept %+v, want %+v", got, want)
+	}
+	// The writer sends them after what was queued.
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	v.queue(inputEvent{Kind: "scan", Code: 0x2A}) // the queue is still full: kept
+	finished := make(chan struct{})
+	go func() { v.writer(&buf, done); close(finished) }()
+	time.Sleep(100 * time.Millisecond)
+	close(done)
+	<-finished
+	var kinds []string
+	for {
+		p, err := localapi.ReadPacket(&buf, nil)
+		if err != nil {
+			break
+		}
+		var m struct {
+			Event inputEvent `json:"event"`
+		}
+		_ = json.Unmarshal(p[1:], &m)
+		kinds = append(kinds, fmt.Sprintf("%s %x %v", m.Event.Kind, m.Event.Code, m.Event.Down))
+	}
+	if want := []string{"scan 1e true", "scan 2a false"}; !reflect.DeepEqual(kinds, want) {
+		t.Errorf("written %q, want %q", kinds, want)
+	}
+}
+
+// TestGrabFor: a key the grab took goes to the tab of its window holding
+// the grab; once the grab stepped aside, its releases still go to the tab
+// whose grab ended last, presses to none.
+func TestGrabFor(t *testing.T) {
+	now := time.Now()
+	a := &viewer{window: 7, control: true, ungrabbed: now.Add(-time.Minute)}
+	b := &viewer{window: 7, control: true, ungrabbed: now}
+	other := &viewer{window: 9, control: true, grabbed: "map"}
+	viewers := []*viewer{a, b, other}
+	if v := grabFor(viewers, core.KeyEvent{Window: 7, Down: 0}); v != b {
+		t.Error("a release after the grab ended goes to the tab that held it last")
+	}
+	if v := grabFor(viewers, core.KeyEvent{Window: 7, Down: 1}); v != nil {
+		t.Error("a press without a grab")
+	}
+	a.grabbed = "translate"
+	if v := grabFor(viewers, core.KeyEvent{Window: 7, Down: 1}); v != a {
+		t.Error("the tab holding the grab")
+	}
+}
+
+// TestInputStalled: the keyboard grab steps aside while the session
+// reconnects, input was refused for more than inputPauseGrace, or a host
+// that sends video has sent nothing for stalledFeed; it grabs again once
+// input flows.
+func TestInputStalled(t *testing.T) {
+	now := time.Unix(1000, 0)
+	for i, c := range []struct {
+		state            string
+		paused           bool
+		pausedFor, quiet time.Duration
+		video            bool
+		want             bool
+	}{
+		{"connected", false, 0, 0, true, false},
+		{"reconnecting", false, 0, 0, true, true},
+		{"connected", true, 300 * time.Millisecond, 0, true, false},
+		{"connected", true, 600 * time.Millisecond, 0, true, true},
+		{"connected", false, 0, 4 * time.Second, true, true},
+		{"connected", false, 0, 4 * time.Second, false, false}, // no video: nothing to wait for
+	} {
+		v := &viewer{phase: localapi.SessionInfo{State: c.state}, paused: c.paused,
+			pausedAt: now.Add(-c.pausedFor), heardAt: now.Add(-c.quiet)}
+		if c.video {
+			v.start.Width = 1920
+		}
+		if got := v.inputStalled(now); got != c.want {
+			t.Errorf("case %d: stalled %v", i, got)
+		}
+	}
+}
+
+// TestViewerNeedsKey: a picture that stopped while the host says it sends
+// frames needs a key frame; a still screen (no frames) and a 0.4.0 host
+// (which does not say) do not.
+func TestViewerNeedsKey(t *testing.T) {
+	for _, c := range []struct {
+		since  time.Duration
+		frames int
+		want   bool
+	}{
+		{500 * time.Millisecond, 30, false},
+		{2 * time.Second, 30, true},
+		{10 * time.Second, 0, false},
+		{3 * time.Second, 1, true},
+	} {
+		if got := viewerNeedsKey(c.since, c.frames); got != c.want {
+			t.Errorf("%v %d: %v", c.since, c.frames, got)
 		}
 	}
 }

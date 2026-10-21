@@ -106,7 +106,13 @@ struct Stream {
     /// A frame did not fit while the session was busy: the frames up to
     /// the next key frame cannot be decoded without it and are left out.
     skipping: bool,
+    /// When the agent was last asked for a key frame while skipping.
+    asked: Option<Instant>,
 }
+
+/// How often a stream that skips frames asks its agent for a key frame
+/// again: the key frame asked for may find the channel still full.
+const KEY_AGAIN: Duration = Duration::from_millis(250);
 
 /// A video stream of the agent, held by the session's source: dropping it
 /// closes the stream at once, ahead of any stream the session opens next,
@@ -185,6 +191,16 @@ impl Link {
                 let Ok(v) = serde_json::from_slice::<Value>(&body) else {
                     return;
                 };
+                // A stream whose capture ended (its thread could not follow
+                // the input desktop, its encoder failed twice): the session
+                // sees its frames end and opens it again.
+                if let Some(stream) = v["ended"].as_u64() {
+                    self.streams
+                        .lock()
+                        .expect("agent link")
+                        .remove(&(stream as u32));
+                    return;
+                }
                 let Some(id) = v["id"].as_u64() else {
                     return;
                 };
@@ -203,25 +219,36 @@ impl Link {
                 let took_us = u32::from_le_bytes(body[13..17].try_into().expect("4 bytes"));
                 let key = flags & crate::media::KEY_FRAME != 0;
                 let mut ask = false;
-                if let Some(s) = self.streams.lock().expect("agent link").get_mut(&stream)
-                    && (key || !s.skipping)
-                {
-                    body.drain(..17);
-                    let frame = Encoded {
-                        flags,
-                        pts,
-                        data: body,
-                        took_us,
-                    };
-                    // A full channel drops this frame, and the ones after it
-                    // until a key frame, which the agent is asked for.
-                    match s.tx.try_send(frame) {
-                        Ok(()) => s.skipping = false,
-                        Err(mpsc::error::TrySendError::Full(_)) => {
-                            ask = !s.skipping;
-                            s.skipping = true;
+                if let Some(s) = self.streams.lock().expect("agent link").get_mut(&stream) {
+                    let kept = (key || !s.skipping) && {
+                        body.drain(..17);
+                        let frame = Encoded {
+                            flags,
+                            pts,
+                            data: body,
+                            took_us,
+                        };
+                        // A full channel drops this frame, and the ones
+                        // after it until a key frame, which the agent is
+                        // asked for.
+                        match s.tx.try_send(frame) {
+                            Ok(()) => true,
+                            Err(mpsc::error::TrySendError::Full(_)) => false,
+                            Err(mpsc::error::TrySendError::Closed(_)) => true,
                         }
-                        Err(mpsc::error::TrySendError::Closed(_)) => {}
+                    };
+                    if kept {
+                        (s.skipping, s.asked) = (false, None);
+                    } else {
+                        // Asked again while frames are left out, a dropped
+                        // key frame too (regression: one that found the
+                        // channel full was never asked for again, and the
+                        // picture stopped for good).
+                        s.skipping = true;
+                        ask = s.asked.is_none_or(|t| t.elapsed() >= KEY_AGAIN);
+                        if ask {
+                            s.asked = Some(Instant::now());
+                        }
                     }
                 }
                 if ask {
@@ -328,6 +355,7 @@ impl Link {
             Stream {
                 tx,
                 skipping: false,
+                asked: None,
             },
         );
         #[derive(Deserialize)]
@@ -348,7 +376,7 @@ impl Link {
         // Follows the session's requests on the stream's behalf.
         let link = self.clone();
         std::thread::spawn(move || {
-            let mut sent = (0, 0);
+            let mut sent = (0, 0, 0);
             while !stop.load(Ordering::Relaxed) {
                 if key.swap(false, Ordering::Relaxed) {
                     let _ = link.send("video.key", json!({"stream": stream}));
@@ -356,12 +384,13 @@ impl Link {
                 let now = (
                     targets.fps.load(Ordering::Relaxed),
                     targets.bitrate.load(Ordering::Relaxed),
+                    targets.room.load(Ordering::Relaxed),
                 );
                 if now != sent {
                     sent = now;
                     let _ = link.send(
                         "video.targets",
-                        json!({"stream": stream, "fps": now.0, "bitrate": now.1}),
+                        json!({"stream": stream, "fps": now.0, "bitrate": now.1, "room": now.2}),
                     );
                 }
                 std::thread::sleep(Duration::from_millis(20));
@@ -773,9 +802,14 @@ impl Agent {
                         .concat();
                         let mut w = out.lock().expect("agent out");
                         if write_message(&mut *w, VIDEO, &[&head, &f.data]).is_err() {
-                            break;
+                            return;
                         }
                     }
+                    // The capture ended by itself (a stream the helper
+                    // closed is gone from its list already): the helper
+                    // ends the session's stream, which opens it again.
+                    let body = serde_json::to_vec(&json!({"ended": stream})).expect("json");
+                    let _ = write_message(&mut *out.lock().expect("agent out"), JSON, &[&body]);
                 });
                 self.sources.insert(stream, source);
                 self.awake.get_or_insert_with(crate::power::keep_awake);
@@ -792,6 +826,12 @@ impl Agent {
                     s.set_targets(
                         req["fps"].as_u64().unwrap_or(30) as u32,
                         req["bitrate"].as_u64().unwrap_or(4_000_000) as u32,
+                    );
+                    // An older helper says nothing of room: as before.
+                    s.set_room(
+                        req["room"]
+                            .as_u64()
+                            .map_or(crate::video::IN_FLIGHT, |r| r as u32),
                     );
                 }
                 return Ok(None);
@@ -976,21 +1016,51 @@ impl Agent {
     }
 }
 
-/// Moves this thread to the desktop that receives input now (the user's,
-/// the UAC secure desktop or the lock screen), when this process is the
-/// agent.
 #[cfg(target_os = "macos")]
 pub use mac_impl::{run_agent_socket, start_helper};
 
+/// Moves this thread to the desktop that receives input now (the user's,
+/// the UAC secure desktop or the lock screen), when this process is the
+/// agent.
+/// Returns: what it did; `Desk::Failed` is logged.
 #[cfg(windows)]
-pub fn follow_input_desktop() {
+pub fn follow_input_desktop() -> Desk {
     if is_agent() {
-        windows_impl::follow_input_desktop();
+        windows_impl::follow_input_desktop()
+    } else {
+        Desk::Same
     }
 }
 
 #[cfg(not(windows))]
-pub fn follow_input_desktop() {}
+pub fn follow_input_desktop() -> Desk {
+    Desk::Same
+}
+
+/// What following the input desktop did (`follow_input_desktop`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Desk {
+    /// The thread is on it (or this process is not the agent).
+    Same,
+    /// The thread moved to it.
+    Switched,
+    /// The thread cannot move (it owns windows or hooks) or the desktop
+    /// does not open: it cannot capture or inject there.
+    Failed,
+}
+
+/// Whether the desktop that receives input is another than this thread's,
+/// when this process is the agent: the lock screen, the sign-in screen or
+/// a UAC prompt came or went, and a capture there sees the old desktop.
+#[cfg(windows)]
+pub fn input_desktop_moved() -> bool {
+    is_agent() && windows_impl::input_desktop_moved()
+}
+
+#[cfg(not(windows))]
+pub fn input_desktop_moved() -> bool {
+    false
+}
 
 #[cfg(windows)]
 pub use windows_impl::{run_agent, send_sas, start_helper};
@@ -1020,13 +1090,13 @@ mod windows_impl {
     };
     use windows::Win32::System::RemoteDesktop::WTSGetActiveConsoleSessionId;
     use windows::Win32::System::StationsAndDesktops::{
-        CloseDesktop, DESKTOP_ACCESS_FLAGS, DESKTOP_CONTROL_FLAGS, GetUserObjectInformationW,
-        HDESK, OpenInputDesktop, SetThreadDesktop, UOI_NAME,
+        CloseDesktop, DESKTOP_ACCESS_FLAGS, DESKTOP_CONTROL_FLAGS, GetThreadDesktop,
+        GetUserObjectInformationW, HDESK, OpenInputDesktop, SetThreadDesktop, UOI_NAME,
     };
     use windows::Win32::System::Threading::{
         CREATE_NO_WINDOW, CREATE_UNICODE_ENVIRONMENT, CreateProcessAsUserW, GetCurrentProcess,
-        GetCurrentProcessId, OpenProcessToken, PROCESS_INFORMATION, STARTUPINFOW, TerminateProcess,
-        WaitForSingleObject,
+        GetCurrentProcessId, GetCurrentThreadId, OpenProcessToken, PROCESS_INFORMATION,
+        STARTUPINFOW, TerminateProcess, WaitForSingleObject,
     };
     use windows::core::{HSTRING, PCWSTR, PWSTR};
 
@@ -1378,35 +1448,83 @@ mod windows_impl {
     thread_local! {
         /// The desktop this thread was moved to last.
         static DESKTOP: Cell<isize> = const { Cell::new(0) };
+        /// Why this thread last failed to follow the input desktop, logged
+        /// once.
+        static FAILED: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
     }
 
-    /// Moves this thread to the input desktop when it changed.
-    pub fn follow_input_desktop() {
-        // SAFETY: opens the input desktop, compares its name with the one
-        // this thread is on and switches when it differs; the handle not
-        // kept is closed.
+    /// Opens the desktop that receives input now.
+    /// Returns: its handle, which the caller closes or keeps, or why not.
+    fn input_desktop() -> windows::core::Result<HDESK> {
+        // SAFETY: a plain open; the caller owns the handle.
         unsafe {
-            let Ok(input) = OpenInputDesktop(
+            OpenInputDesktop(
                 DESKTOP_CONTROL_FLAGS(0),
                 false,
                 DESKTOP_ACCESS_FLAGS(0x01FF), // GENERIC_ALL for desktops
-            ) else {
-                return;
-            };
-            let current = DESKTOP.with(Cell::get);
-            if current != 0 && name(HDESK(current as _)) == name(input) {
-                let _ = CloseDesktop(input);
-                return;
+            )
+        }
+    }
+
+    /// The name of the desktop this thread is on.
+    fn thread_desktop() -> String {
+        // SAFETY: the thread's own desktop handle, which is not closed.
+        unsafe { GetThreadDesktop(GetCurrentThreadId()) }
+            .map(name)
+            .unwrap_or_default()
+    }
+
+    /// Moves this thread to the input desktop when it changed.
+    /// Returns: whether it was there already, moved, or could not move
+    /// (logged once per desktop: a thread that owns windows or hooks
+    /// cannot, and the agent's request thread asks at every request).
+    pub fn follow_input_desktop() -> Desk {
+        let failed = |why: String| {
+            if FAILED.with(|f| f.replace(why.clone())) != why {
+                log::info!("agent: {why}");
             }
-            if SetThreadDesktop(input).is_ok() {
-                if current != 0 {
-                    let _ = CloseDesktop(HDESK(current as _));
-                }
-                DESKTOP.with(|d| d.set(input.0 as isize));
-            } else {
+            Desk::Failed
+        };
+        let input = match input_desktop() {
+            Ok(d) => d,
+            Err(e) => return failed(format!("the input desktop does not open: {e}")),
+        };
+        let want = name(input);
+        if thread_desktop() == want {
+            // SAFETY: the handle opened above, not kept.
+            let _ = unsafe { CloseDesktop(input) };
+            return Desk::Same;
+        }
+        // SAFETY: switches this thread to the desktop opened above, which
+        // is kept while the thread is on it; the one it replaces is closed.
+        unsafe {
+            if let Err(e) = SetThreadDesktop(input) {
                 let _ = CloseDesktop(input);
+                return failed(format!(
+                    "this thread cannot move to the {want} desktop: {e}"
+                ));
+            }
+            let current = DESKTOP.with(Cell::get);
+            if current != 0 {
+                let _ = CloseDesktop(HDESK(current as _));
             }
         }
+        DESKTOP.with(|d| d.set(input.0 as isize));
+        FAILED.with(|f| f.take());
+        log::info!("agent: moved to the {want} desktop");
+        Desk::Switched
+    }
+
+    /// Whether the desktop that receives input is another than this
+    /// thread's (the lock screen or a UAC prompt came or went).
+    pub fn input_desktop_moved() -> bool {
+        let Ok(input) = input_desktop() else {
+            return false;
+        };
+        let moved = name(input) != thread_desktop();
+        // SAFETY: the handle opened above, not kept.
+        let _ = unsafe { CloseDesktop(input) };
+        moved
     }
 
     /// A desktop's name ("Default", "Winlogon", …).
@@ -1584,10 +1702,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(2);
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
-        let targets = Arc::new(Targets {
-            fps: AtomicU32::new(30),
-            bitrate: AtomicU32::new(1_000_000),
-        });
+        let targets = Arc::new(Targets::default());
         // A machine without a display shows the test pattern; with one, the
         // screen. Either way frames arrive through the agent.
         // The choice crosses to the agent: software VP9 in full colour.
@@ -1609,6 +1724,71 @@ mod tests {
         stop.store(true, Ordering::Relaxed);
         drop(video);
         assert!(link.streams.lock().unwrap().is_empty(), "stream not closed");
+    }
+
+    /// Regression: the key frame asked for after the helper's channel from
+    /// the agent filled found it still full on a slow path; it was dropped
+    /// and never asked for again, and the picture stopped for good. The
+    /// link asks again while it leaves frames out, at most every KEY_AGAIN.
+    #[test]
+    fn a_dropped_key_frame_is_asked_for_again() {
+        let (mut down_r, down_w) = std::io::pipe().unwrap();
+        let link = Link::new();
+        *link.out.lock().unwrap() = Some(BufWriter::new(Box::new(down_w)));
+        let (tx, mut rx) = mpsc::channel(1);
+        link.streams.lock().unwrap().insert(
+            7,
+            Stream {
+                tx,
+                skipping: false,
+                asked: None,
+            },
+        );
+        let frame = |key: bool| {
+            let mut body = 7u32.to_le_bytes().to_vec();
+            body.push(if key { crate::media::KEY_FRAME } else { 0 });
+            body.extend_from_slice(&[0; 12]);
+            body.extend_from_slice(b"data");
+            body
+        };
+        link.received(VIDEO, frame(false)); // fills the channel
+        link.received(VIDEO, frame(false)); // left out: asked
+        link.received(VIDEO, frame(true)); // the key frame finds it full: too soon
+        std::thread::sleep(KEY_AGAIN);
+        link.received(VIDEO, frame(true)); // full again: asked again
+        rx.try_recv().unwrap();
+        link.received(VIDEO, frame(true)); // fits
+        assert!(!link.streams.lock().unwrap()[&7].skipping);
+        assert_eq!(
+            rx.try_recv().unwrap().flags & crate::media::KEY_FRAME,
+            crate::media::KEY_FRAME
+        );
+        *link.out.lock().unwrap() = None;
+        let mut asked = 0;
+        while let Ok((_, body)) = read_message(&mut down_r) {
+            let v: Value = serde_json::from_slice(&body).unwrap();
+            asked += usize::from(v["op"] == "video.key" && v["stream"] == 7);
+        }
+        assert_eq!(asked, 2, "asked once per loss and again after KEY_AGAIN");
+    }
+
+    /// A stream whose capture ended in the agent ends in the helper too, so
+    /// the session sees its frames end and opens it again.
+    #[test]
+    fn a_stream_the_agent_ended_ends_in_the_helper() {
+        let link = Link::new();
+        let (tx, mut rx) = mpsc::channel(1);
+        link.streams.lock().unwrap().insert(
+            3,
+            Stream {
+                tx,
+                skipping: false,
+                asked: None,
+            },
+        );
+        link.received(JSON, br#"{"ended": 3}"#.to_vec());
+        assert!(link.streams.lock().unwrap().is_empty());
+        assert!(rx.blocking_recv().is_none(), "the session's frames end");
     }
 
     /// A new agent first hears how the host user chose to capture: whether

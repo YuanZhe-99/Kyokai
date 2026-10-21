@@ -472,6 +472,7 @@
   "ViewerAIPanel": "AI",
   "ViewerAITitle": "對方電腦上的 AI",
   "ViewerActions": "操作",
+  "ViewerAsleep": "那邊的螢幕可能已休眠。",
   "ViewerBlockInput": "阻止對方的鍵盤和滑鼠",
   "ViewerClipBehind": "目前未共用：前景是其他分頁或 Kyokai 分頁。",
   "ViewerClipClear": "清除",
@@ -506,6 +507,7 @@
   "ViewerImplHardware": "{name} 硬體",
   "ViewerImplSoftware": "{name} 軟體",
   "ViewerImplUnknown": "尚不知道",
+  "ViewerInputPaused": "輸入已暫停——連線跟不上",
   "ViewerKeyboard": "鍵盤",
   "ViewerKeyboardHint": "映射：依鍵位傳送，由對方的鍵盤配置決定輸入的字元。翻譯：用你的鍵盤配置和輸入法輸入。傳統：只傳送此視窗收到的按鍵。",
   "ViewerKeyboardLegacy": "傳統",
@@ -525,6 +527,7 @@
   "ViewerPrivacy": "隱私模式（對方螢幕變黑）",
   "ViewerQuality": "畫質",
   "ViewerReconnect": "重新連線",
+  "ViewerRecovering": "正在恢復畫面…",
   "ViewerRelayedHint": "連線經由伺服器中轉。若要更快，請在兩台裝置上都開啟「嘗試直接連線」（網路）。",
   "ViewerScaleHint": "符合視窗：在視窗中顯示整個螢幕。原始大小：對方電腦的每個像素佔一個點；拖曳捲軸查看其他部分。",
   "ViewerShowBar": "展開控制列",
@@ -543,6 +546,7 @@
   "WatchersNone": "沒有裝置在查看本機狀態。",
   "WatchersSince": "自 {time} 起",
   "WatchersTitle": "正在查看本機狀態的裝置",
+  "ViewerWake": "喚醒",
   "WithoutAskingHint": "輸入正確密碼的裝置無需你確認即可連線，獲得密碼可授予的權限。沒有人在這台電腦前時（背景服務），只有固定密碼可以。關閉後每次都會詢問你。",
   "WithoutAskingTitle": "無需確認即可連線"
 }

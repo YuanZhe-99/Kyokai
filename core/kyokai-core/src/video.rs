@@ -348,6 +348,11 @@ pub const MAX_FPS: u32 = 60;
 pub(crate) const MAX_SIZE: (u32, u32) = (1920, 1080);
 /// Starting target bitrate (RustDesk's QoS adapts it later).
 const BITRATE: u32 = 4_000_000;
+/// How many frames the host sends ahead of the controller's
+/// acknowledgements: enough for the frame-rate cap over a relay's round
+/// trip, few enough that a slow path delays the picture by a few frames,
+/// not seconds. The helper's channel from its agent holds as many.
+pub const IN_FLIGHT: u32 = 3;
 
 /// One encoded frame.
 pub struct Encoded {
@@ -607,6 +612,21 @@ pub struct Targets {
     pub fps: AtomicU32,
     /// Bits per second.
     pub bitrate: AtomicU32,
+    /// Frames the session may send now (`IN_FLIGHT` less those the
+    /// controller has not acknowledged): the capture takes a picture only
+    /// while there is room, so the picture that goes out is the newest one,
+    /// not one that waited a round trip for the acknowledgements.
+    pub room: AtomicU32,
+}
+
+impl Default for Targets {
+    fn default() -> Self {
+        Targets {
+            fps: AtomicU32::new(FPS),
+            bitrate: AtomicU32::new(BITRATE),
+            room: AtomicU32::new(IN_FLIGHT),
+        }
+    }
 }
 
 impl Source {
@@ -620,15 +640,17 @@ impl Source {
         wait_stopped();
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
-        let targets = Arc::new(Targets {
-            fps: AtomicU32::new(FPS),
-            bitrate: AtomicU32::new(BITRATE),
-        });
+        let targets = Arc::new(Targets::default());
         // One frame waits for the session at most: the capture loop takes a
-        // picture only once there is room (`capture::start`). Frames from
-        // the helper's agent arrive as it captures, so they get one more.
+        // picture only once the session has room for it (`Targets::room`).
+        // Frames from the helper's agent arrive as it captures, a little
+        // behind the room the session reports: they get the whole window.
         let link = crate::agent::link();
-        let (tx, frames) = mpsc::channel(if link.is_some() { 2 } else { 1 });
+        let (tx, frames) = mpsc::channel(if link.is_some() {
+            IN_FLIGHT as usize
+        } else {
+            1
+        });
         if let Some(link) = link
             && let Some((start, shown, agent)) = link.open_video(
                 display,
@@ -695,10 +717,7 @@ impl Source {
             frames,
             key: Arc::new(AtomicBool::new(true)),
             stop,
-            targets: Arc::new(Targets {
-                fps: AtomicU32::new(FPS),
-                bitrate: AtomicU32::new(BITRATE),
-            }),
+            targets: Arc::new(Targets::default()),
             done: None,
             _agent: None,
         }
@@ -713,6 +732,13 @@ impl Source {
         self.targets
             .bitrate
             .store(bitrate.clamp(100_000, 50_000_000), Ordering::Relaxed);
+    }
+
+    /// Sets how many frames the session may send now (`Targets::room`).
+    pub fn set_room(&self, room: u32) {
+        self.targets
+            .room
+            .store(room.min(IN_FLIGHT), Ordering::Relaxed);
     }
 
     /// Asks for a key frame next (a viewer opened or lost a frame).
@@ -807,6 +833,12 @@ mod capture {
     const FRAME_WAIT: Duration = Duration::from_millis(100);
     /// How often a sleeping capture thread looks at its stop flag.
     const STOP_POLL: Duration = Duration::from_millis(20);
+    /// How often a key frame that has not come out is asked of the encoder
+    /// again.
+    const KEY_FORCE_AGAIN: Duration = Duration::from_millis(500);
+    /// How often a capture with nothing new compares the input desktop with
+    /// its own (the agent's, in the helper modes).
+    const DESK_CHECK: Duration = Duration::from_millis(500);
 
     /// Sleeps `d`, or less once `stop` is set: a dropped source's thread
     /// ends within STOP_POLL, so the next source gets its encoder soon.
@@ -970,21 +1002,53 @@ mod capture {
             // few before its first output, so a still screen repeats the last
             // picture until they come out.
             let mut held = 0u32;
+            // A key frame was asked for and has not come out yet: the last
+            // picture is encoded again on a still screen until it does, and
+            // the encoder is asked again every KEY_FORCE_AGAIN (an
+            // asynchronous encoder may answer with frames it held).
+            let mut key_pending = false;
+            let mut forced: Option<Instant> = None;
+            // Since when there has been no picture (the stream's start, a
+            // lost display), to wake a dark display, and when it was woken.
+            let mut dark_since = Some(t0);
+            let mut woke: Option<Instant> = None;
+            // When the input desktop was last compared with this thread's.
+            let mut desk_checked = t0;
+            // The encoder failed once and was opened again.
+            let mut reopened = false;
             // None while the display is lost: the old capturer is released
             // before a new one is made. The stream keeps its size; a new
             // display mode is scaled into it.
             let mut capturer = Some(capturer);
             while !stop.load(Ordering::Relaxed) {
+                if crate::power::wake_due(dark_since, woke, Instant::now()) {
+                    woke = Some(Instant::now());
+                    log::info!("capture: no picture for a while: waking the display");
+                    crate::power::wake_display();
+                }
                 let Some(cap) = capturer.as_mut() else {
                     nap(REOPEN_AFTER, &stop);
-                    if !stop.load(Ordering::Relaxed) {
-                        capturer = G::open(display).ok().map(|(c, _, _)| c);
+                    if stop.load(Ordering::Relaxed) {
+                        continue;
                     }
+                    // A thread that cannot move to the input desktop (one
+                    // that came to own a window or a hook) never captures
+                    // it: it ends, and the session opens the stream again
+                    // on a fresh thread.
+                    if crate::agent::follow_input_desktop() == crate::agent::Desk::Failed {
+                        log::info!("capture: ends to start again on a fresh thread");
+                        return;
+                    }
+                    capturer = G::open(display).ok().map(|(c, _, _)| c);
                     continue;
                 };
                 // Room for the frame first: a picture is taken only when the
                 // session can send it, so what goes out is the newest picture
                 // rather than one that waited behind the network.
+                if targets.room.load(Ordering::Relaxed) == 0 {
+                    std::thread::sleep(ROOM_WAIT);
+                    continue;
+                }
                 let permit = match tx.try_reserve() {
                     Ok(permit) => permit,
                     Err(mpsc::error::TrySendError::Full(())) => {
@@ -1000,7 +1064,8 @@ mod capture {
                     bitrate = wanted_rate;
                     encoder.set_bitrate(bitrate);
                 }
-                let wanted = key.swap(false, Ordering::Relaxed);
+                key_pending |= key.swap(false, Ordering::Relaxed);
+                let force = key_pending && forced.is_none_or(|t| t.elapsed() >= KEY_FORCE_AGAIN);
                 // Unchanged screens time out: nothing is encoded or sent,
                 // unless a key frame was asked for.
                 let mut taken = None;
@@ -1013,18 +1078,27 @@ mod capture {
                 );
                 match got {
                     // The encode time counts from the capture's own copy.
-                    Got::Picture => taken = cap.taken().or(taken),
-                    Got::Nothing if (wanted || held > 0) && encoder.has_picture() => {}
+                    Got::Picture => {
+                        taken = cap.taken().or(taken);
+                        dark_since = None;
+                    }
+                    Got::Nothing if (key_pending || held > 0) && encoder.has_picture() => {}
                     Got::Lost => {
-                        if wanted {
-                            key.store(true, Ordering::Relaxed);
-                        }
                         capturer = None;
+                        dark_since.get_or_insert_with(Instant::now);
                         continue;
                     }
                     Got::Nothing => {
-                        if wanted {
-                            key.store(true, Ordering::Relaxed);
+                        // The lock screen, the sign-in screen or a UAC
+                        // prompt took the input desktop, which a capture
+                        // does not always report: followed as a lost display.
+                        if desk_checked.elapsed() >= DESK_CHECK {
+                            desk_checked = Instant::now();
+                            if crate::agent::input_desktop_moved() {
+                                log::info!("capture: the input desktop moved");
+                                capturer = None;
+                                continue;
+                            }
                         }
                         // GDI answers at once instead of waiting the timeout.
                         if let Some(rest) = period.checked_sub(begun.elapsed()) {
@@ -1034,9 +1108,40 @@ mod capture {
                     }
                 }
                 let taken = taken.unwrap_or_else(Instant::now);
-                let Ok(units) = encoder.encode(wanted) else {
-                    break;
+                let units = match encoder.encode(force) {
+                    Ok(units) => units,
+                    Err(e) => {
+                        // Once a stream the encoder is opened again (with
+                        // the display, for a first picture); a second
+                        // failure ends the stream, which the session opens
+                        // again.
+                        log::info!("video: {}{colour} failed: {e}", choice.codec);
+                        drop(permit);
+                        if reopened {
+                            return;
+                        }
+                        reopened = true;
+                        match Encoder::open(choice, w, h) {
+                            Ok(e) => encoder = e,
+                            Err(e) => {
+                                log::info!(
+                                    "video: {}{colour} did not open again: {e}",
+                                    choice.codec
+                                );
+                                return;
+                            }
+                        }
+                        (key_pending, forced, held) = (true, None, 0);
+                        capturer = None;
+                        continue;
+                    }
                 };
+                if force {
+                    forced = Some(Instant::now());
+                }
+                if units.iter().any(|(_, is_key)| *is_key) {
+                    (key_pending, forced) = (false, None);
+                }
                 held = if units.is_empty() {
                     (held + 1).min(FPS)
                 } else {
@@ -1139,7 +1244,9 @@ mod screen {
         /// system memory and a GPU the pass fails on deliver the display's
         /// size, which the encoder scales.
         fn open(want: Display) -> Result<(Self, u32, u32), String> {
-            crate::agent::follow_input_desktop();
+            if crate::agent::follow_input_desktop() == crate::agent::Desk::Failed {
+                return Err("this thread cannot move to the input desktop".into());
+            }
             let display = attached()
                 .into_iter()
                 .find(|d| d.origin() == (want.x, want.y))
@@ -1197,8 +1304,12 @@ mod screen {
         /// again where it opens now (regression: a moment's failure, as
         /// around a UAC prompt, kept the stream on GDI to its end). A display
         /// that DXGI does not list (no GPU output, some virtual machines) is
-        /// left on GDI without trying.
+        /// left on GDI without trying. The thread follows the input desktop
+        /// first: duplication opens only on the desktop that has the input.
         fn duplicate_again(&mut self) {
+            if crate::agent::follow_input_desktop() == crate::agent::Desk::Failed {
+                return;
+            }
             let Some(display) = Displays::new().ok().and_then(|mut all| {
                 all.find(|d| d.attached_to_desktop() && d.origin() == (self.want.x, self.want.y))
             }) else {
@@ -1308,10 +1419,7 @@ mod screen_tests {
                 tx,
                 key,
                 stop.clone(),
-                Arc::new(Targets {
-                    fps: AtomicU32::new(FPS),
-                    bitrate: AtomicU32::new(BITRATE),
-                }),
+                Arc::new(Targets::default()),
                 display,
                 choice,
             ) {
@@ -1612,10 +1720,7 @@ mod tests {
         let (tx, frames) = mpsc::channel(1);
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
-        let targets = Arc::new(Targets {
-            fps: AtomicU32::new(FPS),
-            bitrate: AtomicU32::new(BITRATE),
-        });
+        let targets = Arc::new(Targets::default());
         let display = Display {
             x: 0,
             y: 0,
@@ -1653,6 +1758,101 @@ mod tests {
             !FAKE_OPEN.load(Ordering::SeqCst),
             "the capture still held its display"
         );
+    }
+
+    /// A capturer for the tests whose screen stays still after its first
+    /// picture.
+    #[cfg(any(windows, target_os = "macos"))]
+    struct Still(bool);
+
+    #[cfg(any(windows, target_os = "macos"))]
+    impl Grab for Still {
+        fn open(_: Display) -> Result<(Self, u32, u32), String> {
+            Ok((Still(false), 64, 48))
+        }
+
+        fn frame(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got {
+            if std::mem::replace(&mut self.0, true) {
+                std::thread::sleep(timeout);
+                return Got::Nothing;
+            }
+            take(&[90u8; 64 * 48 * 4], 64, 48, 64 * 4);
+            Got::Picture
+        }
+    }
+
+    /// Starts a VP8 stream from a test capturer.
+    #[cfg(any(windows, target_os = "macos"))]
+    fn test_stream<G: Grab>(
+        targets: Arc<Targets>,
+    ) -> (mpsc::Receiver<Encoded>, Arc<AtomicBool>, Arc<AtomicBool>) {
+        let (tx, frames) = mpsc::channel(1);
+        let key = Arc::new(AtomicBool::new(true));
+        let stop = Arc::new(AtomicBool::new(false));
+        let display = Display {
+            x: 0,
+            y: 0,
+            width: 64,
+            height: 48,
+            primary: true,
+        };
+        let choice = Choice {
+            codec: "vp8",
+            i444: false,
+        };
+        capture::start::<G>(tx, key.clone(), stop.clone(), targets, display, choice)
+            .expect("VP8 opens");
+        (frames, key, stop)
+    }
+
+    /// The next frame within `wait`.
+    #[cfg(any(windows, target_os = "macos"))]
+    fn next_frame(frames: &mut mpsc::Receiver<Encoded>, wait: Duration) -> Option<Encoded> {
+        let until = Instant::now() + wait;
+        while Instant::now() < until {
+            match frames.try_recv() {
+                Ok(f) => return Some(f),
+                Err(mpsc::error::TryRecvError::Empty) => {
+                    std::thread::sleep(Duration::from_millis(5))
+                }
+                Err(mpsc::error::TryRecvError::Disconnected) => return None,
+            }
+        }
+        None
+    }
+
+    /// The capture takes a picture only while the session has room for its
+    /// frame: none while the controller's acknowledgements are behind, the
+    /// newest one once there is room again.
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn the_capture_takes_pictures_only_with_room() {
+        let targets = Arc::new(Targets::default());
+        targets.room.store(0, Ordering::Relaxed);
+        let (mut frames, _, stop) = test_stream::<Fake>(targets.clone());
+        assert!(
+            next_frame(&mut frames, Duration::from_millis(300)).is_none(),
+            "a frame without room"
+        );
+        targets.room.store(1, Ordering::Relaxed);
+        assert!(next_frame(&mut frames, Duration::from_secs(2)).is_some());
+        stop.store(true, Ordering::Relaxed);
+    }
+
+    /// A key frame asked for on a still screen comes out: the last picture
+    /// is encoded again for it (regression: a still screen never answered,
+    /// and a viewer that lost a frame waited for a change on the host).
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn a_key_frame_asked_for_comes_out_on_a_still_screen() {
+        let (mut frames, key, stop) = test_stream::<Still>(Arc::new(Targets::default()));
+        let first = next_frame(&mut frames, Duration::from_secs(2)).expect("a first frame");
+        assert_eq!(first.flags & media::KEY_FRAME, media::KEY_FRAME);
+        while next_frame(&mut frames, Duration::from_millis(200)).is_some() {}
+        key.store(true, Ordering::Relaxed);
+        let again = next_frame(&mut frames, Duration::from_secs(2)).expect("an answer");
+        assert_eq!(again.flags & media::KEY_FRAME, media::KEY_FRAME);
+        stop.store(true, Ordering::Relaxed);
     }
 
     #[test]

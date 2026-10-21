@@ -814,6 +814,7 @@
   "ViewerAIPanel": "AI",
   "ViewerAITitle": "AI on the other computer",
   "ViewerActions": "Actions",
+  "ViewerAsleep": "The screen there may be asleep.",
   "ViewerBlockInput": "Block their keyboard and mouse",
   "ViewerClipBehind": "Not shared right now: another tab or the Kyokai tab is in front.",
   "ViewerClipClear": "Clear",
@@ -899,6 +900,7 @@
     }
   },
   "ViewerImplUnknown": "not known yet",
+  "ViewerInputPaused": "Input paused — the connection is behind",
   "ViewerKeyboard": "Keyboard",
   "ViewerKeyboardHint": "Map sends each key by its place on the keyboard, and the other computer's layout decides what it types. Translate types with your layout and input method. Legacy sends only the keys this window receives.",
   "ViewerKeyboardLegacy": "Legacy",
@@ -918,6 +920,7 @@
   "ViewerPrivacy": "Privacy mode (their screen goes black)",
   "ViewerQuality": "Quality",
   "ViewerReconnect": "Reconnect",
+  "ViewerRecovering": "Recovering the picture…",
   "ViewerRelayedHint": "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices.",
   "ViewerScaleHint": "Fit shows the whole screen in the window. Original size shows one point per pixel of the other computer; drag the scroll bars to move around.",
   "ViewerShowBar": "Show controls",
@@ -979,6 +982,7 @@
     }
   },
   "WatchersTitle": "Watching this computer's status",
+  "ViewerWake": "Wake it",
   "WithoutAskingHint": "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Background service), only the permanent password does. Off: you are always asked.",
   "WithoutAskingTitle": "Connect without asking"
 }

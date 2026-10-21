@@ -12,18 +12,29 @@ control, Phase 4 AI tasks).
 | Encode | host engine | H.264 through Media Foundation: the GPU's encoder (an asynchronous transform, fed system-memory NV12 when it asks for input) if it produces output within its first 30 black frames — one per process, shut down when its stream ends; other streams use the software encoder, and a stream that replaces another (a display, codec or full-colour change, a resumed session) waits up to a second for the old one to let go of it — else Microsoft's synchronous software encoder; low latency (set before the media types; the first output follows the first frame), CBR 4 Mbit/s, no B-frames, a key frame every 4 seconds and on request; 30 fps. As VideoToolbox takes pictures from its pool, the picture is converted straight into one of at most 4 input samples, each used again once the frame it carried came out (its output's time says which; a picture repeated while it is still inside the transform goes in a copy), and a transform that wants its output sample given gets the same one each time, its attributes cleared: nothing is allocated or copied per frame beyond the conversion |
 | Encode (macOS) | host engine | H.264 and HEVC through VideoToolbox (`core/kyokai-core/src/vt.rs`): the hardware encoder required, with low-latency rate control where it takes it (its low-latency encoder, `rtvc`, runs on the hardware though VideoToolbox's encoder list calls it software: 1080p takes 8 ms a frame on an M1 either way, 2 ms of it CPU for our own conversion, 2026-10-18), then without, then any encoder where there is no hardware; real time, no frame reordering, the average bitrate with at most one and a half times that in any second (a picture after a still screen stays small), a key frame every 4 seconds and on request; NV12 from the session's pixel buffer pool in, Annex B out with the parameter sets before each key frame, as Media Foundation's encoders give it (`annexb.rs`) |
 | Encode (software) | host engine | VP9 (`vp9-sw`) and VP8 through libvpx, AV1 through libaom — RustDesk's wrappers (`core/third_party/rustdesk-codec`) and settings: real-time, CBR at RustDesk's quality ratio of the base bitrate, a key frame every 4 seconds and on request; VP9 profile 1 and AV1 profile 1 carry 4:4:4 |
-| Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); one frame waits for the session at most: the capture loop takes a picture only once the session has room for its frame, so what goes out is the newest picture, not one that waited behind the network. The host keeps at most 3 frames ahead of the controller's acknowledgements (`received`, sent as each frame's last chunk arrives), so on a slow path (a relay passing a few hundred kbit/s) the frames wait at the capture rather than in the transport's buffers, and the picture and the delay probe stay a round trip behind, not seconds. Frames from the helper's session agent arrive as it captures and get one more place; one that finds none is left out with the frames after it until a key frame, which the agent is asked for |
-| Forward | controller engine | the session's media queue → `session.media` on the local API; a GUI that is 3 frames behind loses the frames waiting and the frames after them until a key frame (a frame without the ones before it cannot be decoded), which the controller asks the host for, again each second until it comes |
+| Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); one frame waits for the session at most: the capture loop takes a picture only once the session has room for its frame — room the acknowledgements leave, which the session tells the capture (and the helper its agent, with the frame rate and bitrate) — so what goes out is the newest picture, not one that waited behind the network or for an acknowledgement. The host keeps at most 3 frames ahead of the controller's acknowledgements (`received`, sent as each frame's last chunk arrives), so on a slow path (a relay passing a few hundred kbit/s) the frames wait at the capture rather than in the transport's buffers, and the picture and the delay probe stay a round trip behind, not seconds; when no acknowledgement came for 3 seconds the host takes the frames in flight for lost and goes on from a key frame (RustDesk's bounded wait). Frames from the helper's session agent arrive as it captures and get as many places as the host keeps ahead; one that finds none is left out with the frames after it until a key frame, which the agent is asked for, again every 250 ms while frames are left out (a key frame that found no place too) |
+| Forward | controller engine | the session's media queue → `session.media` on the local API; a GUI that is 3 frames behind loses the frames waiting and the frames after them until a key frame (a frame without the ones before it cannot be decoded), which the controller asks the host for, again each second until it comes, on a timer of its own (a still screen sends nothing to wait for) |
 | Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for `h264`, `hevc` and `vp9` in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9; through Direct3D 11 on the GPU for HEVC, and for H.264 where the GPU has an H.264 decoder, as a Mac decodes both through VideoToolbox), NV12 into RGBA, cropped to the stream's size, read in place from the decoder's buffer (a GPU surface mapped with its own pitch) as from VideoToolbox's pixel buffer; on macOS VideoToolbox for `h264` and `hevc`; libvpx or libaom for `vp9-sw`, `vp8` and `av1`, I420 or I444 into RGBA. VP9 through Media Foundation decodes in software (it gets no Direct3D device); each decoder says which it is and whether it runs in hardware (`kyokai_decoder_info`) |
 | Show | GUI | the viewer window's bitmap from three pictures: the one shown, the newest decoded one waiting for the main thread, and the one the next frame is decoded into; decoding never waits for drawing, a picture not drawn yet gives way to a newer one, and the pictures of a new stream are ready before its first frame |
 
 While a frame waits inside the encoder, the host repeats the last picture so it comes out even when
-the screen stays still. A host that cannot capture (no interactive desktop, such as a service or an
+the screen stays still. A key frame asked for stays asked until one comes out: on a still screen
+the last picture is encoded again for it, and the encoder is asked again every half second (Media
+Foundation's asynchronous encoder may answer with frames it held; it waits a little for its own
+frame's output, and its error event, `MEError`, counts as a failure). An encoder that fails is
+logged and opened again once, with the display, for a first picture; when it fails again, or the
+capture ends otherwise (in the helper modes, an agent that went or a capture thread that could not
+follow the input desktop), the stream's frames end and the session opens the video again — at
+once, then no sooner than 2 seconds after the last end — and sends the test pattern after 3 ends
+within 30 seconds. A host that cannot capture (no interactive desktop, such as a service or an
 SSH session) sends the 320×180 test pattern instead (`raw-rgba`); a host without Media
 Foundation's encoders (Windows N, Server editions without Media Foundation) sends in software. When the display is lost — a mode change, the lock
 screen or a UAC prompt — the host releases it and opens the primary display again every half
 second; the stream keeps its size and a new mode is scaled into it (a changed aspect ratio shows
-stretched until the next session).
+stretched until the next session). In the helper modes, where the agent follows the desktop that
+receives input ([run-modes.md](run-modes.md), "The session agent"), a capture with nothing new
+also compares that desktop with its own every half second and takes a change — the lock screen,
+the sign-in screen or a UAC prompt coming or going — for a lost display.
 
 With more than one display the host sends the list (the primary first, the others left to
 right) with the stream, and the viewer offers them by number; choosing one restarts capture on it
@@ -80,8 +91,13 @@ As RustDesk's client does, the viewer's reading never waits on decoding: one gor
 session's packets and hands frames to a video goroutine (on its own OS thread, which the decoder is
 tied to; up to 4 frames wait) and sound to a sound goroutine (up to 50 packets); the host's
 reports it handles itself. When the video queue is full a frame is left out, and so is every frame
-after it until a key frame, which it asks the host for once; sound that finds its queue full is
-left out. A slow picture so never holds up sound, input or the host's reports.
+after it until a key frame, which alone lets frames through again; the viewer asks the host for
+one at once and again each second until it comes, and so it does after a frame its decoder fails
+on (the decoder then takes nothing but a key frame). Once a second it also looks at the picture:
+when none came for 2 seconds although the host says it sent frames (`frames` in its stats; a still
+screen sends none, a 0.4.0 host does not say), it asks for a key frame and says "Recovering the
+picture…" over the picture shown. Sound that finds its queue full is left out. A slow picture so
+never holds up sound, input or the host's reports.
 
 ## Quality and bandwidth
 
@@ -157,7 +173,7 @@ The viewer sends input only for a session granted `control-input`; the host chec
 
 | Event | Sent as |
 |---|---|
-| pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses and moves on the black bars around it are dropped (the toolbar over it takes its own), releases always sent; a move with no button held goes with button 0 (the host knows what it holds). The viewer sends the newest move at most every 8 ms, and any other event sends a waiting move first; the controller's engine may leave out a move while the session is behind (a newer one follows), and every other event waits for the session |
+| pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses and moves on the black bars around it are dropped (the toolbar over it takes its own), releases always sent; a move with no button held goes with button 0 (the host knows what it holds). The viewer sends the newest move at most every 8 ms, and any other event sends a waiting move first (see "Input is a stream" below) |
 | scroll | `{kind: "scroll", dx, dy}` in lines (touchpad pixels ÷ 40); positive `dy` moves the content down |
 | a key, in Map or Translate mode | `{kind: "scan", code, down, caps, num}`: the key's scan code as Windows numbers it (the set-1 code, 0xE0xx for extended keys, 0xE11D for Pause) with the controller's CapsLock and NumLock ([Keyboard modes](#keyboard-modes)) |
 | text | `{kind: "text", text}`: typed as Unicode characters, so the controller's layout and dead keys decide (Translate and Legacy) |
@@ -177,6 +193,32 @@ host user's answer nor the AI for an approval; the session decides per event and
 agent follows what it is told with each event. Kyokai's windows are left out of capture, so a check by focus alone refused
 clicks on windows the viewer and the model do see while Kyokai's unseen window was in front.
 Whatever a session holds is released when it ends. Malformed events are dropped without ending the session.
+
+**Input is a stream.** When the path stalls, input that waited would arrive late, as a burst
+of stale keys, so the controller's engine never lets the GUI wait (`kyokai_media_write`): while
+the session cannot take input — it is reconnecting, or a host that sends video has said nothing
+for 1.5 seconds, or the session's queue is full — pointer moves, presses, clicks and text are
+refused as behind and dropped. Releases are never refused: the engine keeps the keys and buttons
+the session holds on the host, and a release it cannot deliver it owes. Once the path moves and
+the queue is empty, it reconciles: to a host that announced `input-sync` ([protocol.md](protocol.md))
+one `{"kind": "sync", held}` event with what is held now, and the host lets go of whatever else
+this session holds; to a 0.4.0 host the releases themselves (those pressed again since left out).
+Input and AI commands queued while a session reconnected are dropped as it resumes, never
+delivered late (the host sends its current AI task instead; the viewer's quality, codec, sound and
+clipboard choices among them are kept), and a resumed host session starts holding nothing: the
+connection it replaces let go of what it held as it ended. The GUI hears whether input is paused
+(media packet 15) and its toolbar says "Input paused — the connection is behind"; the viewer's
+queue to the engine never drops a release either (a full queue keeps it aside and sends it once
+the queue drained).
+
+The keyboard grab steps aside while the session stalls: the viewer ends it while the session is
+reconnecting, input was paused for more than half a second, or no frame and no stats came for 3
+seconds from a host that sends video, and grabs again once input flows; meanwhile the
+controller's keyboard is its own (Alt+Tab, the Windows key, its input method, other programs), and
+what is typed in the picture goes as in Legacy mode, refused while behind. The grab takes keys only
+while the GUI read one within the last second (a GUI that stopped reading never traps the
+keyboard), and the hook never waits for its lock: a key that comes while the GUI's call holds it
+passes on.
 
 ### Keyboard modes
 
@@ -205,8 +247,8 @@ with Ctrl or Cmd).
 
 | Mode | On the controller | On the host |
 |---|---|---|
-| Map | while the picture has the focus and its window is in front, a low-level keyboard hook in the core takes every key by scan code before the controller's windows see it: Win, Alt+Tab, Alt+F4 and every shortcut go to the host; CapsLock, NumLock and ScrollLock act on the controller too | each key by scan code, so the host's layout decides what it types |
-| Translate | a key that makes a character on the controller's layout with the modifiers held (a dead key too; not with Win, or with Ctrl or Alt alone) stays with the controller, whose layout and input method type it, and its text is sent; Shift, Ctrl, Alt and the lock keys go both ways; AltGr stays the controller's; every other key and shortcut is taken by scan code | text as Unicode, the other keys by scan code |
+| Map | while the picture has the focus and its window is in front, a low-level keyboard hook in the core takes every key by scan code before the controller's windows see it: Win, Alt+Tab, Alt+F4 and every shortcut go to the host; CapsLock, NumLock and ScrollLock act on the controller too. The picture takes no input method while it grabs (Windows: the window's input context is detached and an open composition ended; macOS: nothing composes), so the controller's input method never catches keys: Chinese and Japanese are typed with the host's own input method, as in RustDesk | each key by scan code, so the host's layout decides what it types |
+| Translate | a key that makes a character on the controller's layout with the modifiers held (a dead key too; not with Win, or with Ctrl or Alt alone) stays with the controller, whose layout and input method type it, and its text is sent; Shift, Ctrl, Alt and the lock keys go both ways; AltGr stays the controller's; every other key and shortcut is taken by scan code. While the controller's input method composes (the picture gets a composition), every key passes to it (the grab's `pass` state) and only the committed text goes to the host; after a key that typed on a Chinese, Japanese or Korean layout, Enter, Esc, Backspace, Tab, the arrows, Space and the digits pass too until the GUI says no composition is open (a second at most), as the composition may begin after the next key | text as Unicode, the other keys by scan code |
 | Legacy | the GUI toolkit's key events as above: no Win key, no shortcut the window consumes, no left or right modifier, numpad keys by their meaning | named keys and Unicode |
 
 Each key the grab takes carries the controller's CapsLock and NumLock: before a letter the host
@@ -243,6 +285,16 @@ while it streams video, since Windows ignores a display request from session 0),
 timer neither cuts the session nor darkens the captured display. When the computer goes to sleep anyway, the AI task in progress pauses
 ("the computer went to sleep") and waits for a person to resume it; after waking, sessions
 resume through the network as after any drop.
+
+A display that is dark already when someone connects gives the capture nothing to send. A capture
+that has had no picture for a second (none yet, or its display lost) wakes the displays as a
+person's input would — on Windows `SetThreadExecutionState(ES_DISPLAY_REQUIRED)` and a one-pixel
+pointer move and back, tagged as Kyokai's input so the host user's input watch leaves it out; on
+macOS `IOPMAssertionDeclareUserActivity` — at most every 5 seconds, in the user's session (the
+agent's, in the helper modes). A viewer that has waited 3 seconds for its first picture, or for
+one while recovering it, says the screen there may be asleep and, with `control-input`, offers
+**Wake it**: a Shift press and release, which wakes a display as a key does and which a 0.4.0 host
+takes too.
 
 ## Clipboard
 

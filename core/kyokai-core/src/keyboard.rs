@@ -21,19 +21,52 @@ pub enum Mode {
     Translate,
 }
 
-impl Mode {
-    /// The mode a name crosses the FFI as: `map`, `translate`, or `off`
-    /// (no grab).
+/// What the GUI asks of a viewer window's grab, by the name it crosses the
+/// FFI as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ask {
+    /// `map` or `translate`: grab in that mode. Asked again in the same
+    /// mode, it also says the controller's input method composes nothing.
+    Grab(Mode),
+    /// `pass`: the controller's input method composes (the GUI got a
+    /// composition): every key passes to it until the GUI asks to grab
+    /// again; keys sent down are still released through the grab.
+    Pass,
+    /// `off`: no grab.
+    Off,
+}
+
+impl Ask {
     /// Returns: None for an unknown name.
-    pub fn from_name(name: &str) -> Option<Option<Mode>> {
+    pub fn from_name(name: &str) -> Option<Ask> {
         match name {
-            "map" => Some(Some(Mode::Map)),
-            "translate" => Some(Some(Mode::Translate)),
-            "off" => Some(None),
+            "map" => Some(Ask::Grab(Mode::Map)),
+            "translate" => Some(Ask::Grab(Mode::Translate)),
+            "pass" => Some(Ask::Pass),
+            "off" => Some(Ask::Off),
             _ => None,
         }
     }
 }
+
+/// The keys an input method edits its composition with: Enter, Esc,
+/// Backspace, Tab, the arrows, Space and the digits (its candidates).
+/// After a key that typed on a layout with an input method, these pass to
+/// it until the GUI says no composition is open (IME_WAIT at most): its
+/// composition event may come after the next key.
+const EDITING: [u32; 10] = [
+    0x1C, 0xE01C, 0x01, 0x0E, 0x0F, 0xE048, 0xE050, 0xE04B, 0xE04D, 0x39,
+];
+
+/// Whether a key edits an input method's composition (`EDITING`, the
+/// digit row 1–0 too).
+fn edits(code: u32) -> bool {
+    EDITING.contains(&code) || (0x02..=0x0B).contains(&code)
+}
+
+/// How long after a key that typed on an input-method layout the editing
+/// keys pass, unless the GUI says sooner that nothing is composed.
+const IME_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// One key the hook took for a viewer, as `kyokai_keyboard_read` passes it
 /// to the GUI.
@@ -110,7 +143,8 @@ const PASS: Verdict = Verdict {
 };
 
 /// One viewer window's grab: its mode, the keys it sent down (released
-/// when the grab ends or the window leaves the front), and AltGr.
+/// when the grab ends or the window leaves the front), AltGr, and the
+/// controller's input method.
 #[derive(Debug)]
 pub struct Grab {
     pub mode: Mode,
@@ -119,6 +153,13 @@ pub struct Grab {
     altgr_next: bool,
     /// AltGr is held (Translate: it stays the controller's).
     altgr: bool,
+    /// The controller's input method composes (`Ask::Pass`): every press
+    /// passes to it.
+    pub passing: bool,
+    /// When a key that typed on an input-method layout passed (Translate):
+    /// the editing keys pass for IME_WAIT unless the GUI says first that
+    /// nothing is composed.
+    pub ime_typed: Option<std::time::Instant>,
 }
 
 impl Grab {
@@ -128,20 +169,35 @@ impl Grab {
             sent: BTreeSet::new(),
             altgr_next: false,
             altgr: false,
+            passing: false,
+            ime_typed: None,
         }
+    }
+
+    /// Takes the GUI's word on the input method: composing (`Ask::Pass`)
+    /// or not (asked to grab again in the same mode).
+    pub fn composing(&mut self, on: bool) {
+        self.passing = on;
+        self.ime_typed = None;
     }
 
     /// Decides one key event of the window in front.
     /// Inputs: `code` from `scan_code` (None for a made-up key); `types`
     /// tells whether the key makes a character on the controller's layout
-    /// with the modifiers held (asked only in Translate mode).
+    /// with the modifiers held (asked only in Translate mode); `ime`
+    /// whether that layout has an input method (asked only for a key that
+    /// types).
     /// Notes: a release is sent exactly when its press was; a repeat of a
-    /// sent key stays sent.
+    /// sent key stays sent; while the controller's input method composes,
+    /// or may have begun to after a key it typed, its keys stay with it
+    /// (regression: Enter, Esc and Backspace went to the host, so a
+    /// composition never ended and swallowed every later key).
     pub fn route(
         &mut self,
         code: Option<u32>,
         down: bool,
         types: impl FnOnce() -> bool,
+        ime: impl FnOnce() -> bool,
     ) -> Verdict {
         let Some(code) = code else {
             if down {
@@ -165,12 +221,22 @@ impl Grab {
                 false => PASS,
             };
         }
+        if self.passing && !self.sent.contains(&code) {
+            return PASS;
+        }
         if self.mode == Mode::Translate {
             if code == RIGHT_ALT && (altgr_next || self.altgr) {
                 self.altgr = true;
                 return PASS;
             }
+            let composing = self.ime_typed.is_some_and(|t| t.elapsed() < IME_WAIT);
+            if composing && edits(code) && !self.sent.contains(&code) {
+                return PASS;
+            }
             if !self.passes(code) && !self.sent.contains(&code) && types() {
+                if ime() {
+                    self.ime_typed = Some(std::time::Instant::now());
+                }
                 return PASS;
             }
         }
@@ -195,7 +261,7 @@ pub use windows_impl::{grab, next};
 /// Grabs the keyboard for a viewer window. Not available here.
 /// Returns: false.
 #[cfg(not(any(windows, target_os = "macos")))]
-pub fn grab(_window: usize, _mode: Option<Mode>) -> bool {
+pub fn grab(_window: usize, _ask: Ask) -> bool {
     false
 }
 
@@ -283,34 +349,46 @@ mod mac_impl {
     /// The tap, to switch it on again when macOS turned it off.
     static TAP: AtomicPtr<CFMachPort> = AtomicPtr::new(std::ptr::null_mut());
 
-    /// Grabs the keyboard for a viewer window in a mode, or ends its grab
-    /// (`mode` None).
+    /// Grabs the keyboard for a viewer window in a mode, passes its keys to
+    /// the controller's input method while it composes (`Ask::Pass`), or
+    /// ends its grab (`Ask::Off`).
     /// Returns: whether the tap runs for it (false without the
     /// Accessibility permission, or for an ended grab).
     /// Side effects: starts the tap on a thread of its own with the first
     /// grab and stops it with the last; queues the release of the keys a
     /// window's grab held when its grab ends or changes mode.
-    pub fn grab(window: usize, mode: Option<Mode>) -> bool {
+    pub fn grab(window: usize, ask: Ask) -> bool {
         let Ok(mut guard) = STATE.lock() else {
             return false;
         };
         let st = guard.get_or_insert_with(State::default);
         st.caps = crate::mac::caps_lock();
-        if st
-            .windows
-            .get(&window)
-            .is_some_and(|g| Some(g.mode) != mode)
-        {
+        let keeps = |g: &Grab| match ask {
+            Ask::Grab(mode) => g.mode == mode,
+            Ask::Pass => true,
+            Ask::Off => false,
+        };
+        if st.windows.get(&window).is_some_and(|g| !keeps(g)) {
             st.release(window);
             st.windows.remove(&window);
         }
-        match mode {
-            Some(mode) => {
-                st.windows.entry(window).or_insert_with(|| Grab::new(mode));
+        match ask {
+            Ask::Grab(mode) => {
+                st.windows
+                    .entry(window)
+                    .or_insert_with(|| Grab::new(mode))
+                    .composing(false);
                 st.front = Some(window);
             }
-            None if st.front == Some(window) => st.front = None,
-            None => {}
+            Ask::Pass => {
+                st.windows
+                    .entry(window)
+                    .or_insert_with(|| Grab::new(Mode::Translate))
+                    .composing(true);
+                st.front = Some(window);
+            }
+            Ask::Off if st.front == Some(window) => st.front = None,
+            Ask::Off => {}
         }
         match (st.windows.is_empty(), st.run_loop.is_some()) {
             (true, true) => {
@@ -328,11 +406,12 @@ mod mac_impl {
             },
             _ => {}
         }
-        mode.is_some()
+        ask != Ask::Off
     }
 
-    /// How long after the GUI last asked for a key the tap still takes keys.
-    const READER_GONE: Duration = Duration::from_secs(3);
+    /// How long after the GUI last asked for a key the tap still takes keys:
+    /// a GUI that stopped reading never traps the keyboard for longer.
+    const READER_GONE: Duration = Duration::from_secs(1);
 
     /// Waits up to `timeout` for the next key taken for a viewer.
     pub fn next(timeout: Duration) -> Option<KeyEvent> {
@@ -454,7 +533,7 @@ mod mac_impl {
         {
             return false;
         }
-        let Ok(mut guard) = STATE.lock() else {
+        let Ok(mut guard) = STATE.try_lock() else {
             return false;
         };
         let Some(st) = guard.as_mut() else {
@@ -506,7 +585,9 @@ mod mac_impl {
         let Some(grab) = st.windows.get_mut(&window) else {
             return false;
         };
-        let verdict = grab.route(Some(code), down, || types(e));
+        // The tap does not tell a Mac's input method apart: the GUI's
+        // composition (Ask::Pass) covers it.
+        let verdict = grab.route(Some(code), down, || types(e), || false);
         if let Some((code, down)) = verdict.send {
             st.push(window, code, down);
         }
@@ -673,15 +754,17 @@ mod windows_impl {
     static STATE: Mutex<Option<State>> = Mutex::new(None);
     static READY: Condvar = Condvar::new();
 
-    /// Grabs the keyboard for a viewer window in a mode, or ends its grab
-    /// (`mode` None). Keys are taken only while that window is in front.
+    /// Grabs the keyboard for a viewer window in a mode, passes its keys to
+    /// the controller's input method while it composes (`Ask::Pass`), or
+    /// ends its grab (`Ask::Off`). Keys are taken only while that window is
+    /// in front.
     /// Returns: whether the hook runs for it (false when it cannot be
     /// installed, or for an ended grab).
     /// Side effects: installs the hook on a thread of its own with the
     /// first grab and removes it with the last; reads the lock keys'
     /// state on the calling thread (the GUI's); queues the release of the
     /// keys the window's grab held when its grab ends or changes mode.
-    pub fn grab(window: usize, mode: Option<Mode>) -> bool {
+    pub fn grab(window: usize, ask: Ask) -> bool {
         let Ok(mut guard) = STATE.lock() else {
             return false;
         };
@@ -693,14 +776,30 @@ mod windows_impl {
         }
         let old = st.windows.remove(&window);
         if let Some(mut old) = old {
-            if Some(old.mode) == mode {
-                st.windows.insert(window, old);
-            } else {
-                st.release(window, &mut old);
+            match ask {
+                Ask::Grab(mode) if old.mode == mode => {
+                    old.composing(false);
+                    st.windows.insert(window, old);
+                }
+                Ask::Pass => {
+                    old.composing(true);
+                    st.windows.insert(window, old);
+                }
+                _ => st.release(window, &mut old),
             }
         }
-        if let Some(mode) = mode {
-            st.windows.entry(window).or_insert_with(|| Grab::new(mode));
+        match ask {
+            Ask::Grab(mode) => {
+                st.windows.entry(window).or_insert_with(|| Grab::new(mode));
+            }
+            Ask::Pass => {
+                st.windows.entry(window).or_insert_with(|| {
+                    let mut g = Grab::new(Mode::Translate);
+                    g.composing(true);
+                    g
+                });
+            }
+            Ask::Off => {}
         }
         match (st.windows.is_empty(), st.thread) {
             (true, Some(thread)) => {
@@ -717,11 +816,24 @@ mod windows_impl {
             },
             _ => {}
         }
-        mode.is_some()
+        ask != Ask::Off
     }
 
-    /// How long after the GUI last asked for a key the hook still takes keys.
-    const READER_GONE: Duration = Duration::from_secs(3);
+    /// How long after the GUI last asked for a key the hook still takes keys:
+    /// a GUI that stopped reading (stuck, or gone) never traps the keyboard
+    /// for longer.
+    const READER_GONE: Duration = Duration::from_secs(1);
+
+    /// Whether the keyboard layout of a window has an input method: the
+    /// Chinese, Japanese and Korean layouts (by their primary language).
+    fn ime_layout(window: HWND) -> bool {
+        // SAFETY: plain queries of the window's thread and its layout.
+        unsafe {
+            let layout = GetKeyboardLayout(GetWindowThreadProcessId(window, None));
+            let lang = layout.0 as usize & 0x3FF;
+            matches!(lang, 0x04 | 0x11 | 0x12)
+        }
+    }
 
     /// Waits up to `timeout` for the next key taken for a viewer.
     pub fn next(timeout: Duration) -> Option<KeyEvent> {
@@ -818,7 +930,10 @@ mod windows_impl {
         let code = scan_code(info.vkCode, info.scanCode, extended, |vk| unsafe {
             MapVirtualKeyW(vk, MAPVK_VK_TO_VSC_EX)
         });
-        let Ok(mut guard) = STATE.lock() else {
+        // The hook never waits: a key that comes while the GUI's call holds
+        // the state passes on (Windows ends a hook that takes too long, and
+        // a waiting hook stalls every program's keyboard).
+        let Ok(mut guard) = STATE.try_lock() else {
             return false;
         };
         let Some(st) = guard.as_mut() else {
@@ -856,17 +971,25 @@ mod windows_impl {
         if info.flags.0 & LLKHF_INJECTED.0 != 0 {
             return false;
         }
-        // Nobody reads the keys (the GUI's reader ended): take none.
+        // Nobody reads the keys (the GUI's reader ended or is stuck): take
+        // none, and let go of what was taken.
         if st.read.is_none_or(|t| t.elapsed() > READER_GONE) {
+            if let Some(mut g) = st.windows.remove(&window) {
+                st.release(window, &mut g);
+                st.windows.insert(window, g);
+            }
             return false;
         }
         let caps = st.caps;
         let Some(grab) = st.windows.get_mut(&window) else {
             return false;
         };
-        let verdict = grab.route(code, down, || {
-            types(front, info.vkCode, info.scanCode, caps)
-        });
+        let verdict = grab.route(
+            code,
+            down,
+            || types(front, info.vkCode, info.scanCode, caps),
+            || ime_layout(front),
+        );
         if let Some((code, down)) = verdict.send {
             st.push(window, code, down);
         }
@@ -912,10 +1035,84 @@ mod tests {
 
     #[test]
     fn modes_cross_by_name() {
-        assert_eq!(Mode::from_name("map"), Some(Some(Mode::Map)));
-        assert_eq!(Mode::from_name("translate"), Some(Some(Mode::Translate)));
-        assert_eq!(Mode::from_name("off"), Some(None));
-        assert_eq!(Mode::from_name("legacy"), None);
+        assert_eq!(Ask::from_name("map"), Some(Ask::Grab(Mode::Map)));
+        assert_eq!(
+            Ask::from_name("translate"),
+            Some(Ask::Grab(Mode::Translate))
+        );
+        assert_eq!(Ask::from_name("pass"), Some(Ask::Pass));
+        assert_eq!(Ask::from_name("off"), Some(Ask::Off));
+        assert_eq!(Ask::from_name("legacy"), None);
+    }
+
+    /// Translate with an input method: a key that types starts a
+    /// composition, after which the editing keys pass to it until the GUI
+    /// says nothing is composed; while it composes (`pass`) every key does;
+    /// a key sent down before is still released through the grab
+    /// (regression: Enter, Esc and Backspace went to the host, and the
+    /// composition swallowed every later key).
+    #[test]
+    fn an_input_method_keeps_its_keys_in_translate() {
+        let sent = |c, d| Some((c, d));
+        // (code, down, types, ime layout, send, swallow)
+        type Ime = (u32, bool, bool, bool, Option<(u32, bool)>, bool);
+        let steps: &[Ime] = &[
+            // Shift goes both ways, as without an input method.
+            (0x2A, true, false, true, sent(0x2A, true), false),
+            // "n" types on a Pinyin layout: the input method composes.
+            (0x31, true, true, true, None, false),
+            (0x31, false, true, true, None, false),
+            // Enter, Backspace, Esc and the arrows edit the composition.
+            (0x1C, true, false, true, None, false),
+            (0x1C, false, false, true, None, false),
+            (0x0E, true, false, true, None, false),
+            (0x01, true, false, true, None, false),
+            (0xE04B, true, false, true, None, false),
+            // A shortcut key that does not edit goes to the host.
+            (0xE053, true, false, true, sent(0xE053, true), true),
+            (0xE053, false, false, true, sent(0xE053, false), true),
+            // Shift's release, sent down before, still reaches the host.
+            (0x2A, false, false, true, sent(0x2A, false), false),
+        ];
+        let mut g = Grab::new(Mode::Translate);
+        for (i, &(code, down, types, ime, send, swallow)) in steps.iter().enumerate() {
+            let v = g.route(Some(code), down, || types, || ime);
+            assert_eq!(v, Verdict { send, swallow }, "step {i}");
+        }
+        // The GUI says nothing is composed: Enter goes to the host again.
+        g.composing(false);
+        let v = g.route(Some(0x1C), true, || false, || true);
+        assert_eq!(v.send, Some((0x1C, true)));
+        g.route(Some(0x1C), false, || false, || true);
+        // The race window ends by itself after IME_WAIT.
+        g.route(Some(0x31), true, || true, || true);
+        g.ime_typed = Some(std::time::Instant::now() - IME_WAIT);
+        assert_eq!(
+            g.route(Some(0x1C), true, || false, || true).send,
+            Some((0x1C, true))
+        );
+        g.route(Some(0x1C), false, || false, || true);
+        // While the GUI sees a composition (`pass`), every key passes, a
+        // shortcut too; a key down from before is released through the grab.
+        g.route(Some(0x1D), true, || false, || false);
+        g.composing(true);
+        for code in [0x1C, 0x01, 0x2E, 0xE05B] {
+            assert_eq!(g.route(Some(code), true, || false, || false), PASS);
+        }
+        assert_eq!(
+            g.route(Some(0x1D), false, || false, || false),
+            Verdict {
+                send: Some((0x1D, false)),
+                swallow: false
+            }
+        );
+        // A layout without an input method opens no race window.
+        let mut g = Grab::new(Mode::Translate);
+        g.route(Some(0x1E), true, || true, || false);
+        assert_eq!(
+            g.route(Some(0x1C), true, || false, || false).send,
+            Some((0x1C, true))
+        );
     }
 
     /// One step of a key sequence: the code (None: made up), press, whether
@@ -999,7 +1196,7 @@ mod tests {
         for (mode, steps) in cases {
             let mut g = Grab::new(mode);
             for (i, &(code, down, types, send, swallow)) in steps.iter().enumerate() {
-                let v = g.route(code, down, || types);
+                let v = g.route(code, down, || types, || false);
                 assert_eq!(v, Verdict { send, swallow }, "{mode:?} step {i}");
             }
         }

@@ -188,7 +188,14 @@ when `SCREENSHOT_DIR` is set.
   bitrate, what encodes and what decodes, each in hardware or software as it reports, and where
   the time goes (the host's encoding, the network, this computer's decoding and drawing, the frame
   rate against the host's target) — or, for the test pattern of a host that may not record its
-  screen, a warning sign saying "this is a placeholder picture". After a choice in the toolbar the
+  screen, a warning sign saying "this is a placeholder picture". Before the first picture the
+  picture area says "Waiting for the picture…"; when no picture came for 2 seconds although the
+  host sends frames, a strip near the picture's bottom edge says "Recovering the picture…" over
+  the last one. After 3 seconds of either, a session with `control-input` also says the screen
+  there may be asleep, with **Wake it** ([computer-use.md](computer-use.md), "Sleep"). While the
+  engine refuses input as behind, the path is led by "Input paused — the connection is behind" in
+  the warning colour, and the keyboard grab steps aside after half a second
+  ([computer-use.md](computer-use.md), "Input"). After a choice in the toolbar the
   picture takes the keyboard again; the mouse, the wheel and the keyboard on the picture go to the
   host ([computer-use.md](computer-use.md)), a press on the toolbar never does. The quality preset,
   frame-rate cap, Fit or Original size, Full colour, Codec, Swap Ctrl and Cmd, the clipboard switch
