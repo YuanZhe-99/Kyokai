@@ -4163,8 +4163,9 @@ mod tests {
             sent.extend(crate::input::take_sent(ours));
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-        if sent.is_empty() {
-            // The injector drops keys while a Kyokai window is in front.
+        // The injector drops presses while a Kyokai window is in front (its
+        // releases always pass, so nothing stays held): nothing to compare.
+        if sent.iter().all(|s| s.2 & 0x2 != 0) {
             controller.sessions.close(id).unwrap();
             return;
         }
