@@ -37,7 +37,7 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 | 5 | 控制端 → 被控端 | `login`：被密码打开的槽位及其凭据终结消息，以及控制端的说明（`about`：别名、厂商、型号、系统）；两个都打不开时不带槽位 |
 | 6 | 被控端 → 控制端 | `verdict`：接受并附上授予的权限、恢复令牌、被控端的说明（`about`）以及控制端如何接入（`via`：`key` 并附上接入所用的 `key`、`password`、`confirmation` 或 `resume`；0.4.0 不发送），或以原因名称拒绝（`password`、`denied`、`timeout`、`busy`、`rate-limited`、`absent`：无人能确认，`service-down`：隧道的服务没有应答） |
 
-一次失败的 `login` 计为一次失败（[identity-and-access.md](identity-and-access.md)）。密码正确后，若请求在密码授予的权限之内，被控端立即答复，
+一次失败的 `login` 计为一次失败（[identity-and-access.md](identity-and-access.md)）。拒绝的被控端会冲刷其结果，并保持连接打开，直到控制端关闭它（最多 3 秒）：否则在关闭套接字时丢弃未发出字节的数据面会让拒绝原因丢失。密码正确后，若请求在密码授予的权限之内，被控端立即答复，
 否则先请它的用户确认（最多 60 秒）再给出结果。不带凭据请求的 `client_hello` 跳过第 4、5 帧：被控端请它的用户确认，并以第 4 帧发送结果。
 
 ## 密钥登录

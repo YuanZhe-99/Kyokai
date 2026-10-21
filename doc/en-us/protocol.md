@@ -46,7 +46,9 @@ the controller sends one credential request per slot, both from the password the
 | 5 | controller → host | `login`: the slot whose response the password opened and its credential finalization with the controller's description (`about`: name, maker, model, system), or no slot when neither opened |
 | 6 | host → controller | `verdict`: accepted with the granted permissions, a resume token, the host's description (`about`) and how the controller got in (`via`: `key` with the admitting `key`, `password`, `confirmation` or `resume`; absent from 0.4.0), or refused with a reason name (`password`, `denied`, `timeout`, `busy`, `rate-limited`, `absent`: nobody can confirm, `service-down`: a tunnel's service did not answer) |
 
-A failed `login` counts as one failure ([identity-and-access.md](identity-and-access.md)). After a
+A failed `login` counts as one failure ([identity-and-access.md](identity-and-access.md)). A host that
+refuses flushes its verdict and keeps the connection open until the controller closed it (at most 3
+seconds): a data plane that drops unsent bytes with its socket would otherwise lose the reason. After a
 correct password the host answers at once when the request is within its password grants, and
 otherwise asks its user (up to 60 seconds) before the verdict. A `client_hello` without credential
 requests skips frames 4 and 5: the host asks its user and sends the verdict as frame 4.
