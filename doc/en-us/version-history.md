@@ -1,12 +1,19 @@
 # Version history
 
-## 0.4.1 (2026-10-21, test build)
+## 0.5.0 (2026-10-21)
 
+- A device has routes: the Kyokai network and any number of IP addresses or domain names, added
+  from its card (⋯ → Addresses…) or by connecting to one. Auto picks the best at every connection
+  and reconnection, by the delay it measures then and how each route went before (the bitrate the
+  host settled on, recent failures), trying the next one 300 ms later when one is slow to answer
+  and skipping an address where another device answers; a route can be chosen by hand. The card
+  and the viewer show the route in use. Hosts need no update (nothing changes on the wire).
+  Connecting by Device ID no longer forgets a device's address.
 - A run-mode switch moves everything: the move carried only the setting name networks had before
   0.3.2, so networks, saved passwords and access settings stayed behind and Helper mode looked like
   another device. The whole store and its files now move, another identity with its own settings
   is never replaced unasked, an engine whose store moved out stays parked instead of making a new
-  identity, and the Windows helper removes itself without a prompt. The first start of 0.4.1 removes
+  identity, and the Windows helper removes itself without a prompt. The first start of 0.5.0 removes
   what earlier switches left in the run mode not in use.
 - The picture never waits for one lost message: a key frame dropped at high latency (the helper
   path at about 230 ms froze the picture while the delay looked normal) is asked for again at every
@@ -41,8 +48,8 @@
 - Network: every node refuses EasyTier's QUIC and KCP proxy input and foreign networks; Try direct
   connections moves into Advanced with a warning; latency-first routing. Loading indicators from
   MyGo's loading plugin everywhere.
-- Protocol 10 with feature announcements (`key-login`, `tunnel`, `status`, `input-sync`): 0.4.1 and
-  0.4.0 connect both ways with what both have (checked); local API 2; ABI 5.
+- Protocol 10 with feature announcements (`key-login`, `tunnel`, `status`, `input-sync`): 0.5.0 (and
+  the 0.4.1 test build) and 0.4.0 connect both ways with what both have (checked); local API 2; ABI 5.
 - Upstream versions: MyGo v0.6.2 (from v0.5.5); EasyTier v2.7.0, RustDesk 1.5.0 (vendored code),
   Rust 1.99.1 checked, unchanged; vcpkg 2026.10.16 (from 2026.07.29: aom 3.15.2, Opus 1.6.1, libvpx
   1.16.0 unchanged).
