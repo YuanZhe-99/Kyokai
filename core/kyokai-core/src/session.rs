@@ -4033,6 +4033,11 @@ mod tests {
         }
         let s = session(&controller, id);
         assert_eq!(s["state"], "closed", "{s}");
+        // The host unmarks its side on its own task too.
+        let until = Instant::now() + Duration::from_secs(2);
+        while host.sessions.any_connected() && Instant::now() < until {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
         assert!(!host.sessions.any_connected());
     }
 
