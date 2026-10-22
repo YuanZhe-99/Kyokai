@@ -4724,6 +4724,16 @@ func (msgs Messages) SettingsSoundUnnamed() string {
 	return Catalog.Format(msgs.locale, "SettingsSoundUnnamed", nil)
 }
 
+// SettingsStartHidden says "Start in the tray when opened at login"
+// in the language the app shows.
+func SettingsStartHidden() string { return In(i18n.Locale()).SettingsStartHidden() }
+
+// SettingsStartHidden says "Start in the tray when opened at login"
+// in the language of msgs.
+func (msgs Messages) SettingsStartHidden() string {
+	return Catalog.Format(msgs.locale, "SettingsStartHidden", nil)
+}
+
 // SettingsTheme says "Appearance"
 // in the language the app shows.
 func SettingsTheme() string { return In(i18n.Locale()).SettingsTheme() }

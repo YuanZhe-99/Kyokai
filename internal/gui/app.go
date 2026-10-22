@@ -406,6 +406,34 @@ func (a *App) Focus() {
 	w.Focus()
 }
 
+// When, after a start in the tray, KeepHidden looks whether the main
+// window stayed hidden.
+var keepHiddenChecks = []time.Duration{time.Second, 3 * time.Second, 10 * time.Second, 30 * time.Second}
+
+// KeepHidden hides the main window again when, in the first half minute
+// after a start in the tray, something other than Kyokai showed it.
+// Side effects: a goroutine; hides the window (main thread, through MyGo).
+// Notes: started at Windows sign-in, the window came up as a blank frame
+// that MyGo had never drawn and Kyokai took for hidden, until Show Kyokai;
+// what shows it was not found. Once Kyokai shows the window it stops.
+func (a *App) KeepHidden() {
+	go func() {
+		start := time.Now()
+		for _, at := range keepHiddenChecks {
+			time.Sleep(time.Until(start.Add(at)))
+			a.mu.Lock()
+			w, shown := a.window, a.visible
+			a.mu.Unlock()
+			if shown {
+				return
+			}
+			if w.IsVisible() {
+				w.Hide()
+			}
+		}
+	}()
+}
+
 // Quit ends the app; the engine stops with it.
 func (a *App) Quit() {
 	a.mu.Lock()

@@ -467,6 +467,7 @@
   "SettingsSoundSourceHint": "控制本机的设备听到的声音：本机正在播放的声音，或麦克风等输入。",
   "SettingsSoundSystem": "本机正在播放的声音",
   "SettingsSoundUnnamed": "未命名的输入",
+  "SettingsStartHidden": "登录时启动后隐藏到托盘",
   "SettingsTheme": "外观",
   "SignInHint": "勾选的每一种方式都能让其他设备以正确密码所授予的权限进入。可任意组合；一项都不勾选时，每次连接都会询问你。",
   "SignInNone": "什么都没勾选：每次连接都会询问你；电脑前没人时，谁都进不来。",

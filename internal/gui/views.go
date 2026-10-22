@@ -291,6 +291,13 @@ func (a *App) generalSettings(c *ui.Context) {
 				a.mu.Unlock()
 			}
 		})
+		tray := !p.ShowAtLogin
+		settingRow(c, "login-tray", L.SettingsStartHidden(), "", func() {
+			if ui.Switch(c.Key("login-tray-sw"), &tray).Label(L.SettingsStartHidden()).Changed() {
+				p.ShowAtLogin = !tray
+				a.setPrefs(p)
+			}
+		})
 		closeIdx := 0
 		if p.CloseQuits {
 			closeIdx = 1

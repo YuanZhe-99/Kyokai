@@ -54,6 +54,23 @@ func TestCaptureDefault(t *testing.T) {
 	}
 }
 
+// TestStartHiddenDefault: a start at login stays in the tray unless the
+// person chose to open the window, older preferences included.
+func TestStartHiddenDefault(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(prefsPath(dir), []byte(`{"theme":"dark"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &App{prefs: loadPrefs(dir)}
+	if !a.StartHidden() {
+		t.Fatal("older preferences file: window opened at login")
+	}
+	a.prefs.ShowAtLogin = true
+	if a.StartHidden() {
+		t.Fatal("chosen window not opened at login")
+	}
+}
+
 func TestGrouping(t *testing.T) {
 	cases := []struct {
 		f        func(string) string

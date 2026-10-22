@@ -10,7 +10,8 @@ On Windows, run the installer: it installs for your user only and asks for no ad
 Kyokai starts with its window and an icon in the notification area; closing the window keeps it
 running there (General can make the close button quit instead). Kyokai does not start
 with Windows unless you switch on "Open at login"; started at login, it opens no window and waits
-in the notification area (the menu bar on a Mac).
+in the notification area (the menu bar on a Mac), unless you switch off "Start in the tray when opened
+at login".
 
 On macOS, open the disk image and drag Kyokai to Applications. Kyokai is signed but not notarized
 by Apple, so macOS may call the downloaded app damaged: run

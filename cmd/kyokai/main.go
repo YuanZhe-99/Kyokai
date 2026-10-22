@@ -50,11 +50,11 @@ func main() {
 		}
 	})
 	mygo.App.WhenReady(func() {
-		// Opened at login, Kyokai starts in the tray without a window. Asked
-		// once ready: macOS tells a login item so only as the app finishes
-		// launching (regression: asked before, it read false and the window
-		// came up at every login).
-		hidden := mygo.App.WasOpenedAtLogin()
+		// Opened at login, Kyokai starts in the tray without a window unless
+		// General says otherwise. Asked once ready: macOS tells a login item
+		// so only as the app finishes launching (regression: asked before, it
+		// read false and the window came up at every login).
+		hidden := mygo.App.WasOpenedAtLogin() && a.StartHidden()
 		mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
 			{Role: mygo.RoleAppMenu},
 			{Role: mygo.RoleEditMenu},
@@ -80,6 +80,9 @@ func main() {
 			w.Show()
 		}
 		a.SetVisible(!hidden)
+		if hidden {
+			a.KeepHidden()
+		}
 		tray := a.NewTray()
 		a.SetTray(tray)
 		w.OnClose(a.HandleClose)

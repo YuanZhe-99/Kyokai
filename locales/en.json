@@ -792,6 +792,7 @@
   "SettingsSoundSourceHint": "What devices that control this one hear: what this computer plays, or an input such as a microphone.",
   "SettingsSoundSystem": "What this computer plays",
   "SettingsSoundUnnamed": "Unnamed input",
+  "SettingsStartHidden": "Start in the tray when opened at login",
   "SettingsTheme": "Appearance",
   "SignInHint": "Each one checked lets another device in with what a correct password grants. Check any combination; with none checked, every connection asks you.",
   "SignInNone": "Nothing is checked: every connection asks you, and with nobody at this computer no one gets in.",

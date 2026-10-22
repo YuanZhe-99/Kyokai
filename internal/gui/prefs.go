@@ -17,6 +17,9 @@ type Prefs struct {
 	Language string `json:"language,omitempty"`
 	// CloseQuits makes the close button quit instead of hiding to the tray.
 	CloseQuits bool `json:"close_quits,omitempty"`
+	// ShowAtLogin opens the window when Kyokai starts at login; off (the zero
+	// value) starts it in the tray.
+	ShowAtLogin bool `json:"show_at_login,omitempty"`
 	// ShowInCapture lets screenshots, screen sharing, other remote-desktop
 	// tools, Kyokai's own video and the AI's screenshots see Kyokai's
 	// windows. Off (the zero value) keeps them out of every capture.
@@ -114,6 +117,13 @@ func (a *App) ThemePref() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.prefs.Theme
+}
+
+// StartHidden reports whether a start at login stays in the tray.
+func (a *App) StartHidden() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !a.prefs.ShowAtLogin
 }
 
 // LanguagePref is the remembered interface language ("" follows the system).

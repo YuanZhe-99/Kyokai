@@ -467,6 +467,7 @@
   "SettingsSoundSourceHint": "控制本機的裝置聽到的聲音：本機正在播放的聲音，或麥克風等輸入。",
   "SettingsSoundSystem": "本機正在播放的聲音",
   "SettingsSoundUnnamed": "未命名的輸入",
+  "SettingsStartHidden": "登入時啟動後隱藏到系統匣",
   "SettingsTheme": "外觀",
   "SignInHint": "勾選的每一種方式都能讓其他裝置以正確密碼所授予的權限進入。可任意組合；一項都不勾選時，每次連線都會詢問你。",
   "SignInNone": "什麼都沒勾選：每次連線都會詢問你；電腦前沒人時，誰都進不來。",
