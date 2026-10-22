@@ -1,5 +1,35 @@
 # Version history
 
+## 0.5.1 (2026-10-21)
+
+- Remote Desktop, VNC and SSH: a refused connection no longer opens an extra connection tab asking
+  for the Kyokai password, and Home no longer counts a service connection as the device's desktop
+  connection.
+- VNC: a server that closes the connection during a sign-in (a Mac's Screen Sharing after failed
+  ones) is a refused sign-in, not "The connection could not be opened".
+- SSH: a refused or dropped sign-in says so, a server that holds the sign-in (a Mac's OpenSSH after
+  failed ones) is named with what to do, and a password the server refused is not sent again in the
+  same connection.
+- Remote Desktop, VNC and SSH ask how to sign in the first time, before anything is dialed — SSH:
+  Key or Password; VNC: Password only, User name and password (a Mac's) or No sign-in; Remote
+  Desktop: User name and password or On the remote screen —, and nothing else is tried (no key
+  before a password, no blank password). With Remember, the next connection signs in the same way
+  without asking, and asks again only if that fails.
+- A computer's SSH, Remote Desktop and VNC may run on other ports: its user sets them under
+  Permissions, "Ports of this computer's services"; another device only picks the service and
+  reaches no other port. Home looks for the services on those ports.
+- A tunnel that ended cleanly is no longer sometimes reported as broken (the far side's last reply
+  could fail on a connection its peer had just left).
+- Sign-in keys: every key is offered, the one a host admitted last first, so a host that no longer
+  takes it still finds the one it does.
+- With Hide Kyokai from capture off, Kyokai's own windows took no remote input when the helper had
+  been starting or parked as the app attached (after an update); the app's settings now reach the
+  engine once its core runs and are sent again until they arrive.
+- CI: MyGo's vet on macOS (the VideoToolbox decoder is freed in C) and a secret-scan false positive.
+- Protocol 10 and ABI 5, unchanged; local API 2 with added fields (`access.settings` and the status
+  `service_ports`, `credentials` `method`), which older engines ignore. Upstream versions: MyGo v0.6.2, EasyTier v2.7.0,
+  RustDesk 1.5.0 (vendored code), vcpkg 2026.10.16, Rust 1.99.1 checked, unchanged.
+
 ## 0.5.0 (2026-10-21)
 
 - A device has routes: the Kyokai network and any number of IP addresses or domain names, added
