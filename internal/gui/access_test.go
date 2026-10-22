@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -184,6 +185,89 @@ func TestKyokaiInputFollowsHideFromCapture(t *testing.T) {
 		capture, ok := engine.last(localapi.RequestCaptureShow)
 		if !ok || capture.Show == nil || *capture.Show != show {
 			t.Errorf("shown %v: capture.show %+v", show, capture.Show)
+		}
+	}
+}
+
+// parkedEngine streams a parked status until wake closes, then an ordinary
+// one, as a helper whose core starts only later does.
+type parkedEngine struct {
+	*recordEngine
+	wake chan struct{}
+}
+
+func (e parkedEngine) Stream(ctx context.Context, _ localapi.Request, send func(localapi.Response) error) {
+	_ = send(localapi.Response{Version: localapi.ProtocolVersion, OK: true, Status: &localapi.Status{Moved: "user"}})
+	select {
+	case <-e.wake:
+	case <-ctx.Done():
+		return
+	}
+	_ = send(localapi.Response{Version: localapi.ProtocolVersion, OK: true, Status: &localapi.Status{}})
+	<-ctx.Done()
+}
+
+// TestSettingsReachAnEngineOnceItRuns: the GUI's settings go to the engine
+// once its core runs, not before (regression: sent before attaching, they
+// were lost by a helper that was starting or parked, and Kyokai's windows
+// took no remote input with Hide Kyokai from capture off).
+func TestSettingsReachAnEngineOnceItRuns(t *testing.T) {
+	dir, err := os.MkdirTemp("", "ky")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "e.sock")
+	ln, err := localapi.ListenWith(localapi.ListenOptions{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	engine := parkedEngine{recordEngine: &recordEngine{}, wake: make(chan struct{})}
+	go localapi.ServeWith(ctx, ln, engine, localapi.Authorizer{OwnerUID: uint32(os.Getuid()), OwnerSID: localapi.CurrentSID()})
+
+	a := New("", t.TempDir(), path)
+	a.mu.Lock()
+	a.prefs.ShowInCapture = true
+	a.mu.Unlock()
+	go func() { _ = localapi.NewClient(path).Attach(ctx, a.attachedStatus(ctx)) }()
+	time.Sleep(300 * time.Millisecond)
+	if _, ok := engine.last(localapi.RequestInputKyokai); ok {
+		t.Fatal("settings sent to a parked engine")
+	}
+	close(engine.wake)
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		input, ok := engine.last(localapi.RequestInputKyokai)
+		if ok && input.KyokaiInput != nil && *input.KyokaiInput {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("input.kyokai never reached the engine once it ran")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	for _, typ := range []localapi.RequestType{localapi.RequestCaptureShow, localapi.RequestSoundSource, localapi.RequestLogs} {
+		if _, ok := engine.last(typ); !ok {
+			t.Errorf("%s never sent", typ)
+		}
+	}
+}
+
+// TestReached: a refusal came from the engine; a lost request did not.
+func TestReached(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want bool
+	}{
+		{nil, true},
+		{&localapi.RequestError{Message: "unknown request"}, true},
+		{fmt.Errorf("wrapped: %w", &localapi.RequestError{}), true},
+		{localapi.ErrNotRunning, false},
+		{context.DeadlineExceeded, false},
+	} {
+		if got := reached(c.err); got != c.want {
+			t.Errorf("reached(%v) = %v, want %v", c.err, got, c.want)
 		}
 	}
 }

@@ -5,6 +5,7 @@ package gui
 
 import (
 	"context"
+	"errors"
 	"log"
 	"runtime"
 	"sync"
@@ -206,24 +207,45 @@ func (a *App) setShowInCapture(p Prefs, show bool) {
 // windows' display affinity does the job). An engine of an older version
 // refuses what it does not know, which changes nothing: it keeps Kyokai's
 // windows guarded.
-func (a *App) sendCapture() {
+// Returns: whether both requests reached the engine (see reached).
+func (a *App) sendCapture() bool {
 	a.captureMu.Lock()
 	defer a.captureMu.Unlock()
 	a.mu.Lock()
 	show := a.prefs.ShowInCapture
 	a.mu.Unlock()
-	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestCaptureShow, Show: &show})
-	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestInputKyokai, KyokaiInput: &show})
+	_, err := a.requestWith(localapi.Request{Type: localapi.RequestCaptureShow, Show: &show})
+	_, err2 := a.requestWith(localapi.Request{Type: localapi.RequestInputKyokai, KyokaiInput: &show})
+	return reached(err) && reached(err2)
 }
 
 // sendLogs tells the engine whether to keep logs and connection history,
 // as the preferences say. An engine of an older version refuses the
 // request, which changes nothing.
-func (a *App) sendLogs() {
+// Returns: whether the request reached the engine (see reached).
+func (a *App) sendLogs() bool {
 	a.mu.Lock()
 	off := a.prefs.NoLogs
 	a.mu.Unlock()
-	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestLogs, LogsOff: &off})
+	_, err := a.requestWith(localapi.Request{Type: localapi.RequestLogs, LogsOff: &off})
+	return reached(err)
+}
+
+// sendSettings tells the engine what this GUI's preferences choose for it:
+// what its captures show, whether a person's remote input may reach
+// Kyokai's windows, the sound to share and whether to keep logs.
+// Returns: whether every request reached the engine.
+func (a *App) sendSettings() bool {
+	capture, sound, logs := a.sendCapture(), a.sendSoundSource(), a.sendLogs()
+	return capture && sound && logs
+}
+
+// reached reports whether a request's answer came from the engine: it
+// was served, or refused (an older engine keeps its own safe default), not
+// lost on the way (no engine yet, or one too busy starting to answer).
+func reached(err error) bool {
+	var refused *localapi.RequestError
+	return err == nil || errors.As(err, &refused)
 }
 
 // setNoLogs keeps no logs, crash traces or connection history from now
@@ -240,11 +262,13 @@ func (a *App) setNoLogs(p Prefs, off bool) {
 // sendSoundSource tells the engine which sound this device shares, as the
 // preferences say. An engine of an older version refuses the request,
 // which changes nothing.
-func (a *App) sendSoundSource() {
+// Returns: whether the request reached the engine (see reached).
+func (a *App) sendSoundSource() bool {
 	a.mu.Lock()
 	source := a.prefs.SoundSource
 	a.mu.Unlock()
-	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestSoundSource, SoundSource: &source})
+	_, err := a.requestWith(localapi.Request{Type: localapi.RequestSoundSource, SoundSource: &source})
+	return reached(err)
 }
 
 // setSoundSource keeps the sound to share and tells the engine; an input

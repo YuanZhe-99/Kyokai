@@ -172,19 +172,11 @@ func (a *App) connectLoop() {
 		if err != nil {
 			a.update(func() { a.connected, a.engineErr = false, err.Error() })
 		} else {
-			// The engine captures as the person chose (it starts hidden, and
-			// shares what the computer plays).
-			a.sendCapture()
-			a.sendSoundSource()
-			a.sendLogs()
 			attach, stop := context.WithCancel(a.ctx)
 			a.mu.Lock()
 			a.reattach = stop
 			a.mu.Unlock()
-			err := client.Attach(attach, func(st *localapi.Status) error {
-				a.statusPushed(st)
-				return nil
-			})
+			err := client.Attach(attach, a.attachedStatus(attach))
 			stop()
 			if a.ctx.Err() != nil {
 				return
@@ -199,6 +191,34 @@ func (a *App) connectLoop() {
 			return
 		case <-time.After(2 * time.Second):
 		}
+	}
+}
+
+// attachedStatus is what an attached session does with each status: takes
+// it, and with the first one from a running core (not parked) tells the
+// engine this GUI's settings (sendSettings), again each second until they
+// all arrive or the session ends.
+// Notes: the engine starts with Kyokai's windows hidden and guarded and
+// nothing shared. The settings once went before attaching, and a helper
+// that was starting (after an update) or parked lost them for good: Kyokai
+// showed in the picture but took no input, until the GUI restarted.
+func (a *App) attachedStatus(ctx context.Context) func(*localapi.Status) error {
+	sent := false
+	return func(st *localapi.Status) error {
+		a.statusPushed(st)
+		if !sent && st.Moved == "" {
+			sent = true
+			go func() {
+				for !a.sendSettings() {
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(time.Second):
+					}
+				}
+			}()
+		}
+		return nil
 	}
 }
 
