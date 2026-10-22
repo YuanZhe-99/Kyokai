@@ -239,19 +239,18 @@ func TestSettingsReachAnEngineOnceItRuns(t *testing.T) {
 		t.Fatal("settings sent to a parked engine")
 	}
 	close(engine.wake)
-	for deadline := time.Now().Add(5 * time.Second); ; {
-		input, ok := engine.last(localapi.RequestInputKyokai)
-		if ok && input.KyokaiInput != nil && *input.KyokaiInput {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("input.kyokai never reached the engine once it ran")
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	for _, typ := range []localapi.RequestType{localapi.RequestCaptureShow, localapi.RequestSoundSource, localapi.RequestLogs} {
-		if _, ok := engine.last(typ); !ok {
-			t.Errorf("%s never sent", typ)
+	// The settings go one after another: wait for each.
+	deadline := time.Now().Add(5 * time.Second)
+	for _, typ := range []localapi.RequestType{localapi.RequestInputKyokai, localapi.RequestCaptureShow, localapi.RequestSoundSource, localapi.RequestLogs} {
+		for {
+			req, ok := engine.last(typ)
+			if ok && (typ != localapi.RequestInputKyokai || req.KyokaiInput != nil && *req.KyokaiInput) {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s never reached the engine once it ran", typ)
+			}
+			time.Sleep(20 * time.Millisecond)
 		}
 	}
 }
