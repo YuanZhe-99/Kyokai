@@ -222,3 +222,78 @@ func TestSSHHostKeyAndPassword(t *testing.T) {
 		t.Fatalf("saved %+v, want the password and the trusted key", link.saved)
 	}
 }
+
+// An SSH server that refuses the password by "password" is not sent it
+// again by "keyboard-interactive", one that closes the connection during
+// the sign-in refused it, and one that never answers the sign-in is named
+// for it (regression: a Mac's OpenSSH answered a wrong password a minute
+// late, and the tab said only that the connection could not be opened).
+func TestSSHSignInFailures(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	form := &credForm{user: "yuan", password: "wrong"}
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	host, _ := ssh.NewSignerFromKey(priv)
+
+	// Refused by "password": no second try by "keyboard-interactive".
+	client, server := connPair(t)
+	prompts := make(chan string, 4)
+	go func() {
+		cfg := &ssh.ServerConfig{
+			PasswordCallback: func(ssh.ConnMetadata, []byte) (*ssh.Permissions, error) {
+				prompts <- "password"
+				return nil, errors.New("wrong password")
+			},
+			KeyboardInteractiveCallback: func(_ ssh.ConnMetadata, ask ssh.KeyboardInteractiveChallenge) (*ssh.Permissions, error) {
+				if answers, err := ask("", "", []string{"Password:"}, []bool{false}); err == nil && len(answers) == 1 {
+					prompts <- "keyboard-interactive"
+				}
+				return nil, errors.New("wrong password")
+			},
+		}
+		cfg.AddHostKey(host)
+		_, _, _, _ = ssh.NewServerConn(server, cfg)
+		close(prompts)
+	}()
+	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", form, nil, ""); !errors.Is(err, errSignInFailed) {
+		t.Fatalf("refused password: err %v", err)
+	}
+	var tried []string
+	for p := range prompts {
+		tried = append(tried, p)
+	}
+	if len(tried) != 1 || tried[0] != "password" {
+		t.Errorf("sign-ins tried %v, want the password once", tried)
+	}
+
+	// Closed during the sign-in: refused.
+	client, server = connPair(t)
+	go func() {
+		cfg := &ssh.ServerConfig{PasswordCallback: func(ssh.ConnMetadata, []byte) (*ssh.Permissions, error) {
+			server.Close()
+			return nil, errors.New("gone")
+		}}
+		cfg.AddHostKey(host)
+		_, _, _, _ = ssh.NewServerConn(server, cfg)
+	}()
+	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", form, nil, ""); !errors.Is(err, errSignInFailed) {
+		t.Fatalf("closed during sign-in: err %v", err)
+	}
+
+	// Never answered: no answer.
+	old := sshTimeout
+	sshTimeout = 500 * time.Millisecond
+	t.Cleanup(func() { sshTimeout = old })
+	client, server = connPair(t)
+	go func() {
+		cfg := &ssh.ServerConfig{PasswordCallback: func(ssh.ConnMetadata, []byte) (*ssh.Permissions, error) {
+			<-ctx.Done()
+			return nil, errors.New("late")
+		}}
+		cfg.AddHostKey(host)
+		_, _, _, _ = ssh.NewServerConn(server, cfg)
+	}()
+	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", form, nil, ""); !errors.Is(err, errNoAnswer) {
+		t.Fatalf("unanswered sign-in: err %v", err)
+	}
+}

@@ -409,6 +409,7 @@
   "ServiceEnded": "連線已結束。",
   "ServiceFailed": "無法建立連線。",
   "ServiceHostKeyChanged": "此裝置的 SSH 金鑰與之前不同。Kyokai 沒有傳送密碼。只有在你知道它為何改變時才信任新金鑰。",
+  "ServiceNoAnswer": "伺服器沒有回應登入。登入失敗後，伺服器可能會把新的登入擱置幾分鐘：請稍候幾分鐘，核對使用者名稱和密碼，然後重新連線。",
   "ServiceNoTunnel": "那台裝置上的 Kyokai 版本較舊：請在那台裝置上更新後再連線其服務。",
   "ServicePassword": "密碼",
   "ServiceRDP": "遠端桌面",

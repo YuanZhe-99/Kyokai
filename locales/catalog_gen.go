@@ -4138,6 +4138,16 @@ func (msgs Messages) ServiceHostKeyChanged() string {
 	return Catalog.Format(msgs.locale, "ServiceHostKeyChanged", nil)
 }
 
+// ServiceNoAnswer says "The server did not answer the sign-in. After failed sign-ins a server can hold new ones for several minutes: wait a f…"
+// in the language the app shows.
+func ServiceNoAnswer() string { return In(i18n.Locale()).ServiceNoAnswer() }
+
+// ServiceNoAnswer says "The server did not answer the sign-in. After failed sign-ins a server can hold new ones for several minutes: wait a f…"
+// in the language of msgs.
+func (msgs Messages) ServiceNoAnswer() string {
+	return Catalog.Format(msgs.locale, "ServiceNoAnswer", nil)
+}
+
 // ServiceNoTunnel says "That device runs an older Kyokai: update it there to reach its services."
 // in the language the app shows.
 func ServiceNoTunnel() string { return In(i18n.Locale()).ServiceNoTunnel() }

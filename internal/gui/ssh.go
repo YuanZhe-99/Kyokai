@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"net"
+	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -20,8 +22,8 @@ import (
 
 func init() { serviceDials[serviceSSH] = dialSSH }
 
-// sshTimeout bounds the SSH handshake and sign-in.
-const sshTimeout = 30 * time.Second
+// sshTimeout bounds the SSH handshake and sign-in (tests shorten it).
+var sshTimeout = 30 * time.Second
 
 // sshTerm is an SSH shell as the terminal's Conn: what the shell writes is
 // read, what is typed is written, and the terminal's size reaches the
@@ -149,7 +151,17 @@ func sshDial(ctx context.Context, link serviceLink, device, address string, type
 	seen := ""
 	auth := []ssh.AuthMethod{ssh.PublicKeysCallback(func() ([]ssh.Signer, error) { return engineSigners(ctx, link), nil })}
 	if password != "" {
-		auth = append(auth, ssh.Password(password), ssh.KeyboardInteractive(func(_, _ string, questions []string, echos []bool) ([]string, error) {
+		// One password, tried once: a server that refused it by "password"
+		// is not given it again by "keyboard-interactive", a second failure
+		// that a Mac answers a minute late and counts against this computer.
+		sent := false
+		auth = append(auth, ssh.PasswordCallback(func() (string, error) {
+			sent = true
+			return password, nil
+		}), ssh.KeyboardInteractive(func(_, _ string, questions []string, echos []bool) ([]string, error) {
+			if sent && slices.Contains(echos, false) {
+				return nil, errPasswordRefused
+			}
 			answers := make([]string, len(questions))
 			for i := range questions {
 				if !echos[i] {
@@ -168,16 +180,12 @@ func sshDial(ctx context.Context, link serviceLink, device, address string, type
 			return nil
 		}}
 	conn, chans, reqs, err := ssh.NewClientConn(tunnel, "localhost:22", cfg)
-	switch {
-	case errors.Is(err, errHostKeyChanged):
+	if err != nil {
 		_ = tunnel.Close()
-		return nil, seen, errHostKeyChanged
-	case err != nil && strings.Contains(err.Error(), "unable to authenticate"):
-		_ = tunnel.Close()
-		return nil, "", errSignInFailed
-	case err != nil:
-		_ = tunnel.Close()
-		return nil, "", err
+		if errors.Is(err, errHostKeyChanged) {
+			return nil, seen, errHostKeyChanged
+		}
+		return nil, "", sshSignInError(err, seen != "")
 	}
 	_ = tunnel.SetDeadline(time.Time{})
 	client := ssh.NewClient(conn, chans, reqs)
@@ -236,6 +244,27 @@ type sshClient struct {
 // ended. Tests replace it (the terminal loads libghostty-vt).
 var newTerminal = func(conn io.ReadWriteCloser, ended func()) (*terminal.Terminal, error) {
 	return terminal.New(terminal.Options{Conn: conn, OnExit: func(int) { ended() }})
+}
+
+// errPasswordRefused ends a sign-in whose password the server already
+// refused once in this connection.
+var errPasswordRefused = errors.New("the password was refused")
+
+// sshSignInError is what an SSH handshake's error means to its tab.
+// Inputs: keyed, the key exchange finished (the server's key was seen), so
+// what failed was the sign-in.
+// Returns: errNoAnswer when the server went quiet (OpenSSH holds a failed
+// or penalized sign-in, up to minutes); errSignInFailed when, after the
+// key exchange, it refused the sign-in or closed the connection; else err.
+func sshSignInError(err error, keyed bool) error {
+	var ne net.Error
+	switch {
+	case errors.Is(err, os.ErrDeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
+		return errNoAnswer
+	case keyed:
+		return errSignInFailed
+	}
+	return err
 }
 
 // dialSSH is the SSH tab's serviceDial.

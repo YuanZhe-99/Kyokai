@@ -703,6 +703,7 @@
   "ServiceEnded": "The connection ended.",
   "ServiceFailed": "The connection could not be opened.",
   "ServiceHostKeyChanged": "This device's SSH key is not the one it had before. Kyokai sent no password. Trust the new key only if you know why it changed.",
+  "ServiceNoAnswer": "The server did not answer the sign-in. After failed sign-ins a server can hold new ones for several minutes: wait a few minutes, check the user name and password, then reconnect.",
   "ServiceNoTunnel": "That device runs an older Kyokai: update it there to reach its services.",
   "ServicePassword": "Password",
   "ServiceRDP": "Remote Desktop",

@@ -103,7 +103,11 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
 - **SSH** (`golang.org/x/crypto/ssh`): this device's keys first — each an `ssh.Signer` whose
   signature the engine makes (`keys.sign`, the exact user-auth request; RSA as `rsa-sha2-512` or
   `rsa-sha2-256`), so a private key never reaches the GUI — then the password, which also answers
-  keyboard-interactive prompts that do not echo. The server's key is pinned on first use
+  keyboard-interactive prompts that do not echo, but never a second time in a connection whose
+  server refused it once (a Mac answers each failure about a minute late and counts it against the
+  address, which for every tunnel is its own loopback). After the key exchange a refusal or a
+  closed connection is a refused sign-in, and silence until the 30-second limit says the server did
+  not answer. The server's key is pinned on first use
   (`Credentials.HostKey`, an authorized_keys line); a different key is refused before any password
   is sent, and only the key the person chose with Trust the new key is accepted instead. The shell
   has a PTY of `xterm-256color`; MyGo's terminal (`plugins/terminal`, libghostty-vt) shows it with

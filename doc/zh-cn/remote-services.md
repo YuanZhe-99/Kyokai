@@ -78,7 +78,9 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
   不能开隧道的引擎会被拒绝，绝不改用本机自己的端口。
 - **SSH**（`golang.org/x/crypto/ssh`）：先用本机的密钥——每个都是一个由引擎签名的 `ssh.Signer`（`keys.sign`，
   签的正是用户认证请求；RSA 使用 `rsa-sha2-512` 或 `rsa-sha2-256`），因此私钥从不到达界面——然后用密码，它也回答
-  不回显的键盘交互提示。服务器的密钥在第一次使用时固定（`Credentials.HostKey`，一行 authorized_keys 格式）；
+  不回显的键盘交互提示，但服务器拒绝过一次后，同一连接中不会再发送第二次（Mac 对每次失败都约一分钟后才回应，
+  并记在来源地址上，而每条隧道的来源都是它自己的回环地址）。密钥交换之后，拒绝或连接被关闭都视为登录被拒绝，
+  直到 30 秒时限仍无回应则显示服务器没有回应。服务器的密钥在第一次使用时固定（`Credentials.HostKey`，一行 authorized_keys 格式）；
   密钥不同时，在发送任何密码之前就拒绝，只接受用户通过“信任新密钥”选中的那个密钥。外壳使用 `xterm-256color` 的
   PTY；MyGo 的终端（`plugins/terminal`，libghostty-vt）以隧道为其 `Conn` 显示它，其 `Resize` 发送窗口大小变化。
 - **远程桌面**（复用代码，`internal/rdp`）：有用户名时使用网络级身份验证（CredSSP 与 NTLMv2），没有用户名时只用

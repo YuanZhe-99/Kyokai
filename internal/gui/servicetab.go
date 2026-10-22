@@ -34,6 +34,9 @@ var (
 	// errHostKeyChanged: the SSH server's key is not the one pinned; no
 	// password was sent.
 	errHostKeyChanged = errors.New("the host key changed")
+	// errNoAnswer: the service went quiet during the handshake or sign-in
+	// (an SSH server holding failed or penalized sign-ins).
+	errNoAnswer = errors.New("the service did not answer")
 )
 
 // credForm is a service tab's sign-in form while it shows. The password is
@@ -207,6 +210,8 @@ func (s *serviceTab) settle(client serviceClient, err error, typed *credForm) {
 		}
 	case errors.Is(err, errHostKeyChanged):
 		s.phase, s.note = svcEnded, L.ServiceHostKeyChanged()
+	case errors.Is(err, errNoAnswer):
+		s.phase, s.note = svcEnded, L.ServiceNoAnswer()
 	case errors.Is(err, context.Canceled):
 		s.phase = svcEnded
 	default:
