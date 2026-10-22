@@ -49,8 +49,9 @@ login").
   without asking is on, whichever passwords are accepted, and with nobody at the computer (see
   Unattended access); it never turns protected mode off. When more is asked for, the host's user
   is asked and sees the key's name.
-- The controller remembers the key a host admitted and offers only that one next time; when the
-  host admits another way, it forgets it. A typed password is saved only when the host admitted
+- The controller remembers the key a host admitted and offers it first next time, its other keys
+  after it (a host that dropped it still finds the one it takes); when the host admits another way,
+  it forgets it. A typed password is saved only when the host admitted
   with it.
 - `keys.sign` (`{key_id, algorithm, data}`) signs only an SSH public key user-auth request
   (RFC 4252, section 7) for that very key, with `ssh-ed25519`, `rsa-sha2-256`, `rsa-sha2-512`,

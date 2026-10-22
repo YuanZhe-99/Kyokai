@@ -115,9 +115,11 @@ fn login_message(h2: &[u8], host_key: &[u8; 32], controller_key: &[u8; 32]) -> V
     [LOGIN_TAG, h2, host_key, controller_key].concat()
 }
 
-/// The proofs a controller offers a host: with the key remembered for it
-/// when that is still kept, else with every Ed25519 key (at most
-/// MAX_OFFERED).
+/// The proofs a controller offers a host: with every Ed25519 key (at most
+/// MAX_OFFERED), the key remembered for it first, so the host admits with
+/// that one when it still takes it and with another when it no longer does
+/// (regression: only the remembered key went, and a host that had dropped
+/// it never saw the one it took).
 /// Inputs: `h2`, the handshake hash after frame 2.
 pub fn proofs(
     secrets: &Secrets,
@@ -126,17 +128,15 @@ pub fn proofs(
     host_key: &[u8; 32],
     controller_key: &[u8; 32],
 ) -> Vec<Proof> {
-    let keys: Vec<LoginKey> = login(secrets)
+    let mut keys: Vec<LoginKey> = login(secrets)
         .into_iter()
         .filter(|k| k.kind == KeyType::Ed25519)
         .collect();
-    let chosen: Vec<&LoginKey> = match keys.iter().find(|k| Some(k.id.as_str()) == remembered) {
-        Some(k) => vec![k],
-        None => keys.iter().take(MAX_OFFERED).collect(),
-    };
+    // A stable sort: the remembered key first, the rest as kept.
+    keys.sort_by_key(|k| Some(k.id.as_str()) != remembered);
     let message = login_message(h2, host_key, controller_key);
-    chosen
-        .into_iter()
+    keys.iter()
+        .take(MAX_OFFERED)
         .filter_map(|k| {
             let signing = ed25519_signing(&k.private)?;
             use ed25519_dalek::Signer;
@@ -816,8 +816,8 @@ mod tests {
     fn a_proof_holds_only_for_its_handshake() {
         let host = secrets();
         let controller = secrets();
-        let (_, blob) = keep(&controller, &[9; 32]);
-        keep(&controller, &[8; 32]);
+        let (id, blob) = keep(&controller, &[9; 32]);
+        let (other, _) = keep(&controller, &[8; 32]);
         let line = format!("ssh-ed25519 {}", STANDARD.encode(&blob));
         add_authorized(&host, "laptop", &line).unwrap();
         let (h2, hk, ck) = ([1u8; 32], [2u8; 32], [3u8; 32]);
@@ -828,7 +828,7 @@ mod tests {
         };
         assert_eq!(k.name, "laptop");
         assert!(authorized(&host)[0].last > 0, "its sign-in is recorded");
-        assert_eq!(login_id(&controller, &offered[0].key), Some(key_id(&blob)));
+        assert_eq!(login_id(&controller, &offered[0].key), Some(id.clone()));
         // Another handshake, host or controller: the proof fails.
         for (h2, hk, ck) in [([9; 32], hk, ck), (h2, [9; 32], ck), (h2, hk, [9; 32])] {
             assert!(matches!(
@@ -844,9 +844,37 @@ mod tests {
             verify(&host, &theirs, &h2, &hk, &ck),
             Verified::None
         ));
-        // The key remembered for a host is the only one offered.
-        let id = key_id(&blob);
-        assert_eq!(proofs(&controller, Some(&id), &h2, &hk, &ck).len(), 1);
+        // The key remembered for a host goes first, the others after it.
+        let first = |remembered: &str| {
+            let offered = proofs(&controller, Some(remembered), &h2, &hk, &ck);
+            assert_eq!(offered.len(), 2, "every key, remembered {remembered}");
+            login_id(&controller, &offered[0].key).unwrap()
+        };
+        assert_eq!(first(&id), id);
+        assert_eq!(first(&other), other);
         assert_eq!(proofs(&controller, Some("gone"), &h2, &hk, &ck).len(), 2);
+    }
+
+    /// A host that no longer takes the key remembered for it admits with
+    /// another the controller keeps (regression: only the remembered key
+    /// was offered, and the host asked for a password instead).
+    #[test]
+    fn a_dropped_remembered_key_does_not_hide_the_others() {
+        let host = secrets();
+        let controller = secrets();
+        let (old, _) = keep(&controller, &[9; 32]);
+        let (_, blob) = keep(&controller, &[8; 32]);
+        add_authorized(
+            &host,
+            "new",
+            &format!("ssh-ed25519 {}", STANDARD.encode(&blob)),
+        )
+        .unwrap();
+        let (h2, hk, ck) = ([1u8; 32], [2u8; 32], [3u8; 32]);
+        let offered = proofs(&controller, Some(&old), &h2, &hk, &ck);
+        let Verified::Key(k) = verify(&host, &offered, &h2, &hk, &ck) else {
+            panic!("the authorized key behind the remembered one admits");
+        };
+        assert_eq!(k.name, "new");
     }
 }
