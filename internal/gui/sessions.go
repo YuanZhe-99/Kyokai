@@ -324,7 +324,7 @@ func deviceRows(st *localapi.Status, p Prefs) []deviceRow {
 			routes: r.Routes, netRoute: r.NetworkRoute, prefer: r.Prefer})
 	}
 	for _, s := range st.Sessions {
-		if s.Role != "controller" {
+		if !desktopController(s) {
 			continue
 		}
 		i, ok := index[s.DeviceID]
@@ -814,3 +814,11 @@ func newRequests(prev, next *localapi.Status) []localapi.HostRequest {
 }
 
 func itoa(n uint64) string { return strconv.FormatUint(n, 10) }
+
+// desktopController reports whether a session is this device's desktop
+// connection to another: a controller's, not a tunnel to one of its
+// services, which belongs to its service tab (regression: a refused tunnel
+// opened a connection tab of its own asking for the Kyokai password).
+func desktopController(s localapi.SessionInfo) bool {
+	return s.Role == "controller" && s.Service == ""
+}

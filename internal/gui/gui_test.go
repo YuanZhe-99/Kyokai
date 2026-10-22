@@ -1350,3 +1350,37 @@ func TestDeviceRowsUseLocalNames(t *testing.T) {
 		t.Errorf("without a local name = %q", got)
 	}
 }
+
+// TestTunnelsAreNotDesktopConnections: a tunnel to a device's service is
+// not its desktop connection — no tab follows it and Home does not count it
+// (regression: a refused RDP/VNC/SSH tunnel opened a connection tab asking
+// for the Kyokai password).
+func TestTunnelsAreNotDesktopConnections(t *testing.T) {
+	tunnel := localapi.SessionInfo{ID: 5, Role: "controller", DeviceID: "657365333", Service: "vnc", State: "connected"}
+	refused := localapi.SessionInfo{ID: 6, Role: "controller", DeviceID: "657365333", Service: "rdp", State: "failed",
+		Failure: json.RawMessage(`{"refused":"password"}`)}
+	st := &localapi.Status{
+		Recent:   []localapi.RecentDevice{{DeviceID: "657365333"}},
+		Sessions: []localapi.SessionInfo{tunnel, refused},
+	}
+	if s := deviceRows(st, Prefs{})[0].session; s != nil {
+		t.Errorf("Home counts tunnel %d as the desktop connection", s.ID)
+	}
+	a := New("", t.TempDir(), "")
+	a.status = st
+	// Opening a tab waits for a window this test has none of.
+	done := make(chan struct{})
+	go func() { a.syncViewers(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a tunnel opened a connection tab")
+	}
+	if len(a.viewers) != 0 {
+		t.Errorf("tunnels opened %d connection tab(s)", len(a.viewers))
+	}
+	if !desktopController(localapi.SessionInfo{Role: "controller"}) || desktopController(tunnel) ||
+		desktopController(localapi.SessionInfo{Role: "host"}) {
+		t.Error("desktopController")
+	}
+}

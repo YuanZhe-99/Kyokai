@@ -366,7 +366,7 @@ func (a *App) syncViewers() {
 	}
 	a.mu.Unlock()
 	for _, s := range sessions {
-		if s.Role != "controller" {
+		if !desktopController(s) {
 			continue
 		}
 		v := a.viewerFor(s.DeviceID)
