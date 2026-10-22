@@ -120,7 +120,9 @@ when `SCREENSHOT_DIR` is set.
   change or remove; Accepted passwords: Temporary, Permanent or Both; Connect without asking, on by
   default, and below it "With a correct password": a switch per permission a password grants
   without asking, among them See this computer's status, on by default, and Connect to its SSH,
-  Remote Desktop, and VNC or Screen Sharing, off by default); the devices watching this computer's
+  Remote Desktop, and VNC or Screen Sharing, off by default; then "Ports of this computer's
+  services": a port each for SSH, Remote Desktop and VNC, empty for the standard one, with Save and
+  Cancel while edited); the devices watching this computer's
   status, with since when; trusted devices with their last connection and Remove; Sound to share — what
   this computer plays unless an input device is chosen, a device that is gone shown as not
   connected, an input asking macOS for the Microphone permission.
@@ -175,8 +177,11 @@ when `SCREENSHOT_DIR` is set.
   per device and kind, and every kind drags, moves and closes alike.
 - A service tab ([remote-services.md](remote-services.md), "Clients") is titled "SSH · device"
   and the like. It shows "Connecting to SSH…" with the loading indicator, then, when nothing saved
-  works, a sign-in form (user name; domain for Remote Desktop; for VNC a user name only a Mac asks
-  for; password; Remember password; Cancel and Sign in), then the client: MyGo's terminal for SSH,
+  is remembered, a sign-in form: the way to sign in (a segmented choice — SSH: Key, Password; VNC:
+  Password only, User name and password, No sign-in; Remote Desktop: User name and password, On the
+  remote screen), the fields that way needs (user name; domain for Remote Desktop; password), a
+  hint for Key and the no-sign-in ways, Remember, and Cancel and Sign in (until the fields are
+  filled, Sign in is off), then the client: MyGo's terminal for SSH,
   in the app's light or dark theme, or the other desktop's picture for Remote Desktop and VNC, with
   a toolbar of Display (Fit or Original size), Keyboard (the keyboard mode), Actions
   (Ctrl+Alt+Del) and Full screen. When it ends it says why, with Reconnect, and after an SSH

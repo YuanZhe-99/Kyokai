@@ -114,6 +114,7 @@ const PASSWORD_GRANTS_KNOWN_NAME: &str = "password_grants_known";
 const PASSWORD_MODE_NAME: &str = "password_mode";
 const WITHOUT_ASKING_NAME: &str = "connect_without_asking";
 const BY_ADDRESS_NAME: &str = "connect_by_address";
+const SERVICE_PORTS_NAME: &str = "service_ports";
 /// Set while this device keeps no connection history (Settings, No logs).
 const NO_HISTORY_NAME: &str = "no_history";
 /// Set while the host is in protected mode: its interface offers only the
@@ -137,6 +138,42 @@ pub const DEFAULT_BY_ADDRESS_RANGES: [&str; 7] = [
 ];
 /// Most address ranges a host lists.
 const MAX_RANGES: usize = 32;
+
+/// The ports this host's SSH, Remote Desktop and VNC listen on, as its user
+/// set them (Settings, Permissions); one left out is on its standard port.
+/// A controller only names the service: it reaches the port set here.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServicePorts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rdp: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vnc: Option<u16>,
+}
+
+impl ServicePorts {
+    /// The port a tunnel to `s` dials on the loopback.
+    pub fn port(&self, s: crate::tunnel::Service) -> u16 {
+        use crate::tunnel::Service;
+        match s {
+            Service::Ssh => self.ssh,
+            Service::Rdp => self.rdp,
+            Service::Vnc => self.vnc,
+        }
+        .unwrap_or(s.port())
+    }
+
+    /// The ports in effect, for the status.
+    pub fn status(&self) -> Value {
+        use crate::tunnel::Service;
+        json!({
+            "ssh": self.port(Service::Ssh),
+            "rdp": self.port(Service::Rdp),
+            "vnc": self.port(Service::Vnc),
+        })
+    }
+}
 
 /// Whether this host accepts sessions by address, on this computer's own
 /// addresses, and from which source addresses (Settings, Access).
@@ -472,6 +509,10 @@ impl Saved {
 /// pinned on first use.
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Credentials {
+    /// How the GUI signs in, remembered with Remember (`key`, `password`,
+    /// `account`, `none`); empty: it asks first. Kept as given, like the user.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub method: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub user: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -704,6 +745,26 @@ impl Access {
     /// Side effects: rewrites the secrets store.
     pub fn set_without_asking(&self, on: bool) -> Result<(), String> {
         self.store(WITHOUT_ASKING_NAME, &on)
+    }
+
+    /// The ports of this host's services (standard unless its user set
+    /// others).
+    pub fn service_ports(&self) -> ServicePorts {
+        self.secrets
+            .get(SERVICE_PORTS_NAME)
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
+    }
+
+    /// Sets the ports of this host's services.
+    /// Side effects: rewrites the secrets store.
+    /// Notes: port 0 is refused; a later tunnel dials the new port, one
+    /// open stays where it is.
+    pub fn set_service_ports(&self, ports: ServicePorts) -> Result<(), String> {
+        if [ports.ssh, ports.rdp, ports.vnc].contains(&Some(0)) {
+            return Err("a port is between 1 and 65535".into());
+        }
+        self.store(SERVICE_PORTS_NAME, &ports)
     }
 
     /// Whether and from where this host accepts sessions by address (off
@@ -1107,6 +1168,9 @@ impl Access {
         service: crate::tunnel::Service,
         mut new: Credentials,
     ) -> Result<(), String> {
+        if !["", "key", "password", "account", "none"].contains(&new.method.as_str()) {
+            return Err("bad sign-in method".into());
+        }
         let mut saved = self.saved(device_id);
         let slot = saved.service(service);
         let old = slot.take().unwrap_or_default();
@@ -1583,6 +1647,23 @@ mod tests {
         assert_eq!(
             (ssh.user.as_str(), ssh.host_key.as_str()),
             ("root", "ssh-ed25519 AAAA")
+        );
+        // A remembered method is kept as given, and replaced with the rest.
+        let with = |method: &str| Credentials {
+            method: method.into(),
+            ..creds("root", None, "")
+        };
+        a.save_credentials(id, Service::Ssh, with("key")).unwrap();
+        assert_eq!(a.saved(id).ssh.unwrap().method, "key");
+        a.save_credentials(id, Service::Ssh, with("")).unwrap();
+        assert_eq!(
+            a.saved(id).ssh.unwrap().method,
+            "",
+            "Remember off forgets it"
+        );
+        assert!(
+            a.save_credentials(id, Service::Ssh, with("telnet"))
+                .is_err()
         );
         a.save_credentials(id, Service::Vnc, creds("", pw("vnc-pw"), ""))
             .unwrap();

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,6 +33,9 @@ var (
 	errNeedSignIn = errors.New("a sign-in is needed")
 	// errSignInFailed: the service refused the sign-in.
 	errSignInFailed = errors.New("the sign-in was refused")
+	// errSignInRequired: "no sign-in" met a server that needs one; the tab
+	// asks how to sign in.
+	errSignInRequired = errors.New("the server needs a sign-in")
 	// errHostKeyChanged: the SSH server's key is not the one pinned; no
 	// password was sent.
 	errHostKeyChanged = errors.New("the host key changed")
@@ -42,8 +47,87 @@ var (
 // credForm is a service tab's sign-in form while it shows. The password is
 // handed to the client as the form is sent and cleared here.
 type credForm struct {
+	method                 string
 	user, domain, password string
 	remember               bool
+}
+
+// How a service tab signs in (localapi.Credentials.Method), chosen in its
+// form and remembered with Remember.
+const (
+	// methodKey: SSH with a user name and this device's keys.
+	methodKey = "key"
+	// methodPassword: SSH with a user name and password; VNC with its
+	// password alone.
+	methodPassword = "password"
+	// methodAccount: a user name and password — a Mac's for VNC, a
+	// Windows account for Remote Desktop.
+	methodAccount = "account"
+	// methodNone: no sign-in — a VNC server without one, or Remote
+	// Desktop's own sign-in screen.
+	methodNone = "none"
+)
+
+// signInMethods are the methods each service offers, in the form's order.
+var signInMethods = map[string][]string{
+	serviceSSH: {methodKey, methodPassword},
+	serviceVNC: {methodPassword, methodAccount, methodNone},
+	serviceRDP: {methodAccount, methodNone},
+}
+
+// signInPlan is the sign-in a dial uses: what the form sent, else the
+// method remembered for the device's service with its sign-in.
+// Returns: false when the tab asks first — nothing was remembered (a first
+// connection, or Remember was off), or a method the service does not offer.
+// Notes: nothing is tried before the person chose (no key, no blank
+// password); a remembered method that fails asks again.
+func signInPlan(service string, typed *credForm, saved *localapi.Credentials) (credForm, bool) {
+	if typed != nil {
+		return *typed, true
+	}
+	if saved == nil || !slices.Contains(signInMethods[service], saved.Method) {
+		return credForm{}, false
+	}
+	f := credForm{method: saved.Method, user: saved.User, domain: saved.Domain, remember: true}
+	if saved.Password != nil {
+		f.password = *saved.Password
+	}
+	return f, true
+}
+
+// askedFor is the form a tab shows for a sign-in: plan's method, user and
+// domain (never its password), else what is saved, else the service's
+// first method.
+func askedFor(service string, plan credForm, saved *localapi.Credentials) credForm {
+	f := credForm{method: plan.method, user: plan.user, domain: plan.domain, remember: plan.remember}
+	if f.method == "" && saved != nil {
+		f.method, f.user, f.domain = saved.Method, saved.User, saved.Domain
+	}
+	if !slices.Contains(signInMethods[service], f.method) {
+		f.method = signInMethods[service][0]
+	}
+	return f
+}
+
+// kept is what a sign-in that worked leaves saved for the service: with
+// Remember, its method and password (none for a method without one), so
+// the next connection uses it; without, the user name and domain alone, and
+// the method and password remembered before are forgotten.
+// Returns: nil when nothing changes (the sign-in was the remembered one).
+func kept(plan credForm, typed bool) *localapi.Credentials {
+	if !typed {
+		return nil
+	}
+	none := ""
+	cr := localapi.Credentials{User: plan.user, Domain: plan.domain, Password: &none}
+	if plan.remember {
+		cr.Method = plan.method
+		if plan.method != methodKey && plan.method != methodNone {
+			password := plan.password
+			cr.Password = &password
+		}
+	}
+	return &cr
 }
 
 // serviceClient is what a running service tab shows: SSH's terminal, or a
@@ -89,8 +173,6 @@ type serviceTab struct {
 	phase string
 	note  string
 	form  credForm
-	// formUser: the form asks for a user name (VNC asks only for a Mac's).
-	formUser bool
 	// hostKey is a changed SSH key the person chose to trust (a public key
 	// line), accepted by the next dial.
 	hostKey string
@@ -205,9 +287,8 @@ func (s *serviceTab) settle(client serviceClient, err error, typed *credForm) {
 		s.phase = svcForm
 	case errors.Is(err, errSignInFailed):
 		s.phase, s.note = svcForm, L.ServiceWrongSignIn()
-		if typed != nil {
-			s.form.user, s.form.domain, s.form.remember = typed.user, typed.domain, typed.remember
-		}
+	case errors.Is(err, errSignInRequired):
+		s.phase, s.note = svcForm, L.ServiceNeedsSignIn()
 	case errors.Is(err, errHostKeyChanged):
 		s.phase, s.note = svcEnded, L.ServiceHostKeyChanged()
 	case errors.Is(err, errNoAnswer):
@@ -283,10 +364,29 @@ func (s *serviceTab) tabTitle() string             { return s.title }
 func (s *serviceTab) tabWindow() *viewerWindow     { return s.home.Load() }
 func (s *serviceTab) setTabWindow(w *viewerWindow) { s.home.Store(w) }
 func (s *serviceTab) running() serviceClient       { s.mu.Lock(); defer s.mu.Unlock(); return s.client }
-func (s *serviceTab) formShown() (credForm, bool) {
+func (s *serviceTab) formShown() credForm {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.form, s.formUser
+	return s.form
+}
+
+// ask sets the form the tab shows if the dial needs a sign-in (see
+// askedFor), and returns the sign-in to try: false asks at once.
+// Side effects: s.form, without any password.
+func (s *serviceTab) ask(typed *credForm, saved *localapi.Credentials) (credForm, bool) {
+	plan, ok := signInPlan(s.service, typed, saved)
+	s.mu.Lock()
+	s.form = askedFor(s.service, plan, saved)
+	s.mu.Unlock()
+	return plan, ok
+}
+
+// keep saves what a sign-in that worked leaves (see kept), with extra
+// fields a client adds (SSH's pinned key).
+func (s *serviceTab) keep(ctx context.Context, plan credForm, typed bool) {
+	if cr := kept(plan, typed); cr != nil {
+		_ = s.app.link.SaveCredential(ctx, s.device, s.service, *cr)
+	}
 }
 
 // live reports whether the tab is connecting or connected.
@@ -437,11 +537,12 @@ func (s *serviceTab) view(c *ui.Context) {
 	})
 }
 
-// signInForm asks for the service's sign-in: a user name (a domain for
-// Remote Desktop), the password and whether to remember them.
+// signInForm asks how to sign in to the service — the methods it offers
+// (signInMethods) — and what that method needs: a user name (a domain for
+// Remote Desktop), a password, and whether to remember the choice.
 func (s *serviceTab) signInForm(c *ui.Context, note string) {
 	t := c.Theme()
-	f, askUser := s.formShown()
+	f := s.formShown()
 	edit := func(e ui.Element) {
 		if e.Changed() {
 			s.mu.Lock()
@@ -453,25 +554,49 @@ func (s *serviceTab) signInForm(c *ui.Context, note string) {
 		ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Danger)
 	}
 	ui.Text(c, L.ServiceSignInHint(serviceName(s.service))).FontSize(sizeSmall).TextColor(t.TextMuted)
+	methods := signInMethods[s.service]
+	labels := make([]string, len(methods))
+	for i, m := range methods {
+		labels[i] = methodLabel(s.service, m)
+	}
+	idx := max(slices.Index(methods, f.method), 0)
+	if ui.Segmented(c.Key("svc-method"), &idx, labels...).Changed() {
+		f.method = methods[idx]
+		s.mu.Lock()
+		s.form = f
+		s.mu.Unlock()
+	}
+	f.method = methods[idx]
 	submit := false
-	if askUser || s.service != serviceVNC {
+	if s.service == serviceSSH || f.method == methodAccount {
 		label := L.ServiceUser()
 		if s.service == serviceVNC {
 			label = L.ServiceUserMac()
 		}
 		edit(ui.TextInput(c.Key("svc-user"), &f.user).Placeholder(label).Label(label).FillWidth())
 	}
-	if s.service == serviceRDP {
+	if s.service == serviceRDP && f.method == methodAccount {
 		edit(ui.TextInput(c.Key("svc-domain"), &f.domain).Placeholder(L.ServiceDomain()).Label(L.ServiceDomain()).FillWidth())
 	}
-	pw := ui.TextInput(c.Key("svc-password"), &f.password).Password().Placeholder(L.ServicePassword()).Label(L.ServicePassword()).FillWidth()
-	edit(pw)
-	if pw.Submitted() {
-		submit = true
+	switch f.method {
+	case methodKey:
+		ui.Text(c, L.ServiceKeyHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+	case methodNone:
+		hint := L.ServiceNoneHint()
+		if s.service == serviceRDP {
+			hint = L.ServiceScreenHint()
+		}
+		ui.Text(c, hint).FontSize(sizeSmall).TextColor(t.TextMuted)
+	default:
+		pw := ui.TextInput(c.Key("svc-password"), &f.password).Password().Placeholder(L.ServicePassword()).Label(L.ServicePassword()).FillWidth()
+		edit(pw)
+		if pw.Submitted() {
+			submit = true
+		}
 	}
 	labelled(c, func() {
-		edit(ui.Switch(c.Key("svc-remember"), &f.remember).Label(L.ConnectRemember()))
-	}, L.ConnectRemember())
+		edit(ui.Switch(c.Key("svc-remember"), &f.remember).Label(L.ServiceRememberMethod()))
+	}, L.ServiceRememberMethod())
 	ui.Row(c).Gap(gap).Children(func() {
 		ui.Row(c).Grow(1)
 		if ui.Button(c.Key("svc-cancel"), L.ActionCancel()).Clicked() {
@@ -479,17 +604,45 @@ func (s *serviceTab) signInForm(c *ui.Context, note string) {
 				w.closeTab(s)
 			}
 		}
-		if ui.PrimaryButton(c.Key("svc-go"), L.ServiceSignIn()).Clicked() {
+		if ui.PrimaryButton(c.Key("svc-go"), L.ServiceSignIn()).Disabled(!f.ready(s.service)).Clicked() {
 			submit = true
 		}
 	})
-	if submit {
+	if submit && f.ready(s.service) {
 		typed := f
 		s.mu.Lock()
 		s.form.password = ""
 		s.mu.Unlock()
 		s.connect(&typed)
 	}
+}
+
+// ready reports whether the form holds what its method needs: a user name
+// for SSH and for an account, a password where one is asked.
+func (f credForm) ready(service string) bool {
+	if (service == serviceSSH || f.method == methodAccount) && strings.TrimSpace(f.user) == "" {
+		return false
+	}
+	return f.method == methodKey || f.method == methodNone || f.password != ""
+}
+
+// methodLabel words a sign-in method for a service's form.
+func methodLabel(service, method string) string {
+	switch method {
+	case methodKey:
+		return L.ServiceMethodKey()
+	case methodAccount:
+		return L.ServiceMethodAccount()
+	case methodNone:
+		if service == serviceRDP {
+			return L.ServiceMethodScreen()
+		}
+		return L.ServiceMethodNone()
+	}
+	if service == serviceVNC {
+		return L.ServiceMethodPasswordOnly()
+	}
+	return L.ServiceMethodPassword()
 }
 
 // endedPanel says why the connection ended, with Reconnect, and Trust the

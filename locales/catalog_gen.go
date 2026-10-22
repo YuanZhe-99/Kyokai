@@ -4138,6 +4138,86 @@ func (msgs Messages) ServiceHostKeyChanged() string {
 	return Catalog.Format(msgs.locale, "ServiceHostKeyChanged", nil)
 }
 
+// ServiceKeyHint says "Signs in with this device's keys (Security, Your keys). The server must list one of them in that user's authorized_keys."
+// in the language the app shows.
+func ServiceKeyHint() string { return In(i18n.Locale()).ServiceKeyHint() }
+
+// ServiceKeyHint says "Signs in with this device's keys (Security, Your keys). The server must list one of them in that user's authorized_keys."
+// in the language of msgs.
+func (msgs Messages) ServiceKeyHint() string {
+	return Catalog.Format(msgs.locale, "ServiceKeyHint", nil)
+}
+
+// ServiceMethodAccount says "User name and password"
+// in the language the app shows.
+func ServiceMethodAccount() string { return In(i18n.Locale()).ServiceMethodAccount() }
+
+// ServiceMethodAccount says "User name and password"
+// in the language of msgs.
+func (msgs Messages) ServiceMethodAccount() string {
+	return Catalog.Format(msgs.locale, "ServiceMethodAccount", nil)
+}
+
+// ServiceMethodKey says "Key"
+// in the language the app shows.
+func ServiceMethodKey() string { return In(i18n.Locale()).ServiceMethodKey() }
+
+// ServiceMethodKey says "Key"
+// in the language of msgs.
+func (msgs Messages) ServiceMethodKey() string {
+	return Catalog.Format(msgs.locale, "ServiceMethodKey", nil)
+}
+
+// ServiceMethodNone says "No sign-in"
+// in the language the app shows.
+func ServiceMethodNone() string { return In(i18n.Locale()).ServiceMethodNone() }
+
+// ServiceMethodNone says "No sign-in"
+// in the language of msgs.
+func (msgs Messages) ServiceMethodNone() string {
+	return Catalog.Format(msgs.locale, "ServiceMethodNone", nil)
+}
+
+// ServiceMethodPassword says "Password"
+// in the language the app shows.
+func ServiceMethodPassword() string { return In(i18n.Locale()).ServiceMethodPassword() }
+
+// ServiceMethodPassword says "Password"
+// in the language of msgs.
+func (msgs Messages) ServiceMethodPassword() string {
+	return Catalog.Format(msgs.locale, "ServiceMethodPassword", nil)
+}
+
+// ServiceMethodPasswordOnly says "Password only"
+// in the language the app shows.
+func ServiceMethodPasswordOnly() string { return In(i18n.Locale()).ServiceMethodPasswordOnly() }
+
+// ServiceMethodPasswordOnly says "Password only"
+// in the language of msgs.
+func (msgs Messages) ServiceMethodPasswordOnly() string {
+	return Catalog.Format(msgs.locale, "ServiceMethodPasswordOnly", nil)
+}
+
+// ServiceMethodScreen says "On the remote screen"
+// in the language the app shows.
+func ServiceMethodScreen() string { return In(i18n.Locale()).ServiceMethodScreen() }
+
+// ServiceMethodScreen says "On the remote screen"
+// in the language of msgs.
+func (msgs Messages) ServiceMethodScreen() string {
+	return Catalog.Format(msgs.locale, "ServiceMethodScreen", nil)
+}
+
+// ServiceNeedsSignIn says "This server needs a sign-in. Choose another way to sign in."
+// in the language the app shows.
+func ServiceNeedsSignIn() string { return In(i18n.Locale()).ServiceNeedsSignIn() }
+
+// ServiceNeedsSignIn says "This server needs a sign-in. Choose another way to sign in."
+// in the language of msgs.
+func (msgs Messages) ServiceNeedsSignIn() string {
+	return Catalog.Format(msgs.locale, "ServiceNeedsSignIn", nil)
+}
+
 // ServiceNoAnswer says "The server did not answer the sign-in. After failed sign-ins a server can hold new ones for several minutes: wait a f…"
 // in the language the app shows.
 func ServiceNoAnswer() string { return In(i18n.Locale()).ServiceNoAnswer() }
@@ -4158,6 +4238,16 @@ func (msgs Messages) ServiceNoTunnel() string {
 	return Catalog.Format(msgs.locale, "ServiceNoTunnel", nil)
 }
 
+// ServiceNoneHint says "For a VNC server that asks for no password."
+// in the language the app shows.
+func ServiceNoneHint() string { return In(i18n.Locale()).ServiceNoneHint() }
+
+// ServiceNoneHint says "For a VNC server that asks for no password."
+// in the language of msgs.
+func (msgs Messages) ServiceNoneHint() string {
+	return Catalog.Format(msgs.locale, "ServiceNoneHint", nil)
+}
+
 // ServicePassword says "Password"
 // in the language the app shows.
 func ServicePassword() string { return In(i18n.Locale()).ServicePassword() }
@@ -4168,6 +4258,46 @@ func (msgs Messages) ServicePassword() string {
 	return Catalog.Format(msgs.locale, "ServicePassword", nil)
 }
 
+// ServicePortsHint says "Where SSH, Remote Desktop and VNC listen on this computer. Another device only chooses the service: Kyokai connects i…"
+// in the language the app shows.
+func ServicePortsHint() string { return In(i18n.Locale()).ServicePortsHint() }
+
+// ServicePortsHint says "Where SSH, Remote Desktop and VNC listen on this computer. Another device only chooses the service: Kyokai connects i…"
+// in the language of msgs.
+func (msgs Messages) ServicePortsHint() string {
+	return Catalog.Format(msgs.locale, "ServicePortsHint", nil)
+}
+
+// ServicePortsInvalid says "A port is a number from 1 to 65535."
+// in the language the app shows.
+func ServicePortsInvalid() string { return In(i18n.Locale()).ServicePortsInvalid() }
+
+// ServicePortsInvalid says "A port is a number from 1 to 65535."
+// in the language of msgs.
+func (msgs Messages) ServicePortsInvalid() string {
+	return Catalog.Format(msgs.locale, "ServicePortsInvalid", nil)
+}
+
+// ServicePortsSaved says "Service ports saved."
+// in the language the app shows.
+func ServicePortsSaved() string { return In(i18n.Locale()).ServicePortsSaved() }
+
+// ServicePortsSaved says "Service ports saved."
+// in the language of msgs.
+func (msgs Messages) ServicePortsSaved() string {
+	return Catalog.Format(msgs.locale, "ServicePortsSaved", nil)
+}
+
+// ServicePortsTitle says "Ports of this computer's services"
+// in the language the app shows.
+func ServicePortsTitle() string { return In(i18n.Locale()).ServicePortsTitle() }
+
+// ServicePortsTitle says "Ports of this computer's services"
+// in the language of msgs.
+func (msgs Messages) ServicePortsTitle() string {
+	return Catalog.Format(msgs.locale, "ServicePortsTitle", nil)
+}
+
 // ServiceRDP says "Remote Desktop"
 // in the language the app shows.
 func ServiceRDP() string { return In(i18n.Locale()).ServiceRDP() }
@@ -4176,6 +4306,16 @@ func ServiceRDP() string { return In(i18n.Locale()).ServiceRDP() }
 // in the language of msgs.
 func (msgs Messages) ServiceRDP() string {
 	return Catalog.Format(msgs.locale, "ServiceRDP", nil)
+}
+
+// ServiceRememberMethod says "Remember"
+// in the language the app shows.
+func ServiceRememberMethod() string { return In(i18n.Locale()).ServiceRememberMethod() }
+
+// ServiceRememberMethod says "Remember"
+// in the language of msgs.
+func (msgs Messages) ServiceRememberMethod() string {
+	return Catalog.Format(msgs.locale, "ServiceRememberMethod", nil)
 }
 
 // ServiceReplaced says "Someone else signed in to that desktop, so this connection ended."
@@ -4198,6 +4338,16 @@ func (msgs Messages) ServiceSSH() string {
 	return Catalog.Format(msgs.locale, "ServiceSSH", nil)
 }
 
+// ServiceScreenHint says "The other computer's own sign-in screen asks once connected (Network Level Authentication must be off there)."
+// in the language the app shows.
+func ServiceScreenHint() string { return In(i18n.Locale()).ServiceScreenHint() }
+
+// ServiceScreenHint says "The other computer's own sign-in screen asks once connected (Network Level Authentication must be off there)."
+// in the language of msgs.
+func (msgs Messages) ServiceScreenHint() string {
+	return Catalog.Format(msgs.locale, "ServiceScreenHint", nil)
+}
+
 // ServiceSignIn says "Sign in"
 // in the language the app shows.
 func ServiceSignIn() string { return In(i18n.Locale()).ServiceSignIn() }
@@ -4208,11 +4358,11 @@ func (msgs Messages) ServiceSignIn() string {
 	return Catalog.Format(msgs.locale, "ServiceSignIn", nil)
 }
 
-// ServiceSignInHint says "Sign in to {service} on that device. With Remember password, Kyokai keeps it for the next time."
+// ServiceSignInHint says "Choose how to sign in to {service} on that device. With Remember, Kyokai signs in the same way next time, and asks ag…"
 // in the language the app shows.
 func ServiceSignInHint(service string) string { return In(i18n.Locale()).ServiceSignInHint(service) }
 
-// ServiceSignInHint says "Sign in to {service} on that device. With Remember password, Kyokai keeps it for the next time."
+// ServiceSignInHint says "Choose how to sign in to {service} on that device. With Remember, Kyokai signs in the same way next time, and asks ag…"
 // in the language of msgs.
 func (msgs Messages) ServiceSignInHint(service string) string {
 	return Catalog.Format(msgs.locale, "ServiceSignInHint", map[string]any{"service": service})
@@ -4250,11 +4400,11 @@ func (msgs Messages) ServiceUser() string {
 	return Catalog.Format(msgs.locale, "ServiceUser", nil)
 }
 
-// ServiceUserMac says "User name (a Mac asks for one)"
+// ServiceUserMac says "User name (on the Mac)"
 // in the language the app shows.
 func ServiceUserMac() string { return In(i18n.Locale()).ServiceUserMac() }
 
-// ServiceUserMac says "User name (a Mac asks for one)"
+// ServiceUserMac says "User name (on the Mac)"
 // in the language of msgs.
 func (msgs Messages) ServiceUserMac() string {
 	return Catalog.Format(msgs.locale, "ServiceUserMac", nil)

@@ -15,8 +15,8 @@ use tokio::sync::watch;
 
 /// How often a watched host samples itself.
 pub const SAMPLE_EVERY: Duration = Duration::from_secs(2);
-/// How often it looks which services listen.
-const PROBE_EVERY: Duration = Duration::from_secs(30);
+/// How often a watcher's session looks which services listen.
+pub const PROBE_EVERY: Duration = Duration::from_secs(30);
 /// How long one look at a service's port may take.
 const PROBE_WAIT: Duration = Duration::from_millis(300);
 
@@ -37,7 +37,8 @@ pub struct Sample {
     pub net: Rates,
     /// None without a battery.
     pub battery: Option<Battery>,
-    /// The services answering on the host's loopback.
+    /// The services answering on the host's loopback, on the ports its user
+    /// set, filled in per watcher.
     #[serde(default)]
     pub services: Vec<Service>,
     /// What the watcher's password or key grants without asking, filled
@@ -155,16 +156,8 @@ impl Drop for Watch {
 /// The sampler's thread: a sample every SAMPLE_EVERY until stopped.
 fn run(tx: watch::Sender<Option<Arc<Sample>>>, stop: Arc<AtomicBool>) {
     let mut probe = Probe::new();
-    let mut services = Vec::new();
-    let mut probed: Option<Instant> = None;
     while !stop.load(Ordering::Relaxed) {
-        if probed.is_none_or(|t| t.elapsed() >= PROBE_EVERY) {
-            services = listening();
-            probed = Some(Instant::now());
-        }
-        let mut sample = probe.sample();
-        sample.services = services.clone();
-        tx.send_replace(Some(Arc::new(sample)));
+        tx.send_replace(Some(Arc::new(probe.sample())));
         let until = Instant::now() + SAMPLE_EVERY;
         while !stop.load(Ordering::Relaxed) && Instant::now() < until {
             std::thread::sleep(Duration::from_millis(100));
@@ -172,21 +165,25 @@ fn run(tx: watch::Sender<Option<Arc<Sample>>>, stop: Arc<AtomicBool>) {
     }
 }
 
-/// The services that accept a connection on this computer's loopback.
-fn listening() -> Vec<Service> {
-    [Service::Ssh, Service::Rdp, Service::Vnc]
-        .into_iter()
-        .filter(|s| {
-            [
-                std::net::IpAddr::from([127, 0, 0, 1]),
-                std::net::IpAddr::from(std::net::Ipv6Addr::LOCALHOST),
-            ]
-            .iter()
-            .any(|ip| {
-                std::net::TcpStream::connect_timeout(&(*ip, s.port()).into(), PROBE_WAIT).is_ok()
-            })
-        })
-        .collect()
+/// The services that accept a connection on this computer's loopback, on
+/// the ports its user set (each looked at once, all at the same time).
+pub async fn listening(ports: crate::access::ServicePorts) -> Vec<Service> {
+    let looks = [Service::Ssh, Service::Rdp, Service::Vnc].map(|s| async move {
+        let port = ports.port(s);
+        for ip in [
+            std::net::IpAddr::from([127, 0, 0, 1]),
+            std::net::IpAddr::from(std::net::Ipv6Addr::LOCALHOST),
+        ] {
+            let look = tokio::net::TcpStream::connect((ip, port));
+            if matches!(tokio::time::timeout(PROBE_WAIT, look).await, Ok(Ok(_))) {
+                return Some(s);
+            }
+        }
+        None
+    });
+    let [a, b, c] = looks;
+    let (a, b, c) = tokio::join!(a, b, c);
+    [a, b, c].into_iter().flatten().collect()
 }
 
 /// What the counters were at the last sample, to turn them into rates.
@@ -1023,5 +1020,22 @@ mod tests {
         let a = first.samples.borrow().clone().unwrap();
         let b = second.samples.borrow().clone().unwrap();
         assert!(a.at.abs_diff(b.at) <= SAMPLE_EVERY.as_millis() as u64 * 2);
+    }
+
+    /// The services that answer are looked for on the ports the host's user
+    /// set (regression: only the standard ports were looked at).
+    #[tokio::test]
+    async fn services_answer_on_the_ports_set() {
+        let open = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let closed = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let ports = crate::access::ServicePorts {
+            ssh: Some(closed),
+            rdp: Some(closed),
+            vnc: Some(open.local_addr().unwrap().port()),
+        };
+        assert_eq!(listening(ports).await, vec![Service::Vnc]);
     }
 }

@@ -154,7 +154,7 @@ func TestSSHSignsInWithEngineKeys(t *testing.T) {
 	go srv.serve(server, key.PublicKey(), "")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	term, _, err := sshDial(ctx, link, "657365333", "", &credForm{user: "yuan"}, nil, "")
+	term, _, err := sshDial(ctx, link, "657365333", "", credForm{method: methodKey, user: "yuan"}, true, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestSSHSignsInWithEngineKeys(t *testing.T) {
 	if link.signs == 0 {
 		t.Fatal("the engine signed nothing")
 	}
-	if link.saved == nil || link.saved.HostKey != keyLine(srv.host.PublicKey()) || link.saved.User != "yuan" || link.saved.Password != nil {
+	if link.saved == nil || link.saved.HostKey != keyLine(srv.host.PublicKey()) || link.saved.User != "yuan" || link.saved.Password != nil && *link.saved.Password != "" || link.saved.Method != "" {
 		t.Fatalf("saved %+v, want the user and the pinned host key without a password", link.saved)
 	}
 	if err := term.Resize(132, 43); err != nil {
@@ -193,7 +193,7 @@ func TestSSHHostKeyAndPassword(t *testing.T) {
 	client, server := connPair(t)
 	go srv.serve(server, nil, pw)
 	saved := &localapi.Credentials{User: "yuan", Password: &pw, HostKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"}
-	_, seen, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", nil, saved, "")
+	_, seen, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", credForm{method: methodPassword, user: "yuan", password: pw, remember: true}, false, saved.HostKey, "")
 	if !errors.Is(err, errHostKeyChanged) || seen != keyLine(srv.host.PublicKey()) {
 		t.Fatalf("changed key: err %v, seen %q", err, seen)
 	}
@@ -205,7 +205,7 @@ func TestSSHHostKeyAndPassword(t *testing.T) {
 
 	client, server = connPair(t)
 	go srv.serve(server, nil, pw)
-	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", &credForm{user: "yuan", password: "wrong"}, nil, ""); !errors.Is(err, errSignInFailed) {
+	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", credForm{method: methodPassword, user: "yuan", password: "wrong"}, true, "", ""); !errors.Is(err, errSignInFailed) {
 		t.Fatalf("wrong password: err %v", err)
 	}
 
@@ -213,12 +213,12 @@ func TestSSHHostKeyAndPassword(t *testing.T) {
 	go srv.serve(server, nil, pw)
 	link := &fakeLink{conn: client}
 	trust := keyLine(srv.host.PublicKey())
-	term, _, err := sshDial(ctx, link, "657365333", "", &credForm{user: "yuan", password: pw, remember: true}, saved, trust)
+	term, _, err := sshDial(ctx, link, "657365333", "", credForm{method: methodPassword, user: "yuan", password: pw, remember: true}, true, saved.HostKey, trust)
 	if err != nil {
 		t.Fatal(err)
 	}
 	term.Close()
-	if link.saved == nil || link.saved.Password == nil || *link.saved.Password != pw || link.saved.HostKey != trust {
+	if link.saved == nil || link.saved.Password == nil || *link.saved.Password != pw || link.saved.HostKey != trust || link.saved.Method != methodPassword {
 		t.Fatalf("saved %+v, want the password and the trusted key", link.saved)
 	}
 }
@@ -231,7 +231,7 @@ func TestSSHHostKeyAndPassword(t *testing.T) {
 func TestSSHSignInFailures(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	form := &credForm{user: "yuan", password: "wrong"}
+	form := credForm{method: methodPassword, user: "yuan", password: "wrong"}
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 	host, _ := ssh.NewSignerFromKey(priv)
 
@@ -255,7 +255,7 @@ func TestSSHSignInFailures(t *testing.T) {
 		_, _, _, _ = ssh.NewServerConn(server, cfg)
 		close(prompts)
 	}()
-	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", form, nil, ""); !errors.Is(err, errSignInFailed) {
+	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", form, true, "", ""); !errors.Is(err, errSignInFailed) {
 		t.Fatalf("refused password: err %v", err)
 	}
 	var tried []string
@@ -276,7 +276,7 @@ func TestSSHSignInFailures(t *testing.T) {
 		cfg.AddHostKey(host)
 		_, _, _, _ = ssh.NewServerConn(server, cfg)
 	}()
-	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", form, nil, ""); !errors.Is(err, errSignInFailed) {
+	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", form, true, "", ""); !errors.Is(err, errSignInFailed) {
 		t.Fatalf("closed during sign-in: err %v", err)
 	}
 
@@ -293,7 +293,80 @@ func TestSSHSignInFailures(t *testing.T) {
 		cfg.AddHostKey(host)
 		_, _, _, _ = ssh.NewServerConn(server, cfg)
 	}()
-	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", form, nil, ""); !errors.Is(err, errNoAnswer) {
+	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", form, true, "", ""); !errors.Is(err, errNoAnswer) {
 		t.Fatalf("unanswered sign-in: err %v", err)
+	}
+}
+
+// countingLink is a link that counts the tunnels it opens.
+type countingLink struct {
+	fakeLink
+	opened int
+}
+
+func (l *countingLink) Open(context.Context, string, string, string) (net.Conn, error) {
+	l.opened++
+	return nil, errors.New("no tunnel in this test")
+}
+
+// A first connection to a service asks how to sign in before anything is
+// dialed (regression: keys, then a blank password, were tried first).
+func TestServicesAskBeforeDialing(t *testing.T) {
+	a := New("", t.TempDir(), "")
+	link := &countingLink{}
+	a.link = link
+	for _, service := range []string{serviceSSH, serviceRDP, serviceVNC} {
+		s := &serviceTab{app: a, device: "657365333", service: service}
+		if _, err := serviceDials[service](context.Background(), s, nil); !errors.Is(err, errNeedSignIn) {
+			t.Errorf("%s: err %v, want errNeedSignIn", service, err)
+		}
+		if f := s.formShown(); f.method != signInMethods[service][0] {
+			t.Errorf("%s: form method %q", service, f.method)
+		}
+	}
+	if link.opened != 0 {
+		t.Errorf("%d tunnel(s) opened before the person chose", link.opened)
+	}
+}
+
+// Each SSH method signs in by itself alone: a key sign-in never sends a
+// password, a password sign-in never offers this device's keys.
+func TestSSHMethodsStayApart(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	key, _ := ssh.NewSignerFromKey(priv)
+	_, hostPriv, _ := ed25519.GenerateKey(rand.Reader)
+	host, _ := ssh.NewSignerFromKey(hostPriv)
+	serve := func(server net.Conn, tried chan<- string) {
+		cfg := &ssh.ServerConfig{
+			PublicKeyCallback: func(ssh.ConnMetadata, ssh.PublicKey) (*ssh.Permissions, error) {
+				tried <- "key"
+				return nil, errors.New("unknown key")
+			},
+			PasswordCallback: func(ssh.ConnMetadata, []byte) (*ssh.Permissions, error) {
+				tried <- "password"
+				return nil, errors.New("wrong password")
+			},
+		}
+		cfg.AddHostKey(host)
+		_, _, _, _ = ssh.NewServerConn(server, cfg)
+		close(tried)
+	}
+	for _, c := range []struct {
+		method, want string
+	}{{methodKey, "key"}, {methodPassword, "password"}} {
+		client, server := connPair(t)
+		tried := make(chan string, 8)
+		go serve(server, tried)
+		plan := credForm{method: c.method, user: "yuan", password: "hunter2"}
+		if _, _, err := sshDial(ctx, &fakeLink{conn: client, key: key}, "657365333", "", plan, true, "", ""); !errors.Is(err, errSignInFailed) {
+			t.Fatalf("%s: err %v", c.method, err)
+		}
+		for got := range tried {
+			if got != c.want {
+				t.Errorf("%s sign-in also tried %s", c.method, got)
+			}
+		}
 	}
 }

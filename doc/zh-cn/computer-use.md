@@ -240,7 +240,7 @@ Windows 上的 Ctrl+C 在 Mac 上也是复制（RustDesk 有同样的开关，�
 | `net` `{rx_bps, tx_bps, rx_total, tx_total}` | `GetIfTable2`，处于启用状态的硬件接口 | `getifaddrs`，处于启用状态的接口，不含回环 |
 | `battery` `{percent, charging}` 或 null | `GetSystemPowerStatus` | 电源（IOKit） |
 | `uptime_s`、`at` | `GetTickCount64`；被控端的时钟（Unix 毫秒） | `kern.boottime` |
-| `services` | SSH、远程桌面与 VNC 中哪些在其回环地址上接受连接，每 30 秒查看一次（[remote-services.md](remote-services.md)） | 相同 |
+| `services` | SSH、远程桌面与 VNC 中哪些在其回环地址上、在其用户设置的端口上接受连接，每 30 秒查看一次（[remote-services.md](remote-services.md)） | 相同 |
 | `offers` | 每个查看者：其密码或密钥无需询问即可授予的权限（“无需确认即可连接”开启时为密码授予的权限，否则为无），使控制端只提供能用的操作 | 相同 |
 | `ai` | 每个查看者：被控端的 AI 现在能否开始任务（已选择模型，且除非其服务器在被控端上，否则其提供方的密钥存在） | 相同 |
 

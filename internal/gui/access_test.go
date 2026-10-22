@@ -274,27 +274,75 @@ func TestReached(t *testing.T) {
 	}
 }
 
-// TestVNCSignInError: a VNC server that needs a sign-in the tab did not
-// have asks for one; a refused or dropped sign-in is a wrong one
-// (regression: a Mac that dropped the blank attempt showed "could not be
-// opened" and never the form).
+// TestVNCSignInError: "no sign-in" against a server that needs one asks how
+// to sign in; a refused or dropped sign-in is a wrong one (regression: a
+// Mac that dropped a blank attempt showed "could not be opened" and never
+// the form).
 func TestVNCSignInError(t *testing.T) {
 	other := errors.New("broken pipe")
 	for _, c := range []struct {
-		err   error
-		blank bool
-		want  error
+		err  error
+		none bool
+		want error
 	}{
-		{fmt.Errorf("x: %w", rfb.ErrUnsupportedServer), true, errNeedSignIn},
-		{fmt.Errorf("x: %w", rfb.ErrAuthenticationFailed), true, errNeedSignIn},
+		{fmt.Errorf("x: %w", rfb.ErrUnsupportedServer), true, errSignInRequired},
+		{fmt.Errorf("x: %w", rfb.ErrAuthenticationFailed), true, errSignInRequired},
 		{fmt.Errorf("x: %w", rfb.ErrUnsupportedServer), false, rfb.ErrUnsupportedServer},
 		{fmt.Errorf("x: %w", rfb.ErrAuthenticationFailed), false, errSignInFailed},
 		{fmt.Errorf("x: %w", rfb.ErrPermissionDenied), false, errSignInFailed},
 		{fmt.Errorf("x: %w", rfb.ErrSignInDropped), false, errSignInFailed},
 		{other, false, other},
 	} {
-		if got := vncSignInError(c.err, c.blank); !errors.Is(got, c.want) {
-			t.Errorf("vncSignInError(%v, %v) = %v, want %v", c.err, c.blank, got, c.want)
+		if got := vncSignInError(c.err, c.none); !errors.Is(got, c.want) {
+			t.Errorf("vncSignInError(%v, %v) = %v, want %v", c.err, c.none, got, c.want)
+		}
+	}
+}
+
+// TestSignInPlan: a remembered method signs in by itself; nothing
+// remembered, or a method the service does not offer, asks; and what a
+// sign-in that worked leaves saved follows Remember.
+func TestSignInPlan(t *testing.T) {
+	pw := "hunter2"
+	saved := &localapi.Credentials{Method: methodAccount, User: "yuan", Domain: "HOME", Password: &pw}
+	if got, ok := signInPlan(serviceRDP, nil, saved); !ok || got != (credForm{method: methodAccount, user: "yuan", domain: "HOME", password: pw, remember: true}) {
+		t.Errorf("remembered: %+v, %v", got, ok)
+	}
+	typed := &credForm{method: methodNone}
+	if got, ok := signInPlan(serviceRDP, typed, saved); !ok || got != *typed {
+		t.Errorf("typed: %+v, %v", got, ok)
+	}
+	for _, c := range []struct {
+		service string
+		saved   *localapi.Credentials
+	}{
+		{serviceSSH, nil},
+		{serviceSSH, &localapi.Credentials{User: "yuan", HostKey: "ssh-ed25519 AAAA"}}, // 0.5.0 saved no method
+		{serviceVNC, &localapi.Credentials{Method: methodKey}},                         // not a VNC method
+	} {
+		if _, ok := signInPlan(c.service, nil, c.saved); ok {
+			t.Errorf("%s with %+v did not ask", c.service, c.saved)
+		}
+	}
+	if f := askedFor(serviceSSH, credForm{}, &localapi.Credentials{User: "yuan"}); f != (credForm{method: methodKey, user: "yuan"}) {
+		t.Errorf("askedFor = %+v", f)
+	}
+
+	if kept(credForm{method: methodPassword, password: pw, remember: true}, false) != nil {
+		t.Error("a remembered sign-in was saved again")
+	}
+	for _, c := range []struct {
+		plan     credForm
+		method   string
+		password string
+	}{
+		{credForm{method: methodPassword, user: "yuan", password: pw, remember: true}, methodPassword, pw},
+		{credForm{method: methodKey, user: "yuan", password: "typed before", remember: true}, methodKey, ""},
+		{credForm{method: methodAccount, user: "yuan", password: pw}, "", ""}, // Remember off forgets
+	} {
+		cr := kept(c.plan, true)
+		if cr == nil || cr.User != "yuan" || cr.Method != c.method || cr.Password == nil || *cr.Password != c.password {
+			t.Errorf("kept(%+v) = %+v", c.plan, cr)
 		}
 	}
 }

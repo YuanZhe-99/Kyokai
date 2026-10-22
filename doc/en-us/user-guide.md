@@ -150,10 +150,14 @@ Sharing on a Mac) through Kyokai, with no port opened to the network. Its card o
 **SSH**, **Remote Desktop** or **VNC** for the services it has switched on, and its ⋯ menu always
 offers them. Each opens as a tab like a desktop's. Its user allows each one like any other
 permission (Permissions, **With a correct password**, has a switch for each, off by default).
-Kyokai asks for the user name and password when nothing is saved; **Remember password** keeps them
-for next time. SSH signs in with your keys first (see below), then the password; the first time,
-Kyokai remembers the server's key, and if it ever changes, it sends no password and asks whether to
-trust the new one. Remote Desktop without a user name shows the Windows sign-in screen. The
+The first time, Kyokai asks how to sign in before it connects: for SSH with **Key** (your keys, see
+below) or **Password**; for VNC with **Password only**, **User name and password** (a Mac's) or
+**No sign-in**; for Remote Desktop with **User name and password** or **On the remote screen** (the
+Windows sign-in screen). With **Remember**, the next connection signs in the same way without
+asking, and asks again only if that fails. The first time, Kyokai also remembers the SSH server's
+key, and if it ever changes, it sends no password and asks whether to trust the new one. If the
+other computer runs a service on another port, its user enters that port under Permissions, **Ports
+of this computer's services**; you only pick the service. The
 picture of Remote Desktop and VNC fits the window or shows at its original size (**Display**),
 takes the keyboard like a desktop's (**Keyboard**), sends **Ctrl+Alt+Del** from **Actions**, and
 shares the clipboard's text while its tab is in front.

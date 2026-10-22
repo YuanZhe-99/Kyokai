@@ -117,28 +117,21 @@ func keyLine(k ssh.PublicKey) string {
 	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(k)))
 }
 
-// sshDial signs in to a device's SSH server and opens a shell: with this
-// device's keys (the engine signs), then the password typed or saved, also
-// answering keyboard-interactive prompts with it. The server's key is
-// pinned on first use; a different one is refused before any password is
-// sent, unless it is trust, the key the person chose to trust.
-// Inputs: typed is the form's sign-in, nil to use what is saved.
+// sshDial signs in to a device's SSH server and opens a shell, with the
+// method of plan alone: this device's keys (the engine signs), or the
+// password, also answering keyboard-interactive prompts with it. Neither
+// is tried for the other: nothing is sent the person did not choose. The
+// server's key is pinned on first use; a different one is refused before
+// any password is sent, unless it is trust, the key the person chose to
+// trust.
+// Inputs: plan is the sign-in (signInPlan); typed, whether the form sent
+// it; pinned, the server key saved.
 // Returns: the shell; errNeedSignIn without a user name; errSignInFailed;
-// errHostKeyChanged with the server's key line.
-// Side effects: saves the user name and pinned key (with the password when
-// Remember is on) through link.
-func sshDial(ctx context.Context, link serviceLink, device, address string, typed *credForm, saved *localapi.Credentials, trust string) (*sshTerm, string, error) {
-	user, password, pinned := "", "", ""
-	if saved != nil {
-		user, pinned = saved.User, saved.HostKey
-		if saved.Password != nil {
-			password = *saved.Password
-		}
-	}
-	if typed != nil {
-		user, password = typed.user, typed.password
-	}
-	if user == "" {
+// errNoAnswer; errHostKeyChanged with the server's key line.
+// Side effects: saves what the sign-in leaves (kept) and the pinned key
+// through link.
+func sshDial(ctx context.Context, link serviceLink, device, address string, plan credForm, typed bool, pinned, trust string) (*sshTerm, string, error) {
+	if plan.user == "" {
 		return nil, "", errNeedSignIn
 	}
 	tunnel, err := link.Open(ctx, device, address, serviceSSH)
@@ -149,13 +142,15 @@ func sshDial(ctx context.Context, link serviceLink, device, address string, type
 	defer stop()
 	_ = tunnel.SetDeadline(time.Now().Add(sshTimeout))
 	seen := ""
-	auth := []ssh.AuthMethod{ssh.PublicKeysCallback(func() ([]ssh.Signer, error) { return engineSigners(ctx, link), nil })}
-	if password != "" {
+	var auth []ssh.AuthMethod
+	if plan.method == methodKey {
+		auth = []ssh.AuthMethod{ssh.PublicKeysCallback(func() ([]ssh.Signer, error) { return engineSigners(ctx, link), nil })}
+	} else {
 		// One password, tried once: a server that refused it by "password"
 		// is not given it again by "keyboard-interactive", a second failure
 		// that a Mac answers a minute late and counts against this computer.
-		sent := false
-		auth = append(auth, ssh.PasswordCallback(func() (string, error) {
+		password, sent := plan.password, false
+		auth = []ssh.AuthMethod{ssh.PasswordCallback(func() (string, error) {
 			sent = true
 			return password, nil
 		}), ssh.KeyboardInteractive(func(_, _ string, questions []string, echos []bool) ([]string, error) {
@@ -169,9 +164,9 @@ func sshDial(ctx context.Context, link serviceLink, device, address string, type
 				}
 			}
 			return answers, nil
-		}))
+		})}
 	}
-	cfg := &ssh.ClientConfig{User: user, Auth: auth, Timeout: sshTimeout,
+	cfg := &ssh.ClientConfig{User: plan.user, Auth: auth, Timeout: sshTimeout,
 		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
 			seen = keyLine(key)
 			if pinned != "" && seen != pinned && seen != trust {
@@ -195,15 +190,15 @@ func sshDial(ctx context.Context, link serviceLink, device, address string, type
 		_ = tunnel.Close()
 		return nil, "", err
 	}
-	if seen != pinned || typed != nil {
-		cr := localapi.Credentials{User: user, HostKey: seen}
-		switch {
-		case typed != nil && typed.remember:
-			cr.Password = &password
-		case typed == nil && saved != nil:
-			cr.Password = saved.Password
-		}
-		_ = link.SaveCredential(ctx, device, serviceSSH, cr)
+	// A save replaces the record: a remembered sign-in whose server key is
+	// new to it is saved with its method and user (the password stays).
+	cr := kept(plan, typed)
+	if cr == nil && seen != pinned {
+		cr = &localapi.Credentials{User: plan.user, Method: plan.method}
+	}
+	if cr != nil {
+		cr.HostKey = seen
+		_ = link.SaveCredential(ctx, device, serviceSSH, *cr)
 	}
 	return t, "", nil
 }
@@ -270,13 +265,18 @@ func sshSignInError(err error, keyed bool) error {
 // dialSSH is the SSH tab's serviceDial.
 func dialSSH(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient, error) {
 	saved := s.savedCredential(ctx)
+	plan, ok := s.ask(typed, saved)
+	if !ok {
+		return nil, errNeedSignIn
+	}
+	pinned := ""
+	if saved != nil {
+		pinned = saved.HostKey
+	}
 	s.mu.Lock()
 	trust := s.hostKey
-	if saved != nil && typed == nil {
-		s.form.user = saved.User
-	}
 	s.mu.Unlock()
-	conn, seen, err := sshDial(ctx, s.app.link, s.device, s.address, typed, saved, trust)
+	conn, seen, err := sshDial(ctx, s.app.link, s.device, s.address, plan, typed != nil, pinned, trust)
 	if errors.Is(err, errHostKeyChanged) {
 		s.mu.Lock()
 		s.changed = seen

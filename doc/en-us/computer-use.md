@@ -386,7 +386,7 @@ each sample as a `system` message:
 | `net` `{rx_bps, tx_bps, rx_total, tx_total}` | `GetIfTable2`, the hardware interfaces that are up | `getifaddrs`, the interfaces that are up, loopback left out |
 | `battery` `{percent, charging}` or null | `GetSystemPowerStatus` | the power sources (IOKit) |
 | `uptime_s`, `at` | `GetTickCount64`; the host's clock (Unix milliseconds) | `kern.boottime` |
-| `services` | which of SSH, Remote Desktop and VNC accept a connection on its loopback, looked at every 30 seconds ([remote-services.md](remote-services.md)) | the same |
+| `services` | which of SSH, Remote Desktop and VNC accept a connection on its loopback on the ports its user set, looked at every 30 seconds ([remote-services.md](remote-services.md)) | the same |
 | `offers` | per watcher: the permissions its password or key grants without asking (the password grants while Connect without asking is on, else none), so the controller offers only what will work | the same |
 | `ai` | per watcher: whether the host's AI could start a task now (a model chosen and, unless its server is on the host, its provider's key present) | the same |
 

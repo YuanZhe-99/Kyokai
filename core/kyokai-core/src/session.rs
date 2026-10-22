@@ -1832,7 +1832,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
                 let _ = ch.send(&refuse(Refusal::Denied)).await;
                 return Err(Failure::Refused(Refusal::Denied));
             }
-            match crate::tunnel::reach(s).await {
+            match crate::tunnel::reach(ctx.access.service_ports().port(s)).await {
                 Some(stream) => Some(stream),
                 None => {
                     let _ = ch.send(&refuse(Refusal::ServiceDown)).await;
@@ -6454,6 +6454,31 @@ mod tunnel_tests {
             session(&controller, id)["failure"],
             json!({"refused": "service-down"})
         );
+    }
+
+    /// A tunnel reaches its service on the port the host's user set, not the
+    /// standard one; port 0 is refused.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_tunnel_reaches_the_port_its_host_set() {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let host = host_with(vec![Permission::UseSsh]);
+        let ports = crate::access::ServicePorts {
+            ssh: Some(l.local_addr().unwrap().port()),
+            ..Default::default()
+        };
+        host.access.set_service_ports(ports).unwrap();
+        assert_eq!(host.access.service_ports(), ports);
+        let controller = device("1.0.1");
+        let (id, _) = open(&host, &controller, Service::Ssh, "k7mq2xpa", None).await;
+        assert_eq!(session(&controller, id)["state"], "connected");
+        let reached = tokio::time::timeout(Duration::from_secs(5), l.accept()).await;
+        assert!(matches!(reached, Ok(Ok(_))), "the set port was dialed");
+        let zero = crate::access::ServicePorts {
+            vnc: Some(0),
+            ..Default::default()
+        };
+        assert!(host.access.set_service_ports(zero).is_err());
+        assert_eq!(host.access.service_ports(), ports, "unchanged");
     }
 
     /// A host that announced no tunnels never gets asked for one: the

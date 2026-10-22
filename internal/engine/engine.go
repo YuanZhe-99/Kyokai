@@ -314,7 +314,7 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 	case localapi.RequestStartOver:
 		return h.command("store.start_over", nil)
 	case localapi.RequestAccessSettings:
-		if req.PasswordMode == "" && req.WithoutAsking == nil && req.ByAddress == nil {
+		if req.PasswordMode == "" && req.WithoutAsking == nil && req.ByAddress == nil && req.ServicePorts == nil {
 			return localapi.Fail(localapi.CodeInvalid, "nothing to change")
 		}
 		params := map[string]any{}
@@ -330,6 +330,18 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 				ranges = []string{}
 			}
 			params["by_address"] = map[string]any{"on": req.ByAddress.On, "ranges": ranges}
+		}
+		if p := req.ServicePorts; p != nil {
+			ports := map[string]int{}
+			for name, port := range map[string]int{"ssh": p.SSH, "rdp": p.RDP, "vnc": p.VNC} {
+				if port < 0 || port > 65535 {
+					return localapi.Fail(localapi.CodeInvalid, "a port is between 1 and 65535")
+				}
+				if port != 0 {
+					ports[name] = port
+				}
+			}
+			params["service_ports"] = ports
 		}
 		return h.command("access.settings", params)
 	case localapi.RequestPermission:
@@ -777,7 +789,7 @@ func (h *handler) status() (*localapi.Status, error) {
 		Version: st.Version, Build: version.Build(), ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: h.runMode, Background: h.isBackground(), Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
-		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, ByAddress: byAddress, LogsOff: LogsOff(h.stateDir) || !st.KeepsHistory, Protected: st.Protected, AIDraft: st.AIDraft, Permissions: permissions,
+		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, ByAddress: byAddress, ServicePorts: localapi.ServicePorts(st.ServicePorts), LogsOff: LogsOff(h.stateDir) || !st.KeepsHistory, Protected: st.Protected, AIDraft: st.AIDraft, Permissions: permissions,
 		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
 		Name: st.Name, About: about, Watching: watching, Watchers: watchers,
 	}, nil

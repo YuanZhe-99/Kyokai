@@ -1367,6 +1367,7 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 password_mode: Option<access::PasswordMode>,
                 without_asking: Option<bool>,
                 by_address: Option<access::ByAddress>,
+                service_ports: Option<access::ServicePorts>,
             }
             let p: Settings = serde_json::from_value(req.params)
                 .map_err(|e| format!("bad access settings: {e}"))?;
@@ -1380,6 +1381,9 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 if let Some(by) = p.by_address {
                     c.ctx.access.set_by_address(by)?;
                     c.network.accept_by_address();
+                }
+                if let Some(ports) = p.service_ports {
+                    c.ctx.access.set_service_ports(ports)?;
                 }
                 Ok(json!({}))
             })
@@ -1571,6 +1575,7 @@ fn status() -> Value {
             "password_grants": c.ctx.access.password_grants(),
             "password_mode": c.ctx.access.password_mode(),
             "without_asking": c.ctx.access.without_asking(),
+            "service_ports": c.ctx.access.service_ports().status(),
             "by_address": c.network.by_address_status(),
             "keeps_history": c.ctx.access.keeps_history(),
             "protected": c.ctx.access.protected(),

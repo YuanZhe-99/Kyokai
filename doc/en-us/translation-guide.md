@@ -131,6 +131,8 @@ and Latin words only where it helps readability.
 | route (to a device) / Addresses… | 路径 / 地址… |
 | Auto (route choice) | 自动 |
 | happy eyeballs | 快速回退并行连接（happy eyeballs） |
+| sign-in method (Key, Password only, User name and password, No sign-in, On the remote screen) | 登录方式（密钥、仅密码、用户名和密码、无需登录、在远程屏幕上） |
+| Ports of this computer's services | 本机服务的端口 |
 
 ## 6. Review checklist
 

@@ -169,6 +169,9 @@ type Request struct {
 	// ByAddress replaces whether and from where this host accepts
 	// connections by address (RequestAccessSettings).
 	ByAddress *ByAddress `json:"by_address,omitempty"`
+	// ServicePorts sets the ports of this host's SSH, Remote Desktop and
+	// VNC (RequestAccessSettings; 0: the standard port).
+	ServicePorts *ServicePorts `json:"service_ports,omitempty"`
 	// Address is the IP address or domain name RequestIdentify dials.
 	Address string `json:"address,omitempty"`
 	// Permission names what RequestPermission asks the system for.
@@ -267,6 +270,9 @@ type AuthorizedKey struct {
 // Password travels only in a request, and in Response.Credentials to the
 // engine's owner at a client's sign-in.
 type Credentials struct {
+	// Method is how the GUI signs in, remembered with Remember ("key",
+	// "password", "account", "none"); empty asks first.
+	Method   string  `json:"method,omitempty"`
 	User     string  `json:"user,omitempty"`
 	Domain   string  `json:"domain,omitempty"`
 	Password *string `json:"password,omitempty"`
@@ -434,6 +440,15 @@ type ConnectRequest struct {
 type ProtectRequest struct {
 	On       bool   `json:"on"`
 	Password string `json:"password,omitempty"`
+}
+
+// ServicePorts are the loopback ports of a host's SSH, Remote Desktop and
+// VNC, which its user sets (doc/en-us/remote-services.md); 0 is the
+// standard port.
+type ServicePorts struct {
+	SSH int `json:"ssh,omitempty"`
+	RDP int `json:"rdp,omitempty"`
+	VNC int `json:"vnc,omitempty"`
 }
 
 // ByAddress is whether a host accepts connections by address (TCP on
@@ -749,6 +764,9 @@ type Status struct {
 	// ByAddress is whether and from where this host accepts connections
 	// by address, and whether it listens.
 	ByAddress ByAddress `json:"by_address"`
+	// ServicePorts are the ports a tunnel reaches this host's services on
+	// (zero from an engine before 0.5.1: the standard ones).
+	ServicePorts ServicePorts `json:"service_ports"`
 	// LogsOff: this engine keeps no logs, crash traces or connection
 	// history (Settings, No logs).
 	LogsOff bool `json:"logs_off,omitempty"`

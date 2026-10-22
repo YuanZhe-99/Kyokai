@@ -33,13 +33,15 @@ type renameForm struct {
 }
 
 // accessForm is the Permissions and Network pages' state: the permanent password field, the
-// connections-by-address ranges while edited (ranges nil follows the
-// engine), and the trusted devices last fetched (nil until fetched).
+// connections-by-address ranges and the service ports while edited (nil
+// follows the engine), and the trusted devices last fetched (nil until fetched).
 type accessForm struct {
 	permanent string
 	ranges    *string
-	trusted   []localapi.TrustedDevice
-	loaded    bool
+	// ports are the service ports while edited (nil follows the engine).
+	ports   *[3]string
+	trusted []localapi.TrustedDevice
+	loaded  bool
 }
 
 // parseTarget reads Connect's field: nine digits (spaces allowed) are a
@@ -572,6 +574,8 @@ func (a *App) accessSettings(c *ui.Context) {
 		if without {
 			a.passwordGrants(c, grants, busy)
 		}
+		ui.Divider(c)
+		a.servicePorts(c)
 	})
 }
 
@@ -821,4 +825,91 @@ func itoa(n uint64) string { return strconv.FormatUint(n, 10) }
 // opened a connection tab of its own asking for the Kyokai password).
 func desktopController(s localapi.SessionInfo) bool {
 	return s.Role == "controller" && s.Service == ""
+}
+
+// servicePortNames are the services whose ports the Permissions page sets,
+// in its order.
+var servicePortNames = [3]string{serviceSSH, serviceRDP, serviceVNC}
+
+// servicePorts is the Permissions page's ports of this computer's SSH,
+// Remote Desktop and VNC (edited, then saved): another device only names
+// the service, and its tunnel reaches the port set here.
+func (a *App) servicePorts(c *ui.Context) {
+	t := c.Theme()
+	a.mu.Lock()
+	set, edited, busy := a.status.ServicePorts, a.access.ports, a.busy["access"]
+	a.mu.Unlock()
+	fields := portFields(set)
+	if edited != nil {
+		fields = *edited
+	}
+	ui.Text(c, L.ServicePortsTitle())
+	ui.Text(c, L.ServicePortsHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+	ui.Row(c.Key("svc-ports")).Gap(gap).FillWidth().Children(func() {
+		for i, s := range servicePortNames {
+			ui.Column(c.Key("svc-port-col-" + s)).Gap(4).Grow(1).Children(func() {
+				ui.Text(c, serviceName(s)).FontSize(sizeSmall)
+				in := ui.TextInput(c.Key("svc-port-"+s), &fields[i]).Placeholder(strconv.Itoa(standardPorts[i])).Label(serviceName(s)).FillWidth().Disabled(busy)
+				if in.Changed() {
+					a.mu.Lock()
+					a.access.ports = &fields
+					a.mu.Unlock()
+				}
+			})
+		}
+	})
+	if edited == nil {
+		return
+	}
+	ports, ok := parsePorts(fields)
+	if !ok {
+		ui.Text(c, L.ServicePortsInvalid()).FontSize(sizeSmall).TextColor(t.Danger)
+	}
+	ui.Row(c).Gap(gap).Children(func() {
+		if ui.Button(c.Key("svc-ports-save"), L.ActionSave()).Disabled(busy || !ok).Clicked() {
+			a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, ServicePorts: &ports}, func() {
+				a.access.ports = nil
+				a.setToast(L.ServicePortsSaved(), false)
+			})
+		}
+		if ui.Button(c.Key("svc-ports-cancel"), L.ActionCancel()).Disabled(busy).Clicked() {
+			a.mu.Lock()
+			a.access.ports = nil
+			a.mu.Unlock()
+		}
+	})
+}
+
+// standardPorts are SSH's, Remote Desktop's and VNC's standard ports.
+var standardPorts = [3]int{22, 3389, 5900}
+
+// portFields are the engine's service ports as the page's fields: empty
+// for a standard port (an older engine reports none).
+func portFields(p localapi.ServicePorts) [3]string {
+	var out [3]string
+	for i, port := range [3]int{p.SSH, p.RDP, p.VNC} {
+		if port != 0 && port != standardPorts[i] {
+			out[i] = strconv.Itoa(port)
+		}
+	}
+	return out
+}
+
+// parsePorts reads the page's fields: empty is the standard port.
+// Returns: the ports to set, and false when a field is not a port
+// (1–65535).
+func parsePorts(fields [3]string) (localapi.ServicePorts, bool) {
+	var ports [3]int
+	for i, f := range fields {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		n, err := strconv.Atoi(f)
+		if err != nil || n < 1 || n > 65535 {
+			return localapi.ServicePorts{}, false
+		}
+		ports[i] = n
+	}
+	return localapi.ServicePorts{SSH: ports[0], RDP: ports[1], VNC: ports[2]}, true
 }

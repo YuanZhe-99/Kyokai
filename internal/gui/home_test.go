@@ -268,8 +268,10 @@ func TestServiceTabsRender(t *testing.T) {
 		s    *serviceTab
 	}{
 		{"service-connecting", &serviceTab{service: serviceSSH, phase: svcConnecting}},
-		{"service-form-rdp", &serviceTab{service: serviceRDP, phase: svcForm, form: credForm{user: "yuan"}, note: "The user name or password was not accepted."}},
-		{"service-form-vnc", &serviceTab{service: serviceVNC, phase: svcForm, formUser: true}},
+		{"service-form-rdp", &serviceTab{service: serviceRDP, phase: svcForm, form: credForm{method: methodAccount, user: "yuan"}, note: "The user name or password was not accepted."}},
+		{"service-form-vnc", &serviceTab{service: serviceVNC, phase: svcForm, form: credForm{method: methodAccount}}},
+		{"service-form-vnc-password", &serviceTab{service: serviceVNC, phase: svcForm, form: credForm{method: methodPassword}}},
+		{"service-form-ssh-key", &serviceTab{service: serviceSSH, phase: svcForm, form: credForm{method: methodKey, user: "yuan", remember: true}}},
 		{"service-host-key", &serviceTab{service: serviceSSH, phase: svcEnded, note: "This device's SSH key is not the one it had before.", changed: "ssh-ed25519 AAAA"}},
 	} {
 		c.s.app, c.s.device, c.s.title = a, "657365333", serviceName(c.s.service)+" · Studio Mac · 657 365 333"

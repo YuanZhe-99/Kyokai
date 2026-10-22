@@ -101,6 +101,13 @@ type Status struct {
 	WithoutAsking bool   `json:"without_asking"`
 	// ByAddress is decoded by the host (localapi.ByAddress).
 	ByAddress json.RawMessage `json:"by_address"`
+	// ServicePorts are the ports of the host's services in effect
+	// (localapi.ServicePorts).
+	ServicePorts struct {
+		SSH int `json:"ssh"`
+		RDP int `json:"rdp"`
+		VNC int `json:"vnc"`
+	} `json:"service_ports"`
 	// KeepsHistory: the connection history is written to the store (off
 	// with No logs).
 	KeepsHistory bool `json:"keeps_history"`

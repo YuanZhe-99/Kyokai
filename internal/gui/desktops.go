@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/bgra"
-	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	"github.com/YuanZhe-99/Kyokai/internal/rdp"
 	"github.com/YuanZhe-99/Kyokai/internal/rfb"
 	L "github.com/YuanZhe-99/Kyokai/locales"
@@ -25,69 +24,41 @@ const (
 	remoteTimeout       = 30 * time.Second
 )
 
-// signIn is the user, domain and password a dial uses: what the form sent,
-// else what is saved.
-func signIn(typed *credForm, saved *localapi.Credentials) (user, domain, password string) {
-	if typed != nil {
-		return typed.user, typed.domain, typed.password
-	}
-	if saved != nil {
-		user, domain = saved.User, saved.Domain
-		if saved.Password != nil {
-			password = *saved.Password
-		}
-	}
-	return user, domain, password
-}
-
-// keepSignIn saves what the form sent once it worked: with the password
-// when Remember is on, else the user name alone.
-func (s *serviceTab) keepSignIn(ctx context.Context, typed *credForm) {
-	if typed == nil || typed.user == "" && !typed.remember {
-		return
-	}
-	cr := localapi.Credentials{User: typed.user, Domain: typed.domain}
-	if typed.remember {
-		password := typed.password
-		cr.Password = &password
-	}
-	_ = s.app.link.SaveCredential(ctx, s.device, s.service, cr)
-}
-
-// dialRDP is the Remote Desktop tab's serviceDial: Network Level
-// Authentication with a user name, TLS alone without one (the Windows
-// sign-in screen then asks).
+// dialRDP is the Remote Desktop tab's serviceDial, with the method chosen
+// or remembered: Network Level Authentication with a user name and
+// password, or no sign-in (TLS alone: the Windows sign-in screen asks).
 // Notes: the server's certificate is not pinned: the tunnel reaches the
 // device's own port inside an authenticated Kyokai session.
 func dialRDP(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient, error) {
-	saved := s.savedCredential(ctx)
-	user, domain, password := signIn(typed, saved)
-	s.mu.Lock()
-	if typed == nil && saved != nil {
-		s.form.user, s.form.domain = saved.User, saved.Domain
+	plan, ok := s.ask(typed, s.savedCredential(ctx))
+	if !ok {
+		return nil, errNeedSignIn
 	}
-	s.mu.Unlock()
+	opts := rdp.Options{Width: rdpWidth, Height: rdpHeight, Clipboard: true, DialTimeout: remoteTimeout,
+		VerifyCertificate: func(string) error { return nil }}
+	if plan.method == methodAccount {
+		opts.Username, opts.Domain, opts.Password = plan.user, plan.domain, plan.password
+	}
 	conn, err := s.app.link.Open(ctx, s.device, s.address, serviceRDP)
 	if err != nil {
 		return nil, err
 	}
+	opts.Conn = conn
 	sc := newScreen(s)
 	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
 	defer cancel()
-	c, err := rdp.Dial(ctx, rdp.Options{Conn: conn, Username: user, Domain: domain, Password: password,
-		Width: rdpWidth, Height: rdpHeight, Clipboard: true, DialTimeout: remoteTimeout,
-		VerifyCertificate: func(string) error { return nil }}, rdpEvents{sc})
+	c, err := rdp.Dial(ctx, opts, rdpEvents{sc})
 	switch {
-	case errors.Is(err, rdp.ErrAuthenticationFailed) && typed == nil && user == "",
-		errors.Is(err, rdp.ErrUnsupportedSecurity) && user == "":
-		return nil, errNeedSignIn
+	case errors.Is(err, rdp.ErrUnsupportedSecurity) && plan.method == methodNone:
+		// The server allows only Network Level Authentication.
+		return nil, errSignInRequired
 	case errors.Is(err, rdp.ErrAuthenticationFailed), errors.Is(err, rdp.ErrRemoteLogonDenied):
 		return nil, errSignInFailed
 	case err != nil:
 		return nil, err
 	}
 	sc.desk = rdpDesk{c}
-	s.keepSignIn(ctx, typed)
+	s.keep(ctx, plan, typed != nil)
 	go func() {
 		err := c.Run()
 		note := L.ServiceEnded()
@@ -129,39 +100,38 @@ func (rdpEvents) AudioPacketReceived([]byte, uint64) {}
 func (rdpEvents) MicrophoneOpened(rdp.AudioFormat)   {}
 func (rdpEvents) MicrophoneClosed()                  {}
 
-// dialVNC is the VNC tab's serviceDial: no security, a VNC password, or a
-// Mac's user name and password (Apple's sign-ins), whichever the server
-// offers first.
+// dialVNC is the VNC tab's serviceDial, with the method chosen or
+// remembered: a VNC password alone, a Mac's user name and password (Apple's
+// sign-ins, else the VNC password), or no sign-in.
 func dialVNC(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient, error) {
-	saved := s.savedCredential(ctx)
-	user, _, password := signIn(typed, saved)
-	s.mu.Lock()
-	s.formUser = true
-	if typed == nil && saved != nil {
-		s.form.user = saved.User
+	plan, ok := s.ask(typed, s.savedCredential(ctx))
+	if !ok {
+		return nil, errNeedSignIn
 	}
-	s.mu.Unlock()
+	opts := rfb.Options{Mode: rfb.ModeControl, Clipboard: true, AllowUnverifiedLogin: true, AutomaticUpdates: true}
+	switch plan.method {
+	case methodNone:
+		opts.SecurityTypes = []rfb.SecurityType{rfb.SecurityNone}
+	case methodPassword:
+		opts.Password = plan.password
+		opts.SecurityTypes = []rfb.SecurityType{rfb.SecurityVNCPassword}
+	default:
+		opts.Username, opts.Password = plan.user, plan.password
+	}
 	conn, err := s.app.link.Open(ctx, s.device, s.address, serviceVNC)
 	if err != nil {
 		return nil, err
 	}
+	opts.Conn = conn
 	sc := newScreen(s)
 	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
 	defer cancel()
-	// Nothing to sign in with: only a server that needs no sign-in is
-	// taken; any other asks for one in the form, without a failed attempt
-	// (a Mac slows down and then drops repeated ones).
-	var only []rfb.SecurityType
-	if user == "" && password == "" {
-		only = []rfb.SecurityType{rfb.SecurityNone}
-	}
-	c, err := rfb.Dial(ctx, rfb.Options{Conn: conn, Username: user, Password: password, Mode: rfb.ModeControl,
-		SecurityTypes: only, Clipboard: true, AllowUnverifiedLogin: true, AutomaticUpdates: true}, vncEvents{sc})
+	c, err := rfb.Dial(ctx, opts, vncEvents{sc})
 	if err != nil {
-		return nil, vncSignInError(err, only != nil)
+		return nil, vncSignInError(err, plan.method == methodNone)
 	}
 	sc.desk = vncDesk{c}
-	s.keepSignIn(ctx, typed)
+	s.keep(ctx, plan, typed != nil)
 	go func() {
 		_ = c.Run()
 		s.ended(sc, L.ServiceEnded())
@@ -170,18 +140,18 @@ func dialVNC(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 }
 
 // vncSignInError is what a VNC dial's error means to its tab.
-// Inputs: blank, the dial had nothing to sign in with (only "None" asked).
-// Returns: errNeedSignIn when a server that needs a sign-in got none;
-// errSignInFailed when the server refused one, or closed the connection
-// during it (a Mac drops repeated failures instead of answering); else
-// err.
-func vncSignInError(err error, blank bool) error {
+// Inputs: none, the method was "no sign-in".
+// Returns: errSignInRequired when a server that needs a sign-in got none;
+// errSignInFailed when the server refused the sign-in, or closed the
+// connection during it (a Mac drops repeated failures instead of
+// answering); else err (a server offering no sign-in Kyokai has stays
+// rfb.ErrUnsupportedServer).
+func vncSignInError(err error, none bool) error {
 	switch {
-	case blank && (errors.Is(err, rfb.ErrUnsupportedServer) || errors.Is(err, rfb.ErrAuthenticationFailed)):
-		return errNeedSignIn
-	case errors.Is(err, rfb.ErrAuthenticationFailed), errors.Is(err, rfb.ErrPermissionDenied):
-		return errSignInFailed
-	case errors.Is(err, rfb.ErrSignInDropped):
+	case none && (errors.Is(err, rfb.ErrUnsupportedServer) || errors.Is(err, rfb.ErrAuthenticationFailed)):
+		return errSignInRequired
+	case errors.Is(err, rfb.ErrAuthenticationFailed), errors.Is(err, rfb.ErrPermissionDenied),
+		errors.Is(err, rfb.ErrSignInDropped):
 		return errSignInFailed
 	}
 	return err

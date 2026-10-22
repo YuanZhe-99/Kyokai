@@ -90,6 +90,10 @@ pub async fn host<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let (rd, mut wr) = tokio::io::split(stream);
     let (mut frames, reading) = reader(rd);
     let mut status = crate::system::watch();
+    // Which services answer, on the ports the host's user set: looked at
+    // with the first sample and every PROBE_EVERY.
+    let mut services = Vec::new();
+    let mut probed: Option<Instant> = None;
     let mut ping = tokio::time::interval(PING_EVERY);
     let mut heard = Instant::now();
     let (mut buf, mut plain) = (vec![0u8; MAX_FRAME], vec![0u8; MAX_FRAME]);
@@ -118,6 +122,11 @@ pub async fn host<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         let mut s = (*s).clone();
                         s.offers = if access.without_asking() { access.password_grants() } else { Vec::new() };
                         s.ai = ai.ready();
+                        if probed.is_none_or(|t| t.elapsed() >= crate::system::PROBE_EVERY) {
+                            services = crate::system::listening(access.service_ports()).await;
+                            probed = Some(Instant::now());
+                        }
+                        s.services = services.clone();
                         send(&mut noise, &mut buf, &mut wr, &Message::System(Box::new(s))).await?;
                     }
                 }

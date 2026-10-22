@@ -22,6 +22,9 @@ pub const PIECE: usize = MAX_PLAINTEXT - 1;
 /// A tunnel with no frame from its peer for this long is gone (a slow
 /// reader on this side does not count: its frames wait in the transport).
 const IDLE: Duration = Duration::from_secs(60);
+/// How long a relay whose write failed waits for a goodbye already on its way:
+/// a peer that said bye and left fails the write before the bye is read.
+const BYE_WAIT: Duration = Duration::from_millis(500);
 /// How long the host tries to reach its own service before it refuses the
 /// tunnel as `service-down`.
 pub const SERVICE_WAIT: Duration = Duration::from_secs(3);
@@ -38,7 +41,8 @@ pub enum Service {
 }
 
 impl Service {
-    /// The service's port on the host.
+    /// The service's standard port (the host's user may set another:
+    /// `access::ServicePorts`).
     pub fn port(self) -> u16 {
         #[cfg(test)]
         if let Some(p) = tests::port(self) {
@@ -92,11 +96,11 @@ pub fn pipe() -> (Ends, Wire) {
     )
 }
 
-/// Reaches a service on this computer's loopback: 127.0.0.1, then ::1.
+/// Reaches a service on this computer's loopback: 127.0.0.1, then ::1, on
+/// `port` (the one its user set, `ServicePorts`).
 /// Returns: the connection, or None when neither answered within
 /// SERVICE_WAIT.
-pub async fn reach(service: Service) -> Option<tokio::net::TcpStream> {
-    let port = service.port();
+pub async fn reach(port: u16) -> Option<tokio::net::TcpStream> {
     let attempt = async {
         for ip in [
             std::net::IpAddr::from([127, 0, 0, 1]),
@@ -231,6 +235,7 @@ pub async fn relay<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }};
     }
     let bye = serde_json::to_vec(&Control::Bye).map_err(|_| Failure::Broken)?;
+    let mut read_done = false;
     let outcome = async {
         loop {
             tokio::select! {
@@ -239,6 +244,7 @@ pub async fn relay<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     return Ok(());
                 }
                 ended = &mut reader => {
+                    read_done = true;
                     return match ended.map_err(|_| Failure::Broken)? {
                         Ok(Read::Bye) => Ok(()),
                         Ok(Read::Local) => {
@@ -276,6 +282,16 @@ pub async fn relay<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }
     }
     .await;
+    // A write failed: the peer may have said bye and left just before (a
+    // pong answering its last ping, say), which is an end, not a failure
+    // (regression: a tunnel that ended cleanly was sometimes reported broken).
+    let outcome = match outcome {
+        Err(_) if !read_done => match tokio::time::timeout(BYE_WAIT, &mut reader).await {
+            Ok(Ok(Ok(Read::Bye))) => Ok(()),
+            _ => outcome,
+        },
+        done => done,
+    };
     reader.abort();
     let _ = wr.flush().await;
     outcome

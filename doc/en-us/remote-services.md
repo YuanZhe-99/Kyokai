@@ -6,13 +6,17 @@ for them: the services stay where they are, reached only by whoever Kyokai admit
 
 ## Services
 
-| Service | Permission | Port on the host |
+| Service | Permission | Standard port on the host |
 |---|---|---|
 | `ssh` | `use-ssh` | 22 |
 | `rdp` | `use-rdp` | 3389 |
 | `vnc` | `use-vnc` | 5900 |
 
-The host connects to 127.0.0.1, then ::1, on the service's port. Its user turns a service on
+The host connects to 127.0.0.1, then ::1, on the service's port: the standard one, or the one
+its user set under Permissions, "Ports of this computer's services" (`access.settings`
+`{service_ports: {ssh?, rdp?, vnc?}}`, a port of 0 or left out is the standard one; the status
+answers the ports in effect as `service_ports`). A controller names only the service, so it reaches
+no other port of the host. Home's card offers the services that answer on those ports. Its user turns a service on
 (SSH in Windows' optional features or macOS's Remote Login, Remote Desktop, a VNC server or Screen
 Sharing); Kyokai never changes them.
 
@@ -65,7 +69,7 @@ domain and a password; for VNC a user (Apple's Screen Sharing asks for one) and 
 
 | Request | Does |
 |---|---|
-| `credentials.set` (`{device_id, service, credentials}`) | replaces the service's sign-in, except that a password or a server key left out stays and an empty password is removed |
+| `credentials.set` (`{device_id, service, credentials}`) | replaces the service's sign-in — its `method` (`key`, `password`, `account` or `none`, remembered with Remember) and user included —, except that a password or a server key left out stays and an empty password is removed |
 | `credentials.get` (`{device_id, service}`) | answers it, the password included; served only to the engine's owner or the helper's operator, for a client signing in right then |
 | `credentials.forget` (`{device_id, service?}`) | forgets the service's sign-in, the admitted key (`key`), or everything saved for the host (no service) |
 
@@ -100,10 +104,21 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
   `127.0.0.1` (ports from `KYOKAI_DEV_SSH_PORT`, `KYOKAI_DEV_RDP_PORT`, `KYOKAI_DEV_VNC_PORT`) and
   keeps sign-ins in memory; an engine that opens no tunnels is refused, never replaced by this
   computer's own ports.
-- **SSH** (`golang.org/x/crypto/ssh`): this device's keys first — each an `ssh.Signer` whose
-  signature the engine makes (`keys.sign`, the exact user-auth request; RSA as `rsa-sha2-512` or
-  `rsa-sha2-256`), so a private key never reaches the GUI — then the password, which also answers
-  keyboard-interactive prompts that do not echo, but never a second time in a connection whose
+- **The sign-in method** (`signInMethods`, `signInPlan`): a tab tries nothing the person did not
+  choose. With no method remembered for the device's service (a first connection, Remember off, or
+  a sign-in saved before 0.5.1) it shows the form before any tunnel opens: SSH offers Key (a user
+  name and this device's keys) or Password (a user name and password); VNC Password only, User name
+  and password (a Mac's) or No sign-in; Remote Desktop User name and password or On the remote
+  screen. A sign-in from the form that works is saved with its method when Remember is on (the
+  password too, for a method that has one), so the next connection signs in the same way without
+  asking; with Remember off only the user name and domain stay, and a method remembered before is
+  forgotten. A remembered method that fails, or "no sign-in" meeting a server that needs one, shows
+  the form again with that method chosen.
+- **SSH** (`golang.org/x/crypto/ssh`), by the method alone: Key offers this device's keys — each
+  an `ssh.Signer` whose signature the engine makes (`keys.sign`, the exact user-auth request; RSA as
+  `rsa-sha2-512` or `rsa-sha2-256`), so a private key never reaches the GUI — and never a password;
+  Password never offers a key: the password also answers keyboard-interactive prompts that do not
+  echo, but never a second time in a connection whose
   server refused it once (a Mac answers each failure about a minute late and counts it against the
   address, which for every tunnel is its own loopback). After the key exchange a refusal or a
   closed connection is a refused sign-in, and silence until the 30-second limit says the server did
@@ -113,7 +128,8 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
   has a PTY of `xterm-256color`; MyGo's terminal (`plugins/terminal`, libghostty-vt) shows it with
   the tunnel as its `Conn`, whose `Resize` sends a window change.
 - **Remote Desktop** (vendored, `internal/rdp`): Network Level Authentication (CredSSP with NTLMv2)
-  with a user name, TLS alone without one, which shows the Windows sign-in screen; the graphics
+  for User name and password, TLS alone for On the remote screen, which shows the Windows sign-in
+  screen (a server that allows only Network Level Authentication asks for another method); the graphics
   pipeline without H.264 except on macOS (VideoToolbox). The server's certificate is accepted
   without pinning: the tunnel reaches the device's own port inside an authenticated Kyokai
   session. Keys go as scan codes.
@@ -127,9 +143,10 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
   that closes before its greeting (`rfb.ErrClosedBeforeGreeting`) is named with the loopback
   setting, a refusal shows the server's own reason (`rfb.RefusedError`), and a server offering no
   supported sign-in (`rfb.ErrUnsupportedServer`, an RFB 3.3 type beyond a byte named whole) asks
-  for VNC password authentication. With nothing saved the tab asks the server for no security alone:
-  one that needs a sign-in gets the form at once, never a blank attempt that a Mac counts as a
-  failure; a server that closes the connection during a sign-in (`rfb.ErrSignInDropped`, what a
+  for VNC password authentication. Password only asks the server for the VNC password (2) alone,
+  User name and password for Apple's sign-ins first, No sign-in for no security alone; a server
+  that needs a sign-in it did not get asks for another method, never after a blank attempt that a
+  Mac counts as a failure, and a server that closes the connection during a sign-in (`rfb.ErrSignInDropped`, what a
   Mac does to repeated failures) is a refused sign-in.
 - **Both pictures** (`screenClient`): the framebuffer is converted to RGBA on the protocol's
   goroutine and shown on the main thread, fitted or at its original size as the viewer's; the
@@ -138,5 +155,5 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
   modifiers and text as text. The clipboard's text crosses while the tab is in front: this
   computer's goes as the tab comes in front, the other desktop's comes back as it changes.
   Ctrl+Alt+Del is in Actions.
-- **Sign-ins kept**: after a sign-in from the form works, the user name (and domain) is saved, with
-  the password when Remember password is on.
+- **Sign-ins kept**: see the sign-in method above; SSH also saves the server's key pinned on first
+  use, with the remembered method and user when the key is new to a remembered sign-in.

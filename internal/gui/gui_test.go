@@ -1384,3 +1384,28 @@ func TestTunnelsAreNotDesktopConnections(t *testing.T) {
 		t.Error("desktopController")
 	}
 }
+
+// TestServicePorts: the Permissions page shows a standard port as an
+// empty field and sends one back as 0 (the engine's standard), and
+// refuses what is not a port.
+func TestServicePorts(t *testing.T) {
+	if got := portFields(localapi.ServicePorts{SSH: 22, RDP: 13389}); got != [3]string{"", "13389", ""} {
+		t.Errorf("portFields = %q", got)
+	}
+	for _, c := range []struct {
+		in   [3]string
+		want localapi.ServicePorts
+		ok   bool
+	}{
+		{[3]string{"", "", ""}, localapi.ServicePorts{}, true},
+		{[3]string{" 2222 ", "", "5901"}, localapi.ServicePorts{SSH: 2222, VNC: 5901}, true},
+		{[3]string{"0", "", ""}, localapi.ServicePorts{}, false},
+		{[3]string{"", "65536", ""}, localapi.ServicePorts{}, false},
+		{[3]string{"", "", "vnc"}, localapi.ServicePorts{}, false},
+	} {
+		got, ok := parsePorts(c.in)
+		if got != c.want || ok != c.ok {
+			t.Errorf("parsePorts(%q) = %+v, %v", c.in, got, ok)
+		}
+	}
+}
