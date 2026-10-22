@@ -41,8 +41,8 @@ login").
   Ed25519 seed or the PKCS#8 DER) to the engine once (`keys.add`); the engine checks it, keeps it
   in the secrets store and never returns it: `keys.list` answers names, types and public lines. A
   key is kept once: its id is the first 16 hex digits of the SHA-256 of its public key.
-- A controller offers keys only to a host that announces `key-login`, and never on a resume: the
-  key the host admitted last, else every Ed25519 key (at most 8). The host admits with the first
+- A controller offers keys only to a host that announces `key-login`, and never on a resume: every
+  Ed25519 key (at most 8), the one the host admitted last first. The host admits with the first
   authorized key whose proof holds; keys it does not know are ignored, and an authorized key whose
   proof fails counts as a failed login.
 - A key counts like the permanent password: it admits within the password grants while Connect
