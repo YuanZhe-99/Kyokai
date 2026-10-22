@@ -2,7 +2,7 @@
 // internal/rdp/codec/h264/videotoolbox.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: standard-library helpers in place of sing, import paths.
+// prior consent. Modified by Kyokai: standard-library helpers in place of sing, import paths, the decoder freed in C.
 
 //go:build darwin && cgo
 
@@ -60,6 +60,12 @@ static void vt_invalidate(vt_decoder *d) {
 		CVPixelBufferRelease(d->output);
 		d->output = NULL;
 	}
+}
+
+// vt_free ends a decoder and frees it (Kyokai: freed here, so the Go side never converts a C pointer).
+static void vt_free(vt_decoder *d) {
+	vt_invalidate(d);
+	free(d);
 }
 
 static OSStatus vt_configure(vt_decoder *d, const uint8_t *data, const size_t *sizes, size_t count) {
@@ -349,8 +355,7 @@ func (s *videoSession) close() {
 		return
 	}
 	s.release()
-	C.vt_invalidate(s.decoder)
-	C.free(unsafe.Pointer(s.decoder))
+	C.vt_free(s.decoder)
 	s.decoder = nil
 }
 
