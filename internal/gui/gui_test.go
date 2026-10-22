@@ -140,7 +140,7 @@ func TestViewsRender(t *testing.T) {
 			a.connect = connectForm{target: "office.example.org", identifying: true}
 			a.prefs.Aliases = map[string]string{"657365333": "Studio"}
 			a.rename = renameForm{device: "657365333", name: "Studio"}
-			a.status.Recent = []localapi.RecentDevice{{DeviceID: "657365333", Last: 1797400000, Address: "192.168.1.20",
+			a.status.Recent = []localapi.RecentDevice{{DeviceID: "657365333", Last: 1797400000, Routes: []localapi.Route{{Address: "192.168.1.20"}},
 				About: localapi.About{Name: "Studio Mac", Maker: "Apple", Model: "Mac14,13", OS: "macos"}}}
 		},
 		"protected": func(a *App) {
@@ -1328,11 +1328,11 @@ func TestConnectTarget(t *testing.T) {
 }
 
 // TestDeviceRowsUseLocalNames: a name given here replaces the one the
-// device gives itself, and a recent device keeps the address it was
-// reached at.
+// device gives itself, and a recent device keeps its routes and the one
+// chosen.
 func TestDeviceRowsUseLocalNames(t *testing.T) {
 	st := &localapi.Status{
-		Recent: []localapi.RecentDevice{{DeviceID: "657365333", Address: "192.168.1.20", About: localapi.About{Name: "Studio Mac"}}},
+		Recent: []localapi.RecentDevice{{DeviceID: "657365333", Routes: []localapi.Route{{Address: "192.168.1.20"}}, Prefer: "192.168.1.20", About: localapi.About{Name: "Studio Mac"}}},
 		Sessions: []localapi.SessionInfo{{ID: 3, Role: "controller", DeviceID: "424829924", State: "failed"},
 			{ID: 4, Role: "host", DeviceID: "100000002", State: "connected"}},
 	}
@@ -1340,8 +1340,8 @@ func TestDeviceRowsUseLocalNames(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("rows = %d, want 2 (hosts only)", len(rows))
 	}
-	if rows[0].about.Name != "Studio" || rows[0].address != "192.168.1.20" {
-		t.Errorf("recent row = %q at %q", rows[0].about.Name, rows[0].address)
+	if rows[0].about.Name != "Studio" || len(rows[0].routes) != 1 || rows[0].prefer != "192.168.1.20" {
+		t.Errorf("recent row = %q at %v (%q)", rows[0].about.Name, rows[0].routes, rows[0].prefer)
 	}
 	if rows[1].about.Name != "Attic" {
 		t.Errorf("session row = %q, want the local name", rows[1].about.Name)

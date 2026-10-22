@@ -559,7 +559,20 @@ func printStatus(s *localapi.Status) {
 			r.ID, r.DeviceID, r.About.Name, strings.Join(r.Want, ","), r.Known, r.NewKey, r.Password, r.Key, r.Service)
 	}
 	for _, r := range s.Recent {
-		fmt.Printf("recent %s %q  %s %s %s  saved %+v  features %s\n", r.DeviceID, r.About.Name, r.About.Maker, r.About.Model, r.Address, r.Saved, strings.Join(r.Features, ","))
+		fmt.Printf("recent %s %q  %s %s  saved %+v  features %s\n", r.DeviceID, r.About.Name, r.About.Maker, r.About.Model, r.Saved, strings.Join(r.Features, ","))
+		if r.Prefer != "" {
+			fmt.Printf("  route chosen: %s\n", r.Prefer)
+		}
+		for _, rt := range r.Routes {
+			probe := "not looked at"
+			if p := rt.Probe; p != nil {
+				probe = p.State
+				if p.RTTMS != nil {
+					probe += fmt.Sprintf(" %d ms", *p.RTTMS)
+				}
+			}
+			fmt.Printf("  route %s  %s  last ok %d  rtt %d ms  %d kbit/s  fails %d\n", rt.Address, probe, rt.LastOK, rt.RTTMS, rt.KBPS, rt.Fails)
+		}
 	}
 	for _, w := range s.Watchers {
 		fmt.Printf("watcher %s %q  since %d\n", w.DeviceID, w.About.Name, w.Since)

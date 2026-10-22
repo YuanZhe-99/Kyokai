@@ -115,6 +115,8 @@ const (
 	RequestCredentialsSet       RequestType = "credentials.set"            // save a device's sign-in for one service (Request.DeviceID, Request.Credentials)
 	RequestCredentialsForget    RequestType = "credentials.forget"         // forget one service's saved sign-in (Request.DeviceID, Request.Service), or all of them (no Service)
 	RequestWatchSet             RequestType = "watch.set"                  // watch these hosts' status for a while (Request.Watch): a lease the GUI renews
+	RequestRoutesSet            RequestType = "routes.set"                 // change a known host's routes: add or remove an address, choose the route (Request.Routes)
+	RequestRoutesProbe          RequestType = "routes.probe"               // look at these known hosts' addresses in the background (Request.Probe); the status shows what was found
 	RequestTunnelOpen           RequestType = "tunnel.open"                // a tunnel to a device's own service (Request.Tunnel); the connection then carries its bytes
 	RequestNetworkLatencyFirst  RequestType = "network.latency_first"      // prefer the lowest-latency route in every network (Request.LatencyFirst)
 	RequestStoreForgetMove      RequestType = "store.forget_move"          // a parked engine (its store moved out) starts over with a new identity
@@ -211,6 +213,10 @@ type Request struct {
 	Credentials *Credentials `json:"credentials,omitempty"`
 	// Watch are the Device IDs RequestWatchSet watches (empty: none).
 	Watch *[]string `json:"watch,omitempty"`
+	// Routes is RequestRoutesSet's change.
+	Routes *RoutesChange `json:"routes,omitempty"`
+	// Probe are the Device IDs RequestRoutesProbe looks at (16 at most).
+	Probe *[]string `json:"probe,omitempty"`
 	// Tunnel is RequestTunnelOpen's.
 	Tunnel *TunnelRequest `json:"tunnel,omitempty"`
 	// LatencyFirst is RequestNetworkLatencyFirst's.
@@ -274,8 +280,11 @@ type Credentials struct {
 // TunnelRequest opens a tunnel to a device's own service.
 type TunnelRequest struct {
 	DeviceID string `json:"device_id"`
-	// Address dials that IP address or domain name instead of the network.
+	// Address dials that IP address or domain name alone.
 	Address string `json:"address,omitempty"`
+	// Route is "auto", "network" or one of the host's addresses; empty: the
+	// route chosen for the host.
+	Route string `json:"route,omitempty"`
 	// Service is "ssh", "rdp" or "vnc".
 	Service string `json:"service"`
 }
@@ -412,9 +421,12 @@ type ConnectRequest struct {
 	// Remember keeps the password for this host once it accepts the login.
 	Remember bool `json:"remember,omitempty"`
 	// Address dials this IP address or domain name (with or without a
-	// port) instead of the network; the device there must prove to be
-	// DeviceID.
+	// port) alone, typed for this connection; the device there must prove
+	// to be DeviceID, and the known host keeps the address.
 	Address string `json:"address,omitempty"`
+	// Route is "auto", "network" or one of the host's addresses; empty: the
+	// route chosen for the host (doc/en-us/networking.md, "Routes").
+	Route string `json:"route,omitempty"`
 }
 
 // ProtectRequest turns protected mode on, or off with the permanent
@@ -553,9 +565,12 @@ type RecentDevice struct {
 	// SavedPassword says whether a password is saved for the host (never
 	// the password).
 	SavedPassword bool `json:"saved_password,omitempty"`
-	// Address is the address the last session dialed, empty over the
-	// network.
-	Address string `json:"address,omitempty"`
+	// Routes are the addresses it is reached at besides the Kyokai network,
+	// NetworkRoute how the network went, and Prefer the route chosen by
+	// hand (empty: Auto; "network"; or one of Routes' addresses).
+	Routes       []Route    `json:"routes,omitempty"`
+	NetworkRoute RouteStats `json:"network_route"`
+	Prefer       string     `json:"prefer,omitempty"`
 	// Saved says what is kept for the host (flags only, never a secret).
 	Saved Saved `json:"saved"`
 	// Features are what the host announced in its last session
@@ -591,6 +606,9 @@ type SessionInfo struct {
 	// Service is a tunnel's service ("ssh", "rdp", "vnc"), empty for a
 	// desktop session.
 	Service string `json:"service,omitempty"`
+	// Route is a controller session's current route: an address, or empty
+	// over the Kyokai network (nil for a host's sessions).
+	Route *string `json:"route,omitempty"`
 }
 
 // SoundDevice is an input device the host may share instead of what it
@@ -1021,4 +1039,39 @@ type NetRates struct {
 type Battery struct {
 	Percent  int  `json:"percent"`
 	Charging bool `json:"charging"`
+}
+
+// RoutesChange is RequestRoutesSet's: an address to add or remove, or the
+// route to choose ("" Auto, "network", or a kept address).
+type RoutesChange struct {
+	DeviceID string  `json:"device_id"`
+	Add      string  `json:"add,omitempty"`
+	Remove   string  `json:"remove,omitempty"`
+	Prefer   *string `json:"prefer,omitempty"`
+}
+
+// Route is an address a known host is reached at: when it was added, how
+// earlier sessions went over it, and the latest look at it.
+type Route struct {
+	Address string `json:"address"`
+	Added   int64  `json:"added"` // Unix seconds
+	RouteStats
+	Probe *RouteProbe `json:"probe,omitempty"`
+}
+
+// RouteStats is what earlier sessions remember of a route.
+type RouteStats struct {
+	LastOK int64 `json:"last_ok"` // Unix seconds, 0: never
+	RTTMS  int   `json:"rtt_ms"`  // moving average, 0: unknown
+	KBPS   int   `json:"kbps"`    // the host's settled bitrate, 0: unknown
+	Fails  int   `json:"fails"`   // failed dials in a row
+}
+
+// RouteProbe is the latest look at an address: its TCP round trip when it
+// answered, and State "ok", "unreachable", "other-device", "incompatible"
+// or "broken"; At is Unix milliseconds.
+type RouteProbe struct {
+	RTTMS *int   `json:"rtt_ms,omitempty"`
+	State string `json:"state"`
+	At    int64  `json:"at"`
 }

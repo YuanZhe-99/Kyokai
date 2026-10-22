@@ -12,7 +12,7 @@ use base64::engine::general_purpose::STANDARD;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -688,6 +688,8 @@ struct Entry {
     choices: Arc<Mutex<Choices>>,
     /// Controller side: the gate its input passes (`InputGate`).
     input: Arc<InputGate>,
+    /// Controller side: what it saw of its route (`RouteMeter`).
+    meter: Arc<RouteMeter>,
     /// Controller side: what to do with the password once the host answers.
     remember: Remember,
     /// Controller side: the address dialed, or empty over the network.
@@ -989,6 +991,7 @@ impl Sessions {
             control_rx: Arc::new(tokio::sync::Mutex::new(control_rx)),
             choices: Arc::default(),
             input: Arc::default(),
+            meter: Arc::default(),
             remember: Remember::default(),
             address: String::new(),
             removed: false,
@@ -1135,6 +1138,7 @@ impl Sessions {
             control: e.control_rx.clone(),
             choices: e.choices.clone(),
             input: e.input.clone(),
+            meter: e.meter.clone(),
             host: e.features.clone(),
         })
     }
@@ -1261,6 +1265,8 @@ impl Sessions {
                     "peer_source": e.peer_source,
                     "peer": e.peer,
                     "service": e.kind.service(),
+                    // A controller's route: an address, or empty for the network.
+                    "route": (e.role == Role::Controller).then_some(&e.address),
                 })
             })
             .collect()
@@ -2223,10 +2229,53 @@ pub fn begin_as(ctx: &Ctx, device_id: &str, remember: Remember, kind: Kind) -> (
     (id, stop)
 }
 
-/// Records the address an outgoing session dials (connections by
-/// address), which the known host keeps for the next one.
+/// Records the route an outgoing session's current connection took: an
+/// address (which the known host keeps for the next one), or empty for the
+/// Kyokai network.
 pub fn dials_address(ctx: &Ctx, id: u64, address: &str) {
     ctx.sessions.update(id, |e| e.address = address.to_owned());
+}
+
+/// What a controller session saw of its route (doc/en-us/networking.md,
+/// "Routes"): the latest round trip of its delay probes and the bitrates
+/// the host's quality control settled on, which Auto remembers per route.
+#[derive(Default)]
+pub struct RouteMeter {
+    delay_ms: AtomicU32,
+    kbps_sum: AtomicU64,
+    samples: AtomicU32,
+}
+
+impl RouteMeter {
+    fn delay(&self, ms: u32) {
+        self.delay_ms.store(ms.max(1), Ordering::Relaxed);
+    }
+
+    fn bitrate(&self, kbps: u32) {
+        self.kbps_sum.fetch_add(u64::from(kbps), Ordering::Relaxed);
+        self.samples.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The round trip and the average bitrate since the last take, and
+    /// starts over; None when the session saw neither.
+    fn take(&self) -> Option<(u32, u32)> {
+        let delay = self.delay_ms.swap(0, Ordering::Relaxed);
+        let sum = self.kbps_sum.swap(0, Ordering::Relaxed);
+        let n = self.samples.swap(0, Ordering::Relaxed);
+        let kbps = if n == 0 {
+            0
+        } else {
+            (sum / u64::from(n)) as u32
+        };
+        (delay > 0 || kbps > 0).then_some((delay, kbps))
+    }
+}
+
+/// What a controller session saw of the route its last connection took
+/// (`RouteMeter::take`), or None.
+pub fn route_seen(ctx: &Ctx, id: u64) -> Option<(u32, u32)> {
+    let s = ctx.sessions.inner.lock().ok()?;
+    s.1.iter().find(|e| e.id == id)?.meter.take()
 }
 
 /// Learns which device answers at an address: the first two handshake
@@ -2298,6 +2347,7 @@ pub enum Side {
         choices: Arc<Mutex<Choices>>,
         input: Arc<InputGate>,
         host: Peer,
+        meter: Arc<RouteMeter>,
     },
 }
 
@@ -2583,6 +2633,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             choices,
             input,
             host,
+            ..
         } => (
             Some(queue.clone()),
             Some(control.clone()),
@@ -2590,6 +2641,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             Some((input.clone(), host.has(feature::INPUT_SYNC))),
         ),
         Side::Host { .. } => (None, None, None, None),
+    };
+    let meter = match &side {
+        Side::Controller { meter, .. } => Some(meter.clone()),
+        Side::Host { .. } => None,
     };
     let host_ai = match &side {
         Side::Host { ai, .. } if ai.run || ai.approve => Some(ai),
@@ -3185,11 +3240,17 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::TestDelay { reply: true } => {
                         if let Some(t) = probe_sent.take() {
                             last_delay = t.elapsed().as_millis() as u32;
+                            if let Some(m) = &meter {
+                                m.delay(last_delay);
+                            }
                             qos.user_network_delay(QOS_VIEWER, last_delay);
                         }
                     }
                     Message::Stats { delay_ms, fps, bitrate, encode_ms, frames } => {
                         host_sends_video = true;
+                        if let Some(m) = &meter {
+                            m.bitrate(bitrate / 1000);
+                        }
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::STATS];
                             packet.extend(serde_json::to_vec(&json!({"delay_ms": delay_ms, "fps": fps, "bitrate": bitrate, "encode_ms": encode_ms, "frames": frames})).map_err(|_| Failure::Broken)?);
@@ -5647,6 +5708,7 @@ mod tests {
             choices: Arc::default(),
             input: Arc::default(),
             host: Peer::default(),
+            meter: Arc::default(),
         };
         let stopped = stop.clone();
         let task = tokio::spawn(async move { run(ctl_end, &stopped, side, None).await });
@@ -5758,6 +5820,7 @@ mod tests {
             choices: Arc::default(),
             input: Arc::default(),
             host: Peer::default(),
+            meter: Arc::default(),
         };
         let stopped = stop.clone();
         let task = tokio::spawn(async move { run(ctl_end, &stopped, side, None).await });
@@ -6745,5 +6808,138 @@ mod refusal_tests {
             session(&controller, id)["failure"],
             json!({"refused": "absent"})
         );
+    }
+}
+
+/// Device routes (doc/en-us/networking.md, "Routes").
+#[cfg(test)]
+mod route_tests {
+    use super::tests::device;
+    use super::*;
+    use crate::net::{Ask, Choice, Network};
+
+    /// Serves `host` on a fresh port of 127.0.0.1, as it serves connections
+    /// by address. Returns: the address.
+    async fn listen(host: Arc<Ctx>) -> String {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = l.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((stream, from)) = l.accept().await {
+                let from = Source {
+                    network: 0,
+                    ip: from.ip(),
+                };
+                tokio::spawn(serve(host.clone(), stream, from));
+            }
+        });
+        format!("127.0.0.1:{port}")
+    }
+
+    /// A host whose temporary password admits a viewer without asking.
+    fn host() -> Arc<Ctx> {
+        let host = device("1.0.0");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        host.access
+            .set_password_grants(vec![Permission::ViewScreen])
+            .unwrap();
+        host
+    }
+
+    /// Connects to `device_id` over `route` and waits until the session
+    /// connected or ended. Returns: its entry in the status.
+    fn connect(net: &Network, controller: &Ctx, device_id: &str, route: Choice) -> Value {
+        let id = net
+            .connect(Ask {
+                device_id: device_id.to_owned(),
+                route,
+                password: zeroize::Zeroizing::new("k7mq2xpa".into()),
+                want: vec![Permission::ViewScreen],
+                remember: Remember::default(),
+                kind: Kind::Desktop,
+            })
+            .unwrap();
+        let until = Instant::now() + Duration::from_secs(20);
+        loop {
+            let list = controller.sessions.list();
+            let entry = list
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["id"] == id)
+                .cloned()
+                .unwrap_or(Value::Null);
+            if matches!(
+                entry["state"].as_str(),
+                Some("connected" | "failed" | "closed")
+            ) || Instant::now() > until
+            {
+                let _ = controller.sessions.close(id);
+                return entry;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    /// A known host keeps every address it was reached at; Auto skips an
+    /// address that does not answer and one where another device answers,
+    /// connects over the one that is the device and remembers how it went;
+    /// a route fixed by hand is used alone.
+    #[test]
+    fn auto_takes_the_route_that_is_the_device() {
+        let (host, squatter, controller) = (host(), self::host(), device("1.0.0"));
+        let net = Network::start(controller.access.secrets(), controller.clone(), false).unwrap();
+        let rt = net.handle();
+        let (good, other) =
+            rt.block_on(async { (listen(host.clone()).await, listen(squatter).await) });
+        let id = host.identity.device_id();
+        // The first connection, typed by address, makes it a known host.
+        let first = connect(&net, &controller, &id, Choice::Address(good.clone()));
+        assert_eq!(first["state"], "connected", "{first}");
+        assert_eq!(first["route"], json!(good));
+        let dead = "127.0.0.1:9";
+        for a in [dead, other.as_str()] {
+            controller
+                .access
+                .set_routes(&id, Some(a), None, None)
+                .unwrap();
+        }
+        // What answers where.
+        let probes = rt.block_on(net.dialer().probe(&id));
+        let states: Vec<_> = probes
+            .iter()
+            .map(|p| (p.address.as_str(), p.state))
+            .collect();
+        assert_eq!(
+            states,
+            [
+                (good.as_str(), "ok"),
+                (dead, "unreachable"),
+                (other.as_str(), "other-device")
+            ]
+        );
+        assert!(probes[0].rtt_ms.is_some());
+        // Auto connects over the device's own address.
+        let auto = connect(&net, &controller, &id, Choice::Auto);
+        assert_eq!(auto["state"], "connected", "{auto}");
+        assert_eq!(auto["route"], json!(good));
+        let known = controller.access.known(&id).unwrap();
+        let addresses: Vec<_> = known.routes.iter().map(|r| r.address.as_str()).collect();
+        assert_eq!(addresses, [good.as_str(), dead, other.as_str()]);
+        assert!(known.routes[0].stats.last_ok > 0);
+        // Fixed by hand on the squatter's address: that route alone, refused.
+        controller
+            .access
+            .set_routes(&id, None, None, Some(&other))
+            .unwrap();
+        let route = Choice::ask(&controller, &id, None, None);
+        assert_eq!(route, Choice::Address(other.clone()));
+        let fixed = connect(&net, &controller, &id, route);
+        assert_eq!(fixed["state"], "failed", "{fixed}");
+        assert_eq!(fixed["failure"], "wrong-device");
     }
 }

@@ -212,6 +212,8 @@ pub struct Network {
     by_address: Option<JoinHandle<()>>,
     /// Why accepting by address could not listen, safe to show.
     by_address_error: Option<String>,
+    /// The latest looks at known hosts' addresses (memory only).
+    probes: Arc<Probes>,
 }
 
 impl Network {
@@ -236,6 +238,7 @@ impl Network {
             always_direct,
             by_address: None,
             by_address_error: None,
+            probes: Arc::default(),
         };
         let joined: Vec<Profile> = net
             .stored
@@ -594,6 +597,23 @@ impl Network {
         Dialer {
             nodes: self.nodes.clone(),
             ctx: self.ctx.clone(),
+            probes: self.probes.clone(),
+        }
+    }
+
+    /// The latest looks at a known host's addresses.
+    pub fn probes(&self, device_id: &str) -> Vec<Probe> {
+        self.probes.of(device_id)
+    }
+
+    /// Looks at the addresses of these known hosts in the background (Home
+    /// asks while it shows them).
+    pub fn probe(&self, devices: Vec<String>) {
+        for device in devices {
+            let dialer = self.dialer();
+            self.rt.spawn(async move {
+                dialer.probe(&device).await;
+            });
         }
     }
 
@@ -932,12 +952,230 @@ fn aggregate(networks: Vec<Value>) -> Value {
     all
 }
 
-/// How a controller reaches a host.
-enum Route {
-    /// The joined networks, whose routes announce its Device ID.
-    Network(Nodes),
-    /// An address as the person typed it.
+/// Which routes a session to a host may take (doc/en-us/networking.md,
+/// "Routes").
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Choice {
+    /// The best now: the Kyokai network and the known host's addresses,
+    /// ranked again at every connect and resume (`rank_routes`).
+    Auto,
+    /// The Kyokai network alone.
+    Network,
+    /// One address alone: chosen by hand, or typed in the connect form.
     Address(String),
+}
+
+impl Choice {
+    /// The route a known host's `prefer` names (empty: Auto).
+    pub fn from_prefer(prefer: &str) -> Choice {
+        match prefer {
+            "" => Choice::Auto,
+            crate::access::PREFER_NETWORK => Choice::Network,
+            a => Choice::Address(a.to_owned()),
+        }
+    }
+
+    /// The route a request asks for: an address typed for this connection,
+    /// else the route named (`auto`, `network` or an address), else the one
+    /// chosen for the host (Auto when none).
+    pub fn ask(ctx: &Ctx, device_id: &str, address: Option<&str>, route: Option<&str>) -> Choice {
+        match (address.map(str::trim), route.map(str::trim)) {
+            (Some(a), _) if !a.is_empty() => Choice::Address(a.to_owned()),
+            (_, Some("auto")) => Choice::Auto,
+            (_, Some(r)) if !r.is_empty() => Choice::from_prefer(r),
+            _ => ctx
+                .access
+                .known(device_id)
+                .map_or(Choice::Auto, |h| Choice::from_prefer(&h.prefer)),
+        }
+    }
+}
+
+/// How long a look at one route may take.
+const PROBE_WAIT: Duration = Duration::from_secs(3);
+/// How long the next route waits for the one before it to answer before it
+/// is dialed too (happy eyeballs).
+const STAGGER: Duration = Duration::from_millis(300);
+/// The bitrate below which a route that also reached less than half of the
+/// best route's is ranked as slow, in kbit/s.
+const SLOW_KBPS: u32 = 8_000;
+/// Failed dials in a row after which a route is tried last.
+const FAILING: u8 = 2;
+
+/// A route's standing when Auto ranks them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Standing {
+    /// The address, or empty for the Kyokai network.
+    pub address: String,
+    /// Its round trip now (None: unknown, or it did not answer).
+    pub rtt_ms: Option<u32>,
+    /// Whether it answers now: the network announces the device, an
+    /// address answered as the device (or was not looked at yet).
+    pub reachable: bool,
+    /// The network's path is direct (an address counts as direct).
+    pub direct: bool,
+    /// What earlier sessions remember of it.
+    pub kbps: u32,
+    pub fails: u8,
+}
+
+/// Ranks the routes Auto tries, best first: those that answer, then those
+/// that did not failing FAILING times in a row, then those not remembered
+/// slow (below SLOW_KBPS and below half of the best route's bitrate), by
+/// round trip (unknown last), direct before relayed.
+pub fn rank_routes(mut routes: Vec<Standing>) -> Vec<Standing> {
+    let best = routes.iter().map(|r| r.kbps).max().unwrap_or(0);
+    let slow = |r: &Standing| r.kbps != 0 && r.kbps < SLOW_KBPS && r.kbps < best / 2;
+    routes.sort_by_key(|r| {
+        (
+            !r.reachable,
+            r.fails >= FAILING,
+            slow(r),
+            r.rtt_ms.unwrap_or(u32::MAX),
+            !r.direct,
+        )
+    });
+    routes
+}
+
+/// What a look at one of a host's addresses found (memory only).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Probe {
+    pub address: String,
+    /// The TCP handshake's round trip, when it answered.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rtt_ms: Option<u32>,
+    /// `ok`, `unreachable`, `other-device` (another device answers there),
+    /// `incompatible` or `broken` (not a Kyokai device).
+    pub state: &'static str,
+    /// Unix milliseconds.
+    pub at: u64,
+}
+
+/// The latest looks at known hosts' addresses, by Device ID: what Home
+/// shows and Auto ranks by.
+#[derive(Default)]
+pub struct Probes(Mutex<std::collections::HashMap<String, Vec<Probe>>>);
+
+impl Probes {
+    /// The latest looks at a host's addresses.
+    pub fn of(&self, device_id: &str) -> Vec<Probe> {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|m| m.get(device_id).cloned())
+            .unwrap_or_default()
+    }
+
+    fn set(&self, device_id: &str, probes: Vec<Probe>) {
+        if let Ok(mut m) = self.0.lock() {
+            m.insert(device_id.to_owned(), probes);
+        }
+    }
+}
+
+/// Looks at an address: resolves it, times the TCP handshake and reads the
+/// host's hello, which says which device answers.
+pub async fn probe_address(address: &str, device_id: &str) -> Probe {
+    let state = |state, rtt_ms| Probe {
+        address: address.to_owned(),
+        rtt_ms,
+        state,
+        at: unix_ms(),
+    };
+    let look = async {
+        let Ok((stream, rtt)) = connect_address(address, PROBE_WAIT).await else {
+            return state("unreachable", None);
+        };
+        let rtt = Some(rtt.as_millis().min(u128::from(u32::MAX)) as u32);
+        match session::identify(stream).await {
+            Ok(id) if id == device_id => state("ok", rtt),
+            Ok(_) => state("other-device", rtt),
+            Err(session::Failure::Incompatible) => state("incompatible", rtt),
+            Err(_) => state("broken", rtt),
+        }
+    };
+    tokio::time::timeout(PROBE_WAIT, look)
+        .await
+        .unwrap_or_else(|_| state("unreachable", None))
+}
+
+fn unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// One way to open a connection to a host, in the order routes are tried.
+#[derive(Clone, Debug, PartialEq)]
+enum Target {
+    /// A route in one of the joined networks.
+    Net(Candidate),
+    /// An address.
+    Addr(String),
+}
+
+impl Target {
+    /// The route it belongs to: empty for the network.
+    fn address(&self) -> &str {
+        match self {
+            Target::Net(_) => "",
+            Target::Addr(a) => a,
+        }
+    }
+}
+
+/// A connection, whichever route opened it.
+trait Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> Io for T {}
+
+/// Opens a connection over one target.
+async fn open(target: Target, nodes: Vec<Arc<NativeCoreInstance>>) -> Option<Box<dyn Io>> {
+    match target {
+        Target::Net(c) => {
+            let addr = SocketAddr::new(c.ip.into(), KYOKAI_PORT);
+            let stream = nodes
+                .get(c.node)?
+                .data_plane_tcp_connect(addr, DIAL_TIMEOUT)
+                .await
+                .ok()?;
+            Some(Box::new(stream))
+        }
+        Target::Addr(a) => {
+            let (stream, _) = connect_address(&a, DIAL_TIMEOUT).await.ok()?;
+            Some(Box::new(stream))
+        }
+    }
+}
+
+/// Opens the first connection that answers among `targets`, the next one
+/// starting STAGGER after the one before it unless that answered first.
+/// Returns: the index of the target that won, and its connection; the
+/// targets whose connection failed before it are `failed`.
+async fn race(
+    targets: &[Target],
+    nodes: &[Arc<NativeCoreInstance>],
+    failed: &mut Vec<usize>,
+) -> Option<(usize, Box<dyn Io>)> {
+    let mut set = tokio::task::JoinSet::new();
+    for (i, t) in targets.iter().enumerate() {
+        let (t, nodes) = (t.clone(), nodes.to_vec());
+        set.spawn(async move {
+            tokio::time::sleep(STAGGER * i as u32).await;
+            (i, open(t, nodes).await)
+        });
+    }
+    while let Some(done) = set.join_next().await {
+        match done {
+            Ok((i, Some(io))) => {
+                set.abort_all();
+                return Some((i, io));
+            }
+            Ok((i, None)) => failed.push(i),
+            Err(_) => {}
+        }
+    }
+    None
 }
 
 /// A TCP listener on KYOKAI_PORT of every address of one family (IPv6
@@ -1000,19 +1238,26 @@ pub fn split_address(address: &str) -> Result<(String, u16), String> {
 }
 
 /// Opens a TCP connection to an address as typed: every address its name
-/// resolves to, in order, until one answers.
-async fn dial_address(address: &str) -> Result<tokio::net::TcpStream, session::Failure> {
+/// resolves to, in order, until one answers within `wait`.
+/// Returns: the connection and how long its TCP handshake took (one round
+/// trip; the name's lookup left out).
+async fn connect_address(
+    address: &str,
+    wait: Duration,
+) -> Result<(tokio::net::TcpStream, Duration), session::Failure> {
     let (host, port) = split_address(address).map_err(|_| session::Failure::Unreachable)?;
-    let addrs = tokio::time::timeout(DIAL_TIMEOUT, tokio::net::lookup_host((host.as_str(), port)))
+    let addrs = tokio::time::timeout(wait, tokio::net::lookup_host((host.as_str(), port)))
         .await
         .map_err(|_| session::Failure::Unreachable)?
         .map_err(|_| session::Failure::Unreachable)?;
     for addr in addrs {
+        let began = std::time::Instant::now();
         if let Ok(Ok(stream)) =
-            tokio::time::timeout(DIAL_TIMEOUT, tokio::net::TcpStream::connect(addr)).await
+            tokio::time::timeout(wait, tokio::net::TcpStream::connect(addr)).await
         {
+            let rtt = began.elapsed();
             let _ = stream.set_nodelay(true);
-            return Ok(stream);
+            return Ok((stream, rtt));
         }
     }
     Err(session::Failure::Unreachable)
@@ -1024,7 +1269,9 @@ async fn dial_address(address: &str) -> Result<tokio::net::TcpStream, session::F
 /// (another protocol version) or `broken` (not a Kyokai device, or it broke
 /// off).
 pub async fn identify(address: &str) -> Result<String, &'static str> {
-    let stream = dial_address(address).await.map_err(|_| "unreachable")?;
+    let (stream, _) = connect_address(address, DIAL_TIMEOUT)
+        .await
+        .map_err(|_| "unreachable")?;
     session::identify(stream).await.map_err(|f| match f {
         session::Failure::Incompatible => "incompatible",
         _ => "broken",
@@ -1049,24 +1296,26 @@ fn keep_resuming(
     (since, now.duration_since(since) <= RESUME_FOR)
 }
 
-/// A session to start: with whom, how to reach it, the password (empty
+/// A session to start: with whom, by which routes, the password (empty
 /// asks without one, or relies on a sign-in key), what to ask for, what to
 /// do with the password, and what the session carries.
 pub struct Ask {
     pub device_id: String,
-    pub address: Option<String>,
+    pub route: Choice,
     pub password: zeroize::Zeroizing<String>,
     pub want: Vec<Permission>,
     pub remember: session::Remember,
     pub kind: session::Kind,
 }
 
-/// Dials devices through the networks joined when it dials (a resumed
-/// session may go through another one) or by address.
+/// Dials devices over their routes: the networks joined when it dials (a
+/// resumed session may go through another one) and the addresses kept for
+/// them.
 #[derive(Clone)]
 pub struct Dialer {
     nodes: Nodes,
     ctx: Arc<Ctx>,
+    probes: Arc<Probes>,
 }
 
 impl Dialer {
@@ -1079,38 +1328,43 @@ impl Dialer {
     /// resuming a dropped one while its window lasts.
     /// Returns: the session's id, and the work, which ends with the session
     /// (its entry records how).
-    /// Notes: every route that announces the Device ID is a candidate (up to
-    /// MAX_CANDIDATES in each network), direct paths first; the handshake
-    /// decides which one is the device. A session by address needs no
-    /// network.
+    /// Notes: every attempt (the first and each resume) works out the
+    /// targets again (`targets`); the handshake decides which one is the
+    /// device. A session by address needs no network.
     pub fn start(
         &self,
         ask: Ask,
     ) -> Result<(u64, impl Future<Output = ()> + Send + 'static), String> {
         let Ask {
             device_id,
-            address,
+            route,
             password,
             want,
             remember,
             kind,
         } = ask;
-        let route = match address {
-            Some(address) => {
-                split_address(&address)?;
-                Route::Address(address)
+        let no_network = running(&self.nodes).is_empty();
+        match &route {
+            Choice::Address(address) => {
+                split_address(address)?;
             }
-            None if running(&self.nodes).is_empty() => {
+            Choice::Network if no_network => return Err("not connected to a network".into()),
+            Choice::Auto
+                if no_network
+                    && self
+                        .ctx
+                        .access
+                        .known(&device_id)
+                        .is_none_or(|h| h.routes.is_empty()) =>
+            {
                 return Err("not connected to a network".into());
             }
-            None => Route::Network(self.nodes.clone()),
-        };
-        let (id, stop) = session::begin_as(&self.ctx, &device_id, remember, kind);
-        if let Route::Address(address) = &route {
-            session::dials_address(&self.ctx, id, address);
+            _ => {}
         }
-        let ctx = self.ctx.clone();
+        let (id, stop) = session::begin_as(&self.ctx, &device_id, remember, kind);
+        let dialer = self.clone();
         let work = async move {
+            let ctx = dialer.ctx.clone();
             let mut resume: Option<zeroize::Zeroizing<String>> = None;
             let mut lost_at = None;
             loop {
@@ -1122,40 +1376,20 @@ impl Dialer {
                         _ = tokio::time::sleep(RESUME_RETRY) => {}
                     }
                 }
-                let resume_with = resume.take();
-                let dialed = match &route {
-                    // The networks joined now: a resumed session may go
-                    // through another one.
-                    Route::Network(nodes) => {
-                        dial(
-                            &running(nodes),
-                            &ctx,
-                            id,
-                            &stop,
-                            &device_id,
-                            &password,
-                            &want,
-                            resume_with,
-                        )
-                        .await
-                    }
-                    Route::Address(address) => match dial_address(address).await {
-                        Ok(stream) => Dialed::Outcome(
-                            session::connect(
-                                ctx.clone(),
-                                id,
-                                stop.clone(),
-                                stream,
-                                device_id.clone(),
-                                password.clone(),
-                                want.clone(),
-                                resume_with,
-                            )
-                            .await,
-                        ),
-                        Err(_) => Dialed::Nothing(session::Failure::Unreachable, resume_with),
-                    },
-                };
+                let nodes = running(&dialer.nodes);
+                let targets = dialer.targets(&nodes, &device_id, &route).await;
+                let dialed = dial(
+                    &ctx,
+                    id,
+                    &stop,
+                    &nodes,
+                    &targets,
+                    &device_id,
+                    &password,
+                    &want,
+                    resume.take(),
+                )
+                .await;
                 let (failure, connected) = match dialed {
                     Dialed::Outcome(session::Outcome::Done) => return,
                     Dialed::Outcome(session::Outcome::Lost { token, connected }) => {
@@ -1180,6 +1414,86 @@ impl Dialer {
         };
         Ok((id, work))
     }
+
+    /// The targets one attempt tries, in order: the network's routes to
+    /// the device (direct first, then the lowest latency) and the addresses
+    /// chosen; under Auto every kept address is looked at first
+    /// (`probe_address`, all at once) and the routes ranked
+    /// (`rank_routes`).
+    async fn targets(
+        &self,
+        nodes: &[Arc<NativeCoreInstance>],
+        device_id: &str,
+        route: &Choice,
+    ) -> Vec<Target> {
+        match route {
+            Choice::Network => candidates(nodes, device_id)
+                .await
+                .into_iter()
+                .map(Target::Net)
+                .collect(),
+            Choice::Address(a) => vec![Target::Addr(a.clone())],
+            Choice::Auto => {
+                let host = self.ctx.access.known(device_id);
+                let (probes, cands) =
+                    tokio::join!(self.probe(device_id), candidates(nodes, device_id));
+                let mut standing = Vec::new();
+                if !nodes.is_empty() {
+                    let best = cands.first();
+                    standing.push(Standing {
+                        address: String::new(),
+                        rtt_ms: best.map(|c| c.latency.max(0) as u32),
+                        reachable: best.is_some(),
+                        direct: best.is_some_and(|c| c.direct),
+                        kbps: host.as_ref().map_or(0, |h| h.network.kbps),
+                        fails: host.as_ref().map_or(0, |h| h.network.fails),
+                    });
+                }
+                for r in host.iter().flat_map(|h| &h.routes) {
+                    let p = probes.iter().find(|p| p.address == r.address);
+                    standing.push(Standing {
+                        address: r.address.clone(),
+                        rtt_ms: p.and_then(|p| p.rtt_ms),
+                        reachable: p.is_none_or(|p| p.state == "ok"),
+                        direct: true,
+                        kbps: r.stats.kbps,
+                        fails: r.stats.fails,
+                    });
+                }
+                rank_routes(standing)
+                    .into_iter()
+                    .flat_map(|s| match s.address.as_str() {
+                        "" => cands.iter().copied().map(Target::Net).collect::<Vec<_>>(),
+                        a => vec![Target::Addr(a.to_owned())],
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    /// Looks at every address kept for a known host at once, and keeps
+    /// what it found for the status (`Probes`).
+    pub async fn probe(&self, device_id: &str) -> Vec<Probe> {
+        let routes = self
+            .ctx
+            .access
+            .known(device_id)
+            .map(|h| h.routes)
+            .unwrap_or_default();
+        let mut set = tokio::task::JoinSet::new();
+        for (i, r) in routes.into_iter().enumerate() {
+            let id = device_id.to_owned();
+            set.spawn(async move { (i, probe_address(&r.address, &id).await) });
+        }
+        let mut found: Vec<(usize, Probe)> = Vec::new();
+        while let Some(Ok(p)) = set.join_next().await {
+            found.push(p);
+        }
+        found.sort_by_key(|(i, _)| *i);
+        let found: Vec<Probe> = found.into_iter().map(|(_, p)| p).collect();
+        self.probes.set(device_id, found.clone());
+        found
+    }
 }
 
 /// What one round of dialing a Device ID came to.
@@ -1189,6 +1503,68 @@ enum Dialed {
     /// No route answered, or every one was a squatter; the resume token, if
     /// any, is handed back unused.
     Nothing(session::Failure, Option<zeroize::Zeroizing<String>>),
+}
+
+/// Runs the session on the first target that answers (`race`) and proves to
+/// be the device; another device answering moves on to the targets after
+/// it. Notes how each address and the route that carried the session went
+/// (`Access::note_route`).
+#[allow(clippy::too_many_arguments)]
+async fn dial(
+    ctx: &Arc<Ctx>,
+    id: u64,
+    stop: &Arc<tokio::sync::Notify>,
+    nodes: &[Arc<NativeCoreInstance>],
+    targets: &[Target],
+    device_id: &str,
+    password: &zeroize::Zeroizing<String>,
+    want: &[Permission],
+    resume: Option<zeroize::Zeroizing<String>>,
+) -> Dialed {
+    let mut rest = targets;
+    let mut failure = session::Failure::Unreachable;
+    while !rest.is_empty() {
+        let mut failed = Vec::new();
+        let won = race(rest, nodes, &mut failed).await;
+        for &i in &failed {
+            if let Target::Addr(a) = &rest[i] {
+                let _ = ctx.access.note_route(device_id, a, None);
+            }
+        }
+        let Some((i, io)) = won else {
+            break;
+        };
+        let target = rest[i].clone();
+        session::dials_address(ctx, id, target.address());
+        let outcome = session::connect(
+            ctx.clone(),
+            id,
+            stop.clone(),
+            io,
+            device_id.to_owned(),
+            password.clone(),
+            want.to_vec(),
+            resume.clone(),
+        )
+        .await;
+        // A squatter with another key fails the handshake: try the rest.
+        if matches!(outcome, session::Outcome::WrongDevice) {
+            failure = session::Failure::WrongDevice;
+            if let Target::Addr(a) = &target {
+                let _ = ctx.access.note_route(device_id, a, None);
+            }
+            rest = &rest[i + 1..];
+            continue;
+        }
+        // What the session saw of its route, for the next ranking.
+        if let Some(seen) = session::route_seen(ctx, id) {
+            let _ = ctx
+                .access
+                .note_route(device_id, target.address(), Some(seen));
+        }
+        return Dialed::Outcome(outcome);
+    }
+    Dialed::Nothing(failure, resume)
 }
 
 /// A route to a device in one of the joined networks: the node it goes
@@ -1208,20 +1584,9 @@ fn order(candidates: &mut [Candidate]) {
     candidates.sort_by_key(|c| (!c.direct, c.latency.max(0)));
 }
 
-/// Tries the routes that announce `device_id` in every joined network (at
-/// most MAX_CANDIDATES in each), in `order`, and runs the session on the
-/// first that proves to be the device.
-#[allow(clippy::too_many_arguments)]
-async fn dial(
-    nodes: &[Arc<NativeCoreInstance>],
-    ctx: &Arc<Ctx>,
-    id: u64,
-    stop: &Arc<tokio::sync::Notify>,
-    device_id: &str,
-    password: &zeroize::Zeroizing<String>,
-    want: &[Permission],
-    resume: Option<zeroize::Zeroizing<String>>,
-) -> Dialed {
+/// The routes that announce `device_id` in every joined network (at most
+/// MAX_CANDIDATES in each), in `order`.
+async fn candidates(nodes: &[Arc<NativeCoreInstance>], device_id: &str) -> Vec<Candidate> {
     let hostname = format!("Kyokai-{device_id}");
     let mut candidates = Vec::new();
     for (n, node) in nodes.iter().enumerate() {
@@ -1247,33 +1612,7 @@ async fn dial(
         );
     }
     order(&mut candidates);
-    let mut failure = session::Failure::Unreachable;
-    for c in candidates {
-        let addr = SocketAddr::new(c.ip.into(), KYOKAI_PORT);
-        let Ok(stream) = nodes[c.node]
-            .data_plane_tcp_connect(addr, DIAL_TIMEOUT)
-            .await
-        else {
-            continue;
-        };
-        let outcome = session::connect(
-            ctx.clone(),
-            id,
-            stop.clone(),
-            stream,
-            device_id.to_owned(),
-            password.clone(),
-            want.to_vec(),
-            resume.clone(),
-        )
-        .await;
-        match outcome {
-            // A squatter with another key fails the handshake: try the next.
-            session::Outcome::WrongDevice => failure = session::Failure::WrongDevice,
-            other => return Dialed::Outcome(other),
-        }
-    }
-    Dialed::Nothing(failure, resume)
+    candidates
 }
 
 /// The instance id other devices compute for a Device ID.
@@ -1427,6 +1766,87 @@ fn nat_name(n: i32) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Auto ranks routes that answer first, then those not failing, then
+    /// those not remembered slow, by round trip (unknown last), direct
+    /// before relayed.
+    #[test]
+    fn routes_rank_by_latency_history_and_failures() {
+        let r = |a: &str, rtt: Option<u32>, reachable: bool, direct: bool, kbps: u32, fails: u8| {
+            Standing {
+                address: a.into(),
+                rtt_ms: rtt,
+                reachable,
+                direct,
+                kbps,
+                fails,
+            }
+        };
+        let order = |routes: Vec<Standing>| -> Vec<String> {
+            rank_routes(routes).into_iter().map(|s| s.address).collect()
+        };
+        // By latency.
+        assert_eq!(
+            order(vec![
+                r("wan", Some(40), true, true, 0, 0),
+                r("lan", Some(2), true, true, 0, 0),
+                r("", Some(230), true, false, 0, 0)
+            ]),
+            ["lan", "wan", ""]
+        );
+        // One that does not answer goes last, whatever its latency.
+        assert_eq!(
+            order(vec![
+                r("lan", Some(1), false, true, 0, 0),
+                r("", Some(230), true, false, 0, 0)
+            ]),
+            ["", "lan"]
+        );
+        // Remembered slow (below 8 Mbit/s and half the best) goes behind.
+        assert_eq!(
+            order(vec![
+                r("slow", Some(5), true, true, 1_500, 0),
+                r("", Some(60), true, true, 20_000, 0)
+            ]),
+            ["", "slow"]
+        );
+        // Slow only next to a far better one: alone it is not slow.
+        assert_eq!(
+            order(vec![
+                r("a", Some(5), true, true, 6_000, 0),
+                r("b", Some(60), true, true, 9_000, 0)
+            ]),
+            ["a", "b"]
+        );
+        // Two failures in a row go behind; unknown latency after known.
+        assert_eq!(
+            order(vec![
+                r("failing", Some(1), true, true, 0, 2),
+                r("unknown", None, true, true, 0, 0),
+                r("known", Some(90), true, true, 0, 0)
+            ]),
+            ["known", "unknown", "failing"]
+        );
+        // Direct before relayed at equal latency.
+        assert_eq!(
+            order(vec![
+                r("", Some(20), true, false, 0, 0),
+                r("x", Some(20), true, true, 0, 0)
+            ]),
+            ["x", ""]
+        );
+    }
+
+    /// A host's chosen route reads back as the route.
+    #[test]
+    fn a_chosen_route_reads_back() {
+        assert_eq!(Choice::from_prefer(""), Choice::Auto);
+        assert_eq!(Choice::from_prefer("network"), Choice::Network);
+        assert_eq!(
+            Choice::from_prefer("10.0.0.5"),
+            Choice::Address("10.0.0.5".into())
+        );
+    }
 
     fn profile(servers: &[&str], name: &str, secret: &str) -> Profile {
         Profile {

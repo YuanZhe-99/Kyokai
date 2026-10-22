@@ -29,9 +29,12 @@ when `SCREENSHOT_DIR` is set.
   pages (`homeMaxW`, 1120). Below, **Recent**: a grid of device cards — one per device, never one
   per session — each at least 300 wide, one to three side by side (`homeColumnsFor`). A card has a
   header (avatar, its name — the one given here, else its friendly name — and Device ID, its state
-  as a chip: connected, connecting, online or offline, and ⋯); how the network reaches it (a dot
-  and "Direct · 12 ms", "Relayed · 231 ms" in the warning colour, "By address", why the last
-  attempt failed, or when it was last connected); its live status; chips for what is saved for it
+  as a chip: connected, connecting, online or offline, and ⋯); its route, a menu (`cardPath`): a dot
+  and the route in use while connected, else the route chosen by hand ("… · chosen") or the one
+  Auto would take now — "Direct · 12 ms", "Relayed · 231 ms" in the warning colour, an address
+  "192.168.1.20 · 2 ms" — why the last attempt failed, or when it was last connected; the menu has
+  Auto, the Kyokai network and each address with its latency now or why it does not answer, then
+  Addresses… ([networking.md](networking.md), "Routes"); its live status; chips for what is saved for it
   (Kyokai password, key, SSH, Remote Desktop, VNC; flags only); and its actions: Connect (Show
   while connected or connecting), then only what will work without the other device's user
   (`cardActions`): Remote Desktop, SSH and VNC for the services its status reports answering, and
@@ -39,7 +42,10 @@ when `SCREENSHOT_DIR` is set.
   key grants it (`offers`); the most used for that device first (`Prefs.Uses`, counted on this
   device only), else in that order; the buttons share the row. Everything else stays in the ⋯
   menu, which has Connect, Connect with AI, Open Remote Desktop / SSH / VNC,
-  Rename… (a name shown only on this device, edited in a card above the devices; empty goes back to
+  Addresses… (an editor card above the devices, like Rename: every route with its latency, when it
+  was last used and the bitrate it reached, Remove for an address, a field to add one, Route: the
+  same choice as the route menu, and Done; Home looks at the shown devices' addresses every 60 s
+  while visible), Rename… (a name shown only on this device, edited in a card above the devices; empty goes back to
   the device's own), Saved passwords and keys… (the Security page), Forget old identity (after a
   key change) and Remove (disconnects it, takes it and its finished connections off Recent, and
   forgets its pinned key, saved sign-ins and the name given here).
@@ -193,9 +199,9 @@ when `SCREENSHOT_DIR` is set.
   then toggles for Sound (plays the host's sound; on unless chosen, kept for each device), Pointer
   (shows or hides the ring, remembered for every viewer), Clipboard (pulls out the clipboard panel,
   with `clipboard` or `files`), AI (collapses the AI panel) and Full screen; what does not fit a
-  narrow window goes into the toolbar's » menu. Beside them the path: a dot and Direct or Relayed
-  (Relayed in the warning colour, its tooltip with a hint to turn on direct connections on both
-  devices) with the host's measured delay, the tooltip also showing size, codec, frame rate and
+  narrow window goes into the toolbar's » menu. Beside them the path: a dot and the address the session takes
+  (`sessions[].route`), else Direct or Relayed (Relayed in the warning colour, its tooltip with a
+  hint to turn on direct connections on both devices), with the host's measured delay, the tooltip also showing size, codec, frame rate and
   bitrate, what encodes and what decodes, each in hardware or software as it reports, and where
   the time goes (the host's encoding, the network, this computer's decoding and drawing, the frame
   rate against the host's target) — or, for the test pattern of a host that may not record its

@@ -388,7 +388,7 @@ async fn keep(w: Arc<Watching>, dialer: Dialer, id: String) {
         let started = unix_ms();
         let ask = Ask {
             device_id: id.clone(),
-            address: (!host.address.is_empty()).then(|| host.address.clone()),
+            route: crate::net::Choice::from_prefer(&host.prefer),
             remember: Remember {
                 save: false,
                 saved: password.is_some(),

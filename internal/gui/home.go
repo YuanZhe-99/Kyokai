@@ -221,6 +221,7 @@ func (a *App) watchLoop() {
 		case <-tick.C:
 		}
 		a.syncWatch()
+		a.probeRoutes(time.Now())
 		if !a.homeVisible() {
 			continue
 		}
@@ -239,6 +240,8 @@ func (a *App) devicesCard(c *ui.Context) {
 	a.mu.Lock()
 	rows := deviceRows(a.status, a.prefs)
 	rename := a.rename
+	routesEdit := a.routesEdit
+	onNetwork := len(a.status.Network.Networks) > 0
 	online := map[string]localapi.NetworkDevice{}
 	for _, d := range a.status.Network.Devices {
 		online[d.DeviceID] = d
@@ -258,6 +261,9 @@ func (a *App) devicesCard(c *ui.Context) {
 	ui.Text(c, L.ConnectRecent()).FontSize(sizeHeading).Bold()
 	if rename.device != "" {
 		a.renameCard(c, rename)
+	}
+	if routesEdit.device != "" {
+		a.routesCard(c, routesEdit)
 	}
 	// The columns have fixed widths, from the room the box had in the last
 	// frame: tracks that share the room would grow with their content.
@@ -280,7 +286,7 @@ func (a *App) devicesCard(c *ui.Context) {
 				}
 				path, on := online[r.id]
 				ring := rings[r.id]
-				a.deviceCard(c, r, path, on, wp, &ring, cardW, now)
+				a.deviceCard(c, r, path, on, onNetwork, wp, &ring, cardW, now)
 			}
 		})
 	})
@@ -289,7 +295,7 @@ func (a *App) devicesCard(c *ui.Context) {
 // deviceCard is one device's card: its header (avatar, name, Device ID,
 // state and ⋯), how the network reaches it, its live status, what is saved
 // for it, and its actions.
-func (a *App) deviceCard(c *ui.Context, r deviceRow, path localapi.NetworkDevice, online bool, w *localapi.Watched, rings *hostRings, cardW float32, now time.Time) {
+func (a *App) deviceCard(c *ui.Context, r deviceRow, path localapi.NetworkDevice, online, onNetwork bool, w *localapi.Watched, rings *hostRings, cardW float32, now time.Time) {
 	t := c.Theme()
 	live := r.session != nil && (r.session.State == "connecting" || r.session.State == "confirming" || r.session.State == "reconnecting")
 	connected := r.session != nil && r.session.State == "connected"
@@ -309,7 +315,7 @@ func (a *App) deviceCard(c *ui.Context, r deviceRow, path localapi.NetworkDevice
 	ui.Column(c.Key("device-"+r.id)).MinWidth(0).Padding(cardPad).Gap(10).Radius(cardRadius).
 		Background(t.Surface).Border(1, t.Border).Children(func() {
 		a.cardHeader(c, r, online, live, connected, tunnels)
-		cardPath(c, r, path, online, live)
+		a.cardPath(c, r, path, online, onNetwork, live)
 		a.cardStatus(c, r, w, rings, fresh, cardW, now)
 		if flags := savedFlags(r.saved); len(flags) > 0 {
 			ui.Row(c).Wrap().Gap(6).Children(func() {
@@ -324,7 +330,7 @@ func (a *App) deviceCard(c *ui.Context, r deviceRow, path localapi.NetworkDevice
 				label = L.ActionShow()
 			}
 			if ui.PrimaryButton(c.Key("device-go-"+r.id), label).Grow(1).Clicked() {
-				a.connectDevice(r.id, r.address, r.about, nil)
+				a.connectDevice(r.id, "", r.about, nil)
 			}
 			for _, act := range actions {
 				name, tip := L.CardAI(), L.ActionConnectAI()
@@ -373,10 +379,10 @@ func cardActions(s *localapi.SystemSample, tunnels bool, uses map[string]int) []
 func (a *App) runAction(r deviceRow, act string) {
 	a.noteUse(r.id, act)
 	if act == actionAI {
-		a.connectDevice(r.id, r.address, r.about, connectWant(true))
+		a.connectDevice(r.id, "", r.about, connectWant(true))
 		return
 	}
-	a.openService(r.id, r.address, act)
+	a.openService(r.id, "", act)
 }
 
 // name is the device's name, or its Device ID when it gave none.
@@ -422,7 +428,7 @@ func (a *App) deviceMenu(c *ui.Context, r deviceRow, tunnels bool) {
 	more.Children(func() { ui.Text(c, "⋯").TextColor(t.TextMuted) })
 	more.Menu(func(m *ui.Menu) {
 		if m.Item(L.ActionConnect()).Chosen() {
-			a.connectDevice(r.id, r.address, r.about, nil)
+			a.connectDevice(r.id, "", r.about, nil)
 		}
 		if m.Item(L.ActionConnectAI()).Chosen() {
 			a.runAction(r, actionAI)
@@ -436,6 +442,11 @@ func (a *App) deviceMenu(c *ui.Context, r deviceRow, tunnels bool) {
 		if m.Item(L.ActionRename()).Chosen() {
 			a.mu.Lock()
 			a.rename = renameForm{device: r.id, name: a.prefs.Aliases[r.id]}
+			a.mu.Unlock()
+		}
+		if m.Item(L.RouteAddresses()).Chosen() {
+			a.mu.Lock()
+			a.routesEdit = routesForm{device: r.id}
 			a.mu.Unlock()
 		}
 		if m.Item(L.CardSaved()).Chosen() {
@@ -454,34 +465,64 @@ func (a *App) deviceMenu(c *ui.Context, r deviceRow, tunnels bool) {
 	})
 }
 
-// cardPath is how the network reaches a device: direct or relayed with the
-// latency, by address, or when it was last connected.
-func cardPath(c *ui.Context, r deviceRow, path localapi.NetworkDevice, online, live bool) {
+// cardPath is how a device is reached: the route in use while connected,
+// else the one chosen by hand or the one Auto would take now (direct or
+// relayed through the network, or an address, with its latency), or when
+// it was last connected. It opens the route menu (`routeMenu`).
+func (a *App) cardPath(c *ui.Context, r deviceRow, path localapi.NetworkDevice, online, onNetwork, live bool) {
 	t := c.Theme()
+	views := routeViews(r, path, online, onNetwork)
 	dot, text := t.TextMuted.Alpha(0.5), L.CardNotOnNetwork()
+	pick, ok := bestRoute(views)
+	if r.prefer != "" {
+		want := r.prefer
+		if want == preferNetwork {
+			want = ""
+		}
+		i := slices.IndexFunc(views, func(v routeView) bool { return v.address == want })
+		pick, ok = routeView{}, i >= 0
+		if ok {
+			pick = views[i]
+		}
+	}
+	if r.session != nil && r.session.Route != nil && (live || r.session.State == "connected") {
+		i := slices.IndexFunc(views, func(v routeView) bool { return v.address == *r.session.Route })
+		if i >= 0 {
+			pick, ok = views[i], true
+		}
+	}
 	switch {
-	case r.address != "":
-		dot, text = t.Success, L.CardByAddress(r.address)
-	case online && path.Path == "direct":
-		dot, text = t.Success, L.PathDirect()+" · "+strconv.Itoa(path.LatencyMS)+" ms"
-	case online && path.Path == "relay":
-		dot, text = t.Warning, L.PathRelay()+" · "+strconv.Itoa(path.LatencyMS)+" ms"
-	case online:
-		dot, text = t.Success, L.CardOnline()
+	case ok && pick.answers:
+		dot, text = t.Success, routeText(pick)
+		if pick.address == "" && !pick.direct {
+			dot = t.Warning
+		}
+	case ok && pick.address != "":
+		text = routeText(pick)
 	case r.last != 0:
 		text = L.DeviceLast(time.Unix(r.last, 0).Local().Format("2006-01-02 15:04"))
+	}
+	if r.prefer != "" {
+		text = L.RouteFixed(text)
 	}
 	if r.session != nil && r.session.State == "failed" {
 		dot, text = t.Danger, failureText(*r.session, helperGap{})
 	}
-	ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-		if live {
-			busyMark(c, text, busySize)
-		} else {
-			ui.Box(c).Width(onlineDot).Height(onlineDot).Radius(onlineDot / 2).Background(dot)
-		}
-		ui.Text(c, text).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine().Grow(1).MinWidth(0).Tooltip(text)
+	b := ui.ButtonBase(c.Key("device-route-" + r.id)).FillWidth().Radius(6).Label(L.RouteChoose()).Tooltip(text)
+	b.Children(func() {
+		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
+			if live {
+				busyMark(c, text, busySize)
+			} else {
+				ui.Box(c).Width(onlineDot).Height(onlineDot).Radius(onlineDot / 2).Background(dot)
+			}
+			ui.Text(c, text).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine().Grow(1).MinWidth(0)
+			ui.Text(c, "▾").FontSize(sizeSmall).TextColor(t.TextMuted)
+		})
 	})
+	if len(r.features) > 0 || len(r.routes) > 0 || r.last != 0 {
+		b.Menu(func(m *ui.Menu) { a.routeMenu(m, r, views) })
+	}
 }
 
 // cardStatus is a device's live status: compact tiles while its sample is

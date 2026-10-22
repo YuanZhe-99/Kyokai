@@ -152,8 +152,10 @@ func demoHome(a *App) {
 	tunnel := []string{"key-login", "tunnel", "status", "input-sync"}
 	a.status.Recent = []localapi.RecentDevice{
 		{DeviceID: "657365333", Last: 1797400000, Features: tunnel, Saved: localapi.Saved{Password: true, SSH: true},
+			Routes: []localapi.Route{{Address: "192.168.1.20", RouteStats: localapi.RouteStats{LastOK: 1797400000, KBPS: 24000}, Probe: &localapi.RouteProbe{State: "ok", RTTMS: ptr(2)}},
+				{Address: "studio.example.org:47310", Probe: &localapi.RouteProbe{State: "unreachable"}}},
 			About: localapi.About{Name: "Studio Mac", Maker: "Apple", Model: "Mac14,13", OS: "macos"}},
-		{DeviceID: "213559601", Last: 1797300000, Features: tunnel, Saved: localapi.Saved{Key: true, RDP: true},
+		{DeviceID: "213559601", Last: 1797300000, Features: tunnel, Saved: localapi.Saved{Key: true, RDP: true}, Prefer: "network",
 			About: localapi.About{Name: "Office laptop", Maker: "LENOVO", OS: "windows"}},
 		{DeviceID: "647222040", Last: 1797200000, Features: tunnel, About: localapi.About{Name: "NUC", OS: "windows"}},
 		{DeviceID: "100000004", Last: 1797100000, About: localapi.About{Name: "Old PC", OS: "windows"}},
@@ -208,6 +210,7 @@ func TestHomeCardsRender(t *testing.T) {
 		{"home-grid", 1280, 1500, demoHome, false},
 		{"home-grid-narrow", 820, 2600, demoHome, false},
 		{"host-status", 1100, 1100, func(a *App) { demoHome(a); a.statusOf = "657365333" }, false},
+		{"home-routes", 1280, 1700, func(a *App) { demoHome(a); a.routesEdit = routesForm{device: "657365333", add: "203.0.113.7"} }, false},
 		{"security-keys", 1000, 1900, func(a *App) {
 			a.page = pageSecurity
 			demoHome(a)
@@ -283,5 +286,44 @@ func TestServiceTabsRender(t *testing.T) {
 			t.Fatal(err)
 		}
 		f.Close()
+	}
+}
+
+// The card shows the route Auto would take: one that answers, not failing,
+// not remembered slow, by latency, direct before relayed.
+func TestBestRoute(t *testing.T) {
+	ms := func(v int) *int { return &v }
+	row := deviceRow{
+		netRoute: localapi.RouteStats{KBPS: 20000},
+		routes: []localapi.Route{
+			{Address: "192.168.1.20", Probe: &localapi.RouteProbe{State: "ok", RTTMS: ms(2)}},
+			{Address: "office.example.org", Probe: &localapi.RouteProbe{State: "other-device", RTTMS: ms(1)}},
+			{Address: "10.9.9.9", Probe: &localapi.RouteProbe{State: "unreachable"}},
+		},
+	}
+	relay := localapi.NetworkDevice{Path: "relay", LatencyMS: 231}
+	for _, c := range []struct {
+		name  string
+		edit  func(r *deviceRow)
+		path  localapi.NetworkDevice
+		on    bool
+		want  string
+		label string
+	}{
+		{"the LAN beats the relay", func(*deviceRow) {}, relay, true, "192.168.1.20", "192.168.1.20 · 2 ms"},
+		{"failing twice goes behind", func(r *deviceRow) { r.routes[0].Fails = 2 }, relay, true, "", "Relayed · 231 ms"},
+		{"remembered slow goes behind", func(r *deviceRow) { r.routes[0].KBPS = 900 }, relay, true, "", "Relayed · 231 ms"},
+		{"offline network: the address", func(*deviceRow) {}, localapi.NetworkDevice{}, false, "192.168.1.20", "192.168.1.20 · 2 ms"},
+	} {
+		r := row
+		r.routes = slices.Clone(row.routes)
+		c.edit(&r)
+		best, ok := bestRoute(routeViews(r, c.path, c.on, true))
+		if !ok || best.address != c.want || routeText(best) != c.label {
+			t.Errorf("%s: %q %q, want %q %q", c.name, best.address, routeText(best), c.want, c.label)
+		}
+	}
+	if v := routeViews(row, relay, true, true); routeText(v[2]) != "office.example.org · another device answers" {
+		t.Errorf("another device: %q", routeText(v[2]))
 	}
 }

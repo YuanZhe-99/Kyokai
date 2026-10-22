@@ -21,7 +21,8 @@ Noise `XX_25519_ChaChaPoly_BLAKE2s`，前言（prologue）为 `kyokai/session/v1
 | 3 | 控制端 → 被控端 | `s, se` | `client_hello`：协议、产品版本、设备密钥、签名、请求的权限、两个 OPAQUE 凭据请求（或者不带凭据请求、附上控制端的说明 `about`，表示不使用密码而请求同意），恢复会话时还有恢复令牌、登录密钥的证明（见“密钥登录”）、隧道的服务（见“隧道”），以及状态查看的 `watch`（见“状态查看者”） |
 
 签名是设备密钥对 `kyokai/noise-static/v1` 加上发送方 Noise 静态公钥所做的 Ed25519 签名。为了知道一个地址上是哪台设备，
-控制端发送第 1 帧、读取第 2 帧、检查其签名后关闭连接（`session.identify`）；被控端不会为此保留会话。若被控端的设备密钥推导不出控制端
+控制端发送第 1 帧、读取第 2 帧、检查其签名后关闭连接（`session.identify`；控制端也以此探测已知被控端的地址，[networking.md](networking.md)，
+“路径”）；被控端不会为此保留会话。控制端走哪条路径不会改变线路上的任何内容。若被控端的设备密钥推导不出控制端
 所拨打的设备 ID，或者与控制端为该 ID 固定的密钥不同，控制端会拒绝它
 （[identity-and-access.md](identity-and-access.md)）。`host_hello` 携带被控端的源码地址，由控制端显示（AGPL-3.0 第 13 条）。
 

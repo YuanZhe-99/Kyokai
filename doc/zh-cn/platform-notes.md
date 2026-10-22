@@ -18,6 +18,7 @@ Studio 2026）：
 | 核心库 | 只引用系统 DLL（`KERNEL32`、`ntdll`、`api-ms-win-core-synch`，内嵌 EasyTier 后还有 `ws2_32`、`iphlpapi`、`bcrypt`、`crypt32` 等）：ARM64 与 x64 的 C 运行时均为静态链接——没有 `msvcrt.dll` |
 | 机密 | 主密钥受 DPAPI 保护；引擎与应用重启后设备 ID 不变 |
 | 引擎 | `scripts/smoke.sh user` 通过：状态、密码、换密码、拒绝第二个引擎、关闭、重启 |
+| 设备路径（2026-10-21） | 在回环端口上提供服务的两个被控端和一个无效地址：探测结果为 `ok`、`unreachable` 与 `other-device`；自动模式经由该设备自己的地址连接并记住它；固定为另一台设备地址的路径以 `wrong-device` 失败（`route_tests`）；路径菜单与地址编辑器在四种语言和两种主题下正常显示 |
 | 应用（ARM64 安装包） | 不弹任何提示就以子进程启动引擎；每次启动临时密码都不同；强制结束界面后引擎随之结束；`Run` 下没有注册任何项 |
 | 应用（x64 安装包） | 在模拟下以同一身份运行；窗口按系统深色主题渲染 |
 | 安装包 | `scripts/build.sh windows/arm64 windows/amd64` 为两者构建 `Kyokai.exe` 与按用户安装的安装包 |

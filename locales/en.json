@@ -296,14 +296,6 @@
   "ByAddressSaved": "Address ranges saved.",
   "ByAddressTitle": "Accept connections by address",
   "CardAI": "AI",
-  "CardByAddress": "By address · {address}",
-  "@CardByAddress": {
-    "placeholders": {
-      "address": {
-        "type": "String"
-      }
-    }
-  },
   "CardConnected": "Connected",
   "CardNeedsUpdate": "Needs Kyokai 0.4.1 or later on that device",
   "CardNotOnNetwork": "Not on the network",
@@ -602,6 +594,52 @@
   "ResetHint": "Gives this device a new Device ID and forgets its permanent password, trusted devices and known devices.",
   "ResetTitle": "Reset identity",
   "RestoreConfirm": "This device takes on the identity in the backup, including its Device ID. Every session ends and the network reconnects.",
+  "RouteAddresses": "Addresses…",
+  "RouteAuto": "Auto",
+  "RouteChoose": "Choose the route",
+  "RouteChosen": "Route: {route}",
+  "@RouteChosen": {
+    "placeholders": {
+      "route": {
+        "type": "String"
+      }
+    }
+  },
+  "RouteFailing": "failed lately",
+  "RouteFixed": "{route} · chosen",
+  "@RouteFixed": {
+    "placeholders": {
+      "route": {
+        "type": "String"
+      }
+    }
+  },
+  "RouteLastUsed": "used {time}",
+  "@RouteLastUsed": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "RouteNetwork": "Kyokai network",
+  "RouteNeverUsed": "not used yet",
+  "RouteNotAnswering": "not answering",
+  "RouteNotKyokai": "not Kyokai",
+  "RouteOtherDevice": "another device answers",
+  "RoutesAdd": "Add",
+  "RoutesAddHint": "IP address or domain name, port optional",
+  "RoutesDone": "Done",
+  "RoutesFailed": "The routes could not be changed. Check the address.",
+  "RoutesHint": "Kyokai reaches this device through the Kyokai network and these IP addresses or domain names. Auto takes the best at every connection, by its delay now and how well it went before; a route chosen by hand is used alone.",
+  "RoutesTitle": "Addresses of {device}",
+  "@RoutesTitle": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "RunModeBackground": "Background service",
   "RunModeCancelled": "The administrator prompt was cancelled.",
   "RunModeChanged": "Run mode changed.",
@@ -850,6 +888,7 @@
   "ViewerActions": "Actions",
   "ViewerAsleep": "The screen there may be asleep.",
   "ViewerBlockInput": "Block their keyboard and mouse",
+  "ViewerByAddressHint": "Connected by address, outside the Kyokai network.",
   "ViewerClipBehind": "Not shared right now: another tab or the Kyokai tab is in front.",
   "ViewerClipClear": "Clear",
   "ViewerClipEmpty": "Nothing has crossed yet.",

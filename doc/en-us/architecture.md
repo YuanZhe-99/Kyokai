@@ -78,8 +78,10 @@ network kept, `{id, label, servers, name, has_secret, weak_secret, joined}`), `n
 servers?, name?, secret?, joined?}`: no id adds a network, joined unless it says otherwise; with one, what it leaves out
 keeps its value, the secret too; answers the networks), `network.profile.remove` (`{id}`), `network.direct`
 (`{direct}`: try direct paths in every network, [networking.md](networking.md)), `password.set_permanent` (`{password}`, null removes it), `session.connect`
-(`{device_id, password, want, remember, address?}`; an empty password uses the one saved for the host;
-`address` dials that IP address or domain name instead of the network; returns the session id at
+(`{device_id, password, want, remember, address?, route?}`; an empty password uses the one saved for the host;
+`address` dials that IP address or domain name alone and adds it to the host's routes, `route`
+(`auto`, `network` or one of its addresses) overrides the route chosen for it
+([networking.md](networking.md), "Routes"); returns the session id at
 once, progress shows in the status), `session.identify` (`{address}` → `{device_id}` or
 `{failure}`: `unreachable`, `incompatible`, `broken` or `self`; dials without holding the core's
 lock), `device.remove` (`{device_id}`: ends this device's sessions with that host, leaves them out of
@@ -90,9 +92,9 @@ history in the secrets store, or in memory only for No logs, [security.md](secur
 (public parts only), `keys.add` (`{name, private}`), `keys.remove` (`{id}`), `keys.sign`
 (`{key_id, algorithm, data}` → `{signature}`), `authorized.list`, `authorized.add`
 (`{name, public}`), `authorized.remove` (`{id}`), the tunnels and saved service sign-ins
-([remote-services.md](remote-services.md)): `tunnel.open` (`{device_id, address?, service}` →
+([remote-services.md](remote-services.md)): `tunnel.open` (`{device_id, address?, route?, service}` →
 `{id}`), `tunnel.wait` (`{id, timeout_ms}` → `{state, failure}`, waiting without the core's lock),
-`credentials.get`, `credentials.set`, `credentials.forget`, `watch.set` (`{devices}`: watch these hosts'
+`credentials.get`, `credentials.set`, `credentials.forget`, the routes ([networking.md](networking.md), "Routes"): `routes.set` (`{device_id, add?, remove?, prefer?}`), `routes.probe` (`{devices}`: look at their addresses in the background, at most 16), `watch.set` (`{devices}`: watch these hosts'
 status for 30 seconds, [computer-use.md](computer-use.md), "Host status"), `identity.export` (`{passphrase}` → `{document}`), `identity.import`
 (`{document, passphrase}`), `identity.reset`, `device.set_name` (`{name}`; "" follows the computer's
 name; the status carries `name` and this device's `about`), `access.settings` (`{password_mode?: temporary|permanent|both, without_asking?, by_address?: {on, ranges}}`; `by_address` starts or stops the listener at once), `permission.request` (`{name}`: `screen`, `accessibility`, `input-monitoring` or `keychain` on macOS → `{granted}`; `keychain` reopens the store and rebuilds the core when it opens; in the helper the agent asks), `store.start_over` (the saved store cannot be unlocked: it is moved aside and the core rebuilt on a new one → `{kept}`), `agent.restart` (the helper's session agent exits and its supervisor starts it again), `store.export` (`{passphrase}` → `{document}`), `store.import` (`{document,
@@ -116,8 +118,9 @@ carries `permanent_password`, `permissions` (macOS: `{screen, accessibility, inp
 `password_mode` and `without_asking` (the access settings), `by_address` (`{on, ranges, port, error}`: connections by address, [networking.md](networking.md)), `keeps_history`, `protected`, `ai_draft` (the shared draft),
 `password_grants` (what a correct password grants without asking;
 set with `access.password_grants` `{grants}`), `requests` (open host confirmations, each with
-`password`: whether the controller gave a password or a key, and `key`: the key's name), `sessions` (a tunnel's with its `service`), `recent` (hosts
-connected to, newest first, each with the `address` its last session dialed, the `features` the
+`password`: whether the controller gave a password or a key, and `key`: the key's name), `sessions` (a tunnel's with its `service`; a controller's with its `route`), `recent` (hosts
+connected to, newest first, each with its `routes` (`{address, added, last_ok, rtt_ms, kbps,
+fails, probe}`), `network_route`, `prefer` (the route chosen by hand), the `features` the
 host announced and `saved`, a flag per kind of sign-in kept for it), `watching` and `watchers` (the
 status watches from and of this device) and `ai` (the task in progress with its state and origin, or null). The Go binding keeps the response slots it passes to the core in heap memory,
 never on a goroutine stack, which may move between taking an address and the call. On Windows the
@@ -150,7 +153,7 @@ runtime statically, so nothing is resolved through the search path.
   paused (packet 15, `{paused}`) from the engine, control
   and AI messages from the GUI, among them `clipboard-use`, which the engine keeps for the session
   and never forwards; the GUI asks for a key frame first. `tunnel.open` (`{tunnel: {device_id,
-  address?, service}}`) answers once the host admitted the tunnel (after up to 90 seconds) or names
+  address?, route?, service}}`) answers once the host admitted the tunnel (after up to 90 seconds) or names
   why not, then carries the tunnel's bytes as packets 14 both ways
   ([remote-services.md](remote-services.md)). These additions change no request's
   meaning, so the local API stays at version 2: an older engine ignores `clipboard-use` and an

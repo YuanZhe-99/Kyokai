@@ -124,6 +124,9 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | watch lease (Home's status watch) | 查看租约 |
 | dot history / status details | 点阵历史 / 状态详情 |
 | Disconnect and close / Disconnect and quit | 断开并关闭 / 断开并退出 |
+| route (to a device) / Addresses… | 路径 / 地址… |
+| Auto (route choice) | 自动 |
+| happy eyeballs | 快速回退并行连接（happy eyeballs） |
 
 ## 6. 审阅清单
 

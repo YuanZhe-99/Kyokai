@@ -1412,16 +1412,6 @@ func (msgs Messages) CardAI() string {
 	return Catalog.Format(msgs.locale, "CardAI", nil)
 }
 
-// CardByAddress says "By address · {address}"
-// in the language the app shows.
-func CardByAddress(address string) string { return In(i18n.Locale()).CardByAddress(address) }
-
-// CardByAddress says "By address · {address}"
-// in the language of msgs.
-func (msgs Messages) CardByAddress(address string) string {
-	return Catalog.Format(msgs.locale, "CardByAddress", map[string]any{"address": address})
-}
-
 // CardConnected says "Connected"
 // in the language the app shows.
 func CardConnected() string { return In(i18n.Locale()).CardConnected() }
@@ -3576,6 +3566,186 @@ func (msgs Messages) RestoreConfirm() string {
 	return Catalog.Format(msgs.locale, "RestoreConfirm", nil)
 }
 
+// RouteAddresses says "Addresses…"
+// in the language the app shows.
+func RouteAddresses() string { return In(i18n.Locale()).RouteAddresses() }
+
+// RouteAddresses says "Addresses…"
+// in the language of msgs.
+func (msgs Messages) RouteAddresses() string {
+	return Catalog.Format(msgs.locale, "RouteAddresses", nil)
+}
+
+// RouteAuto says "Auto"
+// in the language the app shows.
+func RouteAuto() string { return In(i18n.Locale()).RouteAuto() }
+
+// RouteAuto says "Auto"
+// in the language of msgs.
+func (msgs Messages) RouteAuto() string {
+	return Catalog.Format(msgs.locale, "RouteAuto", nil)
+}
+
+// RouteChoose says "Choose the route"
+// in the language the app shows.
+func RouteChoose() string { return In(i18n.Locale()).RouteChoose() }
+
+// RouteChoose says "Choose the route"
+// in the language of msgs.
+func (msgs Messages) RouteChoose() string {
+	return Catalog.Format(msgs.locale, "RouteChoose", nil)
+}
+
+// RouteChosen says "Route: {route}"
+// in the language the app shows.
+func RouteChosen(route string) string { return In(i18n.Locale()).RouteChosen(route) }
+
+// RouteChosen says "Route: {route}"
+// in the language of msgs.
+func (msgs Messages) RouteChosen(route string) string {
+	return Catalog.Format(msgs.locale, "RouteChosen", map[string]any{"route": route})
+}
+
+// RouteFailing says "failed lately"
+// in the language the app shows.
+func RouteFailing() string { return In(i18n.Locale()).RouteFailing() }
+
+// RouteFailing says "failed lately"
+// in the language of msgs.
+func (msgs Messages) RouteFailing() string {
+	return Catalog.Format(msgs.locale, "RouteFailing", nil)
+}
+
+// RouteFixed says "{route} · chosen"
+// in the language the app shows.
+func RouteFixed(route string) string { return In(i18n.Locale()).RouteFixed(route) }
+
+// RouteFixed says "{route} · chosen"
+// in the language of msgs.
+func (msgs Messages) RouteFixed(route string) string {
+	return Catalog.Format(msgs.locale, "RouteFixed", map[string]any{"route": route})
+}
+
+// RouteLastUsed says "used {time}"
+// in the language the app shows.
+func RouteLastUsed(time_ string) string { return In(i18n.Locale()).RouteLastUsed(time_) }
+
+// RouteLastUsed says "used {time}"
+// in the language of msgs.
+func (msgs Messages) RouteLastUsed(time_ string) string {
+	return Catalog.Format(msgs.locale, "RouteLastUsed", map[string]any{"time": time_})
+}
+
+// RouteNetwork says "Kyokai network"
+// in the language the app shows.
+func RouteNetwork() string { return In(i18n.Locale()).RouteNetwork() }
+
+// RouteNetwork says "Kyokai network"
+// in the language of msgs.
+func (msgs Messages) RouteNetwork() string {
+	return Catalog.Format(msgs.locale, "RouteNetwork", nil)
+}
+
+// RouteNeverUsed says "not used yet"
+// in the language the app shows.
+func RouteNeverUsed() string { return In(i18n.Locale()).RouteNeverUsed() }
+
+// RouteNeverUsed says "not used yet"
+// in the language of msgs.
+func (msgs Messages) RouteNeverUsed() string {
+	return Catalog.Format(msgs.locale, "RouteNeverUsed", nil)
+}
+
+// RouteNotAnswering says "not answering"
+// in the language the app shows.
+func RouteNotAnswering() string { return In(i18n.Locale()).RouteNotAnswering() }
+
+// RouteNotAnswering says "not answering"
+// in the language of msgs.
+func (msgs Messages) RouteNotAnswering() string {
+	return Catalog.Format(msgs.locale, "RouteNotAnswering", nil)
+}
+
+// RouteNotKyokai says "not Kyokai"
+// in the language the app shows.
+func RouteNotKyokai() string { return In(i18n.Locale()).RouteNotKyokai() }
+
+// RouteNotKyokai says "not Kyokai"
+// in the language of msgs.
+func (msgs Messages) RouteNotKyokai() string {
+	return Catalog.Format(msgs.locale, "RouteNotKyokai", nil)
+}
+
+// RouteOtherDevice says "another device answers"
+// in the language the app shows.
+func RouteOtherDevice() string { return In(i18n.Locale()).RouteOtherDevice() }
+
+// RouteOtherDevice says "another device answers"
+// in the language of msgs.
+func (msgs Messages) RouteOtherDevice() string {
+	return Catalog.Format(msgs.locale, "RouteOtherDevice", nil)
+}
+
+// RoutesAdd says "Add"
+// in the language the app shows.
+func RoutesAdd() string { return In(i18n.Locale()).RoutesAdd() }
+
+// RoutesAdd says "Add"
+// in the language of msgs.
+func (msgs Messages) RoutesAdd() string {
+	return Catalog.Format(msgs.locale, "RoutesAdd", nil)
+}
+
+// RoutesAddHint says "IP address or domain name, port optional"
+// in the language the app shows.
+func RoutesAddHint() string { return In(i18n.Locale()).RoutesAddHint() }
+
+// RoutesAddHint says "IP address or domain name, port optional"
+// in the language of msgs.
+func (msgs Messages) RoutesAddHint() string {
+	return Catalog.Format(msgs.locale, "RoutesAddHint", nil)
+}
+
+// RoutesDone says "Done"
+// in the language the app shows.
+func RoutesDone() string { return In(i18n.Locale()).RoutesDone() }
+
+// RoutesDone says "Done"
+// in the language of msgs.
+func (msgs Messages) RoutesDone() string {
+	return Catalog.Format(msgs.locale, "RoutesDone", nil)
+}
+
+// RoutesFailed says "The routes could not be changed. Check the address."
+// in the language the app shows.
+func RoutesFailed() string { return In(i18n.Locale()).RoutesFailed() }
+
+// RoutesFailed says "The routes could not be changed. Check the address."
+// in the language of msgs.
+func (msgs Messages) RoutesFailed() string {
+	return Catalog.Format(msgs.locale, "RoutesFailed", nil)
+}
+
+// RoutesHint says "Kyokai reaches this device through the Kyokai network and these IP addresses or domain names. Auto takes the best at …"
+// in the language the app shows.
+func RoutesHint() string { return In(i18n.Locale()).RoutesHint() }
+
+// RoutesHint says "Kyokai reaches this device through the Kyokai network and these IP addresses or domain names. Auto takes the best at …"
+// in the language of msgs.
+func (msgs Messages) RoutesHint() string {
+	return Catalog.Format(msgs.locale, "RoutesHint", nil)
+}
+
+// RoutesTitle says "Addresses of {device}"
+// in the language the app shows.
+func RoutesTitle(device string) string { return In(i18n.Locale()).RoutesTitle(device) }
+
+// RoutesTitle says "Addresses of {device}"
+// in the language of msgs.
+func (msgs Messages) RoutesTitle(device string) string {
+	return Catalog.Format(msgs.locale, "RoutesTitle", map[string]any{"device": device})
+}
+
 // RunModeBackground says "Background service"
 // in the language the app shows.
 func RunModeBackground() string { return In(i18n.Locale()).RunModeBackground() }
@@ -5022,6 +5192,16 @@ func ViewerBlockInput() string { return In(i18n.Locale()).ViewerBlockInput() }
 // in the language of msgs.
 func (msgs Messages) ViewerBlockInput() string {
 	return Catalog.Format(msgs.locale, "ViewerBlockInput", nil)
+}
+
+// ViewerByAddressHint says "Connected by address, outside the Kyokai network."
+// in the language the app shows.
+func ViewerByAddressHint() string { return In(i18n.Locale()).ViewerByAddressHint() }
+
+// ViewerByAddressHint says "Connected by address, outside the Kyokai network."
+// in the language of msgs.
+func (msgs Messages) ViewerByAddressHint() string {
+	return Catalog.Format(msgs.locale, "ViewerByAddressHint", nil)
 }
 
 // ViewerClipBehind says "Not shared right now: another tab or the Kyokai tab is in front."

@@ -958,6 +958,7 @@ func (v *viewer) view(c *ui.Context) {
 	}
 	if v.app != nil {
 		b.path = v.app.pathTo(v.device)
+		b.route = v.app.routeOf(v.device)
 	}
 	ui.Row(c).Fill().Background(ui.Hex("#000000")).AlignItems(ui.Stretch).Children(func() {
 		// The toolbar floats over the picture, the panels beside it.
@@ -1185,6 +1186,8 @@ type bar struct {
 	// path is the device's entry in the network status ("" Path when the
 	// network lists no route to it).
 	path localapi.NetworkDevice
+	// route is the address the session takes, "" over the network.
+	route string
 	// paused: the engine refuses input as behind (media INPUT).
 	paused bool
 }
@@ -1505,10 +1508,14 @@ func pathChip(c *ui.Context, b bar) {
 		L.ViewerDecoding(codec, implLabel(b.decoder)) + "\n" +
 		L.ViewerTimes(b.host.EncodeMS, b.host.DelayMS, int(b.decodeMS+0.5), int(b.drawMS+0.5), int(b.fps+0.5), b.host.FPS)
 	dot, text := t.Success, fmt.Sprintf("%d ms", b.host.DelayMS)
-	switch b.path.Path {
-	case "direct":
+	// The session's own route: an address, else the network's path.
+	switch {
+	case b.route != "":
+		text = b.route + " · " + text
+		tip = L.ViewerByAddressHint() + "\n\n" + tip
+	case b.path.Path == "direct":
 		text = L.PathDirect() + " · " + text
-	case "relay":
+	case b.path.Path == "relay":
 		dot, text = t.Warning, L.PathRelay()+" · "+text
 		tip = L.ViewerRelayedHint() + "\n\n" + tip
 	}

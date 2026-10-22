@@ -18,6 +18,7 @@ Studio 2026 without its Clang component):
 | Core library | imports only system DLLs (`KERNEL32`, `ntdll`, `api-ms-win-core-synch`, and with EasyTier `ws2_32`, `iphlpapi`, `bcrypt`, `crypt32` and the like): the C runtime is static on ARM64 and x64 — no `msvcrt.dll` |
 | Secrets | DPAPI-protected master key; the Device ID is the same after restarts of the engine and of the app |
 | Engine | `scripts/smoke.sh user` passes: status, password, regenerate, a second engine refused, shutdown, restart |
+| Device routes (2026-10-21) | two hosts served on loopback ports and a dead address: the probes say `ok`, `unreachable` and `other-device`; Auto connects over the device's own address and remembers it; a route fixed on the other device's address fails as `wrong-device` (`route_tests`); the route menu and Addresses editor render in four languages and both themes |
 | App (ARM64 package) | starts its engine as a child without any prompt; the temporary password differs on every start; killing the GUI ends the engine; nothing registered under `Run` |
 | App (x64 package) | runs under emulation with the same identity; window rendered with the system's dark theme |
 | Packages | `scripts/build.sh windows/arm64 windows/amd64` builds `Kyokai.exe` and the per-user installer for both |

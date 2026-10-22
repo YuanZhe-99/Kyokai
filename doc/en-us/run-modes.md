@@ -51,7 +51,7 @@ the GUI quits, only its own engine stops; the helper keeps running and ends the 
 sessions 15 seconds after its last GUI detached (a GUI that quits asks for that at once,
 `sessions.close_controllers`).
 
-**Cleanup after updating.** The first start of 0.4.1 (once per version, `gui.json`
+**Cleanup after updating.** The first start of each version from 0.4.1 on (once per version, `gui.json`
 `stores_unified`) removes the store of the run mode not in use, which earlier switches left
 behind: attached to the helper, the GUI deletes the user engine's `secrets.bin`, `master.key`,
 `device.json`, `ai.json` and `ai-tasks.json` and leaves the marker (on macOS the Keychain item

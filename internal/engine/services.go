@@ -98,6 +98,17 @@ func (h *handler) services(ctx context.Context, req localapi.Request) (localapi.
 			devices = append(devices, *req.Watch...)
 		}
 		return h.command("watch.set", map[string][]string{"devices": devices}), true
+	case localapi.RequestRoutesSet:
+		if req.Routes == nil {
+			return localapi.Fail(localapi.CodeInvalid, "routes missing"), true
+		}
+		return h.command("routes.set", req.Routes), true
+	case localapi.RequestRoutesProbe:
+		devices := []string{}
+		if req.Probe != nil {
+			devices = append(devices, *req.Probe...)
+		}
+		return h.command("routes.probe", map[string][]string{"devices": devices}), true
 	}
 	return localapi.Response{}, false
 }

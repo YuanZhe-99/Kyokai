@@ -27,8 +27,9 @@ static key per session and prove their device identity by signing it.
 
 The signature is Ed25519 by the device key over `kyokai/noise-static/v1` followed by the sender's
 Noise static public key. To learn whom an address reaches, the controller sends frame 1, reads
-frame 2, checks its signature and closes the connection (`session.identify`); the host keeps no
-session for it. The controller refuses a host whose device key does not derive the Device
+frame 2, checks its signature and closes the connection (`session.identify`; also how a
+controller looks at a known host's addresses, [networking.md](networking.md), "Routes"); the host
+keeps no session for it. Which route a controller takes changes nothing on the wire. The controller refuses a host whose device key does not derive the Device
 ID it dialed, or that differs from the key it pinned for that ID
 ([identity-and-access.md](identity-and-access.md)). `host_hello` carries the host's source URL,
 which the controller shows (AGPL-3.0 §13).

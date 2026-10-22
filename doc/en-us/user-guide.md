@@ -127,10 +127,21 @@ again.
 On the same local network, over Tailscale, or wherever the other computer can be reached, you can
 connect without joining a network: enter its IP address or domain name (add `:port` when it is not
 47310) instead of a Device ID and choose **Connect**. Kyokai first asks who answers there, then
-connects to that device; Recent then remembers the address. The other computer must allow it:
+connects to that device; its card then keeps the address among its routes. The other computer must allow it:
 the Network page, **Accept connections by address** (off by default). It accepts them only from the
 listed address ranges — by default local networks and Tailscale — and still needs a password or
 its user's approval. Windows may ask to let Kyokai through its firewall.
+
+### Several ways to reach one device
+
+A device can be reached through the Kyokai network and any number of addresses — its LAN address
+at home, a public address or domain name, a Tailscale address. Open its card's ⋯ menu →
+**Addresses…** to add or remove them; each shows its delay now, when it was last used and the
+speed it reached. The line under the device's name shows the route a connection would take and
+opens a menu: **Auto** (the default) picks, at every connection and reconnection, the route that
+answers fastest, passing over one that was slow or failed lately; or choose the Kyokai network or
+one address to use only that. A connection that drops reconnects over the next-best route under
+Auto; a working one is never moved. The viewer's path badge shows the route in use.
 
 ### SSH, Remote Desktop and VNC
 
@@ -189,7 +200,7 @@ asking in before anyone signs in. Everything moves along — your Device ID, tru
 networks, passwords saved for other devices, keys and settings — and nothing stays behind in the
 other mode. Choosing No privileges again moves it all back and removes the helper, without another
 prompt. If the other mode already holds a different identity with its own settings, Kyokai asks
-which one to keep. The first start of 0.4.1 removes what earlier switches left behind in the mode
+which one to keep. The first start of 0.5.0 removes what earlier switches left behind in the mode
 not in use.
 
 On a Mac the helper sees and controls the screen as **Kyokai Helper**, which needs its own Screen

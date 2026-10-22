@@ -300,9 +300,11 @@ type deviceRow struct {
 	// it announced in its last session.
 	saved    localapi.Saved
 	features []string
-	// address is the address the last session dialed, empty over the
-	// network.
-	address string
+	// routes are its addresses besides the Kyokai network, netRoute how the
+	// network went, and prefer the route chosen by hand (empty: Auto).
+	routes   []localapi.Route
+	netRoute localapi.RouteStats
+	prefer   string
 	// session is the newest connection to it in the engine's list, or nil.
 	session *localapi.SessionInfo
 }
@@ -318,7 +320,8 @@ func deviceRows(st *localapi.Status, p Prefs) []deviceRow {
 		saved := r.Saved
 		// An engine of 0.4.0 says only whether a password is saved.
 		saved.Password = saved.Password || r.SavedPassword
-		rows = append(rows, deviceRow{id: r.DeviceID, about: p.named(r.DeviceID, r.About), last: r.Last, saved: saved, features: r.Features, address: r.Address})
+		rows = append(rows, deviceRow{id: r.DeviceID, about: p.named(r.DeviceID, r.About), last: r.Last, saved: saved, features: r.Features,
+			routes: r.Routes, netRoute: r.NetworkRoute, prefer: r.Prefer})
 	}
 	for _, s := range st.Sessions {
 		if s.Role != "controller" {

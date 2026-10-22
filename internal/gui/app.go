@@ -85,6 +85,10 @@ type App struct {
 	connect connectForm
 	// statusOf is the host whose status Home shows in full, or "".
 	statusOf string
+	// routesEdit is the Addresses editor open on Home, and probedAt when
+	// Home last asked to look at the shown devices' addresses.
+	routesEdit routesForm
+	probedAt   time.Time
 	// rename is the name being given to a recent device on Home.
 	rename renameForm
 	// unlock is the permanent password typed to leave protected mode.

@@ -85,10 +85,15 @@ impl Core {
 #[derive(Deserialize)]
 struct Connect {
     device_id: String,
-    /// Dial this address (IP address or domain name) instead of the
-    /// network's routes; the device there must prove to be `device_id`.
+    /// Dial this address (IP address or domain name) alone, typed for this
+    /// connection; the device there must prove to be `device_id`, and the
+    /// known host keeps the address.
     #[serde(default)]
     address: Option<String>,
+    /// The route: `auto`, `network` or one of the host's addresses; absent,
+    /// the one chosen for the host (doc/en-us/networking.md, "Routes").
+    #[serde(default)]
+    route: Option<String>,
     password: zeroize::Zeroizing<String>,
     #[serde(default)]
     want: Vec<access::Permission>,
@@ -1015,9 +1020,15 @@ fn call(input: &[u8]) -> Result<Value, String> {
                     save: r.remember,
                     saved: saved.is_some(),
                 };
+                let route = net::Choice::ask(
+                    &c.ctx,
+                    &r.device_id,
+                    r.address.as_deref(),
+                    r.route.as_deref(),
+                );
                 let id = c.network.connect(net::Ask {
                     device_id: r.device_id,
-                    address: r.address.filter(|a| !a.trim().is_empty()),
+                    route,
                     password: saved.unwrap_or(r.password),
                     want: r.want,
                     remember,
@@ -1034,12 +1045,20 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 device_id: String,
                 #[serde(default)]
                 address: Option<String>,
+                #[serde(default)]
+                route: Option<String>,
                 service: tunnel::Service,
             }
             let r: Open = serde_json::from_value(req.params)
                 .map_err(|e| format!("bad tunnel request: {e}"))?;
             try_core(|c| {
                 let saved = c.ctx.access.saved_password(&r.device_id);
+                let route = net::Choice::ask(
+                    &c.ctx,
+                    &r.device_id,
+                    r.address.as_deref(),
+                    r.route.as_deref(),
+                );
                 let id = c.network.connect(net::Ask {
                     remember: session::Remember {
                         save: false,
@@ -1047,7 +1066,7 @@ fn call(input: &[u8]) -> Result<Value, String> {
                     },
                     password: saved.unwrap_or_default(),
                     device_id: r.device_id,
-                    address: r.address.filter(|a| !a.trim().is_empty()),
+                    route,
                     want: vec![r.service.permission()],
                     kind: session::Kind::Tunnel(r.service),
                 })?;
@@ -1056,6 +1075,53 @@ fn call(input: &[u8]) -> Result<Value, String> {
         }
         // Watches these hosts' status for a while: a lease the GUI renews
         // (doc/en-us/computer-use.md, "Host status").
+        // Changes a known host's routes: adds or removes an address, or
+        // chooses the route (doc/en-us/networking.md, "Routes").
+        "routes.set" => {
+            #[derive(Deserialize)]
+            struct Set {
+                device_id: String,
+                #[serde(default)]
+                add: Option<String>,
+                #[serde(default)]
+                remove: Option<String>,
+                #[serde(default)]
+                prefer: Option<String>,
+            }
+            let r: Set = serde_json::from_value(req.params)
+                .map_err(|e| format!("bad routes request: {e}"))?;
+            let add = r.add.as_deref().map(str::trim).filter(|a| !a.is_empty());
+            if let Some(a) = add {
+                net::split_address(a)?;
+            }
+            try_core(|c| {
+                let host = c.ctx.access.set_routes(
+                    &r.device_id,
+                    add,
+                    r.remove.as_deref(),
+                    r.prefer.as_deref().map(str::trim),
+                )?;
+                if add.is_some() {
+                    c.network.probe(vec![r.device_id.clone()]);
+                }
+                Ok(
+                    json!({"routes": routes_json(&host, &c.network.probes(&r.device_id)), "prefer": host.prefer}),
+                )
+            })
+        }
+        // Looks at the addresses of these known hosts in the background;
+        // the status shows what was found.
+        "routes.probe" => {
+            let devices: Vec<String> = serde_json::from_value(req.params["devices"].take())
+                .map_err(|e| format!("bad devices: {e}"))?;
+            if devices.len() > 16 {
+                return Err("too many devices".into());
+            }
+            try_core(|c| {
+                c.network.probe(devices);
+                Ok(json!({}))
+            })
+        }
         "watch.set" => {
             let devices: Vec<String> = serde_json::from_value(req.params["devices"].take())
                 .map_err(|e| format!("bad devices: {e}"))?;
@@ -1529,7 +1595,8 @@ fn status() -> Value {
                         .is_some_and(|k| keys::is_login(c.ctx.access.secrets(), k));
                     json!({
                         "device_id": id, "last": h.last, "about": h.about, "saved_password": password,
-                        "address": h.address, "features": h.features,
+                        "routes": routes_json(&h, &c.network.probes(&id)),
+                        "network_route": h.network, "prefer": h.prefer, "features": h.features,
                         "saved": {
                             "password": password, "key": key, "ssh": saved.ssh.is_some(),
                             "rdp": saved.rdp.is_some(), "vnc": saved.vnc.is_some(),
@@ -1543,6 +1610,21 @@ fn status() -> Value {
         })
     })
     .unwrap_or_else(|e| json!({"error": e}))
+}
+
+/// A known host's addresses for the status: each with what earlier
+/// sessions remember of it and the latest look at it (`probe`, or null).
+fn routes_json(host: &access::KnownHost, probes: &[net::Probe]) -> Value {
+    host.routes
+        .iter()
+        .map(|r| {
+            json!({
+                "address": r.address, "added": r.added, "last_ok": r.stats.last_ok,
+                "rtt_ms": r.stats.rtt_ms, "kbps": r.stats.kbps, "fails": r.stats.fails,
+                "probe": probes.iter().find(|p| p.address == r.address),
+            })
+        })
+        .collect()
 }
 
 /// The privacy permissions this system asks for and whether they are

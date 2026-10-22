@@ -303,14 +303,136 @@ pub struct KnownHost {
     /// What the host last said about itself.
     #[serde(default)]
     pub about: About,
-    /// The address the last session dialed, or empty over the network: the
-    /// next connection from Home goes the same way.
+    /// Before 0.5.0: the one address the last session dialed. Read once
+    /// into `routes` (`KnownHost::migrate`), never written again.
+    #[serde(default, skip_serializing)]
+    address: String,
+    /// The addresses it is reached at besides the Kyokai network
+    /// (doc/en-us/networking.md, "Routes"), at most MAX_ROUTES.
+    #[serde(default)]
+    pub routes: Vec<RouteRecord>,
+    /// How the network route went in earlier sessions.
+    #[serde(default)]
+    pub network: RouteStats,
+    /// The route chosen by hand: empty for Auto, `network`, or one of
+    /// `routes`' addresses.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub address: String,
+    pub prefer: String,
     /// What the host announced in the last session accepted (`feature`),
     /// so Home knows what it offers before dialing.
     #[serde(default)]
     pub features: Vec<String>,
+}
+
+/// Most addresses a known host keeps.
+pub const MAX_ROUTES: usize = 8;
+
+/// `KnownHost::prefer` naming the Kyokai network.
+pub const PREFER_NETWORK: &str = "network";
+
+/// An address a known host is reached at, and how it went.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RouteRecord {
+    pub address: String,
+    /// Unix seconds when it was added.
+    #[serde(default)]
+    pub added: u64,
+    #[serde(flatten)]
+    pub stats: RouteStats,
+}
+
+/// How a route went in earlier sessions: what Auto remembers besides the
+/// latency it measures now.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct RouteStats {
+    /// Unix seconds of the last session that connected over it (0: none).
+    #[serde(default)]
+    pub last_ok: u64,
+    /// Its round trip in milliseconds, a moving average (0: unknown).
+    #[serde(default)]
+    pub rtt_ms: u32,
+    /// The bitrate the host's quality control settled on over it, in
+    /// kbit/s, a moving average (0: unknown).
+    #[serde(default)]
+    pub kbps: u32,
+    /// Dials that failed in a row.
+    #[serde(default)]
+    pub fails: u8,
+}
+
+impl RouteStats {
+    /// Notes a session that connected over the route, with the round trip
+    /// and bitrate it saw (0: none seen).
+    pub fn connected(&mut self, rtt_ms: u32, kbps: u32) {
+        self.last_ok = unix_now();
+        self.fails = 0;
+        self.rtt_ms = average(self.rtt_ms, rtt_ms);
+        self.kbps = average(self.kbps, kbps);
+    }
+
+    /// Notes a dial over the route that failed.
+    pub fn failed(&mut self) {
+        self.fails = self.fails.saturating_add(1);
+    }
+}
+
+/// A moving average that weighs the new sample a quarter; 0 is no sample.
+fn average(old: u32, new: u32) -> u32 {
+    match (old, new) {
+        (_, 0) => old,
+        (0, _) => new,
+        _ => ((u64::from(old) * 3 + u64::from(new)) / 4) as u32,
+    }
+}
+
+impl KnownHost {
+    /// Moves an address kept before 0.5.0 into the routes.
+    fn migrate(&mut self) {
+        let old = std::mem::take(&mut self.address);
+        if !old.is_empty() && !self.routes.iter().any(|r| r.address == old) {
+            self.routes.push(RouteRecord {
+                address: old,
+                added: self.last,
+                stats: RouteStats {
+                    last_ok: self.last,
+                    ..RouteStats::default()
+                },
+            });
+        }
+    }
+
+    /// The record of a route: the network's for an empty address.
+    pub fn stats_mut(&mut self, address: &str) -> Option<&mut RouteStats> {
+        if address.is_empty() {
+            return Some(&mut self.network);
+        }
+        self.routes
+            .iter_mut()
+            .find(|r| r.address == address)
+            .map(|r| &mut r.stats)
+    }
+
+    /// Adds an address unless it is kept already; with MAX_ROUTES kept, the
+    /// one used longest ago gives way.
+    /// Returns: whether the routes changed.
+    pub fn add_route(&mut self, address: &str) -> bool {
+        if address.is_empty() || self.routes.iter().any(|r| r.address == address) {
+            return false;
+        }
+        if self.routes.len() >= MAX_ROUTES
+            && let Some(i) = (0..self.routes.len())
+                .filter(|&i| self.prefer != self.routes[i].address)
+                .min_by_key(|&i| self.routes[i].stats.last_ok.max(self.routes[i].added))
+        {
+            self.routes.remove(i);
+        }
+        self.routes.push(RouteRecord {
+            address: address.to_owned(),
+            added: unix_now(),
+            stats: RouteStats::default(),
+        });
+        true
+    }
 }
 
 /// What this device keeps for signing in to one host besides its password
@@ -1023,9 +1145,12 @@ impl Access {
     }
 
     /// Pins a host key for its Device ID, or refreshes its last connection
-    /// (controller side).
+    // (controller side), keeping its routes, adding the address dialed and
+    /// noting that its route connected.
     /// Inputs: `address`, the address dialed, or empty over the network;
     /// `features`, what the host announced in this session.
+    /// Notes: a new key (the person trusted it) keeps the routes: they are
+    /// where the device is, whatever its key.
     pub fn pin_host(
         &self,
         device_id: &str,
@@ -1035,17 +1160,83 @@ impl Access {
         features: &[String],
     ) -> Result<(), String> {
         let mut all = self.known_hosts();
-        all.insert(
-            device_id.to_owned(),
-            KnownHost {
-                key: key.to_owned(),
-                last: unix_now(),
-                about: about.clone(),
-                address: address.to_owned(),
-                features: features.to_vec(),
-            },
-        );
+        let host = all
+            .entry(device_id.to_owned())
+            .or_insert_with(|| KnownHost {
+                key: String::new(),
+                last: 0,
+                about: About::default(),
+                address: String::new(),
+                routes: Vec::new(),
+                network: RouteStats::default(),
+                prefer: String::new(),
+                features: Vec::new(),
+            });
+        host.key = key.to_owned();
+        host.last = unix_now();
+        host.about = about.clone();
+        host.features = features.to_vec();
+        host.add_route(address);
+        if let Some(s) = host.stats_mut(address) {
+            s.connected(0, 0);
+        }
         self.store_history(KNOWN_HOSTS_NAME, &all)
+    }
+
+    /// Notes how a route to a known host went: a session that connected over
+    /// it with the round trip and bitrate it saw, or a dial that failed.
+    /// Inputs: `address`, empty for the network; `outcome`, None for a
+    /// failed dial, else the round trip and kbit/s (0: none seen).
+    /// Side effects: rewrites the known hosts.
+    pub fn note_route(
+        &self,
+        device_id: &str,
+        address: &str,
+        outcome: Option<(u32, u32)>,
+    ) -> Result<(), String> {
+        let mut all = self.known_hosts();
+        let Some(stats) = all.get_mut(device_id).and_then(|h| h.stats_mut(address)) else {
+            return Ok(());
+        };
+        match outcome {
+            Some((rtt, kbps)) => stats.connected(rtt, kbps),
+            None => stats.failed(),
+        }
+        self.store_history(KNOWN_HOSTS_NAME, &all)
+    }
+
+    /// Changes a known host's routes: adds an address, removes one, or
+    /// chooses the route (empty: Auto; `network`; or an address it keeps).
+    /// Inputs: addresses already checked by the caller (`net::split_address`).
+    /// Side effects: rewrites the known hosts.
+    pub fn set_routes(
+        &self,
+        device_id: &str,
+        add: Option<&str>,
+        remove: Option<&str>,
+        prefer: Option<&str>,
+    ) -> Result<KnownHost, String> {
+        let mut all = self.known_hosts();
+        let host = all.get_mut(device_id).ok_or("not a known host")?;
+        if let Some(a) = add {
+            host.add_route(a);
+        }
+        if let Some(a) = remove {
+            host.routes.retain(|r| r.address != a);
+            if host.prefer == a {
+                host.prefer.clear();
+            }
+        }
+        if let Some(p) = prefer {
+            if !(p.is_empty() || p == PREFER_NETWORK || host.routes.iter().any(|r| r.address == p))
+            {
+                return Err("not one of its routes".into());
+            }
+            host.prefer = p.to_owned();
+        }
+        let host = host.clone();
+        self.store_history(KNOWN_HOSTS_NAME, &all)?;
+        Ok(host)
     }
 
     /// A host this device connected to (controller side).
@@ -1080,9 +1271,14 @@ impl Access {
     }
 
     fn known_hosts(&self) -> BTreeMap<String, KnownHost> {
-        self.history(KNOWN_HOSTS_NAME)
+        let mut all: BTreeMap<String, KnownHost> = self
+            .history(KNOWN_HOSTS_NAME)
             .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        for h in all.values_mut() {
+            h.migrate();
+        }
+        all
     }
 
     fn store<T: Serialize>(&self, name: &str, value: &T) -> Result<(), String> {
@@ -1105,6 +1301,91 @@ mod tests {
 
     fn access() -> Access {
         Access::load(Arc::new(Secrets::memory())).unwrap()
+    }
+
+    /// A host kept before 0.5.0 with one address keeps it as a route; a
+    /// connection over the network no longer clears the addresses
+    /// (regression: connecting by Device ID wiped the address), and one by
+    /// a new address adds it.
+    #[test]
+    fn known_hosts_keep_every_route() {
+        let a = access();
+        let old = r#"{"123456789":{"key":"k","last":5,"address":"10.0.0.5"}}"#;
+        a.store_history(
+            KNOWN_HOSTS_NAME,
+            &serde_json::from_str::<Value>(old).unwrap(),
+        )
+        .unwrap();
+        let h = a.known("123456789").unwrap();
+        assert_eq!(h.routes.len(), 1);
+        assert_eq!(h.routes[0].address, "10.0.0.5");
+        assert_eq!(h.prefer, "");
+        let about = About::default();
+        a.pin_host("123456789", "k", &about, "", &[]).unwrap();
+        a.pin_host("123456789", "k", &about, "host.example:4000", &[])
+            .unwrap();
+        a.pin_host("123456789", "k", &about, "10.0.0.5", &[])
+            .unwrap();
+        let h = a.known("123456789").unwrap();
+        let addresses: Vec<_> = h.routes.iter().map(|r| r.address.as_str()).collect();
+        assert_eq!(addresses, ["10.0.0.5", "host.example:4000"]);
+        // Written back without the old field.
+        assert!(
+            !a.history(KNOWN_HOSTS_NAME)
+                .unwrap()
+                .contains("\"address\":\"10.0.0.5\",\"routes\"")
+        );
+        // Choosing: Auto, the network, a kept address; nothing else.
+        assert!(
+            a.set_routes("123456789", None, None, Some("network"))
+                .is_ok()
+        );
+        assert!(
+            a.set_routes("123456789", None, None, Some("10.0.0.9"))
+                .is_err()
+        );
+        let h = a
+            .set_routes("123456789", None, None, Some("10.0.0.5"))
+            .unwrap();
+        assert_eq!(h.prefer, "10.0.0.5");
+        // Removing the chosen address goes back to Auto.
+        let h = a
+            .set_routes("123456789", None, Some("10.0.0.5"), None)
+            .unwrap();
+        assert_eq!(h.prefer, "");
+        assert_eq!(h.routes.len(), 1);
+        // How routes went: a failure counts, a session resets it.
+        a.note_route("123456789", "host.example:4000", None)
+            .unwrap();
+        a.note_route("123456789", "", Some((40, 9_000))).unwrap();
+        let h = a.known("123456789").unwrap();
+        assert_eq!(h.routes[0].stats.fails, 1);
+        assert_eq!((h.network.rtt_ms, h.network.kbps), (40, 9_000));
+        a.note_route("123456789", "", Some((80, 0))).unwrap();
+        assert_eq!(a.known("123456789").unwrap().network.rtt_ms, 50);
+    }
+
+    /// A host keeps at most MAX_ROUTES addresses: the one used longest ago
+    /// gives way, never the chosen one.
+    #[test]
+    fn routes_have_a_limit() {
+        let mut h: KnownHost = serde_json::from_str(r#"{"key":"k","last":1}"#).unwrap();
+        for i in 0..MAX_ROUTES {
+            assert!(h.add_route(&format!("10.0.0.{i}")));
+            h.routes[i].stats.last_ok = 100 + i as u64;
+        }
+        h.prefer = "10.0.0.0".into();
+        assert!(!h.add_route("10.0.0.3"), "kept already");
+        assert!(h.add_route("10.0.1.1"));
+        assert_eq!(h.routes.len(), MAX_ROUTES);
+        assert!(
+            h.routes.iter().any(|r| r.address == "10.0.0.0"),
+            "the chosen one stays"
+        );
+        assert!(
+            !h.routes.iter().any(|r| r.address == "10.0.0.1"),
+            "the oldest other goes"
+        );
     }
 
     #[test]

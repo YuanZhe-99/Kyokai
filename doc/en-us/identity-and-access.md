@@ -112,8 +112,10 @@ total; further attempts are answered `busy`.
   Device ID is known with another key is shown as "a new key claiming this ID".
 - **Controller side (known hosts):** the first accepted session pins the host's device key for its
   Device ID; later sessions with another key are refused until the user forgets the host. Each
-  accepted session also records when, and the address it dialed when it connected by address, and
-  the newest 8 are offered as recent devices. Connecting by address, the person names no Device
+  accepted session also records when, and adds the address it dialed to the host's routes
+  ([networking.md](networking.md), "Routes": an address is only where to look; another device
+  answering there fails the handshake like any squatter), and the newest 8 are offered as recent
+  devices. Connecting by address, the person names no Device
   ID: the first session pins whichever device answered there, and its Device ID shows in the tab
   and on Recent. Each accepted session also records what the host announced (`features`), which
   the status passes on (`recent[].features`) so Home knows what a host offers before dialing.

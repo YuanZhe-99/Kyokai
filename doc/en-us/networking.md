@@ -87,8 +87,8 @@ where a Device ID goes ("Control another device"); the port is 47310 unless the 
 (`host:port`, `[v6]:port`). The controller first opens a connection and reads the host's
 `host_hello` only (`session.identify`, [protocol.md](protocol.md)) to learn which Device ID
 answers there, then dials that address for the session, which must prove to be that device like
-any other; the session is the same protocol, over plain TCP. The known host keeps the address,
-so Recent connects the same way next time; connecting by Device ID goes back to the network.
+any other; the session is the same protocol, over plain TCP. The known host keeps the address
+among its routes (below).
 
 A host accepts them only while its user turns on **Accept connections by address** (the Network
 page; off by default): the engine then listens on TCP 47310 on every IPv4 address and, where
@@ -102,6 +102,38 @@ leaves it not listening, which the status reports. Windows Firewall may ask abou
 like direct connections. Everything after the connection is as over the network: the Noise
 handshake, a password or the host user's confirmation, and the per-address login limits
 ([identity-and-access.md](identity-and-access.md)).
+
+## Routes
+
+A known host has **routes**: the Kyokai network, when this device is on one, and up to 8
+addresses (IP addresses or domain names, port 47310 unless one is named) — each address a
+connection by address was made to, or one added in its Addresses editor (`routes.set`). Nothing
+about routes crosses the wire: an address is only where to look; the handshake still proves the
+Device ID and the pinned key, and a resume token is not bound to a path, so 0.4.x hosts take
+part unchanged.
+
+- **Auto** (the default) works out the routes again at every connect and every resume. The
+  network's latency and direct or relayed path come from EasyTier's routes, with nothing dialed;
+  each address is looked at, all at once within 3 seconds, by timing its TCP handshake and
+  reading the host's hello, which names the device there (`ok`, `unreachable`, `other-device`,
+  `incompatible`, `broken`). `rank_routes` orders them: those that answer as the device, then
+  those that did not fail their last two dials, then those not remembered slow (below 8 Mbit/s and
+  below half the best route's), by round trip (unknown last), direct before relayed. Dialing
+  follows that order with happy eyeballs: the next route starts 300 ms after the one before it
+  unless that one answered; the first connection that answers runs the session, and another
+  device answering moves on to the rest.
+- **A route chosen by hand** (the network, or one address) is used alone, also on resume.
+- **Memory:** each route keeps when a session last connected over it, failed dials in a row, a
+  moving average of its round trip (the session's delay probes) and of the bitrate the host's
+  quality control settled on over it (`RouteMeter`), in the known host (`routes`, `network`,
+  `prefer`). The latest looks at the addresses are kept in memory only; Home asks for them
+  (`routes.probe`) every 60 seconds while it shows devices that have addresses.
+- **No moves:** a healthy session never changes route. When its connection drops, the resume
+  attempts rank again under Auto and may resume over another route. The status names the route a
+  controller session takes (`sessions[].route`: an address, or empty for the network).
+
+An address kept from before 0.5.0 becomes the first route, and a connection by Device ID no
+longer forgets the addresses.
 
 ## Status
 
