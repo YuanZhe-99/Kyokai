@@ -148,15 +148,17 @@ func dialVNC(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 	sc := newScreen(s)
 	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
 	defer cancel()
+	// Nothing to sign in with: only a server that needs no sign-in is
+	// taken; any other asks for one in the form, without a failed attempt
+	// (a Mac slows down and then drops repeated ones).
+	var only []rfb.SecurityType
+	if user == "" && password == "" {
+		only = []rfb.SecurityType{rfb.SecurityNone}
+	}
 	c, err := rfb.Dial(ctx, rfb.Options{Conn: conn, Username: user, Password: password, Mode: rfb.ModeControl,
-		Clipboard: true, AllowUnverifiedLogin: true, AutomaticUpdates: true}, vncEvents{sc})
-	switch {
-	case errors.Is(err, rfb.ErrAuthenticationFailed) && typed == nil && password == "":
-		return nil, errNeedSignIn
-	case errors.Is(err, rfb.ErrAuthenticationFailed), errors.Is(err, rfb.ErrPermissionDenied):
-		return nil, errSignInFailed
-	case err != nil:
-		return nil, err
+		SecurityTypes: only, Clipboard: true, AllowUnverifiedLogin: true, AutomaticUpdates: true}, vncEvents{sc})
+	if err != nil {
+		return nil, vncSignInError(err, only != nil)
 	}
 	sc.desk = vncDesk{c}
 	s.keepSignIn(ctx, typed)
@@ -165,6 +167,24 @@ func dialVNC(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 		s.ended(sc, L.ServiceEnded())
 	}()
 	return sc, nil
+}
+
+// vncSignInError is what a VNC dial's error means to its tab.
+// Inputs: blank, the dial had nothing to sign in with (only "None" asked).
+// Returns: errNeedSignIn when a server that needs a sign-in got none;
+// errSignInFailed when the server refused one, or closed the connection
+// during it (a Mac drops repeated failures instead of answering); else
+// err.
+func vncSignInError(err error, blank bool) error {
+	switch {
+	case blank && (errors.Is(err, rfb.ErrUnsupportedServer) || errors.Is(err, rfb.ErrAuthenticationFailed)):
+		return errNeedSignIn
+	case errors.Is(err, rfb.ErrAuthenticationFailed), errors.Is(err, rfb.ErrPermissionDenied):
+		return errSignInFailed
+	case errors.Is(err, rfb.ErrSignInDropped):
+		return errSignInFailed
+	}
+	return err
 }
 
 // vncDesk is a VNC connection as its tab drives it.

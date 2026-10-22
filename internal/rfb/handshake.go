@@ -2,14 +2,16 @@
 // internal/rfb/handshake.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: Kerberos removed, default security types and dialect choice, standard-library helpers, named greeting and refusal errors.
+// prior consent. Modified by Kyokai: Kerberos removed, default security types and dialect choice, standard-library helpers, named greeting, refusal and dropped sign-in errors.
 
 package rfb
 
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"strconv"
@@ -26,6 +28,10 @@ var ErrPermissionDenied = E.New("rfb: the request to share the screen was declin
 // ErrClosedBeforeGreeting is a server that ended the connection before its greeting (Kyokai): what TightVNC
 // and UltraVNC do on Windows to a connection from their own computer while loopback connections are off.
 var ErrClosedBeforeGreeting = E.New("rfb: the server closed the connection before greeting")
+
+// ErrSignInDropped is a server that closed the connection during a sign-in
+// instead of answering it (Kyokai): what a Mac does to repeated failures.
+var ErrSignInDropped = E.New("rfb: the server closed the connection during the sign-in")
 
 // RefusedError is a server refusing the connection with its own reason (Kyokai).
 type RefusedError struct{ Reason string }
@@ -225,16 +231,25 @@ func (h *handshake) authenticate() error {
 	}
 	h.wrapKey, err = authenticators[h.securityType](h)
 	if err != nil {
-		return E.Cause(err, "authenticate with ", h.securityType)
+		return E.Cause(dropped(err), "authenticate with ", h.securityType)
 	}
 	if h.securityType == SecurityNone && h.info.Version.Minor < 8 {
 		return nil
 	}
 	result, err := h.stream.u32()
 	if err != nil {
-		return E.Cause(err, "read security result")
+		return E.Cause(dropped(err), "read security result")
 	}
 	return h.securityResult(result)
+}
+
+// dropped names a sign-in's error ErrSignInDropped when the server closed
+// the connection (Kyokai).
+func dropped(err error) error {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return E.Extend(ErrSignInDropped, err)
+	}
+	return err
 }
 
 func (h *handshake) securityResult(result uint32) error {

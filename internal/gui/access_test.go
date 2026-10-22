@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	"github.com/YuanZhe-99/Kyokai/internal/rfb"
 )
 
 // okEngine answers every request with OK.
@@ -268,6 +270,31 @@ func TestReached(t *testing.T) {
 	} {
 		if got := reached(c.err); got != c.want {
 			t.Errorf("reached(%v) = %v, want %v", c.err, got, c.want)
+		}
+	}
+}
+
+// TestVNCSignInError: a VNC server that needs a sign-in the tab did not
+// have asks for one; a refused or dropped sign-in is a wrong one
+// (regression: a Mac that dropped the blank attempt showed "could not be
+// opened" and never the form).
+func TestVNCSignInError(t *testing.T) {
+	other := errors.New("broken pipe")
+	for _, c := range []struct {
+		err   error
+		blank bool
+		want  error
+	}{
+		{fmt.Errorf("x: %w", rfb.ErrUnsupportedServer), true, errNeedSignIn},
+		{fmt.Errorf("x: %w", rfb.ErrAuthenticationFailed), true, errNeedSignIn},
+		{fmt.Errorf("x: %w", rfb.ErrUnsupportedServer), false, rfb.ErrUnsupportedServer},
+		{fmt.Errorf("x: %w", rfb.ErrAuthenticationFailed), false, errSignInFailed},
+		{fmt.Errorf("x: %w", rfb.ErrPermissionDenied), false, errSignInFailed},
+		{fmt.Errorf("x: %w", rfb.ErrSignInDropped), false, errSignInFailed},
+		{other, false, other},
+	} {
+		if got := vncSignInError(c.err, c.blank); !errors.Is(got, c.want) {
+			t.Errorf("vncSignInError(%v, %v) = %v, want %v", c.err, c.blank, got, c.want)
 		}
 	}
 }

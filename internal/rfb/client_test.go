@@ -212,3 +212,46 @@ func TestClientServerRefusals(t *testing.T) {
 		}
 	}
 }
+
+// TestClientSignInDropped: a server that closes the connection during a
+// sign-in, as a Mac does to repeated failures, is named for it (Kyokai).
+func TestClientSignInDropped(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	go func() {
+		defer serverConn.Close()
+		_, _ = serverConn.Write([]byte("RFB 003.008\n"))
+		_, _ = io.ReadFull(serverConn, make([]byte, 12))
+		_, _ = serverConn.Write([]byte{1, byte(SecurityVNCPassword)})
+		_, _ = io.ReadFull(serverConn, make([]byte, 1))
+		_, _ = serverConn.Write(bytes.Repeat([]byte{0x5a}, 16))
+		_, _ = io.ReadFull(serverConn, make([]byte, 16))
+	}()
+	_, err := Dial(context.Background(), Options{Conn: clientConn, Password: "secret"}, &testHandler{})
+	if !errors.Is(err, ErrSignInDropped) {
+		t.Fatalf("Dial error %v, want ErrSignInDropped", err)
+	}
+}
+
+// TestClientOnlyNoneSendsNoPassword: asked for no security alone, a client
+// facing a server that needs a password stops before choosing a type, so
+// the server sees no failed sign-in (Kyokai).
+func TestClientOnlyNoneSendsNoPassword(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	chose := make(chan bool, 1)
+	go func() {
+		defer serverConn.Close()
+		_, _ = serverConn.Write([]byte("RFB 003.008\n"))
+		_, _ = io.ReadFull(serverConn, make([]byte, 12))
+		_, _ = serverConn.Write([]byte{2, byte(SecurityVNCPassword), byte(SecurityAppleRSA)})
+		_, err := io.ReadFull(serverConn, make([]byte, 1))
+		chose <- err == nil
+	}()
+	_, err := Dial(context.Background(), Options{Conn: clientConn, SecurityTypes: []SecurityType{SecurityNone}}, &testHandler{})
+	if !errors.Is(err, ErrUnsupportedServer) {
+		t.Fatalf("Dial error %v, want ErrUnsupportedServer", err)
+	}
+	clientConn.Close()
+	if <-chose {
+		t.Error("the client chose a security type")
+	}
+}

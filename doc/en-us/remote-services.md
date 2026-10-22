@@ -123,7 +123,10 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
   that closes before its greeting (`rfb.ErrClosedBeforeGreeting`) is named with the loopback
   setting, a refusal shows the server's own reason (`rfb.RefusedError`), and a server offering no
   supported sign-in (`rfb.ErrUnsupportedServer`, an RFB 3.3 type beyond a byte named whole) asks
-  for VNC password authentication.
+  for VNC password authentication. With nothing saved the tab asks the server for no security alone:
+  one that needs a sign-in gets the form at once, never a blank attempt that a Mac counts as a
+  failure; a server that closes the connection during a sign-in (`rfb.ErrSignInDropped`, what a
+  Mac does to repeated failures) is a refused sign-in.
 - **Both pictures** (`screenClient`): the framebuffer is converted to RGBA on the protocol's
   goroutine and shown on the main thread, fitted or at its original size as the viewer's; the
   pointer, its buttons and the wheel go in the other desktop's pixels. In Map and Translate the
