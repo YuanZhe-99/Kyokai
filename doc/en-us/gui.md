@@ -16,7 +16,8 @@ when `SCREENSHOT_DIR` is set.
   There is no separate Settings page: every page but Home is an area of settings.
 - **Home**, laid out as RustDesk's: on the left "This device" — the Device ID in groups of three
   with Copy; the temporary password, masked until Show, with Copy and New password (when only
-  the permanent password is accepted, a line saying so instead, or a warning that none is set); a note when
+  the permanent password is accepted, a line saying so instead, or a warning that none is set; when
+  no password is accepted, a line saying other devices sign in with a key or ask); a note when
   secrets are not persisted, and when the saved identity cannot be unlocked, Start over (the old
   store moved aside, a new identity kept from then on; `secrets.start_over`). On the right
   "Control another device": a Device ID or an address (an IP address or domain name, for a
@@ -116,9 +117,16 @@ when `SCREENSHOT_DIR` is set.
   names a known maker or system (`deviceLogoName`), else the name's first letter. Vendor logos are
   trademarks of their owners, used only to identify a device's maker; their sources are listed in
   `internal/gui/assets/logos/SOURCES.md` (see [packaging.md](packaging.md), "Vendor logos").
-- **Permissions:** on macOS "Privacy permissions" first; Passwords (permanent password: set,
-  change or remove; Accepted passwords: Temporary, Permanent or Both; Connect without asking, on by
-  default, and below it "With a correct password": a switch per permission a password grants
+- **Permissions:** on macOS "Privacy permissions" first; Passwords and keys (permanent password:
+  set, change or remove, its hint only Not set or Set; Ways to sign in: a check box for the
+  temporary password, the one shown on Home, one for the permanent password, with a warning under
+  it while none is set, and one per key that can connect — its name, with its type and `SHA256:`
+  fingerprint under it, Copy public key and Remove after a confirmation — in any combination; with
+  none checked every connection asks, and with nobody at the computer no one gets in; Add a key
+  from an OpenSSH line or a `.pub` file, its comment naming it; Generate a pair — the public key
+  may connect here, the private part shown once on this page and never stored; Connect without
+  asking, on by default, which admits a checked way to sign in without asking — with nobody at the
+  computer only the permanent password or a key —, and below it "With a correct password": a switch per permission a password grants
   without asking, among them See this computer's status, on by default, and Connect to its SSH,
   Remote Desktop, and VNC or Screen Sharing, off by default; then "Ports of this computer's
   services": a port each for SSH, Remote Desktop and VNC, empty for the standard one, with Save and
@@ -127,16 +135,13 @@ when `SCREENSHOT_DIR` is set.
   this computer plays unless an input device is chosen, a device that is gone shown as not
   connected, an input asking macOS for the Microphone permission.
 - **Security:** Device identity (Device ID, friendly name, fingerprint; back up and restore with a
-  passphrase through a file dialog; reset, after a warning); the keys, the one page where keys and
-  their fingerprints show: Your keys (name, type and `SHA256:` fingerprint, Copy public key, Remove
+  passphrase through a file dialog; reset, after a warning); Your keys (name, type and `SHA256:` fingerprint, Copy public key, Remove
   after a confirmation; Generate a key — Ed25519, its private part shown once in OpenSSH form with
   Copy and Save to a file…, encrypted with the passphrase given, then kept by the engine; Import a
   key — pasted or from a file, OpenSSH or PEM, the passphrase asked for an encrypted one; Ed25519,
-  RSA of 2048 bits or more, ECDSA P-256 or P-384), Keys that can connect to this device (the same
-  rows; Add a key from an OpenSSH line or a `.pub` file, its comment naming it; Generate a pair —
-  the public key may connect here, the private part shown once and never stored) and Saved
-  passwords and keys (each device with something kept: a chip per sign-in with × to forget it, and
-  Forget all); Protected mode (only with a permanent
+  RSA of 2048 bits or more, ECDSA P-256 or P-384) and Saved passwords and keys (each device with
+  something kept: a chip per sign-in — the Kyokai password, the admitted key, each service's
+  sign-in — with × to forget that one, and Forget all); Protected mode (only with a permanent
   password, after a confirmation); Privacy: hide Kyokai from screen capture — on by default,
   applied to the main window and every viewer at once and told to the engine, whose macOS capture
   follows it; turned off (after a warning), Kyokai's windows also take the input of the people
@@ -245,7 +250,8 @@ when `SCREENSHOT_DIR` is set.
 
 - Copy is written for the person using the app.
 - Never shown: reason codes, keys, socket paths, internal identifiers other than the Device ID (the
-  fingerprint, sign-in keys and their fingerprints appear only on the Security page; saved
+  fingerprint appears only on the Security page, sign-in keys and their fingerprints only there and
+  in Permissions' Passwords and keys; saved
   sign-ins show as flags, never their passwords).
 
 ## Visual language

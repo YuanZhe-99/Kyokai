@@ -90,6 +90,10 @@ pub struct Authorized {
     pub added: u64,
     #[serde(default)]
     pub last: u64,
+    /// The host's user turned it off: it is kept, and ignored at sign-in
+    /// like a key this host does not know.
+    #[serde(default)]
+    pub off: bool,
 }
 
 /// One key's proof in a controller's hello: its Ed25519 public key and its
@@ -150,7 +154,7 @@ pub fn proofs(
 
 /// The host's look at the keys a controller offered: the first authorized
 /// one whose proof holds admits; an authorized key whose proof fails is a
-/// failed login; keys it does not know are ignored.
+/// failed login; keys it does not know, or that are off, are ignored.
 /// Side effects: records the admitted key's sign-in time.
 pub fn verify(
     secrets: &Secrets,
@@ -165,7 +169,10 @@ pub fn verify(
         let Some(raw) = decode32(&proof.key) else {
             continue;
         };
-        let Some(i) = all.iter().position(|a| ed25519_of(&a.public) == Some(raw)) else {
+        let Some(i) = all
+            .iter()
+            .position(|a| !a.off && ed25519_of(&a.public) == Some(raw))
+        else {
             continue;
         };
         let signature: Option<[u8; 64]> = STANDARD
@@ -288,10 +295,20 @@ pub fn add_authorized(secrets: &Secrets, name: &str, line: &str) -> Result<Autho
         public: format!("ssh-ed25519 {}", STANDARD.encode(&blob)),
         added: unix_now(),
         last: 0,
+        off: false,
     };
     all.push(a.clone());
     store(secrets, AUTHORIZED_NAME, &all)?;
     Ok(a)
+}
+
+/// Turns a key that can connect on or off (`authorized.set`), keeping it.
+/// Side effects: rewrites the secrets store.
+pub fn set_authorized(secrets: &Secrets, id: &str, off: bool) -> Result<(), String> {
+    let mut all = authorized(secrets);
+    let a = all.iter_mut().find(|a| a.id == id).ok_or("no such key")?;
+    a.off = off;
+    store(secrets, AUTHORIZED_NAME, &all)
 }
 
 /// Stops a public key connecting (`authorized.remove`).
@@ -876,5 +893,30 @@ mod tests {
             panic!("the authorized key behind the remembered one admits");
         };
         assert_eq!(k.name, "new");
+    }
+
+    /// A key the host's user turned off is kept and admits no one, as a
+    /// key the host does not know; turned on again, it admits.
+    #[test]
+    fn a_key_turned_off_admits_no_one() {
+        let host = secrets();
+        let controller = secrets();
+        let (_, blob) = keep(&controller, &[9; 32]);
+        let line = format!("ssh-ed25519 {}", STANDARD.encode(&blob));
+        let id = add_authorized(&host, "laptop", &line).unwrap().id;
+        let (h2, hk, ck) = ([1u8; 32], [2u8; 32], [3u8; 32]);
+        let offered = proofs(&controller, None, &h2, &hk, &ck);
+        set_authorized(&host, &id, true).unwrap();
+        assert!(authorized(&host)[0].off, "kept, off");
+        assert!(matches!(
+            verify(&host, &offered, &h2, &hk, &ck),
+            Verified::None
+        ));
+        set_authorized(&host, &id, false).unwrap();
+        assert!(matches!(
+            verify(&host, &offered, &h2, &hk, &ck),
+            Verified::Key(_)
+        ));
+        assert!(set_authorized(&host, "nope", true).is_err());
     }
 }

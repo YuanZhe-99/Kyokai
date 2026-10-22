@@ -82,7 +82,7 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 `{"type": "quality", preset, fps, i444}` 设置画质，其中 `i444` 表示在双方都支持时要求全彩（4:4:4）。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用
 `{"type": "display", index}` 请求另一个显示器。发送视频期间，被控端还会在指针移动时发送 `{"type": "cursor", x, y, visible}`，即以画面比例表示的指针位置；`visible` 表示它是否在所显示的显示器上。拥有 `control-input` 时，被控端在会话开始时发送
 `{"type": "actions", ctrl_alt_del, blocked, privacy}`（阻止或隐私模式变化时也会发送），控制端可以发送 `{"type": "action", action}`，其值为 `lock`、`ctrl-alt-del`、`block`、`unblock`、
-`privacy-on` 或 `privacy-off`（[computer-use.md](computer-use.md)）。拥有 `clipboard` 时，任一端都会为本端复制的文本发送 `{"type": "clipboard", text}`（最大 1 MiB），为图片发送
+`privacy-on`、`privacy-off`，或在被控端声明了 `wake` 时为 `wake`（较旧的被控端改由控制端引擎发送一次 Shift 按下与松开）（[computer-use.md](computer-use.md)）。拥有 `clipboard` 时，任一端都会为本端复制的文本发送 `{"type": "clipboard", text}`（最大 1 MiB），为图片发送
 `{"type": "clipboard-image", png}`（8 位 RGBA PNG 的 base64，最多 3 MiB、3840×2160）。拥有 `files` 时，任一端用 `{"type": "clipboard-files", id,
 files}` 提供本端复制的文件，每个文件为 `{path, size, dir}`（名称之间用 `/` 分隔的相对路径；最多 1000 项、1 GiB）；
 另一端用 `{"type": "files-get", id}` 接受，之后可以用 `{"type": "files-stop", id}` 请发送方停止，发送方用
@@ -137,6 +137,7 @@ net, battery, services, offers, ai}`，每 2 秒一次，此外只有 `ping`、`
 | `tunnel` | 通往被控端自身 SSH、远程桌面与 VNC 的隧道；权限 `use-ssh`、`use-rdp`、`use-vnc` |
 | `status` | 静默的状态查看者与 `system` 消息；权限 `see-status` |
 | `input-sync` | 控制端的 `sync` 输入事件（它按住的键与按钮） |
+| `wake` | `wake` 会话操作（被控端唤醒其显示器） |
 
 ## 解码
 

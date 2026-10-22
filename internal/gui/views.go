@@ -122,9 +122,11 @@ func (a *App) homeView(c *ui.Context) {
 			})
 			ui.Text(c, groupDigits(st.DeviceID)).FontSize(sizeDeviceID).Bold().FontFeatures("tnum").NoWrap().Selectable()
 			ui.Divider(c)
-			// With only the permanent password accepted, the temporary one opens
-			// nothing and is not shown.
-			if st.PasswordMode == "permanent" {
+			// With only the permanent password accepted, or neither, the
+			// temporary one opens nothing and is not shown.
+			if st.PasswordMode == "none" {
+				ui.Text(c, L.HomePasswordsOff()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			} else if st.PasswordMode == "permanent" {
 				if st.PermanentPassword {
 					ui.Text(c, L.HomePermanentOnly()).FontSize(sizeSmall).TextColor(t.TextMuted)
 				} else {

@@ -294,15 +294,21 @@ timer neither cuts the session nor darkens the captured display. When the comput
 ("the computer went to sleep") and waits for a person to resume it; after waking, sessions
 resume through the network as after any drop.
 
-A display that is dark already when someone connects gives the capture nothing to send. A capture
-that has had no picture for a second (none yet, or its display lost) wakes the displays as a
-person's input would — on Windows `SetThreadExecutionState(ES_DISPLAY_REQUIRED)` and a one-pixel
-pointer move and back, tagged as Kyokai's input so the host user's input watch leaves it out; on
-macOS `IOPMAssertionDeclareUserActivity` — at most every 5 seconds, in the user's session (the
+A dark display gives the capture nothing to send, just as a still screen does. A capture that
+has had no picture for a second (none yet, or its display lost), or whose display Windows has
+reported off for a second (the console display state, locked or not), wakes the displays as a
+person's input would — on Windows, on the desktop that receives input (the lock screen too),
+`SetThreadExecutionState(ES_DISPLAY_REQUIRED)` and an absolute pointer move one pixel aside and
+back, tagged as Kyokai's input so the host user's input watch leaves it out; on macOS
+`IOPMAssertionDeclareUserActivity` — at most every 5 seconds, in the user's session (the
 agent's, in the helper modes). A viewer that has waited 3 seconds for its first picture, or for
 one while recovering it, says the screen there may be asleep and, with `control-input`, offers
-**Wake it**: a Shift press and release, which wakes a display as a key does and which a 0.4.0 host
-takes too.
+**Wake it**: the `wake` session action, which wakes the displays the same way at once and asks
+for a key frame; it takes nothing over from the host's AI and is not stopped by the guard that
+keeps remote input off Kyokai's windows. A host without `wake` (0.5.1 and older) gets a Shift
+press and release instead. A computer that sleeps or hibernates (Modern Standby too) has left the
+network, which Windows cuts, as Tailscale and RustDesk find too: waking it needs Wake-on-LAN or
+hardware, outside Kyokai.
 
 ## Clipboard
 

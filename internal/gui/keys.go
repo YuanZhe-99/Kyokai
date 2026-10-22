@@ -54,6 +54,9 @@ type shownKey struct {
 	title string
 	pem   string
 	file  string // the file name Save suggests
+	// pair: a pair whose public key may connect here, shown on the
+	// Permissions page beside the keys that can connect.
+	pair bool
 }
 
 // importedKey is a private key read for the engine: its type, OpenSSH
@@ -174,8 +177,9 @@ func keyFingerprint(line string) (fp, kind string) {
 	return ssh.FingerprintSHA256(pub), kind
 }
 
-// keysSettings are the Security page's cards of keys: this device's keys,
-// the keys that can connect to it, and what is saved for other devices.
+// keysSettings are the Security page's cards of keys: this device's keys
+// and what is saved for other devices (the keys that can connect to it are
+// on the Permissions page, among the ways to sign in).
 func (a *App) keysSettings(c *ui.Context) {
 	a.mu.Lock()
 	k := a.keys
@@ -183,11 +187,10 @@ func (a *App) keysSettings(c *ui.Context) {
 	if !k.loaded && !k.busy {
 		a.loadKeys()
 	}
-	if k.shown != nil {
+	if k.shown != nil && !k.shown.pair {
 		a.shownKeyCard(c, *k.shown)
 	}
 	a.myKeysCard(c, k)
-	a.authorizedCard(c, k)
 	a.savedCard(c)
 }
 
@@ -221,18 +224,23 @@ func (a *App) keyRow(c *ui.Context, key, name, public string, busy bool, remove 
 			ui.Text(c, name).Bold().SingleLine()
 			ui.Text(c, kind+" · "+fp).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted).Selectable()
 		})
-		if ui.Button(c.Key(key+"-copy"), L.KeysCopyPublic()).Clicked() {
-			mygo.Clipboard.WriteText(public)
-			a.update(func() { a.setToast(L.Copied(), false) })
-		}
-		if ui.Button(c.Key(key+"-rm"), L.ActionRemove()).Disabled(busy).Clicked() {
-			go func() {
-				if a.confirm(L.KeysRemoveConfirm(name), L.ActionRemove()) {
-					remove()
-				}
-			}()
-		}
+		a.keyActions(c, key, name, public, busy, remove)
 	})
+}
+
+// keyActions are a key's Copy public key and Remove (which asks first).
+func (a *App) keyActions(c *ui.Context, key, name, public string, busy bool, remove func()) {
+	if ui.Button(c.Key(key+"-copy"), L.KeysCopyPublic()).Clicked() {
+		mygo.Clipboard.WriteText(public)
+		a.update(func() { a.setToast(L.Copied(), false) })
+	}
+	if ui.Button(c.Key(key+"-rm"), L.ActionRemove()).Disabled(busy).Clicked() {
+		go func() {
+			if a.confirm(L.KeysRemoveConfirm(name), L.ActionRemove()) {
+				remove()
+			}
+		}()
+	}
 }
 
 // myKeysCard is "Your keys": the keys this device signs in with, to other
@@ -261,38 +269,6 @@ func (a *App) myKeysCard(c *ui.Context, k keysState) {
 				}
 				if ui.Button(c.Key("key-import"), L.KeysImport()).Disabled(k.busy).Clicked() {
 					a.openKeyForm("import")
-				}
-			})
-		}
-	})
-}
-
-// authorizedCard is "Keys that can connect to this device": public keys
-// that sign in here as a correct password does, with Add and Generate pair.
-func (a *App) authorizedCard(c *ui.Context, k keysState) {
-	t := c.Theme()
-	card(c.Key("auth-keys")).Children(func() {
-		ui.Text(c, L.KeysAuthorizedTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.KeysAuthorizedHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		if k.loaded && len(k.authorized) == 0 {
-			ui.Text(c, L.KeysNone()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		}
-		for _, key := range k.authorized {
-			id := key.ID
-			a.keyRow(c, "auth-"+id, key.Name, key.Public, k.busy, func() {
-				a.keysCommand(localapi.Request{Type: localapi.RequestAuthorizedRemove, Authorized: &localapi.AuthorizedKey{ID: id}}, "")
-			})
-		}
-		switch k.form.kind {
-		case "authorize", "pair":
-			a.keyForm(c, k)
-		default:
-			ui.Row(c).Gap(gap).Children(func() {
-				if ui.Button(c.Key("auth-add"), L.KeysAuthorize()).Disabled(k.busy).Clicked() {
-					a.openKeyForm("authorize")
-				}
-				if ui.Button(c.Key("auth-pair"), L.KeysPair()).Disabled(k.busy).Clicked() {
-					a.openKeyForm("pair")
 				}
 			})
 		}
@@ -426,6 +402,7 @@ func (a *App) submitKeyForm(f keyForm) {
 		}
 		shown := &shownKey{title: L.KeysShownOnce(name), pem: privatePEM, file: "id_ed25519"}
 		if f.kind == "pair" {
+			shown.pair = true
 			a.keysCommand(localapi.Request{Type: localapi.RequestAuthorizedAdd, Authorized: &localapi.AuthorizedKey{Name: name, Public: key.Public}}, "", shown)
 			return
 		}

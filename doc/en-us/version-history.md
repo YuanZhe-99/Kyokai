@@ -1,5 +1,26 @@
 # Version history
 
+## 0.5.2 (2026-10-22)
+
+- A host's dark display wakes, locked or not: the host also wakes it while Windows reports the
+  console display off (a dark display sends nothing, as a still screen does, so a display that went
+  dark during a session was never woken), and wakes it with an absolute pointer move on the desktop
+  that receives input (a one-pixel relative move could come to nothing).
+- Wake it works: it is the host's `wake` session action, which wakes the display at once and asks
+  for a key frame; before, it was a Shift press that the guard keeping remote input off Kyokai's
+  windows dropped while Kyokai's window had the focus. Hosts of 0.5.1 and older still get the Shift
+  press. Sleep and hibernation (Modern Standby too) stay out of reach: Windows leaves the network.
+- Saved passwords and keys: a device's saved Kyokai password can be forgotten on its own (it was
+  refused, so only Forget all removed it).
+- Permissions: "Passwords and keys" holds the permanent password and the ways to sign in — a check
+  box for the temporary password, the permanent password and each key that can connect, in any
+  combination; with none checked every connection asks. Keys that can connect moved here from
+  Security; a key turned off is kept and signs in no one.
+- Protocol 10 and ABI 5, unchanged, with the feature token `wake`; local API 2 with `authorized.set`,
+  the key's `off` and the password mode `none`, which older engines do not know (one reading `none`
+  from a store accepts both passwords). Upstream versions: MyGo v0.6.2, EasyTier v2.7.0, RustDesk
+  1.5.0 (vendored code), vcpkg 2026.10.16, Rust 1.99.1 checked, unchanged.
+
 ## 0.5.1 (2026-10-21)
 
 - Remote Desktop, VNC and SSH: a refused connection no longer opens an extra connection tab asking

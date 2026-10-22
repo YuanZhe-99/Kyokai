@@ -220,6 +220,15 @@ func TestHomeCardsRender(t *testing.T) {
 				shown:      &shownKey{title: "Private key of “Desk”", pem: "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----"}, // gitleaks:allow: a made-up key for the screenshot
 				form:       keyForm{kind: "import", locked: true, text: "-----BEGIN OPENSSH PRIVATE KEY-----"}}                                                                 // gitleaks:allow: a made-up key for the screenshot
 		}, false},
+		{"permissions-keys", 1000, 1700, func(a *App) {
+			// Only one key signs in: the passwords are unchecked, the other key is off.
+			a.page, a.status.PasswordMode, a.status.WithoutAsking = pagePermissions, "none", true
+			a.access = accessForm{loaded: true}
+			a.keys = keysState{loaded: true, authorized: []localapi.AuthorizedKey{
+				{ID: "2", Name: "Phone", Public: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFk1y9lH1qL2rC0gGJ7bH0cE4YqJ6m3z5Wq4A1Xb8yZp phone"},
+				{ID: "3", Name: "Old laptop", Public: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl laptop", Off: true},
+			}}
+		}, false},
 		{"permissions-watchers", 1000, 1300, func(a *App) {
 			a.page = pagePermissions
 			a.access = accessForm{loaded: true}

@@ -33,8 +33,10 @@ login").
 
 - **Keys that can connect** (host side, `authorized_keys` in the secrets store, at most 32):
   OpenSSH public key lines (`ssh-ed25519 AAAA… comment`), each with a name (the comment unless one
-  is given), when it was added and when it last signed in; other key types are refused
-  (`authorized.list`, `authorized.add`, `authorized.remove`).
+  is given), when it was added, when it last signed in and whether it is turned off (`off`; a key
+  is on when added, and a store without the flag reads as on); other key types are refused
+  (`authorized.list`, `authorized.add`, `authorized.set` (`{id, off}`: turns it off or on, keeping
+  it), `authorized.remove`). In Permissions each is a way to sign in with its own check box.
 - **This device's keys** (controller side, `login_keys`, at most 16): Ed25519 keys sign in to
   Kyokai; Ed25519, RSA (2048 bits or more) and ECDSA P-256 or P-384 keys sign in to SSH servers
   through the built-in client. The GUI generates or imports a key and hands its private part (the
@@ -43,7 +45,8 @@ login").
   key is kept once: its id is the first 16 hex digits of the SHA-256 of its public key.
 - A controller offers keys only to a host that announces `key-login`, and never on a resume: every
   Ed25519 key (at most 8), the one the host admitted last first. The host admits with the first
-  authorized key whose proof holds; keys it does not know are ignored, and an authorized key whose
+  authorized key whose proof holds; keys it does not know, and keys turned off, are ignored (no
+  failed login; the controller falls back to a password or to asking), and an authorized key whose
   proof fails counts as a failed login.
 - A key counts like the permanent password: it admits within the password grants while Connect
   without asking is on, whichever passwords are accepted, and with nobody at the computer (see
@@ -83,14 +86,18 @@ sessions with this host end and its resume tokens are dropped.
 | gives a correct password with a new key claiming a Device ID trusted under another key | asks its user |
 | proves a key that can connect and asks only for what a password grants | admits it at once with what it asked for (while Connect without asking is on) |
 | proves a key that can connect with a proof that fails | refuses it as a wrong password |
+| offers only keys the host does not know or has turned off | ignores them, as if none were offered |
 | watches the status with a password or key within the grants | admits it at once (while Connect without asking is on); never asks: anything else is refused as `denied` |
 | asks without a password | asks its user; a denial or no answer counts as a failed login |
 | gives the permanent password with nobody at the computer | admits it with what a password grants (see Unattended access) |
 | gives a correct password of a kind the host does not accept | refuses it as a wrong password |
 
-Which passwords open the host is chosen in Permissions ("Accepted passwords": Temporary,
-Permanent or Both, by default Both); "Connect without asking" (on by default) lets an accepted
-password admit without confirmation, and off, every connection asks. What a password grants
+Which passwords open the host is chosen in Permissions, under "Ways to sign in": a check box for
+the temporary password and one for the permanent password, in any combination (`password_mode`:
+`temporary`, `permanent`, `both` or `none`; by default both). With `none` neither password opens
+the host: only a key that can connect, or asking the host's user. An engine of 0.5.1 or before
+reading a stored `none` falls back to its default, both. "Connect without asking" (on by default)
+lets an accepted password or a key admit without confirmation, and off, every connection asks. What a password grants
 without asking is chosen there too ("With a correct password"),
 one switch per permission, kept in the secrets store: by default `view-screen`, `control-input`,
 `clipboard`, `files`, `hear-sound` (a controller asks for these by default too) and `see-status`; the AI

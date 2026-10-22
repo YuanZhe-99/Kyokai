@@ -69,6 +69,11 @@ func (h *handler) services(ctx context.Context, req localapi.Request) (localapi.
 		}
 		h.changed()
 		return localapi.Response{OK: true, Authorized: []localapi.AuthorizedKey{key}}, true
+	case localapi.RequestAuthorizedSet:
+		if req.Authorized == nil || req.Authorized.ID == "" {
+			return localapi.Fail(localapi.CodeInvalid, "key missing"), true
+		}
+		return h.command("authorized.set", map[string]any{"id": req.Authorized.ID, "off": req.Authorized.Off}), true
 	case localapi.RequestAuthorizedRemove:
 		if req.Authorized == nil || req.Authorized.ID == "" {
 			return localapi.Fail(localapi.CodeInvalid, "key missing"), true

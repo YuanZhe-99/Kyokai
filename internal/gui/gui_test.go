@@ -93,6 +93,7 @@ func TestViewsRender(t *testing.T) {
 		"home-memory":         func(a *App) { a.status.Persistence = "memory-only" },
 		"home-permanent-only": func(a *App) { a.status.PasswordMode, a.status.PermanentPassword = "permanent", true },
 		"home-permanent-none": func(a *App) { a.status.PasswordMode = "permanent" },
+		"home-passwords-off":  func(a *App) { a.status.PasswordMode = "none" },
 		"home-permissions":    func(a *App) { a.status.Permissions = &localapi.Permissions{Accessibility: true} },
 		"starting":            func(a *App) { a.connected, a.status = false, nil },
 		"engine-down":         func(a *App) { a.connected, a.status, a.engineErr = false, nil, "kyokai-svc not found" },

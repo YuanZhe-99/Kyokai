@@ -508,43 +508,112 @@ func permissionLabel(p string) string {
 	return p
 }
 
-// passwordModes are the accepted passwords' choices, in the order shown.
-var passwordModes = []string{"temporary", "permanent", "both"}
+// passwordsAccepted are the two passwords' check boxes for an accepted
+// passwords mode (an engine that says nothing accepts both).
+func passwordsAccepted(mode string) (temporary, permanent bool) {
+	switch mode {
+	case "temporary":
+		return true, false
+	case "permanent":
+		return false, true
+	case "none":
+		return false, false
+	}
+	return true, true
+}
 
-// acceptSettings is how this host accepts a connection: which passwords
-// open it and whether an accepted password admits without asking.
-func (a *App) acceptSettings(c *ui.Context, mode string, without, hasPermanent, busy bool) {
-	idx := slices.Index(passwordModes, mode)
-	if idx < 0 {
-		idx = 2
+// passwordMode is the accepted passwords mode for the two check boxes.
+func passwordMode(temporary, permanent bool) string {
+	switch {
+	case temporary && permanent:
+		return "both"
+	case temporary:
+		return "temporary"
+	case permanent:
+		return "permanent"
 	}
-	settingRow(c, "pw-mode", L.PasswordModeTitle(), L.PasswordModeHint(), func() {
-		if ui.Segmented(c.Key("pw-mode-seg"), &idx, L.PasswordModeTemporary(), L.PasswordModePermanent(), L.PasswordModeBoth()).Disabled(busy).Changed() {
-			a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, PasswordMode: passwordModes[idx]}, nil)
+	return "none"
+}
+
+// methodCheck is one way to sign in: a check box with its name and a hint
+// under it; changed runs when it is clicked.
+func methodCheck(c *ui.Context, key string, on *bool, label, hint string, hintColour ui.Color, busy bool, changed func()) {
+	ui.Column(c.Key(key)).Grow(1).MinWidth(0).Gap(2).Children(func() {
+		if ui.Checkbox(c.Key(key+"-check"), on, label).Disabled(busy).Changed() {
+			changed()
 		}
-	})
-	if passwordModes[idx] == "permanent" && !hasPermanent {
-		ui.Text(c, L.PasswordModeNeedsPermanent()).FontSize(sizeSmall).TextColor(c.Theme().Warning)
-	}
-	settingRow(c, "without-asking", L.WithoutAskingTitle(), L.WithoutAskingHint(), func() {
-		if ui.Switch(c.Key("without-asking-sw"), &without).Label(L.WithoutAskingTitle()).Disabled(busy).Changed() {
-			on := without
-			a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, WithoutAsking: &on}, nil)
-		}
+		ui.Text(c, hint).FontSize(sizeSmall).TextColor(hintColour).Padding(0, 0, 0, checkIndent)
 	})
 }
 
-// accessSettings is the Permissions page's card of passwords: which
-// passwords open this device, the permanent password, and what a correct
-// password grants without asking.
+// signInMethods is "Ways to sign in": a check box for each password and
+// for each key that can connect, in any combination (none: every
+// connection asks), with Add a key and Generate a pair below.
+func (a *App) signInMethods(c *ui.Context, k keysState, mode string, hasPermanent, busy bool) {
+	t := c.Theme()
+	temporary, permanent := passwordsAccepted(mode)
+	ui.Text(c, L.SignInTitle())
+	ui.Text(c, L.SignInHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+	setMode := func() {
+		a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, PasswordMode: passwordMode(temporary, permanent)}, nil)
+	}
+	methodCheck(c, "sign-temp", &temporary, L.SignInTemporary(), L.SignInTemporaryHint(), t.TextMuted, busy, setMode)
+	hint, colour := L.SignInPermanentHint(), t.TextMuted
+	if !hasPermanent {
+		hint, colour = L.SignInPermanentMissing(), t.Warning
+	}
+	methodCheck(c, "sign-perm", &permanent, L.PermanentTitle(), hint, colour, busy, setMode)
+	keyOn := false
+	for _, key := range k.authorized {
+		id, on := key.ID, !key.Off
+		keyOn = keyOn || on
+		fp, kind := keyFingerprint(key.Public)
+		ui.Row(c.Key("auth-" + id)).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
+			methodCheck(c, "auth-"+id+"-on", &on, key.Name, kind+" · "+fp, t.TextMuted, k.busy, func() {
+				a.keysCommand(localapi.Request{Type: localapi.RequestAuthorizedSet, Authorized: &localapi.AuthorizedKey{ID: id, Off: !on}}, "")
+			})
+			a.keyActions(c, "auth-"+id, key.Name, key.Public, k.busy, func() {
+				a.keysCommand(localapi.Request{Type: localapi.RequestAuthorizedRemove, Authorized: &localapi.AuthorizedKey{ID: id}}, "")
+			})
+		})
+	}
+	if !temporary && !permanent && !keyOn {
+		ui.Text(c, L.SignInNone()).FontSize(sizeSmall).TextColor(t.Warning)
+	}
+	switch k.form.kind {
+	case "authorize", "pair":
+		a.keyForm(c, k)
+	default:
+		ui.Row(c).Gap(gap).Children(func() {
+			if ui.Button(c.Key("auth-add"), L.KeysAuthorize()).Disabled(k.busy).Clicked() {
+				a.openKeyForm("authorize")
+			}
+			if ui.Button(c.Key("auth-pair"), L.KeysPair()).Disabled(k.busy).Clicked() {
+				a.openKeyForm("pair")
+			}
+		})
+	}
+}
+
+// accessSettings is the Permissions page's card of passwords and keys: the
+// permanent password, the ways another device signs in (each password and
+// each key that can connect, chosen on its own), whether a correct one
+// admits without asking and what it grants, and the services' ports.
 func (a *App) accessSettings(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	f, busy, hasPermanent := a.access, a.busy["access"], a.status.PermanentPassword
 	grants := slices.Clone(a.status.PasswordGrants)
 	mode, without := a.status.PasswordMode, a.status.WithoutAsking
+	k := a.keys
 	a.mu.Unlock()
-	card(c).Children(func() {
+	if !k.loaded && !k.busy {
+		a.loadKeys()
+	}
+	if k.shown != nil && k.shown.pair {
+		a.shownKeyCard(c, *k.shown)
+	}
+	card(c.Key("passwords")).Children(func() {
 		ui.Text(c, L.SettingsPasswords()).FontSize(sizeHeading).Bold()
 		hint := L.PermanentNotSet()
 		if hasPermanent {
@@ -570,7 +639,14 @@ func (a *App) accessSettings(c *ui.Context) {
 			}
 		})
 		ui.Divider(c)
-		a.acceptSettings(c, mode, without, hasPermanent, busy)
+		a.signInMethods(c, k, mode, hasPermanent, busy)
+		ui.Divider(c)
+		settingRow(c, "without-asking", L.WithoutAskingTitle(), L.WithoutAskingHint(), func() {
+			if ui.Switch(c.Key("without-asking-sw"), &without).Label(L.WithoutAskingTitle()).Disabled(busy).Changed() {
+				on := without
+				a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, WithoutAsking: &on}, nil)
+			}
+		})
 		if without {
 			a.passwordGrants(c, grants, busy)
 		}

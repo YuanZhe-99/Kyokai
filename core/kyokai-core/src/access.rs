@@ -246,8 +246,8 @@ fn in_range(net: IpAddr, len: u8, ip: IpAddr) -> bool {
     }
 }
 
-/// Which of the host's passwords open it (Settings, Access, "Accepted
-/// passwords").
+/// Which of the host's passwords open it (Permissions, "Passwords and
+/// keys": each password chosen on its own).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PasswordMode {
@@ -255,6 +255,8 @@ pub enum PasswordMode {
     Permanent,
     #[default]
     Both,
+    /// Neither: only a key that can connect, or asking the host's user.
+    None,
 }
 
 impl PasswordMode {
@@ -1186,11 +1188,14 @@ impl Access {
         self.set_saved(device_id, &saved)
     }
 
-    /// Forgets the sign-in of one of a host's services, or the key it
-    /// admitted (`key`).
+    /// Forgets the sign-in of one of a host's services, the key it
+    /// admitted (`key`) or its Kyokai password (`password`).
     pub fn forget_credentials(&self, device_id: &str, what: &str) -> Result<(), String> {
         let mut saved = self.saved(device_id);
         match what {
+            // The Kyokai password alone (regression: it was refused as an
+            // unknown service, so only Forget all removed it).
+            "password" => return self.forget_password(device_id),
             "key" => saved.key = None,
             _ => {
                 let s: crate::tunnel::Service = serde_json::from_value(json!(what))
@@ -1672,6 +1677,28 @@ mod tests {
         assert!(a.forget_credentials(id, "ftp").is_err());
         a.forget_credentials(id, "vnc").unwrap();
         assert!(a.secrets().get("saved.100000002").is_none(), "nothing left");
+        // The Kyokai password goes alone; the saved sign-ins stay.
+        a.save_password(id, "kyokai-pw").unwrap();
+        a.save_credentials(id, Service::Vnc, creds("", pw("vnc-pw"), ""))
+            .unwrap();
+        a.forget_credentials(id, "password").unwrap();
+        assert!(a.saved_password(id).is_none() && a.saved(id).vnc.is_some());
+    }
+
+    /// Each password is chosen on its own, neither included.
+    #[test]
+    fn each_password_is_accepted_on_its_own() {
+        use PasswordMode as M;
+        for (mode, temporary, permanent) in [
+            (M::Temporary, true, false),
+            (M::Permanent, false, true),
+            (M::Both, true, true),
+            (M::None, false, false),
+        ] {
+            assert_eq!(mode.accepts(Slot::Temporary), temporary, "{mode:?}");
+            assert_eq!(mode.accepts(Slot::Permanent), permanent, "{mode:?}");
+        }
+        assert_eq!(serde_json::to_value(M::None).unwrap(), json!("none"));
     }
 
     /// Password grants an older version stored get the new permissions'

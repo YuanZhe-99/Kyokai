@@ -175,10 +175,12 @@ shown. The other computer sees who is watching on its Permissions page and can t
 
 Security, **Your keys**: **Generate a key** makes an Ed25519 key and shows its private part once, to
 copy or save (with an optional passphrase) for other SSH clients; Kyokai keeps it and never lets it
-out. **Import a key** takes an existing OpenSSH or PEM key. To let a key sign in to this device, add
-its public key under **Keys that can connect to this device**, or **Generate a pair** there and take
-the private part away. A key that can connect counts as a correct password. **Saved passwords and
-keys** lists what is kept for each device you connect to, with × to forget one or **Forget all**.
+out. **Import a key** takes an existing OpenSSH or PEM key. To let a key sign in to this device, go
+to Permissions, **Passwords and keys**, and **Add a key** with its public key, or **Generate a
+pair** there and take the private part away. A key that can connect counts as a correct password;
+unchecking it keeps it but stops it signing in. **Saved passwords and keys** (Security) lists what
+is kept for each device you connect to, with × to forget one — the Kyokai password, the key, or a
+service's sign-in — or **Forget all**.
 
 ## Let someone control this device
 
@@ -187,11 +189,12 @@ allows (by default seeing the screen, the mouse and keyboard, the clipboard and 
 tasks). Otherwise — they ask for more, ask without a password, or a known Device ID arrives with a
 new key — a request appears at the top of every page with their Device ID, a warning in the last
 two cases, and a switch for each permission they asked for. Choose what to allow, then **Allow**, or **Deny**. Devices you allowed are listed in
-Permissions; **Remove** revokes one at once and ends its connections. There, **Accepted passwords**
-chooses which passwords let a device in (**Temporary**, **Permanent** or **Both**), and **Connect
-without asking** (on by default) lets a correct password in without asking you; switched off, you
-are always asked. With nobody at the computer (Background service), only the permanent password
-gets in. Your own use
+Permissions; **Remove** revokes one at once and ends its connections. There, **Ways to sign in**
+chooses what lets a device in: the temporary password, the permanent password and each key that can
+connect, each with its own check box, in any combination; with none checked, every connection asks
+you. **Connect without asking** (on by default) lets a checked way in without asking you; switched
+off, you are always asked. With nobody at the computer (Background service), only the permanent
+password or a key gets in. Your own use
 of the keyboard and mouse always wins over theirs and over any AI.
 
 ## Run Kyokai as a helper

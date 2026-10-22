@@ -128,7 +128,7 @@ display's place and size, the primary first) and the controller may ask for anot
 fractions of the picture, when it moves; `visible` says whether it is on the display shown. With `control-input` the host sends
 `{"type": "actions", ctrl_alt_del, blocked, privacy}` as the session starts and whenever the block
 or privacy mode changes, and the controller may send `{"type": "action", action}` with `lock`,
-`ctrl-alt-del`, `block`, `unblock`, `privacy-on` or `privacy-off` ([computer-use.md](computer-use.md)). With `clipboard`, either side sends
+`ctrl-alt-del`, `block`, `unblock`, `privacy-on`, `privacy-off` or, to a host that announced `wake`, `wake` (an older host gets a Shift press and release from the controller's engine instead) ([computer-use.md](computer-use.md)). With `clipboard`, either side sends
 `{"type": "clipboard", text}` for text copied on its side (at most 1 MiB) and
 `{"type": "clipboard-image", png}` for an image (base64 of an 8-bit RGBA PNG, at most 3 MiB and
 3840×2160). With `files`, either side offers files it copied with `{"type": "clipboard-files", id,
@@ -204,6 +204,7 @@ outside the range this build speaks (10 to 10) is refused as incompatible.
 | `tunnel` | tunnels to the host's own SSH, Remote Desktop and VNC; permissions `use-ssh`, `use-rdp`, `use-vnc` |
 | `status` | quiet status watchers and the `system` message; permission `see-status` |
 | `input-sync` | the controller's `sync` input event (the keys and buttons it holds) |
+| `wake` | the `wake` session action (the host wakes its displays) |
 
 ## Decoders
 

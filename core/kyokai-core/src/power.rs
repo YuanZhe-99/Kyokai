@@ -10,9 +10,11 @@
 //! assertions on macOS; in the helper modes the session agent, in the
 //! user's session, holds one too while it streams video.
 //!
-//! A display that is dark already gives the capture nothing to send: the
-//! capture wakes it (`wake_display`) when it has had no picture for a
-//! second, at most every five seconds.
+//! A display that is dark gives the capture nothing to send: the capture
+//! wakes it (`wake_display`) when it has had no picture for a second, or
+//! Windows has reported the display off for a second (a dark display is
+//! as quiet as a still screen), at most every five seconds; a viewer's
+//! Wake it does the same at once.
 
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
@@ -33,16 +35,30 @@ pub fn wake_due(dark_since: Option<Instant>, woke: Option<Instant>, now: Instant
 
 /// Wakes the displays as a person's input would, so a capture that waits
 /// on a dark display gets a picture.
-/// Side effects: Windows: resets the display idle timer
-/// (`SetThreadExecutionState(ES_DISPLAY_REQUIRED)`) and moves the pointer
-/// one pixel and back, tagged as Kyokai's input (the local-input watch
-/// leaves it out); macOS: declares user activity
-/// (`IOPMAssertionDeclareUserActivity`). Elsewhere nothing.
-/// Notes: call it in the session that shows the display (the agent's, in
-/// the helper modes): a service's input reaches no desktop.
+/// Side effects: in the helper modes the session agent wakes them (a
+/// service's input reaches no desktop). Windows: on the input desktop,
+/// resets the display idle timer (`SetThreadExecutionState(ES_DISPLAY_REQUIRED)`)
+/// and moves the pointer one pixel and back with absolute moves, tagged as
+/// Kyokai's input (the local-input watch leaves it out); macOS: declares
+/// user activity (`IOPMAssertionDeclareUserActivity`). Elsewhere nothing.
 pub fn wake_display() {
+    if let Some(link) = crate::agent::link() {
+        link.wake_display();
+        return;
+    }
     #[cfg(any(windows, target_os = "macos"))]
     imp::wake();
+}
+
+/// Whether the system reports the display off (Windows' console display
+/// state; elsewhere never).
+pub fn display_off() -> bool {
+    #[cfg(windows)]
+    {
+        imp::display_off()
+    }
+    #[cfg(not(windows))]
+    false
 }
 
 #[cfg(windows)]
@@ -136,14 +152,17 @@ mod windows_impl {
     use std::ffi::c_void;
     use windows::Win32::Foundation::{CloseHandle, ERROR_SUCCESS, HANDLE};
     use windows::Win32::System::Power::{
-        DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS, HPOWERNOTIFY, PowerClearRequest, PowerCreateRequest,
-        PowerRegisterSuspendResumeNotification, PowerRequestDisplayRequired,
-        PowerRequestSystemRequired, PowerSetRequest, PowerUnregisterSuspendResumeNotification,
+        DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS, HPOWERNOTIFY, POWERBROADCAST_SETTING,
+        PowerClearRequest, PowerCreateRequest, PowerRegisterSuspendResumeNotification,
+        PowerRequestDisplayRequired, PowerRequestSystemRequired, PowerSetRequest,
+        PowerSettingRegisterNotification, PowerUnregisterSuspendResumeNotification,
     };
     use windows::Win32::System::Threading::{
         POWER_REQUEST_CONTEXT_SIMPLE_STRING, REASON_CONTEXT, REASON_CONTEXT_0,
     };
-    use windows::Win32::UI::WindowsAndMessaging::{DEVICE_NOTIFY_CALLBACK, PBT_APMSUSPEND};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DEVICE_NOTIFY_CALLBACK, PBT_APMSUSPEND, PBT_POWERSETTINGCHANGE,
+    };
     use windows::core::PWSTR;
 
     /// The power request's handle, as an integer so the static is Send.
@@ -170,31 +189,74 @@ mod windows_impl {
         }
     }
 
-    /// Wakes the displays (`super::wake_display`).
+    /// Wakes the displays (`super::wake_display`): on the desktop that
+    /// receives input (the agent follows it to the lock screen), with
+    /// absolute moves, which mouse acceleration cannot shrink to nothing
+    /// (regression: a one-pixel relative move woke no display).
     pub fn wake() {
         use windows::Win32::System::Power::{ES_DISPLAY_REQUIRED, SetThreadExecutionState};
-        use windows::Win32::UI::Input::KeyboardAndMouse::{
-            INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_MOVE, MOUSEINPUT, SendInput,
-        };
-        let step = |dx: i32| INPUT {
-            r#type: INPUT_MOUSE,
-            Anonymous: INPUT_0 {
-                mi: MOUSEINPUT {
-                    dx,
-                    dy: 0,
-                    mouseData: 0,
-                    dwFlags: MOUSEEVENTF_MOVE,
-                    time: 0,
-                    dwExtraInfo: crate::input::INJECTED_TAG,
-                },
-            },
-        };
-        // SAFETY: a one-shot execution state and two relative moves from
-        // a local array, whose size is passed.
-        unsafe {
-            SetThreadExecutionState(ES_DISPLAY_REQUIRED);
-            SendInput(&[step(1), step(-1)], std::mem::size_of::<INPUT>() as i32);
+        crate::agent::follow_input_desktop();
+        // SAFETY: a one-shot execution state, no pointers.
+        unsafe { SetThreadExecutionState(ES_DISPLAY_REQUIRED) };
+        crate::input::nudge_pointer();
+    }
+
+    /// GUID_CONSOLE_DISPLAY_STATE: the console's display turned off, on or
+    /// dimmed.
+    const CONSOLE_DISPLAY_STATE: windows::core::GUID =
+        windows::core::GUID::from_u128(0x6fe69556_704a_47a0_8f24_c28d936fda47);
+    /// The console display's state as Windows last reported it: 0 off,
+    /// 1 on, 2 dimmed.
+    static DISPLAY: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+    static WATCHING: std::sync::Once = std::sync::Once::new();
+
+    /// Whether Windows reports the console's display off.
+    /// Side effects: the first call registers for the display state, for
+    /// the process's life (Windows reports the state at once).
+    pub fn display_off() -> bool {
+        WATCHING.call_once(|| {
+            // Windows keeps a pointer to the parameters while registered:
+            // they live as long as the process.
+            let params = Box::leak(Box::new(DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS {
+                Callback: Some(display_changed),
+                Context: std::ptr::null_mut(),
+            }));
+            let mut handle = std::ptr::null_mut();
+            // SAFETY: `params` is never freed; with DEVICE_NOTIFY_CALLBACK
+            // the recipient is the parameters.
+            let r = unsafe {
+                PowerSettingRegisterNotification(
+                    &CONSOLE_DISPLAY_STATE,
+                    DEVICE_NOTIFY_CALLBACK,
+                    HANDLE(params as *mut DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS as *mut c_void),
+                    &mut handle,
+                )
+            };
+            if r != ERROR_SUCCESS {
+                log::info!("power: the display state is not reported ({})", r.0);
+            }
+        });
+        DISPLAY.load(std::sync::atomic::Ordering::Relaxed) == 0
+    }
+
+    /// Notes the console display's state from a setting change.
+    unsafe extern "system" fn display_changed(
+        _: *const c_void,
+        kind: u32,
+        setting: *const c_void,
+    ) -> u32 {
+        if kind == PBT_POWERSETTINGCHANGE && !setting.is_null() {
+            // SAFETY: for PBT_POWERSETTINGCHANGE `setting` is a
+            // POWERBROADCAST_SETTING whose data (a DWORD for this setting)
+            // follows its header; read unaligned.
+            let s = unsafe { &*(setting as *const POWERBROADCAST_SETTING) };
+            if s.PowerSetting == CONSOLE_DISPLAY_STATE && s.DataLength >= 4 {
+                // SAFETY: DataLength says the DWORD is there (see above).
+                let v = unsafe { std::ptr::read_unaligned(s.Data.as_ptr() as *const u32) };
+                DISPLAY.store(v, std::sync::atomic::Ordering::Relaxed);
+            }
         }
+        0
     }
 
     /// Clears and closes the power request.

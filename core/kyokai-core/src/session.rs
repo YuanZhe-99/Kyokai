@@ -41,6 +41,8 @@ pub mod feature {
     pub const STATUS: &str = "status";
     /// The controller's `sync` input event (the keys it holds).
     pub const INPUT_SYNC: &str = "input-sync";
+    /// The `wake` session action.
+    pub const WAKE: &str = "wake";
 }
 
 /// The features this build announces.
@@ -49,6 +51,7 @@ pub const FEATURES: &[&str] = &[
     feature::TUNNEL,
     feature::STATUS,
     feature::INPUT_SYNC,
+    feature::WAKE,
 ];
 
 /// What the other side of a session announced: its features, none for
@@ -379,6 +382,9 @@ enum SessionAction {
     Unblock,
     PrivacyOn,
     PrivacyOff,
+    /// Wake the host's displays (sent to hosts announcing `wake`; older
+    /// ones get a Shift press and release instead).
+    Wake,
     /// An action of a newer controller: ignored.
     #[serde(other)]
     Unknown,
@@ -2642,6 +2648,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         ),
         Side::Host { .. } => (None, None, None, None),
     };
+    // A host without the `wake` action is woken by a Shift press instead.
+    let host_wakes = matches!(&side, Side::Controller { host, .. } if host.has(feature::WAKE));
     let meter = match &side {
         Side::Controller { meter, .. } => Some(meter.clone()),
         Side::Host { .. } => None,
@@ -3114,6 +3122,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             _ => {}
                         }
                     }
+                    if matches!(m, Message::Action { action: SessionAction::Wake }) && !host_wakes {
+                        for down in [true, false] {
+                            let shift = Message::Input { event: json!({"kind": "scan", "code": 0x2A, "down": down}) };
+                            seal_json(&mut noise, &mut buf, &mut wr, &shift).await?;
+                        }
+                        continue;
+                    }
                     seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
                 }
             }
@@ -3472,6 +3487,20 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::Action { action: SessionAction::Unknown } => {}
                     // Session actions need control-input, like input; a
                     // person acting takes over from the host's AI task.
+                    // Waking the display does neither: it changes nothing
+                    // on the desktop, so no window guard stands in its way
+                    // (regression: Wake it's Shift press was refused while
+                    // Kyokai's window had the focus).
+                    #[cfg(any(windows, target_os = "macos"))]
+                    Message::Action { action: SessionAction::Wake } => {
+                        if injector.is_some() {
+                            log::info!("host session: the viewer asks to wake the display");
+                            crate::power::wake_display();
+                            if let Some(s) = &source {
+                                s.key_frame();
+                            }
+                        }
+                    }
                     #[cfg(windows)]
                     Message::Action { action } => {
                         if let (Some(inj), Side::Host { ai, .. }) = (injector.as_mut(), &side) {
@@ -3489,7 +3518,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                                 SessionAction::PrivacyOn | SessionAction::PrivacyOff => {
                                     inj.privacy(action == SessionAction::PrivacyOn);
                                 }
-                                SessionAction::Unknown => {}
+                                SessionAction::Wake | SessionAction::Unknown => {}
                             }
                             if matches!(action, SessionAction::Block | SessionAction::Unblock | SessionAction::PrivacyOn | SessionAction::PrivacyOff) {
                                 let now = offered(inj);
@@ -4257,6 +4286,7 @@ mod tests {
             (SessionAction::Unblock, "unblock"),
             (SessionAction::PrivacyOn, "privacy-on"),
             (SessionAction::PrivacyOff, "privacy-off"),
+            (SessionAction::Wake, "wake"),
         ] {
             let m = serde_json::to_value(Message::Action { action }).unwrap();
             assert_eq!(m, json!({"type": "action", "action": name}));

@@ -53,7 +53,7 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
 |---|---|
 | `credentials.set`（`{device_id, service, credentials}`） | 替换该服务的登录信息——包括它的 `method`（`key`、`password`、`account` 或 `none`，随“记住”保存）与用户名——但未给出的密码或服务器密钥保持不变，空密码表示移除 |
 | `credentials.get`（`{device_id, service}`） | 回答它，包括密码；只为引擎的所有者或助手的操作者提供，供客户端在当时登录使用 |
-| `credentials.forget`（`{device_id, service?}`） | 忘记该服务的登录信息、被接受的密钥（`key`），或为该被控端保存的一切（不带服务） |
+| `credentials.forget`（`{device_id, service?}`） | 忘记该服务的登录信息、被接受的密钥（`key`）、Kyokai 密码（`password`），或为该被控端保存的一切（不带服务） |
 
 状态只说明保存了哪些（`recent[].saved`：`password`、`key`、`ssh`、`rdp`、`vnc`），从不包含机密。私钥从不离开引擎：SSH 客户端通过
 `keys.sign` 签名（[identity-and-access.md](identity-and-access.md)，“密钥”）。

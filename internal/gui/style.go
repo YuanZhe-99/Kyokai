@@ -151,6 +151,7 @@ const (
 	busySize       float32 = 16  // a loading indicator beside text
 	busySizeLarge  float32 = 28  // a loading indicator on its own
 	chipRadius     float32 = 10  // a chip (a saved sign-in, a state)
+	checkIndent    float32 = 26  // a check box's hint, under its label
 	homeMaxW       float32 = 1120
 	homeCardMinW   float32 = 300 // a device's card on Home, at least
 	homeColumns    int     = 3   // Home's device cards side by side, at most

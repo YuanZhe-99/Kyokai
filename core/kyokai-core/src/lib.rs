@@ -1284,6 +1284,11 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 keys::add_authorized(c.ctx.access.secrets(), &name, &public).map(|a| json!(a))
             })
         }
+        "authorized.set" => {
+            let id = req.params["id"].as_str().ok_or("bad key")?.to_owned();
+            let off = req.params["off"].as_bool().ok_or("bad switch")?;
+            try_core(|c| keys::set_authorized(c.ctx.access.secrets(), &id, off).map(|()| json!({})))
+        }
         "authorized.remove" => {
             let id = req.params["id"].as_str().ok_or("bad key")?.to_owned();
             try_core(|c| keys::remove_authorized(c.ctx.access.secrets(), &id).map(|()| json!({})))

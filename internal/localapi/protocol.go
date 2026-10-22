@@ -111,6 +111,7 @@ const (
 	RequestAuthorizedList       RequestType = "authorized.list"            // the keys that can connect to this device (Response.Authorized)
 	RequestAuthorizedAdd        RequestType = "authorized.add"             // let a public key connect (Request.Authorized)
 	RequestAuthorizedRemove     RequestType = "authorized.remove"          // stop a public key connecting (Request.Authorized.ID)
+	RequestAuthorizedSet        RequestType = "authorized.set"             // turn a key that can connect on or off, keeping it (Request.Authorized.ID, .Off)
 	RequestCredentialsGet       RequestType = "credentials.get"            // a device's saved sign-in for one service (Request.DeviceID, Request.Service → Response.Credentials), at a client's sign-in only; owner or operator only
 	RequestCredentialsSet       RequestType = "credentials.set"            // save a device's sign-in for one service (Request.DeviceID, Request.Credentials)
 	RequestCredentialsForget    RequestType = "credentials.forget"         // forget one service's saved sign-in (Request.DeviceID, Request.Service), or all of them (no Service)
@@ -162,7 +163,7 @@ type Request struct {
 	// From is the app folder whose signed bundle RequestHelperUpdate
 	// installs.
 	From string `json:"from,omitempty"`
-	// PasswordMode ("temporary", "permanent", "both") and WithoutAsking
+	// PasswordMode ("temporary", "permanent", "both", "none") and WithoutAsking
 	// are RequestAccessSettings' (empty or nil: unchanged).
 	PasswordMode  string `json:"password_mode,omitempty"`
 	WithoutAsking *bool  `json:"without_asking,omitempty"`
@@ -207,7 +208,7 @@ type Request struct {
 	// Sign is RequestKeysSign's.
 	Sign *SignRequest `json:"sign,omitempty"`
 	// Authorized is RequestAuthorizedAdd's key, or (its ID)
-	// RequestAuthorizedRemove's.
+	// RequestAuthorizedRemove's, or (its ID and Off) RequestAuthorizedSet's.
 	Authorized *AuthorizedKey `json:"authorized,omitempty"`
 	// Service names a service ("ssh", "rdp", "vnc") of the credential
 	// requests.
@@ -264,6 +265,8 @@ type AuthorizedKey struct {
 	Public string `json:"public,omitempty"`
 	Added  int64  `json:"added,omitempty"` // Unix seconds
 	Last   int64  `json:"last,omitempty"`  // Unix seconds, its last sign-in
+	// Off: the host's user turned it off; it signs in no one.
+	Off bool `json:"off,omitempty"`
 }
 
 // Credentials are a device's saved sign-in for one of its services.
@@ -757,7 +760,7 @@ type Status struct {
 	Permissions    *Permissions `json:"permissions,omitempty"`
 	PasswordGrants []string     `json:"password_grants"`
 	// PasswordMode is which passwords open this host ("temporary",
-	// "permanent", "both"); WithoutAsking whether an accepted password
+	// "permanent", "both", "none"); WithoutAsking whether an accepted password
 	// admits without confirmation.
 	PasswordMode  string `json:"password_mode"`
 	WithoutAsking bool   `json:"without_asking"`

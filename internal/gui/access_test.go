@@ -345,3 +345,28 @@ func TestSignInPlan(t *testing.T) {
 		}
 	}
 }
+
+// TestPasswordChecks maps the accepted passwords to their two check boxes
+// and back, neither included; an engine that says nothing accepts both.
+func TestPasswordChecks(t *testing.T) {
+	for _, tc := range []struct {
+		mode                 string
+		temporary, permanent bool
+	}{
+		{"temporary", true, false},
+		{"permanent", false, true},
+		{"both", true, true},
+		{"none", false, false},
+	} {
+		temporary, permanent := passwordsAccepted(tc.mode)
+		if temporary != tc.temporary || permanent != tc.permanent {
+			t.Errorf("%s: checks %v %v", tc.mode, temporary, permanent)
+		}
+		if got := passwordMode(temporary, permanent); got != tc.mode {
+			t.Errorf("%s: back as %s", tc.mode, got)
+		}
+	}
+	if temporary, permanent := passwordsAccepted(""); !temporary || !permanent {
+		t.Error("an unknown mode is not both")
+	}
+}

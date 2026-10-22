@@ -472,6 +472,11 @@ impl Link {
         self.call("lock", json!({})).unwrap_or(false)
     }
 
+    /// Wakes the console session's displays (`crate::power::wake_display`).
+    pub fn wake_display(&self) {
+        let _ = self.send("wake", json!({}));
+    }
+
     /// Blocks or unblocks the host's own input for injector `id`.
     /// Returns: whether it is blocked for it now (false without an agent).
     pub fn block_input(&self, id: u64, on: bool) -> bool {
@@ -922,6 +927,10 @@ impl Agent {
                     .is_some_and(|i| i.privacy_on())
             ),
             "lock" => json!(Injector::default().lock_screen()),
+            "wake" => {
+                crate::power::wake_display();
+                return Ok(None);
+            }
             // Its supervisor starts it again (Link::restart).
             "exit" => std::process::exit(0),
             // The privacy permissions of this process (macOS: the agent's

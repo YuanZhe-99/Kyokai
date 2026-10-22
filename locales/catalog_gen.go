@@ -1946,6 +1946,16 @@ func (msgs Messages) HomePasswordHint() string {
 	return Catalog.Format(msgs.locale, "HomePasswordHint", nil)
 }
 
+// HomePasswordsOff says "No password opens this device: other devices sign in with a key, or ask you. Change it in Permissions."
+// in the language the app shows.
+func HomePasswordsOff() string { return In(i18n.Locale()).HomePasswordsOff() }
+
+// HomePasswordsOff says "No password opens this device: other devices sign in with a key, or ask you. Change it in Permissions."
+// in the language of msgs.
+func (msgs Messages) HomePasswordsOff() string {
+	return Catalog.Format(msgs.locale, "HomePasswordsOff", nil)
+}
+
 // HomePermanentMissing says "No permanent password is set, so no password opens this device. Set one in Permissions."
 // in the language the app shows.
 func HomePermanentMissing() string { return In(i18n.Locale()).HomePermanentMissing() }
@@ -2946,66 +2956,6 @@ func (msgs Messages) PasswordGrantsTitle() string {
 	return Catalog.Format(msgs.locale, "PasswordGrantsTitle", nil)
 }
 
-// PasswordModeBoth says "Both"
-// in the language the app shows.
-func PasswordModeBoth() string { return In(i18n.Locale()).PasswordModeBoth() }
-
-// PasswordModeBoth says "Both"
-// in the language of msgs.
-func (msgs Messages) PasswordModeBoth() string {
-	return Catalog.Format(msgs.locale, "PasswordModeBoth", nil)
-}
-
-// PasswordModeHint says "Which passwords other devices can connect with."
-// in the language the app shows.
-func PasswordModeHint() string { return In(i18n.Locale()).PasswordModeHint() }
-
-// PasswordModeHint says "Which passwords other devices can connect with."
-// in the language of msgs.
-func (msgs Messages) PasswordModeHint() string {
-	return Catalog.Format(msgs.locale, "PasswordModeHint", nil)
-}
-
-// PasswordModeNeedsPermanent says "No permanent password is set yet: set one above, or no password opens this device."
-// in the language the app shows.
-func PasswordModeNeedsPermanent() string { return In(i18n.Locale()).PasswordModeNeedsPermanent() }
-
-// PasswordModeNeedsPermanent says "No permanent password is set yet: set one above, or no password opens this device."
-// in the language of msgs.
-func (msgs Messages) PasswordModeNeedsPermanent() string {
-	return Catalog.Format(msgs.locale, "PasswordModeNeedsPermanent", nil)
-}
-
-// PasswordModePermanent says "Permanent"
-// in the language the app shows.
-func PasswordModePermanent() string { return In(i18n.Locale()).PasswordModePermanent() }
-
-// PasswordModePermanent says "Permanent"
-// in the language of msgs.
-func (msgs Messages) PasswordModePermanent() string {
-	return Catalog.Format(msgs.locale, "PasswordModePermanent", nil)
-}
-
-// PasswordModeTemporary says "Temporary"
-// in the language the app shows.
-func PasswordModeTemporary() string { return In(i18n.Locale()).PasswordModeTemporary() }
-
-// PasswordModeTemporary says "Temporary"
-// in the language of msgs.
-func (msgs Messages) PasswordModeTemporary() string {
-	return Catalog.Format(msgs.locale, "PasswordModeTemporary", nil)
-}
-
-// PasswordModeTitle says "Accepted passwords"
-// in the language the app shows.
-func PasswordModeTitle() string { return In(i18n.Locale()).PasswordModeTitle() }
-
-// PasswordModeTitle says "Accepted passwords"
-// in the language of msgs.
-func (msgs Messages) PasswordModeTitle() string {
-	return Catalog.Format(msgs.locale, "PasswordModeTitle", nil)
-}
-
 // PathDirect says "Direct"
 // in the language the app shows.
 func PathDirect() string { return In(i18n.Locale()).PathDirect() }
@@ -3136,11 +3086,11 @@ func (msgs Messages) PermViewScreen() string {
 	return Catalog.Format(msgs.locale, "PermViewScreen", nil)
 }
 
-// PermanentNotSet says "Not set. Other devices can connect only with the temporary password on the Home page."
+// PermanentNotSet says "Not set."
 // in the language the app shows.
 func PermanentNotSet() string { return In(i18n.Locale()).PermanentNotSet() }
 
-// PermanentNotSet says "Not set. Other devices can connect only with the temporary password on the Home page."
+// PermanentNotSet says "Not set."
 // in the language of msgs.
 func (msgs Messages) PermanentNotSet() string {
 	return Catalog.Format(msgs.locale, "PermanentNotSet", nil)
@@ -3156,11 +3106,11 @@ func (msgs Messages) PermanentSaved() string {
 	return Catalog.Format(msgs.locale, "PermanentSaved", nil)
 }
 
-// PermanentSet says "Set. Other devices can also connect with it; what a password grants without asking is chosen below."
+// PermanentSet says "Set."
 // in the language the app shows.
 func PermanentSet() string { return In(i18n.Locale()).PermanentSet() }
 
-// PermanentSet says "Set. Other devices can also connect with it; what a password grants without asking is chosen below."
+// PermanentSet says "Set."
 // in the language of msgs.
 func (msgs Messages) PermanentSet() string {
 	return Catalog.Format(msgs.locale, "PermanentSet", nil)
@@ -4694,11 +4644,11 @@ func (msgs Messages) SettingsOpenAtLoginHint() string {
 	return Catalog.Format(msgs.locale, "SettingsOpenAtLoginHint", nil)
 }
 
-// SettingsPasswords says "Passwords"
+// SettingsPasswords says "Passwords and keys"
 // in the language the app shows.
 func SettingsPasswords() string { return In(i18n.Locale()).SettingsPasswords() }
 
-// SettingsPasswords says "Passwords"
+// SettingsPasswords says "Passwords and keys"
 // in the language of msgs.
 func (msgs Messages) SettingsPasswords() string {
 	return Catalog.Format(msgs.locale, "SettingsPasswords", nil)
@@ -4782,6 +4732,76 @@ func SettingsTheme() string { return In(i18n.Locale()).SettingsTheme() }
 // in the language of msgs.
 func (msgs Messages) SettingsTheme() string {
 	return Catalog.Format(msgs.locale, "SettingsTheme", nil)
+}
+
+// SignInHint says "Each one checked lets another device in with what a correct password grants. Check any combination; with none checked…"
+// in the language the app shows.
+func SignInHint() string { return In(i18n.Locale()).SignInHint() }
+
+// SignInHint says "Each one checked lets another device in with what a correct password grants. Check any combination; with none checked…"
+// in the language of msgs.
+func (msgs Messages) SignInHint() string {
+	return Catalog.Format(msgs.locale, "SignInHint", nil)
+}
+
+// SignInNone says "Nothing is checked: every connection asks you, and with nobody at this computer no one gets in."
+// in the language the app shows.
+func SignInNone() string { return In(i18n.Locale()).SignInNone() }
+
+// SignInNone says "Nothing is checked: every connection asks you, and with nobody at this computer no one gets in."
+// in the language of msgs.
+func (msgs Messages) SignInNone() string {
+	return Catalog.Format(msgs.locale, "SignInNone", nil)
+}
+
+// SignInPermanentHint says "The one set above."
+// in the language the app shows.
+func SignInPermanentHint() string { return In(i18n.Locale()).SignInPermanentHint() }
+
+// SignInPermanentHint says "The one set above."
+// in the language of msgs.
+func (msgs Messages) SignInPermanentHint() string {
+	return Catalog.Format(msgs.locale, "SignInPermanentHint", nil)
+}
+
+// SignInPermanentMissing says "Not set yet: it works once set above."
+// in the language the app shows.
+func SignInPermanentMissing() string { return In(i18n.Locale()).SignInPermanentMissing() }
+
+// SignInPermanentMissing says "Not set yet: it works once set above."
+// in the language of msgs.
+func (msgs Messages) SignInPermanentMissing() string {
+	return Catalog.Format(msgs.locale, "SignInPermanentMissing", nil)
+}
+
+// SignInTemporary says "Temporary password"
+// in the language the app shows.
+func SignInTemporary() string { return In(i18n.Locale()).SignInTemporary() }
+
+// SignInTemporary says "Temporary password"
+// in the language of msgs.
+func (msgs Messages) SignInTemporary() string {
+	return Catalog.Format(msgs.locale, "SignInTemporary", nil)
+}
+
+// SignInTemporaryHint says "The one shown on the Home page."
+// in the language the app shows.
+func SignInTemporaryHint() string { return In(i18n.Locale()).SignInTemporaryHint() }
+
+// SignInTemporaryHint says "The one shown on the Home page."
+// in the language of msgs.
+func (msgs Messages) SignInTemporaryHint() string {
+	return Catalog.Format(msgs.locale, "SignInTemporaryHint", nil)
+}
+
+// SignInTitle says "Ways to sign in"
+// in the language the app shows.
+func SignInTitle() string { return In(i18n.Locale()).SignInTitle() }
+
+// SignInTitle says "Ways to sign in"
+// in the language of msgs.
+func (msgs Messages) SignInTitle() string {
+	return Catalog.Format(msgs.locale, "SignInTitle", nil)
 }
 
 // StartOverDone says "This device has a new identity, kept from now on."
@@ -6032,11 +6052,11 @@ func (msgs Messages) WatchersTitle() string {
 	return Catalog.Format(msgs.locale, "WatchersTitle", nil)
 }
 
-// WithoutAskingHint says "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Back…"
+// WithoutAskingHint says "A way to sign in checked above lets a device in with what passwords grant, without asking you. With nobody at this co…"
 // in the language the app shows.
 func WithoutAskingHint() string { return In(i18n.Locale()).WithoutAskingHint() }
 
-// WithoutAskingHint says "A correct password lets a device in with what passwords grant, without asking you. With nobody at this computer (Back…"
+// WithoutAskingHint says "A way to sign in checked above lets a device in with what passwords grant, without asking you. With nobody at this co…"
 // in the language of msgs.
 func (msgs Messages) WithoutAskingHint() string {
 	return Catalog.Format(msgs.locale, "WithoutAskingHint", nil)

@@ -71,7 +71,7 @@ domain and a password; for VNC a user (Apple's Screen Sharing asks for one) and 
 |---|---|
 | `credentials.set` (`{device_id, service, credentials}`) | replaces the service's sign-in — its `method` (`key`, `password`, `account` or `none`, remembered with Remember) and user included —, except that a password or a server key left out stays and an empty password is removed |
 | `credentials.get` (`{device_id, service}`) | answers it, the password included; served only to the engine's owner or the helper's operator, for a client signing in right then |
-| `credentials.forget` (`{device_id, service?}`) | forgets the service's sign-in, the admitted key (`key`), or everything saved for the host (no service) |
+| `credentials.forget` (`{device_id, service?}`) | forgets the service's sign-in, the admitted key (`key`), the Kyokai password (`password`), or everything saved for the host (no service) |
 
 The status says only which are kept (`recent[].saved`: `password`, `key`, `ssh`, `rdp`, `vnc`), never a
 secret. Private keys never leave the engine: the SSH client signs through `keys.sign`

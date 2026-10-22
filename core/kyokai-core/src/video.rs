@@ -1011,6 +1011,10 @@ mod capture {
             // Since when there has been no picture (the stream's start, a
             // lost display), to wake a dark display, and when it was woken.
             let mut dark_since = Some(t0);
+            // Since when the system has reported the display off: a dark
+            // display gives nothing, as a still screen does, so a capture
+            // that had pictures would never wake it (regression).
+            let mut off_since: Option<Instant> = None;
             let mut woke: Option<Instant> = None;
             // When the input desktop was last compared with this thread's.
             let mut desk_checked = t0;
@@ -1023,9 +1027,14 @@ mod capture {
             // display mode is scaled into it.
             let mut capturer = Some(capturer);
             while !stop.load(Ordering::Relaxed) {
-                if crate::power::wake_due(dark_since, woke, Instant::now()) {
+                off_since = if crate::power::display_off() {
+                    off_since.or(Some(Instant::now()))
+                } else {
+                    None
+                };
+                if crate::power::wake_due(dark_since.or(off_since), woke, Instant::now()) {
                     woke = Some(Instant::now());
-                    log::info!("capture: no picture for a while: waking the display");
+                    log::info!("capture: no picture, or the display is off: waking it");
                     crate::power::wake_display();
                 }
                 let Some(cap) = capturer.as_mut() else {

@@ -410,7 +410,8 @@ impl LocalInput {
 pub use windows_impl::take_sent;
 #[cfg(windows)]
 pub use windows_impl::{
-    Injector, LocalWatch, emergency_stop, kyokai_process, physical, pointer, pointer_in,
+    Injector, LocalWatch, emergency_stop, kyokai_process, nudge_pointer, physical, pointer,
+    pointer_in,
 };
 
 #[cfg(target_os = "macos")]
@@ -833,6 +834,45 @@ mod windows_impl {
                 },
             )
         }
+    }
+
+    /// Moves the pointer one pixel and back with absolute moves on the
+    /// calling thread's desktop, tagged as Kyokai's input: input that
+    /// wakes a dark display and changes nothing (a click lands nowhere).
+    /// Notes: a pointer Windows cannot place (no cursor yet on a desktop)
+    /// is taken at the primary display's top-left corner.
+    pub fn nudge_pointer() {
+        let (desk, at) = physical(|| {
+            let mut at = POINT::default();
+            // SAFETY: a plain query of the pointer.
+            let known = unsafe { GetCursorPos(&mut at) }.is_ok();
+            (desktop_areas().0, if known { at } else { POINT::default() })
+        });
+        let pixel = |x: i32| {
+            let (ax, ay) = absolute(
+                0.0,
+                0.0,
+                Area {
+                    x,
+                    y: at.y,
+                    width: 1,
+                    height: 1,
+                },
+                desk,
+            );
+            mouse(
+                ax,
+                ay,
+                0,
+                MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+            )
+        };
+        let aside = if at.x + 1 < desk.x + desk.width as i32 {
+            at.x + 1
+        } else {
+            at.x - 1
+        };
+        send(&[pixel(aside), pixel(at.x)]);
     }
 
     /// Where the pointer is, as fractions of the primary display (outside

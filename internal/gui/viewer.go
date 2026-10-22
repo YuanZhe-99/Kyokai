@@ -1120,15 +1120,13 @@ func notice(c *ui.Context, children func()) {
 }
 
 // wakeOffer says the host's screen may be asleep and offers to wake it,
-// for a session that may control input: a Shift press and release, which
-// wakes a display as a key does (a 0.4.0 host takes it too).
+// for a session that may control input: the host's wake action, which its
+// engine turns into a Shift press and release for a host without it.
 func (v *viewer) wakeOffer(c *ui.Context) {
 	ui.Row(c.Key("wake")).Gap(8).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, L.ViewerAsleep()).TextColor(ui.Hex("#ffffff"))
 		if ui.Button(c.Key("wake-it"), L.ViewerWake()).Clicked() {
-			for _, down := range []bool{true, false} {
-				v.queue(inputEvent{Kind: "scan", Code: 0x2A, Down: down})
-			}
+			v.sendControl(map[string]any{"type": "action", "action": "wake"})
 		}
 	})
 }
