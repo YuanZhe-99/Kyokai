@@ -25,7 +25,8 @@ frame's output, and its error event, `MEError`, counts as a failure). An encoder
 pictures and gives nothing for 2 seconds has failed too: a GPU's encoder may give no output while
 the display is off and stay silent once it is back (Qualcomm's, on the ARM64 test computer:
 [platform-notes.md](platform-notes.md)), so a stream takes the GPU's encoder only while the system
-reports the display on — a dark display is woken and given 2 seconds first — uses the software
+reports the display on — a dark display is woken and given 2 seconds first, and the first look
+waits for Windows' first report of the display state — uses the software
 encoder otherwise, and moves back to the GPU when the display comes on. A failed encoder is logged
 with what it was fed and gave, and opened again, with the display, for a first picture (on the
 software encoder when the GPU's failed with the display on); a second failure before a key frame

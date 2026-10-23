@@ -50,7 +50,7 @@ Kyokai runs the same flow with any configured provider, and the live runs so far
 | Multi-monitor selection | Verified (Windows VM) | platform notes: Displays |
 | DPI coordinate mapping | Tested | the input mapping tests over the virtual desktop; a mixed-DPI setup has not been tried |
 | Disconnection releases resources | Tested | held keys and buttons released, capture and encoder dropped with the session |
-| The picture returns after a dark display | Tested | platform notes: Encoders in the dark, No picture after a dark display (the silent encoder and the ladder in the tests; live runs and the Mac mini host pending) |
+| The picture returns after a dark display | Tested | platform notes: Encoders in the dark, No picture after a dark display, Session to a dark display (user mode on Windows; the helper modes and the Mac mini host pending) |
 
 ## AI Computer Use (the specification's "OpenAI Computer Use")
 

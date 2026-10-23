@@ -221,13 +221,19 @@ mod windows_impl {
     const CONSOLE_DISPLAY_STATE: windows::core::GUID =
         windows::core::GUID::from_u128(0x6fe69556_704a_47a0_8f24_c28d936fda47);
     /// The console display's state as Windows last reported it: 0 off,
-    /// 1 on, 2 dimmed.
-    static DISPLAY: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+    /// 1 on, 2 dimmed; UNREPORTED before the first report.
+    static DISPLAY: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(UNREPORTED);
+    /// DISPLAY before Windows' first report, which comes on another thread
+    /// just after registering.
+    const UNREPORTED: u32 = u32::MAX;
+    /// How long the first call waits for that report.
+    const FIRST_REPORT: std::time::Duration = std::time::Duration::from_millis(500);
     static WATCHING: std::sync::Once = std::sync::Once::new();
 
     /// Whether Windows reports the console's display off.
     /// Side effects: the first call registers for the display state, for
-    /// the process's life (Windows reports the state at once).
+    /// the process's life, and waits up to FIRST_REPORT for Windows' first
+    /// report (unreported reads as on).
     pub fn display_off() -> bool {
         WATCHING.call_once(|| {
             // Windows keeps a pointer to the parameters while registered:
@@ -249,6 +255,16 @@ mod windows_impl {
             };
             if r != ERROR_SUCCESS {
                 log::info!("power: the display state is not reported ({})", r.0);
+            } else {
+                // Regression: the first stream of a session took the GPU's
+                // encoder in the dark, the display read as on until Windows
+                // reported it.
+                let until = std::time::Instant::now() + FIRST_REPORT;
+                while DISPLAY.load(std::sync::atomic::Ordering::Relaxed) == UNREPORTED
+                    && std::time::Instant::now() < until
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
             }
         });
         DISPLAY.load(std::sync::atomic::Ordering::Relaxed) == 0
