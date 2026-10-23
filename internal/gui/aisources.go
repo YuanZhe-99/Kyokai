@@ -229,7 +229,7 @@ func (a *App) aiProviders(c *ui.Context) {
 			}
 			about := fmt.Sprintf("%s · %s", templateName(templateOf(src.Template)), L.AIModelCount(len(src.Models)))
 			r.row(c, "ai-src-"+src.ID, letterTile(src.Name), setting{title: src.Name, about: about}, func() {
-				ui.Text(c, state).FontSize(sizeSmall).TextColor(col)
+				ui.Text(c, state).FontSize(sizeSmall).TextColor(textTone(t, col))
 				if ui.Button(c.Key("ai-src-edit-"+src.ID), L.AIEditSource()).Disabled(busy || edit != nil).Clicked() {
 					a.update(func() { a.ai.edit = &aiEdit{src: src} })
 				}

@@ -215,7 +215,7 @@ func (t *aiTab) conversation(c *ui.Context, rec AIRecord, s aiPaneState) {
 		case "paused":
 			col = th.Warning
 		}
-		ui.Text(c, word).FontSize(sizeSmall).FontWeight(600).TextColor(col)
+		ui.Text(c, word).FontSize(sizeSmall).FontWeight(600).TextColor(textTone(th, col))
 		if task.Model != "" {
 			model := friendlyModelName(task.Model, "", "")
 			if t.device == "" {
@@ -302,7 +302,7 @@ func aiStepRow(c *ui.Context, key string, st localapi.AIStep) {
 		})
 		ui.Text(c, describeAction(st.Action)).Grow(1).MinWidth(0)
 		if o := outcomeLabel(st.Outcome); o != "" {
-			ui.Text(c, o).FontSize(sizeSmall).TextColor(th.Warning).Shrink(0)
+			ui.Text(c, o).FontSize(sizeSmall).TextColor(textTone(th, th.Warning)).Shrink(0)
 		}
 		if st.At > 0 {
 			ui.Text(c, time.Unix(st.At, 0).Local().Format("15:04")).FontSize(sizeSmall).FontFeatures("tnum").TextColor(th.TextMuted).Shrink(0)
@@ -324,7 +324,7 @@ func (t *aiTab) approval(c *ui.Context, task *localapi.AITask, may bool) {
 		})
 		ui.Text(c, describeAction(task.Approval.Action))
 		if len(task.Approval.Flagged) > 0 {
-			ui.Text(c, L.AIApprovalFlagged()).FontSize(sizeSmall).TextColor(th.Warning)
+			ui.Text(c, L.AIApprovalFlagged()).FontSize(sizeSmall).TextColor(textTone(th, th.Warning))
 			for i, f := range task.Approval.Flagged {
 				ui.Text(c.Key(key+"-f"+strconv.Itoa(i)), f).FontSize(sizeSmall).Selectable()
 			}
@@ -383,7 +383,7 @@ func (t *aiTab) box(c *ui.Context, rec AIRecord, s aiPaneState) {
 			if t.device != "" {
 				text = L.AIBusyThere(t.where())
 			}
-			ui.Text(c, text).FontSize(sizeSmall).TextColor(th.Warning).Grow(1)
+			ui.Text(c, text).FontSize(sizeSmall).TextColor(textTone(th, th.Warning)).Grow(1)
 			if ui.Button(c.Key("ai-busy-show-"+t.id), L.AIShowTask()).Clicked() {
 				a.openAITask(t.device, s.other.ID, s.other.Instruction)
 			}

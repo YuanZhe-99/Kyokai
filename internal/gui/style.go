@@ -271,6 +271,45 @@ var (
 // paneShadow is a pane's shadow over the window's base.
 var paneShadow = ui.RGBA(16, 24, 40, 0.07)
 
+// Words against WCAG AA's 4.5:1: in the light appearance MyGo's muted text
+// (#71717a) reaches 4.4:1 on the surface Home's cards use, so a shade
+// darker (5.2:1 there); a status colour or the accent as words moves this
+// far toward black, or toward white in the dark appearance (textTone).
+var (
+	mygoMuted  = ui.Hex("#71717a")
+	mutedLight = ui.Hex("#66666e")
+)
+
+const statusTextMix = 0.3
+
+// readableTheme is a window's theme with the light appearance's muted text
+// a shade darker, unless the system chose its own colours.
+func readableTheme(t *ui.Theme) *ui.Theme {
+	if t.Dark || t.TextMuted != mygoMuted {
+		return t
+	}
+	r := *t
+	r.TextMuted = mutedLight
+	return &r
+}
+
+// textTone is a status colour — warning, success, danger — or the accent
+// as the colour of words: 30% of the way toward black in the light
+// appearance, toward white in the dark one, which reaches 4.5:1 on the
+// page, on the surface and on the colour's own tint (a pill, a chosen
+// tile); any other colour as it is.
+func textTone(t *ui.Theme, col ui.Color) ui.Color {
+	if col != t.Warning && col != t.Success && col != t.Danger && col != t.Accent {
+		return col
+	}
+	var to float32 // black
+	if t.Dark {
+		to = 255
+	}
+	mix := func(v uint8) uint8 { return uint8(float32(v)*(1-statusTextMix) + to*statusTextMix) }
+	return ui.Color{R: mix(col.R), G: mix(col.G), B: mix(col.B), A: col.A}
+}
+
 // The Settings sheet's dimming over the window, its shadow, and the
 // window's buttons on the dimming: their glyphs and their face under the
 // pointer.

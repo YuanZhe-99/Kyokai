@@ -374,7 +374,7 @@ func (r *rows) row(c *ui.Context, key string, ld lead, s setting, control func()
 				if col.A == 0 {
 					col = t.TextMuted
 				}
-				ui.Text(c, s.about).FontSize(sizeSmall).TextColor(col)
+				ui.Text(c, s.about).FontSize(sizeSmall).TextColor(textTone(t, col))
 			}
 		})
 		if control != nil {

@@ -1136,7 +1136,7 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 				if text == "" {
 					text = sessionState(phase, behind)
 				}
-				ui.Text(c, text).TextColor(t.Danger)
+				ui.Text(c, text).TextColor(textTone(t, t.Danger))
 			}
 			if !waiting && !ended {
 				return
@@ -1636,7 +1636,7 @@ func pathChip(c *ui.Context, b bar) {
 	if b.paused {
 		ui.Row(c.Key("bar-paused")).Gap(6).Padding(0, 6).AlignItems(ui.Center).Shrink(0).Children(func() {
 			ui.Column(c).Size(onlineDot, onlineDot).Radius(onlineDot / 2).Background(t.Warning)
-			ui.Text(c, L.ViewerInputPaused()).FontSize(sizeSmall).TextColor(t.Warning).SingleLine()
+			ui.Text(c, L.ViewerInputPaused()).FontSize(sizeSmall).TextColor(textTone(t, t.Warning)).SingleLine()
 		})
 	}
 	start := b.start
@@ -1647,7 +1647,7 @@ func pathChip(c *ui.Context, b bar) {
 		if start.Placeholder != "" {
 			tip, _ = viewerWaitText("", start.Placeholder)
 		}
-		ui.Text(c.Key("bar-path"), "⚠").TextColor(t.Warning).Label(tip).Tooltip(tip)
+		ui.Text(c.Key("bar-path"), "⚠").TextColor(textTone(t, t.Warning)).Label(tip).Tooltip(tip)
 		return
 	}
 	if start.Width == 0 {

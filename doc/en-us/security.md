@@ -62,7 +62,7 @@ A device that holds a password or a key within the password grants may watch thi
 status ([computer-use.md](computer-use.md), "Host status"): its load, memory, disk, network rates,
 battery, uptime and which of its remote services listen — nothing on the screen, no input, no
 files. Watchers are never asked about, so the host's user turns `see-status` off in the password
-grants to keep everyone out, and Permissions lists who watches now. On the controller the samples
+grants to keep everyone out, and Access lists who watches now. On the controller the samples
 stay in memory, and only for the hosts its GUI shows.
 
 ## AI tasks
@@ -192,7 +192,7 @@ unlocked desktop, and a compromised provider.
 - The temporary password can be shown and copied by anyone at the unlocked desktop; the tray never
   shows it.
 - A device that knows the password gets the password grants without anyone confirming; turning the
-  grants off in Permissions (or a password change) keeps it out. A device without the password
+  grants off in Access (or a password change) keeps it out. A device without the password
   can still ask, and is held back by the confirmation and the rate limits.
 - An AI task sends the screen to the provider the host's user chose, including whatever other
   apps show; the approval policy and local input are defence in depth, not a classifier of every

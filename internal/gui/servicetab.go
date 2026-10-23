@@ -566,7 +566,7 @@ func (s *serviceTab) signInForm(c *ui.Context, note string) {
 		}
 	}
 	if note != "" {
-		ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Danger)
+		ui.Text(c, note).FontSize(sizeSmall).TextColor(textTone(t, t.Danger))
 	}
 	ui.Text(c, L.ServiceSignInHint(serviceName(s.service))).FontSize(sizeSmall).TextColor(t.TextMuted)
 	methods := signInMethods[s.service]
@@ -667,7 +667,7 @@ func (s *serviceTab) endedPanel(c *ui.Context, note string) {
 	if note == "" {
 		note = L.ServiceEnded()
 	}
-	ui.Text(c, note).TextColor(t.Danger)
+	ui.Text(c, note).TextColor(textTone(t, t.Danger))
 	s.mu.Lock()
 	changed := s.changed
 	s.mu.Unlock()

@@ -36,7 +36,7 @@ login").
   is given), when it was added, when it last signed in and whether it is turned off (`off`; a key
   is on when added, and a store without the flag reads as on); other key types are refused
   (`authorized.list`, `authorized.add`, `authorized.set` (`{id, off}`: turns it off or on, keeping
-  it), `authorized.remove`). In Permissions each is a way to sign in with its own check box.
+  it), `authorized.remove`). In Access each is a way to sign in with its own switch.
 - **This device's keys** (controller side, `login_keys`, at most 16): Ed25519 keys sign in to
   Kyokai; Ed25519, RSA (2048 bits or more) and ECDSA P-256 or P-384 keys sign in to SSH servers
   through the built-in client. The GUI generates or imports a key and hands its private part (the
@@ -92,8 +92,8 @@ sessions with this host end and its resume tokens are dropped.
 | gives the permanent password with nobody at the computer | admits it with what a password grants (see Unattended access) |
 | gives a correct password of a kind the host does not accept | refuses it as a wrong password |
 
-Which passwords open the host is chosen in Permissions, under "Ways to sign in": a check box for
-the temporary password and one for the permanent password, in any combination (`password_mode`:
+Which passwords open the host is chosen in Access, under "Ways to sign in": a switch for the
+temporary password and one for the permanent password, in any combination (`password_mode`:
 `temporary`, `permanent`, `both` or `none`; by default both). With `none` neither password opens
 the host: only a key that can connect, or asking the host's user. An engine of 0.5.1 or before
 reading a stored `none` falls back to its default, both. "Connect without asking" (on by default)

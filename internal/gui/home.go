@@ -280,7 +280,7 @@ func homeCard(c *ui.Context, key string) ui.Element {
 // statePill is a state in a pill of its colour: Online, Connected,
 // Offline.
 func statePill(c *ui.Context, text string, col ui.Color) {
-	ui.Text(c, text).FontSize(sizeSmall).TextColor(col).SingleLine().Shrink(0).MaxWidth(homeCardMinW/2).Tooltip(text).
+	ui.Text(c, text).FontSize(sizeSmall).TextColor(textTone(c.Theme(), col)).SingleLine().Shrink(0).MaxWidth(homeCardMinW/2).Tooltip(text).
 		Padding(2, 8).Radius(chipRadius).Background(col.Alpha(0.12))
 }
 
@@ -318,7 +318,7 @@ func (a *App) thisDeviceCard(c *ui.Context) {
 		case st.PasswordMode == "permanent" && st.PermanentPassword:
 			ui.Text(c, L.HomePermanentOnly()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		case st.PasswordMode == "permanent":
-			ui.Text(c, L.HomePermanentMissing()).FontSize(sizeSmall).TextColor(t.Warning)
+			ui.Text(c, L.HomePermanentMissing()).FontSize(sizeSmall).TextColor(textTone(t, t.Warning))
 		default:
 			ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
 				// Short of room it wraps, a word a line, rather than losing words.
@@ -354,7 +354,7 @@ func (a *App) thisDeviceCard(c *ui.Context) {
 			})
 		}
 		if note := secretsNote(st.Persistence); note != "" && st.Persistence != "os-store" {
-			ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Warning)
+			ui.Text(c, note).FontSize(sizeSmall).TextColor(textTone(t, t.Warning))
 		}
 		if st.Persistence == "unreadable" {
 			ui.Row(c).FillWidth().Gap(gap).AlignItems(ui.Center).Children(func() {

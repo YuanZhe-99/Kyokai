@@ -456,7 +456,7 @@ when `SCREENSHOT_DIR` is set.
 - Copy is written for the person using the app.
 - Never shown: reason codes, keys, socket paths, internal identifiers other than the Device ID (the
   fingerprint appears only on the Security page, sign-in keys and their fingerprints only there and
-  in Permissions' Passwords and keys; saved
+  in Access's Ways to sign in; saved
   sign-ins show as flags, never their passwords).
 
 ## Visual language
@@ -466,6 +466,13 @@ when `SCREENSHOT_DIR` is set.
   Icons are original line drawings in `internal/gui/assets/icons`; the window buttons drawn on
   Windows copy Windows 11's glyphs.
 - Body text 14, titles 20–24, nothing below 12; the Device ID is 34 with tabular digits.
+- Words reach WCAG AA's 4.5:1 in both appearances (`TestWordsContrast`): in the light one, muted
+  text is a shade darker than MyGo's (`readableTheme`), and a status colour or the accent as words
+  is 30% darker — 30% lighter in the dark one — than as a dot, an edge or a tint (`textTone`).
+- Everything works from the keyboard: Tab goes through the sidebar, then the pane's header and
+  its content in reading order, the cards above the panes among them; the control with the keys
+  has a ring; Space or Enter acts; Escape closes the picker, search, an editor and the Settings
+  sheet, which keeps Tab inside it while it is up.
 - Whatever is under way shows one loading indicator, loading-dev's Arc from MyGo's loading plugin in the
   accent colour (white on the viewer's black stage), named for assistive technology by what is loading.
 - The app icon is original artwork: a ring split by a boundary line (鏡界), solid on one side and

@@ -58,7 +58,7 @@ func (a *App) privacySection(c *ui.Context) {
 func (a *App) privacyList(c *ui.Context, r *rows, key string, p *localapi.Permissions, helperMode bool) {
 	t := c.Theme()
 	if helperMode {
-		r.block(c, key+"-helper", func() { ui.Text(c, L.PermissionsHelperHint()).FontSize(sizeSmall).TextColor(t.Warning) })
+		r.block(c, key+"-helper", func() { ui.Text(c, L.PermissionsHelperHint()).FontSize(sizeSmall).TextColor(textTone(t, t.Warning)) })
 	}
 	for i, pr := range privacyRows(p) {
 		s := setting{title: pr.title, about: pr.hint}
@@ -98,7 +98,7 @@ func (a *App) permissionControl(c *ui.Context, key, name string, granted bool) {
 	helperMode := a.status != nil && a.status.RunMode == "helper"
 	a.mu.Unlock()
 	if granted {
-		ui.Text(c, L.PermissionGranted()).TextColor(t.Success)
+		ui.Text(c, L.PermissionGranted()).TextColor(textTone(t, t.Success))
 		return
 	}
 	if helperMode && name != "keychain" {
@@ -189,7 +189,7 @@ func (a *App) signInSection(c *ui.Context) {
 			a.authorizedKeys(c, r, k)
 		}
 		if !temporary && !permanent && !keysOn {
-			r.block(c, "sign-none", func() { ui.Text(c, L.SignInNone()).FontSize(sizeSmall).TextColor(t.Warning) })
+			r.block(c, "sign-none", func() { ui.Text(c, L.SignInNone()).FontSize(sizeSmall).TextColor(textTone(t, t.Warning)) })
 		}
 	})
 }
@@ -375,7 +375,7 @@ func (a *App) portsSection(c *ui.Context) {
 		r.block(c, "svc-ports-save", func() {
 			ui.Row(c).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
 				if !ok {
-					ui.Text(c, L.ServicePortsInvalid()).FontSize(sizeSmall).TextColor(t.Danger)
+					ui.Text(c, L.ServicePortsInvalid()).FontSize(sizeSmall).TextColor(textTone(t, t.Danger))
 				}
 				ui.Box(c).Grow(1)
 				if ui.Button(c.Key("svc-ports-cancel"), L.ActionCancel()).Disabled(busy).Clicked() {

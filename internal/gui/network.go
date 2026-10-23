@@ -221,7 +221,7 @@ func (a *App) networkRows(c *ui.Context, r *rows, p localapi.NetworkProfile, s l
 	r.row(c, "net-"+p.ID, tile(navNetwork), set, func() {
 		switch state {
 		case "online":
-			ui.Text(c, L.NetworkOnline()).FontSize(sizeSmall).TextColor(t.Success)
+			ui.Text(c, L.NetworkOnline()).FontSize(sizeSmall).TextColor(textTone(t, t.Success))
 		case "connecting":
 			busyMark(c, L.NetworkConnecting(), busySize)
 		}
@@ -313,7 +313,7 @@ func (a *App) networkForm(c *ui.Context, f netForm, busy bool) {
 			edit(ui.TextInput(c.Key(key+"-secret-in"), &f.secret).Password().FillWidth().Disabled(busy))
 		})
 		if f.weakSecret {
-			ui.Text(c, L.NetworkSecretWeak()).FontSize(sizeSmall).TextColor(t.Warning)
+			ui.Text(c, L.NetworkSecretWeak()).FontSize(sizeSmall).TextColor(textTone(t, t.Warning))
 		}
 		ready := len(lines(f.servers)) > 0 && strings.TrimSpace(f.name) != ""
 		ui.Row(c).Gap(gap).Children(func() {

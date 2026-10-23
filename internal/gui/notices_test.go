@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
 // TestNoticesRender renders in the shell every state that needs the user
@@ -127,6 +128,52 @@ func TestAskColumns(t *testing.T) {
 		if got := askColumns(c.w, c.n); got != c.want {
 			t.Errorf("askColumns(%v, %d) = %d, want %d", c.w, c.n, got, c.want)
 		}
+	}
+}
+
+// TestNoticesByKeyboard: Tab reaches every control on the cards above the
+// panes — a request's Deny, Allow and tiles, Disconnect, the AI card's
+// Review and Stop — and Space switches a tile, which Allow then leaves
+// out.
+func TestNoticesByKeyboard(t *testing.T) {
+	i18n.SetLocaleFunc(func() string { return "en" })
+	defer i18n.SetLocaleFunc(nil)
+	a := demoApp(t)
+	want := []string{localapi.PermViewScreen, localapi.PermClipboard}
+	a.status.Requests = []localapi.HostRequest{{ID: 3, DeviceID: "213559601", Want: want}}
+	a.status.Sessions = []localapi.SessionInfo{{ID: 4, Role: "host", DeviceID: "100000002", State: "connected", Granted: []string{localapi.PermViewScreen}}}
+	a.status.AI = &localapi.AIActive{ID: 9, State: "running", Origin: "657365333"}
+	tt := ui.NewTester(a.main.view, 1280, 860)
+	tt.Frame()
+	tt.Frame()
+	reached := map[string]bool{}
+	controls := []string{L.ActionDeny(), L.ActionAllow(), permissionShort(localapi.PermViewScreen), permissionShort(localapi.PermClipboard),
+		L.ActionDisconnect(), L.AIReview(), L.AIActionStop()}
+	for range 80 {
+		tt.Key(0, ui.KeyTab)
+		tt.Frame()
+		for _, s := range controls {
+			if tt.Focused(s) {
+				reached[s] = true
+			}
+		}
+	}
+	for _, s := range controls {
+		if !reached[s] {
+			t.Errorf("Tab never reaches %q", s)
+		}
+	}
+	for range 80 {
+		if tt.Focused(permissionShort(localapi.PermClipboard)) {
+			break
+		}
+		tt.Key(0, ui.KeyTab)
+		tt.Frame()
+	}
+	tt.Key(0, ui.KeySpace)
+	tt.Frame()
+	if got := a.grants[3]; !slices.Equal(got, want[:1]) {
+		t.Fatalf("Space on the clipboard's tile: grants %v, want %v", got, want[:1])
 	}
 }
 

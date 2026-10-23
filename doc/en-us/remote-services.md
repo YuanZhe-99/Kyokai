@@ -13,7 +13,7 @@ for them: the services stay where they are, reached only by whoever Kyokai admit
 | `vnc` | `use-vnc` | 5900 |
 
 The host connects to 127.0.0.1, then ::1, on the service's port: the standard one, or the one
-its user set under Permissions, "Ports of this computer's services" (`access.settings`
+its user set under Access, "Ports of this computer's services" (`access.settings`
 `{service_ports: {ssh?, rdp?, vnc?}}`, a port of 0 or left out is the standard one; the status
 answers the ports in effect as `service_ports`). A controller names only the service, so it reaches
 no other port of the host. Home's card offers the services that answer on those ports. Its user turns a service on

@@ -78,7 +78,7 @@ func (a *App) runModeSection(c *ui.Context) {
 			}
 			r.row(c, "mode-"+strconv.Itoa(mode), tile(m.icon), s, func() {
 				if mode == cur {
-					ui.Text(c, L.RunModeInUse()).FontSize(sizeSmall).TextColor(t.Success)
+					ui.Text(c, L.RunModeInUse()).FontSize(sizeSmall).TextColor(textTone(t, t.Success))
 					return
 				}
 				if ui.Button(c.Key("mode-use-"+strconv.Itoa(mode)), L.RunModeSwitch()).Disabled(busy || !available).Clicked() {

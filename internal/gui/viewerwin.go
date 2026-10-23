@@ -647,8 +647,10 @@ func (vw *viewerWindow) keysAway(c *ui.Context) bool {
 
 // view is the window: the main window's sidebar and the group shown
 // (shellView), a window of its own's one pane, or in full screen the pane
-// in focus alone, without its header.
+// in focus alone, without its header — in the theme with readable muted
+// text (readableTheme).
 func (vw *viewerWindow) view(c *ui.Context) {
+	c.SetTheme(readableTheme(c.Theme()))
 	t := c.Theme()
 	if c.Vibrancy() {
 		c.Root().Background(ui.Transparent)

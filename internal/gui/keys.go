@@ -312,7 +312,7 @@ func (a *App) keyForm(c *ui.Context, k keysState) {
 			edit(ui.TextInput(c.Key("key-pass"), &f.passphrase).Password().Placeholder(label).Label(label).FillWidth())
 		}
 		if f.note != "" {
-			ui.Text(c, f.note).FontSize(sizeSmall).TextColor(t.Danger)
+			ui.Text(c, f.note).FontSize(sizeSmall).TextColor(textTone(t, t.Danger))
 		}
 		ui.Row(c).Gap(gap).Children(func() {
 			ui.Row(c).Grow(1)
@@ -467,7 +467,7 @@ func (a *App) shownKey(c *ui.Context, k shownKey) {
 	t := c.Theme()
 	ui.Column(c.Key("shown-key-body")).FillWidth().Gap(8).Padding(12).Radius(10).Border(2, t.Accent).Children(func() {
 		ui.Text(c, k.title).Bold()
-		ui.Text(c, L.KeysShownHint()).FontSize(sizeSmall).TextColor(t.Warning)
+		ui.Text(c, L.KeysShownHint()).FontSize(sizeSmall).TextColor(textTone(t, t.Warning))
 		ui.Text(c, k.pem).FontSize(sizeSmall).FontFeatures("tnum").Selectable()
 		ui.Row(c).Gap(gap).Children(func() {
 			if ui.Button(c.Key("shown-copy"), L.ActionCopy()).Clicked() {

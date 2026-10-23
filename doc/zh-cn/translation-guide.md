@@ -118,6 +118,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | prompt box / Send a prompt with (the send key) / link (an AI session's own session to a host) | 输入框 / 发送提示的按键 / 链接（AI 会话与被控端之间的独立会话） |
 | window buttons (drawn on Windows) / snap layouts | 窗口按钮（Windows 上自绘） / 贴靠布局 |
 | appearance: follow the system / light / dark | 外观：跟随系统 / 浅色 / 深色 |
+| accent (colour) / muted text / tint (a colour under another) / focus ring / contrast | 强调色 / 次要文字 / 底色 / 焦点环 / 对比度 |
 | toolbar (the viewer's) / Hide controls / Show controls | 控制栏 / 收起控制栏 / 展开控制栏 |
 | grip / handle (the folded toolbar) | 拖动柄 / 把手 |
 | feature token (protocol) | 标记 |

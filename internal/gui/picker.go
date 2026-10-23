@@ -327,7 +327,7 @@ func pickerKind(c *ui.Context, kind string, on bool) bool {
 	b.Children(func() {
 		ui.Column(c).Fill().Gap(4).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			ui.Icon(c, kindIcon(kind)).FontSize(navIconSize + 2).TextColor(fg)
-			ui.Text(c, kindName(kind)).FontSize(sizeSmall).TextColor(fg).TextAlign(ui.Center)
+			ui.Text(c, kindName(kind)).FontSize(sizeSmall).TextColor(textTone(t, fg)).TextAlign(ui.Center)
 		})
 	})
 	return b.Changed()

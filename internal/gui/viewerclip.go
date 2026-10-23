@@ -252,7 +252,7 @@ func (v *viewer) clipPanel(c *ui.Context) {
 		}, L.ViewerClipShare())
 		ui.Text(c, L.ViewerClipHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		if share && !st.front {
-			ui.Text(c, L.ViewerClipBehind()).FontSize(sizeSmall).TextColor(t.Warning)
+			ui.Text(c, L.ViewerClipBehind()).FontSize(sizeSmall).TextColor(textTone(t, t.Warning))
 		}
 		if len(st.history) == 0 {
 			ui.Text(c, L.ViewerClipEmpty()).FontSize(sizeSmall).TextColor(t.TextMuted)

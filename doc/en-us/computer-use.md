@@ -179,7 +179,7 @@ through the server (Relayed, with a hint to turn on direct connections on both d
 The host sends its sound to a controller granted `hear-sound` (its own permission, asked for and
 granted by a correct password by default) that asks for it (`{"type": "audio", on}`; the viewer asks
 as its stream starts, and a resumed controller asks again). What it shares is the host user's choice
-in Permissions, **Sound to share** (the GUI's `sound_source`, sent to the engine as it attaches and when
+in Access, **Sound to share** (the GUI's `sound_source`, sent to the engine as it attaches and when
 it changes, `sound.source`; the helper passes it to its agent; a running stream switches at once):
 what the computer plays, or one input device (`sound.devices` lists them: Core Audio's devices with
 inputs on macOS, the active capture endpoints on Windows). `audio.rs` captures what the computer
