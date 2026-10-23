@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
@@ -21,8 +22,12 @@ func TestSettingsHitsShow(t *testing.T) {
 		if !ok {
 			a := demoApp(t)
 			a.page = h.page
-			// What only shows once loaded, or switched on.
+			// What only shows once loaded, or switched on — and macOS's
+			// privacy permissions, which its core always reports (search
+			// finds them there only; regression: never set, Access hid them
+			// on a Mac).
 			a.status.WithoutAsking = true
+			a.status.Permissions = &localapi.Permissions{}
 			a.net.loaded = true
 			a.ai.loaded, a.ai.settings = true, demoAISettings(true)
 			tt = ui.NewTester(a.View, 1000, 4000)
