@@ -59,8 +59,6 @@ type viewerWindow struct {
 	tabs []tab
 	// split: which tabs show where; its focus is the tab shown.
 	split split
-	// across and down: where the dividers of a split sit, in percent.
-	across, down float32
 	// dragging: a tab was dragged over the picture area in the last frame,
 	// which then shows where it may be dropped.
 	dragging bool
@@ -153,18 +151,19 @@ func (vw *viewerWindow) fullScreen() bool {
 
 // add puts a tab in this window as the last tab, shown in the place in
 // focus. Notes: call on the main thread.
-func (vw *viewerWindow) add(v tab) { vw.addAt(v, zoneMiddle) }
+func (vw *viewerWindow) add(v tab) { vw.addAt(v, nil, zoneMiddle) }
 
 // addAt puts a tab in this window as the last tab, shown where it was
-// dropped (split.place). Notes: call on the main thread.
-func (vw *viewerWindow) addAt(v tab, z dropZone) {
+// dropped on the pane of target (split.place). Notes: call on the main
+// thread.
+func (vw *viewerWindow) addAt(v, target tab, z dropZone) {
 	if vw.main {
 		vw.app.mainWindow()
 	}
 	vw.mu.Lock()
 	prev := vw.shown()
 	vw.tabs = append(vw.tabs, v)
-	vw.split.place(v, z)
+	vw.split.place(v, target, z)
 	vw.home = false
 	vw.mu.Unlock()
 	if prev != nil && prev != v {
@@ -321,98 +320,65 @@ func (vw *viewerWindow) view(c *ui.Context) {
 	}
 }
 
-// panesView is the picture area: the tabs shown in the split's places,
-// with its dividers, and — while a tab is dragged over it — where a drop
-// would put it: an edge splits the area in two there, a corner in four,
-// the middle replaces the tab in focus.
+// panesView is the picture area: the split's panes with their dividers.
 func (vw *viewerWindow) panesView(c *ui.Context, sp split) {
-	t := c.Theme()
 	area := ui.Column(c.Key("panes")).Grow(1).FillWidth().MinHeight(0)
 	_, over := ui.DragOver[tabDrag](area)
 	vw.mu.Lock()
-	if vw.across == 0 {
-		vw.across, vw.down = 50, 50
-	}
-	dragging := vw.dragging
+	dragging := vw.dragging || over
 	vw.dragging = over
 	vw.mu.Unlock()
-	pane := func(i int) func() {
-		return func() { vw.pane(c, sp, i) }
-	}
-	area.Children(func() {
-		switch sp.layout {
-		case layoutColumns:
-			ui.SplitPercent(c.Key("split-across"), &vw.across, pane(0), pane(1)).Fill()
-		case layoutRows:
-			ui.SplitVerticalPercent(c.Key("split-down"), &vw.down, pane(0), pane(1)).Fill()
-		case layoutGrid:
-			ui.SplitVerticalPercent(c.Key("split-down"), &vw.down, func() {
-				ui.SplitPercent(c.Key("split-top"), &vw.across, pane(0), pane(1)).Fill()
-			}, func() {
-				ui.SplitPercent(c.Key("split-bottom"), &vw.across, pane(2), pane(3)).Fill()
-			}).Fill()
-		default:
-			pane(0)()
-		}
-		if !dragging && !over {
-			return
-		}
-		for _, z := range dropZones {
-			box := ui.Box(c.Key("drop-" + strconv.Itoa(int(z.zone)))).Absolute().
-				LeftPercent(z.x).TopPercent(z.y).WidthPercent(z.w).HeightPercent(z.h).Radius(8)
-			if _, on := ui.DragOver[tabDrag](box); on {
-				vw.mu.Lock()
-				vw.dragging = true
-				vw.mu.Unlock()
-				box.Background(t.Accent.Alpha(0.28)).Border(2, t.Accent)
-			}
-			if d, ok := ui.Drop[tabDrag](box); ok {
-				vw.app.dropTab(d.key, vw, z.zone)
-			}
-		}
-	})
+	area.Children(func() { vw.paneView(c, sp, sp.root, "p", dragging) })
 }
 
-// dropZones are where a tab dragged over the picture area may go, in
-// percent of the area: the corners, the edges between them, the middle.
+// paneView draws one pane of the split: a tab, or its two halves with the
+// divider between them (keyed by their path in the tree).
+func (vw *viewerWindow) paneView(c *ui.Context, sp split, p *pane, path string, dragging bool) {
+	switch {
+	case p == nil:
+	case p.first == nil:
+		vw.tabPane(c, sp, p.tab, dragging)
+	case p.across:
+		ui.SplitPercent(c.Key(path), &p.ratio,
+			func() { vw.paneView(c, sp, p.first, path+"a", dragging) },
+			func() { vw.paneView(c, sp, p.second, path+"b", dragging) }).Fill()
+	default:
+		ui.SplitVerticalPercent(c.Key(path), &p.ratio,
+			func() { vw.paneView(c, sp, p.first, path+"a", dragging) },
+			func() { vw.paneView(c, sp, p.second, path+"b", dragging) }).Fill()
+	}
+}
+
+// dropZones are where on a pane a dragged tab may go, in percent of the
+// pane: beside it on each side (splitting it), or in its place.
 var dropZones = []struct {
 	zone       dropZone
 	x, y, w, h float32
 }{
-	{zoneTopLeft, 0, 0, 25, 25}, {zoneTop, 25, 0, 50, 25}, {zoneTopRight, 75, 0, 25, 25},
-	{zoneLeft, 0, 25, 25, 50}, {zoneMiddle, 25, 25, 50, 50}, {zoneRight, 75, 25, 25, 50},
-	{zoneBottomLeft, 0, 75, 25, 25}, {zoneBottom, 25, 75, 50, 25}, {zoneBottomRight, 75, 75, 25, 25},
+	{zoneLeft, 0, 0, 25, 100}, {zoneRight, 75, 0, 25, 100},
+	{zoneTop, 25, 0, 50, 25}, {zoneBottom, 25, 75, 50, 25}, {zoneMiddle, 25, 25, 50, 50},
 }
 
-// pane is one place of the split: its tab with, while the area is split, a
-// thin header (its title, Show alone) and an accent edge on the pane in
-// focus; an empty place says a tab may be dragged there. The focus follows
-// the keyboard into a pane.
-func (vw *viewerWindow) pane(c *ui.Context, sp split, i int) {
+// tabPane is a tab's pane: while the window is split, a thin header (its
+// title, Show only this) and an accent edge on the tab in focus; while a
+// tab is dragged over the picture area, where a drop would put it. The
+// focus follows the keyboard into a pane.
+func (vw *viewerWindow) tabPane(c *ui.Context, sp split, v tab, dragging bool) {
 	t := c.Theme()
-	v := sp.panes[i]
-	split := sp.layout != layoutOne
-	box := ui.Column(c.Key("pane-" + strconv.Itoa(i))).Fill().MinWidth(0).MinHeight(0)
-	if split && i == sp.focus {
+	key := v.tabKey()
+	split := sp.root.first != nil
+	box := ui.Column(c.Key("pane-" + key)).Fill().MinWidth(0).MinHeight(0)
+	if split && v == sp.focus {
 		box.Border(2, t.Accent)
 	}
-	if v != nil && box.FocusWithin() && i != sp.focus {
+	if box.FocusWithin() && v != sp.focus {
 		vw.mu.Lock()
-		if vw.split.panes[i] == v {
-			vw.split.focus = i
-		}
+		vw.split.focus = v
 		vw.mu.Unlock()
 		vw.retitle()
 		vw.app.syncFront()
 	}
 	box.Children(func() {
-		if v == nil {
-			ui.Column(c).Fill().Background(t.Surface).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-				ui.Text(c, L.ViewerPaneEmpty()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			})
-			return
-		}
-		key := v.tabKey()
 		if split {
 			ui.Row(c.Key("pane-head")).FillWidth().Shrink(0).Padding(2, 8).Gap(6).AlignItems(ui.Center).
 				Background(t.Background).Children(func() {
@@ -427,6 +393,22 @@ func (vw *viewerWindow) pane(c *ui.Context, sp split, i int) {
 			})
 		}
 		ui.Column(c.Key("tab-" + key)).Grow(1).FillWidth().MinHeight(0).Children(func() { v.view(c) })
+		if !dragging {
+			return
+		}
+		for _, z := range dropZones {
+			zone := ui.Box(c.Key("drop-" + strconv.Itoa(int(z.zone)))).Absolute().
+				LeftPercent(z.x).TopPercent(z.y).WidthPercent(z.w).HeightPercent(z.h).Radius(8)
+			if _, on := ui.DragOver[tabDrag](zone); on {
+				vw.mu.Lock()
+				vw.dragging = true
+				vw.mu.Unlock()
+				zone.Background(t.Accent.Alpha(0.28)).Border(2, t.Accent)
+			}
+			if d, ok := ui.Drop[tabDrag](zone); ok {
+				vw.app.dropTab(d.key, vw, v, z.zone)
+			}
+		}
 	})
 }
 
@@ -594,10 +576,10 @@ func (a *App) allTabs() []tab {
 	return out
 }
 
-// dropTab puts a tab, by its tabKey, where it was dropped on a window's
-// picture area (split.place), bringing it from another window first.
+// dropTab puts a tab, by its tabKey, where it was dropped on the pane of
+// target (split.place), bringing it from another window first.
 // Notes: call on the main thread.
-func (a *App) dropTab(key string, to *viewerWindow, z dropZone) {
+func (a *App) dropTab(key string, to *viewerWindow, target tab, z dropZone) {
 	v := a.tabFor(key)
 	if v == nil {
 		return
@@ -606,12 +588,12 @@ func (a *App) dropTab(key string, to *viewerWindow, z dropZone) {
 		if from != nil {
 			from.remove(v)
 		}
-		to.addAt(v, z)
+		to.addAt(v, target, z)
 		return
 	}
 	to.mu.Lock()
 	prev := to.shown()
-	to.split.place(v, z)
+	to.split.place(v, target, z)
 	to.home = false
 	to.mu.Unlock()
 	if prev != nil && prev != v {

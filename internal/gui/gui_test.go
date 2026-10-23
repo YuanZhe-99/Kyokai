@@ -560,8 +560,8 @@ func TestFrontFollowsTheWindowUsedLast(t *testing.T) {
 		return v
 	}
 	x, y, z := newV("111111111"), newV("222222222"), newV("333333333")
-	a.main = &viewerWindow{app: a, main: true, tabs: []tab{x, y}, split: split{panes: [4]tab{y}}}
-	other := &viewerWindow{app: a, tabs: []tab{z}, split: split{panes: [4]tab{z}}}
+	a.main = &viewerWindow{app: a, main: true, tabs: []tab{x, y}, split: split{root: &pane{tab: y}, focus: y}}
+	other := &viewerWindow{app: a, tabs: []tab{z}, split: split{root: &pane{tab: z}, focus: z}}
 	sent := func(v *viewer) string {
 		select {
 		case p := <-v.out:
@@ -764,26 +764,26 @@ func TestConnectionTabsRender(t *testing.T) {
 		home  bool
 		room  ui.TitleBar
 		drops []struct {
-			tab  int
-			zone dropZone
+			tab, target int
+			zone        dropZone
 		}
 	}{{"tabs-home", 0, true, ui.TitleBar{}, nil}, {"tabs-picture", 0, false, ui.TitleBar{}, nil}, {"tabs-waiting", 1, false, ui.TitleBar{}, nil}, {"tabs-failed", 2, false, ui.TitleBar{}, nil},
 		// The strip is the title bar: room for the traffic lights, or for
 		// Windows' buttons.
 		{"tabs-titlebar-mac", 0, false, ui.TitleBar{Height: 38, Left: 76}, nil}, {"tabs-titlebar-windows", 0, true, ui.TitleBar{Height: 38, Right: 138}, nil},
-		// Split: two side by side, and four in the corners with one empty.
+		// Split: two side by side; one full height beside two stacked.
 		{name: "tabs-split-columns", cur: 0, drops: []struct {
-			tab  int
-			zone dropZone
-		}{{1, zoneRight}}},
-		{name: "tabs-split-grid", cur: 0, drops: []struct {
-			tab  int
-			zone dropZone
-		}{{1, zoneTopRight}, {2, zoneBottomRight}}}} {
+			tab, target int
+			zone        dropZone
+		}{{1, 0, zoneRight}}},
+		{name: "tabs-split-three", cur: 0, drops: []struct {
+			tab, target int
+			zone        dropZone
+		}{{1, 0, zoneRight}, {2, 1, zoneBottom}}}} {
 		vw.split.single(vw.tabs[shot.cur])
 		vw.home = shot.home
 		for _, d := range shot.drops {
-			vw.split.place(vw.tabs[d.tab], d.zone)
+			vw.split.place(vw.tabs[d.tab], vw.tabs[d.target], d.zone)
 		}
 		want := vw.split
 		tt := ui.NewTester(vw.view, 1100, 640)

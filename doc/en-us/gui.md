@@ -179,12 +179,13 @@ when `SCREENSHOT_DIR` is set.
   outside Kyokai, or with its ⧉, it gets a window of its own, which closes with its last tab;
   closing such a window disconnects its tabs. A tab dragged over a window's picture area (from
   its own strip or another window's) shows where it may go and splits the area there, as Claude
-  Desktop splits sessions: an edge puts it beside the tabs shown (two side by side, or one above
-  the other), a corner in one of four places, the middle in place of the tab in focus (`split`,
-  `split.place`). The dividers move; while split each place has a thin header with its title and
+  Desktop splits sessions: dropped on an edge of a tab's pane it splits that pane, beside or
+  above or below that tab, so one side may hold one tab at full height and the other two; dropped
+  in a pane's middle it takes that tab's place (`split`, `split.place`, a tree of panes; at most
+  four tabs shown, a further one takes a place). The dividers move; while split each place has a thin header with its title and
   Show only this, and the place in focus an accent edge: the focus follows the keyboard into a
   place, and choosing a tab in the strip brings its place into focus or puts it in the one in
-  focus. A closed tab gives its place up and the layout shrinks to fit; Home shows over the whole
+  focus. A closed tab gives its room to its neighbour; Home shows over the whole
   window. Every tab shown keeps its connection running; only the one in focus takes the keyboard
   and the clipboard. Keys grabbed for a window go to the tab in focus. A tab
   is a desktop or one of a device's services (SSH, Remote Desktop, VNC; `tab`, `serviceTab`), one
