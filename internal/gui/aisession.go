@@ -58,10 +58,12 @@ type aiTab struct {
 }
 
 // aiSent is a reply sent from a pane, after the step that was the newest
-// then (its time; 0 before any).
+// then (its time; 0 before any) and the model's answer it followed, which
+// the task's text no longer keeps once the next answer comes.
 type aiSent struct {
-	text  string
-	after int64
+	text   string
+	after  int64
+	answer string
 }
 
 // aiBinds reports whether a host's task is the one a pane's first
@@ -255,10 +257,20 @@ func (a *App) ensureAILoaded() {
 }
 
 // deviceName is a device's name as this computer shows it — the name its
-// user gave it, else its own — or else its Device ID in groups.
+// user gave it, else its own, as the recent devices or a connection now
+// know it (one that connected here is not among the recent) — or else its
+// Device ID in groups.
 func (a *App) deviceName(device string) string {
 	about := a.recentAbout(device)
 	a.mu.Lock()
+	if about.Name == "" && a.status != nil {
+		for _, s := range a.status.Sessions {
+			if s.DeviceID == device && s.Peer.Name != "" {
+				about = s.Peer
+				break
+			}
+		}
+	}
 	about = a.prefs.named(device, about)
 	a.mu.Unlock()
 	if about.Name != "" {
@@ -569,7 +581,7 @@ func (t *aiTab) submit(mode boxMode, s aiPaneState, text string) bool {
 		after = s.task.Steps[len(s.task.Steps)-1].At
 	}
 	if mode == boxReply {
-		t.sent = append(t.sent, aiSent{text: text, after: after})
+		t.sent = append(t.sent, aiSent{text: text, after: after, answer: s.task.Text})
 		t.reply = ""
 		if t.device == "" {
 			a.aiReply(s.task.ID, text)

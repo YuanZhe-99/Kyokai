@@ -581,6 +581,7 @@
   "SettingsStartHiddenAbout": "ログイン時に開くと、トレイのアイコンだけを表示します。",
   "SettingsTheme": "外観",
   "SettingsThemeAbout": "サイドバー下部のボタンでも切り替えられます。",
+  "ShellEngineDown": "エンジン停止中",
   "ShellOffline": "オフライン",
   "ShellOnline": "オンライン",
   "SidebarHide": "サイドバーを隠す",

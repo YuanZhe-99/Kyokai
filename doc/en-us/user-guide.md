@@ -213,7 +213,7 @@ Someone with your password gets in at once with what Access, **With a correct pa
 allows — the tiles turned on (by default seeing the screen, the mouse and keyboard, the clipboard and files, but no AI
 tasks). Otherwise — they ask for more, ask without a password, or a known Device ID arrives with a
 new key — a request appears above the panes with their Device ID, a warning in the last
-two cases, and a switch for each permission they asked for. Choose what to allow, then **Allow**, or **Deny**. Devices you allowed are listed in
+two cases, and a tile for each permission they asked for, all on at first: turn off what you do not want to give, then **Allow**, or **Deny**. Devices you allowed are listed in
 Access; **Remove** revokes one at once and ends its connections. There, **Ways to sign in**
 chooses what lets a device in: the temporary password, the permanent password and each key that can
 connect, each with its own switch, in any combination; with none on, every connection asks
@@ -255,7 +255,7 @@ for **New AI task**). Describe the task in the box and press Enter, or pick one 
 suggestions. Each AI task is a pane of its own, named after its first instruction; **Rename** in
 its header gives it another name, and you can open several, though one computer runs one task at
 a time. While the task works you see what the model says and each action it takes; an action that
-needs your approval waits in the conversation with **Allow** and **Deny**, and a banner above the
+needs your approval waits in the conversation with **Allow** and **Deny**, and a card above the
 panes and a notification tell you when its pane is not in view. **Pause**, **Resume** and **Stop**
 sit where Send was. When the task is done, write again to continue it. A new task's pane lists
 your recent tasks, here and on other computers (never screenshots); Settings, **AI providers**, clears
@@ -277,7 +277,7 @@ actions** only — its user is asked as for any connection — and the task runs
 computer's provider and key. **Watch its screen** in the task's header opens its desktop beside
 the task. Everyone connected to that computer sees the same task and the same draft as it is
 typed, and so does its own user. With **Approve AI actions** you can answer its approvals; the
-other computer's user can always answer them too, and sees a banner while your task works there,
+other computer's user can always answer them too, and sees a card above its panes while your task works there,
 with **Stop** at hand. Closing the task's pane pauses the task there.
 
 ## Safety

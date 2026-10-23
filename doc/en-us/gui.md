@@ -12,8 +12,11 @@ when `SCREENSHOT_DIR` is set.
   from each other (`shellView`). Home, each device's desktop and each of its services (SSH, Remote
   Desktop, VNC), a host's status and each AI session is a pane (`tab`: `homeTab`, `viewer`,
   `serviceTab`, `statusTab`, `aiTab`). Requests waiting for the
-  user, a device connected here and an AI task here show as cards above the panes, a toast at
-  their foot. The window is named after the pane in focus.
+  user, a device connected here and an AI task here show as cards above the panes — each a pane
+  of its own lined up with them (`noticeCard`), tinted in the accent for a decision the user makes
+  (a request, an AI task waiting for approval), in the warning colour for someone at work on this
+  computer (a device connected here, a controller's AI task) — a toast at their foot. The window
+  is named after the pane in focus, again whenever an AI session's title or device name changes.
 - **Sidebar** (`sidebarView`): at the top Hide the sidebar and + (the + picker, below), after the
   traffic lights on macOS; Home, with Kyokai's mark; "Open" with how
   many panes are open, then one entry per group in the order they opened — a pane alone as a row
@@ -23,7 +26,8 @@ when `SCREENSHOT_DIR` is set.
   stands out, and in a group the pane in focus in the accent's tint; a row drags its pane as its
   header does. At the bottom: search (below), the appearance (follow the system, light and dark in
   turn — a half-filled monitor, a sun, a moon), the gear (Settings), and the networks' state as a dot and a
-  word (Online, Connecting…, Could not connect, Offline) that opens Settings at Network. Hidden, the sidebar is
+  word (Online, Connecting…, Could not connect, Offline; before the engine answers, Starting… or
+  Engine not running) that opens Settings at Network. Hidden, the sidebar is
   a rail of icons, a group's with its count and names in tooltips (`sidebar_rail` in `gui.json`).
 - **A pane's header** (44 points): the kind's icon, the device's name (at most 200 points) and
   its Device ID (or the service, or an AI session's title), which drag the pane — with room
@@ -125,12 +129,15 @@ when `SCREENSHOT_DIR` is set.
   address (an IP address or domain name, for a device that accepts connections by address;
   "Looking for the device…" while it is asked who it is) and Connect (Enter too; a Device ID needs
   a network), and **Open as**: Desktop, SSH, Remote Desktop, VNC or AI task (the desktop asking to
-  run AI tasks there), what Connect opens (`connectAs`). On macOS, while Screen Recording,
-  Accessibility, Input Monitoring or the Keychain is missing, "Privacy permissions" with Allow for
-  each (Settings › Access always shows it there); a permission asked for in this run also offers
-  "Reopen Kyokai", since macOS counts a new grant only in an engine started after it. In the
-  helper modes the card says the permissions are Kyokai Helper's, and a missing one offers Restart
-  Kyokai Helper. Below, **Devices** and how many, with Others in my networks (off by default,
+  run AI tasks there), what Connect opens (`connectAs`) — five segments, or a menu where the card
+  is narrower than they need in the widest language (440 points). On macOS, while Screen
+  Recording, Accessibility, Input Monitoring or the Keychain is missing, **Privacy permissions**
+  under its title as Home's sections have one: a card of the rows Settings › Access lists them in
+  (`privacyList`) — each its tile, one sentence and Allow, or Allowed; the longer explanation
+  behind ⓘ —; a permission asked for in this run also offers "Reopen Kyokai", since macOS counts
+  a new grant only in an engine started after it. In the helper modes the card says first that the
+  permissions are Kyokai Helper's, and a missing one offers Restart Kyokai Helper. Below,
+  **Devices** and how many, with Others in my networks (off by default,
   `others_in_networks` in `gui.json`) and All or Online beside the title: a grid of device cards
   of equal height — one per device, never one per session — each at least 300 wide, one to three
   side by side (`homeColumnsFor`). A card has a header (avatar, its name — the one given here,
@@ -147,11 +154,13 @@ when `SCREENSHOT_DIR` is set.
   ready, each only when its status says the saved password or key grants it (`offers`); the most
   used for that device first (`Prefs.Uses`, counted on this device only), else in that order.
   Everything else stays in the ⋯ menu, which has Connect, Connect with AI, Open Remote Desktop /
-  SSH / VNC, Addresses… (an editor card above the devices, like Rename: every route with its
-  latency, when it was last used and the bitrate it reached, Remove for an address, a field to add
-  one, Route: the same choice as the route menu, and Done; Home looks at the shown devices'
-  addresses every 60 s while visible), Rename… (a name shown only on this device, edited in a card
-  above the devices; empty goes back to the device's own), Saved passwords and keys… (Settings ›
+  SSH / VNC, Addresses… (an editor card of Home's above the devices, like Rename: the device's
+  avatar, what routes are and Route — the same choice as the route menu — across from them; every
+  route with its latency, when it was last used and the bitrate it reached, Remove for an address,
+  a line between each; a field to add one (Enter adds it), and Done; Home looks at the shown
+  devices' addresses every 60 s while visible), Rename… (a name shown only on this device, edited
+  in a card above the devices with the device's avatar, its field taking the keys — Enter saves,
+  Escape leaves it; empty goes back to the device's own), Saved passwords and keys… (Settings ›
   Security & privacy), Forget old identity (after a key change) and Remove (disconnects it, takes
   it and its finished connections off Home, and forgets its pinned key, saved sign-ins and the name
   given here). With Others in my networks on, **In your networks** follows: the Kyokai devices the
@@ -179,14 +188,16 @@ when `SCREENSHOT_DIR` is set.
   values show, only "Status from HH:MM", and the histories are cleared. Without a sample the card
   says how the watch goes: "Getting its status…" with the loading indicator, no saved password or
   key, needs Kyokai 0.4.1 there, or refused.
-- **Confirmations:** a controller waiting for this host's user shows as a card above the panes with
-  its Device ID, whether it is known or a new key claiming a known ID, a warning when it gave no
-  password, and a switch per requested
-  permission, with Allow (the primary button) and Deny; on macOS a warning when Screen Recording or
-  Accessibility is missing for what it asks; a notification and the window coming forward announce
-  it.
+- **Confirmations:** a controller waiting for this host's user shows as a card above the panes, in
+  the accent: its avatar, "… wants to connect", its Device ID and whether it connected before, and
+  across from them Deny and Allow (the primary button); one warning callout when it gave no
+  password, when another key claims a Device ID known here, and on macOS when Screen Recording or
+  Accessibility is missing for what it asks; then what it asks for as tiles that toggle, all on
+  at first, as wide as the card while each keeps 140 points, else in the fewest rows, as even as
+  they go (`askColumns`) — a tile switched off is left out of what Allow grants. A notification and the window coming forward announce it.
 - **Connected here:** while another device is connected to this one (or resuming), a card above
-  the panes names it, says what it may do, and has Disconnect.
+  the panes, in the warning colour, names it, gives its Device ID and what it may do, and has
+  Disconnect.
 - **AI providers** (`aiProviders`): Defaults for new tasks — the model (every model of every source by its
   `Vendor: Model` name) and Ask before acting (the approval policy); Providers, a template's
   choice and Add provider beside the title, each source by its letter with its template, model
@@ -197,9 +208,10 @@ when `SCREENSHOT_DIR` is set.
   prompt with (Enter, Shift+Enter or the send button only; `send_key` in `gui.json`) and Recent
   tasks with Clear history (this computer's history and the sessions kept here, but those open
   in a pane). The tasks themselves are AI sessions' panes ([AI sessions](#ai-sessions)). While
-  this computer's task waits for approval, a banner above the panes has Review (its session's
-  pane), and a notification announces it; while a controller's task works here, a banner has
-  Review and Stop; neither shows while a session following that task shows.
+  this computer's task waits for approval, a card above the panes in the accent has Review (its
+  session's pane), and a notification announces it; while a controller's task works here, one in
+  the warning colour names that device and has Review and Stop; neither shows while a session
+  following that task shows.
 - **Network:** first how the networks are doing (`networkSummary`): online, connecting, could not
   connect or offline, and how many of those joined are connected. Then **Networks**, the ones kept
   (up to 8; Add a network beside the title), with a note behind ⓘ that this device has the same
@@ -283,12 +295,15 @@ when `SCREENSHOT_DIR` is set.
   Open folder and **Save logs…** (the engine's logs through `logs.read`, the helper's and its
   agent's in the helper modes, which only administrators open, and this GUI's own, into one text
   file), or "Off" with No logs.
-- **Protected mode:** the main window is one pane, with no sidebar: a card with the permanent
-  password field and Turn off (a wrong password says so) over this computer's AI session
-  ([AI sessions](#ai-sessions)); its header's gear opens Settings with only its AI page.
-  Confirmations and the devices connected here still show.
-- Until the engine's session is attached, pages that need it show "Starting…" or why the engine is
-  not running.
+- **Protected mode:** the main window is one pane, with no sidebar: a card — its shield, what
+  protected mode is, and across from them the permanent password's field and Turn off (Enter too;
+  a wrong password says so) — over this computer's AI session ([AI sessions](#ai-sessions)); its
+  header's gear opens Settings with only its AI page. Confirmations and the devices connected here
+  still show.
+- Until the engine's session is attached, pages that need it show in their place, centred,
+  "Starting…" or that the engine is not running and why (`emptyState`); a profile whose identity
+  moved to Kyokai Helper while the helper is gone says so the same way, with Install Kyokai
+  Helper and Start over here.
 - **App updates (About & updates):** a daily check (switchable) and "Check for updates" read the signed
   update of the latest GitHub release; "Install and restart" stops the engine, installs in place
   and relaunches. Development builds say they cannot update themselves.
@@ -296,7 +311,8 @@ when `SCREENSHOT_DIR` is set.
 ## Connections
 
 - One connection per device, shown as a pane from the start, as RustDesk shows a tab. Connecting
-  opens its pane in the main window, in an entry of its own: Connecting…; while the device's user
+  opens its pane in the main window, in an entry of its own, a card of Home's in its middle with
+  the device's avatar and name: Connecting…; while the device's user
   is asked, "Waiting for the other device to allow it…" with "Or enter its password", Remember
   password and Connect (the waiting request is given up, so the device has one at a time); then
   the picture. When the connection ends or fails, the pane says why (a wrong password among them),
@@ -400,8 +416,9 @@ when `SCREENSHOT_DIR` is set.
   quiet face; the task's latest 20 steps in groups between the replies sent from the pane, each
   group headed by its count ("4 steps"), which folds it; each step a round mark (a check when
   it ran, a cross in the warning colour when it failed or was declined, a dash when it was not
-  run), what it did in words, what became of it when not done as asked, and its time; the
-  model's text; its progress note while it works; a step waiting for approval inline, framed
+  run), what it did in words, what became of it when not done as asked, and its time; each
+  reply after the answer it was sent to, which the pane keeps though the task keeps only its
+  newest, and that newest answer last; its progress note while it works; a step waiting for approval inline, framed
   in the accent with a shield — what it would do, the provider's notes, Allow and Deny and
   "Moving the mouse on NUC pauses the AI at once." (where the session may not approve, that the
   host's user decides); the state in words with the model, and why it failed. It follows its

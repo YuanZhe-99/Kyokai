@@ -37,7 +37,6 @@ func (a *App) accessView(c *ui.Context) {
 // privacySection is Access's Privacy permissions (macOS): each permission
 // Kyokai needs, Allowed or with Allow.
 func (a *App) privacySection(c *ui.Context) {
-	t := c.Theme()
 	a.mu.Lock()
 	var p *localapi.Permissions
 	if a.status != nil {
@@ -48,18 +47,27 @@ func (a *App) privacySection(c *ui.Context) {
 	if p == nil {
 		return
 	}
-	a.section(c, "perms", L.PermissionsTitle(), nil, func(r *rows) {
-		if helperMode {
-			r.block(c, "perms-helper", func() { ui.Text(c, L.PermissionsHelperHint()).FontSize(sizeSmall).TextColor(t.Warning) })
+	a.section(c, "perms", L.PermissionsTitle(), nil, func(r *rows) { a.privacyList(c, r, "perm", p, helperMode) })
+}
+
+// privacyList adds the privacy permissions Kyokai needs (macOS) to a list
+// of rows, keyed after key — Access's and Home's show at once while the
+// Settings sheet covers Home: each with its tile, a sentence and its
+// control (permissionControl), How it works on the first; in the helper
+// modes, first what to do there.
+func (a *App) privacyList(c *ui.Context, r *rows, key string, p *localapi.Permissions, helperMode bool) {
+	t := c.Theme()
+	if helperMode {
+		r.block(c, key+"-helper", func() { ui.Text(c, L.PermissionsHelperHint()).FontSize(sizeSmall).TextColor(t.Warning) })
+	}
+	for i, pr := range privacyRows(p) {
+		s := setting{title: pr.title, about: pr.hint}
+		if i == 0 {
+			s.more = L.PermissionsHint()
 		}
-		for i, pr := range privacyRows(p) {
-			s := setting{title: pr.title, about: pr.hint}
-			if i == 0 {
-				s.more = L.PermissionsHint()
-			}
-			r.row(c, "perm-"+pr.name, tile(pr.icon), s, func() { a.permissionControl(c, pr.name, pr.granted) })
-		}
-	})
+		k := key + "-" + pr.name
+		r.row(c, k, tile(pr.icon), s, func() { a.permissionControl(c, k, pr.name, pr.granted) })
+	}
 }
 
 // privacyRow is a privacy permission Kyokai needs (macOS).
@@ -79,11 +87,11 @@ func privacyRows(p *localapi.Permissions) []privacyRow {
 	}
 }
 
-// permissionControl is what a privacy permission's row offers: Allowed,
-// or Allow (with Reopen Kyokai once asked in this run, since macOS counts
-// a new grant only in an engine started after it; in the helper modes,
-// Restart Kyokai Helper).
-func (a *App) permissionControl(c *ui.Context, name string, granted bool) {
+// permissionControl is what a privacy permission's row (keyed key) offers:
+// Allowed, or Allow (with Reopen Kyokai once asked in this run, since
+// macOS counts a new grant only in an engine started after it; in the
+// helper modes, Restart Kyokai Helper).
+func (a *App) permissionControl(c *ui.Context, key, name string, granted bool) {
 	t := c.Theme()
 	a.mu.Lock()
 	asked := maps.Clone(a.asked)
@@ -94,16 +102,16 @@ func (a *App) permissionControl(c *ui.Context, name string, granted bool) {
 		return
 	}
 	if helperMode && name != "keychain" {
-		if ui.Button(c.Key("perm-restart-"+name), L.ActionRestartHelper()).Clicked() {
+		if ui.Button(c.Key(key+"-restart"), L.ActionRestartHelper()).Clicked() {
 			a.restartAgent()
 		}
 	}
 	if asked[name] && !helperMode {
-		if ui.Button(c.Key("perm-reopen-"+name), L.ActionReopen()).Clicked() {
+		if ui.Button(c.Key(key+"-reopen"), L.ActionReopen()).Clicked() {
 			a.reopen()
 		}
 	}
-	if ui.Button(c.Key("perm-ask-"+name), L.ActionAllowPermission()).Clicked() {
+	if ui.Button(c.Key(key+"-ask"), L.ActionAllowPermission()).Clicked() {
 		a.mu.Lock()
 		a.markAsked(name)
 		a.mu.Unlock()

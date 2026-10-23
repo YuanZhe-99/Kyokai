@@ -171,9 +171,11 @@ type routesForm struct {
 	add    string
 }
 
-// routesCard edits a device's routes: every route with its latency now,
-// when it was last used and the bitrate it settled on, Remove for an
-// address, a field to add one, and the route chosen.
+// routesCard edits a device's routes, a card of Home's over its devices:
+// the device's avatar, what routes are and the route chosen; every route
+// with its latency now, when it was last used and the bitrate it settled
+// on, Remove for an address, a line between each; a field to add one
+// (Enter adds it), and Done.
 func (a *App) routesCard(c *ui.Context, f routesForm) {
 	t := c.Theme()
 	a.mu.Lock()
@@ -201,9 +203,13 @@ func (a *App) routesCard(c *ui.Context, f routesForm) {
 		a.routesEdit = routesForm{}
 		a.mu.Unlock()
 	}
-	card(c.Key("routes-" + f.device)).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-			ui.Text(c, L.RoutesTitle(row.name())).Bold().Grow(1)
+	homeCard(c, "routes-"+f.device).FillWidth().Children(func() {
+		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
+			deviceAvatar(c, row.about)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+				ui.Text(c, L.RoutesTitle(row.name())).FontWeight(600)
+				ui.Text(c, L.RoutesHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			})
 			chosen := L.RouteAuto()
 			if row.prefer == preferNetwork {
 				chosen = L.RouteNetwork()
@@ -212,9 +218,10 @@ func (a *App) routesCard(c *ui.Context, f routesForm) {
 			}
 			ui.Button(c.Key("routes-choice"), L.RouteChosen(chosen)).Menu(func(m *ui.Menu) { a.routeMenu(m, row, views) })
 		})
-		ui.Text(c, L.RoutesHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+		lines := &rows{a: a}
 		for _, v := range views {
-			ui.Row(c.Key("route-" + v.address)).FillWidth().Gap(gap).AlignItems(ui.Center).Children(func() {
+			lines.line(c)
+			ui.Row(c.Key("route-" + v.address)).FillWidth().MinHeight(routeRowH).Gap(gap).AlignItems(ui.Center).Children(func() {
 				dot := t.Success
 				if !v.answers {
 					dot = t.TextMuted.Alpha(0.5)
@@ -233,15 +240,16 @@ func (a *App) routesCard(c *ui.Context, f routesForm) {
 				}
 			})
 		}
-		ui.Row(c).FillWidth().Gap(gap).AlignItems(ui.Center).Children(func() {
-			in := ui.TextInput(c.Key("routes-in"), &f.add).Placeholder(L.RoutesAddHint()).Grow(1)
+		lines.line(c)
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			in := ui.TextInput(c.Key("routes-in"), &f.add).Placeholder(L.RoutesAddHint()).Label(L.RoutesAddHint()).Grow(1).MinWidth(0)
 			if in.Changed() {
 				a.mu.Lock()
 				a.routesEdit.add = f.add
 				a.mu.Unlock()
 			}
 			add := strings.TrimSpace(f.add)
-			if ui.Button(c.Key("routes-add"), L.RoutesAdd()).Disabled(add == "").Clicked() {
+			if ui.Button(c.Key("routes-add"), L.RoutesAdd()).Disabled(add == "").Clicked() || in.Submitted() && add != "" {
 				a.mu.Lock()
 				a.routesEdit.add = ""
 				a.mu.Unlock()

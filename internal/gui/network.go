@@ -61,9 +61,6 @@ func (a *App) networkView(c *ui.Context) {
 func (a *App) networkSummary(c *ui.Context) {
 	t := c.Theme()
 	word, col := a.networkState(t)
-	if word == "" {
-		return
-	}
 	a.mu.Lock()
 	joined, online := 0, 0
 	for _, n := range a.status.Network.Networks {

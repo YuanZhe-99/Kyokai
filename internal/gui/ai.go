@@ -96,10 +96,11 @@ func (a *App) clearAIHistory() {
 	}()
 }
 
-// aiBanner tells the user that this computer's AI task waits for their
-// approval (Review shows its session), or that a controller's AI task is
-// working on this computer (with the emergency stop at hand) — unless a
-// session following that task shows.
+// aiBanner tells the user, as a card above the panes (noticeCard), that
+// this computer's AI task waits for their approval — in the accent, Review
+// showing its session — or that a controller's AI task is working on this
+// computer — in the warning colour, with the emergency stop at hand —,
+// unless a session following that task shows.
 func (a *App) aiBanner(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
@@ -111,14 +112,21 @@ func (a *App) aiBanner(c *ui.Context) {
 	if active == nil || (active.State != "approval" && active.Origin == "") || a.aiTaskShown(active.ID) {
 		return
 	}
-	text := L.AIApprovalBanner()
+	text, tone := L.AIApprovalBanner(), t.Accent
 	if active.Origin != "" && active.State != "approval" {
-		text = L.AIRemoteBanner(groupDigits(active.Origin))
+		text, tone = L.AIRemoteBanner(a.deviceName(active.Origin)), t.Warning
 	}
-	card(c.Key("ai-banner")).Border(2, t.Accent).Children(func() {
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, text).Grow(1)
-			if ui.Button(c.Key("ai-review"), L.AIReview()).Clicked() {
+	noticeCard(c, "ai-banner", tone, func() {
+		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
+			noticeIcon(c, navAI, tone)
+			ui.Text(c, text).FontWeight(500).Grow(1).MinWidth(0)
+			var review bool
+			if active.State == "approval" {
+				review = ui.PrimaryButton(c.Key("ai-review"), L.AIReview()).Clicked()
+			} else {
+				review = ui.Button(c.Key("ai-review"), L.AIReview()).Clicked()
+			}
+			if review {
 				a.openAITask("", active.ID, a.aiInstruction(active.ID))
 			}
 			if active.Origin != "" && ui.Button(c.Key("ai-banner-stop"), L.AIActionStop()).Clicked() {

@@ -76,7 +76,7 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 					}
 					windowButtons(c, "protected-win", vw.win, false)
 				})
-				ui.Column(c.Key("protected-cards")).FillWidth().Shrink(0).Padding(12, 24, 0, 24).Gap(gap).Children(func() {
+				ui.Column(c.Key("protected-cards")).FillWidth().Shrink(0).Padding(8, 20, 0, 20).Children(func() {
 					a.requestsView(c)
 					a.hostBanner(c)
 					a.protectedCard(c)
@@ -109,12 +109,46 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 
 // bannersView is what needs the user whatever shows: the connection
 // requests waiting for them, a device connected here, an AI task waiting
-// or working here.
+// or working here — each a card of its own (noticeCard).
 func (a *App) bannersView(c *ui.Context) {
-	ui.Column(c.Key("banners")).FillWidth().Shrink(0).Padding(0, paneMargin/2).Gap(gap).Children(func() {
+	ui.Column(c.Key("banners")).FillWidth().Shrink(0).Children(func() {
 		a.requestsView(c)
 		a.hostBanner(c)
 		a.aiBanner(c)
+	})
+}
+
+// noticeCard is one of the cards above the panes (bannersView), or above
+// protected mode's session: a pane of its own, with the panes' margin
+// round it so that its edges and the gaps line up with theirs; tinted with
+// tone and edged in it when one is given — the accent for a decision the
+// user makes, the warning colour for someone at work on this computer.
+func noticeCard(c *ui.Context, key string, tone ui.Color, body func()) {
+	t := c.Theme()
+	ui.Column(c.Key(key)).FillWidth().Shrink(0).Padding(paneMargin / 2).Children(func() {
+		card := ui.Column(c.Key(key+"-card")).FillWidth().Radius(paneRadius).Clip().
+			Background(t.Background).Border(1, t.Border).Shadow(0, 6, 18, 0, paneShadow)
+		if tone.A == 0 {
+			card.Padding(noticePadY, noticePadX).Gap(10).Children(body)
+			return
+		}
+		card.Border(1, tone).Children(func() {
+			ui.Column(c).FillWidth().Padding(noticePadY, noticePadX).Gap(10).Background(tone.Alpha(0.08)).Children(body)
+		})
+	})
+}
+
+// noticeIcon is the icon a card above the panes starts with when no device
+// does: in the card's tone (the muted text's without one), on a round tile
+// as large as a device's avatar.
+func noticeIcon(c *ui.Context, icon *ui.SVG, tone ui.Color) {
+	t := c.Theme()
+	fg, face := tone, tone.Alpha(0.14)
+	if tone.A == 0 {
+		fg, face = t.TextMuted, tileBackground(t)
+	}
+	ui.Box(c).Size(avatarSize, avatarSize).Shrink(0).Radius(avatarSize / 2).Center().Background(face).Children(func() {
+		ui.Icon(c, icon).FontSize(navIconSize + 2).TextColor(fg)
 	})
 }
 
@@ -446,16 +480,21 @@ func (a *App) themeButton(c *ui.Context) {
 }
 
 // networkState is how the networks are doing for the sidebar: a word and
-// its colour (from the theme), or "" before the engine says.
+// its colour (from the theme); before the engine says, Starting…, or that
+// it is not running.
 func (a *App) networkState(t *ui.Theme) (string, ui.Color) {
 	a.mu.Lock()
 	var st *localapi.Status
 	if a.connected {
 		st = a.status
 	}
+	down := a.engineErr != ""
 	a.mu.Unlock()
-	if st == nil {
-		return "", t.TextMuted
+	switch {
+	case st == nil && down:
+		return L.ShellEngineDown(), t.Danger
+	case st == nil:
+		return L.EngineStarting(), t.Warning
 	}
 	switch st.Network.State {
 	case "online":
@@ -473,9 +512,6 @@ func (a *App) networkState(t *ui.Theme) (string, ui.Color) {
 func (a *App) networkChip(c *ui.Context) {
 	t := c.Theme()
 	word, col := a.networkState(t)
-	if word == "" {
-		return
-	}
 	b := ui.ButtonBase(c.Key("sb-network")).Height(paneButton).Padding(0, 10).Radius(7).Label(word).Tooltip(L.NavNetwork())
 	if b.Hovered() {
 		b.Background(t.SurfaceHover)
@@ -496,9 +532,6 @@ func (a *App) networkChip(c *ui.Context) {
 func (a *App) networkDot(c *ui.Context) {
 	t := c.Theme()
 	word, col := a.networkState(t)
-	if word == "" {
-		return
-	}
 	b := ui.ButtonBase(c.Key("rail-network")).Size(36, 36).Radius(9).Center().Label(word).Tooltip(word)
 	b.Children(func() { ui.Box(c).Size(onlineDot+2, onlineDot+2).Radius(onlineDot/2 + 1).Background(col) })
 	if b.Clicked() {

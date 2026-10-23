@@ -170,17 +170,22 @@ func (t *aiTab) conversation(c *ui.Context, rec AIRecord, s aiPaneState) {
 	}
 	steps := task.Steps[max(len(task.Steps)-aiStepsListed, 0):]
 	start := 0
+	// Each reply follows the answer it was sent to; the task's text is shown
+	// last only once it is a new answer, not that one again.
 	for i, r := range t.sent {
 		end := start
 		for end < len(steps) && steps[end].At <= r.after {
 			end++
 		}
 		t.stepsGroup(c, i, steps[start:end])
+		if r.answer != "" {
+			ui.Text(c.Key("ai-answer-"+t.id+"-"+strconv.Itoa(i)), r.answer).Selectable().FillWidth()
+		}
 		aiBubble(c, "ai-reply-"+t.id+"-"+strconv.Itoa(i), r.text)
 		start = end
 	}
 	t.stepsGroup(c, len(t.sent), steps[start:])
-	if task.Text != "" {
+	if task.Text != "" && (len(t.sent) == 0 || task.Text != t.sent[len(t.sent)-1].answer) {
 		ui.Text(c, task.Text).Selectable().FillWidth()
 	}
 	if n := len(task.Progress); n > 0 && task.State == "running" {

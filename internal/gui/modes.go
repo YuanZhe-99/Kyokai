@@ -506,27 +506,23 @@ func (a *App) movedCard(c *ui.Context) {
 	a.mu.Lock()
 	busy := a.busy["mode"]
 	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.RunModeMovedTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.RunModeMovedHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			if ui.PrimaryButton(c.Key("moved-install"), L.RunModeMovedInstall()).Disabled(busy).Clicked() {
-				a.reinstallHelper()
-			}
-			if ui.Button(c.Key("moved-start-over"), L.RunModeMovedStartOver()).Disabled(busy).Clicked() {
-				go func() {
-					if !a.confirm(L.RunModeMovedStartOverConfirm(), L.RunModeMovedStartOver()) {
-						return
-					}
-					if _, err := a.requestWith(localapi.Request{Type: localapi.RequestStoreForgetMove}); err != nil {
-						a.update(func() { a.setToast(err.Error(), true) })
-					}
-				}()
-			}
-			if busy {
-				busyMark(c, L.RunModeSwitching(), busySize)
-			}
-		})
+	emptyState(c, "moved", func() { noticeIcon(c, rowServer, t.Warning) }, L.RunModeMovedTitle(), L.RunModeMovedHint(), func() {
+		if ui.PrimaryButton(c.Key("moved-install"), L.RunModeMovedInstall()).Disabled(busy).Clicked() {
+			a.reinstallHelper()
+		}
+		if ui.Button(c.Key("moved-start-over"), L.RunModeMovedStartOver()).Disabled(busy).Clicked() {
+			go func() {
+				if !a.confirm(L.RunModeMovedStartOverConfirm(), L.RunModeMovedStartOver()) {
+					return
+				}
+				if _, err := a.requestWith(localapi.Request{Type: localapi.RequestStoreForgetMove}); err != nil {
+					a.update(func() { a.setToast(err.Error(), true) })
+				}
+			}()
+		}
+		if busy {
+			busyMark(c, L.RunModeSwitching(), busySize)
+		}
 	})
 }
 

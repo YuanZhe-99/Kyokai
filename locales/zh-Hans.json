@@ -581,6 +581,7 @@
   "SettingsStartHiddenAbout": "登录时打开的 Kyokai 只显示托盘图标。",
   "SettingsTheme": "外观",
   "SettingsThemeAbout": "侧边栏底部的按钮也可以切换。",
+  "ShellEngineDown": "引擎未运行",
   "ShellOffline": "离线",
   "ShellOnline": "在线",
   "SidebarHide": "隐藏侧边栏",

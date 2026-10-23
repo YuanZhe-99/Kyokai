@@ -328,12 +328,13 @@ func avatarLead(about localapi.About) lead {
 	return func(c *ui.Context) { deviceAvatar(c, about) }
 }
 
-// tileBackground is a tile's face: a shade off the list it sits in.
+// tileBackground is a tile's face: a shade off whatever it sits on — on
+// white the light theme's surface, on a card's surface a little darker.
 func tileBackground(t *ui.Theme) ui.Color {
 	if t.Dark {
 		return ui.RGBA(255, 255, 255, 0.06)
 	}
-	return t.Surface
+	return ui.RGBA(9, 9, 11, 0.045)
 }
 
 // line draws the line above every row but the first.

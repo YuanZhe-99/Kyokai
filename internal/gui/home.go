@@ -254,7 +254,9 @@ func (a *App) homeView(c *ui.Context) {
 	w := box.LayoutBounds().W
 	box.Children(func() {
 		top := ui.Grid(c.Key("home-top")).FillWidth().Gap(homeTopGap)
-		if w >= homeTwoColumnsW {
+		// Not measured yet (the first frame), as wide as a window most often
+		// is: side by side, not a jump from one above the other.
+		if w == 0 || w >= homeTwoColumnsW {
 			top.ColumnTracks(ui.Fr(5), ui.Fr(7))
 		} else {
 			top.Columns(1)
@@ -298,9 +300,7 @@ func (a *App) thisDeviceCard(c *ui.Context) {
 	homeCard(c, "this-device").Children(func() {
 		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, L.HomeThisDevice()).Bold().Grow(1)
-			if word != "" {
-				statePill(c, word, col)
-			}
+			statePill(c, word, col)
 		})
 		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, groupDigits(st.DeviceID)).FontSize(sizeDeviceID).Bold().FontFeatures("tnum").NoWrap().Selectable().MinWidth(0)
@@ -321,7 +321,8 @@ func (a *App) thisDeviceCard(c *ui.Context) {
 			ui.Text(c, L.HomePermanentMissing()).FontSize(sizeSmall).TextColor(t.Warning)
 		default:
 			ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, L.HomeTemporaryPassword()).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine().MinWidth(0).Shrink(1)
+				// Short of room it wraps, a word a line, rather than losing words.
+				ui.Text(c, L.HomeTemporaryPassword()).FontSize(sizeSmall).TextColor(t.TextMuted).Shrink(1)
 				shown := strings.Repeat("•", 8)
 				if show {
 					shown = pw
@@ -394,10 +395,23 @@ func (a *App) connectCard(c *ui.Context) {
 				a.connectAs(device, address, f.as, nil)
 			}
 		})
-		ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Wrap().Children(func() {
+		// Too narrow for its five segments (a pane beside another, a small
+		// window), Open as is a menu.
+		as := ui.Row(c.Key("conn-as-row")).FillWidth().Gap(10).AlignItems(ui.Center).Wrap()
+		narrow := as.LayoutBounds().W > 0 && as.LayoutBounds().W < openAsSegmentsW
+		as.Children(func() {
 			ui.Text(c, L.HomeOpenAs()).FontSize(sizeSmall).TextColor(t.TextMuted)
 			idx := max(slices.Index(openAs, f.as), 0)
-			if ui.Segmented(c.Key("conn-as"), &idx, L.PaneDesktop(), L.ServiceSSH(), L.ServiceRDP(), L.ServiceVNC(), L.HomeOpenAI()).Changed() {
+			kinds := []string{L.PaneDesktop(), L.ServiceSSH(), L.ServiceRDP(), L.ServiceVNC(), L.HomeOpenAI()}
+			var changed bool
+			if narrow {
+				cur := kinds[idx]
+				changed = ui.Select(c.Key("conn-as-sel"), &cur, kinds).Width(openAsMenuW).Label(L.HomeOpenAs()).Changed()
+				idx = max(slices.Index(kinds, cur), 0)
+			} else {
+				changed = ui.Segmented(c.Key("conn-as"), &idx, kinds...).Changed()
+			}
+			if changed {
 				a.mu.Lock()
 				a.connect.as = openAs[idx]
 				a.mu.Unlock()

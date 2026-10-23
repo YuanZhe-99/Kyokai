@@ -1112,7 +1112,7 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 		}
 	}
 	ui.Column(c).Fill().Background(t.Background).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		card(c).Width(connectPanelW).Children(func() {
+		homeCard(c, "connect-panel-"+v.tabKey()).Width(connectPanelW).Children(func() {
 			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
 				deviceAvatar(c, phase.Peer)
 				ui.Text(c, v.title).FontSize(sizeHeading).Bold()

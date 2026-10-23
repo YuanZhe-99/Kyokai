@@ -581,6 +581,7 @@
   "SettingsStartHiddenAbout": "登入時開啟的 Kyokai 只顯示系統匣圖示。",
   "SettingsTheme": "外觀",
   "SettingsThemeAbout": "側邊欄底部的按鈕也可以切換。",
+  "ShellEngineDown": "引擎未執行",
   "ShellOffline": "離線",
   "ShellOnline": "在線",
   "SidebarHide": "隱藏側邊欄",

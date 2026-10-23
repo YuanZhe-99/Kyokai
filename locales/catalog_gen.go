@@ -5870,6 +5870,16 @@ func (msgs Messages) SettingsThemeAbout() string {
 	return Catalog.Format(msgs.locale, "SettingsThemeAbout", nil)
 }
 
+// ShellEngineDown says "Engine not running"
+// in the language the app shows.
+func ShellEngineDown() string { return In(i18n.Locale()).ShellEngineDown() }
+
+// ShellEngineDown says "Engine not running"
+// in the language of msgs.
+func (msgs Messages) ShellEngineDown() string {
+	return Catalog.Format(msgs.locale, "ShellEngineDown", nil)
+}
+
 // ShellOffline says "Offline"
 // in the language the app shows.
 func ShellOffline() string { return In(i18n.Locale()).ShellOffline() }

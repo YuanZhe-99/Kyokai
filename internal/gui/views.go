@@ -20,7 +20,10 @@ import (
 
 const sourceURL = "https://github.com/YuanZhe-99/Kyokai"
 
-// engineState shows why there is no status yet: starting, or the error.
+// engineState shows, in place of a page, why there is no status yet:
+// Starting…, or that the engine is not running and why; a profile parked
+// by a move to the helper shows its own (movedCard).
+// Returns: whether there is a status to show the page with.
 func (a *App) engineState(c *ui.Context) bool {
 	t := c.Theme()
 	a.mu.Lock()
@@ -29,22 +32,34 @@ func (a *App) engineState(c *ui.Context) bool {
 	if connected && st != nil && st.Moved == "" {
 		return true
 	}
-	if connected && st != nil {
+	switch {
+	case connected && st != nil:
 		a.movedCard(c)
-		return false
+	case errText == "":
+		emptyState(c, "engine-starting", func() { busyMark(c, L.EngineStarting(), busySizeLarge) }, "", L.EngineStarting(), nil)
+	default:
+		emptyState(c, "engine-down", func() { noticeIcon(c, rowPower, t.Danger) }, L.EngineDown(), errText, nil)
 	}
-	card(c).Children(func() {
-		if errText == "" {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				busyMark(c, L.EngineStarting(), busySize)
-				ui.Text(c, L.EngineStarting()).TextColor(t.TextMuted)
-			})
-			return
-		}
-		ui.Text(c, L.EngineDown()).Bold()
-		ui.Text(c, errText).FontSize(sizeSmall).TextColor(t.TextMuted).Selectable()
-	})
 	return false
+}
+
+// emptyState is what a pane or page shows in place of its content,
+// centred: a mark, a title and the words under it ("" for none, the words
+// selectable), then its actions (nil for none).
+func emptyState(c *ui.Context, key string, mark func(), title, about string, actions func()) {
+	t := c.Theme()
+	ui.Column(c.Key(key)).FillWidth().Padding(emptyTop, 24, 24, 24).Gap(10).AlignItems(ui.Center).Children(func() {
+		mark()
+		if title != "" {
+			ui.Text(c, title).FontSize(sizeHeading).FontWeight(600).TextAlign(ui.Center).MaxWidth(emptyW)
+		}
+		if about != "" {
+			ui.Text(c, about).FontSize(sizeSmall).TextColor(t.TextMuted).TextAlign(ui.Center).MaxWidth(emptyW).Selectable()
+		}
+		if actions != nil {
+			ui.Row(c).Gap(8).Margin(6, 0, 0, 0).Children(actions)
+		}
+	})
 }
 
 func secretsNote(p string) string {

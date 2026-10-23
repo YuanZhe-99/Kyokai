@@ -25,8 +25,9 @@ func permissionsMissing(p *localapi.Permissions) bool {
 }
 
 // permissionsCard shows on Home, while one is missing, the system's privacy
-// permissions Kyokai needs (macOS), with Allow for a missing one (Access
-// lists them always: privacySection).
+// permissions Kyokai needs (macOS): under its title as Home's sections
+// have one, a card of the rows Access lists them in (privacyList), each
+// Allowed or with Allow (Access lists them always: privacySection).
 func (a *App) permissionsCard(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
@@ -39,15 +40,9 @@ func (a *App) permissionsCard(c *ui.Context) {
 	if p == nil || !permissionsMissing(p) {
 		return
 	}
-	card(c.Key("perms")).Children(func() {
-		ui.Text(c, L.PermissionsTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.PermissionsHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		if helperMode {
-			ui.Text(c, L.PermissionsHelperHint()).FontSize(sizeSmall).TextColor(t.Warning)
-		}
-		for _, pr := range privacyRows(p) {
-			settingRow(c, "perm-"+pr.name, pr.title, pr.hint, func() { a.permissionControl(c, pr.name, pr.granted) })
-		}
+	ui.Text(c, L.PermissionsTitle()).FontSize(sizeHeading).Bold().Padding(14, 2, 0, 2)
+	ui.Column(c.Key("home-perms")).FillWidth().Radius(cardRadius).Border(1, t.Border).Background(t.Surface).Clip().Children(func() {
+		a.privacyList(c, &rows{a: a}, "home-perm", p, helperMode)
 	})
 }
 

@@ -65,7 +65,12 @@ func parseTarget(s string) (device, address string) {
 }
 
 // requestsView shows every controller waiting for this host's user, on
-// every page: who it is, what it asks for, and Allow / Deny.
+// every page, each a card in the accent (noticeCard): who it is — its
+// name, then its Device ID and whether it connected before — with Deny
+// and Allow across from it; what to beware of (no password, another key
+// for a Device ID known here, macOS permissions missing) in one callout;
+// what it asks for as tiles that toggle, as wide as the card
+// (askColumns).
 func (a *App) requestsView(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
@@ -81,35 +86,60 @@ func (a *App) requestsView(c *ui.Context) {
 	}
 	for _, r := range reqs {
 		key := "req-" + itoa(r.ID)
-		card(c.Key(key)).Border(2, t.Accent).Children(func() {
-			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
+		name, facts := whoIs(prefs.named(r.DeviceID, r.About), r.DeviceID)
+		var warnings []string
+		switch {
+		case r.NewKey:
+			warnings = append(warnings, L.RequestNewKey())
+		case r.Known:
+			facts = append(facts, L.RequestKnown())
+		default:
+			facts = append(facts, L.RequestFirstTime())
+		}
+		if !r.Password {
+			warnings = append(warnings, L.RequestNoPassword())
+		}
+		if perms != nil && (slices.Contains(r.Want, localapi.PermViewScreen) && !perms.Screen ||
+			slices.Contains(r.Want, localapi.PermControlInput) && !perms.Accessibility) {
+			warnings = append(warnings, L.RequestPermissionsMissing())
+		}
+		chosen, ok := grants[r.ID]
+		if !ok {
+			chosen = slices.Clone(r.Want)
+		}
+		noticeCard(c, key, t.Accent, func() {
+			ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
 				deviceAvatar(c, r.About)
-				ui.Text(c, L.RequestTitle(deviceTitle(prefs.named(r.DeviceID, r.About), r.DeviceID))).FontSize(sizeHeading).Bold()
+				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					ui.Text(c, L.RequestTitle(name)).FontWeight(600)
+					ui.Text(c, strings.Join(facts, " · ")).FontSize(sizeSmall).TextColor(t.TextMuted)
+				})
+				if ui.Button(c.Key(key+"-deny"), L.ActionDeny()).Clicked() {
+					a.decide(r.ID, false, nil)
+				}
+				if ui.PrimaryButton(c.Key(key+"-allow"), L.ActionAllow()).Clicked() {
+					a.decide(r.ID, true, chosen)
+				}
 			})
-			if !r.Password {
-				ui.Text(c, L.RequestNoPassword()).FontSize(sizeSmall).TextColor(t.Warning)
+			if len(warnings) > 0 {
+				// The warning's tint on the page's face, not on the accent's.
+				ui.Column(c.Key(key + "-warn")).FillWidth().Radius(tileRadius).Clip().Background(t.Background).Children(func() {
+					ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Background(t.Warning.Alpha(0.12)).Children(func() {
+						for i, w := range warnings {
+							ui.Row(c.Key(key + "-warn-" + strconv.Itoa(i))).FillWidth().Gap(8).AlignItems(ui.Start).Children(func() {
+								ui.Icon(c, rowAlert).FontSize(statusIconSize).TextColor(t.Warning).Shrink(0).Margin(1, 0, 0, 0)
+								ui.Text(c, w).FontSize(sizeSmall).Grow(1).MinWidth(0)
+							})
+						}
+					})
+				})
 			}
-			switch {
-			case r.NewKey:
-				ui.Text(c, L.RequestNewKey()).FontSize(sizeSmall).TextColor(t.Warning)
-			case r.Known:
-				ui.Text(c, L.RequestKnown()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			default:
-				ui.Text(c, L.RequestFirstTime()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			}
-			if perms != nil && (slices.Contains(r.Want, localapi.PermViewScreen) && !perms.Screen ||
-				slices.Contains(r.Want, localapi.PermControlInput) && !perms.Accessibility) {
-				ui.Text(c, L.RequestPermissionsMissing()).FontSize(sizeSmall).TextColor(t.Warning)
-			}
-			ui.Text(c, L.RequestAsks())
-			chosen, ok := grants[r.ID]
-			if !ok {
-				chosen = slices.Clone(r.Want)
-			}
-			for _, p := range r.Want {
-				on := slices.Contains(chosen, p)
-				ui.Row(c.Key(key + "-row-" + p)).Gap(8).AlignItems(ui.Center).Children(func() {
-					if ui.Switch(c.Key(key+"-"+p), &on).Label(permissionLabel(p)).Changed() {
+			ui.Text(c, L.RequestAsks()).FontSize(sizeSmall).Bold().TextColor(t.TextMuted).Margin(2, 0, 0, 0)
+			asks := ui.Grid(c.Key(key + "-asks")).FillWidth().Gap(tileGap)
+			asks.Columns(askColumns(asks.LayoutBounds().W, len(r.Want))).Children(func() {
+				for _, p := range r.Want {
+					on := slices.Contains(chosen, p)
+					if toggleTile(c, key+"-"+p, permissionIcon(p), permissionShort(p), &on, false) {
 						next := slices.DeleteFunc(slices.Clone(chosen), func(x string) bool { return x == p })
 						if on {
 							next = append(next, p)
@@ -118,24 +148,41 @@ func (a *App) requestsView(c *ui.Context) {
 						a.grants[r.ID] = next
 						a.mu.Unlock()
 					}
-					ui.Text(c, permissionLabel(p))
-				})
-			}
-			ui.Row(c).Gap(gap).Children(func() {
-				if ui.PrimaryButton(c.Key(key+"-allow"), L.ActionAllow()).Clicked() {
-					a.decide(r.ID, true, chosen)
-				}
-				if ui.Button(c.Key(key+"-deny"), L.ActionDeny()).Clicked() {
-					a.decide(r.ID, false, nil)
 				}
 			})
 		})
 	}
 }
 
+// askColumns are how many of a request's n permission tiles stand side by
+// side in a row w wide (the last frame's; 0 before the first): all of
+// them, as wide as the card, while each keeps askTileMinW; else the fewest
+// rows that fit, as even as they go (five in rows of three and two, not
+// four and one).
+func askColumns(w float32, n int) int {
+	fit := 4
+	if w > 0 {
+		fit = int((w + tileGap) / (askTileMinW + tileGap))
+	}
+	fit = max(1, min(n, fit))
+	rows := (n + fit - 1) / fit
+	return max(1, (n+rows-1)/max(rows, 1))
+}
+
+// whoIs is a device as a card above the panes names it: its name (its
+// Device ID without one), and the facts under it, its Device ID first
+// when the name took its place.
+func whoIs(about localapi.About, id string) (name string, facts []string) {
+	if about.Name == "" {
+		return groupDigits(id), nil
+	}
+	return about.Name, []string{groupDigits(id)}
+}
+
 // hostBanner shows, on every page, each device connected to this one
-// right now, what it may do, and Disconnect, so the host's user always
-// sees who is here and can end it.
+// right now as a card in the warning colour (noticeCard): who it is, what
+// it may do, and Disconnect, so the host's user always sees who is here
+// and can end it.
 func (a *App) hostBanner(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
@@ -151,12 +198,14 @@ func (a *App) hostBanner(c *ui.Context) {
 	a.mu.Unlock()
 	for _, s := range here {
 		key := "here-" + itoa(s.ID)
-		card(c.Key(key)).Border(2, t.Warning).Children(func() {
-			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
+		name, facts := whoIs(prefs.named(s.DeviceID, s.Peer), s.DeviceID)
+		facts = append(facts, sessionState(s, a.outdatedHelper()))
+		noticeCard(c, key, t.Warning, func() {
+			ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
 				deviceAvatar(c, s.Peer)
-				ui.Column(c).Grow(1).Gap(2).Children(func() {
-					ui.Text(c, L.HostConnected(deviceTitle(prefs.named(s.DeviceID, s.Peer), s.DeviceID))).Bold()
-					ui.Text(c, sessionState(s, a.outdatedHelper())).FontSize(sizeSmall).TextColor(t.TextMuted)
+				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					ui.Text(c, L.HostConnected(name)).FontWeight(600)
+					ui.Text(c, strings.Join(facts, " · ")).FontSize(sizeSmall).TextColor(t.TextMuted)
 				})
 				if ui.Button(c.Key(key+"-close"), L.ActionDisconnect()).Clicked() {
 					id := s.ID
@@ -303,7 +352,10 @@ func (a *App) forgetPassword(device string) {
 	}()
 }
 
-// renameCard edits the name a recent device has on this device only.
+// renameCard edits the name a recent device has on this device only: a
+// card of Home's over its devices, the device's avatar and what the name
+// is for, then the name (taking the keys: Enter saves it, Escape leaves
+// it), Cancel and Save.
 func (a *App) renameCard(c *ui.Context, f renameForm) {
 	t := c.Theme()
 	a.mu.Lock()
@@ -314,22 +366,27 @@ func (a *App) renameCard(c *ui.Context, f renameForm) {
 		}
 	}
 	a.mu.Unlock()
-	card(c.Key("rename-" + f.device)).Children(func() {
-		ui.Text(c, L.RenameTitle(deviceTitle(about, f.device))).Bold()
-		ui.Text(c, L.RenameHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
-			in := ui.TextInput(c.Key("rename-in"), &f.name).Placeholder(about.Name).Grow(1)
+	homeCard(c, "rename-"+f.device).FillWidth().Children(func() {
+		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
+			deviceAvatar(c, about)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+				ui.Text(c, L.RenameTitle(deviceTitle(about, f.device))).FontWeight(600)
+				ui.Text(c, L.RenameHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			})
+		})
+		ui.Row(c).Gap(8).AlignItems(ui.Center).FillWidth().Children(func() {
+			in := ui.TextInput(c.Key("rename-in"), &f.name).Placeholder(about.Name).Label(L.RenameTitle(deviceTitle(about, f.device))).Grow(1).MinWidth(0).AutoFocus()
 			if in.Changed() {
 				a.mu.Lock()
 				a.rename.name = f.name
 				a.mu.Unlock()
 			}
-			if ui.Button(c.Key("rename-cancel"), L.ActionCancel()).Clicked() {
+			if ui.Button(c.Key("rename-cancel"), L.ActionCancel()).Clicked() || in.Shortcut(0, ui.KeyEscape) {
 				a.mu.Lock()
 				a.rename = renameForm{}
 				a.mu.Unlock()
 			}
-			if ui.PrimaryButton(c.Key("rename-save"), L.ActionSave()).Clicked() {
+			if ui.PrimaryButton(c.Key("rename-save"), L.ActionSave()).Clicked() || in.Submitted() {
 				a.mu.Lock()
 				a.rename = renameForm{}
 				a.mu.Unlock()
@@ -516,28 +573,29 @@ func (a *App) protectedSetting(c *ui.Context, r *rows) {
 	})
 }
 
-// protectedCard tops the AI page in protected mode: what it is, and the
-// permanent password to turn it off.
+// protectedCard tops protected mode's session (noticeCard): what it is,
+// and across from it the permanent password to turn it off (Enter too).
 func (a *App) protectedCard(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	password, busy := a.unlock, a.busy["access"]
 	a.mu.Unlock()
-	card(c).Border(2, t.Accent).Children(func() {
-		ui.Text(c, L.ProtectedTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.ProtectedOnHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
-			in := ui.TextInput(c.Key("unlock-in"), &password).Password().Placeholder(L.PermanentTitle()).Grow(1).Disabled(busy)
+	noticeCard(c, "protected-card", ui.Color{}, func() {
+		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
+			noticeIcon(c, aiShield, t.Accent)
+			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+				ui.Text(c, L.ProtectedTitle()).FontWeight(600)
+				ui.Text(c, L.ProtectedOnHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			})
+			in := ui.TextInput(c.Key("unlock-in"), &password).Password().Placeholder(L.PermanentTitle()).Label(L.PermanentTitle()).Width(unlockW).Shrink(1).MinWidth(0).Disabled(busy)
 			if in.Changed() {
 				a.mu.Lock()
 				a.unlock = password
 				a.mu.Unlock()
 			}
-			if ui.Button(c.Key("unlock-go"), L.ProtectedTurnOff()).Disabled(busy || password == "").Clicked() {
+			if ui.Button(c.Key("unlock-go"), L.ProtectedTurnOff()).Disabled(busy || password == "").Clicked() || in.Submitted() && password != "" && !busy {
 				a.mu.Lock()
 				a.unlock = ""
-				a.mu.Unlock()
-				a.mu.Lock()
 				a.busy["access"] = true
 				a.mu.Unlock()
 				go func() {

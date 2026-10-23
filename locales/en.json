@@ -1062,6 +1062,7 @@
   "SettingsStartHiddenAbout": "Opened at login, Kyokai shows only its tray icon.",
   "SettingsTheme": "Appearance",
   "SettingsThemeAbout": "The button at the bottom of the sidebar switches it too.",
+  "ShellEngineDown": "Engine not running",
   "ShellOffline": "Offline",
   "ShellOnline": "Online",
   "SidebarHide": "Hide the sidebar",

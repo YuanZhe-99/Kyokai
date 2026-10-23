@@ -534,7 +534,7 @@ func (s *serviceTab) view(c *ui.Context) {
 	s.syncGrab(false)
 	t := c.Theme()
 	ui.Column(c).Fill().Background(t.Background).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		card(c).Width(connectPanelW).Children(func() {
+		homeCard(c, "connect-panel-"+s.tabKey()).Width(connectPanelW).Children(func() {
 			ui.Text(c, s.title).FontSize(sizeHeading).Bold()
 			switch phase {
 			case svcForm:

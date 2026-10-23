@@ -242,6 +242,14 @@ var (
 	aiPrinter      = ui.MustParseSVG(printerSVG)
 )
 
+// A warning, before the words it goes with (a connection request's).
+var (
+	//go:embed assets/icons/alert.svg
+	alertSVG []byte
+
+	rowAlert = ui.MustParseSVG(alertSVG)
+)
+
 // The window buttons the view draws on Windows (windowButtons): Windows
 // 11's glyphs, 10 points with lines of one.
 var (
@@ -331,7 +339,6 @@ const (
 	cardRadius      float32 = 12
 	cardPad         float32 = 16
 	gap             float32 = 12
-	contentMaxW     float32 = 760
 	inputAreaH      float32 = 72  // a multi-line input of about three lines
 	aiColumnW       float32 = 720 // an AI session's conversation and box
 	aiNewW          float32 = 680 // a new session's column
@@ -380,6 +387,13 @@ const (
 	rowMinH         float32 = 54  // a row
 	tileSize        float32 = 32  // the tile a row starts with
 	permTileH       float32 = 60  // a permission's toggle tile
+	askTileMinW     float32 = 140 // one a connection request asks for, at least
+	noticePadX      float32 = 16  // a card above the panes, from its sides
+	noticePadY      float32 = 14  // and from its top and bottom
+	emptyTop        float32 = 96  // what a pane shows in place of its content, from its top
+	emptyW          float32 = 440 // and its words' width, at most
+	routeRowH       float32 = 48  // a route in a device's Addresses editor
+	unlockW         float32 = 240 // protected mode's permanent password field
 	moreW           float32 = 360 // a row's longer explanation (How it works)
 	splitMenuW      float32 = 280 // a pane header's split menu
 	pickerW         float32 = 424 // the + picker
@@ -408,6 +422,8 @@ const (
 	homeOtherH      float32 = 58  // a device in my networks never connected to
 	homeTopGap      float32 = 14  // between This device and Connect to a device
 	homeTwoColumnsW float32 = 640 // the room they need side by side
+	openAsSegmentsW float32 = 440 // Connect's Open as as five segments, in the widest language with room to spare
+	openAsMenuW     float32 = 200 // and as a menu in less
 	homeColumns     int     = 3   // Home's device cards side by side, at most
 	tileGap         float32 = 8   // between a card's status tiles
 	sizeMetric      float32 = 34  // a status figure in a host's details
@@ -443,26 +459,6 @@ func busyMark(c *ui.Context, label string, size float32) ui.Element {
 // stage.
 func busyMarkIn(c *ui.Context, label string, size float32, col ui.Color) ui.Element {
 	return loading.Arc(c, loading.Options{Size: size, Color: col}).Label(label)
-}
-
-// card is a rounded panel.
-func card(c *ui.Context) ui.Element {
-	t := c.Theme()
-	return ui.Column(c).Background(t.Surface).Radius(cardRadius).Padding(cardPad).Gap(gap).FillWidth().MaxWidth(contentMaxW).Border(1, t.Border)
-}
-
-// settingRow is a labelled row with a control on the right.
-func settingRow(c *ui.Context, key, title, hint string, control func()) {
-	t := c.Theme()
-	ui.Row(c.Key(key)).Gap(16).AlignItems(ui.Center).Children(func() {
-		ui.Column(c).Grow(1).Gap(2).Children(func() {
-			ui.Text(c, title)
-			if hint != "" {
-				ui.Text(c, hint).FontSize(sizeSmall).TextColor(t.TextMuted)
-			}
-		})
-		control()
-	})
 }
 
 // labelled puts a switch and its visible label side by side (a switch's

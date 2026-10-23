@@ -266,6 +266,38 @@ func TestAIApprovalInline(t *testing.T) {
 	}
 }
 
+// TestAIAnswersKeepTheirPlace: an answer stays above the reply sent to it
+// — once, while the next answer is on its way — and the next one comes
+// after the reply (regression: the first answer showed below the reply,
+// then was gone once the second came).
+func TestAIAnswersKeepTheirPlace(t *testing.T) {
+	i18n.SetLocaleFunc(func() string { return "en" })
+	defer i18n.SetLocaleFunc(nil)
+	a := aiDemoApp(t)
+	task := &localapi.AITask{ID: 5, Instruction: "Take a screenshot", State: "running", Steps: aiSteps()[:1], Text: "I see Home."}
+	addAILink(a, "657365333", "connected", true, true, task)
+	tb := addAITab(a, "657365333", AIRecord{ID: "h", Device: "657365333", Task: 5, Title: "Take a screenshot", Updated: 1})
+	tb.sent = []aiSent{{text: "Now wait.", after: 1, answer: "I see Home."}}
+	order := func(tt *ui.Tester, want ...string) {
+		t.Helper()
+		var got []string
+		for _, s := range tt.Texts() {
+			if slices.Contains(want, s) {
+				got = append(got, s)
+			}
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("texts %q, want %q in that order, each once", got, want)
+		}
+	}
+	tt := ui.NewTester(a.main.view, 1280, 800)
+	tt.Frame()
+	order(tt, "I see Home.", "Now wait.")
+	task.Text, task.State = "Still Home.", "done"
+	tt.Frame()
+	order(tt, "I see Home.", "Now wait.", "Still Home.")
+}
+
 // TestAINamesInOrder: what names a host's session puts its parts where
 // they belong — the window's title, the model with whose key — though the
 // catalog's functions take their parts in their names' order
