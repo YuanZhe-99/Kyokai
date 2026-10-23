@@ -47,7 +47,8 @@ when `SCREENSHOT_DIR` is set.
   buttons would sit on the window's corner, half outside the pane, so the window hides them
   (`HideWindowButtons`) and the view draws minimize, maximize or restore, and close after a
   separator at the end of the top-right pane's header (`windowButtons`), maximize with Windows
-  11's snap layouts; while Settings covers the panes, at the end of its header instead.
+  11's snap layouts; while Settings covers the panes they stay in that place, light over the
+  dimmed window, never beside the sheet's × (an overlay; the header keeps their room unseen).
 - **Full screen** shows the pane in focus alone, with no header or sidebar.
 
 ## Settings

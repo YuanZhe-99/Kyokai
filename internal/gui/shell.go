@@ -68,7 +68,7 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 			ui.Column(c).Fill().Radius(paneRadius).Clip().Background(t.Background).Border(1, t.Border).Children(func() {
 				ui.Row(c.Key("protected-head")).Height(paneHeaderH).Shrink(0).FillWidth().Padding(0, 8, 0, 0).Gap(4).AlignItems(ui.Center).Children(func() {
 					ui.Box(c).Grow(1).FillHeight().DragWindow()
-					windowButtons(c, "protected-win", vw.win)
+					windowButtons(c, "protected-win", vw.win, false)
 				})
 				a.View(c)
 			})

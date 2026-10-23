@@ -31,8 +31,8 @@ another app's: other apps were references for behaviour only.
   device name, a second line (Device ID, "SSH · user", "AI task"), route and delay, then split
   right, split down, maximize or restore, and close; a narrow pane folds the first three into ⋯.
   Windows' caption buttons are drawn by the view (`HideWindowButtons`; maximize keeps the snap
-  layouts through `MaximizeButton`) and end the top-right pane's header after a separator, or the
-  Settings sheet's while it is up; macOS' traffic lights sit at the top of the sidebar or rail.
+  layouts through `MaximizeButton`) and end the top-right pane's header after a separator, staying
+  in that place above the dimming while Settings is up; macOS' traffic lights sit at the top of the sidebar or rail.
   The pane in focus has an accent edge. Splits use the existing pane tree
   (`split`, four panes at most). A single pane dragged out gets a window of its own without a
   sidebar: the pane alone, never split (its header has no split buttons), the header holding the

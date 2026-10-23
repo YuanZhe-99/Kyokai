@@ -125,30 +125,38 @@ var ownWindowButtons = runtime.GOOS == "windows"
 
 // windowButtons are the window's minimize, maximize or restore, and close
 // on Windows (ownWindowButtons), after a separator at the end of the
-// top-right pane's header, or of the Settings sheet's while it covers the
-// panes. The maximize button brings Windows 11's snap layouts, as the
-// system's does; close is the system's close (OnClose decides). win is nil
-// in the view tests.
-func windowButtons(c *ui.Context, key string, win *mygo.Window) {
+// top-right pane's header. While the Settings sheet covers the panes they
+// stay in that place, above the dimmed window and apart from the sheet's ×
+// (onScrim: no separator, light glyphs). The maximize button brings
+// Windows 11's snap layouts, as the system's does; close is the system's
+// close (OnClose decides). win is nil in the view tests.
+func windowButtons(c *ui.Context, key string, win *mygo.Window, onScrim bool) {
 	if !ownWindowButtons {
 		return
 	}
 	t := c.Theme()
 	button := func(name string, glyph *ui.SVG, label string) ui.Element {
 		b := ui.ButtonBase(c.Key(key+"-"+name)).Size(winButtonW, winButtonH).Radius(6).Center().Shrink(0).Label(label)
-		fg := t.TextMuted
+		fg, hover := t.TextMuted, t.SurfaceHover
+		if onScrim {
+			fg, hover = scrimGlyph, scrimHover
+		}
 		switch {
 		case b.Hovered() && name == "close":
 			b.Background(closeHover)
 			fg = closeHoverText
 		case b.Hovered():
-			b.Background(t.SurfaceHover)
-			fg = t.Text
+			b.Background(hover)
+			if !onScrim {
+				fg = t.Text
+			}
 		}
 		b.Children(func() { ui.Icon(c, glyph).FontSize(winGlyph).TextColor(fg) })
 		return b
 	}
-	ui.Box(c).Size(1, 18).Shrink(0).Margin(0, 6).Background(t.Border)
+	if !onScrim {
+		ui.Box(c).Size(1, 18).Shrink(0).Margin(0, 6).Background(t.Border)
+	}
 	if button("min", winMinimize, L.WindowMinimize()).Tooltip(L.WindowMinimize()).Clicked() && win != nil {
 		win.Minimize()
 	}
@@ -769,8 +777,9 @@ func (vw *viewerWindow) paneBox(c *ui.Context, d paneDraw, v tab, box ui.Element
 // then, in the main window, split right and split down (beside the pane:
 // another open pane) and, in a group of several, maximize or restore; and
 // close, except on Home alone. The top-right pane's header ends with the
-// window's buttons on Windows, unless Settings covers it; a window of its
-// own's keeps the room of the traffic lights on macOS.
+// window's buttons on Windows (unseen while Settings covers it, which shows
+// them in their place); a window of its own's keeps the room of the
+// traffic lights on macOS.
 func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 	t := c.Theme()
 	key := v.tabKey()
@@ -829,8 +838,16 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 		if (v != tab(vw.app.home) || several) && iconButton(c, "head-close-"+key, paneClose, L.PaneClose()) {
 			vw.closeTab(v)
 		}
-		if v == d.topRight && !(vw.main && vw.app.covered()) {
-			windowButtons(c, "head-win", vw.win)
+		if v == d.topRight {
+			// Under the Settings sheet they keep their room, unseen: the
+			// sheet shows them in this very place, above the dimming.
+			shown := float32(1)
+			if vw.main && vw.app.covered() {
+				shown = 0
+			}
+			ui.Row(c.Key("head-win")).Gap(4).AlignItems(ui.Center).Opacity(shown).Children(func() {
+				windowButtons(c, "head-win", vw.win, false)
+			})
 		}
 	})
 }

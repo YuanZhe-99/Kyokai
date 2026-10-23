@@ -89,12 +89,11 @@ func (a *App) settingsSheet(c *ui.Context, win *mygo.Window) {
 		back.Background(sheetScrim).Padding(sheetTop, sheetX, sheetBottom, sheetX)
 		panel.Radius(paneRadius).Background(t.Background).Shadow(0, 10, 30, 0, sheetShadow).Clip()
 		ui.Column(c.Key("sheet")).Width(max(w-2*sheetX, 560)).Height(max(h-sheetTop-sheetBottom, 400)).Children(func() {
-			ui.Row(c.Key("sheet-head")).Height(sheetHeaderH).Shrink(0).Padding(0, 8, 0, 20).Gap(4).AlignItems(ui.Center).Children(func() {
+			ui.Row(c.Key("sheet-head")).Height(sheetHeaderH).Shrink(0).Padding(0, 12, 0, 20).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, L.NavSettings()).FontSize(sizeHeading).Bold().Grow(1)
 				if iconButton(c, "sheet-close", paneClose, L.ActionClose()) {
 					open = false
 				}
-				windowButtons(c, "sheet-win", win)
 			})
 			ui.Divider(c)
 			ui.Row(c.Key("sheet-body")).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
@@ -106,6 +105,16 @@ func (a *App) settingsSheet(c *ui.Context, win *mygo.Window) {
 			})
 		})
 	})
+	// The window's buttons stay where the top-right pane's header holds
+	// them, above the dimmed window: never beside the sheet's ×, where
+	// closing Settings could close the window instead.
+	if ownWindowButtons {
+		ui.Overlay(c, func() {
+			ui.Row(c.Key("sheet-win")).Absolute().Top(paneMargin + (paneHeaderH-winButtonH)/2).Right(2 * paneMargin).Gap(4).Children(func() {
+				windowButtons(c, "sheet-win", win, true)
+			})
+		})
+	}
 	if !open {
 		a.mu.Lock()
 		a.settingsOpen, a.settingsFocus, a.more = false, settingsFocus{}, ""

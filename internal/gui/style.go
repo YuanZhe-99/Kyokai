@@ -219,10 +219,14 @@ var (
 // paneShadow is a pane's shadow over the window's base.
 var paneShadow = ui.RGBA(16, 24, 40, 0.07)
 
-// The Settings sheet's dimming over the window, and its shadow.
+// The Settings sheet's dimming over the window, its shadow, and the
+// window's buttons on the dimming: their glyphs and their face under the
+// pointer.
 var (
 	sheetScrim  = ui.RGBA(0, 0, 0, 0.4)
 	sheetShadow = ui.RGBA(0, 0, 0, 0.3)
+	scrimGlyph  = ui.RGB(244, 245, 247)
+	scrimHover  = ui.RGBA(255, 255, 255, 0.14)
 )
 
 // closeHover is the window's close button under the pointer, white on
