@@ -3,8 +3,12 @@
 Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版本的源码或官方文档核实。Phase 0 可行性验证运行后，
 会把实测结果补充到对应小节；这里没有列出的内容一律不作假设。
 
-## MyGo v0.6.2
+## MyGo v0.6.3
 
+- **0.6.3（2026-10-23 核实）。** Kyokai 依赖的行为没有变化。Windows 上消息对话框的结果不再放在会移动的 Go
+  栈上，Direct3D 对没有变化的帧按显示器刷新率限速；按下可以穿过隐藏滚动条的轨道；获得焦点的文本框接收自己的
+  按键，因此 Windows 上“编辑 › 粘贴”的 Ctrl+V 只粘贴一次（画面不是文本框，其按键不变）；WebKit 内容规则引入了
+  `golang.org/x/net`（`publicsuffix`）。
 - **0.6 起（2026-10-21 核实）。** `plugins/loading` 原生绘制 loading-dev 的 29 种加载指示器
   （`loading.Arc(c, loading.Options{Size, Color}).Label(...)`；系统要求减少动态效果时保持静止）；
   `transfer.Result.Escaped` 区分按 Escape 放弃的拖动与拖到所有窗口之外的拖动；`ui.Tester.Click`、`ClickWith`

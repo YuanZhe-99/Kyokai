@@ -7,7 +7,7 @@ Kyokai 采用 AGPL-3.0-only 许可。本清单列出它复用或内嵌的每个�
 
 | 组件 | 仓库与版本 | 用途 | 许可证 | 修改 | 义务 |
 |---|---|---|---|---|---|
-| MyGo | `egoist/mygo` v0.6.2 | 界面框架、打包、更新器、加载指示器 | MIT | 无 | 保留版权声明；其内嵌的 Kage 编译器与 MingCute 图标为 Apache-2.0；其加载插件沿用 loading-dev（MIT，Jakub Krehel） |
+| MyGo | `egoist/mygo` v0.6.3 | 界面框架、打包、更新器、加载指示器 | MIT | 无 | 保留版权声明；其内嵌的 Kage 编译器与 MingCute 图标为 Apache-2.0；其加载插件沿用 loading-dev（MIT，Jakub Krehel） |
 | Easytier-MyGo 的文件 | `YuanZhe-99/Easytier-MyGo` | `tools/checkdocs`、`internal/fsutil`、`internal/version` 的写法、MyGo 维护技能、工作规范、厂商标志匹配（`internal/gui/vendorlogo.go`）、助手（`internal/helper`）与 bundle 签名（`internal/bundlesig`） | GPL-3.0，由其作者以 AGPL-3.0 重新授权 | 调整了名称与注释；匹配改为读取设备的说明而不是主机名 | 只需遵守 Kyokai 自身的许可证 |
 | MyApps-AI | `YuanZhe-99/MyApps-AI`（同一作者） | 模型命名规则（`internal/gui/modelname.go`，由 `model_naming.dart` 及其测试用例移植）与服务商模板的地址（`internal/gui/aisources.go`） | GPL-3.0，由其作者以 AGPL-3.0 重新授权 | 移植为 Go；不支持图片与工具的模板未采用 | 只需遵守 Kyokai 自身的许可证 |
 | 厂商标志 | Simple Icons 与 Wikimedia Commons，经由 EasyTier MyGo | 设备头像（`internal/gui/assets/logos/`） | CC0 1.0（18 个文件）、公有领域（1 个）；均为其所有者的商标 | 无 | 保留 `SOURCES.md`；只作指名性使用，所有者要求时移除 |

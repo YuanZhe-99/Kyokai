@@ -4,8 +4,13 @@ What Kyokai relies on from each upstream, verified by reading the pinned source 
 documentation on 2026-10-16. Measured results from the Phase 0 spikes are added to each section
 when they run; anything not listed here is not assumed.
 
-## MyGo v0.6.2
+## MyGo v0.6.3
 
+- **0.6.3 (checked 2026-10-23).** Nothing Kyokai relies on changed. On Windows a message dialog's
+  results stay off the moving Go stack, and Direct3D paces frames that change nothing by the
+  display's refresh; presses go through a hidden scroll bar's track; a focused text field takes its
+  keys, so Edit › Paste's Ctrl+V pastes once on Windows (the picture is no text field: its keys are
+  unchanged); WebKit content rules bring in `golang.org/x/net` (`publicsuffix`).
 - **Since 0.6 (checked 2026-10-21).** `plugins/loading` draws loading-dev's 29 indicators natively
   (`loading.Arc(c, loading.Options{Size, Color}).Label(...)`; a static pose when the system asks for reduced
   motion); `transfer.Result.Escaped` tells a drag given up with Escape from one dropped outside every window;
