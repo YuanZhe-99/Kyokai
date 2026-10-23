@@ -6,6 +6,13 @@ when they run; anything not listed here is not assumed.
 
 ## MyGo v0.6.3
 
+- **Windows chrome and materials (spike, 2026-10-23).** A window created with `Vibrancy` shows the
+  material where the view draws no background (`Context.Vibrancy` true on Windows 11; the root
+  must be `ui.Transparent`); `PrintWindow` captures leave the backdrop out. With a hidden title bar,
+  the caption buttons are MyGo's own (snap layouts included): 46 points each over the window's
+  top-right corner, as tall as `TitleBarHeight`, their room in `Context.TitleBar()`.
+  `Bitmap.Update` redraws without rebuilding the view, so a live picture in a rounded, clipped
+  element costs no view rebuilds.
 - **0.6.3 (checked 2026-10-23).** Nothing Kyokai relies on changed. On Windows a message dialog's
   results stay off the moving Go stack, and Direct3D paces frames that change nothing by the
   display's refresh; presses go through a hidden scroll bar's track; a focused text field takes its

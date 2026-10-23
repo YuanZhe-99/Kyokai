@@ -56,8 +56,8 @@ another app's: other apps were references for behaviour only.
   with one row of compact metrics, Open while connected, Connect otherwise, services as icon
   buttons. "Others in my networks" (off by default, kept in `gui.json`) adds the Kyokai devices
   the joined networks route to and that were never connected, as dashed cards with Connect.
-- **AI.** An AI session is a pane, and a device (this computer or a host) may have several: the
-  conversation (the instruction, the model's text, its steps — a thumbnail where it took a
+- **AI.** An AI session is a pane, and a device (this computer or a host) may have several, each
+  with a title the user can rename (its first instruction until then): the conversation (the instruction, the model's text, its steps — a thumbnail where it took a
   screenshot — and approvals inline with Allow and Deny) and the prompt box at the bottom; under
   the box the approval mode, where it runs and the model with whose key ("NUC's key"). Today's
   hosts run one task at a time, so a second session there says the device is busy until the
@@ -74,7 +74,7 @@ another app's: other apps were references for behaviour only.
 | M2 Settings | the sheet, grouped navigation, settings search, the row style and permission tiles; every current setting moved (General; Permissions as Access; Network; Security as Security & privacy; Run mode; AI providers; About), the copy shortened | every setting reachable in the sheet and by search; no settings page left in the sidebar |
 | M3 Home | This device, Connect with Open as, cards of equal height, "Others in my networks", the status details as a pane | view tests with the network devices on and off |
 | M4 + and search | the picker (kinds, what each device offers, where it opens) and the Ctrl+K palette | both usable by keyboard alone; tests for the matching and the offers |
-| M5 AI | AI session panes, several per device (this computer and a host), inline approvals, the prompt box and send-key preference, recent tasks with those of devices connected before (kept on this computer: title, device, state and time, never a screenshot); the AI page removed. Under the box, this computer's approval mode and model change its own settings; a host's show what the host uses (choosing them per task waits for the agent backend: no protocol change in 0.6.0) | a task started, steered, approved and finished from both kinds of pane on two machines |
+| M5 AI | AI session panes, several per device (this computer and a host), each renamable, inline approvals, the prompt box and send-key preference, recent tasks with those of devices connected before (kept on this computer: title, device, state and time, never a screenshot); the AI page removed. Under the box, this computer's approval mode and model change its own settings; a host's show what the host uses (choosing them per task waits for the agent backend: no protocol change in 0.6.0) | a task started, steered, approved and finished from both kinds of pane on two machines |
 | M6 The rest | connection requests (a card above the panes) and "Connected here", the AI approval banners, protected mode, Starting… and the engine down, macOS privacy permissions, the address and rename editors — in the new shell | each state in view tests and seen once natively |
 | M7 Finish | contrast and keyboard navigation; gui.md, user-guide.md and computer-use.md in both languages; version-history and platform-notes | the full gate; native screenshots on both platforms; the maintainer's review |
 
