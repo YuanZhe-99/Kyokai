@@ -223,6 +223,57 @@ func TestSSHHostKeyAndPassword(t *testing.T) {
 	}
 }
 
+// Every key exchange of a connection must show the key the first one
+// accepted, a re-key too, which x/crypto runs on a goroutine of its own and
+// does not compare itself (regression: the sign-in read the key that the
+// callback wrote without a lock, and would have pinned a re-key's other
+// key).
+func TestSSHKeyStaysForTheConnection(t *testing.T) {
+	key := func() ssh.PublicKey {
+		pub, _, _ := ed25519.GenerateKey(rand.Reader)
+		k, _ := ssh.NewPublicKey(pub)
+		return k
+	}
+	a, b, c := key(), key(), key()
+	la, lb, lc := keyLine(a), keyLine(b), keyLine(c)
+	for i, tc := range []struct {
+		pinned, trust string
+		shows         []ssh.PublicKey
+		seen, refused string
+	}{
+		{"", "", []ssh.PublicKey{a, a}, la, ""}, // first use, then the same key
+		{"", "", []ssh.PublicKey{a, b}, la, lb}, // a re-key with another key
+		{la, "", []ssh.PublicKey{b}, "", lb},    // not the pinned key
+		{la, lb, []ssh.PublicKey{b, b}, lb, ""}, // the key chosen to trust
+		{la, lb, []ssh.PublicKey{b, a}, lb, la}, // then the pinned one again
+		{la, "", []ssh.PublicKey{a, c}, la, lc}, // the pinned key, then another
+	} {
+		h := &hostKeys{pinned: tc.pinned, trust: tc.trust}
+		var err error
+		for _, k := range tc.shows {
+			if err = h.check("", nil, k); err != nil {
+				break
+			}
+		}
+		seen, refused := h.shown()
+		if errors.Is(err, errHostKeyChanged) != (tc.refused != "") || seen != tc.seen || refused != tc.refused {
+			t.Errorf("%d: err %v, accepted %q, refused %q", i, err, seen, refused)
+		}
+	}
+	// A re-key on another goroutine while the sign-in reads the key: the
+	// lock orders them (`go test -race`).
+	h := &hostKeys{}
+	_ = h.check("", nil, a)
+	rekey := make(chan error)
+	go func() { rekey <- h.check("", nil, b) }()
+	if seen, _ := h.shown(); seen != la {
+		t.Errorf("accepted %q, want the first key", seen)
+	}
+	if err := <-rekey; !errors.Is(err, errHostKeyChanged) {
+		t.Errorf("a re-key with another key: %v", err)
+	}
+}
+
 // An SSH server that refuses the password by "password" is not sent it
 // again by "keyboard-interactive", one that closes the connection during
 // the sign-in refused it, and one that never answers the sign-in is named
@@ -266,16 +317,17 @@ func TestSSHSignInFailures(t *testing.T) {
 		t.Errorf("sign-ins tried %v, want the password once", tried)
 	}
 
-	// Closed during the sign-in: refused.
+	// Closed during the sign-in: refused. The server gets its connection as
+	// an argument: the test takes the next pair while it may still run.
 	client, server = connPair(t)
-	go func() {
+	go func(server net.Conn) {
 		cfg := &ssh.ServerConfig{PasswordCallback: func(ssh.ConnMetadata, []byte) (*ssh.Permissions, error) {
 			server.Close()
 			return nil, errors.New("gone")
 		}}
 		cfg.AddHostKey(host)
 		_, _, _, _ = ssh.NewServerConn(server, cfg)
-	}()
+	}(server)
 	if _, _, err := sshDial(ctx, &fakeLink{conn: client}, "657365333", "", form, true, "", ""); !errors.Is(err, errSignInFailed) {
 		t.Fatalf("closed during sign-in: err %v", err)
 	}

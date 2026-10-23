@@ -141,7 +141,6 @@ func sshDial(ctx context.Context, link serviceLink, device, address string, plan
 	stop := context.AfterFunc(ctx, func() { _ = tunnel.Close() })
 	defer stop()
 	_ = tunnel.SetDeadline(time.Now().Add(sshTimeout))
-	seen := ""
 	var auth []ssh.AuthMethod
 	if plan.method == methodKey {
 		auth = []ssh.AuthMethod{ssh.PublicKeysCallback(func() ([]ssh.Signer, error) { return engineSigners(ctx, link), nil })}
@@ -166,19 +165,14 @@ func sshDial(ctx context.Context, link serviceLink, device, address string, plan
 			return answers, nil
 		})}
 	}
-	cfg := &ssh.ClientConfig{User: plan.user, Auth: auth, Timeout: sshTimeout,
-		HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
-			seen = keyLine(key)
-			if pinned != "" && seen != pinned && seen != trust {
-				return errHostKeyChanged
-			}
-			return nil
-		}}
+	keys := &hostKeys{pinned: pinned, trust: trust}
+	cfg := &ssh.ClientConfig{User: plan.user, Auth: auth, Timeout: sshTimeout, HostKeyCallback: keys.check}
 	conn, chans, reqs, err := ssh.NewClientConn(tunnel, "localhost:22", cfg)
+	seen, refused := keys.shown()
 	if err != nil {
 		_ = tunnel.Close()
 		if errors.Is(err, errHostKeyChanged) {
-			return nil, seen, errHostKeyChanged
+			return nil, refused, errHostKeyChanged
 		}
 		return nil, "", sshSignInError(err, seen != "")
 	}
@@ -201,6 +195,44 @@ func sshDial(ctx context.Context, link serviceLink, device, address string, plan
 		_ = link.SaveCredential(ctx, device, serviceSSH, *cr)
 	}
 	return t, "", nil
+}
+
+// hostKeys checks the server's key at each key exchange of one SSH
+// connection: the first against the key pinned, unless it is the key the
+// person chose to trust; every later one (a re-key, which x/crypto runs
+// on a goroutine of its own, also once the session is open, and does not
+// compare itself) against the key the first showed.
+type hostKeys struct {
+	pinned, trust string
+	mu            sync.Mutex
+	seen, refused string
+}
+
+// check is the connection's HostKeyCallback.
+// Returns: errHostKeyChanged for a key other than the one the exchange
+// must show.
+func (h *hostKeys) check(_ string, _ net.Addr, key ssh.PublicKey) error {
+	line := keyLine(key)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	want := h.seen
+	if want == "" && line != h.trust {
+		want = h.pinned
+	}
+	if want != "" && line != want {
+		h.refused = line
+		return errHostKeyChanged
+	}
+	h.seen = line
+	return nil
+}
+
+// shown returns the key the exchanges accepted and the last one refused,
+// "" for none.
+func (h *hostKeys) shown() (seen, refused string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.seen, h.refused
 }
 
 // sshShell opens a shell in a terminal of xterm-256color, 80 by 24 until

@@ -124,7 +124,9 @@ is a pane like a desktop's ([gui.md](gui.md), "Connections").
   closed connection is a refused sign-in, and silence until the 30-second limit says the server did
   not answer. The server's key is pinned on first use
   (`Credentials.HostKey`, an authorized_keys line); a different key is refused before any password
-  is sent, and only the key the person chose with Trust the new key is accepted instead. The shell
+  is sent, and only the key the person chose with Trust the new key is accepted instead. Every later
+  key exchange of the connection (a re-key) must show the key the first one accepted, or the
+  connection ends. The shell
   has a PTY of `xterm-256color`; MyGo's terminal (`plugins/terminal`, libghostty-vt) shows it with
   the tunnel as its `Conn`, whose `Resize` sends a window change.
 - **Remote Desktop** (vendored, `internal/rdp`): Network Level Authentication (CredSSP with NTLMv2)
