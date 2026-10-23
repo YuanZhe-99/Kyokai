@@ -102,6 +102,9 @@ type App struct {
 	passphrase string
 	// Open viewer windows by session id (viewer.go).
 	viewers map[string]*viewer
+	// closed are the controller sessions this GUI closed, until they end:
+	// no tab opens for them (dropSession).
+	closed map[uint64]bool
 	// The services' tabs by serviceKey (servicetab.go), and how they reach
 	// the services and their sign-ins (remote.go).
 	services map[string]*serviceTab

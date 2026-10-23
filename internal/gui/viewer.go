@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -207,13 +208,11 @@ type viewer struct {
 	move     *inputEvent
 	releases []inputEvent
 	// The keyboard grab (viewerinput.go): the mode the core grabs keys in for
-	// this window ("" for none), whether the core refused to, the
-	// window's native handle the grab is for, and whether the controller's
-	// input method composes (Translate passes every key to it meanwhile).
-	grabbed   string
-	noGrab    bool
-	window    uintptr
-	composing bool
+	// this window ("" for none), whether the core refused to, and the
+	// window's native handle the grab is for.
+	grabbed string
+	noGrab  bool
+	window  uintptr
 	// ungrabbed: when this tab's grab last ended (grabFor).
 	ungrabbed time.Time
 	// The engine refuses input as behind (media INPUT), since when.
@@ -347,7 +346,7 @@ func (v *viewer) redial(password string, remember bool) {
 	v.mu.Unlock()
 	go func() {
 		if old != 0 {
-			_, _ = v.app.requestWith(localapi.Request{Type: localapi.RequestClose, ID: old})
+			v.app.closeSession(old)
 		}
 		resp, err := v.app.requestWith(localapi.Request{Type: localapi.RequestConnect, Connect: &localapi.ConnectRequest{
 			DeviceID: v.device, Password: password, Want: want, Remember: remember, Address: address,
@@ -360,7 +359,7 @@ func (v *viewer) redial(password string, remember bool) {
 		if err == nil {
 			v.sid.Store(resp.ID)
 			if v.home.Load() == nil {
-				_, _ = v.app.requestWith(localapi.Request{Type: localapi.RequestClose, ID: resp.ID})
+				v.app.closeSession(resp.ID)
 				return
 			}
 		}
@@ -382,9 +381,36 @@ func (v *viewer) redial(password string, remember bool) {
 	}()
 }
 
+// dropSession notes a controller session this GUI closed: no tab opens for
+// it until it has ended (syncViewers).
+// Notes: the engine keeps a closing session connected while it says
+// goodbye, and the status it pushes with the close lists it so
+// (regression: closing a tab or a window opened a new tab for the same
+// device at once, which said the session ended).
+func (a *App) dropSession(id uint64) {
+	if id == 0 {
+		return
+	}
+	a.mu.Lock()
+	if a.closed == nil {
+		a.closed = map[uint64]bool{}
+	}
+	a.closed[id] = true
+	a.mu.Unlock()
+}
+
+// closeSession ends a controller session no tab follows any more, noted
+// first (dropSession).
+// Notes: waits for the engine's answer; call it off the main thread.
+func (a *App) closeSession(id uint64) {
+	a.dropSession(id)
+	_, _ = a.requestWith(localapi.Request{Type: localapi.RequestClose, ID: id})
+}
+
 // syncViewers follows the engine's sessions in the tabs: each connection
 // takes its session's progress, starts its stream once connected, and a
-// connection made elsewhere (another window, ctl) gets a tab of its own.
+// connection made elsewhere (another window, ctl) gets a tab of its own;
+// one this GUI closed gets none (dropSession).
 // Notes: call on the main thread.
 func (a *App) syncViewers() {
 	a.mu.Lock()
@@ -392,9 +418,18 @@ func (a *App) syncViewers() {
 	if a.status != nil {
 		sessions = a.status.Sessions
 	}
+	// A closed session is forgotten once it ended or left the list.
+	for id := range a.closed {
+		if !slices.ContainsFunc(sessions, func(s localapi.SessionInfo) bool {
+			return s.ID == id && s.State != "closed" && s.State != "failed"
+		}) {
+			delete(a.closed, id)
+		}
+	}
+	closed := maps.Clone(a.closed)
 	a.mu.Unlock()
 	for _, s := range sessions {
-		if !desktopController(s) {
+		if !desktopController(s) || closed[s.ID] {
 			continue
 		}
 		v := a.viewerFor(s.DeviceID)
@@ -1138,7 +1173,7 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 	focused := false
 	defer func() { v.syncGrab(focused) }()
 	v.mu.Lock()
-	recovering, asleep, mapped, hostVideo := v.recovering, v.asleep, v.grabbed == "map", v.host.Video
+	recovering, asleep, hostVideo := v.recovering, v.asleep, v.host.Video
 	v.mu.Unlock()
 	waiting, retrying := viewerWaitText(hostVideo, start.Placeholder)
 	area.Children(func() {
@@ -1158,12 +1193,15 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 				v.wakeOffer(c, hostVideo == "")
 			}
 		default:
-			// The picture takes text: macOS turns keys into text (and input
-			// methods compose) only for an element that does, and Legacy
-			// mode sends letters as that text (regression: no key reached a
-			// Mac's host from a Mac). Candidate windows open at its corner.
+			// The picture takes text: macOS turns keys into text only for an
+			// element that does, and Legacy mode sends letters as that text
+			// (regression: no key reached a Mac's host from a Mac). The
+			// controller's input method stays off in it, in every mode: keys
+			// type the layout's characters and nothing composes here (the
+			// host's own input method composes, if it has one); it comes
+			// back as the picture loses the focus.
 			img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().
-				TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(!mapped).HandleInput(v.sendInput).Bind(&v.pic)
+				TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(false).HandleInput(v.sendInput).Bind(&v.pic)
 			focused = pointerKeys(img)
 			box := img.LayoutBounds()
 			v.mu.Lock()
@@ -1251,9 +1289,10 @@ func (v *viewer) originalPicture(c *ui.Context, bm *ui.Bitmap, start videoStart,
 	scroll.Children(func() {
 		ui.Column(c).MinWidth(area.W).MinHeight(area.H).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 			ui.Column(c.Key("picture-box")).Width(w).Height(h).Shrink(0).Children(func() {
-				// It takes text and keys as the fitted picture does.
+				// It takes text and keys as the fitted picture does, its
+				// input method off too.
 				img := ui.Image(c.Key("picture"), bm).Width(w).Height(h).Focusable().
-					TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(v.sendInput).Bind(&v.pic)
+					TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(false).HandleInput(v.sendInput).Bind(&v.pic)
 				focused = pointerKeys(img)
 				box := img.LayoutBounds()
 				v.mu.Lock()

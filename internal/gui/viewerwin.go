@@ -9,7 +9,6 @@ import (
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
@@ -536,7 +535,10 @@ func (v *viewer) disconnect() {
 	// sees the tab closed and closes its session itself (redial).
 	v.close()
 	id := v.session()
-	go func() { _, _ = v.app.requestWith(localapi.Request{Type: localapi.RequestClose, ID: id}) }()
+	// Noted here, on the main thread, before any status that still lists
+	// it as connected reaches syncViewers.
+	v.app.dropSession(id)
+	go v.app.closeSession(id)
 }
 
 // tabKey is the viewer's tab's identity: the Device ID.

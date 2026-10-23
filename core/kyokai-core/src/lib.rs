@@ -50,7 +50,7 @@ use std::sync::{Arc, Mutex};
 
 /// Version of the C ABI. Hosts compare it with their own before any other
 /// call; changing an export's signature or meaning bumps it.
-pub const ABI_VERSION: u32 = 5;
+pub const ABI_VERSION: u32 = 6;
 
 /// The running core: what `kyokai_start` set up, until `kyokai_stop`.
 struct Core {
@@ -527,8 +527,7 @@ pub extern "C" fn kyokai_decoder_close(id: u64) {
 /// Grabs the keyboard for a viewer window, or ends its grab
 /// (doc/en-us/computer-use.md, "Keyboard modes"). Needs no started core.
 /// Inputs: `window` — the viewer's native window handle; `mode`/`len` — the
-/// mode's name (`map`, `translate`, `pass` while the controller's input
-/// method composes, `off`), borrowed for the call.
+/// mode's name (`map`, `translate`, `off`), borrowed for the call.
 /// Returns: 0; -1 for an unknown mode or no window; -2 when the keyboard cannot be
 /// grabbed here (no hook; on macOS, no Accessibility permission).
 ///

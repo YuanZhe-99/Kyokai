@@ -51,7 +51,7 @@ integers and pointers only:
 
 | Export | Does |
 |---|---|
-| `kyokai_abi_version() -> u32` | ABI version (5); hosts refuse a mismatch |
+| `kyokai_abi_version() -> u32` | ABI version (6); hosts refuse a mismatch |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | Starts the core with `{version, state_dir, profile}` |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | Answers `{method, params}` |
 | `kyokai_free(ptr, len)` | Frees a response buffer |

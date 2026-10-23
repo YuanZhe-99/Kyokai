@@ -17,7 +17,7 @@ import (
 
 // ABIVersion is the C ABI this package speaks; the library must report the
 // same one.
-const ABIVersion = 5
+const ABIVersion = 6
 
 // LibraryName is the file name of the core library on this platform.
 func LibraryName() string {

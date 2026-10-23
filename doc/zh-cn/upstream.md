@@ -20,7 +20,10 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   Metal 会等待在途帧。以一半或更小的尺寸绘制的位图每次更新后都会在 CPU 上做盒式降采样，经由 `ui/shader`
   绘制则不会。`ui.Image(c, bm).Fit(...)` 负责缩放；`Pixelated()` 为最近邻。
 - **输入。** `Element.Focusable().HandleInput(func(ui.InputEvent) bool)` 提供按键按下/抬起、文本、输入法组字、
-  命令、指针按下/抬起/移动、滚动（`DX`、`DY`、`Precise`），坐标为元素内的 DIP。缺口：没有扫描码；约 70 个
+  命令、指针按下/抬起/移动、滚动（`DX`、`DY`、`Precise`），坐标为元素内的 DIP。`TextCaret` 为获得焦点的元素打开系统的
+  输入法，`InputMethod(false)` 再把它关闭，按键仍以文本输入键盘布局上的字符（2026-10-23 检查：Windows 从窗口取走 IMM
+  上下文，`ImmAssociateContextEx(hwnd, 0, 0)`，并完成正在进行的输入组合；macOS 跳过 `interpretKeyEvents:`，插入事件的
+  `characters`）；浏览器做不到。缺口：没有扫描码；约 70 个
   `Key` 值（没有小键盘键、CapsLock、NumLock、PrintScreen、F13–F24、媒体键）；修饰键只有位掩码（不分左右）；
   Windows 丢弃未映射的键，并且总把 `WM_SYSKEYDOWN`（Alt、F10、Alt+F4）交给 `DefWindowProc`；X1/X2 在抬起时以
   `KeyBack`/`KeyForward` 到达；macOS 把 Control 加单击变成右键、忽略 CapsLock、菜单快捷键（Cmd+Q/W/H/C/V）优先；

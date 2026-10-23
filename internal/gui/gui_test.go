@@ -1452,6 +1452,34 @@ func TestTunnelsAreNotDesktopConnections(t *testing.T) {
 	}
 }
 
+// TestAClosedSessionGetsNoTab: a session this GUI closed still reads
+// connected while it says goodbye; no tab opens for it, and it is forgotten
+// once it ended (regression: closing a tab or a window opened a new tab for
+// the same device at once, which said the session ended).
+func TestAClosedSessionGetsNoTab(t *testing.T) {
+	a := New("", t.TempDir(), "")
+	closing := localapi.SessionInfo{ID: 7, Role: "controller", DeviceID: "657365333", State: "connected"}
+	a.status = &localapi.Status{Sessions: []localapi.SessionInfo{closing}}
+	a.dropSession(closing.ID)
+	// Opening a tab waits for a window this test has none of.
+	done := make(chan struct{})
+	go func() { a.syncViewers(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a session this GUI closed opened a tab")
+	}
+	if len(a.viewers) != 0 {
+		t.Errorf("%d tab(s) for a closed session", len(a.viewers))
+	}
+	closing.State = "closed"
+	a.status = &localapi.Status{Sessions: []localapi.SessionInfo{closing}}
+	a.syncViewers()
+	if a.closed[closing.ID] {
+		t.Error("an ended session stays noted")
+	}
+}
+
 // TestServicePorts: the Permissions page shows a standard port as an
 // empty field and sends one back as 0 (the engine's standard), and
 // refuses what is not a port.

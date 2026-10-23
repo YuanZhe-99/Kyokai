@@ -93,8 +93,9 @@ func pictureBox(box ui.Rect, pw, ph int) (ox, oy, w, h float32) {
 // for one to leave alone. held tracks keys sent down, so a key's release is
 // sent exactly when its press was. grabbed is the keyboard mode the core
 // grabs keys in for this viewer ("" for none): then keys come from the
-// grab, and text is whatever still reaches the window — Translate mode's
-// committed text, or characters another program injects as text (the
+// grab, and text is whatever still reaches the window — the characters
+// Translate mode leaves to the controller's layout, or characters another
+// program injects as text (the
 // grab leaves those alone; regression: Kyokai inside a RustDesk session
 // dropped them in Map mode).
 func toEvent(ev ui.InputEvent, box ui.Rect, pw, ph int, held map[ui.Key]bool, grabbed string) (inputEvent, bool) {
@@ -375,9 +376,6 @@ func (v *viewer) sendInput(ev ui.InputEvent) bool {
 	grabbed := v.grabbed
 	e, ok := toEvent(ev, box, start.Width, start.Height, v.held, v.grabbed)
 	v.mu.Unlock()
-	if grabbed == "translate" && (ev.Kind == ui.InputCompose || ev.Kind == ui.InputText) {
-		v.followComposition(ev.Kind == ui.InputCompose && ev.Text != "")
-	}
 	// A Mac's menu takes Cmd+C and the like before the picture sees the
 	// keys: they come back as the menu's commands (Legacy mode; a grab
 	// takes the keys first).
@@ -634,31 +632,6 @@ func grabTurn(holders *map[uintptr]any, window uintptr, t any, mode string) bool
 	return true
 }
 
-// followComposition tells a Translate grab whether the controller's input
-// method composes now (the picture got a composition, or committed text):
-// while it does, the grab passes every key to it (the core's `pass`
-// state), so its Enter, Esc, Backspace and arrows commit, cancel and edit
-// the composition instead of going to the host (regression: they went to
-// the host, the composition never ended and swallowed every later key);
-// text that comes ends it, and confirms to the core that no composition is
-// open.
-func (v *viewer) followComposition(composing bool) {
-	v.mu.Lock()
-	changed, window := composing != v.composing, v.window
-	v.composing = composing
-	v.mu.Unlock()
-	if !changed && composing {
-		return
-	}
-	mode := "translate"
-	if composing {
-		mode = "pass"
-	}
-	if lib, err := coreLib(); err == nil {
-		_ = v.app.grabKeyboard(lib, window, v, mode)
-	}
-}
-
 // inputStalled reports whether the session cannot take input now: it is
 // reconnecting, the engine has refused input for more than
 // inputPauseGrace, or no frame nor stats came for stalledFeed while the
@@ -721,7 +694,7 @@ func (v *viewer) syncGrab(focused bool) {
 	if have != "" && want == "" {
 		v.ungrabbed = time.Now()
 	}
-	v.grabbed, v.composing = want, false
+	v.grabbed = want
 	v.mu.Unlock()
 	if want != "" {
 		v.app.keyReader.Do(func() { go v.app.readKeys(lib) })
@@ -802,11 +775,11 @@ func scanEvent(ev core.KeyEvent) inputEvent {
 }
 
 // pointerKeys reports whether a picture takes the keyboard: while the
-// pointer is over it (doc/en-us/gui.md, "Keyboard"), so with several
-// connections side by side the keys go to the one under the pointer. It
-// takes the text focus with them, so that typed text goes to the same
-// session as the keys. The core takes the keys only while Kyokai is in
-// front and its window shows at the pointer.
+// pointer is over it (doc/en-us/computer-use.md, "Keyboard modes"), so with
+// several connections side by side the keys go to the one under the
+// pointer. It takes the text focus with them, so that typed text goes to
+// the same session as the keys. The core takes the keys only while Kyokai
+// is in front (on Windows, also while its window shows at the pointer).
 func pointerKeys(img ui.Element) bool {
 	if !img.Hovered() {
 		return false

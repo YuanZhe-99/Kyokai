@@ -1,5 +1,31 @@
 # Version history
 
+## 0.5.5 (2026-10-23)
+
+- A Mac controller sends every key again (a 0.5.4 regression). Its tap also asked that Kyokai own
+  the window at the key's location, read from the whole on-screen window list, whose invisible
+  windows of other programs and the system cover Kyokai's; it let every key pass while the viewer
+  took itself for grabbing, so no Enter, Tab, Delete, Shift or Command reached the host (letters and
+  digits did, as text) unless the pointer was off the picture. The tap again asks only that Kyokai
+  own the frontmost window, the viewer grabbing while the pointer is over the picture; Windows keeps
+  its check of the window at the pointer.
+- A closed tab stays closed: closing a tab or a window opened a new tab for the same device at
+  once, saying the session ended (since 0.5.0), as the engine keeps a closing session connected
+  while it says goodbye. The GUI opens no tab for a session it closed until that has ended.
+- The controller's input method is off in the remote picture, in every keyboard mode, and in the
+  Remote Desktop and VNC screens: Chinese and Japanese are typed with the host's own input method,
+  switched on there, in Map mode. Translate sends a key that types on the controller's layout as
+  its text and every other key by position, holding nothing back (it held the editing keys back for
+  up to a second after a letter on a Chinese, Japanese or Korean layout, and an Enter typed then
+  could be lost); the grab's `pass` mode is gone.
+- CI: the codec libraries come from a cached install tree instead of vcpkg (whose binary cache
+  missed whenever a runner image changed its compiler); clippy and the Rust tests run beside the
+  other jobs; CI's packages take the core as built; a runner image's own Rust no longer changes the
+  Rust cache's key; a Mac release builds both cores in one cargo run.
+- Protocol 10 and local API 2, unchanged; ABI 6 (`kyokai_keyboard_grab` no longer takes `pass`).
+  Upstream versions: MyGo v0.6.2, EasyTier v2.7.0, RustDesk 1.5.0 (vendored code), vcpkg
+  2026.10.16, Rust 1.99.1 checked, unchanged.
+
 ## 0.5.4 (2026-10-22)
 
 - Slow paths: the host waits for late acknowledgements instead of taking the frames for lost after

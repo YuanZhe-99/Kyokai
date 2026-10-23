@@ -293,14 +293,16 @@ func (sc *screenClient) view(c *ui.Context, s *serviceTab) {
 				scroll.Children(func() {
 					ui.Column(c).MinWidth(area.W).MinHeight(area.H).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 						img := ui.Image(c.Key("screen"), bm).Width(w).Height(h).Shrink(0).Focusable().
-							TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(sc.input).Bind(&sc.pic)
+							TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(false).HandleInput(sc.input).Bind(&sc.pic)
 						focused = pointerKeys(img)
 						sc.setBox(img.LayoutBounds())
 					})
 				})
 			default:
+				// The controller's input method stays off in the remote
+				// screen, as in a desktop viewer's picture.
 				img := ui.Image(c.Key("screen"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().
-					TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(sc.input).Bind(&sc.pic)
+					TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(false).HandleInput(sc.input).Bind(&sc.pic)
 				focused = pointerKeys(img)
 				sc.setBox(img.LayoutBounds())
 			}

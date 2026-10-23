@@ -5338,15 +5338,23 @@ mod tests {
         };
         assert!(capped(&queue), "the cap never reached the host");
         // Choosing a codec restarts the video in it (the test pattern where
-        // this machine cannot capture).
+        // this machine cannot capture). A description of the old stream sent
+        // just before may still come first: it keeps its place among the
+        // video's chunks (session::Out).
         control
             .try_send(json!({"type": "codec", "codec": "vp8"}))
             .unwrap();
-        let start = next_packet(&queue, media::packet::VIDEO_START, "restarted video");
-        assert!(
-            matches!(start["codec"].as_str(), Some("vp8" | "raw-rgba")),
-            "{start}"
-        );
+        let until = Instant::now() + Duration::from_secs(8);
+        loop {
+            let start = next_packet(&queue, media::packet::VIDEO_START, "restarted video");
+            if matches!(start["codec"].as_str(), Some("vp8" | "raw-rgba")) {
+                break;
+            }
+            assert!(
+                Instant::now() < until,
+                "the video never restarted in vp8: {start}"
+            );
+        }
         // The connection drops and resumes: the host gets the choices again
         // before the video starts.
         host_side.abort();

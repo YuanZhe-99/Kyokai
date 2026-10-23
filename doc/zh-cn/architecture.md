@@ -47,7 +47,7 @@
 
 | 导出 | 作用 |
 |---|---|
-| `kyokai_abi_version() -> u32` | ABI 版本（5）；不一致时宿主拒绝加载 |
+| `kyokai_abi_version() -> u32` | ABI 版本（6）；不一致时宿主拒绝加载 |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | 以 `{version, state_dir, profile}` 启动核心 |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | 应答 `{method, params}` |
 | `kyokai_free(ptr, len)` | 释放响应缓冲区 |

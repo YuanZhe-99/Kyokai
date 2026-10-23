@@ -189,8 +189,9 @@ when `SCREENSHOT_DIR` is set.
   focus. A closed tab gives its room to its neighbour; Home shows over the whole
   window. Every tab shown keeps its connection running; only the one in focus takes the keyboard
   and the clipboard; in Map and Translate the keys go to the tab whose picture is under the
-  pointer, which takes the focus with them ([computer-use.md](computer-use.md), "Keyboard
-  modes"). A tab
+  pointer, which takes the focus with them, and in every mode a picture (a Remote Desktop or VNC
+  screen's too) keeps the controller's input method off ([computer-use.md](computer-use.md),
+  "Keyboard modes"). A tab
   is a desktop or one of a device's services (SSH, Remote Desktop, VNC; `tab`, `serviceTab`), one
   per device and kind, and every kind drags, moves and closes alike.
 - A service tab ([remote-services.md](remote-services.md), "Clients") is titled "SSH · device"

@@ -152,7 +152,8 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
   goroutine and shown on the main thread, fitted or at its original size as the viewer's; the
   pointer, its buttons and the wheel go in the other desktop's pixels. In Map and Translate the
   keyboard grab takes keys as for a desktop (`App.takeKey`); in Legacy named keys go with their
-  modifiers and text as text. The clipboard's text crosses while the tab is in front: this
+  modifiers and text as text; in every mode the controller's input method is off in the picture,
+  as in a desktop's. The clipboard's text crosses while the tab is in front: this
   computer's goes as the tab comes in front, the other desktop's comes back as it changes.
   Ctrl+Alt+Del is in Actions.
 - **Sign-ins kept**: see the sign-in method above; SSH also saves the server's key pinned on first

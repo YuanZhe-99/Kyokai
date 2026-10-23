@@ -26,7 +26,12 @@ when they run; anything not listed here is not assumed.
   `ui/shader`. `ui.Image(c, bm).Fit(...)` scales; `Pixelated()` gives nearest-neighbour.
 - **Input.** `Element.Focusable().HandleInput(func(ui.InputEvent) bool)` delivers key down/up,
   text, IME composition, commands, pointer down/up/move, scroll (`DX`, `DY`, `Precise`) with
-  element-local coordinates in DIPs. Gaps: no scancodes; about 70 `Key` values (no numpad keys,
+  element-local coordinates in DIPs. `TextCaret` turns the system's input methods on for a focused
+  element and `InputMethod(false)` off again, keys still typing the layout's characters as text
+  (checked 2026-10-23: Windows takes the IMM context off the window,
+  `ImmAssociateContextEx(hwnd, 0, 0)`, completing an open composition; macOS skips
+  `interpretKeyEvents:` and inserts the event's `characters`); browsers cannot.
+  Gaps: no scancodes; about 70 `Key` values (no numpad keys,
   CapsLock, NumLock, PrintScreen, F13–F24, media keys); modifiers only as a bitmask (no left/right);
   Windows drops unmapped keys and always passes `WM_SYSKEYDOWN` (Alt, F10, Alt+F4) to
   `DefWindowProc`; X1/X2 arrive as `KeyBack`/`KeyForward` on release; macOS turns Control-click

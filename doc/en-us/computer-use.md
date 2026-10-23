@@ -274,19 +274,23 @@ says so). A Mac's tap takes the keys going to Kyokai while a viewer grabs, by th
 turned into the PC scan codes the host maps back (Command is the Windows key); keys no scan code
 names (Fn, the media keys) stay the Mac's, and Caps Lock, which a Mac reports only as it toggles,
 goes as a press and a release. The tap takes keys only while Kyokai owns the frontmost window and
-the window at the event's location, and the viewer reads them (it lets every key pass when either
-stops), a viewer whose tab is hidden or whose connection ended releases its grab, and the tap is
-switched off and invalidated with its thread (left installed, it froze every program's keyboard
-until Kyokai quit).
+the viewer reads them (it lets every key pass when either stops), a viewer whose tab is hidden or
+whose connection ended releases its grab, and the tap is switched off and invalidated with its
+thread (left installed, it froze every program's keyboard until Kyokai quit).
 
 The keyboard follows the pointer. In Map and Translate a viewer grabs while the pointer is over its
 picture, and the picture takes the text focus with it, so typed text and keys go to the same
 session; with tabs side by side the keys go to the connection under the pointer. With the pointer
 away from the picture (the toolbar, Home, outside the window) nothing is grabbed and keys go to
-Kyokai's own interface. The core takes the keys only while Kyokai's window is in front and is the
-topmost window at the pointer (Windows: the root of `WindowFromPoint` is the foreground window;
-macOS: as above), so another program's window over the pointer takes them back, and keys the grab
-sent down are released on the host. The core holds one grab per window, so the GUI keeps which tab
+Kyokai's own interface. The core takes the keys only while Kyokai's window is in front; on Windows
+also only while it is the topmost window at the pointer (the root of `WindowFromPoint` is the
+foreground window), so another program's window over the pointer takes them back, and keys the
+grab sent down are released on the host. A Mac's tap asks only for the frontmost window and leaves
+the pointer to the viewer's grab (0.5.4 also asked that Kyokai own the window at the event's
+location, read from the whole on-screen window list, where invisible windows of other programs and
+of the system cover Kyokai's: the tap let every key pass while the viewer took itself for grabbing,
+so a Mac sent no Enter, Tab, Delete, Shift or Command — letters and digits still arrived as text —
+except with the pointer off the picture). The core holds one grab per window, so the GUI keeps which tab
 holds each window's grab and only that tab ends it (`App.grabKeyboard`; as the shown tab changed,
 the tab just hidden ended the grab the newly shown one had taken, which still dropped the window's
 own key events, so only text reached the host: no Tab, Enter, Delete or Shift). The picture takes
@@ -294,6 +298,14 @@ text while it has the focus: macOS makes text of keys only for an element that d
 sends letters as that text (with it missing, no
 letter reached the host from a Mac). In Legacy mode a Mac's menu takes Cmd+C, X, V, A, Z and
 Shift+Cmd+Z before the window sees them; their edit commands are sent as those shortcuts again.
+
+The controller's input method is off in the picture, in every mode, and in a Remote Desktop or VNC
+screen too (MyGo's `InputMethod(false)`): only for that element while it has the keyboard focus —
+Windows detaches the window's input context (`ImmAssociateContextEx(hwnd, 0, 0)`) and ends an open
+composition, a Mac's keys skip the input method — so keys type the layout's characters and nothing
+composes. It is back as the focus leaves the picture; the system's input-method setting is never
+changed. Chinese and Japanese are typed with the host's own input method, switched on there
+(Win+Space, for example), in Map mode.
 
 **Swap Ctrl and Cmd** (in the toolbar's Keyboard menu where a Mac is on either side, kept for each device) exchanges
 Ctrl and Cmd, the Windows key, in what the viewer sends: in a key's modifiers and in the left and
@@ -305,8 +317,8 @@ with Ctrl or Cmd).
 
 | Mode | On the controller | On the host |
 |---|---|---|
-| Map | while the pointer is over the picture and its window is in front and topmost there, a low-level keyboard hook in the core takes every key by scan code before the controller's windows see it: Win, Alt+Tab, Alt+F4 and every shortcut go to the host; CapsLock, NumLock and ScrollLock act on the controller too. The picture takes no input method while it grabs (Windows: the window's input context is detached and an open composition ended; macOS: nothing composes), so the controller's input method never catches keys: Chinese and Japanese are typed with the host's own input method, as in RustDesk | each key by scan code, so the host's layout decides what it types |
-| Translate | a key that makes a character on the controller's layout with the modifiers held (a dead key too; not with Win, or with Ctrl or Alt alone) stays with the controller, whose layout and input method type it, and its text is sent; Shift, Ctrl, Alt and the lock keys go both ways; AltGr stays the controller's; every other key and shortcut is taken by scan code. While the controller's input method composes (the picture gets a composition), every key passes to it (the grab's `pass` state) and only the committed text goes to the host; after a key that typed on a Chinese, Japanese or Korean layout, Enter, Esc, Backspace, Tab, the arrows, Space and the digits pass too until the GUI says no composition is open (a second at most), as the composition may begin after the next key | text as Unicode, the other keys by scan code |
+| Map | while the pointer is over the picture and its window is in front (and, on Windows, topmost there), a low-level keyboard hook in the core takes every key by scan code before the controller's windows see it: Win, Alt+Tab, Alt+F4 and every shortcut go to the host; CapsLock, NumLock and ScrollLock act on the controller too | each key by scan code, so the host's layout and input method decide what it types, as in RustDesk |
+| Translate | a key that makes a character on the controller's layout with the modifiers held (a dead key too; not with Win, or with Ctrl or Alt alone) stays with the controller, whose layout types it, and its text is sent; Shift, Ctrl, Alt and the lock keys go both ways; AltGr stays the controller's; every other key and shortcut is taken by scan code. Nothing is held back for an input method (after a key that typed on a Chinese, Japanese or Korean layout, Enter, Esc, Backspace, Tab, the arrows, Space and the digits passed to the controller's for up to a second, and an Enter typed then could be lost) | text as Unicode, the other keys by scan code |
 | Legacy | the GUI toolkit's key events as above: no Win key, no shortcut the window consumes, no left or right modifier, numpad keys by their meaning | named keys and Unicode |
 
 Each key the grab takes carries the controller's CapsLock and NumLock: before a letter the host
