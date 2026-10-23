@@ -66,16 +66,6 @@ func (msgs Messages) AIActionSend() string {
 	return Catalog.Format(msgs.locale, "AIActionSend", nil)
 }
 
-// AIActionStart says "Start"
-// in the language the app shows.
-func AIActionStart() string { return In(i18n.Locale()).AIActionStart() }
-
-// AIActionStart says "Start"
-// in the language of msgs.
-func (msgs Messages) AIActionStart() string {
-	return Catalog.Format(msgs.locale, "AIActionStart", nil)
-}
-
 // AIActionStop says "Stop"
 // in the language the app shows.
 func AIActionStop() string { return In(i18n.Locale()).AIActionStop() }
@@ -166,6 +156,36 @@ func (msgs Messages) AIApprovalFlaggedOption() string {
 	return Catalog.Format(msgs.locale, "AIApprovalFlaggedOption", nil)
 }
 
+// AIApprovalNoteHere says "Moving your mouse pauses the AI at once."
+// in the language the app shows.
+func AIApprovalNoteHere() string { return In(i18n.Locale()).AIApprovalNoteHere() }
+
+// AIApprovalNoteHere says "Moving your mouse pauses the AI at once."
+// in the language of msgs.
+func (msgs Messages) AIApprovalNoteHere() string {
+	return Catalog.Format(msgs.locale, "AIApprovalNoteHere", nil)
+}
+
+// AIApprovalNoteThere says "Moving the mouse on {device} pauses the AI at once."
+// in the language the app shows.
+func AIApprovalNoteThere(device string) string { return In(i18n.Locale()).AIApprovalNoteThere(device) }
+
+// AIApprovalNoteThere says "Moving the mouse on {device} pauses the AI at once."
+// in the language of msgs.
+func (msgs Messages) AIApprovalNoteThere(device string) string {
+	return Catalog.Format(msgs.locale, "AIApprovalNoteThere", map[string]any{"device": device})
+}
+
+// AIApprovalOnHost says "Approvals as set on {device}"
+// in the language the app shows.
+func AIApprovalOnHost(device string) string { return In(i18n.Locale()).AIApprovalOnHost(device) }
+
+// AIApprovalOnHost says "Approvals as set on {device}"
+// in the language of msgs.
+func (msgs Messages) AIApprovalOnHost(device string) string {
+	return Catalog.Format(msgs.locale, "AIApprovalOnHost", map[string]any{"device": device})
+}
+
 // AIApprovalTitle says "Allow this action?"
 // in the language the app shows.
 func AIApprovalTitle() string { return In(i18n.Locale()).AIApprovalTitle() }
@@ -174,6 +194,66 @@ func AIApprovalTitle() string { return In(i18n.Locale()).AIApprovalTitle() }
 // in the language of msgs.
 func (msgs Messages) AIApprovalTitle() string {
 	return Catalog.Format(msgs.locale, "AIApprovalTitle", nil)
+}
+
+// AIAskHere says "What should the AI do on this computer?"
+// in the language the app shows.
+func AIAskHere() string { return In(i18n.Locale()).AIAskHere() }
+
+// AIAskHere says "What should the AI do on this computer?"
+// in the language of msgs.
+func (msgs Messages) AIAskHere() string {
+	return Catalog.Format(msgs.locale, "AIAskHere", nil)
+}
+
+// AIAskHereAbout says "It sees this screen and uses the mouse and keyboard. Moving your mouse pauses it at once."
+// in the language the app shows.
+func AIAskHereAbout() string { return In(i18n.Locale()).AIAskHereAbout() }
+
+// AIAskHereAbout says "It sees this screen and uses the mouse and keyboard. Moving your mouse pauses it at once."
+// in the language of msgs.
+func (msgs Messages) AIAskHereAbout() string {
+	return Catalog.Format(msgs.locale, "AIAskHereAbout", nil)
+}
+
+// AIAskThere says "What should the AI do on {device}?"
+// in the language the app shows.
+func AIAskThere(device string) string { return In(i18n.Locale()).AIAskThere(device) }
+
+// AIAskThere says "What should the AI do on {device}?"
+// in the language of msgs.
+func (msgs Messages) AIAskThere(device string) string {
+	return Catalog.Format(msgs.locale, "AIAskThere", map[string]any{"device": device})
+}
+
+// AIAskThereAbout says "It sees {device}'s screen and uses its mouse and keyboard, with {device}'s own AI provider and key."
+// in the language the app shows.
+func AIAskThereAbout(device string) string { return In(i18n.Locale()).AIAskThereAbout(device) }
+
+// AIAskThereAbout says "It sees {device}'s screen and uses its mouse and keyboard, with {device}'s own AI provider and key."
+// in the language of msgs.
+func (msgs Messages) AIAskThereAbout(device string) string {
+	return Catalog.Format(msgs.locale, "AIAskThereAbout", map[string]any{"device": device})
+}
+
+// AIBusyHere says "This computer is working on another task."
+// in the language the app shows.
+func AIBusyHere() string { return In(i18n.Locale()).AIBusyHere() }
+
+// AIBusyHere says "This computer is working on another task."
+// in the language of msgs.
+func (msgs Messages) AIBusyHere() string {
+	return Catalog.Format(msgs.locale, "AIBusyHere", nil)
+}
+
+// AIBusyThere says "{device} is working on another task."
+// in the language the app shows.
+func AIBusyThere(device string) string { return In(i18n.Locale()).AIBusyThere(device) }
+
+// AIBusyThere says "{device} is working on another task."
+// in the language of msgs.
+func (msgs Messages) AIBusyThere(device string) string {
+	return Catalog.Format(msgs.locale, "AIBusyThere", map[string]any{"device": device})
 }
 
 // AIChatNote says "Needs a model that accepts images and calls tools; Kyokai offers its actions as tools."
@@ -442,6 +522,46 @@ func (msgs Messages) AIEditSource() string {
 	return Catalog.Format(msgs.locale, "AIEditSource", nil)
 }
 
+// AIHintSend says "Enter to send · Shift+Enter for a new line"
+// in the language the app shows.
+func AIHintSend() string { return In(i18n.Locale()).AIHintSend() }
+
+// AIHintSend says "Enter to send · Shift+Enter for a new line"
+// in the language of msgs.
+func (msgs Messages) AIHintSend() string {
+	return Catalog.Format(msgs.locale, "AIHintSend", nil)
+}
+
+// AIHintSendShift says "Shift+Enter to send · Enter for a new line"
+// in the language the app shows.
+func AIHintSendShift() string { return In(i18n.Locale()).AIHintSendShift() }
+
+// AIHintSendShift says "Shift+Enter to send · Enter for a new line"
+// in the language of msgs.
+func (msgs Messages) AIHintSendShift() string {
+	return Catalog.Format(msgs.locale, "AIHintSendShift", nil)
+}
+
+// AIHintStart says "Enter to start"
+// in the language the app shows.
+func AIHintStart() string { return In(i18n.Locale()).AIHintStart() }
+
+// AIHintStart says "Enter to start"
+// in the language of msgs.
+func (msgs Messages) AIHintStart() string {
+	return Catalog.Format(msgs.locale, "AIHintStart", nil)
+}
+
+// AIHintStartShift says "Shift+Enter to start"
+// in the language the app shows.
+func AIHintStartShift() string { return In(i18n.Locale()).AIHintStartShift() }
+
+// AIHintStartShift says "Shift+Enter to start"
+// in the language of msgs.
+func (msgs Messages) AIHintStartShift() string {
+	return Catalog.Format(msgs.locale, "AIHintStartShift", nil)
+}
+
 // AIHistoryClear says "Clear history"
 // in the language the app shows.
 func AIHistoryClear() string { return In(i18n.Locale()).AIHistoryClear() }
@@ -450,26 +570,6 @@ func AIHistoryClear() string { return In(i18n.Locale()).AIHistoryClear() }
 // in the language of msgs.
 func (msgs Messages) AIHistoryClear() string {
 	return Catalog.Format(msgs.locale, "AIHistoryClear", nil)
-}
-
-// AIHistoryEmpty says "No earlier tasks."
-// in the language the app shows.
-func AIHistoryEmpty() string { return In(i18n.Locale()).AIHistoryEmpty() }
-
-// AIHistoryEmpty says "No earlier tasks."
-// in the language of msgs.
-func (msgs Messages) AIHistoryEmpty() string {
-	return Catalog.Format(msgs.locale, "AIHistoryEmpty", nil)
-}
-
-// AIHistoryTitle says "Task history"
-// in the language the app shows.
-func AIHistoryTitle() string { return In(i18n.Locale()).AIHistoryTitle() }
-
-// AIHistoryTitle says "Task history"
-// in the language of msgs.
-func (msgs Messages) AIHistoryTitle() string {
-	return Catalog.Format(msgs.locale, "AIHistoryTitle", nil)
 }
 
 // AIKey says "API key"
@@ -492,6 +592,16 @@ func (msgs Messages) AIKeyMissing() string {
 	return Catalog.Format(msgs.locale, "AIKeyMissing", nil)
 }
 
+// AIKeyOf says "{device}'s model and key"
+// in the language the app shows.
+func AIKeyOf(device string) string { return In(i18n.Locale()).AIKeyOf(device) }
+
+// AIKeyOf says "{device}'s model and key"
+// in the language of msgs.
+func (msgs Messages) AIKeyOf(device string) string {
+	return Catalog.Format(msgs.locale, "AIKeyOf", map[string]any{"device": device})
+}
+
 // AIKeyShort says "key stored"
 // in the language the app shows.
 func AIKeyShort() string { return In(i18n.Locale()).AIKeyShort() }
@@ -510,6 +620,36 @@ func AIKeyStored() string { return In(i18n.Locale()).AIKeyStored() }
 // in the language of msgs.
 func (msgs Messages) AIKeyStored() string {
 	return Catalog.Format(msgs.locale, "AIKeyStored", nil)
+}
+
+// AILinkConfirming says "Waiting for {device} to allow AI tasks…"
+// in the language the app shows.
+func AILinkConfirming(device string) string { return In(i18n.Locale()).AILinkConfirming(device) }
+
+// AILinkConfirming says "Waiting for {device} to allow AI tasks…"
+// in the language of msgs.
+func (msgs Messages) AILinkConfirming(device string) string {
+	return Catalog.Format(msgs.locale, "AILinkConfirming", map[string]any{"device": device})
+}
+
+// AILinkConnecting says "Connecting to {device}…"
+// in the language the app shows.
+func AILinkConnecting(device string) string { return In(i18n.Locale()).AILinkConnecting(device) }
+
+// AILinkConnecting says "Connecting to {device}…"
+// in the language of msgs.
+func (msgs Messages) AILinkConnecting(device string) string {
+	return Catalog.Format(msgs.locale, "AILinkConnecting", map[string]any{"device": device})
+}
+
+// AILinkNoAI says "{device} did not allow AI tasks."
+// in the language the app shows.
+func AILinkNoAI(device string) string { return In(i18n.Locale()).AILinkNoAI(device) }
+
+// AILinkNoAI says "{device} did not allow AI tasks."
+// in the language of msgs.
+func (msgs Messages) AILinkNoAI(device string) string {
+	return Catalog.Format(msgs.locale, "AILinkNoAI", map[string]any{"device": device})
 }
 
 // AIListModels says "List models"
@@ -562,6 +702,18 @@ func (msgs Messages) AIModelID() string {
 	return Catalog.Format(msgs.locale, "AIModelID", nil)
 }
 
+// AIModelKeyOf says "{model} · {device}'s key"
+// in the language the app shows.
+func AIModelKeyOf(device string, model string) string {
+	return In(i18n.Locale()).AIModelKeyOf(device, model)
+}
+
+// AIModelKeyOf says "{model} · {device}'s key"
+// in the language of msgs.
+func (msgs Messages) AIModelKeyOf(device string, model string) string {
+	return Catalog.Format(msgs.locale, "AIModelKeyOf", map[string]any{"device": device, "model": model})
+}
+
 // AIModels says "Models"
 // in the language the app shows.
 func AIModels() string { return In(i18n.Locale()).AIModels() }
@@ -572,24 +724,14 @@ func (msgs Messages) AIModels() string {
 	return Catalog.Format(msgs.locale, "AIModels", nil)
 }
 
-// AINeedKey says "Add an API key for {provider} below to start a task."
+// AINewSession says "New AI task"
 // in the language the app shows.
-func AINeedKey(provider string) string { return In(i18n.Locale()).AINeedKey(provider) }
+func AINewSession() string { return In(i18n.Locale()).AINewSession() }
 
-// AINeedKey says "Add an API key for {provider} below to start a task."
+// AINewSession says "New AI task"
 // in the language of msgs.
-func (msgs Messages) AINeedKey(provider string) string {
-	return Catalog.Format(msgs.locale, "AINeedKey", map[string]any{"provider": provider})
-}
-
-// AINewTask says "New task"
-// in the language the app shows.
-func AINewTask() string { return In(i18n.Locale()).AINewTask() }
-
-// AINewTask says "New task"
-// in the language of msgs.
-func (msgs Messages) AINewTask() string {
-	return Catalog.Format(msgs.locale, "AINewTask", nil)
+func (msgs Messages) AINewSession() string {
+	return Catalog.Format(msgs.locale, "AINewSession", nil)
 }
 
 // AINoKeyNeeded says "no key needed"
@@ -682,6 +824,28 @@ func (msgs Messages) AIOutcomeSkipped() string {
 	return Catalog.Format(msgs.locale, "AIOutcomeSkipped", nil)
 }
 
+// AIPaneTitle says "{title} — {device}"
+// in the language the app shows.
+func AIPaneTitle(device string, title string) string {
+	return In(i18n.Locale()).AIPaneTitle(device, title)
+}
+
+// AIPaneTitle says "{title} — {device}"
+// in the language of msgs.
+func (msgs Messages) AIPaneTitle(device string, title string) string {
+	return Catalog.Format(msgs.locale, "AIPaneTitle", map[string]any{"device": device, "title": title})
+}
+
+// AIPromptHint says "Describe a task…"
+// in the language the app shows.
+func AIPromptHint() string { return In(i18n.Locale()).AIPromptHint() }
+
+// AIPromptHint says "Describe a task…"
+// in the language of msgs.
+func (msgs Messages) AIPromptHint() string {
+	return Catalog.Format(msgs.locale, "AIPromptHint", nil)
+}
+
 // AIProtocolAnthropic says "Anthropic"
 // in the language the app shows.
 func AIProtocolAnthropic() string { return In(i18n.Locale()).AIProtocolAnthropic() }
@@ -712,6 +876,26 @@ func (msgs Messages) AIProtocolResponses() string {
 	return Catalog.Format(msgs.locale, "AIProtocolResponses", nil)
 }
 
+// AIRecentAbout says "This computer's tasks and your sessions with other devices, which a new session lists."
+// in the language the app shows.
+func AIRecentAbout() string { return In(i18n.Locale()).AIRecentAbout() }
+
+// AIRecentAbout says "This computer's tasks and your sessions with other devices, which a new session lists."
+// in the language of msgs.
+func (msgs Messages) AIRecentAbout() string {
+	return Catalog.Format(msgs.locale, "AIRecentAbout", nil)
+}
+
+// AIRecentTitle says "Recent tasks"
+// in the language the app shows.
+func AIRecentTitle() string { return In(i18n.Locale()).AIRecentTitle() }
+
+// AIRecentTitle says "Recent tasks"
+// in the language of msgs.
+func (msgs Messages) AIRecentTitle() string {
+	return Catalog.Format(msgs.locale, "AIRecentTitle", nil)
+}
+
 // AIRemoteBanner says "An AI task from {device} is working on this computer."
 // in the language the app shows.
 func AIRemoteBanner(device string) string { return In(i18n.Locale()).AIRemoteBanner(device) }
@@ -720,6 +904,16 @@ func AIRemoteBanner(device string) string { return In(i18n.Locale()).AIRemoteBan
 // in the language of msgs.
 func (msgs Messages) AIRemoteBanner(device string) string {
 	return Catalog.Format(msgs.locale, "AIRemoteBanner", map[string]any{"device": device})
+}
+
+// AIRename says "Rename"
+// in the language the app shows.
+func AIRename() string { return In(i18n.Locale()).AIRename() }
+
+// AIRename says "Rename"
+// in the language of msgs.
+func (msgs Messages) AIRename() string {
+	return Catalog.Format(msgs.locale, "AIRename", nil)
 }
 
 // AIReplyHint says "Reply to continue this task"
@@ -732,6 +926,16 @@ func (msgs Messages) AIReplyHint() string {
 	return Catalog.Format(msgs.locale, "AIReplyHint", nil)
 }
 
+// AIRestartHint says "Start again with a new instruction"
+// in the language the app shows.
+func AIRestartHint() string { return In(i18n.Locale()).AIRestartHint() }
+
+// AIRestartHint says "Start again with a new instruction"
+// in the language of msgs.
+func (msgs Messages) AIRestartHint() string {
+	return Catalog.Format(msgs.locale, "AIRestartHint", nil)
+}
+
 // AIReview says "Review"
 // in the language the app shows.
 func AIReview() string { return In(i18n.Locale()).AIReview() }
@@ -740,6 +944,16 @@ func AIReview() string { return In(i18n.Locale()).AIReview() }
 // in the language of msgs.
 func (msgs Messages) AIReview() string {
 	return Catalog.Format(msgs.locale, "AIReview", nil)
+}
+
+// AIRunsOn says "Runs on {device}"
+// in the language the app shows.
+func AIRunsOn(device string) string { return In(i18n.Locale()).AIRunsOn(device) }
+
+// AIRunsOn says "Runs on {device}"
+// in the language of msgs.
+func (msgs Messages) AIRunsOn(device string) string {
+	return Catalog.Format(msgs.locale, "AIRunsOn", map[string]any{"device": device})
 }
 
 // AISaved says "AI settings saved."
@@ -752,6 +966,66 @@ func (msgs Messages) AISaved() string {
 	return Catalog.Format(msgs.locale, "AISaved", nil)
 }
 
+// AISendButton says "The send button only"
+// in the language the app shows.
+func AISendButton() string { return In(i18n.Locale()).AISendButton() }
+
+// AISendButton says "The send button only"
+// in the language of msgs.
+func (msgs Messages) AISendButton() string {
+	return Catalog.Format(msgs.locale, "AISendButton", nil)
+}
+
+// AISendEnter says "Enter (Shift+Enter breaks the line)"
+// in the language the app shows.
+func AISendEnter() string { return In(i18n.Locale()).AISendEnter() }
+
+// AISendEnter says "Enter (Shift+Enter breaks the line)"
+// in the language of msgs.
+func (msgs Messages) AISendEnter() string {
+	return Catalog.Format(msgs.locale, "AISendEnter", nil)
+}
+
+// AISendKey says "Send a prompt with"
+// in the language the app shows.
+func AISendKey() string { return In(i18n.Locale()).AISendKey() }
+
+// AISendKey says "Send a prompt with"
+// in the language of msgs.
+func (msgs Messages) AISendKey() string {
+	return Catalog.Format(msgs.locale, "AISendKey", nil)
+}
+
+// AISendKeyAbout says "In an AI session's prompt box."
+// in the language the app shows.
+func AISendKeyAbout() string { return In(i18n.Locale()).AISendKeyAbout() }
+
+// AISendKeyAbout says "In an AI session's prompt box."
+// in the language of msgs.
+func (msgs Messages) AISendKeyAbout() string {
+	return Catalog.Format(msgs.locale, "AISendKeyAbout", nil)
+}
+
+// AISendShiftEnter says "Shift+Enter (Enter breaks the line)"
+// in the language the app shows.
+func AISendShiftEnter() string { return In(i18n.Locale()).AISendShiftEnter() }
+
+// AISendShiftEnter says "Shift+Enter (Enter breaks the line)"
+// in the language of msgs.
+func (msgs Messages) AISendShiftEnter() string {
+	return Catalog.Format(msgs.locale, "AISendShiftEnter", nil)
+}
+
+// AISetUpFirst says "Choose a model with a key in Settings › AI first."
+// in the language the app shows.
+func AISetUpFirst() string { return In(i18n.Locale()).AISetUpFirst() }
+
+// AISetUpFirst says "Choose a model with a key in Settings › AI first."
+// in the language of msgs.
+func (msgs Messages) AISetUpFirst() string {
+	return Catalog.Format(msgs.locale, "AISetUpFirst", nil)
+}
+
 // AISettingsTitle says "AI providers"
 // in the language the app shows.
 func AISettingsTitle() string { return In(i18n.Locale()).AISettingsTitle() }
@@ -760,6 +1034,16 @@ func AISettingsTitle() string { return In(i18n.Locale()).AISettingsTitle() }
 // in the language of msgs.
 func (msgs Messages) AISettingsTitle() string {
 	return Catalog.Format(msgs.locale, "AISettingsTitle", nil)
+}
+
+// AIShowTask says "Show it"
+// in the language the app shows.
+func AIShowTask() string { return In(i18n.Locale()).AIShowTask() }
+
+// AIShowTask says "Show it"
+// in the language of msgs.
+func (msgs Messages) AIShowTask() string {
+	return Catalog.Format(msgs.locale, "AIShowTask", nil)
 }
 
 // AISourceAddress says "Address"
@@ -800,6 +1084,16 @@ func AISources() string { return In(i18n.Locale()).AISources() }
 // in the language of msgs.
 func (msgs Messages) AISources() string {
 	return Catalog.Format(msgs.locale, "AISources", nil)
+}
+
+// AIStarting says "Starting…"
+// in the language the app shows.
+func AIStarting() string { return In(i18n.Locale()).AIStarting() }
+
+// AIStarting says "Starting…"
+// in the language of msgs.
+func (msgs Messages) AIStarting() string {
+	return Catalog.Format(msgs.locale, "AIStarting", nil)
 }
 
 // AIStateApproval says "Waiting for your approval"
@@ -912,14 +1206,44 @@ func (msgs Messages) AIStateRunning() string {
 	return Catalog.Format(msgs.locale, "AIStateRunning", nil)
 }
 
-// AIStepsTitle says "Actions"
+// AIStepsCount says "{count, plural, one {1 step} other {# steps}}"
 // in the language the app shows.
-func AIStepsTitle() string { return In(i18n.Locale()).AIStepsTitle() }
+func AIStepsCount(count int) string { return In(i18n.Locale()).AIStepsCount(count) }
 
-// AIStepsTitle says "Actions"
+// AIStepsCount says "{count, plural, one {1 step} other {# steps}}"
 // in the language of msgs.
-func (msgs Messages) AIStepsTitle() string {
-	return Catalog.Format(msgs.locale, "AIStepsTitle", nil)
+func (msgs Messages) AIStepsCount(count int) string {
+	return Catalog.Format(msgs.locale, "AIStepsCount", map[string]any{"count": count})
+}
+
+// AISuggestOne says "Tidy up the Downloads folder"
+// in the language the app shows.
+func AISuggestOne() string { return In(i18n.Locale()).AISuggestOne() }
+
+// AISuggestOne says "Tidy up the Downloads folder"
+// in the language of msgs.
+func (msgs Messages) AISuggestOne() string {
+	return Catalog.Format(msgs.locale, "AISuggestOne", nil)
+}
+
+// AISuggestThree says "Find last month's invoice and print it"
+// in the language the app shows.
+func AISuggestThree() string { return In(i18n.Locale()).AISuggestThree() }
+
+// AISuggestThree says "Find last month's invoice and print it"
+// in the language of msgs.
+func (msgs Messages) AISuggestThree() string {
+	return Catalog.Format(msgs.locale, "AISuggestThree", nil)
+}
+
+// AISuggestTwo says "Rename these photos by date"
+// in the language the app shows.
+func AISuggestTwo() string { return In(i18n.Locale()).AISuggestTwo() }
+
+// AISuggestTwo says "Rename these photos by date"
+// in the language of msgs.
+func (msgs Messages) AISuggestTwo() string {
+	return Catalog.Format(msgs.locale, "AISuggestTwo", nil)
 }
 
 // AITaskFrom says "Started from {device}"
@@ -932,24 +1256,24 @@ func (msgs Messages) AITaskFrom(device string) string {
 	return Catalog.Format(msgs.locale, "AITaskFrom", map[string]any{"device": device})
 }
 
-// AITaskHint says "The AI works on this computer's screen with this computer's API key. Using the keyboard or mouse pauses it at once."
+// AIWaitingForYou says "Waiting for you"
 // in the language the app shows.
-func AITaskHint() string { return In(i18n.Locale()).AITaskHint() }
+func AIWaitingForYou() string { return In(i18n.Locale()).AIWaitingForYou() }
 
-// AITaskHint says "The AI works on this computer's screen with this computer's API key. Using the keyboard or mouse pauses it at once."
+// AIWaitingForYou says "Waiting for you"
 // in the language of msgs.
-func (msgs Messages) AITaskHint() string {
-	return Catalog.Format(msgs.locale, "AITaskHint", nil)
+func (msgs Messages) AIWaitingForYou() string {
+	return Catalog.Format(msgs.locale, "AIWaitingForYou", nil)
 }
 
-// AITaskTitle says "AI task"
+// AIWatchScreen says "Watch its screen"
 // in the language the app shows.
-func AITaskTitle() string { return In(i18n.Locale()).AITaskTitle() }
+func AIWatchScreen() string { return In(i18n.Locale()).AIWatchScreen() }
 
-// AITaskTitle says "AI task"
+// AIWatchScreen says "Watch its screen"
 // in the language of msgs.
-func (msgs Messages) AITaskTitle() string {
-	return Catalog.Format(msgs.locale, "AITaskTitle", nil)
+func (msgs Messages) AIWatchScreen() string {
+	return Catalog.Format(msgs.locale, "AIWatchScreen", nil)
 }
 
 // AIWhoMay says "Who may run AI tasks here"
@@ -970,6 +1294,26 @@ func AIWhoMayAbout() string { return In(i18n.Locale()).AIWhoMayAbout() }
 // in the language of msgs.
 func (msgs Messages) AIWhoMayAbout() string {
 	return Catalog.Format(msgs.locale, "AIWhoMayAbout", nil)
+}
+
+// AIWorkingHint says "Working — pause or stop the task to write"
+// in the language the app shows.
+func AIWorkingHint() string { return In(i18n.Locale()).AIWorkingHint() }
+
+// AIWorkingHint says "Working — pause or stop the task to write"
+// in the language of msgs.
+func (msgs Messages) AIWorkingHint() string {
+	return Catalog.Format(msgs.locale, "AIWorkingHint", nil)
+}
+
+// AIYesterday says "yesterday"
+// in the language the app shows.
+func AIYesterday() string { return In(i18n.Locale()).AIYesterday() }
+
+// AIYesterday says "yesterday"
+// in the language of msgs.
+func (msgs Messages) AIYesterday() string {
+	return Catalog.Format(msgs.locale, "AIYesterday", nil)
 }
 
 // AboutLicense says "AGPL-3.0-only. Includes MyGo (MIT)."
@@ -2594,16 +2938,6 @@ func NatUnknown() string { return In(i18n.Locale()).NatUnknown() }
 // in the language of msgs.
 func (msgs Messages) NatUnknown() string {
 	return Catalog.Format(msgs.locale, "NatUnknown", nil)
-}
-
-// NavAI says "AI"
-// in the language the app shows.
-func NavAI() string { return In(i18n.Locale()).NavAI() }
-
-// NavAI says "AI"
-// in the language of msgs.
-func (msgs Messages) NavAI() string {
-	return Catalog.Format(msgs.locale, "NavAI", nil)
 }
 
 // NavAboutUpdates says "About & updates"
@@ -4580,6 +4914,16 @@ func (msgs Messages) SectionAIDefaults() string {
 	return Catalog.Format(msgs.locale, "SectionAIDefaults", nil)
 }
 
+// SectionAISessions says "AI sessions"
+// in the language the app shows.
+func SectionAISessions() string { return In(i18n.Locale()).SectionAISessions() }
+
+// SectionAISessions says "AI sessions"
+// in the language of msgs.
+func (msgs Messages) SectionAISessions() string {
+	return Catalog.Format(msgs.locale, "SectionAISessions", nil)
+}
+
 // SectionLook says "Language and look"
 // in the language the app shows.
 func SectionLook() string { return In(i18n.Locale()).SectionLook() }
@@ -6196,16 +6540,6 @@ func (msgs Messages) TrustedTitle() string {
 	return Catalog.Format(msgs.locale, "TrustedTitle", nil)
 }
 
-// ViewerAIHint says "The task runs on the other computer with its own AI provider. Your input in the picture pauses it."
-// in the language the app shows.
-func ViewerAIHint() string { return In(i18n.Locale()).ViewerAIHint() }
-
-// ViewerAIHint says "The task runs on the other computer with its own AI provider. Your input in the picture pauses it."
-// in the language of msgs.
-func (msgs Messages) ViewerAIHint() string {
-	return Catalog.Format(msgs.locale, "ViewerAIHint", nil)
-}
-
 // ViewerAIHostApproves says "The other computer's user approves this step."
 // in the language the app shows.
 func ViewerAIHostApproves() string { return In(i18n.Locale()).ViewerAIHostApproves() }
@@ -6214,16 +6548,6 @@ func ViewerAIHostApproves() string { return In(i18n.Locale()).ViewerAIHostApprov
 // in the language of msgs.
 func (msgs Messages) ViewerAIHostApproves() string {
 	return Catalog.Format(msgs.locale, "ViewerAIHostApproves", nil)
-}
-
-// ViewerAIPanel says "AI"
-// in the language the app shows.
-func ViewerAIPanel() string { return In(i18n.Locale()).ViewerAIPanel() }
-
-// ViewerAIPanel says "AI"
-// in the language of msgs.
-func (msgs Messages) ViewerAIPanel() string {
-	return Catalog.Format(msgs.locale, "ViewerAIPanel", nil)
 }
 
 // ViewerAITitle says "AI on the other computer"

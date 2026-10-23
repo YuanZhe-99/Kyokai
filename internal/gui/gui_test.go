@@ -323,13 +323,6 @@ func TestViewerRenders(t *testing.T) {
 			v.pointer = hostPointer{X: 0.25, Y: 0.5, Visible: true}
 		},
 		"viewer-unsupported": func(v *viewer) { v.state = "This picture uses h265, which this version can't show yet." },
-		"viewer-ai": func(v *viewer) {
-			v.start, v.bm, v.fps, v.kbps = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), 30, 1390
-			v.ai = viewerAI{run: true, approve: true, task: &localapi.AITask{ID: 3, Instruction: "Rename the report to Q3.docx", State: "approval",
-				Text: "I will open the file menu.", Progress: []string{"Opening the File menu."},
-				Steps:    []localapi.AIStep{{Action: []byte(`{"kind":"screenshot"}`), Outcome: "ok"}, {Action: []byte(`{"kind":"click","at":{"x":24,"y":12},"button":"left","count":1,"modifiers":[]}`), Outcome: "ok"}},
-				Approval: &localapi.AIApproval{Action: []byte(`{"kind":"type","text":"Q3.docx"}`)}}}
-		},
 		"viewer-displays": func(v *viewer) {
 			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
 			v.displays.List = make([]struct {
@@ -347,7 +340,6 @@ func TestViewerRenders(t *testing.T) {
 		"viewer-folded": func(v *viewer) {
 			v.start, v.bm, v.folded = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), true
 		},
-		"viewer-ai-new": func(v *viewer) { v.state, v.ai = "This session does not show the screen.", viewerAI{run: true} },
 		"viewer-clipboard": func(v *viewer) {
 			v.start, v.bm, v.title = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), "Studio Mac · 657 365 333"
 			v.clip = viewerClip{may: true, shown: true, front: true}

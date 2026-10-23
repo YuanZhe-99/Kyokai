@@ -278,7 +278,7 @@ func homeCard(c *ui.Context, key string) ui.Element {
 // statePill is a state in a pill of its colour: Online, Connected,
 // Offline.
 func statePill(c *ui.Context, text string, col ui.Color) {
-	ui.Text(c, text).FontSize(sizeSmall).TextColor(col).SingleLine().MaxWidth(homeCardMinW/2).Tooltip(text).
+	ui.Text(c, text).FontSize(sizeSmall).TextColor(col).SingleLine().Shrink(0).MaxWidth(homeCardMinW/2).Tooltip(text).
 		Padding(2, 8).Radius(chipRadius).Background(col.Alpha(0.12))
 }
 
@@ -417,8 +417,8 @@ func (a *App) connectCard(c *ui.Context) {
 
 // connectAs opens what Open as names on a device, by its Device ID or at an
 // address (asked for its Device ID first): its desktop, one of its
-// services, or its desktop asking to run AI tasks. placed, when set, then
-// gets the pane's tabKey (the + picker puts it beside another).
+// services, or a session with its AI. placed, when set, then gets the
+// pane's tabKey (the + picker puts it beside another).
 // Notes: call on the main thread; placed runs on it.
 func (a *App) connectAs(device, address, as string, placed func(key string)) {
 	open := func(device, address string) {
@@ -427,8 +427,10 @@ func (a *App) connectAs(device, address, as string, placed func(key string)) {
 		case serviceSSH, serviceRDP, serviceVNC:
 			a.openService(device, address, as)
 			key = serviceKey(device, as)
+		case actionAI:
+			key = a.openAISession(device, address, "", nil, zoneMiddle).tabKey()
 		default:
-			a.connectDevice(device, address, a.recentAbout(device), connectWant(as == actionAI))
+			a.connectDevice(device, address, a.recentAbout(device))
 		}
 		if placed != nil {
 			placed(key)
@@ -573,7 +575,7 @@ func (a *App) deviceCard(c *ui.Context, r deviceRow, path localapi.NetworkDevice
 				main = ui.Button(c.Key("device-go-"+r.id), L.ActionConnect())
 			}
 			if main.Grow(1).Clicked() {
-				a.connectDevice(r.id, "", r.about, nil)
+				a.connectDevice(r.id, "", r.about)
 			}
 			for _, act := range actions {
 				icon, tip := navAI, L.ActionConnectAI()
@@ -634,12 +636,12 @@ func cardActions(s *localapi.SystemSample, tunnels bool, uses map[string]int) []
 	return out
 }
 
-// runAction opens a device's service or connects to it with its AI, and
-// counts the use (cardActions orders by it).
+// runAction opens a device's service or a session with its AI, and counts
+// the use (cardActions orders by it).
 func (a *App) runAction(r deviceRow, act string) {
 	a.noteUse(r.id, act)
 	if act == actionAI {
-		a.connectDevice(r.id, "", r.about, connectWant(true))
+		a.openAISession(r.id, "", "", nil, zoneMiddle)
 		return
 	}
 	a.openService(r.id, "", act)
@@ -855,7 +857,7 @@ func (a *App) othersSection(c *ui.Context, others []networkOther, tracks []ui.Tr
 					})
 				})
 				if ui.Button(c.Key("other-go-"+o.id), L.ActionConnect()).Clicked() {
-					a.connectDevice(o.id, "", localapi.About{}, nil)
+					a.connectDevice(o.id, "", localapi.About{})
 				}
 			})
 		}
@@ -868,7 +870,7 @@ func (a *App) deviceMenu(c *ui.Context, r deviceRow, tunnels bool) {
 	more := iconButtonBase(c, "device-menu-"+r.id, rowMore, L.ActionMore())
 	more.Menu(func(m *ui.Menu) {
 		if m.Item(L.ActionConnect()).Chosen() {
-			a.connectDevice(r.id, "", r.about, nil)
+			a.connectDevice(r.id, "", r.about)
 		}
 		if m.Item(L.ActionConnectAI()).Chosen() {
 			a.runAction(r, actionAI)

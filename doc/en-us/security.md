@@ -72,7 +72,7 @@ stay in memory, and only for the hosts its GUI shows.
   and never into a log, an error, the status, the history or another device.
 - Screenshots exist in memory for the task's conversation and go only to the chosen provider; the
   history (`ai-tasks.json`) keeps instructions, the model's text and the actions, never a picture.
-  Kyokai's own windows are excluded from capture (`SetContentProtection`), so the AI page and
+  Kyokai's own windows are excluded from capture (`SetContentProtection`), so the AI sessions and
   approvals never reach the model. The host user can turn this off in Security (Privacy, "Hide
   Kyokai from screen capture", on by default) to see and change Kyokai through another
   remote-desktop tool, or through Kyokai itself, on an unattended computer (turning it off asks
@@ -143,10 +143,12 @@ change with `logs.set`) then:
 - keep the connection history only in memory (`access.history`): trusted devices and known hosts
   move out of the secrets store and are gone when the engine stops, so after a restart a known
   Device ID with a new key is no longer flagged and Recent starts empty. The choice itself
-  (`no_history`) is kept, so the next start keeps none either.
+  (`no_history`) is kept, so the next start keeps none either;
+- keep the GUI's AI sessions (`ai_sessions` in `gui.json`: which device each ran on, and when)
+  only in memory.
 
-Saved passwords, names given to devices, per-device viewer settings and the AI task history are
-the user's own settings and stay. Reports the system writes itself (macOS crash reports in
+Saved passwords, names given to devices, per-device viewer settings and this computer's AI task
+history (`ai-tasks.json`) are the user's own settings and stay. Reports the system writes itself (macOS crash reports in
 `~/Library/Logs/DiagnosticReports`, Windows Error Reporting) are outside Kyokai's control. Turning
 No logs off writes this run's history to the store again and logs from then on.
 

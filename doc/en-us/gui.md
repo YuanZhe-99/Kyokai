@@ -10,7 +10,8 @@ when `SCREENSHOT_DIR` is set.
   material on macOS, the theme's background elsewhere — and beside it the panes: rounded boxes
   (14-point corners, a border and a faint shadow) floating 8 points from the window's edges and
   from each other (`shellView`). Home, each device's desktop and each of its services (SSH, Remote
-  Desktop, VNC) is a pane (`tab`: `homeTab`, `viewer`, `serviceTab`). Requests waiting for the
+  Desktop, VNC), a host's status and each AI session is a pane (`tab`: `homeTab`, `viewer`,
+  `serviceTab`, `statusTab`, `aiTab`). Requests waiting for the
   user, a device connected here and an AI task here show as cards above the panes, a toast at
   their foot. The window is named after the pane in focus.
 - **Sidebar** (`sidebarView`): at the top Hide the sidebar and + (the + picker, below), after the
@@ -24,14 +25,18 @@ when `SCREENSHOT_DIR` is set.
   turn — a half-filled monitor, a sun, a moon), the gear (Settings), and the networks' state as a dot and a
   word (Online, Connecting…, Could not connect, Offline) that opens Settings at Network. Hidden, the sidebar is
   a rail of icons, a group's with its count and names in tooltips (`sidebar_rail` in `gui.json`).
-- **A pane's header** (44 points): the kind's icon, the device's name and its Device ID (or the
-  service), which drag the pane; an empty part that moves the window, a double click maximizing
-  it; in the main window Split right and Split down — the + picker, opening beside this pane on
-  that side; with other panes open, first a menu of them, the one chosen going beside this one,
-  and Open a device… for the picker —, in a group of several
-  Maximize (the pane alone over its group, the others still running) or Restore, and close (×;
-  not on Home alone, which has nothing to close to). In a group the pane in focus has an accent
-  edge; the focus follows the keyboard and clicks into a pane.
+- **A pane's header** (44 points): the kind's icon, the device's name (at most 200 points) and
+  its Device ID (or the service, or an AI session's title), which drag the pane — with room
+  running short the second line gives way first, then the name, never an AI session's pill, and
+  what still does not fit is cut at its end rather than drawn under the buttons; an empty part
+  that moves the window, a double click maximizing it; in the
+  main window Split right and Split down — the + picker, opening beside this pane on that side;
+  with other panes open, first a menu of them, the one chosen going beside this one, and Open a
+  device… for the picker —, in a group of several Maximize (the pane alone over its group, the
+  others still running) or Restore, and close (×; not on Home alone, which has nothing to close
+  to). A pane narrower than 560 points folds the splits and Maximize into ⋯, each split a submenu
+  of the other panes and Open a device… (`foldedButtons`). In a group the pane in focus has an
+  accent edge; the focus follows the keyboard and clicks into a pane.
 - **Groups.** Each pane opened gets an entry of its own and shows. A pane dropped on an edge of
   another splits that pane there — beside, above or below it — and joins its group, so one side
   may hold one pane at full height and the other two (`split`, a tree of panes; at most four
@@ -46,9 +51,10 @@ when `SCREENSHOT_DIR` is set.
 - **The + picker** (`pickerView`): a popover under the sidebar's + (the rail's), or under a pane
   header's split button. First the kind — Desktop, SSH, Remote Desktop, VNC or AI task, the one
   chosen last kept —, then a search by name, Device ID (spaces aside) or address, then the devices
-  (`pickRows`): for an AI task This computer first (Settings › AI until AI tasks are panes); a
-  Device ID typed that no device has (Connect by Device ID), or an address typed — with a dot or a
-  colon, or a word that nothing else matches — (Connect by address); the devices this one
+  (`pickRows`) under Devices, a heading left out when only devices of the networks are listed:
+  for an AI task This computer first (a new session with its AI); a Device ID typed that no
+  device has (Connect by Device ID), or an address typed — with a dot or a colon, or a word that
+  nothing else matches — (Connect by address); the devices this one
   connected to, each with its way (direct or relayed and its delay, connected, or when it was last
   connected), greyed with "… isn't available" when its status of the last minute says it does not
   open the kind (`kindOffered`: the service does not answer or the saved sign-in does not grant
@@ -57,9 +63,9 @@ when `SCREENSHOT_DIR` is set.
   under In your networks. At its foot, where it opens — On its own (an entry of its own) or Beside
   current (a split with the pane in focus, or on its side with the pane whose split button opened
   the picker, which then starts at Beside current) — and Open (Open SSH, Start AI task…). The
-  search takes the keys as it opens; ↑ and ↓ choose among the devices that open the kind, Enter
-  opens the one chosen or else the first, Escape or a click outside closes it, and Tab reaches the
-  kinds and the rest.
+  search takes the keys as it opens, and again once a kind is chosen; ↑ and ↓ choose among the
+  devices that open the kind, Enter opens the one chosen or else the first, Escape or a click
+  outside closes it, and Tab reaches the kinds and the rest.
 - **Search** (`paletteView`): Ctrl+K (⌘K on macOS) in the main window, or the magnifier at the
   sidebar's bottom, opens a palette 72 points from the window's top over the window lightly
   dimmed: a field that takes the keys, then the results by group, at most six each, the first
@@ -91,7 +97,7 @@ when `SCREENSHOT_DIR` is set.
   (`settingsSheet`): the top layer, a sheet over the whole window, the sidebar included, 64 points
   from its sides, 48 from its top and 32 from its bottom, over the window dimmed. Its header says
   Settings, with × (and the window's buttons on Windows); on the left its sections — Preferences:
-  General; This computer: Access, Network, Security & privacy, Run mode; AI: AI; Kyokai: About &
+  General; This computer: Access, Network, Security & privacy, Run mode; AI: Providers; Kyokai: About &
   updates — and beside them the page chosen ([Structure](#structure)). Escape, a click outside
   it or × closes it; while it is up, no picture takes the keyboard (`covered`).
 - **Search** sits above the sections: while it holds words, the settings whose title or words
@@ -181,23 +187,19 @@ when `SCREENSHOT_DIR` is set.
   it.
 - **Connected here:** while another device is connected to this one (or resuming), a card above
   the panes names it, says what it may do, and has Disconnect.
-- **AI:** the task card — a new task's instruction and Start (with a note when the provider has no
-  key; the instruction being written is shared live with every connected controller's AI panel),
-  or the task in progress: its state in words (working, waiting for approval, paused and
-  why, done, stopped), the model's latest text and progress note, its latest actions in words
-  ("Click at 640, 425", "Press Ctrl+S") with what became of them, Pause or Resume and Stop; an
-  action waiting for approval shows in a framed box with Allow and Deny and the provider's notes.
-  A finished task can be continued with a reply. Below (`aiProviders`): Defaults for new tasks —
-  the model (every model of every source by its `Vendor: Model` name) and Ask before acting (the
-  approval policy); Providers, a template's choice and Add provider beside the title, each source
-  by its letter with its template, model count and key state (key stored, no key, none needed),
-  Edit and Remove; the editor, under its row (a new one's on top), has the name, the address (a
-  template's sites by name), the format for Custom, a write-only key, the models with Remove, an
-  id to add and List models (a saved source); Other devices, which leads to Access (not in
-  protected mode); then the task history with Clear history. The task card and the history stay
-  cards until AI sessions are panes. While the task waits for approval, a banner above the panes has Review (Settings at AI),
-  and a notification announces it. A controller's task shows "Started from" its Device ID, and
-  while it works a banner above the panes has Review and Stop; neither shows over the AI page itself.
+- **AI providers** (`aiProviders`): Defaults for new tasks — the model (every model of every source by its
+  `Vendor: Model` name) and Ask before acting (the approval policy); Providers, a template's
+  choice and Add provider beside the title, each source by its letter with its template, model
+  count and key state (key stored, no key, none needed), Edit and Remove; the editor, under its
+  row (a new one's on top), has the name, the address (a template's sites by name), the format
+  for Custom, a write-only key, the models with Remove, an id to add and List models (a saved
+  source); Other devices, which leads to Access (not in protected mode); AI sessions: Send a
+  prompt with (Enter, Shift+Enter or the send button only; `send_key` in `gui.json`) and Recent
+  tasks with Clear history (this computer's history and the sessions kept here, but those open
+  in a pane). The tasks themselves are AI sessions' panes ([AI sessions](#ai-sessions)). While
+  this computer's task waits for approval, a banner above the panes has Review (its session's
+  pane), and a notification announces it; while a controller's task works here, a banner has
+  Review and Stop; neither shows while a session following that task shows.
 - **Network:** first how the networks are doing (`networkSummary`): online, connecting, could not
   connect or offline, and how many of those joined are connected. Then **Networks**, the ones kept
   (up to 8; Add a network beside the title), with a note behind ⓘ that this device has the same
@@ -281,9 +283,10 @@ when `SCREENSHOT_DIR` is set.
   Open folder and **Save logs…** (the engine's logs through `logs.read`, the helper's and its
   agent's in the helper modes, which only administrators open, and this GUI's own, into one text
   file), or "Off" with No logs.
-- **Protected mode:** the main window is one pane, with no sidebar, showing only the AI page,
-  topped by a card with the permanent password field and Turn off (a wrong password says so);
-  confirmations and the devices connected here still show.
+- **Protected mode:** the main window is one pane, with no sidebar: a card with the permanent
+  password field and Turn off (a wrong password says so) over this computer's AI session
+  ([AI sessions](#ai-sessions)); its header's gear opens Settings with only its AI page.
+  Confirmations and the devices connected here still show.
 - Until the engine's session is attached, pages that need it show "Starting…" or why the engine is
   not running.
 - **App updates (About & updates):** a daily check (switchable) and "Check for updates" read the signed
@@ -335,7 +338,8 @@ when `SCREENSHOT_DIR` is set.
   helper modes, Block their keyboard and mouse and Privacy mode, checked as the host reports),
   then toggles for Sound (plays the host's sound; on unless chosen, kept for each device), Pointer
   (shows or hides the ring, remembered for every viewer), Clipboard (pulls out the clipboard panel,
-  with `clipboard` or `files`), AI (collapses the AI panel) and Full screen; what does not fit a
+  with `clipboard` or `files`), AI (the device's AI session in a pane beside the desktop: the
+  newest one open, else a new one) and Full screen; what does not fit a
   narrow window goes into the toolbar's » menu. Beside them the path: a dot and the address the session takes
   (`sessions[].route`), else Direct or Relayed (Relayed in the warning colour, its tooltip with a
   hint to turn on direct connections on both devices), with the host's measured delay, the tooltip also showing size, codec, frame rate and
@@ -366,16 +370,69 @@ when `SCREENSHOT_DIR` is set.
   the image as a thumbnail with its size, or the files' names, count and size; Clear empties it.
   Only the pane in front — the one in focus in the Kyokai window used last; none while that is
   Home — exchanges the clipboard ([computer-use.md](computer-use.md), "Clipboard"); the panel
-  says so when its pane is behind. Both panels may show, the clipboard's left of the AI's.
-- With `run-ai-task` the pane has an AI panel, "AI on the other computer", which the AI switch
-  collapses (a step waiting for approval shows it anyway). It shows the host's one AI record,
-  the same for every controller whoever started the task (state, the model's text, its latest
-  actions, Pause or Resume and Stop, a reply when it is done), and the instruction being written,
-  which is shared live with the host's AI page and every other controller (typing here wins for
-  a second over a draft typed elsewhere). Approvals have Allow and Deny with
-  `approve-ai-action`, otherwise a note that the host's user approves. A connection asks for
-  viewing, input, the clipboard and files, and with Connect with AI (or the option) for
-  `run-ai-task` and `approve-ai-action` as well.
+  says so when its pane is behind.
+- A desktop's connection asks for viewing, input, the clipboard, files and sound. Its AI is a
+  session's pane beside it (the toolbar's AI) over a link of its own ([AI sessions](#ai-sessions)).
+
+## AI sessions
+
+- An AI session is a pane (`aiTab`): a conversation with this computer's AI or a host's, its
+  tasks running on that device ([computer-use.md](computer-use.md), "AI tasks"). A device may
+  have several sessions; its tasks run one at a time, so a session that would start one while
+  another works there says so ("Studio Mac is working on another task.") with Show it. Sessions
+  open from the + picker (AI task, This computer first), search's New AI task, Home's Open as AI
+  task and a card's AI, a desktop's toolbar (beside it) and the recent tasks.
+- **Header**, as any pane's: the AI icon in the accent, the device's name ("This computer" or
+  the host's), and where other panes say their kind, the session's title — its first
+  instruction until renamed ("New AI task" before) —, then Rename (the title typed in place:
+  Enter keeps it, Escape leaves it as it was) and, while the task waits for an approval or is
+  paused, "Waiting for you" or "Paused" as a pill; a host's session adds Watch its screen
+  (its icon alone in a narrow pane), which opens the host's desktop on the session's left.
+- **A new session** centres, at most 680 points wide: the AI's round mark, "What should the AI
+  do on this computer?" (or on the host) and how it works there ("It sees this screen and uses
+  the mouse and keyboard. Moving your mouse pauses it at once."), the box, three suggestions
+  that fill it (Tidy up the Downloads folder, Rename these photos by date, Find last month's
+  invoice and print it), and Recent tasks — this computer's tasks and the sessions kept here
+  with other devices, newest first, six at most (`recentAI`), each a row with its title, where
+  it ran, and its state: "Waiting for you" as a pill, else the state in a word with when (the
+  time today, "yesterday", else the date; `aiWhen`) — which open their session.
+- **The conversation**, at most 720 points wide: your instruction on the right on the pane's
+  quiet face; the task's latest 20 steps in groups between the replies sent from the pane, each
+  group headed by its count ("4 steps"), which folds it; each step a round mark (a check when
+  it ran, a cross in the warning colour when it failed or was declined, a dash when it was not
+  run), what it did in words, what became of it when not done as asked, and its time; the
+  model's text; its progress note while it works; a step waiting for approval inline, framed
+  in the accent with a shield — what it would do, the provider's notes, Allow and Deny and
+  "Moving the mouse on NUC pauses the AI at once." (where the session may not approve, that the
+  host's user decides); the state in words with the model, and why it failed. It follows its
+  end as it grows. Steps show no thumbnails: the task's record keeps no screenshots, and 0.6.0
+  keeps the wire protocol.
+- **The box** at the bottom takes the keys as it shows: a text area that grows to about seven
+  lines; under it, inside, what sends it ("Enter to start", "Enter to send · Shift+Enter for a
+  new line", the reverse, or nothing when only Send sends: Settings › AI providers;
+  `OnTextKey`, `sendsOnEnter`, `aiSendHint`), and the round Send — or, while the task works,
+  Pause or Resume and a round Stop. It starts the session's task, replies to it once done
+  (the engine continues only a finished task), or starts again after a stop or a failure. The
+  draft of a device's next task is shared live as typed (this computer's with its controllers,
+  a host's through the host with its user and other controllers; typing here wins for a
+  second). Above it what keeps it from sending: another task working there (Show it), this
+  computer without a model with a key (Settings), or a host's link connecting, waiting for its
+  user to allow AI tasks, refused or not allowing them (Reconnect).
+- **Chips** under the box (`chips`): on this computer Ask before acting and the model, menus
+  that change this computer's AI settings, and "This computer"; on a host "Approvals as set on
+  NUC", "Runs on NUC" with the link's dot, and the task's model with whose key ("Claude Opus
+  5.5 · NUC's key"; "NUC's model and key" before a task says it). A new session's where-chip is
+  a menu of this computer and the devices this one connected to, moving the session there
+  (`moveTo`).
+- **A host's link** (`aiLink`): one per host, shared by its sessions' panes and ended with the
+  last, is a session of its own asking only for `run-ai-task` and `approve-ai-action`, so the
+  host sends no picture; its media connection brings the host's task (the one record every
+  controller sees), the shared draft and refusals, and takes the requests. A pane holding a live
+  link counts as a connection when its window closes; ending the link pauses the host's task it
+  started, as any controller's leaving does.
+- **Kept on this computer** (`ai_sessions` in `gui.json`, the newest 50): each session's id,
+  device, the task it follows, title, state and times — never a screenshot; with No logs on,
+  only in memory. A session that never started a task is not kept once its pane closes.
 
 ## Wording rules
 

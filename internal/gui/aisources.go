@@ -137,7 +137,7 @@ func aiModelLabel(src *localapi.AISource, m localapi.AIModel) string {
 	return name
 }
 
-// aiTaskSourceName names a finished task's source and model.
+// aiTaskModel names a task's model by its source on this computer.
 func aiTaskModel(s *localapi.AISettings, task *localapi.AITask) string {
 	if s != nil {
 		if src := aiSource(s, task.Source); src != nil {
@@ -145,6 +145,23 @@ func aiTaskModel(s *localapi.AISettings, task *localapi.AITask) string {
 		}
 	}
 	return friendlyModelName(task.Model, "", "")
+}
+
+// aiModelChoices are the models tasks may use — every model of every
+// source, by its name (aiModelLabel) — and the one chosen's name.
+func aiModelChoices(s *localapi.AISettings) (labels []string, refs []localapi.AIModelRef, cur string) {
+	for i := range s.Sources {
+		src := &s.Sources[i]
+		for _, m := range src.Models {
+			label := aiModelLabel(src, m)
+			labels = append(labels, label)
+			refs = append(refs, localapi.AIModelRef{Source: src.ID, ID: m.ID})
+			if s.Model != nil && *s.Model == refs[len(refs)-1] {
+				cur = label
+			}
+		}
+	}
+	return labels, refs, cur
 }
 
 // aiProviders are the AI page's settings: Defaults for new tasks (the model
@@ -160,21 +177,7 @@ func (a *App) aiProviders(c *ui.Context) {
 		ui.Row(c.Key("ai-loading")).Padding(18, 0, 0, 0).Children(func() { busyMark(c, L.AISettingsTitle(), busySizeLarge) })
 		return
 	}
-	// The model: every model of every source.
-	var labels []string
-	var refs []localapi.AIModelRef
-	cur := ""
-	for i := range s.Sources {
-		src := &s.Sources[i]
-		for _, m := range src.Models {
-			label := aiModelLabel(src, m)
-			labels = append(labels, label)
-			refs = append(refs, localapi.AIModelRef{Source: src.ID, ID: m.ID})
-			if s.Model != nil && *s.Model == refs[len(refs)-1] {
-				cur = label
-			}
-		}
-	}
+	labels, refs, cur := aiModelChoices(s)
 	policies := []string{L.AIApprovalFlaggedOption(), L.AIApprovalEveryOption()}
 	policy := policies[0]
 	if s.Approval == "every-action" {

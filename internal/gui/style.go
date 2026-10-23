@@ -201,6 +201,47 @@ var (
 	rowGlobe    = statusIconNetwork
 )
 
+// An AI session's icons: send and stop in the prompt box, pause and
+// resume, rename in the header, approvals' shield, a menu chip's chevron,
+// a step that did not run, and the suggestions' image and printer.
+var (
+	//go:embed assets/icons/send.svg
+	sendSVG []byte
+	//go:embed assets/icons/stop.svg
+	stopSVG []byte
+	//go:embed assets/icons/pause.svg
+	pauseSVG []byte
+	//go:embed assets/icons/play.svg
+	playSVG []byte
+	//go:embed assets/icons/pencil.svg
+	pencilSVG []byte
+	//go:embed assets/icons/shield.svg
+	shieldSVG []byte
+	//go:embed assets/icons/chevron-down.svg
+	chevronDownSVG []byte
+	//go:embed assets/icons/chevron-right.svg
+	chevronRightSVG []byte
+	//go:embed assets/icons/dash.svg
+	dashSVG []byte
+	//go:embed assets/icons/image.svg
+	imageSVG []byte
+	//go:embed assets/icons/printer.svg
+	printerSVG []byte
+
+	aiSend    = ui.MustParseSVG(sendSVG)
+	aiStop    = ui.MustParseSVG(stopSVG)
+	aiPause   = ui.MustParseSVG(pauseSVG)
+	aiResume  = ui.MustParseSVG(playSVG)
+	aiRename  = ui.MustParseSVG(pencilSVG)
+	aiShield  = ui.MustParseSVG(shieldSVG)
+	aiChevron = ui.MustParseSVG(chevronDownSVG)
+	// aiChevronRight is a folded group of steps.
+	aiChevronRight = ui.MustParseSVG(chevronRightSVG)
+	aiDash         = ui.MustParseSVG(dashSVG)
+	aiImage        = ui.MustParseSVG(imageSVG)
+	aiPrinter      = ui.MustParseSVG(printerSVG)
+)
+
 // The window buttons the view draws on Windows (windowButtons): Windows
 // 11's glyphs, 10 points with lines of one.
 var (
@@ -292,14 +333,37 @@ const (
 	gap             float32 = 12
 	contentMaxW     float32 = 760
 	inputAreaH      float32 = 72  // a multi-line input of about three lines
-	aiPanelW        float32 = 320 // the viewer's AI panel
+	aiColumnW       float32 = 720 // an AI session's conversation and box
+	aiNewW          float32 = 680 // a new session's column
+	aiMarkSize      float32 = 48  // the AI's round mark over it
+	sizeAIAsk       float32 = 22  // what the AI should do, under it, and the mark's glyph
+	aiSuggestH      float32 = 34  // a suggestion under its box
+	aiRecentWhereW  float32 = 110 // a recent task's device
+	aiRecentStateW  float32 = 128 // and its state
+	aiBubbleMaxW    float32 = 520 // a message of yours
+	aiBubbleRadius  float32 = 16  // its corners
+	aiCardRadius    float32 = 12  // an approval waiting
+	aiBoxRadius     float32 = 16  // the prompt box
+	aiBoxMinH       float32 = 44  // its text, two lines
+	aiBoxMaxH       float32 = 168 // and at most about seven, scrolling beyond
+	aiSendSize      float32 = 32  // its round send or stop button
+	aiChipH         float32 = 28  // a chip under it
+	aiStepMark      float32 = 18  // a step's round mark
+	aiStepGlyph     float32 = 11  // its glyph
+	aiStepRowH      float32 = 28  // a step's row
+	aiChevronSize   float32 = 12  // a menu chip's chevron
+	aiRecentH       float32 = 40  // a recent task's row
+	aiRenameW       float32 = 260 // a session's title being typed in the header
 	clipPanelW      float32 = 300 // the viewer's clipboard panel
 	shellSidebarW   float32 = 248 // the sidebar beside the panes
 	railW           float32 = 56  // the sidebar folded to its icons
 	sbRowH          float32 = 32  // a row of the sidebar
+	sbNameMaxW      float32 = 140 // its name, before the kind beside it gives way
 	sbTopH          float32 = 40  // its top row: hide the sidebar and +
 	paneMargin      float32 = 8   // between the panes, and from the window's edges
 	paneHeaderH     float32 = 44  // a pane's header
+	paneNarrowW     float32 = 560 // narrower, a header folds its split and maximize buttons into ⋯
+	paneNameMaxW    float32 = 200 // a header's name, at most
 	paneRadius      float32 = 14  // a pane's corners
 	paneButton      float32 = 28  // a button in a pane's header or the sidebar
 	winButtonW      float32 = 40  // a window button the view draws on Windows

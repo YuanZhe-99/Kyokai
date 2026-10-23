@@ -54,7 +54,7 @@ func settingsSections() []settingsSection {
 			{pageSecurity, navSecurity, L.NavSecurityPrivacy()},
 			{pageRunMode, rowServer, L.SettingsRunMode()},
 		}},
-		{L.SettingsGroupAI(), []settingsItem{{pageAI, navAI, L.NavAI()}}},
+		{L.SettingsGroupAI(), []settingsItem{{pageAI, navAI, L.AISources()}}},
 		{"Kyokai", []settingsItem{{pageAbout, navAbout, L.NavAboutUpdates()}}},
 	}
 }
@@ -129,7 +129,7 @@ func (a *App) settingsSheet(c *ui.Context, win *mygo.Window) {
 func (a *App) settingsNav(c *ui.Context, pg page) {
 	t := c.Theme()
 	a.mu.Lock()
-	q := a.settingsQuery
+	q, protected := a.settingsQuery, a.protected()
 	a.mu.Unlock()
 	ui.Row(c.Key("sheet-search")).Height(34).Shrink(0).Gap(8).Padding(0, 10).Radius(9).Border(1, t.Border).AlignItems(ui.Center).Margin(0, 0, 6, 0).Children(func() {
 		ui.Icon(c, shellSearch).FontSize(sizeSmall + 2).TextColor(t.TextMuted)
@@ -142,6 +142,9 @@ func (a *App) settingsNav(c *ui.Context, pg page) {
 	})
 	if strings.TrimSpace(q) != "" {
 		hits := searchSettings(settingsHits(), q)
+		if protected {
+			hits = slices.DeleteFunc(hits, func(h settingsHit) bool { return h.page != pageAI })
+		}
 		if len(hits) == 0 {
 			ui.Text(c, L.SettingsSearchNone()).FontSize(sizeSmall).TextColor(t.TextMuted).Padding(10)
 		}
@@ -163,6 +166,10 @@ func (a *App) settingsNav(c *ui.Context, pg page) {
 		return
 	}
 	for _, s := range settingsSections() {
+		// Protected mode leaves only the AI settings.
+		if protected && !slices.ContainsFunc(s.items, func(it settingsItem) bool { return it.page == pageAI }) {
+			continue
+		}
 		ui.Text(c, s.title).FontSize(sizeSmall).Bold().TextColor(t.TextMuted).Padding(12, 10, 4, 10)
 		for _, it := range s.items {
 			row := ui.ButtonBase(c.Key("sheet-nav-"+strconv.Itoa(int(it.page)))).Height(sbRowH).FillWidth().Radius(8).Padding(0, 10).Label(it.label)

@@ -43,26 +43,6 @@ func TestQuitIsNotHiddenIntoTheTray(t *testing.T) {
 	}
 }
 
-// The viewer's AI panel can be collapsed, but a step waiting for approval
-// always shows it.
-func TestAIPanelNeverHidesAnApproval(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		st   viewerAI
-		want bool
-	}{
-		{"no AI permission", viewerAI{}, false},
-		{"shown", viewerAI{run: true}, true},
-		{"collapsed", viewerAI{run: true, hidden: true}, false},
-		{"collapsed while working", viewerAI{run: true, hidden: true, task: &localapi.AITask{State: "working"}}, false},
-		{"collapsed while waiting for approval", viewerAI{run: true, hidden: true, task: &localapi.AITask{State: "approval"}}, true},
-	} {
-		if got := c.st.aiShown(); got != c.want {
-			t.Errorf("%s: shown = %v, want %v", c.name, got, c.want)
-		}
-	}
-}
-
 // A user engine whose store moved to the helper makes the GUI start on the
 // helper even when gui.json lost the choice (regression: a fresh identity
 // started beside the helper's and a later switch moved it over the real one).

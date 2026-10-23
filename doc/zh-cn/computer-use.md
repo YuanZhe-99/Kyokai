@@ -291,14 +291,14 @@ macOS 报告显示器休眠（`CGDisplayIsAsleep`、`CGGetOnlineDisplayList`）�
 
 ## AI 任务
 
-任务在被控端上运行，使用被控端的服务商密钥，操作被控端的主显示器。被控端用户在 AI 页面（或用
-`kyokai-svc ctl ai-start`）启动任务。获得 `run-ai-task` 的控制端可以在查看窗口的 AI 面板中启动任务，并控制被控端的任务，无论由谁发起（被控端为所有控制端保留同一份 AI 记录）；下一条指令的草稿在那里与被控端的 AI 页面和其他每个控制端实时共享
+任务在被控端上运行，使用被控端的服务商密钥，操作被控端的主显示器。被控端用户在 AI 会话的小窗中（[gui.md](gui.md)，“AI 会话”；或用
+`kyokai-svc ctl ai-start`）启动任务。获得 `run-ai-task` 的控制端可以在该被控端的 AI 会话小窗中启动任务，并控制被控端的任务，无论由谁发起（被控端为所有控制端保留同一份 AI 记录），所用的是一个只请求 `run-ai-task` 与 `approve-ai-action` 的独立会话；下一条指令的草稿与被控端用户和其他每个控制端实时共享
 （[protocol.md](protocol.md)，“AI 任务”）；拥有 `approve-ai-action` 时还可以答复这些任务的批准请求，而被控端用户也始终可以答复。
 同一时间只有一个任务占用桌面，用同一个幂等键启动两次只会启动一个任务。
 
 ### 服务商
 
-被控端用户设置**来源**（AI 页面；`ai.json`）：每个来源有 id、名称、所用的模板、协议、基础 URL 以及从中使用的模型，任务使用某个来源中
+被控端用户设置**来源**（设置中的 AI；`ai.json`）：每个来源有 id、名称、所用的模板、协议、基础 URL 以及从中使用的模型，任务使用某个来源中
 选定的一个模型。新的被控端有两个来源：Claude（`https://api.anthropic.com/v1`）与 OpenAI（`https://api.openai.com/v1`）。模板还可添加 OpenRouter、
 Google Gemini、Groq、Together、Fireworks、Deep Infra、Mistral、xAI、Moonshot、Z.ai / BigModel、阿里云百炼、SiliconFlow、火山方舟、MiniMax、
 阶跃星辰、百度千帆、腾讯混元、NVIDIA NIM、Hugging Face、GitHub Models、Ollama、LM Studio 与 llama.cpp server（取自 MyApps-AI 的目录，
@@ -377,7 +377,7 @@ Ctrl+Alt+Shift+Esc（紧急停止，任务运行期间有效）、托盘中的�
 
 状态目录中的 `ai.json` 保存各来源、选定的模型与批准方式（最初版本的文件——一个服务商以及 Claude 与 OpenAI 各一个模型——会读成两个默认来源）；
 密钥保存在机密存储中（`ai.<source>.key`），不会再显示，除了发给各自的来源之外不发往任何地方。`ai-tasks.json` 保存已结束的任务——指令、模型的文字与进度说明、各个操作及其结果，绝不包含截图——最多
-100 个；AI 页面可以清除它。已结束任务的对话保留在内存中，因此在引擎停止之前，回复可以让它继续。
+100 个；设置中的 AI 可以清除它（最近的任务），连同界面保存在 `gui.json` 中的 AI 会话。已结束任务的对话保留在内存中，因此在引擎停止之前，回复可以让它继续。
 
 ## macOS
 

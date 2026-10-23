@@ -43,8 +43,8 @@ func (a *App) openPalette() {
 // paletteItems are what the palette can find, by group: this device (the
 // temporary password to copy and a new one, while it opens anything; the
 // Device ID to copy), the panes open, the devices, actions — connect to a
-// device (the + picker), Settings, the sidebar hidden or shown, the
-// appearance — and Settings' settings (settingsHits).
+// device (the + picker), a new AI task here, Settings, the sidebar hidden
+// or shown, the appearance — and Settings' settings (settingsHits).
 // Notes: the closures run on the main thread.
 func (a *App) paletteItems() []paletteItem {
 	a.mu.Lock()
@@ -99,7 +99,7 @@ func (a *App) paletteItems() []paletteItem {
 			hint = L.ActionOpen()
 		}
 		out = append(out, paletteItem{group: L.HomeDevices(), title: deviceTitle(r.about, r.id), sub: strings.Join(sub, " · "), hint: hint, icon: kindDesktop, do: func() {
-			a.connectDevice(r.id, "", r.about, nil)
+			a.connectDevice(r.id, "", r.about)
 		}})
 	}
 	actions := L.PaletteActions()
@@ -109,6 +109,7 @@ func (a *App) paletteItems() []paletteItem {
 	}
 	out = append(out,
 		paletteItem{group: actions, title: L.SidebarNew(), hint: L.ActionOpen(), icon: shellPlus, do: func() { a.openPicker(at, false, "", zoneMiddle) }},
+		paletteItem{group: actions, title: L.AINewSession(), sub: L.PickThisComputer(), hint: L.ActionOpen(), icon: navAI, do: func() { a.openAISession("", "", "", nil, zoneMiddle) }},
 		paletteItem{group: actions, title: L.NavSettings(), hint: L.ActionOpen(), icon: shellGear, do: func() { a.openSettings(pageGeneral) }},
 		paletteItem{group: actions, title: sidebar, icon: shellSidebar, do: func() { a.setRail(!rail) }},
 	)

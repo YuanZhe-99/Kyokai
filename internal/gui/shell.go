@@ -57,7 +57,8 @@ func (h *homeTab) setFront(bool) {}
 // on the window's material, and beside it the cards that need the user
 // (connection requests, a connection here, an AI task waiting) above the
 // group shown; the Settings sheet over everything while open. In protected
-// mode only the AI page shows.
+// mode one pane: the card that turns it off over this computer's AI
+// session (protectedSession), Settings holding only its AI page.
 func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 	t := c.Theme()
 	a.mu.Lock()
@@ -66,13 +67,25 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 	if protected {
 		ui.Column(c.Key("protected")).Fill().Padding(paneMargin).Children(func() {
 			ui.Column(c).Fill().Radius(paneRadius).Clip().Background(t.Background).Border(1, t.Border).Children(func() {
-				ui.Row(c.Key("protected-head")).Height(paneHeaderH).Shrink(0).FillWidth().Padding(0, 8, 0, 0).Gap(4).AlignItems(ui.Center).Children(func() {
+				ui.Row(c.Key("protected-head")).Height(paneHeaderH).Shrink(0).FillWidth().Padding(0, 8, 0, 14).Gap(4).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, navAI).FontSize(navIconSize).TextColor(t.TextMuted)
+					ui.Text(c, L.PickThisComputer()).FontSize(sizeBody).Bold()
 					ui.Box(c).Grow(1).FillHeight().DragWindow()
+					if iconButton(c, "protected-settings", shellGear, L.NavSettings()) {
+						a.openSettings(pageAI)
+					}
 					windowButtons(c, "protected-win", vw.win, false)
 				})
-				a.View(c)
+				ui.Column(c.Key("protected-cards")).FillWidth().Shrink(0).Padding(12, 24, 0, 24).Gap(gap).Children(func() {
+					a.requestsView(c)
+					a.hostBanner(c)
+					a.protectedCard(c)
+				})
+				a.protectedSession().view(c)
+				a.toastView(c)
 			})
 		})
+		a.settingsSheet(c, vw.win)
 		return
 	}
 	ui.Row(c.Key("shell")).Fill().AlignItems(ui.Stretch).Children(func() {
@@ -289,12 +302,12 @@ func sbRow(c *ui.Context, key string, icon *ui.SVG, title, kind string, selected
 	row.Children(func() {
 		ui.Row(c).FillWidth().Gap(9).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, icon).FontSize(navIconSize).TextColor(fg)
-			name := ui.Text(c, title).SingleLine().MinWidth(0).Shrink(1)
+			name := ui.Text(c, title).SingleLine().MinWidth(0).Shrink(0).MaxWidth(sbNameMaxW)
 			if strong {
 				name.Bold()
 			}
-			if kind != "" {
-				ui.Text(c, kind).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine().MinWidth(0).Shrink(2)
+			if kind != "" { // it gives way to the name
+				ui.Text(c, kind).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine().MinWidth(0).Shrink(1)
 			}
 		})
 	})

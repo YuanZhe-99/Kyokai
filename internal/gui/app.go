@@ -116,6 +116,12 @@ type App struct {
 	// status watch (home.go).
 	statuses map[string]*statusTab
 	watch    watchState
+	// The AI sessions' panes by tabKey, and the links to hosts they use
+	// by Device ID (aisession.go, ailink.go); protectedAI is the session
+	// protected mode shows (main thread).
+	aiTabs      map[string]*aiTab
+	aiLinks     map[string]*aiLink
+	protectedAI *aiTab
 	// The Security page's keys and saved sign-ins (keys.go).
 	keys keysState
 	// The viewer windows, oldest first; a new viewer opens as a tab of the
@@ -153,9 +159,11 @@ type App struct {
 	toastAt       time.Time
 
 	// The + picker and the search palette while open (picker.go,
-	// palette.go).
-	picker  pickerState
-	palette paletteState
+	// palette.go); the picker's search, given the keys back after a kind
+	// is chosen.
+	picker     pickerState
+	palette    paletteState
+	pickSearch ui.Handle
 
 	// App updates (update.go).
 	appUpdate      *mygo.Update
@@ -169,7 +177,7 @@ func New(profile, stateDir, socket string) *App {
 	a := &App{
 		profile: profile, stateDir: stateDir, socket: socket, userSocket: socket, ctx: ctx, cancel: cancel,
 		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{}, viewers: map[string]*viewer{},
-		services: map[string]*serviceTab{}, statuses: map[string]*statusTab{},
+		services: map[string]*serviceTab{}, statuses: map[string]*statusTab{}, aiTabs: map[string]*aiTab{}, aiLinks: map[string]*aiLink{},
 	}
 	a.link = newServiceLink(a)
 	a.home = &homeTab{app: a}

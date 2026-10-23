@@ -227,6 +227,9 @@ func identifyFailure(name string) string {
 func (a *App) recentAbout(device string) localapi.About {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.status == nil {
+		return localapi.About{}
+	}
 	for _, r := range a.status.Recent {
 		if r.DeviceID == device {
 			return r.About
@@ -235,14 +238,10 @@ func (a *App) recentAbout(device string) localapi.About {
 	return localapi.About{}
 }
 
-// connectWant is what a connection asks the host for.
-func connectWant(ai bool) []string {
-	want := []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard, localapi.PermFiles, localapi.PermHearSound}
-	if ai {
-		want = append(want, localapi.PermRunAITask, localapi.PermApproveAIAction)
-	}
-	return want
-}
+// desktopWant is what a desktop's connection asks the host for: the
+// screen, the mouse and keyboard, the clipboard, files and sound (its AI
+// asks on a link of its own, aiWant).
+var desktopWant = []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard, localapi.PermFiles, localapi.PermHearSound}
 
 // deviceRow is one device on Home: what it said about itself and its
 // connection from here, if any.

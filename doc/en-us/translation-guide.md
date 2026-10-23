@@ -118,6 +118,8 @@ and Latin words only where it helps readability.
 | + picker / On its own / Beside current / Open a device… | + 选择器 / 单独打开 / 在当前小窗旁 / 打开设备… |
 | search (the palette, Ctrl+K) / Open panes / Actions | 搜索（面板，Ctrl+K） / 已打开的小窗 / 操作 |
 | … isn't available (a kind a device does not offer) / This computer (an AI task here) | …不可用 / 这台电脑（在本机运行的 AI 任务） |
+| AI session / New AI task / Recent tasks / Watch its screen | AI 会话 / 新 AI 任务 / 最近的任务 / 查看它的屏幕 |
+| prompt box / Send a prompt with (the send key) / link (an AI session's own session to a host) | 输入框 / 发送提示的按键 / 链接（AI 会话与被控端之间的独立会话） |
 | window buttons (drawn on Windows) / snap layouts | 窗口按钮（Windows 上自绘） / 贴靠布局 |
 | appearance: follow the system / light / dark | 外观：跟随系统 / 浅色 / 深色 |
 | toolbar (the viewer's) / Hide controls / Show controls | 控制栏 / 收起控制栏 / 展开控制栏 |

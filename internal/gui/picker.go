@@ -225,6 +225,7 @@ func (a *App) pickerView(c *ui.Context, at string, anchor ui.Element) {
 						on := p.kind == k
 						if pickerKind(c, k, on) {
 							set(func(p *pickerState) { p.kind, p.chosen = k, "" })
+							a.pickSearch.Focus(c)
 						}
 					}
 				})
@@ -232,7 +233,7 @@ func (a *App) pickerView(c *ui.Context, at string, anchor ui.Element) {
 			ui.Row(c.Key("picker-search")).Height(34).Margin(4, 14, 2, 14).Gap(8).Padding(0, 10).Radius(9).Border(1, t.Border).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, shellSearch).FontSize(sizeSmall + 2).TextColor(t.TextMuted)
 				q := p.query
-				in := ui.TextInputBase(c.Key("picker-search-in"), &q).Grow(1).Placeholder(L.PickSearch()).Label(L.PickSearch()).AutoFocus()
+				in := ui.TextInputBase(c.Key("picker-search-in"), &q).Grow(1).Placeholder(L.PickSearch()).Label(L.PickSearch()).AutoFocus().Bind(&a.pickSearch)
 				if in.Changed() {
 					set(func(p *pickerState) { p.query = q })
 				}
@@ -260,7 +261,10 @@ func (a *App) pickerView(c *ui.Context, at string, anchor ui.Element) {
 			})
 			ui.Scroll(c.Key("picker-rows")).FillWidth().MaxHeight(pickerRowsMaxH).Padding(4, 8).Gap(2).Children(func() {
 				peers := false
-				ui.Text(c, L.HomeDevices()).FontSize(sizeSmall).Bold().TextColor(t.TextMuted).Padding(6, 8, 4, 8)
+				// Peers come last: a list that starts with one has no devices.
+				if len(list) == 0 || !list[0].peer {
+					ui.Text(c, L.HomeDevices()).FontSize(sizeSmall).Bold().TextColor(t.TextMuted).Padding(6, 8, 4, 8)
+				}
 				if len(list) == 0 {
 					ui.Text(c, L.PickNone()).FontSize(sizeSmall).TextColor(t.TextMuted).Padding(4, 8)
 				}
@@ -372,20 +376,16 @@ func pickerRow(c *ui.Context, r pickRow, chosen, reveal bool) bool {
 	return b.Clicked()
 }
 
-// pickOpen opens what the picker chose: this computer's AI (Settings › AI
-// until AI tasks are panes), or the kind on a device by its Device ID or at
-// an address (once the device there answered); beside a pane when asked
-// (the pane in focus as it was chosen, or the one whose split button opened
-// the picker), on its side, else as an entry of its own.
+// pickOpen opens what the picker chose: a session with this computer's
+// AI, or the kind on a device by its Device ID or at an address (once the
+// device there answered); beside a pane when asked (the pane in focus as
+// it was chosen, or the one whose split button opened the picker), on its
+// side, else as an entry of its own.
 // Notes: call on the main thread.
 func (a *App) pickOpen(p pickerState, r pickRow) {
 	a.mu.Lock()
 	a.picker = pickerState{kind: p.kind}
 	a.mu.Unlock()
-	if r.device == selfID {
-		a.openSettings(pageAI)
-		return
-	}
 	var target tab
 	if p.beside {
 		target = a.tabFor(p.target)
@@ -398,6 +398,10 @@ func (a *App) pickOpen(p pickerState, r pickRow) {
 	z := p.zone
 	if z == zoneMiddle {
 		z = zoneRight
+	}
+	if r.device == selfID {
+		a.openAISession("", "", "", target, z)
+		return
 	}
 	a.connectAs(r.device, r.address, p.kind, func(key string) {
 		if target != nil && a.tabFor(key) != target {

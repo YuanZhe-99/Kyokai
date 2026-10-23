@@ -224,8 +224,7 @@ type viewer struct {
 	displays hostDisplays
 	// The host's session actions; nil until it offers them.
 	actions *hostActions
-	// The AI panel (viewerai.go) and the clipboard's (viewerclip.go).
-	ai   viewerAI
+	// The clipboard's panel (viewerclip.go).
 	clip viewerClip
 	// The connection's progress as the engine reports it, and whether the
 	// stream is running (pump).
@@ -257,6 +256,19 @@ type viewer struct {
 	remember bool
 }
 
+// sendControl queues a control message (a display choice, a key frame
+// request, a session action) for the host.
+func (v *viewer) sendControl(msg map[string]any) {
+	body, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	select {
+	case v.out <- append([]byte{packetControl}, body...):
+	default:
+	}
+}
+
 // session is the connection's current session id (0 before the first).
 func (v *viewer) session() uint64 { return v.sid.Load() }
 
@@ -267,16 +279,13 @@ func (a *App) viewerFor(device string) *viewer {
 	return a.viewers[device]
 }
 
-// connectDevice opens the connection to a device as a tab of the main
-// window, or shows its tab when it is open; a connection that ended
-// connects again. address, when set, is where to dial the device instead
-// of the network (an IP address or domain name). want is what to ask for
-// (nil: viewing, input, the clipboard and files).
+// connectDevice opens the connection to a device's desktop (desktopWant)
+// as a tab of the main window, or shows its tab when it is open; a
+// connection that ended connects again. address, when set, is where to
+// dial the device instead of the network (an IP address or domain name).
+// Its AI has a link of its own (ailink.go).
 // Notes: call on the main thread; one connection per device.
-func (a *App) connectDevice(device, address string, about localapi.About, want []string) {
-	if want == nil {
-		want = connectWant(false)
-	}
+func (a *App) connectDevice(device, address string, about localapi.About) {
 	if v := a.viewerFor(device); v != nil {
 		if address != "" {
 			v.mu.Lock()
@@ -291,7 +300,7 @@ func (a *App) connectDevice(device, address string, about localapi.About, want [
 		}
 		return
 	}
-	v := a.newViewer(device, about, want)
+	v := a.newViewer(device, about, desktopWant)
 	v.address = address
 	a.main.add(v)
 	v.redial("", false)
@@ -410,7 +419,8 @@ func (a *App) closeSession(id uint64) {
 // syncViewers follows the engine's sessions in the tabs: each connection
 // takes its session's progress, starts its stream once connected, and a
 // connection made elsewhere (another window, ctl) gets a tab of its own;
-// one this GUI closed gets none (dropSession).
+// one this GUI closed gets none (dropSession), nor an AI link's
+// (syncAILinks).
 // Notes: call on the main thread.
 func (a *App) syncViewers() {
 	a.mu.Lock()
@@ -428,8 +438,11 @@ func (a *App) syncViewers() {
 	}
 	closed := maps.Clone(a.closed)
 	a.mu.Unlock()
+	// The AI links' sessions are theirs, a dialing link's too: no desktop
+	// opens for them.
+	owned, dialing := a.syncAILinks(sessions)
 	for _, s := range sessions {
-		if !desktopController(s) || closed[s.ID] {
+		if !desktopController(s) || closed[s.ID] || owned[s.ID] || dialing[s.DeviceID] && a.viewerFor(s.DeviceID) == nil {
 			continue
 		}
 		v := a.viewerFor(s.DeviceID)
@@ -461,8 +474,6 @@ func (a *App) syncViewers() {
 		if start {
 			v.pumping = true
 			v.control = slices.Contains(s.Granted, localapi.PermControlInput)
-			v.ai.run = slices.Contains(s.Granted, localapi.PermRunAITask)
-			v.ai.approve = slices.Contains(s.Granted, localapi.PermApproveAIAction)
 			v.clip.may = slices.Contains(s.Granted, localapi.PermClipboard) || slices.Contains(s.Granted, localapi.PermFiles)
 			v.state = ""
 			if !slices.Contains(s.Granted, localapi.PermViewScreen) {
@@ -661,8 +672,6 @@ func (v *viewer) pump() {
 					v.mu.Unlock()
 				})
 			}
-		case packetAITask, packetAIError, packetAIDraft:
-			v.aiPacket(p[0], p[1:])
 		case packetClipboard:
 			v.clipPacketIn(p[1:])
 		case packetStats:
@@ -1039,8 +1048,8 @@ func (v *viewer) setState(s string) {
 }
 
 // view is the viewer window: the picture (fitted, or at its original size)
-// with the toolbar over its top edge, and beside it the clipboard panel and
-// the AI panel when the session may use them.
+// with the toolbar over its top edge, and beside it the clipboard panel when
+// the session may use it.
 func (v *viewer) view(c *ui.Context) {
 	v.mu.Lock()
 	phase, pumping := v.phase, v.pumping
@@ -1053,7 +1062,7 @@ func (v *viewer) view(c *ui.Context) {
 	}
 	v.mu.Lock()
 	bm, state, start, original, control := v.bm, v.state, v.start, v.original, v.control
-	withAI, withClip, ptr, actions := v.ai.aiShown(), v.clip.may && v.clip.shown, v.pointer, v.actions
+	withClip, ptr, actions := v.clip.may && v.clip.shown, v.pointer, v.actions
 	b := bar{start: start, fps: v.fps, kbps: v.kbps, decodeMS: v.decodeMS, drawMS: v.drawMS, host: v.host,
 		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec, decoder: v.decoder, paused: v.paused && control}
 	v.mu.Unlock()
@@ -1079,9 +1088,6 @@ func (v *viewer) view(c *ui.Context) {
 		})
 		if withClip {
 			v.clipPanel(c)
-		}
-		if withAI {
-			v.aiPanel(c)
 		}
 	})
 }
@@ -1354,13 +1360,13 @@ func (a *App) pathTo(device string) localapi.NetworkDevice {
 
 // toolbar is the viewer's controls, floating over the picture's top edge
 // as RustDesk's: menus for the display, the quality, the keyboard and the
-// host's session actions, toggles for the sound, the pointer ring, the
-// clipboard and AI panels and full screen, and the path to the device. Its
-// grip, or any gap between its controls, drags it along the top edge, to a
-// place kept for every viewer (Prefs.ToolbarAt); ⌃ folds it to a small
-// handle at that place, kept for the device. It never covers more than the
-// picture's width less barMargin a side: what does not fit goes into the
-// toolbar's overflow menu.
+// host's session actions, toggles for the sound, the pointer ring and the
+// clipboard panel, the device's AI (a session's pane beside this one), full
+// screen, and the path to the device. Its grip, or any gap between its
+// controls, drags it along the top edge, to a place kept for every viewer
+// (Prefs.ToolbarAt); ⌃ folds it to a small handle at that place, kept for
+// the device. It never covers more than the picture's width less barMargin
+// a side: what does not fit goes into the toolbar's overflow menu.
 // Notes: call on the main thread (barOff, barW and barDragging are its own).
 func (v *viewer) toolbar(c *ui.Context, b bar, a *hostActions, control bool, stageW float32) {
 	t := c.Theme()
@@ -1464,7 +1470,7 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 	preset, fpsCap, full := b.preset, b.fpsCap, b.full
 	v.mu.Lock()
 	original, soundOn, swap, peerOS, refused := v.original, !v.mute, v.swapping(), v.phase.Peer.OS, v.noGrab
-	canAI, aiShown, canClip, clipShown := v.ai.run, !v.ai.hidden, v.clip.may, v.clip.shown
+	canClip, clipShown := v.clip.may, v.clip.shown
 	v.mu.Unlock()
 
 	barMenu(c, "bar-display", barDisplay, L.ViewerDisplay(), func(m *ui.Menu) {
@@ -1603,10 +1609,9 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 		v.clip.shown = clipShown
 		v.mu.Unlock()
 	}
-	if canAI && barToggle(c, "bar-ai", &aiShown, navAI, L.ViewerAIPanel(), "").Changed() {
-		v.mu.Lock()
-		v.ai.hidden = !aiShown
-		v.mu.Unlock()
+	// The device's AI: a session's pane beside this one.
+	if v.app != nil && barButton(c, "bar-ai", navAI, L.ViewerAITitle()).Clicked() {
+		v.app.openAIBeside(v)
 	}
 	if w := v.home.Load(); w != nil {
 		full, icon, label := w.fullScreen(), barFullScreen, L.ViewerFullScreen()

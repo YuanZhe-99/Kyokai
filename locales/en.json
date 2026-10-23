@@ -3,7 +3,6 @@
   "AIActionPause": "Pause",
   "AIActionResume": "Resume",
   "AIActionSend": "Send",
-  "AIActionStart": "Start",
   "AIActionStop": "Stop",
   "AIAddModel": "Add model",
   "AIAddSource": "Add provider",
@@ -13,7 +12,51 @@
   "AIApprovalEveryOption": "Every action",
   "AIApprovalFlagged": "The provider flagged this step:",
   "AIApprovalFlaggedOption": "Flagged steps and system shortcuts",
+  "AIApprovalNoteHere": "Moving your mouse pauses the AI at once.",
+  "AIApprovalNoteThere": "Moving the mouse on {device} pauses the AI at once.",
+  "@AIApprovalNoteThere": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "AIApprovalOnHost": "Approvals as set on {device}",
+  "@AIApprovalOnHost": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "AIApprovalTitle": "Allow this action?",
+  "AIAskHere": "What should the AI do on this computer?",
+  "AIAskHereAbout": "It sees this screen and uses the mouse and keyboard. Moving your mouse pauses it at once.",
+  "AIAskThere": "What should the AI do on {device}?",
+  "@AIAskThere": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "AIAskThereAbout": "It sees {device}'s screen and uses its mouse and keyboard, with {device}'s own AI provider and key.",
+  "@AIAskThereAbout": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "AIBusyHere": "This computer is working on another task.",
+  "AIBusyThere": "{device} is working on another task.",
+  "@AIBusyThere": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "AIChatNote": "Needs a model that accepts images and calls tools; Kyokai offers its actions as tools.",
   "AICustom": "Custom",
   "AIDoClick": "Click at {x}, {y}",
@@ -157,13 +200,47 @@
   },
   "AIDoZoom": "Look closer at part of the screen",
   "AIEditSource": "Edit",
+  "AIHintSend": "Enter to send · Shift+Enter for a new line",
+  "AIHintSendShift": "Shift+Enter to send · Enter for a new line",
+  "AIHintStart": "Enter to start",
+  "AIHintStartShift": "Shift+Enter to start",
   "AIHistoryClear": "Clear history",
-  "AIHistoryEmpty": "No earlier tasks.",
-  "AIHistoryTitle": "Task history",
   "AIKey": "API key",
   "AIKeyMissing": "No key yet.",
+  "AIKeyOf": "{device}'s model and key",
+  "@AIKeyOf": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "AIKeyShort": "key stored",
   "AIKeyStored": "A key is stored. Leave this empty to keep it.",
+  "AILinkConfirming": "Waiting for {device} to allow AI tasks…",
+  "@AILinkConfirming": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "AILinkConnecting": "Connecting to {device}…",
+  "@AILinkConnecting": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "AILinkNoAI": "{device} did not allow AI tasks.",
+  "@AILinkNoAI": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "AIListModels": "List models",
   "AIModel": "Model",
   "AIModelAbout": "The model new tasks use.",
@@ -176,16 +253,19 @@
     }
   },
   "AIModelID": "model id, as the provider names it",
-  "AIModels": "Models",
-  "AINeedKey": "Add an API key for {provider} below to start a task.",
-  "@AINeedKey": {
+  "AIModelKeyOf": "{model} · {device}'s key",
+  "@AIModelKeyOf": {
     "placeholders": {
-      "provider": {
+      "device": {
+        "type": "String"
+      },
+      "model": {
         "type": "String"
       }
     }
   },
-  "AINewTask": "New task",
+  "AIModels": "Models",
+  "AINewSession": "New AI task",
   "AINoKeyNeeded": "no key needed",
   "AINoKeyShort": "no key",
   "AINoModelsListed": "The provider listed no models that can operate a desktop.",
@@ -195,9 +275,23 @@
   "AIOutcomeFailed": "failed",
   "AIOutcomePaused": "not run (paused)",
   "AIOutcomeSkipped": "skipped",
+  "AIPaneTitle": "{title} — {device}",
+  "@AIPaneTitle": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      },
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "AIPromptHint": "Describe a task…",
   "AIProtocolAnthropic": "Anthropic",
   "AIProtocolChat": "OpenAI-compatible",
   "AIProtocolResponses": "OpenAI Responses",
+  "AIRecentAbout": "This computer's tasks and your sessions with other devices, which a new session lists.",
+  "AIRecentTitle": "Recent tasks",
   "AIRemoteBanner": "An AI task from {device} is working on this computer.",
   "@AIRemoteBanner": {
     "placeholders": {
@@ -206,14 +300,32 @@
       }
     }
   },
+  "AIRename": "Rename",
   "AIReplyHint": "Reply to continue this task",
+  "AIRestartHint": "Start again with a new instruction",
   "AIReview": "Review",
+  "AIRunsOn": "Runs on {device}",
+  "@AIRunsOn": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
   "AISaved": "AI settings saved.",
+  "AISendButton": "The send button only",
+  "AISendEnter": "Enter (Shift+Enter breaks the line)",
+  "AISendKey": "Send a prompt with",
+  "AISendKeyAbout": "In an AI session's prompt box.",
+  "AISendShiftEnter": "Shift+Enter (Enter breaks the line)",
+  "AISetUpFirst": "Choose a model with a key in Settings › AI first.",
   "AISettingsTitle": "AI providers",
+  "AIShowTask": "Show it",
   "AISourceAddress": "Address",
   "AISourceFormat": "Format",
   "AISourceName": "Name",
   "AISources": "Providers",
+  "AIStarting": "Starting…",
   "AIStateApproval": "Waiting for your approval",
   "AIStateCancelled": "Stopped",
   "AIStateDone": "Done",
@@ -225,7 +337,17 @@
   "AIStatePausedSleep": "Paused: the computer went to sleep",
   "AIStatePausedTakeOver": "Paused: a person took over",
   "AIStateRunning": "Working…",
-  "AIStepsTitle": "Actions",
+  "AIStepsCount": "{count, plural, one {1 step} other {# steps}}",
+  "@AIStepsCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "AISuggestOne": "Tidy up the Downloads folder",
+  "AISuggestThree": "Find last month's invoice and print it",
+  "AISuggestTwo": "Rename these photos by date",
   "AITaskFrom": "Started from {device}",
   "@AITaskFrom": {
     "placeholders": {
@@ -234,10 +356,12 @@
       }
     }
   },
-  "AITaskHint": "The AI works on this computer's screen with this computer's API key. Using the keyboard or mouse pauses it at once.",
-  "AITaskTitle": "AI task",
+  "AIWaitingForYou": "Waiting for you",
+  "AIWatchScreen": "Watch its screen",
   "AIWhoMay": "Who may run AI tasks here",
   "AIWhoMayAbout": "Set in Access: Run AI tasks and Approve AI actions. They use these providers, never their own keys.",
+  "AIWorkingHint": "Working — pause or stop the task to write",
+  "AIYesterday": "yesterday",
   "AboutLicense": "AGPL-3.0-only. Includes MyGo (MIT).",
   "AboutSource": "Source code",
   "AboutTagline": "AI Computer Use Across Devices",
@@ -490,7 +614,6 @@
   "NatOpen": "Open internet",
   "NatSymmetric": "Symmetric (direct connections are hard)",
   "NatUnknown": "Not detected yet",
-  "NavAI": "AI",
   "NavAboutUpdates": "About & updates",
   "NavAccess": "Access",
   "NavHome": "Home",
@@ -799,6 +922,7 @@
   "SecretsOSStore": "Encrypted with this computer's credential store",
   "SecretsUnreadable": "The saved identity cannot be unlocked. Kyokai uses a temporary one this time and leaves the saved one untouched.",
   "SectionAIDefaults": "Defaults for new tasks",
+  "SectionAISessions": "AI sessions",
   "SectionLook": "Language and look",
   "SectionOtherDevices": "Other devices",
   "SectionOtherWays": "Other ways in",
@@ -1075,9 +1199,7 @@
     }
   },
   "TrustedTitle": "Trusted devices",
-  "ViewerAIHint": "The task runs on the other computer with its own AI provider. Your input in the picture pauses it.",
   "ViewerAIHostApproves": "The other computer's user approves this step.",
-  "ViewerAIPanel": "AI",
   "ViewerAITitle": "AI on the other computer",
   "ViewerActions": "Actions",
   "ViewerAsleep": "The screen there may be asleep.",

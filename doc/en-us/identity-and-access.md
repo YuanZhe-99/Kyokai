@@ -153,7 +153,7 @@ again beside its Device ID.
 Security, **Protected mode** (off by default) leaves this computer's Kyokai offering only the
 AI settings and AI tasks, for a computer whose local user should run AI tasks but change nothing
 else. It turns on only while a permanent password is set (after a confirmation) and off only with
-that password, entered on the AI page: the core checks it on this computer by running both sides
+that password, entered in the card above its AI session: the core checks it on this computer by running both sides
 of an OPAQUE login against the permanent record (`Slots::check_permanent`; the temporary password
 does not count), and refuses removing the permanent password while the mode is on. The choice
 (`protected`) is kept in the secrets store, so it survives restarts and moves with the store. The

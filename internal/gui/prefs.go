@@ -70,6 +70,27 @@ type Prefs struct {
 	// Uses count how often each of a device card's actions ("rdp", "ssh",
 	// "vnc", "ai") was used, by Device ID: the card shows the most used first.
 	Uses map[string]map[string]int `json:"uses,omitempty"`
+	// AISessions are the AI sessions kept on this computer, newest first
+	// (aisession.go); never written while NoLogs is on.
+	AISessions []AIRecord `json:"ai_sessions,omitempty"`
+	// SendKey is what sends an AI prompt: "" Enter (Shift+Enter breaks the
+	// line), "shift-enter" the reverse, "button" only the send button.
+	SendKey string `json:"send_key,omitempty"`
+}
+
+// AIRecord is an AI session as this computer keeps it (doc/en-us/gui.md,
+// "AI sessions"): its id, the device its tasks run on ("" this computer),
+// the task it follows there (0 before its first instruction), its title
+// (the first instruction until renamed), the task's state as last seen,
+// and when it started and last changed (Unix seconds). Never a screenshot.
+type AIRecord struct {
+	ID      string `json:"id"`
+	Device  string `json:"device,omitempty"`
+	Task    uint64 `json:"task,omitempty"`
+	Title   string `json:"title,omitempty"`
+	State   string `json:"state,omitempty"`
+	Created int64  `json:"created"`
+	Updated int64  `json:"updated"`
 }
 
 // named is what a device says about itself, with the name this device's
@@ -115,7 +136,14 @@ func loadPrefs(stateDir string) Prefs {
 	return p
 }
 
-func savePrefs(stateDir string, p Prefs) error { return fsutil.WriteJSON(prefsPath(stateDir), p) }
+// savePrefs writes the preferences; with No logs on, the AI sessions stay
+// out of the file (in memory only).
+func savePrefs(stateDir string, p Prefs) error {
+	if p.NoLogs {
+		p.AISessions = nil
+	}
+	return fsutil.WriteJSON(prefsPath(stateDir), p)
+}
 
 // ThemePref is the remembered appearance.
 func (a *App) ThemePref() string {

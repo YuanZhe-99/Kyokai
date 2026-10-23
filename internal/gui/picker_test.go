@@ -95,8 +95,8 @@ func TestNextRow(t *testing.T) {
 }
 
 // TestPickerByKeyboard: the picker opens from search, takes the keys typed
-// at once, ↓ chooses a device, Escape closes it; for an AI task Enter
-// opens the first that can, This computer.
+// at once, ↓ chooses a device, Escape closes it; for an AI task ↓ chooses
+// This computer first.
 func TestPickerByKeyboard(t *testing.T) {
 	i18n.SetLocaleFunc(func() string { return "en" })
 	defer i18n.SetLocaleFunc(nil)
@@ -139,9 +139,40 @@ func TestPickerByKeyboard(t *testing.T) {
 	a.picker.kind = actionAI
 	tt.Frame()
 	tt.Frame()
-	tt.Key(0, ui.KeyEnter)
+	tt.Key(0, ui.KeyDown)
 	tt.Frame()
-	if a.picker.at != "" || !a.settingsOpen || a.page != pageAI {
-		t.Fatalf("picker %+v, Settings open %v at %v", a.picker, a.settingsOpen, a.page)
+	if a.picker.chosen != selfID || !tt.HasText(L.PickStartAI()) {
+		t.Fatalf("for an AI task ↓ chose %q", a.picker.chosen)
+	}
+}
+
+// TestPickerKindKeepsTheKeys: after a kind is clicked, what is typed still
+// goes to the search, and ↓ still chooses a device.
+func TestPickerKindKeepsTheKeys(t *testing.T) {
+	i18n.SetLocaleFunc(func() string { return "en" })
+	defer i18n.SetLocaleFunc(nil)
+	a := demoApp(t)
+	a.status.Recent = []localapi.RecentDevice{{DeviceID: "402118905", Last: 1797300000, About: localapi.About{Name: "NUC"}}}
+	a.openPicker("sidebar", false, "", zoneMiddle)
+	tt := ui.NewTester(a.main.view, 1280, 800)
+	tt.Frame()
+	tt.Frame()
+	search, ok := tt.Find(L.PickSearch())
+	if !ok {
+		t.Fatalf("no search: %q", tt.Texts())
+	}
+	// The kinds stand in a row of five above the search's row, as wide as it.
+	tt.ClickAt(search.X+search.W/5, search.Y-40)
+	tt.Frame()
+	tt.Frame()
+	if a.picker.at != "sidebar" || a.picker.kind == "" {
+		t.Fatalf("the click chose no kind: %+v", a.picker)
+	}
+	tt.Type("nu")
+	tt.Frame()
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	if a.picker.query != "nu" || a.picker.chosen != "402118905" {
+		t.Fatalf("the keys did not reach the search: %+v", a.picker)
 	}
 }

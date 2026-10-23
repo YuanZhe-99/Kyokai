@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"strconv"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,10 +19,8 @@ import (
 // status push says only that a task runs, not what it did.
 const aiPoll = 700 * time.Millisecond
 
-// aiStepsShown is how many of a task's latest actions the page lists.
-const aiStepsShown = 8
-
-// aiState is the AI page's state.
+// aiState is this computer's AI as the GUI knows it: its settings and
+// tasks, and the shared draft of its next task.
 type aiState struct {
 	// settings is nil until loaded.
 	settings *localapi.AISettings
@@ -34,243 +32,83 @@ type aiState struct {
 	// draftAt is when this user last typed in it, so that a draft typed
 	// elsewhere does not replace what is being typed here.
 	draftAt time.Time
-	reply   string // a reply to the latest finished task
 	tasks   []localapi.AITask
 	loaded  bool
 	polling bool
 }
 
-// aiView is the AI page: the task in progress (or a new one), the
-// providers, and the history; in protected mode, topped by the card that
-// turns it off.
+// aiView is Settings › AI: the providers and the defaults for new tasks
+// (aiProviders), then how AI sessions go — what sends a prompt and the
+// recent tasks kept. The tasks themselves are AI sessions' panes
+// (aisession.go).
 func (a *App) aiView(c *ui.Context) {
-	settingsPage(c, L.NavAI(), L.SettingsAboutAI(), func() {
-		a.mu.Lock()
-		protected := a.protected()
-		a.mu.Unlock()
-		if protected {
-			ui.Column(c.Key("protected-wrap")).FillWidth().Padding(18, 0, 0, 0).Children(func() { a.protectedCard(c) })
-		}
+	settingsPage(c, L.AISettingsTitle(), L.SettingsAboutAI(), func() {
 		if !a.engineState(c) {
 			return
 		}
-		a.mu.Lock()
-		loaded, busy := a.ai.loaded, a.busy["ai"]
-		a.mu.Unlock()
-		if !loaded && !busy {
-			a.loadAI()
-		}
-		// The task and its history keep their cards until AI sessions
-		// become panes of their own.
-		ui.Column(c.Key("ai-task-wrap")).FillWidth().Padding(18, 0, 0, 0).Children(func() { a.aiTaskCard(c) })
+		a.ensureAILoaded()
 		a.aiProviders(c)
-		ui.Column(c.Key("ai-history-wrap")).FillWidth().Padding(18, 0, 0, 0).Children(func() { a.aiHistoryCard(c) })
+		a.aiSessionsSection(c)
 	})
 }
 
-// aiTaskCard shows the task in progress with its controls, or the latest
-// finished task and the form for a new one.
-func (a *App) aiTaskCard(c *ui.Context) {
-	t := c.Theme()
+// aiSessionsSection is how AI sessions go: what sends a prompt
+// (Prefs.SendKey), and the recent tasks — this computer's history and the
+// sessions kept here — with Clear history.
+func (a *App) aiSessionsSection(c *ui.Context) {
 	a.mu.Lock()
-	s, draft, reply := a.ai.settings, a.ai.draft, a.ai.reply
-	var latest *localapi.AITask
-	if len(a.ai.tasks) > 0 {
-		latest = &a.ai.tasks[0]
-	}
-	busy := a.busy["ai-task"]
+	p := a.prefs
 	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.AITaskTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.AITaskHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		active := latest != nil && !aiFinished(latest.State)
-		if latest != nil {
-			a.aiTaskDetail(c, latest)
-		}
-		if active {
-			return
-		}
-		if latest != nil && latest.State == "done" {
-			ui.Row(c).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
-				if ui.TextInput(c.Key("ai-reply"), &reply).Placeholder(L.AIReplyHint()).Grow(1).Disabled(busy).Changed() {
-					a.mu.Lock()
-					a.ai.reply = reply
-					a.mu.Unlock()
-				}
-				if ui.Button(c.Key("ai-send"), L.AIActionSend()).Disabled(busy || strings.TrimSpace(reply) == "").Clicked() {
-					a.aiReply(latest.ID, reply)
-				}
-			})
-			ui.Divider(c)
-		}
-		ui.Text(c, L.AINewTask()).Bold()
-		if ui.TextArea(c.Key("ai-draft"), &draft).FillWidth().MinHeight(inputAreaH).Disabled(busy).Changed() {
-			a.mu.Lock()
-			a.ai.draft, a.ai.draftAt = draft, time.Now()
-			a.mu.Unlock()
-			text := draft
-			go func() {
-				_, _ = a.requestWith(localapi.Request{Type: localapi.RequestAIDraft, AITask: &localapi.AITaskRequest{Text: text}})
-			}()
-		}
-		ready := aiReady(s)
-		if s != nil && !ready && s.Model != nil && aiSource(s, s.Model.Source) != nil {
-			ui.Text(c, L.AINeedKey(aiSource(s, s.Model.Source).Name)).FontSize(sizeSmall).TextColor(t.Warning)
-		}
-		ui.Row(c).Children(func() {
-			if ui.Button(c.Key("ai-start"), L.AIActionStart()).Disabled(busy || !ready || strings.TrimSpace(draft) == "").Clicked() {
-				a.aiStart(draft)
+	keys := []string{"", "shift-enter", "button"}
+	names := []string{L.AISendEnter(), L.AISendShiftEnter(), L.AISendButton()}
+	cur := names[max(slices.Index(keys, p.SendKey), 0)]
+	a.section(c, "ai-sessions", L.SectionAISessions(), nil, func(r *rows) {
+		r.row(c, "ai-send-key", tile(aiSend), setting{title: L.AISendKey(), about: L.AISendKeyAbout()}, func() {
+			if ui.Select(c.Key("ai-send-key-sel"), &cur, names).Width(280).Changed() {
+				p.SendKey = keys[slices.Index(names, cur)]
+				_ = a.setPrefs(p)
+			}
+		})
+		r.row(c, "ai-recent", tile(rowArchive), setting{title: L.AIRecentTitle(), about: L.AIRecentAbout()}, func() {
+			if ui.Button(c.Key("ai-recent-clear"), L.AIHistoryClear()).Clicked() {
+				a.clearAIHistory()
 			}
 		})
 	})
 }
 
-// aiTaskDetail shows one task: its state, what the model said, its latest
-// actions, an approval waiting for the user, and the controls.
-func (a *App) aiTaskDetail(c *ui.Context, task *localapi.AITask) {
-	t := c.Theme()
-	key := "ai-task-" + itoa(task.ID)
-	ui.Column(c.Key(key)).Gap(8).FillWidth().Children(func() {
-		ui.Text(c, task.Instruction).Bold().Selectable()
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			if task.State == "running" {
-				busyMark(c, aiStateLabel(task), busySize)
-			}
-			col := t.TextMuted
-			switch task.State {
-			case "approval":
-				col = t.Accent
-			case "failed":
-				col = t.Danger
-			case "done":
-				col = t.Success
-			case "paused":
-				col = t.Warning
-			}
-			ui.Text(c, aiStateLabel(task)).TextColor(col)
-			a.mu.Lock()
-			s := a.ai.settings
-			a.mu.Unlock()
-			ui.Text(c, aiTaskModel(s, task)).FontSize(sizeSmall).TextColor(t.TextMuted)
-		})
-		if task.Origin != "" {
-			ui.Text(c, L.AITaskFrom(groupDigits(task.Origin))).FontSize(sizeSmall).TextColor(t.TextMuted)
-		}
-		if task.Error != "" {
-			ui.Text(c, task.Error).FontSize(sizeSmall).TextColor(t.TextMuted).Selectable()
-		}
-		if task.Text != "" {
-			ui.Text(c, task.Text).Selectable()
-		}
-		if n := len(task.Progress); n > 0 && !aiFinished(task.State) {
-			ui.Text(c, task.Progress[n-1]).FontSize(sizeSmall).TextColor(t.TextMuted)
-		}
-		if task.Approval != nil {
-			a.aiApproval(c, task)
-		}
-		if len(task.Steps) > 0 {
-			ui.Text(c, L.AIStepsTitle()).FontSize(sizeSmall).Bold()
-			steps := task.Steps[max(len(task.Steps)-aiStepsShown, 0):]
-			for i, s := range steps {
-				ui.Row(c.Key(key + "-step-" + strconv.Itoa(i))).Gap(8).Children(func() {
-					ui.Text(c, describeAction(s.Action)).FontSize(sizeSmall).Grow(1)
-					if o := outcomeLabel(s.Outcome); o != "" {
-						ui.Text(c, o).FontSize(sizeSmall).TextColor(t.Warning)
-					}
-				})
-			}
-		}
-		if aiFinished(task.State) {
-			return
-		}
-		ui.Row(c).Gap(gap).Children(func() {
-			switch task.State {
-			case "paused":
-				if ui.Button(c.Key(key+"-resume"), L.AIActionResume()).Clicked() {
-					a.aiCommand(localapi.RequestAITaskResume, task.ID)
-				}
-			default:
-				if ui.Button(c.Key(key+"-pause"), L.AIActionPause()).Clicked() {
-					a.aiCommand(localapi.RequestAITaskPause, task.ID)
-				}
-			}
-			if ui.Button(c.Key(key+"-cancel"), L.AIActionStop()).Clicked() {
-				a.aiCommand(localapi.RequestAITaskCancel, task.ID)
-			}
-		})
-	})
-}
-
-// aiApproval asks the host user about the next action.
-func (a *App) aiApproval(c *ui.Context, task *localapi.AITask) {
-	t := c.Theme()
-	key := "ai-approve-" + itoa(task.ID)
-	ui.Column(c.Key(key)).Gap(8).FillWidth().Padding(12).Radius(8).Border(2, t.Accent).Children(func() {
-		ui.Text(c, L.AIApprovalTitle()).Bold()
-		ui.Text(c, describeAction(task.Approval.Action))
-		if len(task.Approval.Flagged) > 0 {
-			ui.Text(c, L.AIApprovalFlagged()).FontSize(sizeSmall).TextColor(t.Warning)
-			for i, f := range task.Approval.Flagged {
-				ui.Text(c.Key(key+"-f"+strconv.Itoa(i)), f).FontSize(sizeSmall).Selectable()
-			}
-		}
-		ui.Row(c).Gap(gap).Children(func() {
-			if ui.Button(c.Key(key+"-allow"), L.ActionAllow()).Clicked() {
-				a.aiDecide(task.ID, true)
-			}
-			if ui.Button(c.Key(key+"-deny"), L.ActionDeny()).Clicked() {
-				a.aiDecide(task.ID, false)
-			}
-		})
-	})
-}
-
-// aiHistoryCard lists the finished tasks.
-func (a *App) aiHistoryCard(c *ui.Context) {
-	t := c.Theme()
+// clearAIHistory forgets the recent tasks: this computer's history and the
+// sessions kept here, but those open in a pane.
+// Notes: call on the main thread.
+func (a *App) clearAIHistory() {
 	a.mu.Lock()
-	var done []localapi.AITask
-	for i, task := range a.ai.tasks {
-		// The latest task is shown above.
-		if i > 0 && aiFinished(task.State) {
-			done = append(done, task)
-		}
+	open := map[string]bool{}
+	for _, t := range a.aiTabs {
+		open[t.id] = true
 	}
 	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.AIHistoryTitle()).FontSize(sizeHeading).Bold()
-		if len(done) == 0 {
-			ui.Text(c, L.AIHistoryEmpty()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			return
-		}
-		for _, task := range done {
-			ui.Row(c.Key("ai-h-" + itoa(task.ID))).Gap(16).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, task.Instruction).Grow(1).MaxLines(1)
-				ui.Text(c, aiStateLabel(&task)).FontSize(sizeSmall).TextColor(t.TextMuted)
-				ui.Text(c, time.Unix(task.Created, 0).Local().Format(time.DateTime)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
-			})
-		}
-		if ui.Button(c.Key("ai-clear"), L.AIHistoryClear()).Clicked() {
-			go func() {
-				_, _ = a.request(localapi.RequestAIHistoryClear)
-				a.refreshAITasks()
-			}()
-		}
+	a.changeAIRecords(func(rs []AIRecord) []AIRecord {
+		return slices.DeleteFunc(rs, func(r AIRecord) bool { return !open[r.ID] })
 	})
+	go func() {
+		_, _ = a.request(localapi.RequestAIHistoryClear)
+		a.refreshAITasks()
+	}()
 }
 
-// aiBanner tells the user on every other page that the AI task waits for
-// them, or that a controller's AI task is working on this computer (with
-// the emergency stop at hand).
+// aiBanner tells the user that this computer's AI task waits for their
+// approval (Review shows its session), or that a controller's AI task is
+// working on this computer (with the emergency stop at hand) — unless a
+// session following that task shows.
 func (a *App) aiBanner(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	var active *localapi.AIActive
-	if a.connected && a.status != nil && !(a.settingsOpen && a.page == pageAI) {
+	if a.connected && a.status != nil {
 		active = a.status.AI
 	}
 	a.mu.Unlock()
-	if active == nil || (active.State != "approval" && active.Origin == "") {
+	if active == nil || (active.State != "approval" && active.Origin == "") || a.aiTaskShown(active.ID) {
 		return
 	}
 	text := L.AIApprovalBanner()
@@ -281,13 +119,45 @@ func (a *App) aiBanner(c *ui.Context) {
 		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, text).Grow(1)
 			if ui.Button(c.Key("ai-review"), L.AIReview()).Clicked() {
-				a.openSettings(pageAI)
+				a.openAITask("", active.ID, a.aiInstruction(active.ID))
 			}
 			if active.Origin != "" && ui.Button(c.Key("ai-banner-stop"), L.AIActionStop()).Clicked() {
 				a.stopAI()
 			}
 		})
 	})
+}
+
+// aiTaskShown reports whether the main window shows a session following
+// one of this computer's tasks.
+func (a *App) aiTaskShown(id uint64) bool {
+	a.main.mu.Lock()
+	var shown []tab
+	if a.main.cur != nil {
+		shown = a.main.cur.shownTabs()
+	}
+	a.main.mu.Unlock()
+	for _, v := range shown {
+		if t, ok := v.(*aiTab); ok && t.device == "" {
+			if r, ok := a.aiRecord(t.id); ok && r.Task == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// aiInstruction is one of this computer's tasks' instruction, "" while
+// unknown.
+func (a *App) aiInstruction(id uint64) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, t := range a.ai.tasks {
+		if t.ID == id {
+			return t.Instruction
+		}
+	}
+	return ""
 }
 
 // aiStatusChanged reacts to a pushed status (caller holds a.mu): it keeps
@@ -325,13 +195,20 @@ func (a *App) pollAI() {
 	}
 }
 
-// refreshAITasks fetches the task list.
+// refreshAITasks fetches the task list, which the sessions on this
+// computer follow (aiTaskSeen).
 func (a *App) refreshAITasks() {
 	resp, err := a.request(localapi.RequestAITasks)
 	if err != nil {
 		return
 	}
 	a.update(func() { a.ai.tasks = resp.AITasks })
+	a.later(func() {
+		for i := range resp.AITasks {
+			a.aiTaskSeen("", &resp.AITasks[i])
+		}
+		a.redrawAI("")
+	})
 }
 
 // loadAI fetches the settings and the tasks.
@@ -354,27 +231,6 @@ func (a *App) loadAI() {
 	}()
 }
 
-// aiStart starts a task. The idempotency key makes a repeated click start
-// one task.
-func (a *App) aiStart(instruction string) {
-	a.mu.Lock()
-	a.busy["ai-task"] = true
-	a.mu.Unlock()
-	key := strconv.FormatInt(time.Now().UnixNano(), 36)
-	go func() {
-		_, err := a.requestWith(localapi.Request{Type: localapi.RequestAITaskStart,
-			AITask: &localapi.AITaskRequest{Key: key, Instruction: instruction}})
-		a.update(func() {
-			delete(a.busy, "ai-task")
-			if a.aiFailed(err) {
-				return
-			}
-			a.ai.draft = ""
-		})
-		a.refreshAITasks()
-	}()
-}
-
 // aiReply continues a finished task.
 func (a *App) aiReply(id uint64, text string) {
 	a.mu.Lock()
@@ -385,9 +241,7 @@ func (a *App) aiReply(id uint64, text string) {
 			AITask: &localapi.AITaskRequest{Text: text}})
 		a.update(func() {
 			delete(a.busy, "ai-task")
-			if !a.aiFailed(err) {
-				a.ai.reply = ""
-			}
+			a.aiFailed(err)
 		})
 		a.refreshAITasks()
 	}()

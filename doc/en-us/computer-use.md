@@ -481,17 +481,18 @@ shown as current.
 ## AI tasks
 
 A task runs on the host, with the host's provider key, on the host's primary display. The host's
-user starts it on the AI page (or with `kyokai-svc ctl ai-start`). A controller granted
-`run-ai-task` starts tasks and steers the host's task, whoever started it (the host keeps one AI
-record for every controller), from the viewer's AI panel, where the draft of the next instruction
-is shared live with the host's AI page and every other controller
-([protocol.md](protocol.md), "AI tasks"); with `approve-ai-action` it also answers their approvals,
-which the host's user can always answer too. One task holds the desktop at a time, and starting
-twice with one idempotency key starts one task.
+user starts it in an AI session's pane ([gui.md](gui.md), "AI sessions"; or with
+`kyokai-svc ctl ai-start`). A controller granted `run-ai-task` starts tasks and steers the
+host's task, whoever started it (the host keeps one AI record for every controller), from an AI
+session's pane for the host, over a session of its own asking only for `run-ai-task` and
+`approve-ai-action`; the draft of the next instruction is shared live with the host's user and
+every other controller ([protocol.md](protocol.md), "AI tasks"); with `approve-ai-action` it
+also answers their approvals, which the host's user can always answer too. One task holds the
+desktop at a time, and starting twice with one idempotency key starts one task.
 
 ### Providers
 
-The host's user sets up **sources** (the AI page; `ai.json`): each has an id, a name,
+The host's user sets up **sources** (Settings › AI; `ai.json`): each has an id, a name,
 the template it came from, a protocol, a base URL and the models used from it, and the task uses one
 chosen model of one source. A new host has two: Claude (`https://api.anthropic.com/v1`) and OpenAI
 (`https://api.openai.com/v1`). Templates add OpenRouter, Google Gemini, Groq, Together, Fireworks,
@@ -597,8 +598,8 @@ file from the first versions, with one provider and a model each for Claude and 
 into the two default sources); the keys live in the secrets store (`ai.<source>.key`) and are never
 shown again or sent anywhere but to their source. `ai-tasks.json` keeps the finished tasks — the instruction,
 the model's text and progress notes, the actions and what became of them, never a screenshot — up
-to 100; the AI page clears it. A finished task's conversation stays in memory, so a reply
-continues it until the engine stops.
+to 100; Settings › AI clears it (Recent tasks), with the AI sessions the GUI keeps in `gui.json`.
+A finished task's conversation stays in memory, so a reply continues it until the engine stops.
 
 ## macOS
 

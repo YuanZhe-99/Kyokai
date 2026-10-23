@@ -573,8 +573,8 @@ func (a *App) dropTab(key string, to *viewerWindow, target tab, z dropZone) {
 	to.shownChanged(prev)
 }
 
-// tabFor is the open pane with a tabKey (Home, a desktop, a service or a
-// host's status), or nil.
+// tabFor is the open pane with a tabKey (Home, a desktop, a service, a
+// host's status or an AI session), or nil.
 func (a *App) tabFor(key string) tab {
 	if key == homeKey {
 		return a.home
@@ -592,15 +592,18 @@ func (a *App) tabFor(key string) tab {
 			return s
 		}
 	}
+	if t := a.aiTabs[key]; t != nil {
+		return t
+	}
 	return nil
 }
 
-// allTabs are every open pane but Home: desktops, services and hosts'
-// status, in no order.
+// allTabs are every open pane but Home: desktops, services, hosts' status
+// and AI sessions, in no order.
 func (a *App) allTabs() []tab {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	out := make([]tab, 0, len(a.viewers)+len(a.services)+len(a.statuses))
+	out := make([]tab, 0, len(a.viewers)+len(a.services)+len(a.statuses)+len(a.aiTabs))
 	for _, v := range a.viewers {
 		out = append(out, v)
 	}
@@ -609,6 +612,9 @@ func (a *App) allTabs() []tab {
 	}
 	for _, s := range a.statuses {
 		out = append(out, s)
+	}
+	for _, t := range a.aiTabs {
+		out = append(out, t)
 	}
 	return out
 }
@@ -807,12 +813,15 @@ func (vw *viewerWindow) paneBox(c *ui.Context, d paneDraw, v tab, box ui.Element
 
 // paneHeader is a pane's header: the kind's icon, the device's name and
 // the second line, which drag the pane (into another place, the sidebar,
-// or out into a window of its own); an empty part that moves the window;
-// then, in the main window, split right and split down (beside the pane:
-// another open pane) and, in a group of several, maximize or restore; and
-// close, except on Home alone. The top-right pane's header ends with the
-// window's buttons on Windows (unseen while Settings covers it, which shows
-// them in their place); a window of its own's keeps the room of the
+// or out into a window of its own) — on an AI session the icon in the
+// accent, its title as the second line (typed in place while renamed),
+// Rename and a pill while its task waits or is paused; an empty part that
+// moves the window; a host's AI session's Watch its screen; then, in the
+// main window, split right and split down (beside the pane: another open
+// pane or the + picker) and, in a group of several, maximize or restore;
+// and close, except on Home alone. The top-right pane's header ends with
+// the window's buttons on Windows (unseen while Settings covers it, which
+// shows them in their place); a window of its own's keeps the room of the
 // traffic lights on macOS.
 func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 	t := c.Theme()
@@ -823,8 +832,14 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 		left = max(c.TitleBar().Left-paneMargin+8, 14)
 	}
 	several := d.g.split.root != nil && d.g.split.root.first != nil
-	ui.Row(c.Key("head-"+key)).Height(paneHeaderH).Shrink(0).Padding(0, 8, 0, left).Gap(4).AlignItems(ui.Center).Children(func() {
-		title := ui.Row(c.Key("head-title-" + key)).Gap(8).AlignItems(ui.Center).MinWidth(0).Shrink(1).Label(h.title)
+	head := ui.Row(c.Key("head-"+key)).Height(paneHeaderH).Shrink(0).Padding(0, 8, 0, left).Gap(4).AlignItems(ui.Center)
+	// A narrow pane folds split right, split down and maximize into ⋯.
+	w := head.LayoutBounds().W
+	narrow := w > 0 && w < paneNarrowW
+	head.Children(func() {
+		// Too narrow even for the name and the pill, it is cut at its end
+		// rather than drawn under the buttons.
+		title := ui.Row(c.Key("head-title-" + key)).FillHeight().Gap(8).AlignItems(ui.Center).MinWidth(0).Shrink(1).Clip().Label(h.title)
 		if v == tab(vw.app.home) {
 			title.Drag(tabDrag{key})
 		} else {
@@ -838,15 +853,39 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 				},
 			})
 		}
+		ai, _ := v.(*aiTab)
 		title.Children(func() {
-			ui.Icon(c, h.icon).FontSize(navIconSize).TextColor(t.TextMuted)
-			ui.Text(c, h.title).FontSize(sizeBody).Bold().SingleLine().MinWidth(0)
-			if h.sub != "" {
-				ui.Text(c, h.sub).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine().MinWidth(0)
+			icon := ui.Icon(c, h.icon).FontSize(navIconSize).TextColor(t.TextMuted)
+			if ai != nil {
+				icon.TextColor(t.Accent)
+			}
+			// Room running short, the second line gives way first — it only
+			// grows into what is left, so the name loses nothing to it —
+			// then the name; the pill never does. Each is cut in a box of its
+			// own: a text left no room would still draw its ellipsis.
+			ui.Box(c).MinWidth(0).MaxWidth(paneNameMaxW).Clip().Children(func() {
+				ui.Text(c, h.title).FontSize(sizeBody).Bold().SingleLine()
+			})
+			switch {
+			case ai != nil && ai.renaming != nil:
+				ai.renameField(c)
+			case h.sub != "":
+				ui.Box(c).MinWidth(0).Basis(0).Grow(1).Clip().Children(func() {
+					ui.Text(c, h.sub).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine()
+				})
+			}
+			if ai != nil {
+				ai.titleExtras(c)
 			}
 		})
 		ui.Box(c.Key("head-drag-" + key)).Grow(1).FillHeight().DragWindow()
-		if vw.main {
+		if ai != nil {
+			ai.headButtons(c, narrow)
+		}
+		switch {
+		case vw.main && narrow:
+			vw.foldedButtons(c, d, v, several)
+		case vw.main:
 			vw.splitButton(c, v, zoneRight)
 			vw.splitButton(c, v, zoneBottom)
 			if several {
@@ -855,16 +894,7 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 					icon, label = paneRestore, L.PaneRestore()
 				}
 				if iconButton(c, "head-zoom-"+key, icon, label) {
-					vw.mu.Lock()
-					if vw.cur != nil {
-						if vw.cur.zoom == v {
-							vw.cur.zoom = nil
-						} else {
-							vw.cur.zoom = v
-							vw.cur.split.focus = v
-						}
-					}
-					vw.mu.Unlock()
+					vw.toggleZoom(v)
 				}
 			}
 		}
@@ -888,6 +918,86 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 	})
 }
 
+// toggleZoom maximizes a pane over its group, or restores the group.
+// Notes: call on the main thread.
+func (vw *viewerWindow) toggleZoom(v tab) {
+	vw.mu.Lock()
+	defer vw.mu.Unlock()
+	if vw.cur == nil {
+		return
+	}
+	if vw.cur.zoom == v {
+		vw.cur.zoom = nil
+		return
+	}
+	vw.cur.zoom = v
+	vw.cur.split.focus = v
+}
+
+// othersFor are the open panes that may go beside a pane: Home and every
+// other not shown in its group, by name.
+func (vw *viewerWindow) othersFor(v tab) []tab {
+	vw.mu.Lock()
+	var here []tab
+	if g := vw.groupOf(v); g != nil {
+		here = g.split.shownTabs()
+	}
+	vw.mu.Unlock()
+	var others []tab
+	for _, o := range append([]tab{vw.app.home}, vw.app.allTabs()...) {
+		if !slices.Contains(here, o) {
+			others = append(others, o)
+		}
+	}
+	slices.SortFunc(others, func(x, y tab) int { return strings.Compare(x.tabTitle(), y.tabTitle()) })
+	return others
+}
+
+// foldedButtons are a narrow pane's split right, split down and maximize
+// or restore, folded into ⋯: each split lists the other open panes, then
+// Open a device… (the + picker beside this pane on that side).
+func (vw *viewerWindow) foldedButtons(c *ui.Context, d paneDraw, v tab, several bool) {
+	key := v.tabKey()
+	b := iconButtonBase(c, "head-more-"+key, rowMore, L.ActionMore())
+	others := vw.othersFor(v)
+	b.Menu(func(m *ui.Menu) {
+		for _, z := range []dropZone{zoneRight, zoneBottom} {
+			label := L.PaneSplitRight()
+			if z == zoneBottom {
+				label = L.PaneSplitDown()
+			}
+			m.Submenu(label, func(m *ui.Menu) {
+				for _, o := range others {
+					oh := o.head()
+					name := oh.title
+					if oh.kind != "" {
+						name += " · " + oh.kind
+					}
+					if m.Item(name).Chosen() {
+						vw.app.dropTab(o.tabKey(), vw, v, z)
+					}
+				}
+				if len(others) > 0 {
+					m.Separator()
+				}
+				if m.Item(L.PaneSplitNew()).Chosen() {
+					vw.app.openPicker("fold-"+key, true, key, z)
+				}
+			})
+		}
+		if several {
+			label := L.PaneMaximize()
+			if d.g.zoom == v {
+				label = L.PaneRestore()
+			}
+			if m.Item(label).Chosen() {
+				vw.toggleZoom(v)
+			}
+		}
+	})
+	vw.app.pickerView(c, "fold-"+key, b)
+}
+
 // splitButton is a header's split right or split down: the + picker,
 // beside this pane on that side; with other panes open, first a menu of
 // them, any of which then goes beside this one (dropTab), ending with Open
@@ -902,19 +1012,8 @@ func (vw *viewerWindow) splitButton(c *ui.Context, v tab, z dropZone) {
 	b := iconButtonBase(c, "head-split-"+id, icon, label)
 	vw.mu.Lock()
 	open := vw.menu == id
-	g := vw.groupOf(v)
-	var here []tab
-	if g != nil {
-		here = g.split.shownTabs()
-	}
 	vw.mu.Unlock()
-	var others []tab
-	for _, o := range append([]tab{vw.app.home}, vw.app.allTabs()...) {
-		if !slices.Contains(here, o) {
-			others = append(others, o)
-		}
-	}
-	slices.SortFunc(others, func(x, y tab) int { return strings.Compare(x.tabTitle(), y.tabTitle()) })
+	others := vw.othersFor(v)
 	pick := func() { vw.app.openPicker("split-"+id, true, v.tabKey(), z) }
 	if b.Clicked() {
 		if len(others) == 0 {

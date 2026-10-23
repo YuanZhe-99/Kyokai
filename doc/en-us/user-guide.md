@@ -15,7 +15,7 @@ at login".
 
 The window is a sidebar and, beside it, panes: Home, and each connection. The gear at the bottom of
 the sidebar opens **Settings** over the whole window: **General**, **Access**, **Network**,
-**Security & privacy**, **Run mode**, **AI** and **About & updates**; Escape or × closes it.
+**Security & privacy**, **Run mode**, **AI providers** and **About & updates**; Escape or × closes it.
 Beside the gear, the appearance follows the system or stays light or dark, and the networks'
 state opens Network. The magnifier there, or Ctrl+K (⌘K on a Mac), searches the devices, the open
 panes, the settings and a few actions: type a few letters, choose with ↑ and ↓, and press Enter.
@@ -243,18 +243,23 @@ password.
 
 ## AI on this computer
 
-In Settings, **AI**, under **AI providers**, add a provider from its template (Claude and OpenAI
+In Settings, **AI providers**, add a provider from its template (Claude and OpenAI
 are there already; OpenRouter, Gemini, Qwen, Ollama and many more are a click away, or **Custom**
 for any other), enter your API key, add models by id or with **List models**, and choose the
 **Model** tasks use. Other providers need a model that accepts images and calls tools. Choose also and when to be asked: **Flagged steps and system shortcuts** (the default) or **Every
 action**. The key stays in this computer's secrets store and is never shown again or sent anywhere
-but to the provider. Then describe a task and choose **Start**.
+but to the provider.
 
-While the task works you see what the model says and each action it takes. An action that needs
-your approval waits in a framed box with **Allow** and **Deny**; a banner above the panes and a
-notification tell you. **Pause**, **Resume** and **Stop** are always at hand. When the task is done
-you can reply to continue it. **Task history** keeps finished tasks (never screenshots) until you
-clear it.
+Then open an AI task: **+** at the top of the sidebar, **AI task**, **This computer** (or search
+for **New AI task**). Describe the task in the box and press Enter, or pick one of the
+suggestions. Each AI task is a pane of its own, named after its first instruction; **Rename** in
+its header gives it another name, and you can open several, though one computer runs one task at
+a time. While the task works you see what the model says and each action it takes; an action that
+needs your approval waits in the conversation with **Allow** and **Deny**, and a banner above the
+panes and a notification tell you when its pane is not in view. **Pause**, **Resume** and **Stop**
+sit where Send was. When the task is done, write again to continue it. A new task's pane lists
+your recent tasks, here and on other computers (never screenshots); Settings, **AI providers**, clears
+them, and chooses whether Enter or Shift+Enter sends.
 
 The AI sends screenshots of this computer's screen to the provider you chose. Kyokai's own windows
 are left out of them, and out of screen sharing and other remote-desktop tools too. To see and
@@ -265,12 +270,15 @@ can, and nobody can while a connection request or an AI approval waits for you.
 
 ## AI on another computer
 
-With **Run AI tasks**, the connection's pane has an AI panel (hide it with the **AI** switch): describe
-the task and start it. It runs on the other computer with that computer's provider and key, and
-the panel follows it. Everyone connected to that computer sees the same task and the same draft as
-it is typed, and so does its own AI page. With
-**Approve AI actions** you can answer its approvals; the other computer's user can always answer
-them too, and sees a banner while your task works there, with **Stop** at hand.
+Open an AI task on another computer from **+** (**AI task**, then the device), from **Open as**
+**AI task** on Home, from **AI** on its card, or with **AI** in its desktop's toolbar, which puts
+the task beside the desktop. Kyokai asks that computer for **Run AI tasks** and **Approve AI
+actions** only — its user is asked as for any connection — and the task runs there with that
+computer's provider and key. **Watch its screen** in the task's header opens its desktop beside
+the task. Everyone connected to that computer sees the same task and the same draft as it is
+typed, and so does its own user. With **Approve AI actions** you can answer its approvals; the
+other computer's user can always answer them too, and sees a banner while your task works there,
+with **Stop** at hand. Closing the task's pane pauses the task there.
 
 ## Safety
 
@@ -284,7 +292,7 @@ them too, and sees a banner while your task works there, with **Stop** at hand.
 - Network membership alone grants nothing; every session needs your password or your confirmation.
 - **Protected mode** (Security & privacy; needs a permanent password) leaves only the AI settings and
   AI tasks in Kyokai on this computer, for someone who should use the AI here but change nothing
-  else. To turn it off, enter the permanent password on the AI page.
+  else. To turn it off, enter the permanent password in the card above the AI task.
 - **No logs** (Security & privacy) keeps Kyokai from writing logs or crash reports and from keeping a
   record of connections: trusted devices and Home's devices last only until Kyokai quits, and the logs
   already written are deleted. It is a trade-off: afterwards you can't find out who connected to

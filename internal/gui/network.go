@@ -265,7 +265,7 @@ func (a *App) networkRows(c *ui.Context, r *rows, p localapi.NetworkProfile, s l
 				a.update(func() { a.setToast(L.Copied(), false) })
 			}
 			if ui.Button(c.Key("dev-connect-"+p.ID+"-"+d.DeviceID), L.ActionConnect()).Clicked() {
-				a.connectDevice(d.DeviceID, "", about, nil)
+				a.connectDevice(d.DeviceID, "", about)
 			}
 		})
 	}
