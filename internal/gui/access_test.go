@@ -90,7 +90,14 @@ func TestNothingWaitsForTheMainThreadUnderTheLock(t *testing.T) {
 	defer cancel()
 	go localapi.ServeWith(ctx, ln, revealEngine{}, localapi.Authorizer{OwnerUID: uint32(os.Getuid()), OwnerSID: localapi.CurrentSID()})
 
-	a := New("", t.TempDir(), path)
+	// The state folder lives in dir, removed as well as it can be: the
+	// app may still be writing there as the test ends, which made
+	// t.TempDir's cleanup fail now and then on Windows.
+	state := filepath.Join(dir, "state")
+	if err := os.Mkdir(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	a := New("", state, path)
 	called := make(chan string, 4)
 	// Stands in for the main thread, which the real call waits for: it
 	// takes the lock to draw.
