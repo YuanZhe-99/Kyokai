@@ -32,10 +32,30 @@ runs:
       if: runner.os == 'macOS'
       shell: bash
       run: brew install nasm
-    - uses: actions/cache@v5
+    # vcpkg keys its binaries by an ABI hash that includes the compiler, so a
+    # runner image with a newer compiler misses them although the key below
+    # matches (regression: Windows rebuilt both libraries, 8-10 minutes, on
+    # every run). Each run restores the newest cache of these files (a
+    # release tag restores main's: the key leaves the targets out, and vcpkg
+    # keeps each triplet apart) and saves a new one only when it built
+    # something.
+    - uses: actions/cache/restore@v5
       with:
         path: ${{ runner.temp }}/vcpkg-cache
-        key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ inputs.targets }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}
+        key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}-${{ github.run_id }}
+        restore-keys: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}-
     - name: Build libvpx and libaom
       shell: bash
-      run: scripts/codecs.sh ${{ inputs.targets }}
+      run: |
+        dir=$VCPKG_DEFAULT_BINARY_CACHE
+        [ "$RUNNER_OS" = Windows ] && dir=$(cygpath -u "$dir")
+        before=$(find "$dir" -type f | wc -l)
+        scripts/codecs.sh ${{ inputs.targets }}
+        after=$(find "$dir" -type f | wc -l)
+        echo "vcpkg binary cache: $before files before, $after after"
+        echo "VCPKG_CACHE_NEW=$([ "$after" -gt "$before" ] && echo true || echo false)" >> "$GITHUB_ENV"
+    - uses: actions/cache/save@v5
+      if: env.VCPKG_CACHE_NEW == 'true'
+      with:
+        path: ${{ runner.temp }}/vcpkg-cache
+        key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}-${{ github.run_id }}
