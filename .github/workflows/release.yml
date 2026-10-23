@@ -146,8 +146,20 @@ jobs:
           # The identity by its SHA-1, whatever the certificate is called.
           id=$(openssl x509 -in "$RUNNER_TEMP/cert.pem" -noout -fingerprint -sha1 | sed 's/.*=//; s/://g')
           echo "MYGO_SIGN=$id" >> "$GITHUB_ENV"
+      # Both cores in one cargo run, so their slowest crates compile side by
+      # side instead of one slice after the other; the package takes them as
+      # built (CORE_PREBUILT).
+      - name: Core libraries
+        run: |
+          PROTOC=$(scripts/protoc.sh) cargo build --release --manifest-path core/Cargo.toml \
+            --target aarch64-apple-darwin --target x86_64-apple-darwin
+          for a in arm64:aarch64 amd64:x86_64; do
+            dir="resources/darwin-${a%:*}/bin/Kyokai Helper.app/Contents/MacOS"
+            mkdir -p "$dir" && cp "core/target/${a#*:}-apple-darwin/release/libkyokai_core.dylib" "$dir/"
+          done
       - name: Build
         env:
+          CORE_PREBUILT: "1"
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: scripts/build.sh darwin/arm64 darwin/amd64
       # Each disk image must verify, and the app in it must carry a

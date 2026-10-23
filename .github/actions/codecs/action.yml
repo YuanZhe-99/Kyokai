@@ -11,7 +11,16 @@ inputs:
 runs:
   using: composite
   steps:
+    # The install trees themselves: a hit skips vcpkg altogether, whose own
+    # binary cache misses whenever a runner image changes a tool its ABI hash
+    # covers. Only main saves them; a release tag restores main's.
+    - id: trees
+      uses: actions/cache/restore@v5
+      with:
+        path: core/vcpkg_installed
+        key: codecs-${{ runner.os }}-${{ runner.arch }}-${{ inputs.targets }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}
     - name: vcpkg at the pinned commit
+      if: steps.trees.outputs.cache-hit != 'true'
       shell: bash
       run: |
         commit=$(sed -n 's/.*"baseline": "\([0-9a-f]*\)".*/\1/p' core/vcpkg-configuration.json)
@@ -29,7 +38,7 @@ runs:
         echo "VCPKG_DEFAULT_BINARY_CACHE=$RUNNER_TEMP/vcpkg-cache" >> "$GITHUB_ENV"
     # The x64 macOS slice assembles with NASM; Windows x64 gets it from vcpkg.
     - name: NASM (macOS)
-      if: runner.os == 'macOS'
+      if: runner.os == 'macOS' && steps.trees.outputs.cache-hit != 'true'
       shell: bash
       run: brew install nasm
     # vcpkg keys its binaries by an ABI hash that includes the compiler, so a
@@ -40,11 +49,13 @@ runs:
     # keeps each triplet apart) and saves a new one only when it built
     # something.
     - uses: actions/cache/restore@v5
+      if: steps.trees.outputs.cache-hit != 'true'
       with:
         path: ${{ runner.temp }}/vcpkg-cache
         key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}-${{ github.run_id }}
         restore-keys: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}-
     - name: Build libvpx and libaom
+      if: steps.trees.outputs.cache-hit != 'true'
       shell: bash
       run: |
         dir=$VCPKG_DEFAULT_BINARY_CACHE
@@ -59,3 +70,8 @@ runs:
       with:
         path: ${{ runner.temp }}/vcpkg-cache
         key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}-${{ github.run_id }}
+    - uses: actions/cache/save@v5
+      if: steps.trees.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+      with:
+        path: core/vcpkg_installed
+        key: ${{ steps.trees.outputs.cache-primary-key }}

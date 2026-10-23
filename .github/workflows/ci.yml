@@ -86,6 +86,57 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: go run ./tools/deps check
 
+  # Clippy and the Rust tests on one runner per OS, beside the builds below
+  # instead of before them.
+  rust:
+    name: Rust (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-11-arm, target: windows/arm64 }
+          - { os: macos-latest, target: darwin/arm64 }
+    runs-on: ${{ matrix.os }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+          components: clippy, rustfmt
+      # rust-cache keys on every installed toolchain: the runner image's own
+      # stable Rust would change the key from one image to the next.
+      - name: Only the pinned toolchain
+        shell: bash
+        run: |
+          keep=$(rustup show active-toolchain | cut -d' ' -f1)
+          for t in $(rustup toolchain list | cut -d' ' -f1); do
+            [ "$t" = "$keep" ] || rustup toolchain uninstall "$t"
+          done
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Pinned protoc
+        shell: bash
+        run: echo "PROTOC=$(scripts/protoc.sh)" >> "$GITHUB_ENV"
+      - name: Clang (Windows ARM64)
+        if: matrix.os == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files\LLVM\bin\clang.exe")) { choco install llvm --no-progress -y }
+          "C:\Program Files\LLVM\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      - uses: ./.github/actions/codecs
+        with:
+          targets: ${{ matrix.target }}
+      - name: Clippy
+        run: cargo clippy --manifest-path core/Cargo.toml --workspace --all-targets -- -D warnings
+      - name: Rust tests
+        run: cargo test --manifest-path core/Cargo.toml --workspace
+
   test:
     name: Test (${{ matrix.os }})
     needs: changes
@@ -95,11 +146,11 @@ jobs:
       matrix:
         include:
           # Full gate on one runner per OS; build-only on the other arch.
-          - { os: windows-11-arm, full: true, package: true }
-          - { os: macos-latest, full: true, package: true }
+          - { os: windows-11-arm, target: windows/arm64, full: true, package: true }
+          - { os: macos-latest, target: darwin/arm64, full: true, package: true }
           # x64 is packaged too: the remote test VM installs it.
-          - { os: windows-latest, full: false, package: true }
-          - { os: macos-15-intel, full: false, package: false }
+          - { os: windows-latest, target: windows/amd64, full: false, package: true }
+          - { os: macos-15-intel, target: darwin/amd64, full: false, package: false }
     runs-on: ${{ matrix.os }}
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
@@ -108,6 +159,9 @@ jobs:
       # profile (release.yml).
       CARGO_PROFILE_RELEASE_LTO: "off"
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      # The build-only leg ships no package: a working library for the Go
+      # tests needs less optimization.
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ matrix.package && '3' || '1' }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -117,10 +171,21 @@ jobs:
         with:
           toolchain: "1.99.1"
           components: clippy, rustfmt
-      # Only main saves the cache; other refs restore it.
+      # rust-cache keys on every installed toolchain: the runner image's own
+      # stable Rust would change the key from one image to the next.
+      - name: Only the pinned toolchain
+        shell: bash
+        run: |
+          keep=$(rustup show active-toolchain | cut -d' ' -f1)
+          for t in $(rustup toolchain list | cut -d' ' -f1); do
+            [ "$t" = "$keep" ] || rustup toolchain uninstall "$t"
+          done
+      # Only main saves the cache; other refs restore it. Its own key: this
+      # job's cache holds the release build only.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
+          key: release
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # EasyTier compiles its protocol files at build time; the pinned,
       # checksum-verified protoc replaces its unverified download.
@@ -136,13 +201,8 @@ jobs:
           "C:\Program Files\LLVM\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
       # libvpx and libaom, linked statically into the core.
       - uses: ./.github/actions/codecs
-
-      - name: Clippy
-        if: matrix.full
-        run: cargo clippy --manifest-path core/Cargo.toml --workspace --all-targets -- -D warnings
-      - name: Rust tests
-        if: matrix.full
-        run: cargo test --manifest-path core/Cargo.toml --workspace
+        with:
+          targets: ${{ matrix.target }}
 
       # Built for the runner's own target triple, where scripts/build.sh
       # looks too: the package reuses this build instead of a second one.
@@ -189,10 +249,19 @@ jobs:
         if: matrix.package
         with:
           tool: cargo-about
+      # The core built above goes in as is (CORE_PREBUILT): a second cargo
+      # run rebuilt EasyTier and the core on windows-latest, and a restored
+      # codec tree leaves no vcpkg for scripts/codecs.sh.
       - name: Package (unsigned)
         if: matrix.package
         shell: bash
-        run: scripts/build.sh
+        env:
+          CORE_PREBUILT: "1"
+        run: |
+          t=${{ matrix.target }} dir=resources/${t/\//-}/bin lib=kyokai_core.dll
+          if [ "$RUNNER_OS" = macOS ]; then dir="$dir/Kyokai Helper.app/Contents/MacOS" lib=libkyokai_core.dylib; fi
+          mkdir -p "$dir" && cp "$CORE_RELEASE/$lib" "$dir/"
+          scripts/build.sh
 
       - uses: actions/upload-artifact@v7
         if: matrix.package
