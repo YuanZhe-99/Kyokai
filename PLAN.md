@@ -14,7 +14,7 @@ this file when the plan is complete.
 - macOS builds are signed with the maintainer's Apple Development certificate (Team ID); the helper
   verifies its own updates (bundle signature on Windows, code signature on macOS).
 
-## Next version: the interface
+## Next version: 0.6.0, the interface
 
 Decided with the maintainer on 2026-10-23 from a design draft of ten screens (light and dark,
 Windows and macOS chrome; a private canvas the maintainer keeps). Kyokai's own look, not a copy of
@@ -25,8 +25,8 @@ another app's: other apps were references for behaviour only.
   edges. The tab strip goes. The sidebar lists Home and every open pane; a split shows as one group,
   its panes indented under the group's name, the group a card while it is in front; a pane dragged
   out of a group leaves it. Top: hide the sidebar, and + (the picker below). Bottom: search,
-  light/dark (a sun, a moon while dark), the settings gear, the network state. Hidden, the sidebar
-  folds to an icon rail with tooltips.
+  appearance (Follow system, Light and Dark in turn: a sun with a moon, a sun, a moon), the
+  settings gear, the network state. Hidden, the sidebar folds to an icon rail with tooltips.
 - **Panes.** Home, Desktop, SSH, Remote Desktop, VNC and AI task panes share one header: icon,
   device name, a second line (Device ID, "SSH · user", "AI task"), route and delay, then split
   right, split down, maximize or restore, and close; a narrow pane folds the first three into ⋯.
@@ -56,13 +56,15 @@ another app's: other apps were references for behaviour only.
   with one row of compact metrics, Open while connected, Connect otherwise, services as icon
   buttons. "Others in my networks" (off by default, kept in `gui.json`) adds the Kyokai devices
   the joined networks route to and that were never connected, as dashed cards with Connect.
-- **AI.** An AI task is a pane per device (this computer or a host): the conversation (the
-  instruction, the model's text, its steps — a thumbnail where it took a screenshot — and
-  approvals inline with Allow and Deny) and the prompt box at the bottom; under the box the
-  approval mode, where it runs and the model with whose key ("NUC's key"). A new task's pane
-  centres the box, with suggestions and recent tasks; Watch its screen opens the device's Desktop
-  beside it. Providers, keys, the default model and the default approval mode move to Settings ›
-  AI; the AI page goes. A send-key preference: Enter sends and Shift+Enter breaks the line (the
+- **AI.** An AI session is a pane, and a device (this computer or a host) may have several: the
+  conversation (the instruction, the model's text, its steps — a thumbnail where it took a
+  screenshot — and approvals inline with Allow and Deny) and the prompt box at the bottom; under
+  the box the approval mode, where it runs and the model with whose key ("NUC's key"). Today's
+  hosts run one task at a time, so a second session there says the device is busy until the
+  first ends. A new session's pane centres the box, with suggestions and recent tasks — this
+  computer's and those of the devices it has connected to. Watch its screen opens the device's
+  Desktop beside it. Providers, keys, the default model and the default approval mode move to
+  Settings › AI; the AI page goes. A send-key preference: Enter sends and Shift+Enter breaks the line (the
   default), the reverse, or both break and only the button sends.
 
 | Milestone | Scope | Done when |
@@ -72,23 +74,19 @@ another app's: other apps were references for behaviour only.
 | M2 Settings | the sheet, grouped navigation, settings search, the row style and permission tiles; every current setting moved (General; Permissions as Access; Network; Security as Security & privacy; Run mode; AI providers; About), the copy shortened | every setting reachable in the sheet and by search; no settings page left in the sidebar |
 | M3 Home | This device, Connect with Open as, cards of equal height, "Others in my networks", the status details as a pane | view tests with the network devices on and off |
 | M4 + and search | the picker (kinds, what each device offers, where it opens) and the Ctrl+K palette | both usable by keyboard alone; tests for the matching and the offers |
-| M5 AI | the AI task pane (this computer and a host), inline approvals, the prompt box and send-key preference, recent tasks; the AI page removed. Protocol: `ai-start` takes an optional model and approval mode, and a host lists its usable models to `run-ai-task` controllers, behind a feature token (older hosts: the pickers hidden, the host's choice used) | a task started, steered, approved and finished from both kinds of pane on two machines; protocol tests with an older peer |
-| M6 The rest | connection requests and "Connected here", the AI approval banners, protected mode, Starting… and the engine down, macOS privacy permissions, the address and rename editors — in the new shell | each state in view tests and seen once natively |
+| M5 AI | AI session panes, several per device (this computer and a host), inline approvals, the prompt box and send-key preference, recent tasks with those of devices connected before (kept on this computer: title, device, state and time, never a screenshot); the AI page removed. Under the box, this computer's approval mode and model change its own settings; a host's show what the host uses (choosing them per task waits for the agent backend: no protocol change in 0.6.0) | a task started, steered, approved and finished from both kinds of pane on two machines |
+| M6 The rest | connection requests (a card above the panes) and "Connected here", the AI approval banners, protected mode, Starting… and the engine down, macOS privacy permissions, the address and rename editors — in the new shell | each state in view tests and seen once natively |
 | M7 Finish | contrast and keyboard navigation; gui.md, user-guide.md and computer-use.md in both languages; version-history and platform-notes | the full gate; native screenshots on both platforms; the maintainer's review |
 
-Open decisions:
-
-- The version: one release (0.6.0?) when M7 is done, the milestones landing on `main` unreleased?
-- Connection requests: a card above every pane, as today, or the top layer like Settings?
-- Light/dark in the sidebar: switch between Light and Dark, System staying in Settings?
-- Recent tasks: this computer's history only, or also tasks it started or watched elsewhere?
-- Sessions: one AI task per host, as a host keeps one AI record today, or several per host (a
-  protocol change)?
+Released as 0.6.0 once M7 is done; the milestones land on `main` unreleased. 0.6.0 is about the
+interface: backend work that is not small waits, among it Pi as the agent behind AI sessions
+(Left, "Pi as the agent backend").
 
 ## Left
 
 | Item | Scope | Done when |
 |---|---|---|
+| Pi as the agent backend | after 0.6.0, AI sessions run as Kyokai's providers → Pi → computer use: Pi (pi-mono, TypeScript) is the agent loop on the host, several sessions per host, through its RPC or SDK mode; it calls models through the providers set in Settings › AI (keys reach it in memory only) and acts only through Kyokai's computer-use actions, an extension in place of its own tools (shell and files stay off), so the executor, approvals, take-over and no-replay rules hold. With it, a host's model and approval mode chosen per task from the prompt box (`ai-start` with an optional model and approval mode, a host listing its usable models to `run-ai-task` controllers, behind a feature token). Not small: a JavaScript runtime ships with Kyokai, and Pi's session files follow No logs | a spike answers each point; then a task runs through Pi on a host with approvals and take-over intact, on both platforms |
 | Shared AI record and draft | the host keeps one AI record that every controller sees and may steer with its permissions (done in the core); the AI prompt draft is shared live: what one controller or the host's user types reaches the host, which passes it to every other controller and its own AI page | two controllers and the host see the same task and the same draft, recorded in platform-notes |
 | macOS crash | the Mac app "crashed" when a connection request came in: most likely the GUI froze, announcing the request under its lock while macOS asked about notifications (fixed in 0.4.0, with a watchdog that writes the stacks of a frozen GUI to `gui-crash.log`) | the first connection to a Mac host no longer freezes on the user's Macs, or the new logs name another cause |
 | macOS pass | done on one Mac (platform-notes): capture, permissions, input and keyboard as host, Follow Kyokai. Left: the clipboard, Background service and the login-window agent, the helper's self-disable, sleep notifications, a Mac as controller of another machine through the viewer window, a Mac host from another machine | the acceptance record's rows hold on macOS, both directions Mac ↔ Windows |
@@ -101,8 +99,11 @@ Open decisions:
 - The interface (2026-10-23): everything is a pane the sidebar holds; Settings is the top layer
   over the whole window and never part of a split; AI tasks are panes of their own, apart from the
   providers in Settings › AI; a single pane dragged out becomes a window of its own without a
-  sidebar and is never split there; the sidebar keeps search, light/dark, the gear and the network state at its bottom
-  (Kyokai has no user accounts, so nothing account-like goes there).
+  sidebar and is never split there; the sidebar keeps search, appearance (Follow system, Light,
+  Dark), the gear and the network state at its bottom (Kyokai has no user accounts, so nothing
+  account-like goes there); connection requests stay a card above the panes; several AI sessions
+  per device in the interface, recent tasks including the devices connected before, Pi as the
+  agent later; released as 0.6.0.
 - 0.5.0 (2026-10-21): a device has routes — the Kyokai network and any number of addresses; Auto picks by latency now and throughput remembered per route, at connect and on resume only (a healthy session never moves); a route can be fixed by hand. Addresses are edited from the card (⋯ → Addresses…), its path line is a route picker, and the connect form adds addresses. KCP/QUIC switches stay out (EasyTier's proxies never carry Kyokai's sessions; `quic://` server URLs already work).
 - 0.4.1 (2026-10-21): SSH, RDP and VNC run in built-in clients through tunnels inside Kyokai sessions to the host's own ports, each a permission like the others, off by default; saved service passwords stay in the engine's store and reach the GUI's client only at sign-in, private keys never leave the engine. A controller with a saved password or key watches a host's status quietly. KCP/QUIC proxies are not used (they never carry Kyokai's sessions). Home is a grid of rich device cards. Remote control is a stream: stale frames and input are skipped, key state stays in step, a stalled session never traps the controller's keyboard.
 - Kyokai's windows follow Hide Kyokai from capture: with it off, a person controlling this device
