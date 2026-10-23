@@ -1,5 +1,29 @@
 # Version history
 
+## 0.5.3 (2026-10-22)
+
+- The picture comes back after the host's display was dark, on every platform. The main cause on
+  Windows: a GPU's encoder (Qualcomm's) gives no output while the display is off and stays silent
+  after it returns, which Kyokai took for a still screen. An encoder silent for 2 seconds now
+  counts as failed; the GPU's encoder is used only while the display is on (woken first), with the
+  software encoder otherwise; the first look waits for Windows' report of the display state.
+- The host never gives up on the picture: it opens the video again, tries the next codec, then
+  shows a status while it keeps trying the real screen, and starts over once the picture is back.
+  The viewer shows what the host says (its screen asleep and being woken, Kyokai Helper getting
+  ready, the picture starting again) instead of colour bars, and offers Wake it when the screen
+  there is dark. On macOS a sleeping display is woken before capture, and the sound restarts
+  after a display sleep.
+- Kyokai Helper: the GUI attaching no longer restarts the session agent and ends the picture; a
+  wake asked for while the agent is away reaches the next one; its logs, the macOS agent's
+  included, are saved without administrator rights with Diagnostics, Save logs (`ctl logs`).
+- No white window at Windows sign-in: the main window exists only while it is shown; started in
+  the tray Kyokai makes none, and closing it to the tray ends it.
+- Split view: drag a tab onto a picture to show it beside, above or below that one — up to four
+  tabs in any arrangement in one window; the one in focus takes the keyboard and the clipboard.
+- Protocol 10 and ABI 5, unchanged, with the feature token `recovery`; local API 2 with
+  `logs.read`, which older engines refuse. Upstream versions: MyGo v0.6.2, EasyTier v2.7.0,
+  RustDesk 1.5.0 (vendored code), vcpkg 2026.10.16, Rust 1.99.1 checked, unchanged.
+
 ## 0.5.2 (2026-10-22)
 
 - A host's dark display wakes, locked or not: the host also wakes it while Windows reports the

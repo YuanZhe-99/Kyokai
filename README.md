@@ -6,7 +6,7 @@ Kyokai is a cross-platform Computer Use application that enables people and AI a
 with computers across devices. It combines secure peer-to-peer connectivity, direct human control,
 and host-side AI execution in one unified experience.
 
-> **Status:** 0.5.2: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
+> **Status:** 0.5.3: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
 > connections, manual control, AI tasks, SSH / Remote Desktop / VNC through Kyokai and the optional
 > privileged helper work on both; some macOS checks and viewer controls remain. See
 > [PLAN.md](PLAN.md), the [platform notes](doc/en-us/platform-notes.md) (what was verified where)
@@ -27,7 +27,7 @@ and host-side AI execution in one unified experience.
 | AI Computer Use with Claude, OpenAI or any of 20+ provider templates and custom OpenAI-compatible servers, executed on the host with its own key; one AI record and a shared draft for every controller | done; Claude verified live on Windows |
 | Human take-over, pause, cancel, emergency stop; tasks pause at sleep | done |
 | Optional privileged helper for UAC prompts, the lock and sign-in screens and unattended access; run modes switch both ways keeping everything | done (Windows); macOS: install, update and removal |
-| Viewer: tabs in the title bar that tear out into windows, a floating toolbar, full screen, original size, codec and quality, the route in use, per-session clipboard switch and history | done |
+| Viewer: tabs in the title bar that tear out into windows or split one window (up to four side by side), a floating toolbar, full screen, original size, codec and quality, the route in use, per-session clipboard switch and history | done |
 | Protected mode: only the AI settings and tasks until the permanent password turns it off | done |
 | No logs: no logs or crash traces, connection history in memory only (off by default) | done |
 | English, Simplified Chinese, Traditional Chinese, Japanese | done |
