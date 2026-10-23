@@ -294,14 +294,14 @@ func (sc *screenClient) view(c *ui.Context, s *serviceTab) {
 					ui.Column(c).MinWidth(area.W).MinHeight(area.H).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 						img := ui.Image(c.Key("screen"), bm).Width(w).Height(h).Shrink(0).Focusable().
 							TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(sc.input).Bind(&sc.pic)
-						focused = img.Focused()
+						focused = pointerKeys(img)
 						sc.setBox(img.LayoutBounds())
 					})
 				})
 			default:
 				img := ui.Image(c.Key("screen"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().
 					TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(sc.input).Bind(&sc.pic)
-				focused = img.Focused()
+				focused = pointerKeys(img)
 				sc.setBox(img.LayoutBounds())
 			}
 			sc.toolbar(c, s)

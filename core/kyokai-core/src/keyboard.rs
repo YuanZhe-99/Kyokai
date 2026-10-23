@@ -295,7 +295,9 @@ pub fn next(_timeout: std::time::Duration) -> Option<KeyEvent> {
 mod mac_impl {
     use super::*;
     use crate::input::INJECTED_TAG;
-    use objc2_core_foundation::{CFMachPort, CFRetained, CFRunLoop, kCFRunLoopCommonModes};
+    use objc2_core_foundation::{
+        CFMachPort, CFRetained, CFRunLoop, CGPoint, kCFRunLoopCommonModes,
+    };
     use objc2_core_graphics::{
         CGEvent, CGEventField, CGEventFlags, CGEventMask, CGEventTapLocation, CGEventTapOptions,
         CGEventTapPlacement, CGEventTapProxy, CGEventType,
@@ -535,10 +537,14 @@ mod mac_impl {
         }
     }
 
-    /// Whether Kyokai owns the frontmost window. Tests route events as if
-    /// it did.
-    fn front_is_ours(ours: i64) -> bool {
-        cfg!(test) || crate::mac::window_owner(None).is_some_and(|pid| pid as i64 == ours)
+    /// Whether Kyokai owns the frontmost window and the window showing at
+    /// the pointer, `at`: the keys belong to the viewer under the pointer,
+    /// and another program's window over it takes them back. Tests route
+    /// events as if it did.
+    fn front_is_ours(ours: i64, at: CGPoint) -> bool {
+        let ours = |owner: Option<i32>| owner.is_some_and(|pid| pid as i64 == ours);
+        cfg!(test)
+            || ours(crate::mac::window_owner(None)) && ours(crate::mac::window_owner(Some(at)))
     }
 
     /// Handles one key event in the tap.
@@ -570,7 +576,7 @@ mod mac_impl {
         // frontmost window.
         let ours = std::process::id() as i64;
         let target = CGEvent::integer_value_field(Some(e), CGEventField::EventTargetUnixProcessID);
-        if target != 0 && target != ours || !front_is_ours(ours) {
+        if target != 0 && target != ours || !front_is_ours(ours, CGEvent::location(Some(e))) {
             st.release(window);
             return false;
         }
@@ -714,14 +720,15 @@ mod windows_impl {
     use std::collections::{HashMap, VecDeque};
     use std::sync::{Condvar, Mutex};
     use std::time::Duration;
-    use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::System::Threading::GetCurrentThreadId;
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
-        KBDLLHOOKSTRUCT, LLKHF_EXTENDED, LLKHF_INJECTED, MSG, PostThreadMessageW,
-        SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT, WM_SYSKEYDOWN,
+        CallNextHookEx, GA_ROOT, GetAncestor, GetCursorPos, GetForegroundWindow, GetMessageW,
+        GetWindowThreadProcessId, KBDLLHOOKSTRUCT, LLKHF_EXTENDED, LLKHF_INJECTED, MSG,
+        PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN,
+        WM_QUIT, WM_SYSKEYDOWN, WindowFromPoint,
     };
 
     /// Most keys waiting for the GUI; newer ones are dropped beyond it.
@@ -926,6 +933,20 @@ mod windows_impl {
         }
     }
 
+    /// Whether the pointer is over a part of `window` that shows: the
+    /// topmost window at the pointer belongs to it.
+    fn pointer_over(window: HWND) -> bool {
+        let mut at = POINT::default();
+        // SAFETY: plain queries of the pointer and the windows under it.
+        unsafe {
+            if GetCursorPos(&mut at).is_err() {
+                return false;
+            }
+            let under = WindowFromPoint(at);
+            !under.is_invalid() && GetAncestor(under, GA_ROOT) == window
+        }
+    }
+
     /// Takes the keys of a grabbing viewer window in front for its session
     /// and passes everything else on.
     unsafe extern "system" fn key_hook(code: i32, w: WPARAM, l: LPARAM) -> LRESULT {
@@ -970,7 +991,14 @@ mod windows_impl {
         }
         // SAFETY: a plain query of the window in front.
         let front = unsafe { GetForegroundWindow() };
-        let window = front.0 as usize;
+        // The keys belong to the viewer under the pointer: the window in
+        // front counts only while the pointer is over a part of it that
+        // shows (another program's window over it takes them back).
+        let window = if pointer_over(front) {
+            front.0 as usize
+        } else {
+            0
+        };
         // A window that left the front releases what it held there.
         let others: Vec<usize> = st
             .windows

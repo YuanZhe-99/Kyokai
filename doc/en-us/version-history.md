@@ -1,5 +1,24 @@
 # Version history
 
+## 0.5.4 (2026-10-22)
+
+- Slow paths: the host waits for late acknowledgements instead of taking the frames for lost after
+  3 seconds, which sent more frames and a fresh key frame onto a path that had not delivered the
+  last ones; on a path of a few hundred kbit/s the delay grew to seconds, the picture froze, input
+  paused and the session broke every 25 seconds or so. At most 3 frames stay unacknowledged; a
+  request for a key frame, or the viewer's `no-picture`, waits for a key frame still on its way.
+- A session's writer: input, acknowledgements, pings and the host's stats go out ahead of the
+  video waiting and are read whatever the video does; file contents wait for room.
+- The keyboard follows the pointer: in Map and Translate the picture under the pointer takes the
+  keys and the text focus, in split view too, and another program's window over the pointer takes
+  them back. Only the tab holding a window's grab ends it (switching tabs left only text reaching
+  the host: no Tab, Enter, Delete or Shift).
+- A connection closed while it connects or waits for the device's user ends at once (it went on,
+  connected after its tab had closed and came back as a tab of its own saying the session ended).
+- `ctl watch` prints the host's measured delay each second.
+- Protocol 10, ABI 5 and local API 2, unchanged. Upstream versions: MyGo v0.6.2, EasyTier v2.7.0,
+  RustDesk 1.5.0 (vendored code), vcpkg 2026.10.16, Rust 1.99.1 checked, unchanged.
+
 ## 0.5.3 (2026-10-22)
 
 - The picture comes back after the host's display was dark, on every platform. The main cause on

@@ -438,16 +438,10 @@ const CODECS_WAIT: Duration = Duration::from_secs(1);
 
 /// Describes a newly opened video to the controller: the stream, and the
 /// displays when there is a choice.
-async fn announce<W: AsyncWrite + Unpin>(
-    noise: &mut snow::TransportState,
-    buf: &mut [u8],
-    w: &mut W,
-    s: &video::Source,
-    displays: &[video::Display],
-) -> Result<(), Failure> {
-    seal_json(noise, buf, w, &Message::VideoStart(s.start.clone())).await?;
+fn announce(out: &Out, s: &video::Source, displays: &[video::Display]) -> Result<(), Failure> {
+    out.in_video(&Message::VideoStart(s.start.clone()))?;
     if let Some(m) = shown(displays, s) {
-        seal_json(noise, buf, w, &m).await?;
+        out.in_video(&m)?;
     }
     Ok(())
 }
@@ -565,11 +559,24 @@ fn key_due(waiting: bool, asked: Option<Instant>, now: Instant) -> bool {
     waiting && asked.is_none_or(|t| now.saturating_duration_since(t) >= KEY_AGAIN)
 }
 
-/// How long the host waits for the controller's acknowledgements before it
-/// takes the frames in flight for lost: it sends again from a key frame
-/// (RustDesk's bounded wait), rather than waiting for acknowledgements that
-/// may never come.
-const ACK_WAIT: Duration = Duration::from_secs(3);
+/// How long frames may wait for the controller's acknowledgement before the
+/// host logs the path as slow. Every controller acknowledges every frame
+/// (protocol 10) over an ordered, reliable stream, so a late acknowledgement
+/// is a slow path, never a lost frame: the host waits for it (a dead
+/// connection ends by IDLE_LIMIT). Regression: taking the frames for lost
+/// after 3 s sent three more and a fresh key frame onto a path that had not
+/// delivered the last ones, every 3 s; on a path of a few hundred kbit/s the
+/// backlog grew without end, the picture froze, input paused and the
+/// session broke.
+const ACK_SLOW: Duration = Duration::from_secs(5);
+
+/// Whether the key frame sent last is still on its way to the controller:
+/// a request for another, or the viewer saying it has no picture, waits
+/// for it (a fresh key frame would queue behind it, and on a slow path
+/// both arrive later).
+fn key_in_flight(key_sent: Option<(u32, Instant)>, acked: u32) -> bool {
+    key_sent.is_some_and(|(no, _)| (acked.wrapping_sub(no) as i32) < 0)
+}
 
 /// How long a host's stream may send nothing while a picture is due (it
 /// just opened, or the controller asked for a key frame) before it counts
@@ -2161,8 +2168,20 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }
         ctx.sessions.update(id, |e| e.peer = peer);
         Ok((ch, verdict.granted, verdict.resume, kind))
-    }
-    .await;
+    };
+    // A session closed here while it signs in or waits for the host's
+    // answer ends at once (regression: a close took effect only once the
+    // session was connected, so a connection whose tab had closed came
+    // through, showed connected for a moment and got a new tab of its own,
+    // which said the session ended).
+    let result = tokio::select! {
+        biased;
+        _ = stop.notified() => {
+            ctx.sessions.end(id, None);
+            return Outcome::Done;
+        }
+        r = result => r,
+    };
     match result {
         // A tunnel carries the GUI's bytes until either side ends; it is
         // never resumed.
@@ -2461,7 +2480,9 @@ fn keep_choice(choices: &Mutex<Choices>, m: &Value) {
     }
 }
 
-/// Encrypts one plaintext and writes it as a frame.
+/// Encrypts one plaintext and writes it as a frame (the tests' peers; a
+/// session sends through its writer, `Out`).
+#[cfg(test)]
 async fn seal<W: AsyncWrite + Unpin>(
     noise: &mut snow::TransportState,
     buf: &mut [u8],
@@ -2470,6 +2491,151 @@ async fn seal<W: AsyncWrite + Unpin>(
 ) -> Result<(), Failure> {
     let n = noise.write_message(plain, buf)?;
     step(write_frame(w, &buf[..n])).await
+}
+
+/// What a session's writer sends next: a plaintext, or word once the
+/// plaintexts before it were written.
+enum Outgoing {
+    Plain(Vec<u8>),
+    Flushed(tokio::sync::oneshot::Sender<()>),
+}
+
+/// A running session's way out (doc/en-us/protocol.md, "Session"): the
+/// session hands its plaintexts to a writer of their own and never waits
+/// on the network, so input, acknowledgements and the host's word go out
+/// and come in whatever the video does. The writer takes what is urgent
+/// first — everything but the video — and the video's chunks in between
+/// (regression: the session wrote each frame whole before it read again;
+/// on a slow path a frame took seconds, the host read no input meanwhile,
+/// the controller's writes stalled behind it, and video and input held
+/// each other up until the session broke).
+struct Out {
+    urgent: mpsc::UnboundedSender<Outgoing>,
+    video: mpsc::UnboundedSender<Vec<u8>>,
+    /// The video and file plaintexts waiting for the writer, and word as
+    /// they go (`bulk_room`).
+    queued: Arc<AtomicUsize>,
+    room: Arc<Notify>,
+}
+
+/// How many video or file plaintexts may wait for the writer before a file
+/// copy waits for room: a copy never fills memory, nor holds up the video.
+const BULK_ROOM: usize = 8;
+
+impl Out {
+    /// Starts the writer on `w`, encrypting with the session's `noise`.
+    /// Returns: the way out, and the writer's task (it ends with the first
+    /// failed write, or once the way out is dropped).
+    fn start<W: AsyncWrite + Unpin + Send + 'static>(
+        mut w: W,
+        noise: Arc<Mutex<snow::TransportState>>,
+        mut buf: Vec<u8>,
+    ) -> (Out, tokio::task::JoinHandle<()>) {
+        let (urgent, mut urgent_rx) = mpsc::unbounded_channel();
+        let (video, mut video_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let queued = Arc::new(AtomicUsize::new(0));
+        let room = Arc::new(Notify::new());
+        let (left, freed) = (queued.clone(), room.clone());
+        let task = tokio::spawn(async move {
+            loop {
+                let next = tokio::select! {
+                    biased;
+                    Some(o) = urgent_rx.recv() => o,
+                    Some(v) = video_rx.recv() => {
+                        left.fetch_sub(1, Ordering::Relaxed);
+                        freed.notify_one();
+                        Outgoing::Plain(v)
+                    }
+                    else => return,
+                };
+                match next {
+                    Outgoing::Plain(plain) => {
+                        let sealed = noise
+                            .lock()
+                            .map_err(|_| ())
+                            .and_then(|mut n| n.write_message(&plain, &mut buf).map_err(|_| ()));
+                        let Ok(n) = sealed else {
+                            return;
+                        };
+                        if step(write_frame(&mut w, &buf[..n])).await.is_err() {
+                            return;
+                        }
+                    }
+                    Outgoing::Flushed(done) => {
+                        let _ = w.flush().await;
+                        let _ = done.send(());
+                    }
+                }
+            }
+        });
+        (
+            Out {
+                urgent,
+                video,
+                queued,
+                room,
+            },
+            task,
+        )
+    }
+
+    /// Queues an urgent plaintext.
+    /// Returns: Broken once the writer ended.
+    fn plain(&self, plain: Vec<u8>) -> Result<(), Failure> {
+        self.urgent
+            .send(Outgoing::Plain(plain))
+            .map_err(|_| Failure::Broken)
+    }
+
+    /// Queues an urgent message (in parts when long).
+    fn json<T: Serialize>(&self, msg: &T) -> Result<(), Failure> {
+        for part in plaintexts(msg)? {
+            self.plain(part)?;
+        }
+        Ok(())
+    }
+
+    /// Queues one chunk of a video frame.
+    fn chunk(&self, chunk: Vec<u8>) -> Result<(), Failure> {
+        self.queued.fetch_add(1, Ordering::Relaxed);
+        self.video.send(chunk).map_err(|_| Failure::Broken)
+    }
+
+    /// Waits until few video or file plaintexts wait for the writer
+    /// (BULK_ROOM).
+    async fn bulk_room(&self) {
+        while self.queued.load(Ordering::Relaxed) >= BULK_ROOM {
+            self.room.notified().await;
+        }
+    }
+
+    /// Queues a message that keeps its place among the video's chunks: a
+    /// stream's description goes after the old stream's frames and before
+    /// the new one's.
+    fn in_video<T: Serialize>(&self, msg: &T) -> Result<(), Failure> {
+        for part in plaintexts(msg)? {
+            self.chunk(part)?;
+        }
+        Ok(())
+    }
+
+    /// Waits until what is urgent so far was written and flushed.
+    async fn flush(&self) {
+        let (done, wait) = tokio::sync::oneshot::channel();
+        if self.urgent.send(Outgoing::Flushed(done)).is_ok() {
+            let _ = wait.await;
+        }
+    }
+}
+
+/// A message's plaintexts: itself, or its parts when it is longer than a
+/// frame takes.
+fn plaintexts<T: Serialize>(msg: &T) -> Result<Vec<Vec<u8>>, Failure> {
+    let plain = serde_json::to_vec(msg).map_err(|_| Failure::Broken)?;
+    if plain.len() <= MAX_PLAINTEXT {
+        return Ok(vec![plain]);
+    }
+    split(&plain).ok_or(Failure::Broken)
 }
 
 /// Tags one Opus packet of the host's sound for the wire.
@@ -2486,24 +2652,6 @@ const PART_TAG: u8 = 0x02;
 const PART_HEADER: usize = 5;
 /// Longest message sent in parts.
 const MAX_MESSAGE: usize = 4 << 20;
-
-/// Encrypts one message and writes it, in parts when it is longer than a
-/// frame (a long clipboard text, a long AI task).
-async fn seal_json<W: AsyncWrite + Unpin, T: Serialize>(
-    noise: &mut snow::TransportState,
-    buf: &mut [u8],
-    w: &mut W,
-    msg: &T,
-) -> Result<(), Failure> {
-    let plain = serde_json::to_vec(msg).map_err(|_| Failure::Broken)?;
-    if plain.len() <= MAX_PLAINTEXT {
-        return seal(noise, buf, w, &plain).await;
-    }
-    for part in split(&plain).ok_or(Failure::Broken)? {
-        seal(noise, buf, w, &part).await?;
-    }
-    Ok(())
-}
 
 /// Splits a long message into parts that each fit a frame.
 /// Returns: None when it is longer than MAX_MESSAGE.
@@ -2582,12 +2730,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     side: Side,
     clipboard: Option<Shared>,
 ) -> Result<(), Failure> {
-    let Channel {
-        stream,
-        mut noise,
-        mut buf,
-    } = ch;
-    let (mut rd, mut wr) = tokio::io::split(stream);
+    let Channel { stream, noise, buf } = ch;
+    let (mut rd, wr) = tokio::io::split(stream);
+    // Sent by a writer of its own (Out), received here: the Noise state is
+    // shared, each side holding it briefly.
+    let noise = Arc::new(Mutex::new(noise));
+    let (out, writer) = Out::start(wr, noise.clone(), buf);
+    let _writer = AbortOnDrop(writer);
     let (frames_tx, mut frames) = mpsc::channel::<Vec<u8>>(64);
     // A host stays awake while someone is connected.
     let _awake = matches!(side, Side::Host { .. }).then(crate::power::keep_awake);
@@ -2664,19 +2813,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             .unwrap_or_default();
         for m in again {
             if let Ok(m) = serde_json::from_value::<Message>(m) {
-                seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+                out.json(&m)?;
             }
         }
         let (decode, i444) = tokio::task::spawn_blocking(video::decodable)
             .await
             .unwrap_or_default();
-        seal_json(
-            &mut noise,
-            &mut buf,
-            &mut wr,
-            &Message::Codecs { decode, i444 },
-        )
-        .await?;
+        out.json(&Message::Codecs { decode, i444 })?;
     }
     let (queue, control, choices, gate) = match &side {
         Side::Controller {
@@ -2744,7 +2887,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 crate::clipboard::Item::Png(png) => Some(Message::ClipboardImage { png }),
             };
             if let Some(m) = msg {
-                seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+                out.json(&m)?;
                 match &m {
                     Message::Clipboard { text } => {
                         clip_history(&queue, "controller", Crossed::Text(text))
@@ -2774,9 +2917,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // The newest frame the controller acknowledged: frames wait at the
     // capture (which keeps only the newest picture) instead of piling up in
     // the transport's buffers on a slow path. Since when the frames in
-    // flight have waited for an acknowledgement (ACK_WAIT).
+    // flight have waited for an acknowledgement, and whether that wait was
+    // logged as a slow path (ACK_SLOW).
     let mut acked: u32 = 0;
     let mut acked_at = Instant::now();
+    let mut slow_logged = false;
     // The recovery of the host's picture (`recovery`): troubles in a row, since
     // when the stream has gone without trouble, since when a picture has
     // been due (the stream opened, a key frame was asked for) with no frame
@@ -2857,7 +3002,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut block_check = tokio::time::interval(Duration::from_secs(1));
     #[cfg(windows)]
     if let Some(inj) = &injector {
-        seal_json(&mut noise, &mut buf, &mut wr, &offered(inj)).await?;
+        out.json(&offered(inj))?;
     }
     // Takes the next recovery step for a stream whose picture does not reach
     // the viewer (`recovery`), and says why in the log: the stream is dropped
@@ -2894,7 +3039,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     log::info!("host session: {why}: the placeholder shows, the screen is tried again in {} s", after.as_secs());
                     if source.as_ref().is_none_or(|s| s.why.is_none()) {
                         let p = video::Source::pattern("retrying", &why);
-                        announce(&mut noise, &mut buf, &mut wr, &p, &displays).await?;
+                        announce(&out, &p, &displays)?;
                         acked = frame_no;
                         p.set_room(IN_FLIGHT);
                         source = Some(p);
@@ -2937,7 +3082,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             if let Some(inj) = injector.as_mut() {
                 inj.set_area(s.display.map(area));
             }
-            announce(&mut noise, &mut buf, &mut wr, &s, &displays).await?;
+            announce(&out, &s, &displays)?;
             base_kbps = rustdesk_qos::base_bitrate(s.start.width, s.start.height);
             if let Some(p) = pointer.as_mut() {
                 p.show(s.display.map(area));
@@ -2964,13 +3109,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let outcome: Result<(), Failure> = async { loop {
         tokio::select! {
             _ = stop.notified() => {
-                let _ = seal_json(&mut noise, &mut buf, &mut wr, &Message::Bye).await;
+                let _ = out.json(&Message::Bye);
                 // The stream stays open until the peer read the goodbye and
                 // closed its end (or BYE_WAIT passed): closed first, the
                 // peer's next write would fail and it would take the
                 // connection for lost and resume it.
                 let _ = tokio::time::timeout(BYE_WAIT, async {
-                    let _ = wr.flush().await;
+                    out.flush().await;
                     while frames.recv().await.is_some() {}
                 })
                 .await;
@@ -2984,13 +3129,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 let now = h.ai.latest();
                 if now.is_some() && now != ai_sent {
                     let task = now.clone().expect("checked");
-                    seal_json(&mut noise, &mut buf, &mut wr, &Message::AiTask { task }).await?;
+                    out.json(&Message::AiTask { task })?;
                     ai_sent = now;
                 }
                 // The shared draft, as anyone typed it last.
                 let (serial, text) = h.ai.draft();
                 if serial != draft_sent {
-                    seal_json(&mut noise, &mut buf, &mut wr, &Message::AiDraft { text }).await?;
+                    out.json(&Message::AiDraft { text })?;
                     draft_sent = serial;
                 }
             }
@@ -3011,7 +3156,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             }
             step = async {
                 match transfers.as_mut() {
-                    Some(t) => t.next().await,
+                    // A file's pieces wait for the video's turn (BULK_ROOM).
+                    Some(t) => {
+                        out.bulk_room().await;
+                        t.next().await
+                    }
                     None => std::future::pending().await,
                 }
             } => {
@@ -3019,13 +3168,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 match step {
                     Step::Offer(id, files) => {
                         clip_history(&queue, "controller", Crossed::Files(&files));
-                        seal_json(&mut noise, &mut buf, &mut wr, &Message::ClipboardFiles { id, files }).await?;
+                        out.json(&Message::ClipboardFiles { id, files })?;
                     }
-                    Step::Piece(p) => seal(&mut noise, &mut buf, &mut wr, &p).await?,
-                    Step::Cancel(id) => seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesCancel { id }).await?,
+                    Step::Piece(p) => out.chunk(p)?,
+                    Step::Cancel(id) => out.json(&Message::FilesCancel { id })?,
                     Step::Stop(id) => {
                         receiving_files = None;
-                        seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesStop { id }).await?;
+                        out.json(&Message::FilesStop { id })?;
                     }
                     Step::Received(paths) => {
                         if let Some(f) = receiving_files.take() {
@@ -3043,7 +3192,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     None => std::future::pending().await,
                 }
             } => {
-                seal(&mut noise, &mut buf, &mut wr, &sound_packet(&p)).await?;
+                out.plain(sound_packet(&p))?;
             }
             _ = &mut video_wait, if wants_video && source.is_none() => {
                 // A controller that names no codecs gets H.264.
@@ -3065,7 +3214,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     let now = (((x * 4096.0) as i32, (y * 4096.0) as i32), visible);
                     if pointer_sent != Some(now) {
                         pointer_sent = Some(now);
-                        seal_json(&mut noise, &mut buf, &mut wr, &Message::Cursor { x, y, visible }).await?;
+                        out.json(&Message::Cursor { x, y, visible })?;
                     }
                 }
             }
@@ -3075,14 +3224,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     && !inj.input_blocked()
                 {
                     holding = false;
-                    seal_json(&mut noise, &mut buf, &mut wr, &offered(inj)).await?;
+                    out.json(&offered(inj))?;
                 }
             }
             _ = ping.tick() => {
                 if heard.elapsed() > IDLE_LIMIT {
                     return Err(Failure::Broken);
                 }
-                seal_json(&mut noise, &mut buf, &mut wr, &Message::Ping).await?;
+                out.json(&Message::Ping)?;
             }
             _ = input_tick.tick(), if gate.is_some() => {
                 let (g, sync) = gate.as_ref().expect("checked");
@@ -3099,7 +3248,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 // could not be delivered must not overtake its press.
                 if control.as_ref().is_some_and(|rx| rx.is_empty()) {
                     for event in g.reconcile(*sync) {
-                        seal_json(&mut noise, &mut buf, &mut wr, &Message::Input { event }).await?;
+                        out.json(&Message::Input { event })?;
                     }
                 }
             }
@@ -3112,14 +3261,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     && key_due(q.waiting_for_key(), key_asked, now)
                 {
                     key_asked = Some(now);
-                    seal_json(&mut noise, &mut buf, &mut wr, &Message::KeyFrame).await?;
+                    out.json(&Message::KeyFrame)?;
                 }
             }
             _ = probe.tick(), if source.is_some() => {
                 match probe_sent {
                     None => {
                         probe_sent = Some(Instant::now());
-                        seal_json(&mut noise, &mut buf, &mut wr, &Message::TestDelay { reply: false }).await?;
+                        out.json(&Message::TestDelay { reply: false })?;
                     }
                     Some(t) => qos.user_delay_response_elapsed(QOS_VIEWER, t.elapsed().as_millis()),
                 }
@@ -3134,16 +3283,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 qos.store_bitrate(kbps);
                 if let Some(s) = &source {
                     s.set_targets(fps, kbps.saturating_mul(1000));
-                    // Acknowledgements that stopped coming (a path that
-                    // lost them, a controller that dropped the frames):
-                    // the frames in flight are taken for lost and the
-                    // video goes on from a key frame.
-                    if frame_no != acked && acked_at.elapsed() >= ACK_WAIT {
-                        log::info!("host session: no acknowledgement for {} s: sending again from a key frame", ACK_WAIT.as_secs());
-                        acked = frame_no;
-                        s.set_room(IN_FLIGHT);
-                        s.key_frame();
-                    }
+                }
+                // Late acknowledgements are a slow path: the frames wait,
+                // and the delay the probes measure lowers the bitrate.
+                if frame_no != acked && acked_at.elapsed() >= ACK_SLOW && !slow_logged {
+                    slow_logged = true;
+                    log::info!("host session: the path is slow: {} frames wait for the controller for {} s or more ({} ms delay)", frame_no.wrapping_sub(acked), ACK_SLOW.as_secs(), last_delay);
                 }
                 // The picture's recovery, once a second: a display that came
                 // back is tried at once from the placeholder; a stream that
@@ -3158,6 +3303,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 } else if !placeholder
                     && reopen_at.is_none()
                     && due_since.is_some_and(|t| t.elapsed() >= NO_PICTURE)
+                    // Frames that wait for room are held by the path, not
+                    // missing from the capture.
+                    && frame_no.wrapping_sub(acked) < IN_FLIGHT
                 {
                     trouble!(format!("no frame for {} s although a picture was due", NO_PICTURE.as_secs()));
                 } else if trouble > 0
@@ -3175,7 +3323,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     _ => "live",
                 };
                 let stats = Message::Stats { delay_ms: last_delay, fps, bitrate: kbps.saturating_mul(1000), encode_ms, frames, video: video.into() };
-                seal_json(&mut noise, &mut buf, &mut wr, &stats).await?;
+                out.json(&stats)?;
             }
             () = async {
                 match reopen_at {
@@ -3212,7 +3360,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 sent_this_second += 1;
                 took_this_second += u64::from(f.took_us);
                 for chunk in media::chunks(frame_no, f.flags, f.pts, &f.data, MAX_PLAINTEXT) {
-                    seal(&mut noise, &mut buf, &mut wr, &chunk).await?;
+                    out.chunk(chunk)?;
                     // Sound that came meanwhile goes between the chunks: a
                     // large picture does not hold it up.
                     // Only what waits now: more comes every 10 ms.
@@ -3220,7 +3368,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         let Some(p) = sound.as_mut().and_then(|s| s.packets.try_recv().ok()) else {
                             break;
                         };
-                        seal(&mut noise, &mut buf, &mut wr, &sound_packet(&p)).await?;
+                        out.plain(sound_packet(&p))?;
                     }
                 }
             }
@@ -3248,10 +3396,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             receiving_files = None;
                             let (sent, received) = t.halt();
                             if let Some(id) = sent {
-                                seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesCancel { id }).await?;
+                                out.json(&Message::FilesCancel { id })?;
                             }
                             if let Some(id) = received {
-                                seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesStop { id }).await?;
+                                out.json(&Message::FilesStop { id })?;
                             }
                         }
                         clip_use = now;
@@ -3287,11 +3435,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     if matches!(m, Message::Action { action: SessionAction::Wake }) && !host_wakes {
                         for down in [true, false] {
                             let shift = Message::Input { event: json!({"kind": "scan", "code": 0x2A, "down": down}) };
-                            seal_json(&mut noise, &mut buf, &mut wr, &shift).await?;
+                            out.json(&shift)?;
                         }
                         continue;
                     }
-                    seal_json(&mut noise, &mut buf, &mut wr, &m).await?;
+                    out.json(&m)?;
                 }
             }
             frame = frames.recv() => {
@@ -3302,11 +3450,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 if host_sends_video && let Some((g, _)) = &gate {
                     g.heard(heard);
                 }
-                let n = noise.read_message(&frame, &mut plain)?;
+                let n = noise
+                    .lock()
+                    .map_err(|_| Failure::Broken)?
+                    .read_message(&frame, &mut plain)?;
                 let plain = &plain[..n];
                 if plain.first() == Some(&media::CHUNK_TAG) {
                     if let Some(frame) = media::last_chunk(plain) {
-                        seal_json(&mut noise, &mut buf, &mut wr, &Message::Received { frame }).await?;
+                        out.json(&Message::Received { frame })?;
                     }
                     if let (Some(q), Some(f)) = (&queue, reassembler.push(plain)) {
                         let mut packet = Vec::with_capacity(10 + f.data.len());
@@ -3320,7 +3471,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         // until it comes, `key_check`).
                         if key_due(q.waiting_for_key(), key_asked, Instant::now()) {
                             key_asked = Some(Instant::now());
-                            seal_json(&mut noise, &mut buf, &mut wr, &Message::KeyFrame).await?;
+                            out.json(&Message::KeyFrame)?;
                         }
                     }
                     continue;
@@ -3350,7 +3501,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     std::borrow::Cow::Borrowed(plain)
                 };
                 match serde_json::from_slice::<Message>(&whole).map_err(|_| Failure::Broken)? {
-                    Message::Ping => seal_json(&mut noise, &mut buf, &mut wr, &Message::Pong).await?,
+                    Message::Ping => out.json(&Message::Pong)?,
                     // A newer peer's message: ignored, never the end of the session.
                     Message::Unknown => {}
                     Message::Pong => {}
@@ -3385,6 +3536,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         if frame_no.wrapping_sub(frame) < frame_no.wrapping_sub(acked) {
                             acked = frame;
                             acked_at = Instant::now();
+                            slow_logged = false;
+                            // A picture due counts from when there is room
+                            // to send it.
+                            if due_since.is_some() {
+                                due_since = Some(Instant::now());
+                            }
                             if let Some(s) = &source {
                                 s.set_room(IN_FLIGHT.saturating_sub(frame_no.wrapping_sub(acked)));
                             }
@@ -3412,7 +3569,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     Message::Audio { .. } => {}
                     Message::TestDelay { reply: false } => {
-                        seal_json(&mut noise, &mut buf, &mut wr, &Message::TestDelay { reply: true }).await?;
+                        out.json(&Message::TestDelay { reply: true })?;
                     }
                     Message::TestDelay { reply: true } => {
                         if let Some(t) = probe_sent.take() {
@@ -3448,7 +3605,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         if let Side::Host { ai, .. } = &side
                             && let Err(error) = ai.handle(m)
                         {
-                            seal_json(&mut noise, &mut buf, &mut wr, &Message::AiError { error }).await?;
+                            out.json(&Message::AiError { error })?;
                         }
                     }
                     Message::Clipboard { text } => {
@@ -3483,7 +3640,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             && clip_use.front
                             && t.offered(id, files)
                         {
-                            seal_json(&mut noise, &mut buf, &mut wr, &Message::FilesGet { id }).await?;
+                            out.json(&Message::FilesGet { id })?;
                         }
                     }
                     Message::FilesGet { id } => {
@@ -3548,7 +3705,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         let c = video::prefer(video::choose(&decodes.0, &decodes.1, full_colour, hevc_first), preferred.as_deref());
                         if wants_video {
                             offer = video::offer(&decodes.0, &video::encodable()).iter().map(|c| c.to_string()).collect();
-                            seal_json(&mut noise, &mut buf, &mut wr, &Message::CodecOffer { codecs: offer.clone() }).await?;
+                            out.json(&Message::CodecOffer { codecs: offer.clone() })?;
                         }
                         // The video opens again only when the first choice
                         // changes: the fallbacks after it differing (codecs
@@ -3596,10 +3753,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::KeyFrame => {
                         let mut unused = false;
                         if let Some(s) = &source {
-                            s.key_frame();
-                            announce(&mut noise, &mut buf, &mut wr, s, &displays).await?;
+                            if !key_in_flight(key_sent, acked) {
+                                s.key_frame();
+                            }
+                            announce(&out, s, &displays)?;
                             if !offer.is_empty() {
-                                seal_json(&mut noise, &mut buf, &mut wr, &Message::CodecOffer { codecs: offer.clone() }).await?;
+                                out.json(&Message::CodecOffer { codecs: offer.clone() })?;
                             }
                             if s.why.is_none() {
                                 due_since.get_or_insert_with(Instant::now);
@@ -3630,6 +3789,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::NoPicture { for_ms, why } => {
                         if source.as_ref().is_some_and(|s| s.why.is_none())
                             && reopen_at.is_none()
+                            // A key frame on its way, or one due that the
+                            // host's own check follows (NO_PICTURE), is
+                            // waited for.
+                            && !key_in_flight(key_sent, acked)
+                            && due_since.is_none_or(|t| t.elapsed() >= NO_PICTURE)
                             && u128::from(for_ms) >= VIEWER_WAIT.as_millis()
                             && stepped_at.is_none_or(|t| t.elapsed() >= STEP_GRACE)
                         {
@@ -3719,7 +3883,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             if matches!(action, SessionAction::Block | SessionAction::Unblock | SessionAction::PrivacyOn | SessionAction::PrivacyOff) {
                                 let now = offered(inj);
                                 holding = matches!(now, Message::Actions { blocked: true, .. });
-                                seal_json(&mut noise, &mut buf, &mut wr, &now).await?;
+                                out.json(&now)?;
                             }
                         }
                     }
@@ -3751,7 +3915,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // waiting behind our frames) is an orderly close, not a broken one.
     if outcome.is_err() {
         while let Ok(frame) = frames.try_recv() {
-            if let Ok(n) = noise.read_message(&frame, &mut plain)
+            if let Ok(mut noise) = noise.lock()
+                && let Ok(n) = noise.read_message(&frame, &mut plain)
                 && matches!(
                     serde_json::from_slice::<Message>(&plain[..n]),
                     Ok(Message::Bye)
@@ -4774,14 +4939,19 @@ mod tests {
         // Video flows: the stream description, then whole frames: the screen
         // through H.264 where this machine can capture, else the test pattern.
         let (queue, _) = controller.sessions.media(id).unwrap();
-        // The host's codec offer comes first, with whether input is paused.
+        // The host's codec offer, whether input is paused, its stats and
+        // pointer may come first: they go ahead of the video.
         let start = loop {
             let p = queue.pop(Duration::from_secs(5)).unwrap();
-            if p[0] != media::packet::CODECS && p[0] != media::packet::INPUT {
+            if p[0] == media::packet::VIDEO_START {
                 break p;
             }
+            assert_ne!(
+                p[0],
+                media::packet::FRAME,
+                "a frame before the stream's description"
+            );
         };
-        assert_eq!(start[0], media::packet::VIDEO_START);
         let v: media::VideoStart = serde_json::from_slice(&start[1..]).unwrap();
         // The host's QoS stats and pointer arrive between frames; the test
         // wants frames.
@@ -5800,6 +5970,35 @@ mod tests {
         (channel(a, i), channel(b, r))
     }
 
+    /// Regression: the session wrote each frame whole before it did anything
+    /// else, so on a slow path input, acknowledgements and the host's word
+    /// waited behind seconds of video. The writer sends what is urgent ahead
+    /// of the video waiting, and queuing never waits on the network.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn urgent_messages_pass_the_video_waiting_for_a_stalled_path() {
+        let (a, mut peer) = raw_channels();
+        let (_, wr) = tokio::io::split(a.stream);
+        let (out, _writer) = Out::start(wr, Arc::new(Mutex::new(a.noise)), a.buf);
+        // More video than the path takes before the peer reads.
+        const CHUNKS: usize = 30;
+        for i in 0..CHUNKS {
+            out.chunk(vec![i as u8; 60_000]).unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        out.json(&Message::Ping).unwrap();
+        let mut plain = vec![0u8; MAX_FRAME];
+        let mut at = None;
+        for i in 0..=CHUNKS {
+            let frame = read_frame(&mut peer.stream).await.unwrap();
+            let n = peer.noise.read_message(&frame, &mut plain).unwrap();
+            if matches!(serde_json::from_slice(&plain[..n]), Ok(Message::Ping)) {
+                at = Some(i);
+            }
+        }
+        let at = at.expect("the ping arrived");
+        assert!(at < CHUNKS - 5, "the ping waited behind the video: {at}");
+    }
+
     /// Reads a raw channel for `wait` and counts the frames whose last chunk
     /// arrived. Returns: the count and the newest frame's number.
     async fn raw_frames(
@@ -5871,12 +6070,13 @@ mod tests {
         let _ = task.await;
     }
 
-    /// Acknowledgements that stop coming hold the frames back for ACK_WAIT
-    /// only: the host then takes those in flight for lost and sends again,
-    /// from a key frame (regression: a lost acknowledgement stopped the
-    /// picture for good).
+    /// Late acknowledgements hold the frames back however long they take,
+    /// and the acknowledgement opens the window again (regression: after
+    /// 3 s the host took the frames in flight for lost and sent three more
+    /// and a fresh key frame onto a slow path every 3 s, until the picture
+    /// froze, input paused and the session broke).
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn stalled_acknowledgements_release_the_window_after_a_while() {
+    async fn late_acknowledgements_hold_the_window_until_they_come() {
         let (host_end, mut peer) = raw_channels();
         let stop = Arc::new(Notify::new());
         let host = device("1.0.0");
@@ -5900,13 +6100,42 @@ mod tests {
         })
         .await
         .unwrap();
-        let (count, _) = raw_frames(&mut peer, Duration::from_millis(800)).await;
+        let (count, newest) = raw_frames(&mut peer, Duration::from_millis(800)).await;
         assert_eq!(count, IN_FLIGHT as usize);
-        assert_eq!(raw_frames(&mut peer, ACK_WAIT / 2).await.0, 0, "too soon");
-        let (count, _) = raw_frames(&mut peer, ACK_WAIT).await;
-        assert_eq!(count, IN_FLIGHT as usize, "sent again once");
+        let held = raw_frames(&mut peer, Duration::from_secs(4)).await.0;
+        assert_eq!(held, 0, "nothing more while the acknowledgements are late");
+        peer.send(&Message::Received {
+            frame: newest.unwrap(),
+        })
+        .await
+        .unwrap();
+        let (count, _) = raw_frames(&mut peer, Duration::from_millis(800)).await;
+        assert_eq!(
+            count, IN_FLIGHT as usize,
+            "the window opens with the acknowledgement"
+        );
         stop.notify_one();
         let _ = task.await;
+    }
+
+    /// A key frame still on its way satisfies requests for another, so a
+    /// slow path is not sent one key frame after another.
+    #[test]
+    fn a_key_frame_on_its_way_is_waited_for() {
+        let now = Instant::now();
+        for (key_sent, acked, waits) in [
+            (None, 7, false),
+            (Some((8, now)), 7, true),
+            (Some((8, now)), 8, false),
+            (Some((8, now)), 9, false),
+            (Some((1, now)), u32::MAX, true),
+        ] {
+            assert_eq!(
+                key_in_flight(key_sent, acked),
+                waits,
+                "{key_sent:?} {acked}"
+            );
+        }
     }
 
     /// A controller whose viewer lost frames asks for a key frame each
@@ -6226,6 +6455,63 @@ mod tests {
         ));
         assert_eq!(identify(a).await.unwrap(), host.identity.device_id());
         assert!(host.sessions.list().as_array().unwrap().is_empty());
+    }
+
+    /// A session closed while it waits for the host's answer ends at once
+    /// and never connects (regression: the close took effect only once the
+    /// host accepted; the connection showed connected for a moment and the
+    /// GUI opened a tab of its own for it).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_session_closed_while_it_waits_never_connects() {
+        let (host, controller) = (device("0.5.4"), device("0.5.4"));
+        let dialed = host.identity.device_id();
+        let (a, b) = tokio::io::duplex(1 << 16);
+        tokio::spawn(serve(
+            host.clone(),
+            b,
+            Source {
+                network: 0,
+                ip: "192.168.1.20".parse().unwrap(),
+            },
+        ));
+        let (id, stop) = begin(&controller, &dialed, Remember::default());
+        let c = controller.clone();
+        let d = dialed.clone();
+        let run = tokio::spawn(async move {
+            connect(
+                c,
+                id,
+                stop,
+                a,
+                d,
+                zeroize::Zeroizing::new(String::new()),
+                vec![Permission::ViewScreen],
+                None,
+            )
+            .await
+        });
+        for _ in 0..500 {
+            if session(&controller, id)["state"] == "confirming"
+                && !host.access.pending().as_array().unwrap().is_empty()
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(session(&controller, id)["state"], "confirming");
+        controller.sessions.close(id).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), run)
+            .await
+            .expect("the close ends the wait at once")
+            .unwrap();
+        assert_eq!(session(&controller, id)["state"], "closed");
+        // The host's user saying yes afterwards changes nothing here.
+        let q = host.access.pending()[0]["id"].as_u64();
+        if let Some(q) = q {
+            let _ = host.access.decide(q, Some(vec![Permission::ViewScreen]));
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert_eq!(session(&controller, id)["state"], "closed");
     }
 
     /// Removing a host from Home ends its sessions from here and leaves

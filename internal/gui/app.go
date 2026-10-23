@@ -121,6 +121,9 @@ type App struct {
 	// keyReader starts the reader of the keys the viewers' keyboard grab
 	// takes (viewerinput.go), once.
 	keyReader sync.Once
+	// grabbing is the tab (a viewer or a service tab) holding each
+	// window's keyboard grab, by native handle (grabKeyboard).
+	grabbing map[uintptr]any
 	// The AI page (ai.go).
 	ai aiState
 

@@ -105,8 +105,9 @@ stays out of the way while the picture has the keyboard), or use **Translate** w
 method: compose, choose and commit as usual — Enter, Esc and the arrows stay with your input method
 while it composes — and the committed text is typed there. If the connection stalls, typing pauses
 ("Input paused" in the toolbar) instead of arriving late, and your own keyboard keeps working. Between a Mac and Windows, **Swap Ctrl and Cmd** (on by default) makes
-your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. Keys go there only
-while the picture has the focus: click it first. You hear what the other computer plays (or the input
+your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. Keys go there
+while the pointer is over the picture; with connections side by side, to the one under the pointer.
+Move the pointer off the picture (to the toolbar, for example) to type in Kyokai itself. You hear what the other computer plays (or the input
 its user chose in Permissions, **Sound to share**, such as a microphone; a Mac asks for its
 Microphone permission then); **Sound** in the toolbar turns it off. **Clipboard** pulls out the
 clipboard panel: **Share the clipboard with this device** turns sharing off or on for that device,

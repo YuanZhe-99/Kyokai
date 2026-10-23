@@ -352,6 +352,18 @@ func (v *viewer) redial(password string, remember bool) {
 		resp, err := v.app.requestWith(localapi.Request{Type: localapi.RequestConnect, Connect: &localapi.ConnectRequest{
 			DeviceID: v.device, Password: password, Want: want, Remember: remember, Address: address,
 		}})
+		// The session is known before the tab looks: a tab that closed
+		// while it was asked for closes it here, else its own close does
+		// (regression: a tab closed before the engine answered could not
+		// close its session, which connected later and got a tab of its
+		// own).
+		if err == nil {
+			v.sid.Store(resp.ID)
+			if v.home.Load() == nil {
+				_, _ = v.app.requestWith(localapi.Request{Type: localapi.RequestClose, ID: resp.ID})
+				return
+			}
+		}
 		v.update(func() {
 			if err != nil {
 				var refused *localapi.RequestError
@@ -1152,7 +1164,7 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 			// Mac's host from a Mac). Candidate windows open at its corner.
 			img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().
 				TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(!mapped).HandleInput(v.sendInput).Bind(&v.pic)
-			focused = img.Focused()
+			focused = pointerKeys(img)
 			box := img.LayoutBounds()
 			v.mu.Lock()
 			v.box = box
@@ -1242,7 +1254,7 @@ func (v *viewer) originalPicture(c *ui.Context, bm *ui.Bitmap, start videoStart,
 				// It takes text and keys as the fitted picture does.
 				img := ui.Image(c.Key("picture"), bm).Width(w).Height(h).Focusable().
 					TextCaret(ui.Rect{W: 1, H: 16}).HandleInput(v.sendInput).Bind(&v.pic)
-				focused = img.Focused()
+				focused = pointerKeys(img)
 				box := img.LayoutBounds()
 				v.mu.Lock()
 				v.box = box

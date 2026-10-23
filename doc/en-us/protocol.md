@@ -90,6 +90,15 @@ the other side's next write would fail and it would take the connection for lost
 session with no frame for 15 seconds is closed. Video and input follow
 under Media, AI tasks under their own heading.
 
+A running session hands its plaintexts to a writer of its own and never waits on the network. The
+writer sends what is urgent first — everything but the video's chunks and file contents — and the
+video's chunks in between; a stream's description (`video-start` and the displays message) keeps
+its place among the video's chunks, after the old stream's frames and before the new one's, and
+file contents wait while 8 or more video and file plaintexts are queued, so a copy neither fills
+memory nor holds up input. Messages may therefore arrive with urgent ones ahead of a frame's
+remaining chunks; a receiver takes other plaintexts between a frame's chunks, as it always took
+sound.
+
 ## Media
 
 A plaintext that starts with byte `0x01` is a media chunk, not JSON: the frame number (u32), the
@@ -109,11 +118,11 @@ while it is silent, the packets waiting when a frame's chunk was sent going out 
 chunk, [computer-use.md](computer-use.md), "Sound") (`auto`, or a name of the offer; another
 name changes nothing), and a resumed controller sends its viewer's `quality`, `codec` and `audio` again
 before its `codecs`. Before its first frame the host
-sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern; a `recovery` host adds `placeholder` to the test pattern's: `asleep`, `no-display`, `agent`, `no-encoder`, `retrying`, `no-codec` or `cannot-capture`). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer than 3 are unacknowledged, takes only an acknowledgement of a frame it sent and that was not acknowledged, and when none came for 3 seconds takes the frames in flight for lost and goes on from a key frame. The controller may send `{"type":
+sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern; a `recovery` host adds `placeholder` to the test pattern's: `asleep`, `no-display`, `agent`, `no-encoder`, `retrying`, `no-codec` or `cannot-capture`). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer than 3 are unacknowledged, takes only an acknowledgement of a frame it sent and that was not acknowledged, and waits for acknowledgements however long they take: every controller (protocol 10) acknowledges every frame over an ordered, reliable stream, so a late one means a slow path, not a lost frame (a dead connection ends by the idle limit). The controller may send `{"type":
 "key-frame"}` (the host then describes the stream, its displays and the codec offer again and
-sends a key frame) — its GUI's requests (as it opens, after a frame it lost or failed to decode,
+sends a key frame, unless the last key frame it sent is not acknowledged yet: that one is waited for) — its GUI's requests (as it opens, after a frame it lost or failed to decode,
 each second until a key frame comes), and the controller's own while its queue leaves frames out
-(at most once a second, on a timer of its own, so also while no frame comes), and to a host that announced `recovery`, `{"type": "no-picture", for_ms, why}` when its viewer has shown no picture for 5 seconds (`why`: `decode-error`, `waiting` or `stale`; at most once a second; the host takes it as trouble, [computer-use.md](computer-use.md), "Video") — and,
+(at most once a second, on a timer of its own, so also while no frame comes), and to a host that announced `recovery`, `{"type": "no-picture", for_ms, why}` when its viewer has shown no picture for 5 seconds (`why`: `decode-error`, `waiting` or `stale`; at most once a second; the host takes it as trouble unless its last key frame is not acknowledged yet or a picture has been due for less than 5 seconds, [computer-use.md](computer-use.md), "Video") — and,
 with `control-input`, `{"type": "input", event}`; to a host that announced `input-sync` an
 event may be `{"kind": "sync", held: {scans, keys, buttons}}`, the keys (by scan code and by
 name) and buttons the controller holds after a stall or a resume, and the host lets go of

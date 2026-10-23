@@ -532,7 +532,7 @@ var keyboardModes = []string{"map", "translate", "legacy"}
 const grabsKeyboard = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
 
 // setKeyboardMode remembers the viewers' keyboard mode; each viewer grabs
-// in it the next time its picture has the focus.
+// in it the next time the pointer is over its picture.
 func (a *App) setKeyboardMode(mode string) {
 	a.mu.Lock()
 	p := a.prefs
@@ -589,6 +589,51 @@ func (a *App) keyboardMode() string {
 	return "map"
 }
 
+// grabKeyboard asks the core to grab `window`'s keyboard in `mode` for tab
+// t, or to end the grab ("off"), when grabTurn says the call is t's.
+// Returns: the core's answer; nil for an end that was not t's to make.
+func (a *App) grabKeyboard(lib *core.Lib, window uintptr, t any, mode string) error {
+	a.mu.Lock()
+	call := grabTurn(&a.grabbing, window, t, mode)
+	a.mu.Unlock()
+	if !call {
+		return nil
+	}
+	err := lib.KeyboardGrab(window, mode)
+	if err != nil && mode != "off" {
+		a.mu.Lock()
+		if a.grabbing[window] == t {
+			delete(a.grabbing, window)
+		}
+		a.mu.Unlock()
+	}
+	return err
+}
+
+// grabTurn keeps which tab holds each window's keyboard grab and decides
+// whether t's call reaches the core. The core holds one grab per window,
+// while each tab follows its own: the tab that asked last holds it, and
+// only that tab ends it (regression: as the shown tab changed, the tab
+// just hidden ended the grab the newly shown one had taken a moment
+// before; the shown tab still took itself for grabbing, dropped the
+// window's own keys, and only text reached the host — no Tab, Enter,
+// Delete or Shift).
+// Notes: the caller holds a.mu.
+func grabTurn(holders *map[uintptr]any, window uintptr, t any, mode string) bool {
+	if *holders == nil {
+		*holders = map[uintptr]any{}
+	}
+	if mode != "off" {
+		(*holders)[window] = t
+		return true
+	}
+	if holder, held := (*holders)[window]; !held || holder != t {
+		return false
+	}
+	delete(*holders, window)
+	return true
+}
+
 // followComposition tells a Translate grab whether the controller's input
 // method composes now (the picture got a composition, or committed text):
 // while it does, the grab passes every key to it (the core's `pass`
@@ -610,7 +655,7 @@ func (v *viewer) followComposition(composing bool) {
 		mode = "pass"
 	}
 	if lib, err := coreLib(); err == nil {
-		_ = lib.KeyboardGrab(window, mode)
+		_ = v.app.grabKeyboard(lib, window, v, mode)
 	}
 }
 
@@ -633,8 +678,8 @@ func (v *viewer) inputStalled(now time.Time) bool {
 const inputPauseGrace = 500 * time.Millisecond
 
 // syncGrab has the core grab the keyboard for this viewer's window while
-// its picture has the focus in Map or Translate mode and the session takes
-// input, and ends the grab otherwise. A grab the core refuses leaves the
+// the pointer is over its picture (pointerKeys) in Map or Translate mode
+// and the session takes input, and ends the grab otherwise. A grab the core refuses leaves the
 // viewer in Legacy mode.
 // Side effects: starts the app's key reader with the first grab. Call it
 // on the main thread.
@@ -667,7 +712,7 @@ func (v *viewer) syncGrab(focused bool) {
 	if mode == "" {
 		mode = "off"
 	}
-	err = lib.KeyboardGrab(window, mode)
+	err = v.app.grabKeyboard(lib, window, v, mode)
 	v.mu.Lock()
 	v.window = window
 	if v.noGrab = err != nil; v.noGrab {
@@ -694,7 +739,7 @@ func (v *viewer) endGrab() {
 	}
 	v.mu.Unlock()
 	if lib, err := coreLib(); err == nil && grabbed != "" {
-		_ = lib.KeyboardGrab(window, "off")
+		_ = v.app.grabKeyboard(lib, window, v, "off")
 	}
 }
 
@@ -754,4 +799,20 @@ func grabFor(viewers []*viewer, ev core.KeyEvent) *viewer {
 // scanEvent is the host's input event for a key the grab took.
 func scanEvent(ev core.KeyEvent) inputEvent {
 	return inputEvent{Kind: "scan", Code: ev.Code, Down: ev.Down != 0, Caps: ev.Caps != 0, Num: ev.Num != 0}
+}
+
+// pointerKeys reports whether a picture takes the keyboard: while the
+// pointer is over it (doc/en-us/gui.md, "Keyboard"), so with several
+// connections side by side the keys go to the one under the pointer. It
+// takes the text focus with them, so that typed text goes to the same
+// session as the keys. The core takes the keys only while Kyokai is in
+// front and its window shows at the pointer.
+func pointerKeys(img ui.Element) bool {
+	if !img.Hovered() {
+		return false
+	}
+	if !img.Focused() {
+		img.Focus()
+	}
+	return true
 }

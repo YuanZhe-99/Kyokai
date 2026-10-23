@@ -1476,3 +1476,31 @@ func TestServicePorts(t *testing.T) {
 		}
 	}
 }
+
+// Regression: as the shown tab changed, the tab just hidden ended the grab
+// the newly shown one had taken; only the tab holding a window's grab ends
+// it.
+func TestGrabTurnLetsOnlyTheHolderEndAGrab(t *testing.T) {
+	var holders map[uintptr]any
+	a, b := "tab a", "tab b"
+	steps := []struct {
+		tab    any
+		window uintptr
+		mode   string
+		call   bool
+	}{
+		{a, 1, "map", true},
+		{b, 1, "map", true},  // b is shown: it takes the window's grab
+		{a, 1, "off", false}, // a, hidden, no longer holds it
+		{b, 1, "translate", true},
+		{a, 2, "map", true}, // another window's grab is its own
+		{b, 1, "off", true},
+		{b, 1, "off", false},
+		{a, 2, "off", true},
+	}
+	for i, s := range steps {
+		if got := grabTurn(&holders, s.window, s.tab, s.mode); got != s.call {
+			t.Fatalf("step %d: %v asks %q of window %d: call %v, want %v", i, s.tab, s.mode, s.window, got, s.call)
+		}
+	}
+}

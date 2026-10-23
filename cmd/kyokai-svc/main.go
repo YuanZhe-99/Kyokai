@@ -730,9 +730,9 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 	// host says it sent frames ("still" when it sent none: a still screen).
 	var pace struct {
 		sync.Mutex
-		frames, hostFrames int
-		last               time.Time
-		gap, worst         time.Duration
+		frames, hostFrames, delay int
+		last                      time.Time
+		gap, worst                time.Duration
 	}
 	pace.last = start
 	go func() {
@@ -745,7 +745,7 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 			case now := <-t.C:
 				pace.Lock()
 				gap := max(pace.gap, now.Sub(pace.last))
-				n, host := pace.frames, pace.hostFrames
+				n, host, delay := pace.frames, pace.hostFrames, pace.delay
 				pace.frames, pace.gap, pace.worst = 0, 0, max(pace.worst, gap)
 				pace.Unlock()
 				note := ""
@@ -755,7 +755,7 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 				case n == 0 && host == 0:
 					note = " still"
 				}
-				fmt.Printf("%s %d frames, longest gap %d ms%s\n", now.Format("15:04:05"), n, gap.Milliseconds(), note)
+				fmt.Printf("%s %d frames, longest gap %d ms, delay %d ms%s\n", now.Format("15:04:05"), n, gap.Milliseconds(), delay, note)
 			}
 		}
 	}()
@@ -776,10 +776,11 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 		case len(p) > 0 && p[0] == 4:
 			var s struct {
 				Frames int `json:"frames"`
+				Delay  int `json:"delay_ms"`
 			}
 			if json.Unmarshal(p[1:], &s) == nil {
 				pace.Lock()
-				pace.hostFrames = s.Frames
+				pace.hostFrames, pace.delay = s.Frames, s.Delay
 				pace.Unlock()
 			}
 		}

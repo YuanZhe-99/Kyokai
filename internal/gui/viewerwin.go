@@ -532,8 +532,10 @@ func tabIcon(c *ui.Context, key, glyph, label string) bool {
 
 // disconnect ends the viewer's connection, as closing its tab does.
 func (v *viewer) disconnect() {
-	id := v.session()
+	// Closed first, then the session read: a connect answered meanwhile
+	// sees the tab closed and closes its session itself (redial).
 	v.close()
+	id := v.session()
 	go func() { _, _ = v.app.requestWith(localapi.Request{Type: localapi.RequestClose, ID: id}) }()
 }
 
