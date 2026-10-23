@@ -63,11 +63,14 @@ the list has Copy and Connect. Without a network you can still connect by addres
 
 ## Control another device
 
-Under **Control another device** on Home, enter the other device's Device ID and choose
-**Connect**, or click a device under **Recent** (a green dot means it is on your network). By
-default you ask to see the screen, use the mouse and keyboard, share the clipboard and copy files;
-**Options** › **Also ask to run AI tasks there**, or **Connect with AI** in a device's ⋯ menu, asks
-for the AI permissions as well. The connection opens as a pane of its own, listed in the sidebar.
+Under **Connect to a device** on Home, enter the other device's Device ID and choose **Connect**
+(or press Enter), or choose **Connect** on its card under **Devices** (a green dot means it is on
+your network; **Online** shows only those). By default you ask to see the screen, use the mouse
+and keyboard, share the clipboard and copy files. **Open as** chooses what Connect opens: the
+**Desktop**, its **SSH**, **Remote Desktop** or **VNC** (see below), or an **AI task**, which asks
+for the AI permissions as well, as **Connect with AI** in a device's ⋯ menu does. Switch on
+**Others in my networks** to also see the Kyokai devices your networks reach that you never
+connected to, each with Connect. The connection opens as a pane of its own, listed in the sidebar.
 While the other computer's user is asked, the pane offers to enter its password instead; with
 **Remember password** it is kept (encrypted) for next time, and Security & privacy, **Saved
 passwords and keys**, forgets it. With
@@ -133,7 +136,7 @@ the screen is asleep or off, **Wake it** wakes it for you. Closing the pane (×)
 Closing a window disconnects its panes: Kyokai asks first when that ends two connections or more, or
 one you cannot see; with **Quit** chosen for the close button, closing the
 main window asks while any connection is open, then quits.
-**Remove** in a device's menu takes it off Recent and forgets its saved password. **Rename…** gives
+**Remove** in a device's menu takes it off Home and forgets its saved password. **Rename…** gives
 it a name of your own, shown only on this device; leave it empty to use the device's own name
 again.
 
@@ -180,8 +183,9 @@ shares the clipboard's text while its pane is in front.
 ### Status on Home
 
 Home shows each device as a card. A device with a saved password or key that runs Kyokai 0.4.1 or
-later shows its processor, memory, graphics, disk and network use, its battery and how long it has
-been up, updated every two seconds while Home is in front, with a line of the last two minutes.
+later shows four figures — processor, memory, download and its battery (else graphics, else free
+disk) — updated every two seconds while Home is in front. Click them to open its status in a pane
+of its own: every figure in full with the last two minutes, and how long it has been up.
 Values older than six seconds are dimmed with their age, and after a minute they are no longer
 shown. The other computer sees who is watching in its Access settings and can turn
 **See this computer's status** off; watching keeps nothing awake there.
@@ -276,7 +280,7 @@ them too, and sees a banner while your task works there, with **Stop** at hand.
   AI tasks in Kyokai on this computer, for someone who should use the AI here but change nothing
   else. To turn it off, enter the permanent password on the AI page.
 - **No logs** (Security & privacy) keeps Kyokai from writing logs or crash reports and from keeping a
-  record of connections: trusted devices and Recent last only until Kyokai quits, and the logs
+  record of connections: trusted devices and Home's devices last only until Kyokai quits, and the logs
   already written are deleted. It is a trade-off: afterwards you can't find out who connected to
   this computer or which devices it connected to, so Kyokai asks before turning it on.
 

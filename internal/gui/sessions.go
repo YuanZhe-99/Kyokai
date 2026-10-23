@@ -14,12 +14,13 @@ import (
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
-// connectForm is the Home page's "connect to another device" form.
+// connectForm is Home's Connect to a device.
 type connectForm struct {
 	// target is a Device ID or an address, as typed.
 	target string
-	// ai also asks to run AI tasks on the host and approve their actions.
-	ai bool
+	// as is what Open as opens: "" the desktop, a service, or actionAI (the
+	// desktop asking to run AI tasks there and approve their actions).
+	as string
 	// identifying: the device at an address is being asked for its ID.
 	identifying bool
 }
@@ -180,58 +181,10 @@ func (a *App) decide(id uint64, allow bool, granted []string) {
 	}()
 }
 
-// connectCard is Home's "Control another device": a Device ID, Connect
-// and its options. The password is asked for in the connection's tab
-// when the device wants one.
-func (a *App) connectCard(c *ui.Context) {
-	t := c.Theme()
-	a.mu.Lock()
-	f, online := a.connect, a.status.Network.State == "online"
-	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.ConnectTitle()).FontSize(sizeHeading).Bold()
-		id := ui.TextInput(c.Key("conn-id"), &f.target).Placeholder(L.ConnectPlaceholder()).FillWidth().FontSize(sizeTitle).FontFeatures("tnum").Disabled(f.identifying)
-		if id.Changed() {
-			a.mu.Lock()
-			a.connect.target = f.target
-			a.mu.Unlock()
-		}
-		device, address := parseTarget(f.target)
-		ready := (online && device != "" || address != "") && !f.identifying
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			switch {
-			case f.identifying:
-				ui.Row(c).Grow(1).Gap(8).AlignItems(ui.Center).Children(func() {
-					busyMark(c, L.ConnectIdentifying(), busySize)
-					ui.Text(c, L.ConnectIdentifying()).FontSize(sizeSmall).TextColor(t.TextMuted)
-				})
-			case !online && address == "":
-				ui.Text(c, L.ConnectNeedsNetwork()).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
-			default:
-				ui.Row(c).Grow(1)
-			}
-			ui.MenuButton(c.Key("conn-options"), L.ConnectOptions(), func(m *ui.Menu) {
-				if m.Item(L.ConnectWithAI()).Checked(f.ai).Chosen() {
-					a.mu.Lock()
-					a.connect.ai = !f.ai
-					a.mu.Unlock()
-				}
-			}).Label(L.ConnectOptions()).Tooltip(L.ConnectOptions())
-			if ui.PrimaryButton(c.Key("conn-go"), L.ActionConnect()).Disabled(!ready).Clicked() {
-				if address != "" {
-					a.connectAddress(address, connectWant(f.ai))
-				} else {
-					a.connectDevice(device, "", a.recentAbout(device), connectWant(f.ai))
-				}
-			}
-		})
-	})
-}
-
-// connectAddress asks the device at an address for its Device ID, then
-// connects to that device there.
+// identify asks the device at an address for its Device ID, then opens it
+// there (open, called on the main thread).
 // Side effects: a toast when no device answers.
-func (a *App) connectAddress(address string, want []string) {
+func (a *App) identify(address string, open func(device, address string)) {
 	a.mu.Lock()
 	a.connect.identifying = true
 	a.mu.Unlock()
@@ -249,10 +202,10 @@ func (a *App) connectAddress(address string, want []string) {
 				a.setToast(identifyFailure(resp.Failure), true)
 			}
 		})
-		// On the main thread and not under a.mu, which connectDevice takes
+		// On the main thread and not under a.mu, which what opens takes
 		// itself.
 		if err == nil && resp.DeviceID != "" {
-			a.later(func() { a.connectDevice(resp.DeviceID, address, a.recentAbout(resp.DeviceID), want) })
+			a.later(func() { open(resp.DeviceID, address) })
 		}
 	}()
 }

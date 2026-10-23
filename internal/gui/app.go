@@ -87,8 +87,8 @@ type App struct {
 	// Sessions (sessions.go): the connect form, the permissions chosen per
 	// open host confirmation, the access card.
 	connect connectForm
-	// statusOf is the host whose status Home shows in full, or "".
-	statusOf string
+	// homeOnline shows only the devices online on Home.
+	homeOnline bool
 	// routesEdit is the Addresses editor open on Home, and probedAt when
 	// Home last asked to look at the shown devices' addresses.
 	routesEdit routesForm
@@ -112,8 +112,10 @@ type App struct {
 	// the services and their sign-ins (remote.go).
 	services map[string]*serviceTab
 	link     serviceLink
-	// Home's status watch (home.go).
-	watch watchState
+	// The hosts' status panes by Device ID (hoststatus.go), and Home's
+	// status watch (home.go).
+	statuses map[string]*statusTab
+	watch    watchState
 	// The Security page's keys and saved sign-ins (keys.go).
 	keys keysState
 	// The viewer windows, oldest first; a new viewer opens as a tab of the
@@ -162,7 +164,7 @@ func New(profile, stateDir, socket string) *App {
 	a := &App{
 		profile: profile, stateDir: stateDir, socket: socket, userSocket: socket, ctx: ctx, cancel: cancel,
 		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{}, viewers: map[string]*viewer{},
-		services: map[string]*serviceTab{},
+		services: map[string]*serviceTab{}, statuses: map[string]*statusTab{},
 	}
 	a.link = newServiceLink(a)
 	a.home = &homeTab{app: a}

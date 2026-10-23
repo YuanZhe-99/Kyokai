@@ -140,7 +140,9 @@ and Latin words only where it helps readability.
 | service pane / Sign in / Trust the new key | 服务小窗 / 登录 / 信任新密钥 |
 | live status / sparkline / Getting its status… | 实时状态 / 走势线 / 正在获取状态… |
 | watch lease (Home's status watch) | 查看租约 |
-| dot history / status details | 点阵历史 / 状态详情 |
+| dot history / a host's status (its pane) | 点阵历史 / 状态（其小窗） |
+| Open as / AI task (Home's Connect) | 打开为 / AI 任务 |
+| Others in my networks / In your networks | 我的网络中的其他设备 / 在你的网络中 |
 | Disconnect and close / Disconnect and quit | 断开并关闭 / 断开并退出 |
 | route (to a device) / Addresses… | 路径 / 地址… |
 | Auto (route choice) | 自动 |

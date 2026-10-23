@@ -573,8 +573,8 @@ func (a *App) dropTab(key string, to *viewerWindow, target tab, z dropZone) {
 	to.shownChanged(prev)
 }
 
-// tabFor is the open tab with a tabKey, Home, a desktop or a service, or
-// nil.
+// tabFor is the open pane with a tabKey (Home, a desktop, a service or a
+// host's status), or nil.
 func (a *App) tabFor(key string) tab {
 	if key == homeKey {
 		return a.home
@@ -587,19 +587,27 @@ func (a *App) tabFor(key string) tab {
 	if s := a.services[key]; s != nil {
 		return s
 	}
+	for _, s := range a.statuses {
+		if s.tabKey() == key {
+			return s
+		}
+	}
 	return nil
 }
 
-// allTabs are every open connection's tab, desktops and services, in no
-// order (Home is none).
+// allTabs are every open pane but Home: desktops, services and hosts'
+// status, in no order.
 func (a *App) allTabs() []tab {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	out := make([]tab, 0, len(a.viewers)+len(a.services))
+	out := make([]tab, 0, len(a.viewers)+len(a.services)+len(a.statuses))
 	for _, v := range a.viewers {
 		out = append(out, v)
 	}
 	for _, s := range a.services {
+		out = append(out, s)
+	}
+	for _, s := range a.statuses {
 		out = append(out, s)
 	}
 	return out

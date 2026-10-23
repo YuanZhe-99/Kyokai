@@ -31,6 +31,9 @@ type Prefs struct {
 	TrayHintShown bool `json:"tray_hint_shown,omitempty"`
 	// SidebarRail keeps the main window's sidebar folded to its icons.
 	SidebarRail bool `json:"sidebar_rail,omitempty"`
+	// OthersInNetworks also shows on Home the Kyokai devices the joined
+	// networks reach that this one never connected to (off by default).
+	OthersInNetworks bool `json:"others_in_networks,omitempty"`
 	// CheckAppUpdates checks GitHub for a newer signed app once a day;
 	// LastAppCheck and AnnouncedApp keep it to one notification a version.
 	CheckAppUpdates bool      `json:"check_app_updates"`

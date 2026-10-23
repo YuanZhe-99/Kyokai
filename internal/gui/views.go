@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -46,96 +45,6 @@ func (a *App) engineState(c *ui.Context) bool {
 		ui.Text(c, errText).FontSize(sizeSmall).TextColor(t.TextMuted).Selectable()
 	})
 	return false
-}
-
-func (a *App) homeView(c *ui.Context) {
-	t := c.Theme()
-	if !a.engineState(c) {
-		return
-	}
-	a.mu.Lock()
-	if device := a.statusOf; device != "" {
-		a.mu.Unlock()
-		a.hostStatusView(c, device)
-		return
-	}
-	st := *a.status
-	pw, show := a.password, a.showPassword && a.passwordFor == a.status.PasswordSerial
-	startingOver := a.busy["start-over"]
-	a.mu.Unlock()
-	// This device on the left, the device to control on the right, as
-	// RustDesk lays them out; recent devices below.
-	ui.Row(c).FillWidth().MaxWidth(homeMaxW).Gap(gap).AlignItems(ui.Stretch).Children(func() {
-		card(c).Width(thisDeviceW).Children(func() {
-			ui.Text(c, L.HomeThisDevice()).FontSize(sizeHeading).Bold()
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, L.HomeDeviceID()).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
-				if ui.Button(c.Key("copy-id"), L.ActionCopy()).Clicked() {
-					mygo.Clipboard.WriteText(st.DeviceID)
-					a.update(func() { a.setToast(L.Copied(), false) })
-				}
-			})
-			ui.Text(c, groupDigits(st.DeviceID)).FontSize(sizeDeviceID).Bold().FontFeatures("tnum").NoWrap().Selectable()
-			ui.Divider(c)
-			// With only the permanent password accepted, or neither, the
-			// temporary one opens nothing and is not shown.
-			if st.PasswordMode == "none" {
-				ui.Text(c, L.HomePasswordsOff()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			} else if st.PasswordMode == "permanent" {
-				if st.PermanentPassword {
-					ui.Text(c, L.HomePermanentOnly()).FontSize(sizeSmall).TextColor(t.TextMuted)
-				} else {
-					ui.Text(c, L.HomePermanentMissing()).FontSize(sizeSmall).TextColor(t.Warning)
-				}
-			} else {
-				ui.Text(c, L.HomeTemporaryPassword()).FontSize(sizeSmall).TextColor(t.TextMuted)
-				shown := strings.Repeat("•", 8)
-				if show {
-					shown = pw
-				}
-				ui.Text(c, shown).FontSize(sizeTitle).FontFeatures("tnum").Selectable()
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					label := L.ActionShow()
-					if show {
-						label = L.ActionHide()
-					}
-					if ui.Button(c.Key("show-pw"), label).Clicked() {
-						if show {
-							a.mu.Lock()
-							a.showPassword = false
-							a.mu.Unlock()
-						} else {
-							a.revealPassword(func(string) { a.update(func() { a.showPassword = true }) })
-						}
-					}
-					if ui.Button(c.Key("copy-pw"), L.ActionCopy()).Clicked() {
-						a.revealPassword(func(p string) {
-							clipboardWrite(p)
-							a.update(func() { a.setToast(L.Copied(), false) })
-						})
-					}
-					if ui.Button(c.Key("new-pw"), L.ActionNewPassword()).Clicked() {
-						go func() { _, _ = a.request(localapi.RequestPasswordRegenerate) }()
-					}
-				})
-				ui.Text(c, L.HomePasswordHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			}
-			if note := secretsNote(st.Persistence); note != "" && st.Persistence != "os-store" {
-				ui.Text(c, note).FontSize(sizeSmall).TextColor(t.Warning)
-			}
-			if st.Persistence == "unreadable" {
-				ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, L.StartOverHint()).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
-					if ui.Button(c.Key("start-over"), L.ActionStartOver()).Disabled(startingOver).Clicked() {
-						a.startOver()
-					}
-				})
-			}
-		})
-		ui.Column(c).Grow(1).Children(func() { a.connectCard(c) })
-	})
-	a.permissionsCard(c)
-	a.devicesCard(c)
 }
 
 func secretsNote(p string) string {

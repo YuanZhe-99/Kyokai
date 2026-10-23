@@ -370,15 +370,8 @@ func (s *serviceTab) tabTitle() string { return s.title }
 // and the service.
 func (s *serviceTab) head() paneHead {
 	title, _ := splitTitle(s.name)
-	icon := kindVNC
-	switch s.service {
-	case serviceSSH:
-		icon = kindSSH
-	case serviceRDP:
-		icon = kindRDP
-	}
 	kind := serviceName(s.service)
-	return paneHead{icon: icon, title: title, sub: kind, kind: kind}
+	return paneHead{icon: serviceIcon(s.service), title: title, sub: kind, kind: kind}
 }
 func (s *serviceTab) tabWindow() *viewerWindow     { return s.home.Load() }
 func (s *serviceTab) setTabWindow(w *viewerWindow) { s.home.Store(w) }

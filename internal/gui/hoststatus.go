@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -225,8 +226,100 @@ func dotRect(r ui.Rect, x float32, k, rows int) ui.Rect {
 	return ui.Rect{X: x, Y: y, W: dotSize, H: dotSize}
 }
 
-// hostStatusView is a watched host's status in full: its tiles with every
-// figure, while Home shows it (a.statusOf).
+// statusTab is a host's status in full as a pane of its own, opened from
+// its card's figures on Home (openStatus); the watch lease keeps its host
+// while it is open (syncWatch).
+type statusTab struct {
+	app    *App
+	device string
+	name   string // the device's title (deviceTitle) as it opened
+	win    atomic.Pointer[viewerWindow]
+}
+
+// statusKey is a host's status pane's tabKey.
+func statusKey(device string) string { return "status-" + device }
+
+// openStatus shows a host's status in a pane: the one open, or a new one
+// in the main window.
+// Notes: call on the main thread.
+func (a *App) openStatus(device string) {
+	if t := a.tabFor(statusKey(device)); t != nil {
+		if w := t.tabWindow(); w != nil {
+			w.show(t)
+		}
+		return
+	}
+	a.mu.Lock()
+	about := a.prefs.named(device, localapi.About{})
+	for _, r := range a.statusRecent() {
+		if r.DeviceID == device {
+			about = a.prefs.named(device, r.About)
+		}
+	}
+	s := &statusTab{app: a, device: device, name: deviceTitle(about, device)}
+	a.statuses[device] = s
+	a.mu.Unlock()
+	a.main.add(s)
+	a.homeVisibilityChanged()
+}
+
+// tabKey is the status pane's identity.
+func (s *statusTab) tabKey() string { return statusKey(s.device) }
+
+// tabTitle names the window while the pane is in focus.
+func (s *statusTab) tabTitle() string { return L.StatusPaneTitle(s.name) }
+
+// head is the pane's header: the status icon, the device's name, Status.
+func (s *statusTab) head() paneHead {
+	title, _ := splitTitle(s.name)
+	return paneHead{icon: rowPulse, title: title, sub: L.PaneStatus(), kind: L.PaneStatus()}
+}
+
+// tabWindow is the window the pane is in, or nil.
+func (s *statusTab) tabWindow() *viewerWindow { return s.win.Load() }
+
+// setTabWindow notes the window the pane moved to.
+func (s *statusTab) setTabWindow(w *viewerWindow) { s.win.Store(w) }
+
+// view is the host's status in full, scrolled.
+func (s *statusTab) view(c *ui.Context) {
+	ui.Scroll(c.Key("status-" + s.device)).Grow(1).Fill().Padding(24).Children(func() { s.app.hostStatusView(c, s.device) })
+}
+
+// live reports false: closing the pane ends no connection.
+func (s *statusTab) live() bool { return false }
+
+// disconnect forgets the pane as it closes; the next lease drops its host.
+func (s *statusTab) disconnect() {
+	s.win.Store(nil)
+	s.app.mu.Lock()
+	if s.app.statuses[s.device] == s {
+		delete(s.app.statuses, s.device)
+	}
+	s.app.mu.Unlock()
+	s.app.homeVisibilityChanged()
+}
+
+// syncGrab, endGrab and setFront do nothing: the pane takes no keys and no
+// clipboard.
+func (s *statusTab) syncGrab(bool) {}
+func (s *statusTab) endGrab()      {}
+func (s *statusTab) setFront(bool) {}
+
+// statusHosts are the hosts whose status panes are open.
+// Notes: the caller holds a.mu.
+func (a *App) statusHosts() []string {
+	hosts := make([]string, 0, len(a.statuses))
+	for device := range a.statuses {
+		hosts = append(hosts, device)
+	}
+	slices.Sort(hosts)
+	return hosts
+}
+
+// hostStatusView is a watched host's status in full (its pane): its tiles
+// with every figure, dimmed with their age while stale, else why there are
+// none.
 func (a *App) hostStatusView(c *ui.Context, device string) {
 	t := c.Theme()
 	a.mu.Lock()
@@ -244,21 +337,12 @@ func (a *App) hostStatusView(c *ui.Context, device string) {
 	}
 	a.mu.Unlock()
 	i := slices.IndexFunc(rows, func(r deviceRow) bool { return r.id == device })
-	back := func() {
-		a.mu.Lock()
-		a.statusOf = ""
-		a.mu.Unlock()
-	}
 	if i < 0 {
-		back()
-		return
+		return // removed from Home: its pane stays empty until closed
 	}
 	r := rows[i]
 	now := time.Now()
 	ui.Column(c).FillWidth().MaxWidth(homeMaxW).Gap(gap).Children(func() {
-		if ui.Button(c.Key("status-back"), "‹ "+L.StatusBack()).AlignSelf(ui.Start).Clicked() {
-			back()
-		}
 		ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
 			deviceAvatar(c, r.about)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {

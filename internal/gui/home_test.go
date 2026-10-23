@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
 // Home lays out one to three cards a row, each at least homeCardMinW.
@@ -44,7 +45,8 @@ func TestStatusFreshness(t *testing.T) {
 }
 
 // The lease goes out as Home shows, as its hosts change and every 10 s;
-// hidden, an empty lease goes once.
+// hidden, an empty lease goes once. A host's open status pane keeps it in
+// the lease, first, Home shown or not.
 func TestWatchLease(t *testing.T) {
 	now := time.Now()
 	recent := []localapi.RecentDevice{{DeviceID: "1"}, {DeviceID: "2"}}
@@ -56,22 +58,25 @@ func TestWatchLease(t *testing.T) {
 		name    string
 		visible bool
 		recent  []localapi.RecentDevice
+		panes   []string
 		sent    []string
 		age     time.Duration
 		send    bool
-		hosts   int
+		hosts   []string
 	}{
-		{"shown first", true, recent, nil, time.Hour, true, 2},
-		{"renewed after 10 s", true, recent, []string{"1", "2"}, 10 * time.Second, true, 2},
-		{"not yet", true, recent, []string{"1", "2"}, 9 * time.Second, false, 2},
-		{"hosts changed", true, recent, []string{"1"}, time.Second, true, 2},
-		{"at most eight", true, many, nil, 0, true, leaseHosts},
-		{"hidden", false, recent, []string{"1", "2"}, time.Second, true, 0},
-		{"hidden, already stopped", false, recent, []string{}, time.Hour, false, 0},
+		{"shown first", true, recent, nil, nil, time.Hour, true, []string{"1", "2"}},
+		{"renewed after 10 s", true, recent, nil, []string{"1", "2"}, 10 * time.Second, true, []string{"1", "2"}},
+		{"not yet", true, recent, nil, []string{"1", "2"}, 9 * time.Second, false, []string{"1", "2"}},
+		{"hosts changed", true, recent, nil, []string{"1"}, time.Second, true, []string{"1", "2"}},
+		{"at most eight", true, many, nil, nil, 0, true, []string{"a", "b", "c", "d", "e", "f", "g", "h"}},
+		{"hidden", false, recent, nil, []string{"1", "2"}, time.Second, true, []string{}},
+		{"hidden, already stopped", false, recent, nil, []string{}, time.Hour, false, []string{}},
+		{"a pane, Home hidden", false, recent, []string{"9"}, []string{"1", "2"}, time.Second, true, []string{"9"}},
+		{"a pane first, once", true, recent, []string{"2"}, nil, 0, true, []string{"2", "1"}},
 	} {
-		send, hosts := watchLease(c.visible, c.recent, c.sent, now.Add(-c.age), now)
-		if send != c.send || len(hosts) != c.hosts || hosts == nil {
-			t.Errorf("%s: send %v hosts %v, want %v and %d", c.name, send, hosts, c.send, c.hosts)
+		send, hosts := watchLease(c.visible, c.recent, c.panes, c.sent, now.Add(-c.age), now)
+		if send != c.send || !slices.Equal(hosts, c.hosts) || hosts == nil {
+			t.Errorf("%s: send %v hosts %v, want %v and %v", c.name, send, hosts, c.send, c.hosts)
 		}
 	}
 }
@@ -144,6 +149,72 @@ func TestSizeParts(t *testing.T) {
 	}
 }
 
+// demoOthers turns on Others in my networks, with two networks that reach
+// devices Home has not connected to.
+func demoOthers(a *App) {
+	a.prefs.OthersInNetworks = true
+	home := localapi.NetworkState{ID: "a", Label: "Home", Joined: true, NetworkNode: localapi.NetworkNode{State: "online", Devices: []localapi.NetworkDevice{
+		{DeviceID: "305118442", Path: "direct", LatencyMS: 5}, {DeviceID: "718664020", Path: "relay", LatencyMS: 88}, {DeviceID: "657365333", Path: "direct", LatencyMS: 2}}}}
+	lab := localapi.NetworkState{ID: "b", Label: "lab", Joined: true, NetworkNode: localapi.NetworkNode{State: "online", Devices: []localapi.NetworkDevice{
+		{DeviceID: "552090317", Path: "direct", LatencyMS: 2}, {DeviceID: "718664020", Path: "direct", LatencyMS: 30}}}}
+	a.status.Network.Networks = []localapi.NetworkState{home, lab}
+}
+
+// TestNetworkOthers: the devices of joined, online networks that Home has
+// not connected to and that are not this one, each once by its best way —
+// direct before relayed, then the lowest latency — by Device ID.
+func TestNetworkOthers(t *testing.T) {
+	known := []deviceRow{{id: "657365333"}}
+	nets := []localapi.NetworkState{
+		{Label: "Home", Joined: true, NetworkNode: localapi.NetworkNode{State: "online", Devices: []localapi.NetworkDevice{
+			{DeviceID: "3", Path: "relay", LatencyMS: 9}, {DeviceID: "2", Path: "relay", LatencyMS: 88}, {DeviceID: "657365333", Path: "direct"}, {DeviceID: "self", Path: "direct"}}}},
+		{Label: "lab", Joined: true, NetworkNode: localapi.NetworkNode{State: "online", Devices: []localapi.NetworkDevice{
+			{DeviceID: "2", Path: "direct", LatencyMS: 30}, {DeviceID: "3", Path: "relay", LatencyMS: 4}}}},
+		{Label: "off", Joined: false, NetworkNode: localapi.NetworkNode{State: "online", Devices: []localapi.NetworkDevice{{DeviceID: "4"}}}},
+		{Label: "down", Joined: true, NetworkNode: localapi.NetworkNode{State: "error", Devices: []localapi.NetworkDevice{{DeviceID: "5"}}}},
+	}
+	var got []string
+	for _, o := range networkOthers(nets, known, "self") {
+		got = append(got, o.id+"@"+o.network+":"+o.path.Path)
+	}
+	if want := []string{"2@lab:direct", "3@lab:relay"}; !slices.Equal(got, want) {
+		t.Fatalf("%v, want %v", got, want)
+	}
+}
+
+// TestCompactFigures: a card shows the processor, the memory and the
+// download rate, then the battery, else the graphics, else the free disk;
+// every bar between empty and full.
+func TestCompactFigures(t *testing.T) {
+	base := localapi.SystemSample{CPU: localapi.CPUUse{Usage: 140}, Memory: localapi.Usage{Used: 8_000_000_000, Total: 16_000_000_000},
+		Disk: localapi.Usage{Used: 400_000_000_000, Total: 500_000_000_000}, Net: localapi.NetRates{RxBps: 2_000_000}}
+	var rings hostRings
+	rings.rx.push(4_000_000)
+	withGPU, withBattery := base, base
+	withGPU.GPU = &localapi.GPUUse{Usage: 20}
+	withBattery.GPU, withBattery.Battery = &localapi.GPUUse{Usage: 20}, &localapi.Battery{Percent: 15}
+	for _, c := range []struct {
+		name   string
+		s      localapi.SystemSample
+		fourth string
+	}{
+		{"disk", base, L.StatusDisk()}, {"graphics", withGPU, L.StatusGPU()}, {"battery", withBattery, L.StatusBattery()},
+	} {
+		fs := compactFigures(&c.s, &rings)
+		if len(fs) != 4 || fs[0].name != L.StatusCPU() || fs[1].name != L.StatusMemory() || fs[2].name != L.StatusNetwork() || fs[3].name != c.fourth {
+			t.Fatalf("%s: %+v", c.name, fs)
+		}
+		for _, f := range fs {
+			if f.fill < 0 || f.fill > 1 {
+				t.Errorf("%s: %s bar %v", c.name, f.name, f.fill)
+			}
+		}
+		if fs[2].fill != 0.5 {
+			t.Errorf("%s: the download bar %v, want half the last two minutes' highest", c.name, fs[2].fill)
+		}
+	}
+}
+
 // demoHome is Home with devices in every state a card shows.
 func demoHome(a *App) {
 	now := time.Now()
@@ -205,11 +276,12 @@ func TestHomeCardsRender(t *testing.T) {
 		name   string
 		w, h   int
 		setup  func(a *App)
-		inMain bool
+		status bool // the first device's status pane instead of the page
 	}{
 		{"home-grid", 1280, 1500, demoHome, false},
 		{"home-grid-narrow", 820, 2600, demoHome, false},
-		{"host-status", 1100, 1100, func(a *App) { demoHome(a); a.statusOf = "657365333" }, false},
+		{"host-status", 1100, 1100, demoHome, true},
+		{"home-others", 1280, 1700, func(a *App) { demoHome(a); demoOthers(a) }, false},
 		{"home-routes", 1280, 1700, func(a *App) { demoHome(a); a.routesEdit = routesForm{device: "657365333", add: "203.0.113.7"} }, false},
 		{"security-keys", 1000, 1900, func(a *App) {
 			a.page = pageSecurity
@@ -241,7 +313,11 @@ func TestHomeCardsRender(t *testing.T) {
 			for _, dark := range []bool{false, true} {
 				a := demoApp(t)
 				s.setup(a)
-				tt := ui.NewTester(a.View, s.w, s.h)
+				view := a.View
+				if s.status {
+					view = (&statusTab{app: a, device: "657365333", name: "Studio Mac · 657 365 333"}).view
+				}
+				tt := ui.NewTester(view, s.w, s.h)
 				tt.SetDark(dark)
 				tt.Frame()
 				tt.Frame() // the grid takes its columns from its width

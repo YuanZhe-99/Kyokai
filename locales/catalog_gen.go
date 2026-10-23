@@ -1182,6 +1182,16 @@ func (msgs Messages) ActionNewPassword() string {
 	return Catalog.Format(msgs.locale, "ActionNewPassword", nil)
 }
 
+// ActionOpen says "Open"
+// in the language the app shows.
+func ActionOpen() string { return In(i18n.Locale()).ActionOpen() }
+
+// ActionOpen says "Open"
+// in the language of msgs.
+func (msgs Messages) ActionOpen() string {
+	return Catalog.Format(msgs.locale, "ActionOpen", nil)
+}
+
 // ActionOpenFolder says "Open folder"
 // in the language the app shows.
 func ActionOpenFolder() string { return In(i18n.Locale()).ActionOpenFolder() }
@@ -1522,16 +1532,6 @@ func (msgs Messages) ByAddressTitle() string {
 	return Catalog.Format(msgs.locale, "ByAddressTitle", nil)
 }
 
-// CardAI says "AI"
-// in the language the app shows.
-func CardAI() string { return In(i18n.Locale()).CardAI() }
-
-// CardAI says "AI"
-// in the language of msgs.
-func (msgs Messages) CardAI() string {
-	return Catalog.Format(msgs.locale, "CardAI", nil)
-}
-
 // CardConnected says "Connected"
 // in the language the app shows.
 func CardConnected() string { return In(i18n.Locale()).CardConnected() }
@@ -1712,16 +1712,6 @@ func (msgs Messages) ConnectNeedsNetwork() string {
 	return Catalog.Format(msgs.locale, "ConnectNeedsNetwork", nil)
 }
 
-// ConnectOptions says "Options"
-// in the language the app shows.
-func ConnectOptions() string { return In(i18n.Locale()).ConnectOptions() }
-
-// ConnectOptions says "Options"
-// in the language of msgs.
-func (msgs Messages) ConnectOptions() string {
-	return Catalog.Format(msgs.locale, "ConnectOptions", nil)
-}
-
 // ConnectPlaceholder says "Device ID or address"
 // in the language the app shows.
 func ConnectPlaceholder() string { return In(i18n.Locale()).ConnectPlaceholder() }
@@ -1732,16 +1722,6 @@ func (msgs Messages) ConnectPlaceholder() string {
 	return Catalog.Format(msgs.locale, "ConnectPlaceholder", nil)
 }
 
-// ConnectRecent says "Recent"
-// in the language the app shows.
-func ConnectRecent() string { return In(i18n.Locale()).ConnectRecent() }
-
-// ConnectRecent says "Recent"
-// in the language of msgs.
-func (msgs Messages) ConnectRecent() string {
-	return Catalog.Format(msgs.locale, "ConnectRecent", nil)
-}
-
 // ConnectRemember says "Remember password"
 // in the language the app shows.
 func ConnectRemember() string { return In(i18n.Locale()).ConnectRemember() }
@@ -1750,26 +1730,6 @@ func ConnectRemember() string { return In(i18n.Locale()).ConnectRemember() }
 // in the language of msgs.
 func (msgs Messages) ConnectRemember() string {
 	return Catalog.Format(msgs.locale, "ConnectRemember", nil)
-}
-
-// ConnectTitle says "Control another device"
-// in the language the app shows.
-func ConnectTitle() string { return In(i18n.Locale()).ConnectTitle() }
-
-// ConnectTitle says "Control another device"
-// in the language of msgs.
-func (msgs Messages) ConnectTitle() string {
-	return Catalog.Format(msgs.locale, "ConnectTitle", nil)
-}
-
-// ConnectWithAI says "Also ask to run AI tasks there"
-// in the language the app shows.
-func ConnectWithAI() string { return In(i18n.Locale()).ConnectWithAI() }
-
-// ConnectWithAI says "Also ask to run AI tasks there"
-// in the language of msgs.
-func (msgs Messages) ConnectWithAI() string {
-	return Catalog.Format(msgs.locale, "ConnectWithAI", nil)
 }
 
 // Copied says "Copied"
@@ -1790,16 +1750,6 @@ func DeviceLast(time_ string) string { return In(i18n.Locale()).DeviceLast(time_
 // in the language of msgs.
 func (msgs Messages) DeviceLast(time_ string) string {
 	return Catalog.Format(msgs.locale, "DeviceLast", map[string]any{"time": time_})
-}
-
-// DeviceMenu says "More"
-// in the language the app shows.
-func DeviceMenu() string { return In(i18n.Locale()).DeviceMenu() }
-
-// DeviceMenu says "More"
-// in the language of msgs.
-func (msgs Messages) DeviceMenu() string {
-	return Catalog.Format(msgs.locale, "DeviceMenu", nil)
 }
 
 // DiagEngine says "Engine"
@@ -2046,14 +1996,94 @@ func (msgs Messages) HomeDeviceID() string {
 	return Catalog.Format(msgs.locale, "HomeDeviceID", nil)
 }
 
-// HomePasswordHint says "Changes every time Kyokai starts, or when you ask for a new one."
+// HomeDevices says "Devices"
 // in the language the app shows.
-func HomePasswordHint() string { return In(i18n.Locale()).HomePasswordHint() }
+func HomeDevices() string { return In(i18n.Locale()).HomeDevices() }
 
-// HomePasswordHint says "Changes every time Kyokai starts, or when you ask for a new one."
+// HomeDevices says "Devices"
 // in the language of msgs.
-func (msgs Messages) HomePasswordHint() string {
-	return Catalog.Format(msgs.locale, "HomePasswordHint", nil)
+func (msgs Messages) HomeDevices() string {
+	return Catalog.Format(msgs.locale, "HomeDevices", nil)
+}
+
+// HomeDevicesNone says "Devices you connect to show here."
+// in the language the app shows.
+func HomeDevicesNone() string { return In(i18n.Locale()).HomeDevicesNone() }
+
+// HomeDevicesNone says "Devices you connect to show here."
+// in the language of msgs.
+func (msgs Messages) HomeDevicesNone() string {
+	return Catalog.Format(msgs.locale, "HomeDevicesNone", nil)
+}
+
+// HomeFilterAll says "All"
+// in the language the app shows.
+func HomeFilterAll() string { return In(i18n.Locale()).HomeFilterAll() }
+
+// HomeFilterAll says "All"
+// in the language of msgs.
+func (msgs Messages) HomeFilterAll() string {
+	return Catalog.Format(msgs.locale, "HomeFilterAll", nil)
+}
+
+// HomeOpenAI says "AI task"
+// in the language the app shows.
+func HomeOpenAI() string { return In(i18n.Locale()).HomeOpenAI() }
+
+// HomeOpenAI says "AI task"
+// in the language of msgs.
+func (msgs Messages) HomeOpenAI() string {
+	return Catalog.Format(msgs.locale, "HomeOpenAI", nil)
+}
+
+// HomeOpenAs says "Open as"
+// in the language the app shows.
+func HomeOpenAs() string { return In(i18n.Locale()).HomeOpenAs() }
+
+// HomeOpenAs says "Open as"
+// in the language of msgs.
+func (msgs Messages) HomeOpenAs() string {
+	return Catalog.Format(msgs.locale, "HomeOpenAs", nil)
+}
+
+// HomeOthersNone says "No other Kyokai device is online in your networks."
+// in the language the app shows.
+func HomeOthersNone() string { return In(i18n.Locale()).HomeOthersNone() }
+
+// HomeOthersNone says "No other Kyokai device is online in your networks."
+// in the language of msgs.
+func (msgs Messages) HomeOthersNone() string {
+	return Catalog.Format(msgs.locale, "HomeOthersNone", nil)
+}
+
+// HomeOthersNote says "{count, plural, =0 {Kyokai devices you haven't connected to} one {Kyokai devices you haven't connected to · #} other…"
+// in the language the app shows.
+func HomeOthersNote(count int) string { return In(i18n.Locale()).HomeOthersNote(count) }
+
+// HomeOthersNote says "{count, plural, =0 {Kyokai devices you haven't connected to} one {Kyokai devices you haven't connected to · #} other…"
+// in the language of msgs.
+func (msgs Messages) HomeOthersNote(count int) string {
+	return Catalog.Format(msgs.locale, "HomeOthersNote", map[string]any{"count": count})
+}
+
+// HomeOthersSwitch says "Others in my networks"
+// in the language the app shows.
+func HomeOthersSwitch() string { return In(i18n.Locale()).HomeOthersSwitch() }
+
+// HomeOthersSwitch says "Others in my networks"
+// in the language of msgs.
+func (msgs Messages) HomeOthersSwitch() string {
+	return Catalog.Format(msgs.locale, "HomeOthersSwitch", nil)
+}
+
+// HomeOthersTitle says "In your networks"
+// in the language the app shows.
+func HomeOthersTitle() string { return In(i18n.Locale()).HomeOthersTitle() }
+
+// HomeOthersTitle says "In your networks"
+// in the language of msgs.
+func (msgs Messages) HomeOthersTitle() string {
+	return Catalog.Format(msgs.locale, "HomeOthersTitle", nil)
 }
 
 // HomePasswordsOff says "No password opens this device: other devices sign in with a key, or ask you. Change it in Permissions."
@@ -3136,6 +3166,16 @@ func PaneSplitRight() string { return In(i18n.Locale()).PaneSplitRight() }
 // in the language of msgs.
 func (msgs Messages) PaneSplitRight() string {
 	return Catalog.Format(msgs.locale, "PaneSplitRight", nil)
+}
+
+// PaneStatus says "Status"
+// in the language the app shows.
+func PaneStatus() string { return In(i18n.Locale()).PaneStatus() }
+
+// PaneStatus says "Status"
+// in the language of msgs.
+func (msgs Messages) PaneStatus() string {
+	return Catalog.Format(msgs.locale, "PaneStatus", nil)
 }
 
 // PasswordForgotten says "The saved password is forgotten."
@@ -5516,16 +5556,6 @@ func (msgs Messages) StatusAverage() string {
 	return Catalog.Format(msgs.locale, "StatusAverage", nil)
 }
 
-// StatusBack says "Back to Home"
-// in the language the app shows.
-func StatusBack() string { return In(i18n.Locale()).StatusBack() }
-
-// StatusBack says "Back to Home"
-// in the language of msgs.
-func (msgs Messages) StatusBack() string {
-	return Catalog.Format(msgs.locale, "StatusBack", nil)
-}
-
 // StatusBattery says "Battery"
 // in the language the app shows.
 func StatusBattery() string { return In(i18n.Locale()).StatusBattery() }
@@ -5704,6 +5734,26 @@ func StatusOnBattery() string { return In(i18n.Locale()).StatusOnBattery() }
 // in the language of msgs.
 func (msgs Messages) StatusOnBattery() string {
 	return Catalog.Format(msgs.locale, "StatusOnBattery", nil)
+}
+
+// StatusOpen says "Open its status"
+// in the language the app shows.
+func StatusOpen() string { return In(i18n.Locale()).StatusOpen() }
+
+// StatusOpen says "Open its status"
+// in the language of msgs.
+func (msgs Messages) StatusOpen() string {
+	return Catalog.Format(msgs.locale, "StatusOpen", nil)
+}
+
+// StatusPaneTitle says "{name} · Status"
+// in the language the app shows.
+func StatusPaneTitle(name string) string { return In(i18n.Locale()).StatusPaneTitle(name) }
+
+// StatusPaneTitle says "{name} · Status"
+// in the language of msgs.
+func (msgs Messages) StatusPaneTitle(name string) string {
+	return Catalog.Format(msgs.locale, "StatusPaneTitle", map[string]any{"name": name})
 }
 
 // StatusPeak says "Peak"

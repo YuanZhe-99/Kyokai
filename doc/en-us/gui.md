@@ -75,62 +75,71 @@ when `SCREENSHOT_DIR` is set.
 
 ## Structure
 
-- **Home**, laid out as RustDesk's: on the left "This device" — the Device ID in groups of three
-  with Copy; the temporary password, masked until Show, with Copy and New password (when only
-  the permanent password is accepted, a line saying so instead, or a warning that none is set; when
-  no password is accepted, a line saying other devices sign in with a key or ask); a note when
-  secrets are not persisted, and when the saved identity cannot be unlocked, Start over (the old
-  store moved aside, a new identity kept from then on; `secrets.start_over`). On the right
-  "Control another device": a Device ID or an address (an IP address or domain name, for a
-  device that accepts connections by address; "Looking for the device…" while it is asked who it
-  is), Options (also ask to run AI tasks there) and Connect (a Device ID needs a network). On macOS, while Screen Recording, Accessibility, Input Monitoring or the
-  Keychain is missing, "Privacy permissions" with Allow for each (Settings › Access always shows it there);
-  a permission asked for in this run also offers "Reopen Kyokai", since macOS counts a new grant
-  only in an engine started after it. In the helper modes the card says the permissions are
-  Kyokai Helper's, and a missing one offers Restart Kyokai Helper. Home is wider than the other
-  pages (`homeMaxW`, 1120). Below, **Recent**: a grid of device cards — one per device, never one
-  per session — each at least 300 wide, one to three side by side (`homeColumnsFor`). A card has a
-  header (avatar, its name — the one given here, else its friendly name — and Device ID, its state
-  as a chip: connected, connecting, online or offline, and ⋯); its route, a menu (`cardPath`): a dot
-  and the route in use while connected, else the route chosen by hand ("… · chosen") or the one
-  Auto would take now — "Direct · 12 ms", "Relayed · 231 ms" in the warning colour, an address
-  "192.168.1.20 · 2 ms" — why the last attempt failed, or when it was last connected; the menu has
-  Auto, the Kyokai network and each address with its latency now or why it does not answer, then
-  Addresses… ([networking.md](networking.md), "Routes"); its live status; chips for what is saved for it
-  (Kyokai password, key, SSH, Remote Desktop, VNC; flags only); and its actions: Connect (Show
-  while connected or connecting), then only what will work without the other device's user
-  (`cardActions`): Remote Desktop, SSH and VNC for the services its status reports answering, and
-  AI (Connect with AI) while its AI is ready, each only when its status says the saved password or
-  key grants it (`offers`); the most used for that device first (`Prefs.Uses`, counted on this
-  device only), else in that order; the buttons share the row. Everything else stays in the ⋯
-  menu, which has Connect, Connect with AI, Open Remote Desktop / SSH / VNC,
-  Addresses… (an editor card above the devices, like Rename: every route with its latency, when it
-  was last used and the bitrate it reached, Remove for an address, a field to add one, Route: the
-  same choice as the route menu, and Done; Home looks at the shown devices' addresses every 60 s
-  while visible), Rename… (a name shown only on this device, edited in a card above the devices; empty goes back to
-  the device's own), Saved passwords and keys… (the Security page), Forget old identity (after a
-  key change) and Remove (disconnects it, takes it and its finished connections off Recent, and
-  forgets its pinned key, saved sign-ins and the name given here).
+- **Home** (`homeView`), no wider than 1120 points (`homeMaxW`): two cards side by side (5 to 7;
+  one above the other below 640 points). **This device** — the networks' state as a pill, the
+  Device ID in groups of three with a copy button, then the temporary password, masked, with
+  Show (Hide), Copy and New password as icons (when only the permanent password is accepted, a
+  line saying so instead, or a warning that none is set; when no password is accepted, a line
+  saying other devices sign in with a key or ask); a note when secrets are not persisted, and
+  when the saved identity cannot be unlocked, Start over (the old store moved aside, a new
+  identity kept from then on; `secrets.start_over`). **Connect to a device** — a Device ID or an
+  address (an IP address or domain name, for a device that accepts connections by address;
+  "Looking for the device…" while it is asked who it is) and Connect (Enter too; a Device ID needs
+  a network), and **Open as**: Desktop, SSH, Remote Desktop, VNC or AI task (the desktop asking to
+  run AI tasks there), what Connect opens (`connectAs`). On macOS, while Screen Recording,
+  Accessibility, Input Monitoring or the Keychain is missing, "Privacy permissions" with Allow for
+  each (Settings › Access always shows it there); a permission asked for in this run also offers
+  "Reopen Kyokai", since macOS counts a new grant only in an engine started after it. In the
+  helper modes the card says the permissions are Kyokai Helper's, and a missing one offers Restart
+  Kyokai Helper. Below, **Devices** and how many, with Others in my networks (off by default,
+  `others_in_networks` in `gui.json`) and All or Online beside the title: a grid of device cards
+  of equal height — one per device, never one per session — each at least 300 wide, one to three
+  side by side (`homeColumnsFor`). A card has a header (avatar, its name — the one given here,
+  else its friendly name — its Device ID and system, its state as a pill: connected, connecting,
+  online or offline, and ⋯); its route, a menu (`cardPath`): a dot and the route in use while
+  connected, else the route chosen by hand ("… · chosen") or the one Auto would take now —
+  "Direct · 12 ms", "Relayed · 231 ms" in the warning colour, an address "192.168.1.20 · 2 ms" —
+  why the last attempt failed, or when it was last connected; the menu has Auto, the Kyokai
+  network and each address with its latency now or why it does not answer, then Addresses…
+  ([networking.md](networking.md), "Routes"); its live status; and its actions: Open while
+  connected or connecting, else Connect (the primary button while the device is online), then as
+  icons only what will work without the other device's user (`cardActions`): Remote Desktop, SSH
+  and VNC for the services its status reports answering, and AI (Connect with AI) while its AI is
+  ready, each only when its status says the saved password or key grants it (`offers`); the most
+  used for that device first (`Prefs.Uses`, counted on this device only), else in that order.
+  Everything else stays in the ⋯ menu, which has Connect, Connect with AI, Open Remote Desktop /
+  SSH / VNC, Addresses… (an editor card above the devices, like Rename: every route with its
+  latency, when it was last used and the bitrate it reached, Remove for an address, a field to add
+  one, Route: the same choice as the route menu, and Done; Home looks at the shown devices'
+  addresses every 60 s while visible), Rename… (a name shown only on this device, edited in a card
+  above the devices; empty goes back to the device's own), Saved passwords and keys… (Settings ›
+  Security & privacy), Forget old identity (after a key change) and Remove (disconnects it, takes
+  it and its finished connections off Home, and forgets its pinned key, saved sign-ins and the name
+  given here). With Others in my networks on, **In your networks** follows: the Kyokai devices the
+  joined networks reach that this one never connected to, each once by its best way — direct
+  before relayed, then the lowest latency (`networkOthers`) — as dashed cards with the Device ID,
+  the network and the way with its latency, and Connect.
 - **Live status on Home:** while Home shows (the main window visible, its Home pane shown and
-  Settings closed), the GUI leases a watch of the recent devices (`watch.set`, eight at most, renewed
-  every 10 s and dropped as Home hides). A watched device's card shows compact tiles in two
-  columns, after the system monitor Pulse: each metric's icon and name in its own colour (CPU
-  blue, its system share red; memory green; GPU red; disk orange, writes blue; network teal, sent
-  blue; battery green, orange when low), a large figure with its unit (CPU now, memory in use, GPU
-  now, disk free, download rate, battery), and the last two minutes as a dot history — columns of
-  dots, newest on the right, each lit from the bottom as far as its value reaches, the parts of a
-  stacked metric in their colours (`dotHistory`). GPU and battery are hidden when the host has
-  none to report; uptime follows the tiles. A tile opens the device's **status details**
-  (`hostStatusView`, Home's own page until Back to Home or another page): every tile in full, up
-  to three side by side, with its caption ("Now", "In use of 16 GB", "Free of 512 GB",
+  Settings closed), the GUI leases a watch of the recent devices (`watch.set`, eight at most,
+  renewed every 10 s and dropped as Home hides); a host whose status pane is open stays in the
+  lease, first, Home shown or not (`watchLease`). A watched device's card shows four figures
+  (`compactFigures`): CPU now, memory in use and the download rate, then the battery, else the
+  GPU, else the free disk — each with its name, value and unit, and a thin bar in the metric's
+  colour (CPU blue; memory green; GPU red; disk orange; network teal, its bar against the last
+  two minutes' highest; battery green, orange when low). A click on them opens the device's
+  **status** as a pane of its own (`statusTab`, "NUC · Status", in the sidebar like any pane):
+  every metric in full after the system monitor Pulse, up to three side by side, each with its
+  icon and name in its colour, its caption ("Now", "In use of 16 GB", "Free of 512 GB",
   "Downloading", "Charging"), the figure, three smaller ones (CPU: apps, system, cores; memory:
   used, available, total; GPU: average and peak of the history; disk: reading, writing, used;
-  network: uploading, received, sent) and a taller history. Never stale data as current: a sample
-  up to 6 s old shows as it is; from 6 to 60 s the tiles are dimmed with "Updated N s ago"; older,
-  no values show, only "Status from HH:MM", and the histories are cleared. Without a sample the card says how the watch goes:
-  "Getting its status…" with the loading indicator, no saved password or key, needs Kyokai 0.4.1
-  there, or refused.
-
+  network: uploading, received, sent), and the last two minutes as a dot history — columns of
+  dots, newest on the right, each lit from the bottom as far as its value reaches, the parts of a
+  stacked metric in their colours (`dotHistory`); GPU and battery are hidden when the host has
+  none to report, and the uptime is beside the name. Never stale data as current: a sample up to
+  6 s old shows as it is; from 6 to 60 s the figures are dimmed with "Updated N s ago"; older, no
+  values show, only "Status from HH:MM", and the histories are cleared. Without a sample the card
+  says how the watch goes: "Getting its status…" with the loading indicator, no saved password or
+  key, needs Kyokai 0.4.1 there, or refused.
 - **Confirmations:** a controller waiting for this host's user shows as a card above the panes with
   its Device ID, whether it is known or a new key claiming a known ID, a warning when it gave no
   password, and a switch per requested
@@ -176,7 +185,7 @@ when `SCREENSHOT_DIR` is set.
   direct connections (off by default; on and fixed in the helper modes; applied as it is switched,
   [networking.md](networking.md)), its ⓘ warning that it makes this device listen and easier to
   find, which a protocol choice does not; and Latency-first routing.
-- **Device names:** wherever a device appears (a confirmation, Recent, the panes and the sidebar, trusted
+- **Device names:** wherever a device appears (a confirmation, Home's devices, the panes and the sidebar, trusted
   devices, the viewer's title, the Network page) its name — the one this device's user gave it
   (`gui.json` `aliases`, never sent anywhere), else the friendly name it gives itself — goes beside
   the Device ID, never instead of it,

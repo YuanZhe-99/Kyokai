@@ -259,6 +259,7 @@
   "ActionManage": "Manage",
   "ActionMore": "More",
   "ActionNewPassword": "New password",
+  "ActionOpen": "Open",
   "ActionOpenFolder": "Open folder",
   "ActionRemove": "Remove",
   "ActionRename": "Rename…",
@@ -314,7 +315,6 @@
   "ByAddressRangesHint": "Address ranges (192.168.0.0/16) or single addresses, one per line. By default: local networks and Tailscale (100.64.0.0/10). Connections from anywhere else are closed at once.",
   "ByAddressSaved": "Address ranges saved.",
   "ByAddressTitle": "Accept connections by address",
-  "CardAI": "AI",
   "CardConnected": "Connected",
   "CardNotOnNetwork": "Not on the network",
   "CardOffline": "Offline",
@@ -347,15 +347,10 @@
   "CloseQuit": "Quit",
   "ConnectIdentifying": "Looking for the device at that address…",
   "ConnectNeedsNetwork": "To connect by Device ID, join a network on the Network page first. An IP address or domain name works without one.",
-  "ConnectOptions": "Options",
   "ConnectPlaceholder": "Device ID or address",
-  "ConnectRecent": "Recent",
   "ConnectRemember": "Remember password",
-  "ConnectTitle": "Control another device",
-  "ConnectWithAI": "Also ask to run AI tasks there",
   "Copied": "Copied",
   "DeviceLast": "Last connected {time}",
-  "DeviceMenu": "More",
   "DiagEngine": "Engine",
   "DiagEngineRunning": "Running since {time}",
   "@DiagEngineRunning": {
@@ -407,7 +402,22 @@
   "HelperRestarted": "Kyokai Helper restarted with the permissions allowed so far.",
   "HideFromCaptureAbout": "Keeps Kyokai's windows out of screenshots, screen sharing and the AI's view.",
   "HomeDeviceID": "Device ID",
-  "HomePasswordHint": "Changes every time Kyokai starts, or when you ask for a new one.",
+  "HomeDevices": "Devices",
+  "HomeDevicesNone": "Devices you connect to show here.",
+  "HomeFilterAll": "All",
+  "HomeOpenAI": "AI task",
+  "HomeOpenAs": "Open as",
+  "HomeOthersNone": "No other Kyokai device is online in your networks.",
+  "HomeOthersNote": "{count, plural, =0 {Kyokai devices you haven't connected to} one {Kyokai devices you haven't connected to · #} other {Kyokai devices you haven't connected to · #}}",
+  "@HomeOthersNote": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "HomeOthersSwitch": "Others in my networks",
+  "HomeOthersTitle": "In your networks",
   "HomePasswordsOff": "No password opens this device: other devices sign in with a key, or ask you. Change it in Permissions.",
   "HomePermanentMissing": "No permanent password is set, so no password opens this device. Set one in Permissions.",
   "HomePermanentOnly": "Only the permanent password opens this device. Change it in Permissions.",
@@ -575,6 +585,7 @@
   "PaneSplitDown": "Split down",
   "PaneSplitNone": "Open another connection first; it can then go beside this one.",
   "PaneSplitRight": "Split right",
+  "PaneStatus": "Status",
   "PasswordForgotten": "The saved password is forgotten.",
   "PasswordGrantsNote": "Anything else waits for your OK",
   "PasswordGrantsTitle": "With a correct password",
@@ -923,7 +934,6 @@
   "StatusApps": "Apps",
   "StatusAvailable": "Available",
   "StatusAverage": "Average",
-  "StatusBack": "Back to Home",
   "StatusBattery": "Battery",
   "StatusCPU": "CPU",
   "StatusChargingNow": "Charging",
@@ -963,6 +973,15 @@
   "StatusNoCredential": "Save a password or a key for this device to see its status here.",
   "StatusNow": "Now",
   "StatusOnBattery": "On battery",
+  "StatusOpen": "Open its status",
+  "StatusPaneTitle": "{name} · Status",
+  "@StatusPaneTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "StatusPeak": "Peak",
   "StatusReading": "Reading",
   "StatusReceived": "Received",

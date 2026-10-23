@@ -173,6 +173,8 @@ var (
 	serverSVG []byte
 	//go:embed assets/icons/download.svg
 	downloadSVG []byte
+	//go:embed assets/icons/copy.svg
+	copySVG []byte
 	//go:embed assets/icons/more.svg
 	moreSVG []byte
 
@@ -195,6 +197,7 @@ var (
 	rowServer   = ui.MustParseSVG(serverSVG)
 	rowDownload = ui.MustParseSVG(downloadSVG)
 	rowMore     = ui.MustParseSVG(moreSVG)
+	rowCopy     = ui.MustParseSVG(copySVG)
 	rowGlobe    = statusIconNetwork
 )
 
@@ -274,71 +277,75 @@ var (
 // Layout and type scale (doc/en-us/gui.md: body 14, titles 20–24, nothing
 // below 12).
 const (
-	sizeSmall      float32 = 12
-	sizeBody       float32 = 14
-	sizeHeading    float32 = 16
-	sizeTitle      float32 = 22
-	sizeDeviceID   float32 = 34
-	navIconSize    float32 = 16 // the sidebar's icons
-	cardRadius     float32 = 12
-	cardPad        float32 = 16
-	gap            float32 = 12
-	contentMaxW    float32 = 760
-	inputAreaH     float32 = 72  // a multi-line input of about three lines
-	aiPanelW       float32 = 320 // the viewer's AI panel
-	clipPanelW     float32 = 300 // the viewer's clipboard panel
-	shellSidebarW  float32 = 248 // the sidebar beside the panes
-	railW          float32 = 56  // the sidebar folded to its icons
-	sbRowH         float32 = 32  // a row of the sidebar
-	sbTopH         float32 = 40  // its top row: hide the sidebar and +
-	paneMargin     float32 = 8   // between the panes, and from the window's edges
-	paneHeaderH    float32 = 44  // a pane's header
-	paneRadius     float32 = 14  // a pane's corners
-	paneButton     float32 = 28  // a button in a pane's header or the sidebar
-	winButtonW     float32 = 40  // a window button the view draws on Windows
-	winButtonH     float32 = 30
-	winGlyph       float32 = 10  // its glyph
-	settingsNavW   float32 = 240 // the Settings sheet's sections
-	sheetX         float32 = 64  // the Settings sheet, from the window's sides
-	sheetTop       float32 = 48  // and from its top
-	sheetBottom    float32 = 32  // and its bottom
-	sheetHeaderH   float32 = 52  // its header
-	settingsPageW  float32 = 720 // a Settings page's column
-	sizePageTitle  float32 = 20  // its title
-	listRadius     float32 = 12  // a list of rows on it
-	rowMinH        float32 = 54  // a row
-	tileSize       float32 = 32  // the tile a row starts with
-	permTileH      float32 = 60  // a permission's toggle tile
-	moreW          float32 = 360 // a row's longer explanation (How it works)
-	splitMenuW     float32 = 280 // a pane header's split menu
-	thisDeviceW    float32 = 300 // Home's This device column
-	deviceCardW    float32 = 236 // a recent device's card on Home
-	onlineDot      float32 = 8   // a device's online dot
-	connectPanelW  float32 = 420 // a connection tab's panel before the picture
-	pointerR       float32 = 6   // the host's pointer marker in the viewer
-	barTop         float32 = 8   // the viewer toolbar, from the picture's top edge
-	barMargin      float32 = 8   // the least room it keeps from the picture's sides
-	barRadius      float32 = 10  // its corners
-	barIconSize    float32 = 16  // its icons
-	avatarSize     float32 = 36  // a device's round avatar
-	logoSize       float32 = 22  // a vendor logo inside it (about 64%)
-	busySize       float32 = 16  // a loading indicator beside text
-	busySizeLarge  float32 = 28  // a loading indicator on its own
-	chipRadius     float32 = 10  // a chip (a saved sign-in, a state)
-	homeMaxW       float32 = 1120
-	homeCardMinW   float32 = 300 // a device's card on Home, at least
-	homeColumns    int     = 3   // Home's device cards side by side, at most
-	tileGap        float32 = 8   // between a card's status tiles
-	sizeMetric     float32 = 34  // a status figure in a host's details
-	statusIconSize float32 = 14  // a status tile's icon
-	tileRadius     float32 = 10  // a status tile's corners
-	statusTileMinW float32 = 280 // a status tile in a host's details, at least
-	dotSize        float32 = 4   // a dot of a status history
-	dotPitch       float32 = 6   // from one dot to the next
-	dotInset       float32 = 6   // around the dots
-	dotRowsCard    int     = 4   // a history's rows on a device card
-	dotRowsFull    int     = 6   // and in a host's details
-	noticeBottom   float32 = 24  // the viewer's notices over the picture, from its bottom edge
+	sizeSmall       float32 = 12
+	sizeBody        float32 = 14
+	sizeHeading     float32 = 16
+	sizeTitle       float32 = 22
+	sizeDeviceID    float32 = 34
+	navIconSize     float32 = 16 // the sidebar's icons
+	cardRadius      float32 = 12
+	cardPad         float32 = 16
+	gap             float32 = 12
+	contentMaxW     float32 = 760
+	inputAreaH      float32 = 72  // a multi-line input of about three lines
+	aiPanelW        float32 = 320 // the viewer's AI panel
+	clipPanelW      float32 = 300 // the viewer's clipboard panel
+	shellSidebarW   float32 = 248 // the sidebar beside the panes
+	railW           float32 = 56  // the sidebar folded to its icons
+	sbRowH          float32 = 32  // a row of the sidebar
+	sbTopH          float32 = 40  // its top row: hide the sidebar and +
+	paneMargin      float32 = 8   // between the panes, and from the window's edges
+	paneHeaderH     float32 = 44  // a pane's header
+	paneRadius      float32 = 14  // a pane's corners
+	paneButton      float32 = 28  // a button in a pane's header or the sidebar
+	winButtonW      float32 = 40  // a window button the view draws on Windows
+	winButtonH      float32 = 30
+	winGlyph        float32 = 10  // its glyph
+	settingsNavW    float32 = 240 // the Settings sheet's sections
+	sheetX          float32 = 64  // the Settings sheet, from the window's sides
+	sheetTop        float32 = 48  // and from its top
+	sheetBottom     float32 = 32  // and its bottom
+	sheetHeaderH    float32 = 52  // its header
+	settingsPageW   float32 = 720 // a Settings page's column
+	sizePageTitle   float32 = 20  // its title
+	listRadius      float32 = 12  // a list of rows on it
+	rowMinH         float32 = 54  // a row
+	tileSize        float32 = 32  // the tile a row starts with
+	permTileH       float32 = 60  // a permission's toggle tile
+	moreW           float32 = 360 // a row's longer explanation (How it works)
+	splitMenuW      float32 = 280 // a pane header's split menu
+	deviceCardW     float32 = 236 // a recent device's card on Home
+	onlineDot       float32 = 8   // a device's online dot
+	connectPanelW   float32 = 420 // a connection tab's panel before the picture
+	pointerR        float32 = 6   // the host's pointer marker in the viewer
+	barTop          float32 = 8   // the viewer toolbar, from the picture's top edge
+	barMargin       float32 = 8   // the least room it keeps from the picture's sides
+	barRadius       float32 = 10  // its corners
+	barIconSize     float32 = 16  // its icons
+	avatarSize      float32 = 36  // a device's round avatar
+	logoSize        float32 = 22  // a vendor logo inside it (about 64%)
+	busySize        float32 = 16  // a loading indicator beside text
+	busySizeLarge   float32 = 28  // a loading indicator on its own
+	chipRadius      float32 = 10  // a chip (a saved sign-in, a state)
+	homeMaxW        float32 = 1120
+	homeCardMinW    float32 = 300 // a device's card on Home, at least
+	homeCardH       float32 = 208 // and its height: the cards of a row match
+	homeActionW     float32 = 32  // a service's button on it
+	homeOtherH      float32 = 58  // a device in my networks never connected to
+	homeTopGap      float32 = 14  // between This device and Connect to a device
+	homeTwoColumnsW float32 = 640 // the room they need side by side
+	homeColumns     int     = 3   // Home's device cards side by side, at most
+	tileGap         float32 = 8   // between a card's status tiles
+	sizeMetric      float32 = 34  // a status figure in a host's details
+	statusIconSize  float32 = 14  // a status tile's icon
+	tileRadius      float32 = 10  // a status tile's corners
+	statusTileMinW  float32 = 280 // a status tile in a host's details, at least
+	dotSize         float32 = 4   // a dot of a status history
+	dotPitch        float32 = 6   // from one dot to the next
+	dotInset        float32 = 6   // around the dots
+	dotRowsCard     int     = 4   // a history's rows on a device card
+	dotRowsFull     int     = 6   // and in a host's details
+	noticeBottom    float32 = 24  // the viewer's notices over the picture, from its bottom edge
 )
 
 // Where the macOS traffic lights sit: the close button's top-left corner,
