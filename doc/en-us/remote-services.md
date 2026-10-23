@@ -92,8 +92,8 @@ secret. Private keys never leave the engine: the SSH client signs through `keys.
 ## Clients
 
 The GUI's clients (`internal/gui`: `remote.go`, `servicetab.go`, `ssh.go`, `desktops.go`,
-`screen.go`) run on the controller and reach the service only through the tunnel; a service tab
-is a tab like a desktop's ([gui.md](gui.md), "Connections").
+`screen.go`) run on the controller and reach the service only through the tunnel; a service pane
+is a pane like a desktop's ([gui.md](gui.md), "Connections").
 
 - **The link (`serviceLink`).** `Open` is the tunnel (`tunnel.open` through the engine, a
   `net.Conn` carrying the service's bytes); `Credential` and `SaveCredential` are
@@ -104,7 +104,7 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
   `127.0.0.1` (ports from `KYOKAI_DEV_SSH_PORT`, `KYOKAI_DEV_RDP_PORT`, `KYOKAI_DEV_VNC_PORT`) and
   keeps sign-ins in memory; an engine that opens no tunnels is refused, never replaced by this
   computer's own ports.
-- **The sign-in method** (`signInMethods`, `signInPlan`): a tab tries nothing the person did not
+- **The sign-in method** (`signInMethods`, `signInPlan`): a pane tries nothing the person did not
   choose. With no method remembered for the device's service (a first connection, Remember off, or
   a sign-in saved before 0.5.1) it shows the form before any tunnel opens: SSH offers Key (a user
   name and this device's keys) or Password (a user name and password); VNC Password only, User name
@@ -139,7 +139,7 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
   TigerVNC works as installed; TightVNC and UltraVNC refuse connections from their own computer
   until "Allow loopback connections" (TightVNC) or `AllowLoopback` (UltraVNC) is on, and need a VNC
   password (UltraVNC: MS-Logon and encryption plugins off); RealVNC Server's own sign-ins (RA2) are
-  not supported, only its VNC password with encryption allowed off. The tab says which: a server
+  not supported, only its VNC password with encryption allowed off. The pane says which: a server
   that closes before its greeting (`rfb.ErrClosedBeforeGreeting`) is named with the loopback
   setting, a refusal shows the server's own reason (`rfb.RefusedError`), and a server offering no
   supported sign-in (`rfb.ErrUnsupportedServer`, an RFB 3.3 type beyond a byte named whole) asks
@@ -153,8 +153,8 @@ is a tab like a desktop's ([gui.md](gui.md), "Connections").
   pointer, its buttons and the wheel go in the other desktop's pixels. In Map and Translate the
   keyboard grab takes keys as for a desktop (`App.takeKey`); in Legacy named keys go with their
   modifiers and text as text; in every mode the controller's input method is off in the picture,
-  as in a desktop's. The clipboard's text crosses while the tab is in front: this
-  computer's goes as the tab comes in front, the other desktop's comes back as it changes.
+  as in a desktop's. The clipboard's text crosses while the pane is in front: this
+  computer's goes as the pane comes in front, the other desktop's comes back as it changes.
   Ctrl+Alt+Del is in Actions.
 - **Sign-ins kept**: see the sign-in method above; SSH also saves the server's key pinned on first
   use, with the remembered method and user when the key is new to a remembered sign-in.

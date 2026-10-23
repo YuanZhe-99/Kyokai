@@ -25,13 +25,15 @@ another app's: other apps were references for behaviour only.
   edges. The tab strip goes. The sidebar lists Home and every open pane; a split shows as one group,
   its panes indented under the group's name, the group a card while it is in front; a pane dragged
   out of a group leaves it. Top: hide the sidebar, and + (the picker below). Bottom: search,
-  appearance (Follow system, Light and Dark in turn: a sun with a moon, a sun, a moon), the
+  appearance (Follow system, Light and Dark in turn: a half-filled monitor, a sun, a moon), the
   settings gear, the network state. Hidden, the sidebar folds to an icon rail with tooltips.
 - **Panes.** Home, Desktop, SSH, Remote Desktop, VNC and AI task panes share one header: icon,
   device name, a second line (Device ID, "SSH · user", "AI task"), route and delay, then split
   right, split down, maximize or restore, and close; a narrow pane folds the first three into ⋯.
-  Windows' caption buttons end the top-right pane's header; macOS' traffic lights sit at the top of
-  the sidebar or rail. The pane in focus has an accent edge. Splits use the existing pane tree
+  Windows' caption buttons are drawn by the view (`HideWindowButtons`; maximize keeps the snap
+  layouts through `MaximizeButton`) and end the top-right pane's header after a separator, or the
+  Settings sheet's while it is up; macOS' traffic lights sit at the top of the sidebar or rail.
+  The pane in focus has an accent edge. Splits use the existing pane tree
   (`split`, four panes at most). A single pane dragged out gets a window of its own without a
   sidebar: the pane alone, never split (its header has no split buttons), the header holding the
   window's controls (the traffic lights at its start on macOS); closing that window disconnects
@@ -69,8 +71,7 @@ another app's: other apps were references for behaviour only.
 
 | Milestone | Scope | Done when |
 |---|---|---|
-| M0 Spikes | the material behind a transparent page with floating panes (light, dark; Windows 11, macOS); MyGo's Windows caption buttons (46 × `TitleBarHeight`, snap layouts) at the end of the top-right pane's header — placed, or hidden (`HideWindowButtons`) for our own, or a MyGo change; a live picture clipped to a rounded pane without a cost on the video path; the keyboard grab stepping aside while a sheet, popover or palette is open | each answered on both platforms, recorded in platform-notes |
-| M1 Shell | the sidebar (Home, open panes and groups, the bottom row, the rail), pane headers and focus, no tab strip, groups on the split tree; a single pane dragged out into a window of its own, without a sidebar and never split; tray, close and quit rules unchanged | view tests render 0, 1, 3 and 4 panes in both themes and four languages; the native app seen on Windows and macOS; gui.md rewritten |
+| M0–M1 on macOS | the shell built and run on a Mac: the sidebar material behind floating panes, the traffic lights over the sidebar's top row and on a window of its own's pane, the keyboard grab stepping aside under the Settings sheet (Windows done: platform-notes, "0.6.0 shell, M1") | seen on the maintainer's Mac, recorded in platform-notes |
 | M2 Settings | the sheet, grouped navigation, settings search, the row style and permission tiles; every current setting moved (General; Permissions as Access; Network; Security as Security & privacy; Run mode; AI providers; About), the copy shortened | every setting reachable in the sheet and by search; no settings page left in the sidebar |
 | M3 Home | This device, Connect with Open as, cards of equal height, "Others in my networks", the status details as a pane | view tests with the network devices on and off |
 | M4 + and search | the picker (kinds, what each device offers, where it opens) and the Ctrl+K palette | both usable by keyboard alone; tests for the matching and the offers |

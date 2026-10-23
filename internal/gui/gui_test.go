@@ -549,19 +549,25 @@ func TestClipboardHistory(t *testing.T) {
 	}
 }
 
-// TestFrontFollowsTheWindowUsedLast: only the tab shown in the window used
-// last is in front (none on the Kyokai tab), and each change tells the
+// TestFrontFollowsTheWindowUsedLast: only the pane in focus in the window
+// used last is in front (none while Home is), and each change tells the
 // engine once.
 func TestFrontFollowsTheWindowUsedLast(t *testing.T) {
 	a := &App{viewers: map[string]*viewer{}}
+	a.home = &homeTab{app: a}
 	newV := func(device string) *viewer {
 		v := &viewer{app: a, device: device, out: make(chan []byte, 8)}
 		a.viewers[device] = v
 		return v
 	}
 	x, y, z := newV("111111111"), newV("222222222"), newV("333333333")
-	a.main = &viewerWindow{app: a, main: true, tabs: []tab{x, y}, split: split{root: &pane{tab: y}, focus: y}}
-	other := &viewerWindow{app: a, tabs: []tab{z}, split: split{root: &pane{tab: z}, focus: z}}
+	a.main = &viewerWindow{app: a, main: true}
+	for _, v := range []tab{x, y} {
+		a.main.tabs = append(a.main.tabs, v)
+		a.main.placeLocked(v, nil, zoneMiddle)
+	}
+	other := &viewerWindow{app: a, tabs: []tab{z}}
+	other.placeLocked(z, nil, zoneMiddle)
 	sent := func(v *viewer) string {
 		select {
 		case p := <-v.out:
@@ -583,10 +589,11 @@ func TestFrontFollowsTheWindowUsedLast(t *testing.T) {
 	if y.clip.front || !z.clip.front || sent(y) == "" || sent(z) == "" {
 		t.Fatal("the other window's tab should be in front now")
 	}
-	a.lastWin, a.main.home = a.main, true
+	a.lastWin = a.main
+	a.main.homeGroupLocked()
 	a.syncFront()
 	if x.clip.front || y.clip.front || z.clip.front {
-		t.Fatal("on the Kyokai tab no tab is in front")
+		t.Fatal("while Home shows no pane is in front")
 	}
 }
 
@@ -733,78 +740,121 @@ func demoAISettings(keys bool) *localapi.AISettings {
 	}
 }
 
-// The main window shows Home with the connections as tabs after it; a
-// connection's tab shows its picture, and one still waiting for the
-// device's user shows the password field.
-func TestConnectionTabsRender(t *testing.T) {
+// The main window (doc/en-us/gui.md, "Windows"), in every language and both
+// themes: the sidebar lists Home and the connections (none, one, or a
+// group of several as one entry); the pane shown has its header and its
+// picture, one still waiting for the device's user the password field; the
+// window's controls keep their room; folded, the sidebar is a rail;
+// Settings is a sheet over everything.
+func TestShellRenders(t *testing.T) {
 	pic := image.NewRGBA(image.Rect(0, 0, 320, 180))
 	for i := range pic.Pix {
 		pic.Pix[i] = byte(i * 5)
 	}
-	a := &App{viewers: map[string]*viewer{}, busy: map[string]bool{}}
-	a.status = &localapi.Status{DeviceID: "482916735", Persistence: "os-store", Network: localapi.NetworkStatus{State: "online"}}
-	vw := &viewerWindow{app: a, main: true}
-	a.main = vw
+	a := &App{viewers: map[string]*viewer{}, services: map[string]*serviceTab{}, busy: map[string]bool{}}
+	a.connected = true
+	a.status = &localapi.Status{DeviceID: "482916735", Persistence: "os-store", Network: localapi.NetworkStatus{NetworkNode: localapi.NetworkNode{State: "online"}}}
+	a.home = &homeTab{app: a}
+	var tabs []tab
 	for i, c := range []struct{ title, device, state string }{
 		{"Office laptop · 213 559 601", "213559601", "connected"},
 		{"Studio Mac · 657 365 333", "657365333", "confirming"},
 		{"647 222 040", "647222040", "failed"},
+		{"NUC · 402 118 905", "402118905", "connected"},
 	} {
 		v := &viewer{app: a, device: c.device, title: c.title, preset: 1, fpsCap: "30 fps",
 			start: videoStart{Codec: "vp9-sw", Width: 320, Height: 180}, bm: ui.NewBitmap(pic),
 			phase: localapi.SessionInfo{ID: uint64(i + 1), DeviceID: c.device, State: c.state, Failure: []byte(`{"refused":"password"}`)}}
 		v.pumping = c.state == "connected"
-		vw.tabs = append(vw.tabs, v)
+		tabs = append(tabs, v)
 		a.viewers[c.device] = v
 	}
 	dir := os.Getenv("SCREENSHOT_DIR")
-	for _, shot := range []struct {
-		name  string
-		cur   int
-		home  bool
-		room  ui.TitleBar
-		drops []struct {
-			tab, target int
-			zone        dropZone
-		}
-	}{{"tabs-home", 0, true, ui.TitleBar{}, nil}, {"tabs-picture", 0, false, ui.TitleBar{}, nil}, {"tabs-waiting", 1, false, ui.TitleBar{}, nil}, {"tabs-failed", 2, false, ui.TitleBar{}, nil},
-		// The strip is the title bar: room for the traffic lights, or for
-		// Windows' buttons.
-		{"tabs-titlebar-mac", 0, false, ui.TitleBar{Height: 38, Left: 76}, nil}, {"tabs-titlebar-windows", 0, true, ui.TitleBar{Height: 38, Right: 138}, nil},
-		// Split: two side by side; one full height beside two stacked.
-		{name: "tabs-split-columns", cur: 0, drops: []struct {
-			tab, target int
-			zone        dropZone
-		}{{1, 0, zoneRight}}},
-		{name: "tabs-split-three", cur: 0, drops: []struct {
-			tab, target int
-			zone        dropZone
-		}{{1, 0, zoneRight}, {2, 1, zoneBottom}}}} {
-		vw.split.single(vw.tabs[shot.cur])
-		vw.home = shot.home
-		for _, d := range shot.drops {
-			vw.split.place(vw.tabs[d.tab], vw.tabs[d.target], d.zone)
-		}
-		want := vw.split
-		tt := ui.NewTester(vw.view, 1100, 640)
-		tt.SetTitleBar(shot.room)
-		tt.Frame()
-		tt.Frame()
-		if vw.split != want || vw.home != shot.home {
-			t.Fatalf("%s: rendering changed the tab shown", shot.name)
-		}
-		if dir == "" {
-			continue
-		}
-		f, err := os.Create(filepath.Join(dir, "en-"+shot.name+".png"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := png.Encode(f, tt.Image()); err != nil {
-			t.Fatal(err)
-		}
-		f.Close()
+	type drop struct {
+		tab, target int
+		zone        dropZone
 	}
+	defer func(own bool) { ownWindowButtons = own }(ownWindowButtons)
+	shots := []struct {
+		name     string
+		cur      int // -1: Home
+		empty    bool
+		mac      bool
+		drops    []drop
+		rail     bool
+		settings bool
+	}{
+		{name: "shell-empty", cur: -1, empty: true}, {name: "shell-home", cur: -1},
+		{name: "shell-picture"}, {name: "shell-waiting", cur: 1}, {name: "shell-failed", cur: 2},
+		// The window's controls: the traffic lights over the sidebar, or
+		// the buttons the view draws on the top-right pane's header.
+		{name: "shell-titlebar-mac", mac: true}, {name: "shell-titlebar-windows", cur: -1},
+		// A group: two side by side; one full height beside two stacked;
+		// four in two columns.
+		{name: "shell-split-columns", drops: []drop{{1, 0, zoneRight}}},
+		{name: "shell-split-three", drops: []drop{{1, 0, zoneRight}, {2, 1, zoneBottom}}},
+		{name: "shell-split-four", drops: []drop{{1, 0, zoneRight}, {2, 1, zoneBottom}, {3, 0, zoneBottom}}},
+		{name: "shell-rail", rail: true, drops: []drop{{1, 0, zoneRight}}},
+		{name: "shell-settings", cur: -1, settings: true},
+	}
+	for _, lang := range []string{"en", "zh-Hans", "zh-Hant", "ja"} {
+		i18n.SetLocaleFunc(func() string { return lang })
+		for _, dark := range []bool{false, true} {
+			if dark && lang != "en" {
+				continue
+			}
+			for _, shot := range shots {
+				vw := &viewerWindow{app: a, main: true}
+				a.main = vw
+				vw.homeGroupLocked()
+				for _, v := range tabs {
+					if shot.empty {
+						break
+					}
+					vw.tabs = append(vw.tabs, v)
+					vw.placeLocked(v, nil, zoneMiddle)
+				}
+				for _, d := range shot.drops {
+					vw.placeLocked(tabs[d.tab], tabs[d.target], d.zone)
+				}
+				if shot.cur < 0 {
+					vw.homeGroupLocked()
+				} else if len(shot.drops) == 0 {
+					vw.placeLocked(tabs[shot.cur], nil, zoneMiddle)
+				}
+				a.prefs.SidebarRail = shot.rail
+				a.settingsOpen, a.page = shot.settings, pageGeneral
+				cur, want := vw.cur, vw.cur.split
+				ownWindowButtons = !shot.mac
+				tt := ui.NewTester(vw.view, 1280, 800)
+				tt.SetDark(dark)
+				if shot.mac {
+					tt.SetTitleBar(ui.TitleBar{Height: 28, Left: 76})
+				}
+				tt.Frame()
+				tt.Frame()
+				if vw.cur != cur || vw.cur.split != want {
+					t.Fatalf("%s: rendering changed the pane shown", shot.name)
+				}
+				if dir == "" {
+					continue
+				}
+				suffix := ""
+				if dark {
+					suffix = "-dark"
+				}
+				f, err := os.Create(filepath.Join(dir, lang+"-"+shot.name+suffix+".png"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := png.Encode(f, tt.Image()); err != nil {
+					t.Fatal(err)
+				}
+				f.Close()
+			}
+		}
+	}
+	i18n.SetLocaleFunc(nil)
 }
 
 // TestIncompatibleNamesTheOutdatedSide: a version mismatch blames this

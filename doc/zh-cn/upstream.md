@@ -7,9 +7,11 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
 
 - **Windows 窗口外观与材质（验证，2026-10-23）。** 以 `Vibrancy` 创建的窗口，在界面不画背景的地方显示材质
   （Windows 11 上 `Context.Vibrancy` 为 true；根元素须为 `ui.Transparent`）；`PrintWindow` 截图不包含背景材质。
-  隐藏标题栏时，标题栏按钮由 MyGo 自己绘制（含贴靠布局）：每个 46 点，位于窗口右上角之上，高度等于
-  `TitleBarHeight`，所占位置见 `Context.TitleBar()`。`Bitmap.Update` 只重绘、不重建界面，因此圆角裁剪元素中的实时画面
-  不会引起界面重建。
+  隐藏标题栏时，系统的标题栏按钮每个 46 点，位于窗口右上角之上，高度等于 `TitleBarHeight`，所占位置见
+  `Context.TitleBar()`——它们在窗口的角上，从不在小窗之内。`HideWindowButtons` 去掉这些按钮，保留调整大小的边缘、
+  阴影与圆角；界面随后自己画按钮，调用 `Minimize`、`Maximize`、`Unmaximize` 与 `Close`，`Element.MaximizeButton`
+  让它的最大化按钮带上 Windows 11 的贴靠布局。会话锁定时，向界面的子窗口（最大的那个）投递消息可以点击它。
+  `Bitmap.Update` 只重绘、不重建界面，因此圆角裁剪元素中的实时画面不会引起界面重建。
 - **0.6.3（2026-10-23 核实）。** Kyokai 依赖的行为没有变化。Windows 上消息对话框的结果不再放在会移动的 Go
   栈上，Direct3D 对没有变化的帧按显示器刷新率限速；按下可以穿过隐藏滚动条的轨道；获得焦点的文本框接收自己的
   按键，因此 Windows 上“编辑 › 粘贴”的 Ctrl+V 只粘贴一次（画面不是文本框，其按键不变）；WebKit 内容规则引入了

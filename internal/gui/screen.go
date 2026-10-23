@@ -277,7 +277,7 @@ func (sc *screenClient) view(c *ui.Context, s *serviceTab) {
 	bm, fb, original := sc.bm, sc.fb, sc.original
 	sc.mu.Unlock()
 	focused := false
-	defer func() { s.syncGrab(focused) }()
+	defer func() { s.syncGrab(focused && !s.app.covered()) }()
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
 		stage := ui.Column(c.Key("screen-stage")).Grow(1).FillWidth().MinHeight(0)
 		stage.Children(func() {

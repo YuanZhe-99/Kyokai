@@ -20,11 +20,11 @@ func TestDecideClose(t *testing.T) {
 		{"quitting from a viewer window", closeFacts{quitting: true, liveHere: 2, liveAll: 2}, closeDecision{closeNow, 0}},
 		{"main, Quit chosen, nothing live", closeFacts{main: true, quits: true}, closeDecision{closeQuit, 0}},
 		{"main, Quit chosen, live elsewhere", closeFacts{main: true, quits: true, liveAll: 1}, closeDecision{closeQuit, 1}},
-		{"main hides, nothing live", closeFacts{main: true, homeShown: true}, closeDecision{closeHide, 0}},
+		{"main hides, nothing live", closeFacts{main: true, noneShown: true}, closeDecision{closeHide, 0}},
 		{"main hides, one shown", closeFacts{main: true, liveHere: 1, liveAll: 1}, closeDecision{closeHide, 0}},
-		{"main hides, one behind Home", closeFacts{main: true, homeShown: true, liveHere: 1, liveAll: 1}, closeDecision{closeHide, 1}},
+		{"main hides, one not shown", closeFacts{main: true, noneShown: true, liveHere: 1, liveAll: 1}, closeDecision{closeHide, 1}},
 		{"main hides, two", closeFacts{main: true, liveHere: 2, liveAll: 2}, closeDecision{closeHide, 2}},
-		{"main hides, live only elsewhere", closeFacts{main: true, homeShown: true, liveAll: 2}, closeDecision{closeHide, 0}},
+		{"main hides, live only elsewhere", closeFacts{main: true, noneShown: true, liveAll: 2}, closeDecision{closeHide, 0}},
 		{"window, one", closeFacts{liveHere: 1, liveAll: 1}, closeDecision{closeWindow, 0}},
 		{"window, two", closeFacts{liveHere: 2, liveAll: 3}, closeDecision{closeWindow, 2}},
 		{"window, none live", closeFacts{liveAll: 1}, closeDecision{closeWindow, 0}},
@@ -36,23 +36,33 @@ func TestDecideClose(t *testing.T) {
 }
 
 // Closing the main window counts its live tabs, desktops and services
-// alike, and whether it shows Home.
+// alike, and whether it shows any of them.
 func TestCloseFactsCountEveryKind(t *testing.T) {
 	a := &App{viewers: map[string]*viewer{}, services: map[string]*serviceTab{}, tray: &Tray{}}
-	a.main = &viewerWindow{app: a, main: true, home: true}
+	a.home = &homeTab{app: a}
+	a.main = &viewerWindow{app: a, main: true}
 	desk := &viewer{app: a, device: "111111111", phase: localapi.SessionInfo{State: "connected"}}
 	ended := &viewer{app: a, device: "222222222", phase: localapi.SessionInfo{State: "failed"}}
 	ssh := &serviceTab{app: a, device: "111111111", service: serviceSSH, phase: svcRunning}
 	form := &serviceTab{app: a, device: "333333333", service: serviceVNC, phase: svcForm}
 	a.viewers[desk.device], a.viewers[ended.device] = desk, ended
 	a.services[ssh.tabKey()], a.services[form.tabKey()] = ssh, form
-	a.main.tabs = []tab{desk, ended, ssh, form}
+	for _, v := range []tab{desk, ended, ssh, form} {
+		a.main.tabs = append(a.main.tabs, v)
+		a.main.placeLocked(v, nil, zoneMiddle)
+	}
+	a.main.homeGroupLocked()
 	f := a.closeFactsFor(a.main)
-	want := closeFacts{main: true, liveHere: 2, liveAll: 2, homeShown: true}
+	want := closeFacts{main: true, liveHere: 2, liveAll: 2, noneShown: true}
 	if f != want {
 		t.Fatalf("closeFactsFor = %+v, want %+v", f, want)
 	}
 	if d := decideClose(f); d != (closeDecision{closeHide, 2}) {
 		t.Fatalf("decideClose = %+v", d)
+	}
+	// A live connection on screen is one the person sees going.
+	a.main.placeLocked(desk, nil, zoneMiddle)
+	if f := a.closeFactsFor(a.main); f.noneShown {
+		t.Fatalf("the desktop shows: %+v", f)
 	}
 }

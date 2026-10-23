@@ -70,7 +70,7 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
 ## 客户端
 
 界面的客户端（`internal/gui`：`remote.go`、`servicetab.go`、`ssh.go`、`desktops.go`、`screen.go`）运行在控制端，
-只经由隧道访问服务；服务标签页与桌面的标签页一样（[gui.md](gui.md)，“连接”）。
+只经由隧道访问服务；服务小窗与桌面的小窗一样（[gui.md](gui.md)，“连接”）。
 
 - **链接（`serviceLink`）。** `Open` 是隧道（经由引擎的 `tunnel.open`，一个承载该服务字节的 `net.Conn`）；
   `Credential` 与 `SaveCredential` 即 `credentials.get` 与 `credentials.set`；`Keys` 与 `Sign` 即 `keys.list` 与
@@ -78,7 +78,7 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
   `credentials.set` 替换某项服务已保存的登录信息。开发时 `KYOKAI_DEV_SERVICES=1` 用一个替身代替引擎：它连接
   `127.0.0.1`（端口来自 `KYOKAI_DEV_SSH_PORT`、`KYOKAI_DEV_RDP_PORT`、`KYOKAI_DEV_VNC_PORT`），并把登录信息保存在内存中；
   不能开隧道的引擎会被拒绝，绝不改用本机自己的端口。
-- **登录方式**（`signInMethods`、`signInPlan`）：标签不会尝试用户没有选择的任何方式。该设备的这项服务没有记住的方式时
+- **登录方式**（`signInMethods`、`signInPlan`）：小窗不会尝试用户没有选择的任何方式。该设备的这项服务没有记住的方式时
   （第一次连接、关闭了“记住”，或 0.5.1 之前保存的登录信息），在打开任何隧道之前先显示表单：SSH 提供“密钥”（用户名加本设备的密钥）
   或“密码”（用户名加密码）；VNC 提供“仅密码”、“用户名和密码”（Mac 的）或“无需登录”；远程桌面提供“用户名和密码”或“在远程屏幕上”。
   通过表单登录成功且打开了“记住”时，连同方式一起保存（有密码的方式也保存密码），下次连接用同样的方式登录而不再询问；
@@ -98,7 +98,7 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
   RSA（33）与 SRP（36）用户名加密码登录；按键以 keysym 发送。已由他人登录的 Mac 共享其屏幕（控制台会话）。在 Windows 上，
   TigerVNC 安装后即可使用；TightVNC 与 UltraVNC 会拒绝来自本机的连接，直到打开“Allow loopback connections”（TightVNC）
   或 `AllowLoopback`（UltraVNC），并且需要 VNC 密码（UltraVNC：关闭 MS-Logon 与加密插件）；不支持 RealVNC Server 自己的登录方式（RA2），
-  只支持允许关闭加密时使用其 VNC 密码。标签页会说明是哪种情况：在问候之前就关闭的服务器（`rfb.ErrClosedBeforeGreeting`）
+  只支持允许关闭加密时使用其 VNC 密码。小窗会说明是哪种情况：在问候之前就关闭的服务器（`rfb.ErrClosedBeforeGreeting`）
   会提示回环设置，拒绝时显示服务器自己的原因（`rfb.RefusedError`），不提供任何受支持登录方式的服务器
   （`rfb.ErrUnsupportedServer`，RFB 3.3 中超出一个字节、按整体命名的类型）会要求使用 VNC 密码认证。“仅密码”只向服务器请求 VNC 密码（2），“用户名和密码”优先请求 Apple 的登录方式，
   “无需登录”只请求无安全验证；需要登录而没得到的服务器会要求换一种方式，绝不先以空白信息尝试而被 Mac 记为一次失败；在登录过程中关闭连接的
@@ -106,7 +106,7 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
 - **两种画面**（`screenClient`）：帧缓冲在协议的 goroutine 中转换为 RGBA，并在主线程显示，像查看窗口一样适应窗口
   或以原始大小显示；指针、按键与滚轮以对方桌面的像素发送。在映射与翻译模式下，键盘抓取像桌面一样获取按键
   （`App.takeKey`）；传统模式下按名称的键连同其修饰键发送，文字以文字发送；每种模式下，控制端的输入法在画面中都是关闭的，
-  与桌面的画面相同。标签页位于前台期间剪贴板的文本互通：
-  标签页来到前台时发送本机的剪贴板，对方桌面的剪贴板改变时传回。Ctrl+Alt+Del 在“操作”中。
+  与桌面的画面相同。小窗位于前台期间剪贴板的文本互通：
+  小窗来到前台时发送本机的剪贴板，对方桌面的剪贴板改变时传回。Ctrl+Alt+Del 在“操作”中。
 - **保存的登录信息**：见上面的登录方式；SSH 还保存第一次使用时固定的服务器密钥，密钥对记住的登录而言是新的时，
   连同记住的方式与用户名一起保存。

@@ -29,6 +29,8 @@ type Prefs struct {
 	Helper bool `json:"helper,omitempty"`
 	// TrayHintShown records that the hide-to-tray notice was shown once.
 	TrayHintShown bool `json:"tray_hint_shown,omitempty"`
+	// SidebarRail keeps the main window's sidebar folded to its icons.
+	SidebarRail bool `json:"sidebar_rail,omitempty"`
 	// CheckAppUpdates checks GitHub for a newer signed app once a day;
 	// LastAppCheck and AnnouncedApp keep it to one notification a version.
 	CheckAppUpdates bool      `json:"check_app_updates"`

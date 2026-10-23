@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,9 +23,9 @@ type closeFacts struct {
 	// liveHere are the live connections in the window, liveAll those in
 	// every window (tab.live).
 	liveHere, liveAll int
-	// homeShown: the window shows Home, so none of its connections is in
-	// view (only the main window has Home).
-	homeShown bool
+	// noneShown: the main window shows none of its live connections (Home,
+	// or another entry of its sidebar).
+	noneShown bool
 }
 
 // closeAction is what closing a window does.
@@ -52,8 +53,8 @@ type closeDecision struct {
 // quitting never asks; the main window with Quit chosen asks when any
 // connection is live anywhere, then quits; otherwise the window asks when it
 // holds two live connections or more, or one it does not show (the main
-// window showing Home), then disconnects its tabs and hides (the main
-// window) or closes.
+// window showing another entry), then disconnects its tabs and hides (the
+// main window) or closes.
 func decideClose(f closeFacts) closeDecision {
 	switch {
 	case f.quitting:
@@ -65,7 +66,7 @@ func decideClose(f closeFacts) closeDecision {
 	if f.main {
 		d.action = closeHide
 	}
-	if f.liveHere >= 2 || f.liveHere == 1 && f.homeShown {
+	if f.liveHere >= 2 || f.liveHere == 1 && f.noneShown {
 		d.ask = f.liveHere
 	}
 	return d
@@ -83,8 +84,12 @@ func (a *App) closeFactsFor(vw *viewerWindow) closeFacts {
 	}
 	vw.mu.Lock()
 	tabs := vw.tabs
-	f.homeShown = vw.main && (vw.home || len(vw.tabs) == 0)
+	var shown []tab
+	if vw.cur != nil {
+		shown = vw.cur.shownTabs()
+	}
 	vw.mu.Unlock()
+	f.noneShown = vw.main && !slices.ContainsFunc(shown, tab.live)
 	for _, t := range tabs {
 		if t.live() {
 			f.liveHere++

@@ -21,52 +21,6 @@ import (
 
 const sourceURL = "https://github.com/YuanZhe-99/Kyokai"
 
-func (a *App) sidebar(c *ui.Context) {
-	t := c.Theme()
-	a.mu.Lock()
-	pg, protected := a.page, a.protected()
-	a.mu.Unlock()
-	ui.Column(c).Width(sidebarW).FillHeight().Background(t.Surface).Padding(12, 8).Gap(2).Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).PaddingX(8).PaddingY(4).Children(func() {
-			ui.Icon(c, appMark).FontSize(navIconSize + 4).TextColor(t.Accent)
-			ui.Text(c, "Kyokai").FontSize(sizeHeading).Bold()
-		})
-		ui.Column(c).Height(gap)
-		link := func(key, label string, icon *ui.SVG, p page) {
-			row := ui.ButtonBase(c.Key("nav-"+key)).Padding(7, 8).Radius(8).FillWidth().Label(label)
-			fg := t.TextMuted
-			if pg == p {
-				row.Background(t.Accent.Alpha(0.14))
-				fg = t.Text
-			}
-			row.Children(func() {
-				ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, icon).FontSize(navIconSize).TextColor(fg)
-					ui.Text(c, label).TextColor(fg)
-				})
-			})
-			if row.Clicked() {
-				a.mu.Lock()
-				a.page = p
-				a.statusOf = ""
-				a.mu.Unlock()
-				a.homeVisibilityChanged()
-			}
-		}
-		if protected {
-			link("ai", L.NavAI(), navAI, pageAI)
-			return
-		}
-		link("home", L.NavHome(), navHome, pageHome)
-		link("network", L.NavNetwork(), navNetwork, pageNetwork)
-		link("ai", L.NavAI(), navAI, pageAI)
-		link("permissions", L.NavPermissions(), navPermissions, pagePermissions)
-		link("security", L.NavSecurity(), navSecurity, pageSecurity)
-		link("general", L.SettingsGeneral(), navGeneral, pageGeneral)
-		link("about", L.SettingsAbout(), navAbout, pageAbout)
-	})
-}
-
 // engineState shows why there is no status yet: starting, or the error.
 func (a *App) engineState(c *ui.Context) bool {
 	t := c.Theme()
@@ -227,10 +181,12 @@ func (a *App) securityView(c *ui.Context) {
 	a.privacySettings(c)
 }
 
-// generalView is the General page: the app's language and look, how it
-// starts and closes, and its run mode.
-func (a *App) generalView(c *ui.Context) {
-	a.generalSettings(c)
+// generalView is the General page: the app's language and look, and how it
+// starts and closes.
+func (a *App) generalView(c *ui.Context) { a.generalSettings(c) }
+
+// runModeView is the Run mode page: where this device runs (runModeCard).
+func (a *App) runModeView(c *ui.Context) {
 	if a.engineState(c) {
 		a.runModeCard(c)
 	}

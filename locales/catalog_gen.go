@@ -1022,6 +1022,16 @@ func (msgs Messages) ActionCheckAppUpdate() string {
 	return Catalog.Format(msgs.locale, "ActionCheckAppUpdate", nil)
 }
 
+// ActionClose says "Close"
+// in the language the app shows.
+func ActionClose() string { return In(i18n.Locale()).ActionClose() }
+
+// ActionClose says "Close"
+// in the language of msgs.
+func (msgs Messages) ActionClose() string {
+	return Catalog.Format(msgs.locale, "ActionClose", nil)
+}
+
 // ActionConnect says "Connect"
 // in the language the app shows.
 func ActionConnect() string { return In(i18n.Locale()).ActionConnect() }
@@ -1300,6 +1310,36 @@ func AppUpdateUnavailable() string { return In(i18n.Locale()).AppUpdateUnavailab
 // in the language of msgs.
 func (msgs Messages) AppUpdateUnavailable() string {
 	return Catalog.Format(msgs.locale, "AppUpdateUnavailable", nil)
+}
+
+// AppearanceDark says "Appearance: dark"
+// in the language the app shows.
+func AppearanceDark() string { return In(i18n.Locale()).AppearanceDark() }
+
+// AppearanceDark says "Appearance: dark"
+// in the language of msgs.
+func (msgs Messages) AppearanceDark() string {
+	return Catalog.Format(msgs.locale, "AppearanceDark", nil)
+}
+
+// AppearanceFollow says "Appearance: follow the system"
+// in the language the app shows.
+func AppearanceFollow() string { return In(i18n.Locale()).AppearanceFollow() }
+
+// AppearanceFollow says "Appearance: follow the system"
+// in the language of msgs.
+func (msgs Messages) AppearanceFollow() string {
+	return Catalog.Format(msgs.locale, "AppearanceFollow", nil)
+}
+
+// AppearanceLight says "Appearance: light"
+// in the language the app shows.
+func AppearanceLight() string { return In(i18n.Locale()).AppearanceLight() }
+
+// AppearanceLight says "Appearance: light"
+// in the language of msgs.
+func (msgs Messages) AppearanceLight() string {
+	return Catalog.Format(msgs.locale, "AppearanceLight", nil)
 }
 
 // BackupFileKind says "Kyokai identity backup"
@@ -2496,6 +2536,26 @@ func (msgs Messages) NavAI() string {
 	return Catalog.Format(msgs.locale, "NavAI", nil)
 }
 
+// NavAboutUpdates says "About & updates"
+// in the language the app shows.
+func NavAboutUpdates() string { return In(i18n.Locale()).NavAboutUpdates() }
+
+// NavAboutUpdates says "About & updates"
+// in the language of msgs.
+func (msgs Messages) NavAboutUpdates() string {
+	return Catalog.Format(msgs.locale, "NavAboutUpdates", nil)
+}
+
+// NavAccess says "Access"
+// in the language the app shows.
+func NavAccess() string { return In(i18n.Locale()).NavAccess() }
+
+// NavAccess says "Access"
+// in the language of msgs.
+func (msgs Messages) NavAccess() string {
+	return Catalog.Format(msgs.locale, "NavAccess", nil)
+}
+
 // NavHome says "Home"
 // in the language the app shows.
 func NavHome() string { return In(i18n.Locale()).NavHome() }
@@ -2534,6 +2594,26 @@ func NavSecurity() string { return In(i18n.Locale()).NavSecurity() }
 // in the language of msgs.
 func (msgs Messages) NavSecurity() string {
 	return Catalog.Format(msgs.locale, "NavSecurity", nil)
+}
+
+// NavSecurityPrivacy says "Security & privacy"
+// in the language the app shows.
+func NavSecurityPrivacy() string { return In(i18n.Locale()).NavSecurityPrivacy() }
+
+// NavSecurityPrivacy says "Security & privacy"
+// in the language of msgs.
+func (msgs Messages) NavSecurityPrivacy() string {
+	return Catalog.Format(msgs.locale, "NavSecurityPrivacy", nil)
+}
+
+// NavSettings says "Settings"
+// in the language the app shows.
+func NavSettings() string { return In(i18n.Locale()).NavSettings() }
+
+// NavSettings says "Settings"
+// in the language of msgs.
+func (msgs Messages) NavSettings() string {
+	return Catalog.Format(msgs.locale, "NavSettings", nil)
 }
 
 // NetworkAdd says "Add a network"
@@ -2954,6 +3034,76 @@ func NotifyStillRunningTitle() string { return In(i18n.Locale()).NotifyStillRunn
 // in the language of msgs.
 func (msgs Messages) NotifyStillRunningTitle() string {
 	return Catalog.Format(msgs.locale, "NotifyStillRunningTitle", nil)
+}
+
+// PaneClose says "Close"
+// in the language the app shows.
+func PaneClose() string { return In(i18n.Locale()).PaneClose() }
+
+// PaneClose says "Close"
+// in the language of msgs.
+func (msgs Messages) PaneClose() string {
+	return Catalog.Format(msgs.locale, "PaneClose", nil)
+}
+
+// PaneDesktop says "Desktop"
+// in the language the app shows.
+func PaneDesktop() string { return In(i18n.Locale()).PaneDesktop() }
+
+// PaneDesktop says "Desktop"
+// in the language of msgs.
+func (msgs Messages) PaneDesktop() string {
+	return Catalog.Format(msgs.locale, "PaneDesktop", nil)
+}
+
+// PaneMaximize says "Maximize"
+// in the language the app shows.
+func PaneMaximize() string { return In(i18n.Locale()).PaneMaximize() }
+
+// PaneMaximize says "Maximize"
+// in the language of msgs.
+func (msgs Messages) PaneMaximize() string {
+	return Catalog.Format(msgs.locale, "PaneMaximize", nil)
+}
+
+// PaneRestore says "Restore"
+// in the language the app shows.
+func PaneRestore() string { return In(i18n.Locale()).PaneRestore() }
+
+// PaneRestore says "Restore"
+// in the language of msgs.
+func (msgs Messages) PaneRestore() string {
+	return Catalog.Format(msgs.locale, "PaneRestore", nil)
+}
+
+// PaneSplitDown says "Split down"
+// in the language the app shows.
+func PaneSplitDown() string { return In(i18n.Locale()).PaneSplitDown() }
+
+// PaneSplitDown says "Split down"
+// in the language of msgs.
+func (msgs Messages) PaneSplitDown() string {
+	return Catalog.Format(msgs.locale, "PaneSplitDown", nil)
+}
+
+// PaneSplitNone says "Open another connection first; it can then go beside this one."
+// in the language the app shows.
+func PaneSplitNone() string { return In(i18n.Locale()).PaneSplitNone() }
+
+// PaneSplitNone says "Open another connection first; it can then go beside this one."
+// in the language of msgs.
+func (msgs Messages) PaneSplitNone() string {
+	return Catalog.Format(msgs.locale, "PaneSplitNone", nil)
+}
+
+// PaneSplitRight says "Split right"
+// in the language the app shows.
+func PaneSplitRight() string { return In(i18n.Locale()).PaneSplitRight() }
+
+// PaneSplitRight says "Split right"
+// in the language of msgs.
+func (msgs Messages) PaneSplitRight() string {
+	return Catalog.Format(msgs.locale, "PaneSplitRight", nil)
 }
 
 // PasswordForgotten says "The saved password is forgotten."
@@ -4562,6 +4712,36 @@ func (msgs Messages) SettingsGeneral() string {
 	return Catalog.Format(msgs.locale, "SettingsGeneral", nil)
 }
 
+// SettingsGroupAI says "AI"
+// in the language the app shows.
+func SettingsGroupAI() string { return In(i18n.Locale()).SettingsGroupAI() }
+
+// SettingsGroupAI says "AI"
+// in the language of msgs.
+func (msgs Messages) SettingsGroupAI() string {
+	return Catalog.Format(msgs.locale, "SettingsGroupAI", nil)
+}
+
+// SettingsGroupPreferences says "Preferences"
+// in the language the app shows.
+func SettingsGroupPreferences() string { return In(i18n.Locale()).SettingsGroupPreferences() }
+
+// SettingsGroupPreferences says "Preferences"
+// in the language of msgs.
+func (msgs Messages) SettingsGroupPreferences() string {
+	return Catalog.Format(msgs.locale, "SettingsGroupPreferences", nil)
+}
+
+// SettingsGroupThisComputer says "This computer"
+// in the language the app shows.
+func SettingsGroupThisComputer() string { return In(i18n.Locale()).SettingsGroupThisComputer() }
+
+// SettingsGroupThisComputer says "This computer"
+// in the language of msgs.
+func (msgs Messages) SettingsGroupThisComputer() string {
+	return Catalog.Format(msgs.locale, "SettingsGroupThisComputer", nil)
+}
+
 // SettingsHideFromCapture says "Hide Kyokai from screen capture"
 // in the language the app shows.
 func SettingsHideFromCapture() string { return In(i18n.Locale()).SettingsHideFromCapture() }
@@ -4772,6 +4952,76 @@ func SettingsTheme() string { return In(i18n.Locale()).SettingsTheme() }
 // in the language of msgs.
 func (msgs Messages) SettingsTheme() string {
 	return Catalog.Format(msgs.locale, "SettingsTheme", nil)
+}
+
+// ShellOffline says "Offline"
+// in the language the app shows.
+func ShellOffline() string { return In(i18n.Locale()).ShellOffline() }
+
+// ShellOffline says "Offline"
+// in the language of msgs.
+func (msgs Messages) ShellOffline() string {
+	return Catalog.Format(msgs.locale, "ShellOffline", nil)
+}
+
+// ShellOnline says "Online"
+// in the language the app shows.
+func ShellOnline() string { return In(i18n.Locale()).ShellOnline() }
+
+// ShellOnline says "Online"
+// in the language of msgs.
+func (msgs Messages) ShellOnline() string {
+	return Catalog.Format(msgs.locale, "ShellOnline", nil)
+}
+
+// SidebarHide says "Hide the sidebar"
+// in the language the app shows.
+func SidebarHide() string { return In(i18n.Locale()).SidebarHide() }
+
+// SidebarHide says "Hide the sidebar"
+// in the language of msgs.
+func (msgs Messages) SidebarHide() string {
+	return Catalog.Format(msgs.locale, "SidebarHide", nil)
+}
+
+// SidebarNew says "Connect to a device"
+// in the language the app shows.
+func SidebarNew() string { return In(i18n.Locale()).SidebarNew() }
+
+// SidebarNew says "Connect to a device"
+// in the language of msgs.
+func (msgs Messages) SidebarNew() string {
+	return Catalog.Format(msgs.locale, "SidebarNew", nil)
+}
+
+// SidebarOpen says "Open"
+// in the language the app shows.
+func SidebarOpen() string { return In(i18n.Locale()).SidebarOpen() }
+
+// SidebarOpen says "Open"
+// in the language of msgs.
+func (msgs Messages) SidebarOpen() string {
+	return Catalog.Format(msgs.locale, "SidebarOpen", nil)
+}
+
+// SidebarOwnWindow says "In a window of its own"
+// in the language the app shows.
+func SidebarOwnWindow() string { return In(i18n.Locale()).SidebarOwnWindow() }
+
+// SidebarOwnWindow says "In a window of its own"
+// in the language of msgs.
+func (msgs Messages) SidebarOwnWindow() string {
+	return Catalog.Format(msgs.locale, "SidebarOwnWindow", nil)
+}
+
+// SidebarShow says "Show the sidebar"
+// in the language the app shows.
+func SidebarShow() string { return In(i18n.Locale()).SidebarShow() }
+
+// SidebarShow says "Show the sidebar"
+// in the language of msgs.
+func (msgs Messages) SidebarShow() string {
+	return Catalog.Format(msgs.locale, "SidebarShow", nil)
 }
 
 // SignInHint says "Each one checked lets another device in with what a correct password grants. Check any combination; with none checked…"
@@ -6180,6 +6430,46 @@ func WatchersTitle() string { return In(i18n.Locale()).WatchersTitle() }
 // in the language of msgs.
 func (msgs Messages) WatchersTitle() string {
 	return Catalog.Format(msgs.locale, "WatchersTitle", nil)
+}
+
+// WindowClose says "Close window"
+// in the language the app shows.
+func WindowClose() string { return In(i18n.Locale()).WindowClose() }
+
+// WindowClose says "Close window"
+// in the language of msgs.
+func (msgs Messages) WindowClose() string {
+	return Catalog.Format(msgs.locale, "WindowClose", nil)
+}
+
+// WindowMaximize says "Maximize window"
+// in the language the app shows.
+func WindowMaximize() string { return In(i18n.Locale()).WindowMaximize() }
+
+// WindowMaximize says "Maximize window"
+// in the language of msgs.
+func (msgs Messages) WindowMaximize() string {
+	return Catalog.Format(msgs.locale, "WindowMaximize", nil)
+}
+
+// WindowMinimize says "Minimize window"
+// in the language the app shows.
+func WindowMinimize() string { return In(i18n.Locale()).WindowMinimize() }
+
+// WindowMinimize says "Minimize window"
+// in the language of msgs.
+func (msgs Messages) WindowMinimize() string {
+	return Catalog.Format(msgs.locale, "WindowMinimize", nil)
+}
+
+// WindowRestore says "Restore window"
+// in the language the app shows.
+func WindowRestore() string { return In(i18n.Locale()).WindowRestore() }
+
+// WindowRestore says "Restore window"
+// in the language of msgs.
+func (msgs Messages) WindowRestore() string {
+	return Catalog.Format(msgs.locale, "WindowRestore", nil)
 }
 
 // WithoutAskingHint says "A way to sign in checked above lets a device in with what passwords grant, without asking you. With nobody at this co…"

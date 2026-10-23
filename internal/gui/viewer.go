@@ -1171,7 +1171,7 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 	area := ui.Column(c.Key("picture-area")).Grow(1).FillHeight().AlignItems(ui.Center).Justify(ui.Center)
 	at := area.LayoutBounds()
 	focused := false
-	defer func() { v.syncGrab(focused) }()
+	defer func() { v.syncGrab(focused && !v.app.covered()) }()
 	v.mu.Lock()
 	recovering, asleep, hostVideo := v.recovering, v.asleep, v.host.Video
 	v.mu.Unlock()
@@ -1282,7 +1282,7 @@ func viewerWaitText(hostVideo, placeholder string) (string, bool) {
 // centred on black when it is smaller. The pointer ring scrolls with it.
 func (v *viewer) originalPicture(c *ui.Context, bm *ui.Bitmap, start videoStart, ptr hostPointer) {
 	focused := false
-	defer func() { v.syncGrab(focused) }()
+	defer func() { v.syncGrab(focused && !v.app.covered()) }()
 	w, h := float32(start.Width), float32(start.Height)
 	scroll := ui.ScrollBoth(c.Key("picture-scroll")).Grow(1).MinWidth(0).FillHeight()
 	area := scroll.LayoutBounds()

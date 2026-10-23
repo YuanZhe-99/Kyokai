@@ -58,6 +58,24 @@ func (s *split) shownTabs() []tab {
 // focused is the tab in focus, or nil.
 func (s *split) focused() tab { return s.focus }
 
+// topRight is the tab in the split's top-right corner, whose pane's header
+// keeps the room of the window's caption buttons: the right half of panes
+// side by side, the upper of panes above each other.
+func (s *split) topRight() tab {
+	p := s.root
+	for p != nil && p.first != nil {
+		if p.across {
+			p = p.second
+		} else {
+			p = p.first
+		}
+	}
+	if p == nil {
+		return nil
+	}
+	return p.tab
+}
+
 // leaf is the pane showing t, and its parent (nil for the root).
 func (s *split) leaf(t tab) (p, parent *pane) {
 	var find func(p, up *pane) (*pane, *pane)

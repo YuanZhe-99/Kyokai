@@ -255,7 +255,7 @@ func (a *App) aiBanner(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	var active *localapi.AIActive
-	if a.connected && a.status != nil && a.page != pageAI {
+	if a.connected && a.status != nil && !(a.settingsOpen && a.page == pageAI) {
 		active = a.status.AI
 	}
 	a.mu.Unlock()
@@ -270,9 +270,7 @@ func (a *App) aiBanner(c *ui.Context) {
 		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, text).Grow(1)
 			if ui.Button(c.Key("ai-review"), L.AIReview()).Clicked() {
-				a.mu.Lock()
-				a.page = pageAI
-				a.mu.Unlock()
+				a.openSettings(pageAI)
 			}
 			if active.Origin != "" && ui.Button(c.Key("ai-banner-stop"), L.AIActionStop()).Clicked() {
 				a.stopAI()

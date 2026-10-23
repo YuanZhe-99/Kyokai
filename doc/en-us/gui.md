@@ -4,16 +4,65 @@ The interface is for people using Kyokai, not an engineering console (`internal/
 `internal/gui/gui_test.go` renders every page in each language and theme and writes screenshots
 when `SCREENSHOT_DIR` is set.
 
+## Windows
+
+- **The main window** is a sidebar on the window's base — Mica on Windows 11, the sidebar
+  material on macOS, the theme's background elsewhere — and beside it the panes: rounded boxes
+  (14-point corners, a border and a faint shadow) floating 8 points from the window's edges and
+  from each other (`shellView`). Home, each device's desktop and each of its services (SSH, Remote
+  Desktop, VNC) is a pane (`tab`: `homeTab`, `viewer`, `serviceTab`). Requests waiting for the
+  user, a device connected here and an AI task here show as cards above the panes, a toast at
+  their foot. The window is named after the pane in focus.
+- **Sidebar** (`sidebarView`): at the top Hide the sidebar and + (Connect to a device: Home, until
+  the picker comes), after the traffic lights on macOS; Home, with Kyokai's mark; "Open" with how
+  many panes are open, then one entry per group in the order they opened — a pane alone as a row
+  (its kind's icon, the device's name, the kind in words: Desktop, SSH, Remote Desktop, VNC), a
+  group of several as a card with its devices' names ("Studio Mac + NUC") over its panes' rows —
+  and last the panes in windows of their own, which a click brings forward. The entry shown
+  stands out, and in a group the pane in focus in the accent's tint; a row drags its pane as its
+  header does. At the bottom: the appearance (follow the system, light and dark in turn — a
+  half-filled monitor, a sun, a moon), the gear (Settings), and the networks' state as a dot and a
+  word (Online, Connecting…, Could not connect, Offline) that opens Settings at Network. Hidden, the sidebar is
+  a rail of icons, a group's with its count and names in tooltips (`sidebar_rail` in `gui.json`).
+- **A pane's header** (44 points): the kind's icon, the device's name and its Device ID (or the
+  service), which drag the pane; an empty part that moves the window, a double click maximizing
+  it; in the main window Split right and Split down — a menu of the other open panes, the one
+  chosen going beside this one, or a note to open another first —, in a group of several
+  Maximize (the pane alone over its group, the others still running) or Restore, and close (×;
+  not on Home alone, which has nothing to close to). In a group the pane in focus has an accent
+  edge; the focus follows the keyboard and clicks into a pane.
+- **Groups.** Each pane opened gets an entry of its own and shows. A pane dropped on an edge of
+  another splits that pane there — beside, above or below it — and joins its group, so one side
+  may hold one pane at full height and the other two (`split`, a tree of panes; at most four
+  shown, a fifth takes a place); dropped in a pane's middle it takes that pane's place, and that
+  pane keeps an entry of its own; dropped on the sidebar's list it leaves its group for an entry of
+  its own. A group left with one pane is that pane's entry; an emptied entry goes and the one
+  before it shows; with nothing left, Home shows. The dividers move.
+- **A window of its own:** a pane dragged out of Kyokai's windows moves into a window of its own —
+  one pane, no sidebar, never split — which closes with its pane, disconnecting it; dropped on the
+  main window's sidebar or panes, it comes back. Its header keeps the room of the traffic lights
+  on macOS.
+- **The window's controls:** on macOS the traffic lights over the sidebar's top row, centred on
+  the top pane's header (in a window of its own, on its pane's header). On Windows the system's
+  buttons would sit on the window's corner, half outside the pane, so the window hides them
+  (`HideWindowButtons`) and the view draws minimize, maximize or restore, and close after a
+  separator at the end of the top-right pane's header (`windowButtons`), maximize with Windows
+  11's snap layouts; while Settings covers the panes, at the end of its header instead.
+- **Full screen** shows the pane in focus alone, with no header or sidebar.
+
+## Settings
+
+- Settings opens from the gear at the sidebar's bottom, and from what leads there — the networks'
+  state, Review on an AI banner, a device card's Saved passwords and keys… —, never in a split
+  (`settingsSheet`): the top layer, a sheet over the whole window, the sidebar included, 64 points
+  from its sides, 48 from its top and 32 from its bottom, over the window dimmed. Its header says
+  Settings, with × (and the window's buttons on Windows); on the left its sections — Preferences:
+  General; This computer: Access, Network, Security & privacy, Run mode; AI: AI; Kyokai: About &
+  updates — and beside them the page chosen ([Structure](#structure)). Escape, a click outside
+  it or × closes it; while it is up, no picture takes the keyboard (`covered`).
+
 ## Structure
 
-- **Main window:** the tab strip is the window's title bar (MyGo's hidden title bar,
-  `TitleBarOptions`): the window's own controls sit in it — the traffic lights on macOS, minimize,
-  maximize and close on Windows, as tall as the strip — then the Kyokai tab (Home) and one tab per
-  connected device ([Connections](#connections)); its empty part moves the window, and a double
-  click zooms or maximizes it as a title bar does. The strip hides in full screen.
-- **Sidebar:** Kyokai's mark and name, then Home, Network, AI, Permissions, Security, General and
-  About, each with its icon (original line drawings in `internal/gui/assets/icons`), left-aligned.
-  There is no separate Settings page: every page but Home is an area of settings.
 - **Home**, laid out as RustDesk's: on the left "This device" — the Device ID in groups of three
   with Copy; the temporary password, masked until Show, with Copy and New password (when only
   the permanent password is accepted, a line saying so instead, or a warning that none is set; when
@@ -23,7 +72,7 @@ when `SCREENSHOT_DIR` is set.
   "Control another device": a Device ID or an address (an IP address or domain name, for a
   device that accepts connections by address; "Looking for the device…" while it is asked who it
   is), Options (also ask to run AI tasks there) and Connect (a Device ID needs a network). On macOS, while Screen Recording, Accessibility, Input Monitoring or the
-  Keychain is missing, "Privacy permissions" with Allow for each (Permissions always shows it there);
+  Keychain is missing, "Privacy permissions" with Allow for each (Settings › Access always shows it there);
   a permission asked for in this run also offers "Reopen Kyokai", since macOS counts a new grant
   only in an engine started after it. In the helper modes the card says the permissions are
   Kyokai Helper's, and a missing one offers Restart Kyokai Helper. Home is wider than the other
@@ -50,8 +99,8 @@ when `SCREENSHOT_DIR` is set.
   the device's own), Saved passwords and keys… (the Security page), Forget old identity (after a
   key change) and Remove (disconnects it, takes it and its finished connections off Recent, and
   forgets its pinned key, saved sign-ins and the name given here).
-- **Live status on Home:** while Home shows (the main window visible, on its Kyokai tab and the
-  Home page), the GUI leases a watch of the recent devices (`watch.set`, eight at most, renewed
+- **Live status on Home:** while Home shows (the main window visible, its Home pane shown and
+  Settings closed), the GUI leases a watch of the recent devices (`watch.set`, eight at most, renewed
   every 10 s and dropped as Home hides). A watched device's card shows compact tiles in two
   columns, after the system monitor Pulse: each metric's icon and name in its own colour (CPU
   blue, its system share red; memory green; GPU red; disk orange, writes blue; network teal, sent
@@ -70,14 +119,14 @@ when `SCREENSHOT_DIR` is set.
   "Getting its status…" with the loading indicator, no saved password or key, needs Kyokai 0.4.1
   there, or refused.
 
-- **Confirmations:** a controller waiting for this host's user shows at the top of every page with
+- **Confirmations:** a controller waiting for this host's user shows as a card above the panes with
   its Device ID, whether it is known or a new key claiming a known ID, a warning when it gave no
   password, and a switch per requested
   permission, with Allow (the primary button) and Deny; on macOS a warning when Screen Recording or
   Accessibility is missing for what it asks; a notification and the window coming forward announce
   it.
-- **Connected here:** while another device is connected to this one (or resuming), a card at the
-  top of every page names it, says what it may do, and has Disconnect.
+- **Connected here:** while another device is connected to this one (or resuming), a card above
+  the panes names it, says what it may do, and has Disconnect.
 - **AI:** the task card — a new task's instruction and Start (with a note when the provider has no
   key; the instruction being written is shared live with every connected controller's AI panel),
   or the task in progress: its state in words (working, waiting for approval, paused and
@@ -89,9 +138,9 @@ when `SCREENSHOT_DIR` is set.
   count and key state (Edit, Remove), and Add provider from a template; the editor has the name,
   the address (a template's sites by name), the format for Custom, a write-only key, the models
   with Remove, an id to add and List models (a saved source) and the task history with
-  Clear history. While the task waits for approval, every other page shows a banner with Review,
+  Clear history. While the task waits for approval, a banner above the panes has Review (Settings at AI),
   and a notification announces it. A controller's task shows "Started from" its Device ID, and
-  while it works every other page shows a banner with Review and Stop.
+  while it works a banner above the panes has Review and Stop; neither shows over the AI page itself.
 - **Network:** the networks kept (up to 8), with a note that this device has the same Device ID in
   each. Each shows its name here (or its network name) with the network name under it, a Join
   switch (applied at once; refused with the engine's reason, after which the page reads the
@@ -108,7 +157,7 @@ when `SCREENSHOT_DIR` is set.
   Last, **Advanced**: Try direct connections (off by default; on and fixed in the helper modes;
   applied as it is switched, [networking.md](networking.md)), with a warning that it makes this
   device listen and easier to find, which a protocol choice does not; and Latency-first routing.
-- **Device names:** wherever a device appears (a confirmation, Recent, the connection tabs, trusted
+- **Device names:** wherever a device appears (a confirmation, Recent, the panes and the sidebar, trusted
   devices, the viewer's title, the Network page) its name — the one this device's user gave it
   (`gui.json` `aliases`, never sent anywhere), else the friendly name it gives itself — goes beside
   the Device ID, never instead of it,
@@ -117,7 +166,7 @@ when `SCREENSHOT_DIR` is set.
   names a known maker or system (`deviceLogoName`), else the name's first letter. Vendor logos are
   trademarks of their owners, used only to identify a device's maker; their sources are listed in
   `internal/gui/assets/logos/SOURCES.md` (see [packaging.md](packaging.md), "Vendor logos").
-- **Permissions:** on macOS "Privacy permissions" first; Passwords and keys (permanent password:
+- **Access:** on macOS "Privacy permissions" first; Passwords and keys (permanent password:
   set, change or remove, its hint only Not set or Set; Ways to sign in: a check box for the
   temporary password, the one shown on Home, one for the permanent password, with a warning under
   it while none is set, and one per key that can connect — its name, with its type and `SHA256:`
@@ -134,7 +183,7 @@ when `SCREENSHOT_DIR` is set.
   status, with since when; trusted devices with their last connection and Remove; Sound to share — what
   this computer plays unless an input device is chosen, a device that is gone shown as not
   connected, an input asking macOS for the Microphone permission.
-- **Security:** Device identity (Device ID, friendly name, fingerprint; back up and restore with a
+- **Security & privacy:** Device identity (Device ID, friendly name, fingerprint; back up and restore with a
   passphrase through a file dialog; reset, after a warning); Your keys (name, type and `SHA256:` fingerprint, Copy public key, Remove
   after a confirmation; Generate a key — Ed25519, its private part shown once in OpenSSH form with
   Copy and Save to a file…, encrypted with the passphrase given, then kept by the engine; Import a
@@ -149,53 +198,43 @@ when `SCREENSHOT_DIR` is set.
   how secrets are kept, and No logs — off by default, turning it on after a warning
   that nobody can tell any more who connected or whom this device connected to, with a note when
   the engine in use cannot do it yet.
-- **General:** language, appearance, open at login — off by default; started at login, Kyokai shows no window, only its tray icon (on a Mac, as a login item, asked once the app is ready: asked earlier, macOS answered no), unless Start in the tray when opened at login (on by default) is off — and the close button; Run
-  mode: No privileges / Follow Kyokai / Background service, a note on the one administrator prompt
+- **General:** language, appearance (also the sidebar's button), open at login — off by default; started at login, Kyokai shows no window, only its tray icon (on a Mac, as a login item, asked once the app is ready: asked earlier, macOS answered no), unless Start in the tray when opened at login (on by default) is off — and the close button.
+- **Run mode:** No privileges / Follow Kyokai / Background service, a note on the one administrator prompt
   and what moves along; switching runs in the background with a loading indicator and a toast
   ([run-modes.md](run-modes.md)); Windows and macOS. While this profile's own engine is parked
   (its identity moved to Kyokai Helper, which is gone), every page shows a card to install the helper
   again or start over here.
-- **About:** version, license, source code and app updates; Diagnostics (version and ABI, engine
+- **About & updates:** version, license, source code and app updates; Diagnostics (version and ABI, engine
   start time, run mode, data folder with Open folder, logs folder with Open folder and **Save logs…** — the engine's logs through `logs.read`, the helper's and its agent's in the helper modes, which only administrators open, and this GUI's own, into one text file — or "Off" with No logs); Open
   source licenses (the shipped notices).
-- **Protected mode:** the sidebar shows only AI and every page is the AI page, topped by a card
-  with the permanent password field and Turn off (a wrong password says so); confirmations and
-  the devices connected here still show.
+- **Protected mode:** the main window is one pane, with no sidebar, showing only the AI page,
+  topped by a card with the permanent password field and Turn off (a wrong password says so);
+  confirmations and the devices connected here still show.
 - Until the engine's session is attached, pages that need it show "Starting…" or why the engine is
   not running.
-- **App updates (About):** a daily check (switchable) and "Check for updates" read the signed
+- **App updates (About & updates):** a daily check (switchable) and "Check for updates" read the signed
   update of the latest GitHub release; "Install and restart" stops the engine, installs in place
   and relaunches. Development builds say they cannot update themselves.
 
 ## Connections
 
-- One connection per device, shown as a tab from the start, as RustDesk does. Connecting opens the
-  tab in the main window: Connecting…; while the device's user is asked, "Waiting for the other
-  device to allow it…" with "Or enter its password", Remember password and Connect (the waiting
-  request is given up, so the device has one at a time); then the picture. When the connection
-  ends or fails, the tab says why (a wrong password among them), with the password field and
-  Reconnect. An empty password uses the one saved for the device, else asks its user. Closing a
-  tab (×) disconnects, also while it connects or waits for the device's user: that request ends
-  at once and never comes back as a tab of its own. A tab dragged onto another Kyokai window's tabs moves there; dropped
-  outside Kyokai, or with its ⧉, it gets a window of its own, which closes with its last tab;
-  closing such a window disconnects its tabs. A tab dragged over a window's picture area (from
-  its own strip or another window's) shows where it may go and splits the area there, as Claude
-  Desktop splits sessions: dropped on an edge of a tab's pane it splits that pane, beside or
-  above or below that tab, so one side may hold one tab at full height and the other two; dropped
-  in a pane's middle it takes that tab's place (`split`, `split.place`, a tree of panes; at most
-  four tabs shown, a further one takes a place). The dividers move; while split each place has a thin header with its title and
-  Show only this, and the place in focus an accent edge: the focus follows the keyboard into a
-  place, and choosing a tab in the strip brings its place into focus or puts it in the one in
-  focus. A closed tab gives its room to its neighbour; Home shows over the whole
-  window. Every tab shown keeps its connection running; only the one in focus takes the keyboard
-  and the clipboard; in Map and Translate the keys go to the tab whose picture is under the
-  pointer, which takes the focus with them, and in every mode a picture (a Remote Desktop or VNC
-  screen's too) keeps the controller's input method off ([computer-use.md](computer-use.md),
-  "Keyboard modes"). A tab
-  is a desktop or one of a device's services (SSH, Remote Desktop, VNC; `tab`, `serviceTab`), one
-  per device and kind, and every kind drags, moves and closes alike.
-- A service tab ([remote-services.md](remote-services.md), "Clients") is titled "SSH · device"
-  and the like. It shows "Connecting to SSH…" with the loading indicator, then, when nothing saved
+- One connection per device, shown as a pane from the start, as RustDesk shows a tab. Connecting
+  opens its pane in the main window, in an entry of its own: Connecting…; while the device's user
+  is asked, "Waiting for the other device to allow it…" with "Or enter its password", Remember
+  password and Connect (the waiting request is given up, so the device has one at a time); then
+  the picture. When the connection ends or fails, the pane says why (a wrong password among them),
+  with the password field and Reconnect. An empty password uses the one saved for the device, else
+  asks its user. Closing a pane (×) disconnects, also while it connects or waits for the device's
+  user: that request ends at once and never comes back as a pane of its own. How panes move,
+  split and get windows of their own: [Windows](#windows). Every pane shown keeps its connection
+  running; only the one in focus takes the keyboard and the clipboard; in Map and Translate the
+  keys go to the pane whose picture is under the pointer, which takes the focus with them, and in
+  every mode a picture (a Remote Desktop or VNC screen's too) keeps the controller's input method
+  off ([computer-use.md](computer-use.md), "Keyboard modes"). A pane is a desktop or one of a
+  device's services (SSH, Remote Desktop, VNC; `viewer`, `serviceTab`), one per device and kind,
+  and every kind drags, moves and closes alike.
+- A service pane ([remote-services.md](remote-services.md), "Clients") is headed by the device's
+  name with the service beside it. It shows "Connecting to SSH…" with the loading indicator, then, when nothing saved
   is remembered, a sign-in form: the way to sign in (a segmented choice — SSH: Key, Password; VNC:
   Password only, User name and password, No sign-in; Remote Desktop: User name and password, On the
   remote screen), the fields that way needs (user name; domain for Remote Desktop; password), a
@@ -247,14 +286,14 @@ when `SCREENSHOT_DIR` is set.
   and the folded toolbar are kept for each device (`viewers` in `gui.json`): a device's viewer
   opens with the settings chosen for it last.
 - The clipboard panel: "Share the clipboard with this device" (on unless switched off, kept for
-  each device) and what crossed the clipboard with the device while its tab was in front, newest
-  first (at most 30, in memory only, gone when the tab closes): each entry's source — from the
+  each device) and what crossed the clipboard with the device while its pane was in front, newest
+  first (at most 30, in memory only, gone when the pane closes): each entry's source — from the
   device (the host) or from this computer (the controller) — and time, then the text with Copy,
   the image as a thumbnail with its size, or the files' names, count and size; Clear empties it.
-  Only the tab in front — shown in the Kyokai window used last; none while that window shows the
-  Kyokai tab — exchanges the clipboard ([computer-use.md](computer-use.md), "Clipboard"); the panel
-  says so when its tab is behind. Both panels may show, the clipboard's left of the AI's.
-- With `run-ai-task` the tab has an AI panel, "AI on the other computer", which the AI switch
+  Only the pane in front — the one in focus in the Kyokai window used last; none while that is
+  Home — exchanges the clipboard ([computer-use.md](computer-use.md), "Clipboard"); the panel
+  says so when its pane is behind. Both panels may show, the clipboard's left of the AI's.
+- With `run-ai-task` the pane has an AI panel, "AI on the other computer", which the AI switch
   collapses (a step waiting for approval shows it anyway). It shows the host's one AI record,
   the same for every controller whoever started the task (state, the model's text, its latest
   actions, Pause or Resume and Stop, a reply when it is done), and the instruction being written,
@@ -274,8 +313,10 @@ when `SCREENSHOT_DIR` is set.
 
 ## Visual language
 
-- MyGo light/dark themes plus the desktop accent; layout numbers are named constants in
-  `style.go`.
+- MyGo light/dark themes plus the desktop accent; layout numbers and colours are named in
+  `style.go`. The sidebar sits on the window's material, the panes on the theme's background.
+  Icons are original line drawings in `internal/gui/assets/icons`; the window buttons drawn on
+  Windows copy Windows 11's glyphs.
 - Body text 14, titles 20–24, nothing below 12; the Device ID is 34 with tabular digits.
 - Whatever is under way shows one loading indicator, loading-dev's Arc from MyGo's loading plugin in the
   accent colour (white on the viewer's black stage), named for assistive technology by what is loading.
@@ -295,7 +336,7 @@ when `SCREENSHOT_DIR` is set.
   never reaches them).
 - The main window exists only while it is shown: started in the tray Kyokai makes none, and
   closing it to the tray ends it (its place and size are kept for the next one); Show Kyokai, a
-  second launch, a connection request, a connection's tab or the Dock make it anew. A hidden
+  second launch, a connection request, a connection's pane or the Dock make it anew. A hidden
   window kept for later came up at Windows sign-in as a white frame Kyokai took for hidden:
   Windows' rearranging of windows when the displays changed (lock, a dark display, a KVM's
   monitor coming back) made it visible behind MyGo's back. On Windows the GUI log notes every
@@ -307,7 +348,7 @@ when `SCREENSHOT_DIR` is set.
 - Closing a window decides by `decideClose`: the main window with Quit chosen asks while any
   connection is live anywhere, then quits; otherwise a window asks when it holds two live
   connections or more (connecting, waiting, connected or reconnecting; desktops and services
-  alike), or one it does not show (the main window on Home), then disconnects its tabs and closes
+  alike), or one it does not show (none of its live panes shown), then disconnects its panes and closes
   (the main window into the tray). The question is a dialog naming the connections, with "Disconnect
   and close" (or "Disconnect and quit") and Cancel.
 - On macOS the Dock icon is shown only while a Kyokai window is open (the main window or a

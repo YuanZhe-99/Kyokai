@@ -21,7 +21,8 @@ import (
 
 type page int
 
-// The sidebar's pages: Home, then the areas of settings (doc/en-us/gui.md).
+// The pages: Home, which its pane shows, then the Settings sheet's
+// (doc/en-us/gui.md, "Settings").
 const (
 	pageHome page = iota
 	pageNetwork
@@ -30,6 +31,7 @@ const (
 	pageSecurity
 	pageGeneral
 	pageAbout
+	pageRunMode
 )
 
 // App is the GUI's state. Fields after mu are guarded by it; views read
@@ -116,8 +118,10 @@ type App struct {
 	// The viewer windows, oldest first; a new viewer opens as a tab of the
 	// newest (viewerwin.go).
 	viewerWins []*viewerWindow
-	// main is the main window as a holder of tabs, Home first.
+	// main is the main window as a holder of panes; home is Home's pane in
+	// it.
 	main *viewerWindow
+	home *homeTab
 	// lastWin is the Kyokai window used last, whose shown tab is the one
 	// in front, which alone exchanges the clipboard (viewerclip.go).
 	lastWin *viewerWindow
@@ -130,7 +134,8 @@ type App struct {
 	// The AI page (ai.go).
 	ai aiState
 
-	// View state.
+	// View state: the Settings sheet open, at page.
+	settingsOpen bool
 	page         page
 	openAtLogin  bool
 	showLicenses bool
@@ -154,7 +159,9 @@ func New(profile, stateDir, socket string) *App {
 		services: map[string]*serviceTab{},
 	}
 	a.link = newServiceLink(a)
-	a.main = &viewerWindow{app: a, main: true, home: true}
+	a.home = &homeTab{app: a}
+	a.main = &viewerWindow{app: a, main: true}
+	a.main.homeGroupLocked()
 	a.lastWin = a.main
 	a.socket = startSocket(a.prefs.Helper || movedToHelper(stateDir), helper.Installed(), socket)
 	return a
@@ -190,9 +197,10 @@ func (a *App) mainWindow() *mygo.Window {
 	if w != nil {
 		return w
 	}
-	// The tab strip is the title bar (TitleBarOptions).
+	// The window's controls sit over the sidebar and the panes
+	// (TitleBarOptions).
 	w = mygo.NewWindow(TitleBarOptions(mygo.WindowOptions{
-		Title: "Kyokai", Width: 1000, Height: 700, MinWidth: 760, MinHeight: 520,
+		Title: "Kyokai", Width: 1200, Height: 760, MinWidth: 760, MinHeight: 520,
 		StateKey: "main",
 		// Shown once its display affinity is set: never captured for a
 		// moment.
@@ -520,46 +528,59 @@ func (a *App) setToast(msg string, isErr bool) {
 	time.AfterFunc(4*time.Second+100*time.Millisecond, func() { a.update(func() {}) })
 }
 
-// MainView is the main window: Home and the connections' tabs.
+// MainView is the main window: the sidebar and the panes (shellView).
 func (a *App) MainView(c *ui.Context) { a.main.view(c) }
 
-// View is Home: the sidebar and the page chosen.
+// View is the page chosen with the cards that need the user above it, as
+// the main window shows them in protected mode (and the view tests render
+// each page).
 func (a *App) View(c *ui.Context) {
+	a.mu.Lock()
+	pg := a.page
+	a.mu.Unlock()
+	ui.Column(c).Fill().Children(func() {
+		ui.Column(c).FillWidth().Shrink(0).Padding(24, 24, 0, 24).Gap(gap).Children(func() {
+			a.requestsView(c)
+			a.hostBanner(c)
+			a.aiBanner(c)
+		})
+		a.pageView(c, pg)
+		a.toastView(c)
+	})
+}
+
+// pageView is a page: Home in its pane, the others in the Settings sheet;
+// in protected mode always the AI page, topped by the card that turns it
+// off.
+func (a *App) pageView(c *ui.Context, pg page) {
 	t := c.Theme()
 	a.mu.Lock()
-	pg, protected := a.page, a.protected()
+	protected := a.protected()
 	a.mu.Unlock()
 	if protected {
 		pg = pageAI
 	}
-	ui.Column(c).Fill().Background(t.Background).Children(func() {
-		ui.Row(c).Fill().Grow(1).AlignItems(ui.Stretch).Children(func() {
-			a.sidebar(c)
-			ui.Scroll(c).Grow(1).Fill().Padding(24).Gap(gap).Children(func() {
-				a.requestsView(c)
-				a.hostBanner(c)
-				a.aiBanner(c)
-				switch pg {
-				case pageNetwork:
-					a.networkView(c)
-				case pageAI:
-					if protected {
-						a.protectedCard(c)
-					}
-					a.aiView(c)
-				case pagePermissions:
-					a.permissionsView(c)
-				case pageSecurity:
-					a.securityView(c)
-				case pageGeneral:
-					a.generalView(c)
-				case pageAbout:
-					a.aboutView(c)
-				default:
-					a.homeView(c)
-				}
-			})
-		})
-		a.toastView(c)
+	ui.Scroll(c.Key("page")).Grow(1).Fill().Padding(24).Gap(gap).Background(t.Background).Children(func() {
+		switch pg {
+		case pageNetwork:
+			a.networkView(c)
+		case pageAI:
+			if protected {
+				a.protectedCard(c)
+			}
+			a.aiView(c)
+		case pagePermissions:
+			a.permissionsView(c)
+		case pageSecurity:
+			a.securityView(c)
+		case pageGeneral:
+			a.generalView(c)
+		case pageRunMode:
+			a.runModeView(c)
+		case pageAbout:
+			a.aboutView(c)
+		default:
+			a.homeView(c)
+		}
 	})
 }

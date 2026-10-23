@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -11,6 +12,7 @@ type fakeTab string
 
 func (f fakeTab) tabKey() string             { return string(f) }
 func (f fakeTab) tabTitle() string           { return string(f) }
+func (f fakeTab) head() paneHead             { return paneHead{title: string(f)} }
 func (f fakeTab) tabWindow() *viewerWindow   { return nil }
 func (f fakeTab) setTabWindow(*viewerWindow) {}
 func (f fakeTab) view(*ui.Context)           {}
@@ -76,5 +78,82 @@ func TestSplitPlaces(t *testing.T) {
 	}
 	if s.remove(a) {
 		t.Error("a tab not shown was removed")
+	}
+}
+
+// TestGroups: the main window's sidebar entries (doc/en-us/gui.md,
+// "Windows"). Each tab added gets an entry of its own; one dropped on
+// another's edge joins its group, and one dropped in another's place takes
+// it while that one keeps an entry of its own; a pane leaving its group
+// takes its room along, a group left empty goes, and with nothing left Home
+// shows.
+func TestGroups(t *testing.T) {
+	app := &App{}
+	app.home = &homeTab{app: app}
+	vw := &viewerWindow{app: app, main: true}
+	app.main = vw
+	vw.homeGroupLocked()
+	a, b, c := fakeTab("a"), fakeTab("b"), fakeTab("c")
+	entries := func() string {
+		var out []string
+		for _, g := range vw.groups {
+			l := layout(g.split)
+			if g == vw.cur {
+				l = "*" + l
+			}
+			out = append(out, l)
+		}
+		return strings.Join(out, " ")
+	}
+	leave := func(v tab) { vw.leaveGroupLocked(vw.groupOf(v), v) }
+	for _, st := range []struct {
+		name string
+		do   func()
+		want string
+	}{
+		{"Home first", func() {}, "*home:home"},
+		{"a, b and c get entries of their own", func() {
+			for _, v := range []tab{a, b, c} {
+				vw.tabs = append(vw.tabs, v)
+				vw.placeLocked(v, nil, zoneMiddle)
+			}
+		}, "home:home a:a b:b *c:c"},
+		{"b right of a joins a's group", func() { vw.placeLocked(b, a, zoneRight) }, "home:home *(a|b):b c:c"},
+		{"c in b's place: b keeps an entry", func() { vw.placeLocked(c, b, zoneMiddle) }, "home:home *(a|c):c b:b"},
+		{"choosing a shows its group with the focus on it", func() { vw.placeLocked(a, nil, zoneMiddle) }, "home:home *(a|c):a b:b"},
+		{"c leaves the group for an entry of its own", func() { leave(c); vw.placeLocked(c, nil, zoneMiddle) }, "home:home a:a b:b *c:c"},
+		{"an emptied entry goes; the one before shows", func() { leave(c) }, "home:home a:a *b:b"},
+		{"Home leaves too", func() { leave(app.home); leave(a) }, "*b:b"},
+		{"with nothing left, Home shows", func() {
+			leave(b)
+			if vw.cur == nil {
+				vw.homeGroupLocked()
+			}
+		}, "*home:home"},
+	} {
+		st.do()
+		if got := entries(); got != st.want {
+			t.Fatalf("%s: %s, want %s", st.name, got, st.want)
+		}
+	}
+}
+
+// TestTopRight: the pane that keeps the room of the window's caption
+// buttons is the top-right one of its group.
+func TestTopRight(t *testing.T) {
+	a, b, c := fakeTab("a"), fakeTab("b"), fakeTab("c")
+	var s split
+	s.single(a)
+	if s.topRight() != a {
+		t.Fatal("alone, a is in the corner")
+	}
+	s.place(b, a, zoneRight)
+	s.place(c, b, zoneBottom)
+	if got := s.topRight(); got != b {
+		t.Fatalf("(a|(b/c)): %v, want b", got)
+	}
+	s.place(c, a, zoneTop)
+	if got := s.topRight(); got != b {
+		t.Fatalf("((c/a)|b): %v, want b", got)
 	}
 }

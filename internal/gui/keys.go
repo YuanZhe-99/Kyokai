@@ -582,7 +582,13 @@ func savedChip(c *ui.Context, key, text string, forget func()) {
 	t := c.Theme()
 	ui.Row(c.Key(key)).Gap(2).AlignItems(ui.Center).Padding(2, 4, 2, 10).Radius(chipRadius).Background(t.Accent.Alpha(0.12)).Children(func() {
 		ui.Text(c, text).FontSize(sizeSmall)
-		if forget != nil && tabIcon(c, key+"-x", "×", L.SavedForget(text)) {
+		if forget == nil {
+			return
+		}
+		label := L.SavedForget(text)
+		x := ui.ButtonBase(c.Key(key+"-x")).Padding(1, 6).Radius(4).Label(label).Tooltip(label)
+		x.Children(func() { ui.Text(c, "×").FontSize(sizeSmall).TextColor(t.TextMuted) })
+		if x.Clicked() {
 			forget()
 		}
 	})

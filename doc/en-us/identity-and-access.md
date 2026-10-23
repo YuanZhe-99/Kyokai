@@ -124,7 +124,7 @@ total; further attempts are answered `busy`.
   ([networking.md](networking.md), "Routes": an address is only where to look; another device
   answering there fails the handshake like any squatter), and the newest 8 are offered as recent
   devices. Connecting by address, the person names no Device
-  ID: the first session pins whichever device answered there, and its Device ID shows in the tab
+  ID: the first session pins whichever device answered there, and its Device ID shows in the pane
   and on Recent. Each accepted session also records what the host announced (`features`), which
   the status passes on (`recent[].features`) so Home knows what a host offers before dialing.
   Removing a recent device forgets its pinned key and everything saved for it and takes its

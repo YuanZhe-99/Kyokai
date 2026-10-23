@@ -1,0 +1,586 @@
+package gui
+
+import (
+	"slices"
+	"strconv"
+	"strings"
+
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
+
+	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	L "github.com/YuanZhe-99/Kyokai/locales"
+)
+
+// homeKey is Home's tabKey.
+const homeKey = "home"
+
+// homeTab is Home as a pane of the main window (doc/en-us/gui.md,
+// "Windows"): This device, connecting to another, and the recent devices
+// (homeView). It is no connection: it never goes live, and closing its pane
+// only takes it out of view until the sidebar's Home shows it again.
+type homeTab struct{ app *App }
+
+// tabKey is homeKey.
+func (h *homeTab) tabKey() string { return homeKey }
+
+// tabTitle is "Home".
+func (h *homeTab) tabTitle() string { return L.NavHome() }
+
+// head is Home's icon and name.
+func (h *homeTab) head() paneHead { return paneHead{icon: navHome, title: L.NavHome()} }
+
+// tabWindow is the main window, which Home never leaves.
+func (h *homeTab) tabWindow() *viewerWindow { return h.app.main }
+
+// setTabWindow does nothing: Home stays in the main window.
+func (h *homeTab) setTabWindow(*viewerWindow) {}
+
+// view is the Home page.
+func (h *homeTab) view(c *ui.Context) { h.app.pageView(c, pageHome) }
+
+// live is false: Home is no connection.
+func (h *homeTab) live() bool { return false }
+
+// disconnect does nothing.
+func (h *homeTab) disconnect() {}
+
+// syncGrab does nothing: Home takes no keys for another computer.
+func (h *homeTab) syncGrab(bool) {}
+
+// endGrab does nothing.
+func (h *homeTab) endGrab() {}
+
+// setFront does nothing: Home exchanges no clipboard.
+func (h *homeTab) setFront(bool) {}
+
+// shellView is the main window (doc/en-us/gui.md, "Windows"): the sidebar
+// on the window's material, and beside it the cards that need the user
+// (connection requests, a connection here, an AI task waiting) above the
+// group shown; the Settings sheet over everything while open. In protected
+// mode only the AI page shows.
+func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
+	t := c.Theme()
+	a.mu.Lock()
+	protected := a.protected()
+	a.mu.Unlock()
+	if protected {
+		ui.Column(c.Key("protected")).Fill().Padding(paneMargin).Children(func() {
+			ui.Column(c).Fill().Radius(paneRadius).Clip().Background(t.Background).Border(1, t.Border).Children(func() {
+				ui.Row(c.Key("protected-head")).Height(paneHeaderH).Shrink(0).FillWidth().Padding(0, 8, 0, 0).Gap(4).AlignItems(ui.Center).Children(func() {
+					ui.Box(c).Grow(1).FillHeight().DragWindow()
+					windowButtons(c, "protected-win", vw.win)
+				})
+				a.View(c)
+			})
+		})
+		return
+	}
+	ui.Row(c.Key("shell")).Fill().AlignItems(ui.Stretch).Children(func() {
+		a.sidebarView(c, vw)
+		ui.Column(c.Key("main")).Grow(1).MinWidth(0).MinHeight(0).Padding(paneMargin/2, paneMargin/2, paneMargin/2, 0).Children(func() {
+			a.bannersView(c)
+			vw.panesView(c, g)
+			a.toastView(c)
+		})
+	})
+	a.settingsSheet(c, vw.win)
+}
+
+// bannersView is what needs the user whatever shows: the connection
+// requests waiting for them, a device connected here, an AI task waiting
+// or working here.
+func (a *App) bannersView(c *ui.Context) {
+	ui.Column(c.Key("banners")).FillWidth().Shrink(0).Padding(0, paneMargin/2).Gap(gap).Children(func() {
+		a.requestsView(c)
+		a.hostBanner(c)
+		a.aiBanner(c)
+	})
+}
+
+// sbEntry is a sidebar entry: a group's panes in reading order, whether it
+// shows, and the pane in focus in it.
+type sbEntry struct {
+	g     *group
+	tabs  []tab
+	shown bool
+	focus tab
+}
+
+// entries are the main window's groups for its sidebar.
+func (vw *viewerWindow) entries() []sbEntry {
+	vw.mu.Lock()
+	defer vw.mu.Unlock()
+	out := make([]sbEntry, 0, len(vw.groups))
+	for _, g := range vw.groups {
+		out = append(out, sbEntry{g: g, tabs: g.split.shownTabs(), shown: g == vw.cur, focus: g.split.focus})
+	}
+	return out
+}
+
+// homeAlone reports whether an entry is Home by itself, which the sidebar's
+// Home row stands for.
+func (e sbEntry) homeAlone() bool {
+	if len(e.tabs) != 1 {
+		return false
+	}
+	_, ok := e.tabs[0].(*homeTab)
+	return ok
+}
+
+// groupName names a group of several panes by its devices, as "Studio Mac +
+// NUC".
+func groupName(tabs []tab) string {
+	var names []string
+	for _, t := range tabs {
+		if n := t.head().title; !slices.Contains(names, n) {
+			names = append(names, n)
+		}
+	}
+	return strings.Join(names, " + ")
+}
+
+// sidebarView is the main window's sidebar (doc/en-us/gui.md, "Windows"),
+// drawn on the window's material: hide the sidebar and + (Home's Connect)
+// beside the traffic lights; Home; the open panes, a group of several as a
+// card with its panes under its name, panes in windows of their own last;
+// and at the bottom light or dark, the settings and the network's state. A
+// pane dropped on the list gets an entry of its own. Folded, it is the rail.
+func (a *App) sidebarView(c *ui.Context, vw *viewerWindow) {
+	t := c.Theme()
+	bar := c.TitleBar()
+	a.mu.Lock()
+	rail := a.prefs.SidebarRail
+	a.mu.Unlock()
+	if rail {
+		a.railView(c, vw)
+		return
+	}
+	entries := vw.entries()
+	ui.Column(c.Key("sidebar")).Width(shellSidebarW).Shrink(0).FillHeight().Padding(10, 10, 10, 12).Gap(2).Children(func() {
+		ui.Row(c.Key("sb-top")).Height(sbTopH).Shrink(0).Gap(2).AlignItems(ui.Center).Padding(0, 0, 0, max(bar.Left-12, 0)).Children(func() {
+			if iconButton(c, "sb-hide", shellSidebar, L.SidebarHide()) {
+				a.setRail(true)
+			}
+			if iconButton(c, "sb-new", shellPlus, L.SidebarNew()) {
+				vw.showHome()
+			}
+			ui.Box(c.Key("sb-drag")).Grow(1).FillHeight().DragWindow()
+		})
+		ui.Box(c).Height(8).Shrink(0)
+		homeShown := slices.ContainsFunc(entries, func(e sbEntry) bool { return e.shown && e.homeAlone() })
+		if sbRow(c, "sb-home", appMark, L.NavHome(), "", homeShown, false, homeShown).Clicked() {
+			vw.showHome()
+		}
+		open := 0
+		for _, e := range entries {
+			if !e.homeAlone() {
+				open += len(e.tabs)
+			}
+		}
+		own := a.ownWindows()
+		open += len(own)
+		if open > 0 {
+			ui.Row(c).Padding(16, 10, 6, 10).Children(func() {
+				ui.Text(c, L.SidebarOpen()).FontSize(sizeSmall).Bold().TextColor(t.TextMuted).Grow(1)
+				ui.Text(c, strconv.Itoa(open)).FontSize(sizeSmall).TextColor(t.TextMuted)
+			})
+		}
+		list := ui.Column(c.Key("sb-list")).Grow(1).FillWidth().MinHeight(0).Gap(2)
+		if _, over := ui.DragOver[tabDrag](list); over {
+			list.Background(t.Accent.Alpha(0.08)).Radius(10)
+		}
+		if d, ok := ui.Drop[tabDrag](list); ok {
+			a.moveTab(d.key, vw)
+		}
+		list.Children(func() {
+			for i, e := range entries {
+				if e.homeAlone() {
+					continue
+				}
+				a.sbEntryView(c, vw, e, strconv.Itoa(i))
+			}
+			for _, w := range own {
+				h := w.tab.head()
+				row := sbRow(c, "sb-own-"+w.tab.tabKey(), h.icon, h.title, h.kind, false, false, false).Tooltip(L.SidebarOwnWindow())
+				if row.Clicked() {
+					w.win.win.Show()
+					w.win.win.Focus()
+				}
+			}
+		})
+		ui.Row(c.Key("sb-bottom")).Shrink(0).Gap(2).AlignItems(ui.Center).Padding(8, 0, 0, 0).Children(func() {
+			a.themeButton(c)
+			if iconButton(c, "sb-settings", shellGear, L.NavSettings()) {
+				a.openSettings(pageGeneral)
+			}
+			ui.Box(c).Grow(1)
+			a.networkChip(c)
+		})
+	})
+}
+
+// sbEntryView is one sidebar entry: a pane's row, or a group's card with
+// its panes' rows under its name. A row drags its pane like its header.
+func (a *App) sbEntryView(c *ui.Context, vw *viewerWindow, e sbEntry, key string) {
+	t := c.Theme()
+	if len(e.tabs) == 1 {
+		v := e.tabs[0]
+		h := v.head()
+		row := sbRow(c, "sb-"+v.tabKey(), h.icon, h.title, h.kind, e.shown, false, e.shown).Drag(tabDrag{v.tabKey()})
+		if row.Clicked() {
+			vw.showGroup(e.g, nil)
+		}
+		return
+	}
+	card := ui.Column(c.Key("sb-group-"+key)).FillWidth().Radius(10).Padding(2, 0).Gap(0)
+	if e.shown {
+		card.Background(t.Background).Shadow(0, 1, 6, 0, paneShadow).Padding(4, 4)
+	}
+	card.Children(func() {
+		if sbRow(c, "sb-group-head-"+key, paneSplitRight, groupName(e.tabs), "", false, false, e.shown).Clicked() {
+			vw.showGroup(e.g, nil)
+		}
+		for _, v := range e.tabs {
+			h := v.head()
+			sel := e.shown && v == e.focus
+			row := sbRow(c, "sb-"+key+"-"+v.tabKey(), h.icon, h.title, h.kind, sel, true, sel).Drag(tabDrag{v.tabKey()})
+			if row.Clicked() {
+				vw.showGroup(e.g, v)
+			}
+		}
+	})
+}
+
+// sbRow is a row of the sidebar: an icon, a name (bold when strong) and a
+// kind in words; the row chosen stands out (in a group's card, in the
+// accent's tint), a row under a group's name is indented.
+func sbRow(c *ui.Context, key string, icon *ui.SVG, title, kind string, selected, child, strong bool) ui.Element {
+	t := c.Theme()
+	left := float32(10)
+	if child {
+		left = 28
+	}
+	row := ui.ButtonBase(c.Key(key)).Height(sbRowH).FillWidth().Radius(8).Padding(0, 10, 0, left).Label(title)
+	fg := t.TextMuted
+	switch {
+	case selected && child:
+		row.Background(t.Accent.Alpha(0.12))
+		fg = t.Accent
+	case selected:
+		row.Background(t.Background).Shadow(0, 1, 4, 0, paneShadow)
+		fg = t.Accent
+	case row.Hovered():
+		row.Background(t.SurfaceHover)
+	}
+	row.Children(func() {
+		ui.Row(c).FillWidth().Gap(9).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, icon).FontSize(navIconSize).TextColor(fg)
+			name := ui.Text(c, title).SingleLine().MinWidth(0).Shrink(1)
+			if strong {
+				name.Bold()
+			}
+			if kind != "" {
+				ui.Text(c, kind).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine().MinWidth(0).Shrink(2)
+			}
+		})
+	})
+	return row
+}
+
+// ownWindow is a pane in a window of its own, which the sidebar lists after
+// the main window's.
+type ownWindow struct {
+	win *viewerWindow
+	tab tab
+}
+
+// ownWindows are the panes in windows of their own, oldest first.
+func (a *App) ownWindows() []ownWindow {
+	a.mu.Lock()
+	wins := slices.Clone(a.viewerWins)
+	a.mu.Unlock()
+	var out []ownWindow
+	for _, w := range wins {
+		w.mu.Lock()
+		if len(w.tabs) > 0 {
+			out = append(out, ownWindow{win: w, tab: w.tabs[0]})
+		}
+		w.mu.Unlock()
+	}
+	return out
+}
+
+// railView is the sidebar folded to its icons: show the sidebar and +,
+// Home, an icon per entry (a group's with how many panes it holds, named in
+// its tooltip), then light or dark, the settings and the network's dot.
+func (a *App) railView(c *ui.Context, vw *viewerWindow) {
+	t := c.Theme()
+	bar := c.TitleBar()
+	entries := vw.entries()
+	ui.Column(c.Key("rail")).Width(max(railW, bar.Left)).Shrink(0).FillHeight().Padding(10, 0).Gap(4).AlignItems(ui.Center).Children(func() {
+		if bar.Left > 0 {
+			ui.Box(c).Height(sbTopH).Shrink(0).FillWidth().DragWindow()
+		}
+		if iconButton(c, "rail-show", shellSidebar, L.SidebarShow()) {
+			a.setRail(false)
+		}
+		if iconButton(c, "rail-new", shellPlus, L.SidebarNew()) {
+			vw.showHome()
+		}
+		ui.Box(c).Width(24).Height(1).Shrink(0).Margin(6, 0).Background(t.Border)
+		homeShown := slices.ContainsFunc(entries, func(e sbEntry) bool { return e.shown && e.homeAlone() })
+		if railButton(c, "rail-home", appMark, L.NavHome(), 0, homeShown) {
+			vw.showHome()
+		}
+		for i, e := range entries {
+			if e.homeAlone() {
+				continue
+			}
+			icon, name := e.tabs[0].head().icon, e.tabs[0].tabTitle()
+			if len(e.tabs) > 1 {
+				icon, name = paneSplitRight, groupName(e.tabs)
+			}
+			if railButton(c, "rail-"+strconv.Itoa(i), icon, name, len(e.tabs), e.shown) {
+				vw.showGroup(e.g, nil)
+			}
+		}
+		for _, w := range a.ownWindows() {
+			if railButton(c, "rail-own-"+w.tab.tabKey(), w.tab.head().icon, w.tab.tabTitle()+" — "+L.SidebarOwnWindow(), 0, false) {
+				w.win.win.Show()
+				w.win.win.Focus()
+			}
+		}
+		ui.Box(c).Grow(1)
+		a.themeButton(c)
+		if iconButton(c, "rail-settings", shellGear, L.NavSettings()) {
+			a.openSettings(pageGeneral)
+		}
+		a.networkDot(c)
+	})
+}
+
+// railButton is an entry of the rail: its icon, a count when it holds
+// several panes, its name in the tooltip. Returns: whether it was clicked.
+func railButton(c *ui.Context, key string, icon *ui.SVG, name string, count int, selected bool) bool {
+	t := c.Theme()
+	b := ui.ButtonBase(c.Key(key)).Size(36, 36).Radius(9).Center().Shrink(0).Label(name).Tooltip(name)
+	fg := t.TextMuted
+	switch {
+	case selected:
+		b.Background(t.Background).Shadow(0, 1, 4, 0, paneShadow)
+		fg = t.Accent
+	case b.Hovered():
+		b.Background(t.SurfaceHover)
+	}
+	b.Children(func() {
+		ui.Icon(c, icon).FontSize(navIconSize).TextColor(fg)
+		if count > 1 {
+			ui.Text(c, strconv.Itoa(count)).FontSize(10).Bold().TextColor(t.TextMuted).
+				Absolute().Right(2).Bottom(1).Padding(0, 3).Radius(6).Background(t.Surface)
+		}
+	})
+	return b.Clicked()
+}
+
+// setRail folds the sidebar to its icons, or unfolds it, and keeps the
+// choice.
+func (a *App) setRail(on bool) {
+	a.mu.Lock()
+	p := a.prefs
+	a.mu.Unlock()
+	p.SidebarRail = on
+	a.setPrefs(p)
+}
+
+// themeButton is the sidebar's appearance: follow the system, light or
+// dark in turn, its icon saying which is chosen.
+func (a *App) themeButton(c *ui.Context) {
+	a.mu.Lock()
+	p := a.prefs
+	a.mu.Unlock()
+	icon, label, next := shellAuto, L.AppearanceFollow(), "light"
+	switch p.Theme {
+	case "light":
+		icon, label, next = shellSun, L.AppearanceLight(), "dark"
+	case "dark":
+		icon, label, next = shellMoon, L.AppearanceDark(), "system"
+	}
+	if iconButton(c, "appearance", icon, label) {
+		p.Theme = next
+		ApplyTheme(next)
+		a.setPrefs(p)
+	}
+}
+
+// networkState is how the networks are doing for the sidebar: a word and
+// its colour (from the theme), or "" before the engine says.
+func (a *App) networkState(t *ui.Theme) (string, ui.Color) {
+	a.mu.Lock()
+	var st *localapi.Status
+	if a.connected {
+		st = a.status
+	}
+	a.mu.Unlock()
+	if st == nil {
+		return "", t.TextMuted
+	}
+	switch st.Network.State {
+	case "online":
+		return L.ShellOnline(), t.Success
+	case "connecting":
+		return L.NetworkConnecting(), t.Warning
+	case "error":
+		return L.NetworkError(), t.Danger
+	}
+	return L.ShellOffline(), t.TextMuted
+}
+
+// networkChip is the networks' state at the sidebar's bottom: a dot and a
+// word, which open Settings at Network.
+func (a *App) networkChip(c *ui.Context) {
+	t := c.Theme()
+	word, col := a.networkState(t)
+	if word == "" {
+		return
+	}
+	b := ui.ButtonBase(c.Key("sb-network")).Height(paneButton).Padding(0, 10).Radius(7).Label(word).Tooltip(L.NavNetwork())
+	if b.Hovered() {
+		b.Background(t.SurfaceHover)
+	}
+	b.Children(func() {
+		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Size(onlineDot, onlineDot).Radius(onlineDot / 2).Background(col)
+			ui.Text(c, word).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine()
+		})
+	})
+	if b.Clicked() {
+		a.openSettings(pageNetwork)
+	}
+}
+
+// networkDot is the rail's networks' state: the dot alone, named in its
+// tooltip.
+func (a *App) networkDot(c *ui.Context) {
+	t := c.Theme()
+	word, col := a.networkState(t)
+	if word == "" {
+		return
+	}
+	b := ui.ButtonBase(c.Key("rail-network")).Size(36, 36).Radius(9).Center().Label(word).Tooltip(word)
+	b.Children(func() { ui.Box(c).Size(onlineDot+2, onlineDot+2).Radius(onlineDot/2 + 1).Background(col) })
+	if b.Clicked() {
+		a.openSettings(pageNetwork)
+	}
+}
+
+// openSettings opens the Settings sheet at a page.
+func (a *App) openSettings(p page) {
+	a.mu.Lock()
+	a.settingsOpen, a.page = true, p
+	a.mu.Unlock()
+}
+
+// covered reports whether something covers the panes, so that no picture
+// takes the keyboard: the Settings sheet.
+func (a *App) covered() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.settingsOpen
+}
+
+// settingsItem is a page of the Settings sheet's sections.
+type settingsItem struct {
+	page  page
+	icon  *ui.SVG
+	label string
+}
+
+// settingsSections are the Settings sheet's sections, in groups under a
+// heading each: Preferences, This computer, AI, Kyokai.
+func settingsSections() []struct {
+	title string
+	items []settingsItem
+} {
+	return []struct {
+		title string
+		items []settingsItem
+	}{
+		{L.SettingsGroupPreferences(), []settingsItem{{pageGeneral, navGeneral, L.SettingsGeneral()}}},
+		{L.SettingsGroupThisComputer(), []settingsItem{
+			{pagePermissions, navPermissions, L.NavAccess()},
+			{pageNetwork, navNetwork, L.NavNetwork()},
+			{pageSecurity, navSecurity, L.NavSecurityPrivacy()},
+			{pageRunMode, navGeneral, L.SettingsRunMode()},
+		}},
+		{L.SettingsGroupAI(), []settingsItem{{pageAI, navAI, L.NavAI()}}},
+		{"Kyokai", []settingsItem{{pageAbout, navAbout, L.NavAboutUpdates()}}},
+	}
+}
+
+// settingsSheet is Settings (doc/en-us/gui.md, "Settings"): the top layer,
+// a sheet over the whole window, sidebar included, opened by the sidebar's
+// gear and never part of a split; its sections on the left, the page
+// chosen beside them. While it is up, its header ends with the window's
+// buttons on Windows, as the panes' it covers did. Escape, a click outside
+// or × closes it.
+func (a *App) settingsSheet(c *ui.Context, win *mygo.Window) {
+	a.mu.Lock()
+	open, pg := a.settingsOpen, a.page
+	a.mu.Unlock()
+	if !open {
+		return
+	}
+	t := c.Theme()
+	w, h := c.Size()
+	ui.DialogBase(c, &open, func(back, panel ui.Element) {
+		back.Background(sheetScrim).Padding(sheetTop, sheetX, sheetBottom, sheetX)
+		panel.Radius(paneRadius).Background(t.Background).Shadow(0, 10, 30, 0, sheetShadow).Clip()
+		ui.Column(c.Key("sheet")).Width(max(w-2*sheetX, 560)).Height(max(h-sheetTop-sheetBottom, 400)).Children(func() {
+			ui.Row(c.Key("sheet-head")).Height(sheetHeaderH).Shrink(0).Padding(0, 8, 0, 20).Gap(4).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, L.NavSettings()).FontSize(sizeHeading).Bold().Grow(1)
+				if iconButton(c, "sheet-close", paneClose, L.ActionClose()) {
+					open = false
+				}
+				windowButtons(c, "sheet-win", win)
+			})
+			ui.Divider(c)
+			ui.Row(c.Key("sheet-body")).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
+				ui.Scroll(c.Key("sheet-nav")).Width(settingsNavW).Shrink(0).Padding(12).Gap(2).Children(func() {
+					for _, s := range settingsSections() {
+						ui.Text(c, s.title).FontSize(sizeSmall).Bold().TextColor(t.TextMuted).Padding(12, 10, 4, 10)
+						for _, it := range s.items {
+							row := ui.ButtonBase(c.Key("sheet-nav-"+strconv.Itoa(int(it.page)))).Height(sbRowH).FillWidth().Radius(8).Padding(0, 10).Label(it.label)
+							fg := t.TextMuted
+							switch {
+							case it.page == pg:
+								row.Background(t.SurfaceHover)
+								fg = t.Text
+							case row.Hovered():
+								row.Background(t.SurfaceHover.Alpha(0.6))
+							}
+							row.Children(func() {
+								ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
+									ui.Icon(c, it.icon).FontSize(navIconSize).TextColor(fg)
+									ui.Text(c, it.label).TextColor(fg).SingleLine()
+								})
+							})
+							if row.Clicked() {
+								a.mu.Lock()
+								a.page = it.page
+								a.mu.Unlock()
+							}
+						}
+					}
+				})
+				ui.Box(c).Width(1).Shrink(0).Background(t.Border)
+				ui.Column(c.Key("sheet-page")).Grow(1).MinWidth(0).Children(func() { a.pageView(c, pg) })
+			})
+		})
+	})
+	if !open {
+		a.mu.Lock()
+		a.settingsOpen = false
+		a.mu.Unlock()
+	}
+}

@@ -166,11 +166,12 @@ func watchLease(visible bool, recent []localapi.RecentDevice, sent []string, at,
 	return !slices.Equal(hosts, sent) || now.Sub(at) >= leaseEvery, hosts
 }
 
-// homeVisible reports whether Home shows: the main window is visible, on
-// its Kyokai tab, at the Home page (not in protected mode).
+// homeVisible reports whether Home shows: the main window is visible with
+// Home's pane in the group shown, not under the Settings sheet (nor in
+// protected mode).
 func (a *App) homeVisible() bool {
 	a.mu.Lock()
-	shown := a.visible && a.page == pageHome && !a.protected()
+	shown := a.visible && !a.settingsOpen && !a.protected()
 	main := a.main
 	a.mu.Unlock()
 	if !shown || main == nil {
@@ -178,7 +179,7 @@ func (a *App) homeVisible() bool {
 	}
 	main.mu.Lock()
 	defer main.mu.Unlock()
-	return main.home || len(main.tabs) == 0
+	return main.homeShownLocked()
 }
 
 // homeVisibilityChanged sends the watch lease at once as Home shows or
@@ -450,9 +451,7 @@ func (a *App) deviceMenu(c *ui.Context, r deviceRow, tunnels bool) {
 			a.mu.Unlock()
 		}
 		if m.Item(L.CardSaved()).Chosen() {
-			a.mu.Lock()
-			a.page = pageSecurity
-			a.mu.Unlock()
+			a.openSettings(pageSecurity)
 			a.homeVisibilityChanged()
 		}
 		if keyChanged && m.Item(L.ActionForgetIdentity()).Chosen() {

@@ -83,6 +83,92 @@ var (
 	barUnfold         = ui.MustParseSVG(unfoldSVG)
 )
 
+// The shell's icons, in the same style: the sidebar's controls, the kinds of
+// pane, and a pane header's buttons.
+var (
+	//go:embed assets/icons/sidebar.svg
+	sidebarSVG []byte
+	//go:embed assets/icons/plus.svg
+	plusSVG []byte
+	//go:embed assets/icons/search.svg
+	searchSVG []byte
+	//go:embed assets/icons/gear.svg
+	gearSVG []byte
+	//go:embed assets/icons/sun.svg
+	sunSVG []byte
+	//go:embed assets/icons/moon.svg
+	moonSVG []byte
+	//go:embed assets/icons/auto.svg
+	autoSVG []byte
+	//go:embed assets/icons/split-right.svg
+	splitRightSVG []byte
+	//go:embed assets/icons/split-down.svg
+	splitDownSVG []byte
+	//go:embed assets/icons/maximize.svg
+	maximizeSVG []byte
+	//go:embed assets/icons/restore.svg
+	restoreSVG []byte
+	//go:embed assets/icons/close.svg
+	closeSVG []byte
+	//go:embed assets/icons/terminal.svg
+	terminalSVG []byte
+	//go:embed assets/icons/remote-desktop.svg
+	remoteDesktopSVG []byte
+	//go:embed assets/icons/vnc.svg
+	vncSVG []byte
+
+	shellSidebar   = ui.MustParseSVG(sidebarSVG)
+	shellPlus      = ui.MustParseSVG(plusSVG)
+	shellSearch    = ui.MustParseSVG(searchSVG)
+	shellGear      = ui.MustParseSVG(gearSVG)
+	shellSun       = ui.MustParseSVG(sunSVG)
+	shellMoon      = ui.MustParseSVG(moonSVG)
+	shellAuto      = ui.MustParseSVG(autoSVG)
+	paneSplitRight = ui.MustParseSVG(splitRightSVG)
+	paneSplitDown  = ui.MustParseSVG(splitDownSVG)
+	paneMaximize   = ui.MustParseSVG(maximizeSVG)
+	paneRestore    = ui.MustParseSVG(restoreSVG)
+	paneClose      = ui.MustParseSVG(closeSVG)
+	kindDesktop    = barDisplay
+	kindSSH        = ui.MustParseSVG(terminalSVG)
+	kindRDP        = ui.MustParseSVG(remoteDesktopSVG)
+	kindVNC        = ui.MustParseSVG(vncSVG)
+)
+
+// The window buttons the view draws on Windows (windowButtons): Windows
+// 11's glyphs, 10 points with lines of one.
+var (
+	//go:embed assets/icons/window-minimize.svg
+	winMinimizeSVG []byte
+	//go:embed assets/icons/window-maximize.svg
+	winMaximizeSVG []byte
+	//go:embed assets/icons/window-restore.svg
+	winRestoreSVG []byte
+	//go:embed assets/icons/window-close.svg
+	winCloseSVG []byte
+
+	winMinimize = ui.MustParseSVG(winMinimizeSVG)
+	winMaximize = ui.MustParseSVG(winMaximizeSVG)
+	winRestore  = ui.MustParseSVG(winRestoreSVG)
+	winClose    = ui.MustParseSVG(winCloseSVG)
+)
+
+// paneShadow is a pane's shadow over the window's base.
+var paneShadow = ui.RGBA(16, 24, 40, 0.07)
+
+// The Settings sheet's dimming over the window, and its shadow.
+var (
+	sheetScrim  = ui.RGBA(0, 0, 0, 0.4)
+	sheetShadow = ui.RGBA(0, 0, 0, 0.3)
+)
+
+// closeHover is the window's close button under the pointer, white on
+// Windows' red.
+var (
+	closeHover     = ui.RGB(196, 43, 28)
+	closeHoverText = ui.RGB(255, 255, 255)
+)
+
 // A host's status tiles: their icons, in the same style, and their
 // colours, one per metric, the second part of a history in its own.
 var (
@@ -126,7 +212,6 @@ const (
 	sizeHeading    float32 = 16
 	sizeTitle      float32 = 22
 	sizeDeviceID   float32 = 34
-	sidebarW       float32 = 168
 	navIconSize    float32 = 16 // the sidebar's icons
 	cardRadius     float32 = 12
 	cardPad        float32 = 16
@@ -135,8 +220,23 @@ const (
 	inputAreaH     float32 = 72  // a multi-line input of about three lines
 	aiPanelW       float32 = 320 // the viewer's AI panel
 	clipPanelW     float32 = 300 // the viewer's clipboard panel
-	tabTitleMaxW   float32 = 220 // a viewer tab's title
-	tabStripH      float32 = 38  // the tab strip, which is the windows' title bar
+	shellSidebarW  float32 = 248 // the sidebar beside the panes
+	railW          float32 = 56  // the sidebar folded to its icons
+	sbRowH         float32 = 32  // a row of the sidebar
+	sbTopH         float32 = 40  // its top row: hide the sidebar and +
+	paneMargin     float32 = 8   // between the panes, and from the window's edges
+	paneHeaderH    float32 = 44  // a pane's header
+	paneRadius     float32 = 14  // a pane's corners
+	paneButton     float32 = 28  // a button in a pane's header or the sidebar
+	winButtonW     float32 = 40  // a window button the view draws on Windows
+	winButtonH     float32 = 30
+	winGlyph       float32 = 10  // its glyph
+	settingsNavW   float32 = 240 // the Settings sheet's sections
+	sheetX         float32 = 64  // the Settings sheet, from the window's sides
+	sheetTop       float32 = 48  // and from its top
+	sheetBottom    float32 = 32  // and its bottom
+	sheetHeaderH   float32 = 52  // its header
+	splitMenuW     float32 = 280 // a pane header's split menu
 	thisDeviceW    float32 = 300 // Home's This device column
 	deviceCardW    float32 = 236 // a recent device's card on Home
 	onlineDot      float32 = 8   // a device's online dot
@@ -168,11 +268,12 @@ const (
 	noticeBottom   float32 = 24  // the viewer's notices over the picture, from its bottom edge
 )
 
-// Where the macOS traffic lights sit in the tab strip: the close button's
-// top-left corner, which centres the 14-point buttons in tabStripH.
+// Where the macOS traffic lights sit: the close button's top-left corner,
+// which centres the 14-point buttons on the top pane's header, at the
+// sidebar's left edge.
 const (
-	trafficX = 14
-	trafficY = 12
+	trafficX = 18
+	trafficY = int(paneMargin + (paneHeaderH-14)/2)
 )
 
 // busyMark is the loading indicator shown while something is under way:

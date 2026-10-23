@@ -100,11 +100,16 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | listener | 监听 |
 | parameter set (H.264, HEVC) | 参数集 |
 | media engine (Apple silicon) | 媒体引擎 |
-| General / Permissions / Security / About (pages) | 通用 / 权限 / 安全 / 关于 |
+| General / Access / Security & privacy / Run mode / About & updates (Settings pages) | 通用 / 访问 / 安全与隐私 / 运行方式 / 关于与更新（设置的页面） |
 | Fit / Original size (the viewer) | 适应窗口 / 原始大小 |
 | clipboard history / Share the clipboard with this device | 剪贴板历史 / 与这台设备共享剪贴板 |
-| (the tab) in front | （标签页）位于前台 |
-| tab strip (the title bar) | 标签栏（即标题栏） |
+| (the pane) in front | （小窗）位于前台 |
+| pane / pane header / group (panes split together) | 小窗 / 小窗标题栏 / 分组（分屏在一起的小窗） |
+| sidebar / rail (the sidebar hidden to its icons) | 侧边栏 / 图标栏（隐藏后只剩图标的侧边栏） |
+| Settings sheet / a window of its own | 设置面板 / 独立窗口 |
+| Split right / Split down / Maximize, Restore (a pane) | 向右分屏 / 向下分屏 / 最大化、还原（小窗） |
+| window buttons (drawn on Windows) / snap layouts | 窗口按钮（Windows 上自绘） / 贴靠布局 |
+| appearance: follow the system / light / dark | 外观：跟随系统 / 浅色 / 深色 |
 | toolbar (the viewer's) / Hide controls / Show controls | 控制栏 / 收起控制栏 / 展开控制栏 |
 | grip / handle (the folded toolbar) | 拖动柄 / 把手 |
 | feature token (protocol) | 标记 |
@@ -125,7 +130,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | saved sign-in (of a service) | 保存的登录信息 |
 | Your keys / Generate a key / Import a key / Generate a pair | 你的密钥 / 生成密钥 / 导入密钥 / 生成密钥对 |
 | passphrase (of a key) | 口令 |
-| service tab / Sign in / Trust the new key | 服务标签页 / 登录 / 信任新密钥 |
+| service pane / Sign in / Trust the new key | 服务小窗 / 登录 / 信任新密钥 |
 | live status / sparkline / Getting its status… | 实时状态 / 走势线 / 正在获取状态… |
 | watch lease (Home's status watch) | 查看租约 |
 | dot history / status details | 点阵历史 / 状态详情 |

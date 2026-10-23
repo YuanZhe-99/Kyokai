@@ -166,8 +166,11 @@ type serviceTab struct {
 	device  string
 	service string
 	address string
-	title   string
-	home    atomic.Pointer[viewerWindow]
+	// name is the device's name and Device ID (deviceTitle); title the
+	// tab's, with the service.
+	name  string
+	title string
+	home  atomic.Pointer[viewerWindow]
 
 	mu    sync.Mutex
 	phase string
@@ -226,8 +229,9 @@ func (a *App) openService(device, address, service string) {
 			about = a.prefs.named(device, r.About)
 		}
 	}
-	s := &serviceTab{app: a, device: device, service: service, address: address,
-		title: L.ServiceTabTitle(deviceTitle(about, device), serviceName(service))}
+	name := deviceTitle(about, device)
+	s := &serviceTab{app: a, device: device, service: service, address: address, name: name,
+		title: L.ServiceTabTitle(name, serviceName(service))}
 	a.services[serviceKey(device, service)] = s
 	a.mu.Unlock()
 	a.main.add(s)
@@ -359,8 +363,23 @@ func (s *serviceTab) redraw() { s.update(func() {}) }
 
 // The tab interface (viewerwin.go).
 
-func (s *serviceTab) tabKey() string               { return serviceKey(s.device, s.service) }
-func (s *serviceTab) tabTitle() string             { return s.title }
+func (s *serviceTab) tabKey() string   { return serviceKey(s.device, s.service) }
+func (s *serviceTab) tabTitle() string { return s.title }
+
+// head is the service's pane header: its kind's icon, the device's name,
+// and the service.
+func (s *serviceTab) head() paneHead {
+	title, _ := splitTitle(s.name)
+	icon := kindVNC
+	switch s.service {
+	case serviceSSH:
+		icon = kindSSH
+	case serviceRDP:
+		icon = kindRDP
+	}
+	kind := serviceName(s.service)
+	return paneHead{icon: icon, title: title, sub: kind, kind: kind}
+}
 func (s *serviceTab) tabWindow() *viewerWindow     { return s.home.Load() }
 func (s *serviceTab) setTabWindow(w *viewerWindow) { s.home.Store(w) }
 func (s *serviceTab) running() serviceClient       { s.mu.Lock(); defer s.mu.Unlock(); return s.client }

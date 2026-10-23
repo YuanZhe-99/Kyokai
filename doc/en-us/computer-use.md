@@ -274,13 +274,13 @@ says so). A Mac's tap takes the keys going to Kyokai while a viewer grabs, by th
 turned into the PC scan codes the host maps back (Command is the Windows key); keys no scan code
 names (Fn, the media keys) stay the Mac's, and Caps Lock, which a Mac reports only as it toggles,
 goes as a press and a release. The tap takes keys only while Kyokai owns the frontmost window and
-the viewer reads them (it lets every key pass when either stops), a viewer whose tab is hidden or
+the viewer reads them (it lets every key pass when either stops), a viewer whose pane is hidden or
 whose connection ended releases its grab, and the tap is switched off and invalidated with its
 thread (left installed, it froze every program's keyboard until Kyokai quit).
 
 The keyboard follows the pointer. In Map and Translate a viewer grabs while the pointer is over its
 picture, and the picture takes the text focus with it, so typed text and keys go to the same
-session; with tabs side by side the keys go to the connection under the pointer. With the pointer
+session; with panes side by side the keys go to the connection under the pointer. With the pointer
 away from the picture (the toolbar, Home, outside the window) nothing is grabbed and keys go to
 Kyokai's own interface. The core takes the keys only while Kyokai's window is in front; on Windows
 also only while it is the topmost window at the pointer (the root of `WindowFromPoint` is the
@@ -290,9 +290,9 @@ the pointer to the viewer's grab (0.5.4 also asked that Kyokai own the window at
 location, read from the whole on-screen window list, where invisible windows of other programs and
 of the system cover Kyokai's: the tap let every key pass while the viewer took itself for grabbing,
 so a Mac sent no Enter, Tab, Delete, Shift or Command — letters and digits still arrived as text —
-except with the pointer off the picture). The core holds one grab per window, so the GUI keeps which tab
-holds each window's grab and only that tab ends it (`App.grabKeyboard`; as the shown tab changed,
-the tab just hidden ended the grab the newly shown one had taken, which still dropped the window's
+except with the pointer off the picture). The core holds one grab per window, so the GUI keeps which pane
+holds each window's grab and only that pane ends it (`App.grabKeyboard`; as the shown pane changed,
+the pane just hidden ended the grab the newly shown one had taken, which still dropped the window's
 own key events, so only text reached the host: no Tab, Enter, Delete or Shift). The picture takes
 text while it has the focus: macOS makes text of keys only for an element that does, and Legacy
 sends letters as that text (with it missing, no
@@ -392,11 +392,11 @@ is a Kyokai process). Text up to 1 MiB, or an image up to 3840×2160 sent as PNG
 there; files are under Files). In the helper modes images from a controller are not taken, because the
 helper and its agent are privileged and never decode remote media ([run-modes.md](run-modes.md)).
 
-On a controller with several connections, only the one whose tab is in front — shown in the Kyokai
-window used last; none while that window shows the Kyokai tab — exchanges the clipboard, as
+On a controller with several connections, only the one whose pane is in front — the one in focus in
+the Kyokai window used last; none while that is Home — exchanges the clipboard, as
 RustDesk's client does: what is copied here goes to that device alone, and only that device's
-copies reach this computer's clipboard. A copy made while a tab is behind waits, and goes when the
-tab comes to the front (copied in another program, then pasted there); the other device's copies
+copies reach this computer's clipboard. A copy made while a pane is behind waits, and goes when the
+pane comes to the front (copied in another program, then pasted there); the other device's copies
 that arrive meanwhile are dropped. The viewer's **Share the clipboard with this device** switch
 (kept for each device) stops it altogether: nothing is offered or taken, transfers of files under
 way end (`files-cancel`, `files-stop`), and switching it on again sends only later copies. The GUI
@@ -408,7 +408,7 @@ host's side is unchanged: it offers its copies to every controller allowed `clip
 The controller's engine reports what crossed — text, an image as PNG, or files as the offer lists
 them — with its side (`from`: `controller` or `host`) and time to its GUI (media packet 13), which
 lists it in the viewer's clipboard panel, newest first, at most 30 entries, in memory only: never
-written to disk, gone when the tab closes. A GUI that does not read them keeps at most 8 waiting.
+written to disk, gone when the pane closes. A GUI that does not read them keeps at most 8 waiting.
 
 ### Files
 
