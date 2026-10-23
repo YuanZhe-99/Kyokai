@@ -145,7 +145,7 @@ func TestViewsRender(t *testing.T) {
 			}
 		},
 		"permissions": func(a *App) {
-			a.page, a.status.PermanentPassword = pagePermissions, true
+			a.page, a.status.PermanentPassword = pageAccess, true
 			a.status.PasswordGrants = []string{localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard, localapi.PermFiles}
 			a.status.PasswordMode, a.status.WithoutAsking = "both", true
 			a.status.ByAddress = localapi.ByAddress{On: true, Ranges: []string{"192.168.0.0/16", "100.64.0.0/10"}, Port: 47310}

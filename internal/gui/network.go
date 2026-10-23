@@ -35,65 +35,85 @@ type netForm struct {
 // maxNetworks is how many networks the engine keeps.
 const maxNetworks = 8
 
-// networkView is the Network page: every network kept, joined or not, with
-// its state and the devices it reaches, and how devices reach this one
-// (direct connections, by address).
+// networkView is the Network page: how the networks are doing, every
+// network kept with its Join switch and the devices it reaches, other ways
+// in (by address), and the choices few people need.
 func (a *App) networkView(c *ui.Context) {
-	if !a.engineState(c) {
-		return
-	}
-	a.mu.Lock()
-	loaded, busy := a.net.loaded, a.busy["network"]
-	a.mu.Unlock()
-	if !loaded && !busy {
-		a.loadNetworks()
-	}
-	a.networksCard(c)
-	a.connectionsCard(c)
-	a.advancedCard(c)
-}
-
-// connectionsCard is how other devices reach this one: Accept connections
-// by address.
-func (a *App) connectionsCard(c *ui.Context) {
-	card(c).Children(func() {
-		ui.Text(c, L.NetworkConnections()).FontSize(sizeHeading).Bold()
-		a.byAddressSettings(c)
+	settingsPage(c, L.NavNetwork(), L.SettingsAboutNetwork(), func() {
+		if !a.engineState(c) {
+			return
+		}
+		a.mu.Lock()
+		loaded, busy := a.net.loaded, a.busy["network"]
+		a.mu.Unlock()
+		if !loaded && !busy {
+			a.loadNetworks()
+		}
+		a.networkSummary(c)
+		a.networksSection(c)
+		a.section(c, "ways-in", L.SectionOtherWays(), nil, func(r *rows) { a.byAddressRows(c, r) })
+		a.advancedSection(c)
 	})
 }
 
-// advancedCard holds the network choices few people need: Try direct
+// networkSummary is how the networks are doing at a glance: online,
+// connecting, failing or offline, and in how many of those joined.
+func (a *App) networkSummary(c *ui.Context) {
+	t := c.Theme()
+	word, col := a.networkState(t)
+	if word == "" {
+		return
+	}
+	a.mu.Lock()
+	joined, online := 0, 0
+	for _, n := range a.status.Network.Networks {
+		if n.Joined {
+			joined++
+			if n.State == "online" {
+				online++
+			}
+		}
+	}
+	a.mu.Unlock()
+	about := L.NetworkSummary(joined, online)
+	if joined == 0 {
+		about = L.NetworkSummaryNone()
+	}
+	state := func(c *ui.Context) {
+		ui.Box(c).Size(40, 40).Shrink(0).Radius(10).Center().Background(col.Alpha(0.14)).Children(func() {
+			ui.Icon(c, navNetwork).FontSize(20).TextColor(col)
+		})
+	}
+	ui.Box(c).Height(18).Shrink(0)
+	a.list(c, "net-summary", func(r *rows) { r.row(c, "net-state", state, setting{title: word, about: about}, nil) })
+}
+
+// advancedSection holds the network choices few people need: Try direct
 // connections in every network (applied at once; the helper always tries
 // them, so it is on and fixed in its modes), which makes this device listen
 // and is said to, and Latency-first routing, which only changes how routes
 // are chosen.
-func (a *App) advancedCard(c *ui.Context) {
-	t := c.Theme()
+func (a *App) advancedSection(c *ui.Context) {
 	a.mu.Lock()
 	net, netBusy, modeBusy := a.net, a.busy["network"], a.busy["mode"]
 	a.mu.Unlock()
 	helperMode := a.currentMode() != modeUser
-	card(c).Children(func() {
-		ui.Text(c, L.NetworkAdvanced()).FontSize(sizeHeading).Bold()
-		directHint := L.NetworkDirectHint()
-		if helperMode {
-			directHint = L.NetworkDirectHelper()
-		}
-		direct := net.direct || helperMode
-		settingRow(c, "net-direct", L.NetworkDirect(), directHint, func() {
-			if ui.Switch(c.Key("net-direct-sw"), &direct).Label(L.NetworkDirect()).
-				Disabled(modeBusy || netBusy || helperMode || !net.loaded).Changed() {
-				a.setDirect(direct)
-			}
-		})
+	a.section(c, "advanced", L.NetworkAdvanced(), nil, func(r *rows) {
 		// Unlike a choice of protocol, direct connections make this device
 		// listen on the network and answer strangers' packets: said plainly.
-		if !helperMode {
-			ui.Text(c, L.NetworkDirectWarning()).FontSize(sizeSmall).TextColor(t.Warning)
+		direct := setting{title: L.NetworkDirect(), about: L.NetworkDirectAbout(), more: L.NetworkDirectHint() + "\n\n" + L.NetworkDirectWarning()}
+		if helperMode {
+			direct.about, direct.more = L.NetworkDirectHelper(), ""
 		}
-		ui.Divider(c)
+		on := net.direct || helperMode
+		r.row(c, "net-direct", tile(barActions), direct, func() {
+			if ui.Switch(c.Key("net-direct-sw"), &on).Label(L.NetworkDirect()).
+				Disabled(modeBusy || netBusy || helperMode || !net.loaded).Changed() {
+				a.setDirect(on)
+			}
+		})
 		latency := net.latencyFirst
-		settingRow(c, "net-latency", L.NetworkLatencyFirst(), L.NetworkLatencyFirstHint(), func() {
+		r.row(c, "net-latency", tile(rowPulse), setting{title: L.NetworkLatencyFirst(), about: L.NetworkLatencyFirstHint()}, func() {
 			if ui.Switch(c.Key("net-latency-sw"), &latency).Label(L.NetworkLatencyFirst()).
 				Disabled(modeBusy || netBusy || !net.loaded).Changed() {
 				a.setLatencyFirst(latency)
@@ -113,10 +133,11 @@ func (a *App) setLatencyFirst(on bool) {
 	})
 }
 
-// networksCard lists the networks kept: each with its Join switch, Edit and
-// Remove, its state and the devices it reaches, then Add a network or the
-// form of a new one. A network being edited shows its form in its place.
-func (a *App) networksCard(c *ui.Context) {
+// networksSection lists the networks kept, Add a network beside its title:
+// each with its state, Join and a menu of Edit and Remove, the devices it
+// reaches under it while online, and its form under it while edited (a new
+// network's on top).
+func (a *App) networksSection(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	st, busy := a.net, a.busy["network"]
@@ -131,138 +152,123 @@ func (a *App) networksCard(c *ui.Context) {
 		known[r.DeviceID] = a.prefs.named(r.DeviceID, r.About)
 	}
 	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.NetworkTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.NetworksHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		if !st.loaded {
-			busyMark(c, L.NetworkTitle(), busySizeLarge)
+	aside := func() {
+		if len(st.profiles) >= maxNetworks {
 			return
 		}
+		if ui.Button(c.Key("net-add"), L.NetworkAdd()).Disabled(busy || st.form != nil || !st.loaded).Clicked() {
+			a.mu.Lock()
+			a.net.form = &netForm{}
+			a.mu.Unlock()
+		}
+	}
+	a.section(c, "networks", L.NetworkTitle(), aside, func(r *rows) {
+		if !st.loaded {
+			r.block(c, "net-loading", func() { busyMark(c, L.NetworkTitle(), busySizeLarge) })
+			return
+		}
+		if st.form != nil && st.form.id == "" {
+			r.block(c, "net-form-new", func() { a.networkForm(c, *st.form, busy) })
+		}
 		if len(st.profiles) == 0 && st.form == nil {
-			ui.Text(c, L.NetworkNone()).TextColor(t.TextMuted)
-		}
-		for _, p := range st.profiles {
-			ui.Divider(c)
-			if st.form != nil && st.form.id == p.ID {
-				a.networkForm(c, *st.form, busy)
-				continue
-			}
-			a.networkEntry(c, p, states[p.ID], known, busy)
-		}
-		switch {
-		case st.form != nil && st.form.id == "":
-			ui.Divider(c)
-			a.networkForm(c, *st.form, busy)
-		case len(st.profiles) < maxNetworks:
-			ui.Row(c).Children(func() {
-				if ui.Button(c.Key("net-add"), L.NetworkAdd()).Disabled(busy || st.form != nil).Clicked() {
-					a.mu.Lock()
-					a.net.form = &netForm{}
-					a.mu.Unlock()
-				}
+			r.block(c, "net-none", func() {
+				ui.Text(c, L.NetworkNone())
+				ui.Text(c, L.NetworksHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
 			})
 		}
-		if len(st.profiles) > 0 {
-			ui.Text(c, L.NetworkDevicesHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+		for i, p := range st.profiles {
+			a.networkRows(c, r, p, states[p.ID], known, busy, i == 0)
+			if st.form != nil && st.form.id == p.ID {
+				r.block(c, "net-form-"+p.ID, func() { a.networkForm(c, *st.form, busy) })
+			}
 		}
 	})
 }
 
-// networkEntry is one network: its name and network name, Join, Edit and
-// Remove, its state (with the address, NAT type and port while online), and
-// the devices it reaches.
-func (a *App) networkEntry(c *ui.Context, p localapi.NetworkProfile, s localapi.NetworkState, known map[string]localapi.About, busy bool) {
+// networkRows are one network's rows: its name, network name and state (its
+// devices, address, NAT type and port while online; why it failed), Join
+// and a menu of Edit and Remove; while online, the devices it reaches, each
+// with Copy and Connect.
+func (a *App) networkRows(c *ui.Context, r *rows, p localapi.NetworkProfile, s localapi.NetworkState, known map[string]localapi.About, busy, first bool) {
 	t := c.Theme()
-	ui.Column(c.Key("net-" + p.ID)).Gap(8).FillWidth().Children(func() {
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
-			ui.Column(c).Grow(1).Gap(2).Children(func() {
-				ui.Text(c, networkLabel(p)).Bold().SingleLine()
-				if p.Label != "" {
-					ui.Text(c, p.Name).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine()
-				}
-			})
-			joined := p.Joined
-			labelled(c, func() {
-				if ui.Switch(c.Key("net-join-"+p.ID), &joined).Label(L.NetworkJoin()).Disabled(busy).Changed() {
-					a.setJoined(p.ID, joined)
-				}
-			}, L.NetworkJoin())
-			if ui.Button(c.Key("net-edit-"+p.ID), L.ActionEdit()).Disabled(busy).Clicked() {
+	state := s.State
+	if !p.Joined {
+		state = "off"
+	}
+	var parts []string
+	if p.Label != "" {
+		parts = append(parts, p.Name)
+	}
+	var col ui.Color
+	switch state {
+	case "online":
+		parts = append(parts, L.NetworkDeviceCount(len(s.Devices)))
+		if s.Address != "" {
+			parts = append(parts, s.Address)
+		}
+		parts = append(parts, natLabel(s.NAT))
+		if s.ListenPort != 0 {
+			parts = append(parts, L.NetworkListenPort(strconv.Itoa(s.ListenPort)))
+		}
+	case "connecting":
+		parts = append(parts, L.NetworkConnecting())
+	case "error":
+		parts, col = []string{L.NetworkErrorReason(s.Error)}, t.Danger
+	default:
+		parts = append(parts, L.NetworkNotJoined())
+	}
+	set := setting{title: networkLabel(p), about: strings.Join(parts, " · "), col: col}
+	if first {
+		set.more = L.NetworksHint()
+	}
+	r.row(c, "net-"+p.ID, tile(navNetwork), set, func() {
+		switch state {
+		case "online":
+			ui.Text(c, L.NetworkOnline()).FontSize(sizeSmall).TextColor(t.Success)
+		case "connecting":
+			busyMark(c, L.NetworkConnecting(), busySize)
+		}
+		joined := p.Joined
+		if ui.Switch(c.Key("net-join-"+p.ID), &joined).Label(L.NetworkJoin()).Disabled(busy).Changed() {
+			a.setJoined(p.ID, joined)
+		}
+		iconButtonBase(c, "net-more-"+p.ID, rowMore, L.ActionMore()).Disabled(busy).Menu(func(m *ui.Menu) {
+			if m.Item(L.ActionEdit()).Chosen() {
 				a.mu.Lock()
 				a.net.form = &netForm{id: p.ID, label: p.Label, servers: strings.Join(p.Servers, "\n"), name: p.Name,
 					hasSecret: p.HasSecret, weakSecret: p.WeakSecret}
 				a.mu.Unlock()
 			}
-			if ui.Button(c.Key("net-remove-"+p.ID), L.ActionRemove()).Disabled(busy).Clicked() {
+			if m.Item(L.ActionRemove()).Chosen() {
 				go a.removeNetwork(p.ID, func() bool {
 					return a.confirm(L.NetworkRemoveConfirm(networkLabel(p)), L.ActionRemove())
 				})
 			}
 		})
-		state := s.State
-		if !p.Joined {
-			state = "off"
-		}
-		switch state {
-		case "online":
-			ui.Text(c, L.NetworkOnline()).FontSize(sizeSmall).TextColor(t.Success)
-		case "connecting":
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				busyMark(c, L.NetworkConnecting(), busySize)
-				ui.Text(c, L.NetworkConnecting()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			})
-		case "error":
-			ui.Text(c, L.NetworkError()).FontSize(sizeSmall).TextColor(t.Danger)
-			ui.Text(c, s.Error).FontSize(sizeSmall).TextColor(t.TextMuted).Selectable()
-		default:
-			ui.Text(c, L.NetworkNotJoined()).FontSize(sizeSmall).TextColor(t.TextMuted)
-			return
-		}
-		if s.Address != "" {
-			settingRow(c, "net-addr-"+p.ID, L.NetworkAddress(), "", func() {
-				ui.Text(c, s.Address).FontFeatures("tnum").Selectable()
-			})
-		}
-		if state == "online" {
-			settingRow(c, "net-nat-"+p.ID, L.NetworkNAT(), "", func() { ui.Text(c, natLabel(s.NAT)) })
-		}
-		if s.ListenPort != 0 {
-			settingRow(c, "net-port-"+p.ID, L.NetworkPort(), "", func() {
-				ui.Text(c, strconv.Itoa(s.ListenPort)).FontFeatures("tnum").Selectable()
-			})
-		}
-		if state != "online" {
-			return
-		}
-		ui.Text(c, L.NetworkDevices()).FontSize(sizeSmall).Bold()
-		if len(s.Devices) == 0 {
-			ui.Text(c, L.NetworkNoDevices()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		}
-		for _, d := range s.Devices {
-			about := known[d.DeviceID]
-			ui.Row(c.Key("dev-" + p.ID + "-" + d.DeviceID)).Gap(16).AlignItems(ui.Center).Children(func() {
-				ui.Column(c).Grow(1).Gap(2).Children(func() {
-					if about.Name != "" {
-						ui.Text(c, about.Name).Bold().SingleLine()
-					}
-					ui.Text(c, groupDigits(d.DeviceID)).FontFeatures("tnum").Selectable()
-				})
-				path := L.PathRelay()
-				if d.Path == "direct" {
-					path = L.PathDirect()
-				}
-				ui.Text(c, path).FontSize(sizeSmall).TextColor(t.TextMuted)
-				ui.Text(c, L.LatencyMS(d.LatencyMS)).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted)
-				if ui.Button(c.Key("dev-copy-"+p.ID+"-"+d.DeviceID), L.ActionCopy()).Clicked() {
-					mygo.Clipboard.WriteText(d.DeviceID)
-					a.update(func() { a.setToast(L.Copied(), false) })
-				}
-				if ui.Button(c.Key("dev-connect-"+p.ID+"-"+d.DeviceID), L.ActionConnect()).Clicked() {
-					a.connectDevice(d.DeviceID, "", about, nil)
-				}
-			})
-		}
 	})
+	if state != "online" {
+		return
+	}
+	for i, d := range s.Devices {
+		about := known[d.DeviceID]
+		path := L.PathRelay()
+		if d.Path == "direct" {
+			path = L.PathDirect()
+		}
+		ds := setting{title: deviceTitle(about, d.DeviceID), about: path + " · " + L.LatencyMS(d.LatencyMS)}
+		if i == 0 {
+			ds.more = L.NetworkDevicesHint()
+		}
+		r.row(c, "dev-"+p.ID+"-"+d.DeviceID, avatarLead(about), ds, func() {
+			if ui.Button(c.Key("dev-copy-"+p.ID+"-"+d.DeviceID), L.ActionCopy()).Clicked() {
+				mygo.Clipboard.WriteText(d.DeviceID)
+				a.update(func() { a.setToast(L.Copied(), false) })
+			}
+			if ui.Button(c.Key("dev-connect-"+p.ID+"-"+d.DeviceID), L.ActionConnect()).Clicked() {
+				a.connectDevice(d.DeviceID, "", about, nil)
+			}
+		})
+	}
 }
 
 // networkForm adds a network (f.id "") or edits one: the name shown here,

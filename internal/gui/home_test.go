@@ -222,7 +222,7 @@ func TestHomeCardsRender(t *testing.T) {
 		}, false},
 		{"permissions-keys", 1000, 1700, func(a *App) {
 			// Only one key signs in: the passwords are unchecked, the other key is off.
-			a.page, a.status.PasswordMode, a.status.WithoutAsking = pagePermissions, "none", true
+			a.page, a.status.PasswordMode, a.status.WithoutAsking = pageAccess, "none", true
 			a.access = accessForm{loaded: true}
 			a.keys = keysState{loaded: true, authorized: []localapi.AuthorizedKey{
 				{ID: "2", Name: "Phone", Public: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFk1y9lH1qL2rC0gGJ7bH0cE4YqJ6m3z5Wq4A1Xb8yZp phone"},
@@ -230,7 +230,7 @@ func TestHomeCardsRender(t *testing.T) {
 			}}
 		}, false},
 		{"permissions-watchers", 1000, 1300, func(a *App) {
-			a.page = pagePermissions
+			a.page = pageAccess
 			a.access = accessForm{loaded: true}
 			a.status.Watchers = []localapi.Watcher{{DeviceID: "213559601", Since: 1797400000, About: localapi.About{Name: "Office laptop", Maker: "LENOVO"}}}
 		}, false},

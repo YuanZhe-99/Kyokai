@@ -135,6 +135,69 @@ var (
 	kindVNC        = ui.MustParseSVG(vncSVG)
 )
 
+// The icons of Settings' rows (settings.go), in the same style.
+var (
+	//go:embed assets/icons/power.svg
+	powerSVG []byte
+	//go:embed assets/icons/refresh.svg
+	refreshSVG []byte
+	//go:embed assets/icons/lock.svg
+	lockSVG []byte
+	//go:embed assets/icons/eye.svg
+	eyeSVG []byte
+	//go:embed assets/icons/eye-off.svg
+	eyeOffSVG []byte
+	//go:embed assets/icons/mouse.svg
+	mouseSVG []byte
+	//go:embed assets/icons/folder.svg
+	folderSVG []byte
+	//go:embed assets/icons/check.svg
+	checkSVG []byte
+	//go:embed assets/icons/pulse.svg
+	pulseSVG []byte
+	//go:embed assets/icons/tray.svg
+	traySVG []byte
+	//go:embed assets/icons/archive.svg
+	archiveSVG []byte
+	//go:embed assets/icons/tag.svg
+	tagSVG []byte
+	//go:embed assets/icons/id-card.svg
+	idCardSVG []byte
+	//go:embed assets/icons/plug.svg
+	plugSVG []byte
+	//go:embed assets/icons/log.svg
+	logSVG []byte
+	//go:embed assets/icons/user.svg
+	userSVG []byte
+	//go:embed assets/icons/server.svg
+	serverSVG []byte
+	//go:embed assets/icons/download.svg
+	downloadSVG []byte
+	//go:embed assets/icons/more.svg
+	moreSVG []byte
+
+	rowPower    = ui.MustParseSVG(powerSVG)
+	rowRefresh  = ui.MustParseSVG(refreshSVG)
+	rowLock     = ui.MustParseSVG(lockSVG)
+	rowEye      = ui.MustParseSVG(eyeSVG)
+	rowEyeOff   = ui.MustParseSVG(eyeOffSVG)
+	rowMouse    = ui.MustParseSVG(mouseSVG)
+	rowFolder   = ui.MustParseSVG(folderSVG)
+	rowCheck    = ui.MustParseSVG(checkSVG)
+	rowPulse    = ui.MustParseSVG(pulseSVG)
+	rowTray     = ui.MustParseSVG(traySVG)
+	rowArchive  = ui.MustParseSVG(archiveSVG)
+	rowTag      = ui.MustParseSVG(tagSVG)
+	rowID       = ui.MustParseSVG(idCardSVG)
+	rowPlug     = ui.MustParseSVG(plugSVG)
+	rowLog      = ui.MustParseSVG(logSVG)
+	rowUser     = ui.MustParseSVG(userSVG)
+	rowServer   = ui.MustParseSVG(serverSVG)
+	rowDownload = ui.MustParseSVG(downloadSVG)
+	rowMore     = ui.MustParseSVG(moreSVG)
+	rowGlobe    = statusIconNetwork
+)
+
 // The window buttons the view draws on Windows (windowButtons): Windows
 // 11's glyphs, 10 points with lines of one.
 var (
@@ -236,6 +299,13 @@ const (
 	sheetTop       float32 = 48  // and from its top
 	sheetBottom    float32 = 32  // and its bottom
 	sheetHeaderH   float32 = 52  // its header
+	settingsPageW  float32 = 720 // a Settings page's column
+	sizePageTitle  float32 = 20  // its title
+	listRadius     float32 = 12  // a list of rows on it
+	rowMinH        float32 = 54  // a row
+	tileSize       float32 = 32  // the tile a row starts with
+	permTileH      float32 = 60  // a permission's toggle tile
+	moreW          float32 = 360 // a row's longer explanation (How it works)
 	splitMenuW     float32 = 280 // a pane header's split menu
 	thisDeviceW    float32 = 300 // Home's This device column
 	deviceCardW    float32 = 236 // a recent device's card on Home
@@ -251,7 +321,6 @@ const (
 	busySize       float32 = 16  // a loading indicator beside text
 	busySizeLarge  float32 = 28  // a loading indicator on its own
 	chipRadius     float32 = 10  // a chip (a saved sign-in, a state)
-	checkIndent    float32 = 26  // a check box's hint, under its label
 	homeMaxW       float32 = 1120
 	homeCardMinW   float32 = 300 // a device's card on Home, at least
 	homeColumns    int     = 3   // Home's device cards side by side, at most

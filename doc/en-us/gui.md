@@ -60,6 +60,17 @@ when `SCREENSHOT_DIR` is set.
   General; This computer: Access, Network, Security & privacy, Run mode; AI: AI; Kyokai: About &
   updates — and beside them the page chosen ([Structure](#structure)). Escape, a click outside
   it or × closes it; while it is up, no picture takes the keyboard (`covered`).
+- **Search** sits above the sections: while it holds words, the settings whose title or words
+  hold every one of them, ignoring case, replace the sections, titles that match first, each with
+  its page (`settingsHits`, `searchSettings`; every entry shows on its page, a test checks it);
+  choosing one opens its page scrolled to it and tints it for two seconds.
+- **A page** (`settingsPage`) is a title and one sentence on what it is for, no wider than 720
+  points, then sections: a muted title, with a note or buttons on its right, over a rounded list
+  of rows (`App.section`). A row (`rows.row`) starts with an icon in a tile (a letter for a
+  provider, the avatar for a device), then its title and one short sentence, and ends with its
+  control; a longer explanation sits behind a small ⓘ beside the title ("How it works"), in a
+  popover. A form, a list of devices or a key shown once takes a row of its own under the row it
+  belongs to. What a correct password grants are tiles that toggle, four to a line (`toggleTile`).
 
 ## Structure
 
@@ -133,30 +144,37 @@ when `SCREENSHOT_DIR` is set.
   why, done, stopped), the model's latest text and progress note, its latest actions in words
   ("Click at 640, 425", "Press Ctrl+S") with what became of them, Pause or Resume and Stop; an
   action waiting for approval shows in a framed box with Allow and Deny and the provider's notes.
-  A finished task can be continued with a reply. Below: the providers card — the model tasks use (every model of every
-  source by its `Vendor: Model` name), the approval policy, the sources with their template, model
-  count and key state (Edit, Remove), and Add provider from a template; the editor has the name,
-  the address (a template's sites by name), the format for Custom, a write-only key, the models
-  with Remove, an id to add and List models (a saved source) and the task history with
-  Clear history. While the task waits for approval, a banner above the panes has Review (Settings at AI),
+  A finished task can be continued with a reply. Below (`aiProviders`): Defaults for new tasks —
+  the model (every model of every source by its `Vendor: Model` name) and Ask before acting (the
+  approval policy); Providers, a template's choice and Add provider beside the title, each source
+  by its letter with its template, model count and key state (key stored, no key, none needed),
+  Edit and Remove; the editor, under its row (a new one's on top), has the name, the address (a
+  template's sites by name), the format for Custom, a write-only key, the models with Remove, an
+  id to add and List models (a saved source); Other devices, which leads to Access (not in
+  protected mode); then the task history with Clear history. The task card and the history stay
+  cards until AI sessions are panes. While the task waits for approval, a banner above the panes has Review (Settings at AI),
   and a notification announces it. A controller's task shows "Started from" its Device ID, and
   while it works a banner above the panes has Review and Stop; neither shows over the AI page itself.
-- **Network:** the networks kept (up to 8), with a note that this device has the same Device ID in
-  each. Each shows its name here (or its network name) with the network name under it, a Join
-  switch (applied at once; refused with the engine's reason, after which the page reads the
-  networks again), Edit and Remove (after a confirmation: Kyokai leaves it and forgets its servers,
-  name and secret), its live state (connected, connecting, could not connect with the reason, or
-  not joined; the virtual address; the NAT type in plain words; the port for direct connections
-  while it listens) and the Kyokai devices it routes to (the name a device gave in its last session
-  here, if any, its Device ID, direct or relayed, latency, Copy and Connect). Add a network and
-  Edit open the same form in place: the name shown here (optional), servers (one URL per line),
-  network name, and a write-only secret field (empty keeps the stored secret; a weak secret is
-  flagged), Save (once there is a server and a name) and Cancel; refused settings show the
-  engine's reason. A note says announced Device IDs are not proof. Then how devices reach this one: Accept connections by address, off by default, and while on
-  the accepted ranges, one per line, with Save and Cancel, and a warning when it cannot listen.
-  Last, **Advanced**: Try direct connections (off by default; on and fixed in the helper modes;
-  applied as it is switched, [networking.md](networking.md)), with a warning that it makes this
-  device listen and easier to find, which a protocol choice does not; and Latency-first routing.
+- **Network:** first how the networks are doing (`networkSummary`): online, connecting, could not
+  connect or offline, and how many of those joined are connected. Then **Networks**, the ones kept
+  (up to 8; Add a network beside the title), with a note behind ⓘ that this device has the same
+  Device ID in each. Each row shows its name here (or its network name), and under it the network
+  name and its live state — while connected its Kyokai devices, the virtual address, the NAT type
+  in plain words and the port for direct connections while it listens; connecting; "Couldn't
+  connect" with the reason in the danger colour; or not joined — then Connected, a Join switch
+  (applied at once; refused with the engine's reason, after which the page reads the networks
+  again) and a ⋯ menu of Edit and Remove (after a confirmation: Kyokai leaves it and forgets its
+  servers, name and secret). Under a connected network, the Kyokai devices it routes to (the name a
+  device gave in its last session here, if any, its Device ID, direct or relayed, latency, Copy and
+  Connect; ⓘ: announced Device IDs are not proof). Add a network and Edit open the same form under
+  the row: the name shown here (optional), servers (one URL per line), network name, and a
+  write-only secret field (empty keeps the stored secret; a weak secret is flagged), Save (once
+  there is a server and a name) and Cancel; refused settings show the engine's reason. **Other
+  ways in**: Accept connections by address, off by default, and while on the accepted ranges, one
+  per line, with Save and Cancel; the row warns when it cannot listen. Last, **Advanced**: Try
+  direct connections (off by default; on and fixed in the helper modes; applied as it is switched,
+  [networking.md](networking.md)), its ⓘ warning that it makes this device listen and easier to
+  find, which a protocol choice does not; and Latency-first routing.
 - **Device names:** wherever a device appears (a confirmation, Recent, the panes and the sidebar, trusted
   devices, the viewer's title, the Network page) its name — the one this device's user gave it
   (`gui.json` `aliases`, never sent anywhere), else the friendly name it gives itself — goes beside
@@ -166,47 +184,60 @@ when `SCREENSHOT_DIR` is set.
   names a known maker or system (`deviceLogoName`), else the name's first letter. Vendor logos are
   trademarks of their owners, used only to identify a device's maker; their sources are listed in
   `internal/gui/assets/logos/SOURCES.md` (see [packaging.md](packaging.md), "Vendor logos").
-- **Access:** on macOS "Privacy permissions" first; Passwords and keys (permanent password:
-  set, change or remove, its hint only Not set or Set; Ways to sign in: a check box for the
-  temporary password, the one shown on Home, one for the permanent password, with a warning under
-  it while none is set, and one per key that can connect — its name, with its type and `SHA256:`
-  fingerprint under it, Copy public key and Remove after a confirmation — in any combination; with
-  none checked every connection asks, and with nobody at the computer no one gets in; Add a key
-  from an OpenSSH line or a `.pub` file, its comment naming it; Generate a pair — the public key
-  may connect here, the private part shown once on this page and never stored; Connect without
-  asking, on by default, which admits a checked way to sign in without asking — with nobody at the
-  computer only the permanent password or a key —, and below it "With a correct password": a switch per permission a password grants
-  without asking, among them See this computer's status, on by default, and Connect to its SSH,
-  Remote Desktop, and VNC or Screen Sharing, off by default; then "Ports of this computer's
-  services": a port each for SSH, Remote Desktop and VNC, empty for the standard one, with Save and
-  Cancel while edited); the devices watching this computer's
-  status, with since when; trusted devices with their last connection and Remove; Sound to share — what
-  this computer plays unless an input device is chosen, a device that is gone shown as not
-  connected, an input asking macOS for the Microphone permission.
-- **Security & privacy:** Device identity (Device ID, friendly name, fingerprint; back up and restore with a
-  passphrase through a file dialog; reset, after a warning); Your keys (name, type and `SHA256:` fingerprint, Copy public key, Remove
-  after a confirmation; Generate a key — Ed25519, its private part shown once in OpenSSH form with
-  Copy and Save to a file…, encrypted with the passphrase given, then kept by the engine; Import a
-  key — pasted or from a file, OpenSSH or PEM, the passphrase asked for an encrypted one; Ed25519,
-  RSA of 2048 bits or more, ECDSA P-256 or P-384) and Saved passwords and keys (each device with
-  something kept: a chip per sign-in — the Kyokai password, the admitted key, each service's
-  sign-in — with × to forget that one, and Forget all); Protected mode (only with a permanent
-  password, after a confirmation); Privacy: hide Kyokai from screen capture — on by default,
-  applied to the main window and every viewer at once and told to the engine, whose macOS capture
-  follows it; turned off (after a warning), Kyokai's windows also take the input of the people
-  controlling this device, never the AI's and nobody's while a request or an approval waits —
-  how secrets are kept, and No logs — off by default, turning it on after a warning
-  that nobody can tell any more who connected or whom this device connected to, with a note when
-  the engine in use cannot do it yet.
-- **General:** language, appearance (also the sidebar's button), open at login — off by default; started at login, Kyokai shows no window, only its tray icon (on a Mac, as a login item, asked once the app is ready: asked earlier, macOS answered no), unless Start in the tray when opened at login (on by default) is off — and the close button.
-- **Run mode:** No privileges / Follow Kyokai / Background service, a note on the one administrator prompt
-  and what moves along; switching runs in the background with a loading indicator and a toast
-  ([run-modes.md](run-modes.md)); Windows and macOS. While this profile's own engine is parked
-  (its identity moved to Kyokai Helper, which is gone), every page shows a card to install the helper
-  again or start over here.
-- **About & updates:** version, license, source code and app updates; Diagnostics (version and ABI, engine
-  start time, run mode, data folder with Open folder, logs folder with Open folder and **Save logs…** — the engine's logs through `logs.read`, the helper's and its agent's in the helper modes, which only administrators open, and this GUI's own, into one text file — or "Off" with No logs); Open
-  source licenses (the shipped notices).
+- **Access:** on macOS "Privacy permissions" first, each with Allow (ⓘ: what macOS asks and that a
+  grant counts once Kyokai is reopened). **Ways to sign in**, each switched on its own and in any
+  combination: the temporary password (the one shown on Home); the permanent password — "Set.",
+  "Not set." or, while it is on but unset, a warning — with Set… or Change… opening a form under
+  it (write-only, Save, Remove, Cancel); and Keys, how many can connect, with Manage showing each
+  under it — its name with its type and `SHA256:` fingerprint, Copy public key, Remove after a
+  confirmation and its own switch — then Add a key (an OpenSSH line or a `.pub` file, its comment
+  naming it) and Generate a pair (the public key may connect here, the private part shown once on
+  this page and never stored). With none on, every connection asks, and with nobody at the
+  computer no one gets in (a warning says so). **When the password is right**: Connect without
+  asking, on by default, which admits a way that is on without asking — with nobody at the
+  computer only the permanent password or a key —; while it is on, "With a correct password"
+  shows what a password grants without asking as tiles (See the screen, Mouse & keyboard,
+  Clipboard, Copy files, Hear sound, Run AI tasks, Approve AI actions, See status, SSH, Remote
+  Desktop, VNC; See status on and the services off by default), "Anything else waits for your OK"
+  beside the title. **Ports of this computer's services**: a port each for SSH, Remote Desktop and
+  VNC, empty for the standard one, with Save and Cancel while edited. Then the devices watching
+  this computer's status, with since when; trusted devices with their last connection and Remove;
+  and **Sound**: Sound to share — what this computer plays unless an input device is chosen, a
+  device that is gone shown as not connected, an input asking macOS for the Microphone permission.
+- **Security & privacy:** **Device identity** — Device ID with Copy, friendly name with Save,
+  fingerprint with Copy, back up or restore with a passphrase through a file dialog, and reset
+  after a warning; **Your keys**, Generate a key and Import a key beside the title (name, type and
+  `SHA256:` fingerprint, Copy public key, Remove after a confirmation; Generate — Ed25519, its
+  private part shown once in OpenSSH form with Copy and Save to a file…, encrypted with the
+  passphrase given, then kept by the engine; Import — pasted or from a file, OpenSSH or PEM, the
+  passphrase asked for an encrypted one; Ed25519, RSA of 2048 bits or more, ECDSA P-256 or P-384);
+  **Saved passwords and keys** (each device with something kept: a chip per sign-in — the Kyokai
+  password, the admitted key, each service's sign-in — with × to forget that one, and Forget all);
+  **Privacy**: Hide Kyokai from screen capture — on by default, applied to the main window and
+  every viewer at once and told to the engine, whose macOS capture follows it; turned off (after
+  a warning), Kyokai's windows also take the input of the people controlling this device, never
+  the AI's and nobody's while a request or an approval waits —, No logs — off by default, turning
+  it on after a warning that nobody can tell any more who connected or whom this device connected
+  to, with a note when the engine in use cannot do it yet —, how secrets are kept, and Protected
+  mode (only with a permanent password, after a confirmation).
+- **General:** **Language and look** — the language, and the appearance (also the sidebar's
+  button); **Start and close** — open at login, off by default (started at login, Kyokai shows no
+  window, only its tray icon; on a Mac as a login item, asked once the app is ready: asked
+  earlier, macOS answered no), Start in the tray when opened at login (on by default), and the
+  close button.
+- **Run mode:** No privileges, Follow Kyokai and Background service as three rows, the one in use
+  marked and the others with Switch (ⓘ on Follow Kyokai: the one administrator prompt and what
+  moves along); switching runs in the background with a loading indicator and a toast
+  ([run-modes.md](run-modes.md)); Windows and macOS; a helper behind the app has its row with
+  Update. While this profile's own engine is parked (its identity moved to Kyokai Helper, which
+  is gone), every page shows a card to install the helper again or start over here.
+- **About & updates:** **Kyokai** — the version with Source code, and the license with Show for the
+  open source notices it ships; **Updates** — a new version with Install and restart, installing's
+  progress, or the version installed with Check for updates, and the daily check; **Diagnostics**
+  — version and ABI, engine start time, run mode, data folder with Open folder, logs folder with
+  Open folder and **Save logs…** (the engine's logs through `logs.read`, the helper's and its
+  agent's in the helper modes, which only administrators open, and this GUI's own, into one text
+  file), or "Off" with No logs.
 - **Protected mode:** the main window is one pane, with no sidebar, showing only the AI page,
   topped by a card with the permanent password field and Turn off (a wrong password says so);
   confirmations and the devices connected here still show.

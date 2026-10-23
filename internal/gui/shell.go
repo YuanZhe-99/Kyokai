@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
@@ -471,116 +470,5 @@ func (a *App) networkDot(c *ui.Context) {
 	b.Children(func() { ui.Box(c).Size(onlineDot+2, onlineDot+2).Radius(onlineDot/2 + 1).Background(col) })
 	if b.Clicked() {
 		a.openSettings(pageNetwork)
-	}
-}
-
-// openSettings opens the Settings sheet at a page.
-func (a *App) openSettings(p page) {
-	a.mu.Lock()
-	a.settingsOpen, a.page = true, p
-	a.mu.Unlock()
-}
-
-// covered reports whether something covers the panes, so that no picture
-// takes the keyboard: the Settings sheet.
-func (a *App) covered() bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.settingsOpen
-}
-
-// settingsItem is a page of the Settings sheet's sections.
-type settingsItem struct {
-	page  page
-	icon  *ui.SVG
-	label string
-}
-
-// settingsSections are the Settings sheet's sections, in groups under a
-// heading each: Preferences, This computer, AI, Kyokai.
-func settingsSections() []struct {
-	title string
-	items []settingsItem
-} {
-	return []struct {
-		title string
-		items []settingsItem
-	}{
-		{L.SettingsGroupPreferences(), []settingsItem{{pageGeneral, navGeneral, L.SettingsGeneral()}}},
-		{L.SettingsGroupThisComputer(), []settingsItem{
-			{pagePermissions, navPermissions, L.NavAccess()},
-			{pageNetwork, navNetwork, L.NavNetwork()},
-			{pageSecurity, navSecurity, L.NavSecurityPrivacy()},
-			{pageRunMode, navGeneral, L.SettingsRunMode()},
-		}},
-		{L.SettingsGroupAI(), []settingsItem{{pageAI, navAI, L.NavAI()}}},
-		{"Kyokai", []settingsItem{{pageAbout, navAbout, L.NavAboutUpdates()}}},
-	}
-}
-
-// settingsSheet is Settings (doc/en-us/gui.md, "Settings"): the top layer,
-// a sheet over the whole window, sidebar included, opened by the sidebar's
-// gear and never part of a split; its sections on the left, the page
-// chosen beside them. While it is up, its header ends with the window's
-// buttons on Windows, as the panes' it covers did. Escape, a click outside
-// or × closes it.
-func (a *App) settingsSheet(c *ui.Context, win *mygo.Window) {
-	a.mu.Lock()
-	open, pg := a.settingsOpen, a.page
-	a.mu.Unlock()
-	if !open {
-		return
-	}
-	t := c.Theme()
-	w, h := c.Size()
-	ui.DialogBase(c, &open, func(back, panel ui.Element) {
-		back.Background(sheetScrim).Padding(sheetTop, sheetX, sheetBottom, sheetX)
-		panel.Radius(paneRadius).Background(t.Background).Shadow(0, 10, 30, 0, sheetShadow).Clip()
-		ui.Column(c.Key("sheet")).Width(max(w-2*sheetX, 560)).Height(max(h-sheetTop-sheetBottom, 400)).Children(func() {
-			ui.Row(c.Key("sheet-head")).Height(sheetHeaderH).Shrink(0).Padding(0, 8, 0, 20).Gap(4).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, L.NavSettings()).FontSize(sizeHeading).Bold().Grow(1)
-				if iconButton(c, "sheet-close", paneClose, L.ActionClose()) {
-					open = false
-				}
-				windowButtons(c, "sheet-win", win)
-			})
-			ui.Divider(c)
-			ui.Row(c.Key("sheet-body")).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-				ui.Scroll(c.Key("sheet-nav")).Width(settingsNavW).Shrink(0).Padding(12).Gap(2).Children(func() {
-					for _, s := range settingsSections() {
-						ui.Text(c, s.title).FontSize(sizeSmall).Bold().TextColor(t.TextMuted).Padding(12, 10, 4, 10)
-						for _, it := range s.items {
-							row := ui.ButtonBase(c.Key("sheet-nav-"+strconv.Itoa(int(it.page)))).Height(sbRowH).FillWidth().Radius(8).Padding(0, 10).Label(it.label)
-							fg := t.TextMuted
-							switch {
-							case it.page == pg:
-								row.Background(t.SurfaceHover)
-								fg = t.Text
-							case row.Hovered():
-								row.Background(t.SurfaceHover.Alpha(0.6))
-							}
-							row.Children(func() {
-								ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
-									ui.Icon(c, it.icon).FontSize(navIconSize).TextColor(fg)
-									ui.Text(c, it.label).TextColor(fg).SingleLine()
-								})
-							})
-							if row.Clicked() {
-								a.mu.Lock()
-								a.page = it.page
-								a.mu.Unlock()
-							}
-						}
-					}
-				})
-				ui.Box(c).Width(1).Shrink(0).Background(t.Border)
-				ui.Column(c.Key("sheet-page")).Grow(1).MinWidth(0).Children(func() { a.pageView(c, pg) })
-			})
-		})
-	})
-	if !open {
-		a.mu.Lock()
-		a.settingsOpen = false
-		a.mu.Unlock()
 	}
 }

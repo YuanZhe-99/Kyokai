@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -32,12 +31,16 @@ type renameForm struct {
 	name   string
 }
 
-// accessForm is the Permissions and Network pages' state: the permanent password field, the
-// connections-by-address ranges and the service ports while edited (nil
-// follows the engine), and the trusted devices last fetched (nil until fetched).
+// accessForm is the Access and Network pages' state: the permanent
+// password's form (open, and what is typed in it), whether the keys that
+// can connect are shown, the connections-by-address ranges and the service
+// ports while edited (nil follows the engine), and the trusted devices last
+// fetched (nil until fetched).
 type accessForm struct {
-	permanent string
-	ranges    *string
+	permanentOpen bool
+	permanent     string
+	keysOpen      bool
+	ranges        *string
 	// ports are the service ports while edited (nil follows the engine).
 	ports   *[3]string
 	trusted []localapi.TrustedDevice
@@ -532,167 +535,24 @@ func passwordMode(temporary, permanent bool) string {
 	return "none"
 }
 
-// methodCheck is one way to sign in: a check box with its name and a hint
-// under it; changed runs when it is clicked.
-func methodCheck(c *ui.Context, key string, on *bool, label, hint string, hintColour ui.Color, busy bool, changed func()) {
-	ui.Column(c.Key(key)).Grow(1).MinWidth(0).Gap(2).Children(func() {
-		if ui.Checkbox(c.Key(key+"-check"), on, label).Disabled(busy).Changed() {
-			changed()
-		}
-		ui.Text(c, hint).FontSize(sizeSmall).TextColor(hintColour).Padding(0, 0, 0, checkIndent)
-	})
-}
-
-// signInMethods is "Ways to sign in": a check box for each password and
-// for each key that can connect, in any combination (none: every
-// connection asks), with Add a key and Generate a pair below.
-func (a *App) signInMethods(c *ui.Context, k keysState, mode string, hasPermanent, busy bool) {
-	t := c.Theme()
-	temporary, permanent := passwordsAccepted(mode)
-	ui.Text(c, L.SignInTitle())
-	ui.Text(c, L.SignInHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-	setMode := func() {
-		a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, PasswordMode: passwordMode(temporary, permanent)}, nil)
-	}
-	methodCheck(c, "sign-temp", &temporary, L.SignInTemporary(), L.SignInTemporaryHint(), t.TextMuted, busy, setMode)
-	hint, colour := L.SignInPermanentHint(), t.TextMuted
-	if !hasPermanent {
-		hint, colour = L.SignInPermanentMissing(), t.Warning
-	}
-	methodCheck(c, "sign-perm", &permanent, L.PermanentTitle(), hint, colour, busy, setMode)
-	keyOn := false
-	for _, key := range k.authorized {
-		id, on := key.ID, !key.Off
-		keyOn = keyOn || on
-		fp, kind := keyFingerprint(key.Public)
-		ui.Row(c.Key("auth-" + id)).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
-			methodCheck(c, "auth-"+id+"-on", &on, key.Name, kind+" · "+fp, t.TextMuted, k.busy, func() {
-				a.keysCommand(localapi.Request{Type: localapi.RequestAuthorizedSet, Authorized: &localapi.AuthorizedKey{ID: id, Off: !on}}, "")
-			})
-			a.keyActions(c, "auth-"+id, key.Name, key.Public, k.busy, func() {
-				a.keysCommand(localapi.Request{Type: localapi.RequestAuthorizedRemove, Authorized: &localapi.AuthorizedKey{ID: id}}, "")
-			})
-		})
-	}
-	if !temporary && !permanent && !keyOn {
-		ui.Text(c, L.SignInNone()).FontSize(sizeSmall).TextColor(t.Warning)
-	}
-	switch k.form.kind {
-	case "authorize", "pair":
-		a.keyForm(c, k)
-	default:
-		ui.Row(c).Gap(gap).Children(func() {
-			if ui.Button(c.Key("auth-add"), L.KeysAuthorize()).Disabled(k.busy).Clicked() {
-				a.openKeyForm("authorize")
-			}
-			if ui.Button(c.Key("auth-pair"), L.KeysPair()).Disabled(k.busy).Clicked() {
-				a.openKeyForm("pair")
-			}
-		})
-	}
-}
-
-// accessSettings is the Permissions page's card of passwords and keys: the
-// permanent password, the ways another device signs in (each password and
-// each key that can connect, chosen on its own), whether a correct one
-// admits without asking and what it grants, and the services' ports.
-func (a *App) accessSettings(c *ui.Context) {
-	t := c.Theme()
-	a.mu.Lock()
-	f, busy, hasPermanent := a.access, a.busy["access"], a.status.PermanentPassword
-	grants := slices.Clone(a.status.PasswordGrants)
-	mode, without := a.status.PasswordMode, a.status.WithoutAsking
-	k := a.keys
-	a.mu.Unlock()
-	if !k.loaded && !k.busy {
-		a.loadKeys()
-	}
-	if k.shown != nil && k.shown.pair {
-		a.shownKeyCard(c, *k.shown)
-	}
-	card(c.Key("passwords")).Children(func() {
-		ui.Text(c, L.SettingsPasswords()).FontSize(sizeHeading).Bold()
-		hint := L.PermanentNotSet()
-		if hasPermanent {
-			hint = L.PermanentSet()
-		}
-		ui.Text(c, L.PermanentTitle())
-		ui.Text(c, hint).FontSize(sizeSmall).TextColor(t.TextMuted)
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
-			in := ui.TextInput(c.Key("perm-in"), &f.permanent).Password().Grow(1).Disabled(busy)
-			if in.Changed() {
-				a.mu.Lock()
-				a.access.permanent = f.permanent
-				a.mu.Unlock()
-			}
-			if ui.Button(c.Key("perm-set"), L.ActionSave()).Disabled(busy || f.permanent == "").Clicked() {
-				p := f.permanent
-				a.setPermanent(&p)
-			}
-			if hasPermanent {
-				if ui.Button(c.Key("perm-remove"), L.ActionRemove()).Disabled(busy).Clicked() {
-					a.setPermanent(nil)
-				}
-			}
-		})
-		ui.Divider(c)
-		a.signInMethods(c, k, mode, hasPermanent, busy)
-		ui.Divider(c)
-		settingRow(c, "without-asking", L.WithoutAskingTitle(), L.WithoutAskingHint(), func() {
-			if ui.Switch(c.Key("without-asking-sw"), &without).Label(L.WithoutAskingTitle()).Disabled(busy).Changed() {
-				on := without
-				a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, WithoutAsking: &on}, nil)
-			}
-		})
-		if without {
-			a.passwordGrants(c, grants, busy)
-		}
-		ui.Divider(c)
-		a.servicePorts(c)
-	})
-}
-
-// trustedCard is the Permissions page's list of the devices this one
-// allowed, with their last connection and Remove.
-func (a *App) trustedCard(c *ui.Context) {
-	t := c.Theme()
-	a.mu.Lock()
-	f, busy, prefs := a.access, a.busy["access"], a.prefs
-	a.mu.Unlock()
-	if !f.loaded && !busy {
-		a.loadTrusted()
-	}
-	card(c).Children(func() {
-		ui.Text(c, L.TrustedTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.TrustedHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		if f.loaded && len(f.trusted) == 0 {
-			ui.Text(c, L.TrustedNone()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		}
-		for _, d := range f.trusted {
-			hint := L.TrustedLast(time.Unix(d.Last, 0).Local().Format(time.DateTime))
-			settingRow(c, "trust-"+d.Key, deviceTitle(prefs.named(d.DeviceID, d.About), d.DeviceID), hint, func() {
-				if ui.Button(c.Key("trust-rm-"+d.Key), L.ActionRemove()).Disabled(busy).Clicked() {
-					a.untrust(d.Key)
-				}
-			})
-		}
-	})
-}
-
 // protected reports whether protected mode is on (caller holds a.mu).
 func (a *App) protected() bool {
 	// The last status counts while the engine is away.
 	return a.status != nil && a.status.Protected
 }
 
-// protectedSetting is the Security page's protected mode: on only with a
-// permanent password, after a confirmation.
-func (a *App) protectedSetting(c *ui.Context) {
+// protectedSetting is Privacy's protected mode: on only with a permanent
+// password, after a confirmation.
+func (a *App) protectedSetting(c *ui.Context, r *rows) {
 	a.mu.Lock()
 	hasPermanent, busy := a.status.PermanentPassword, a.busy["access"]
 	a.mu.Unlock()
 	on := false
-	settingRow(c, "protected", L.ProtectedTitle(), L.ProtectedHint(), func() {
+	s := setting{title: L.ProtectedTitle(), about: L.ProtectedAbout(), more: L.ProtectedHint()}
+	if !hasPermanent {
+		s.about = L.ProtectedNeedsPermanent()
+	}
+	r.row(c, "protected", tile(navSecurity), s, func() {
 		if ui.Switch(c.Key("protected-sw"), &on).Label(L.ProtectedTitle()).Disabled(busy || !hasPermanent).Changed() && on {
 			// A dialog: off the main thread.
 			go func() {
@@ -702,9 +562,6 @@ func (a *App) protectedSetting(c *ui.Context) {
 			}()
 		}
 	})
-	if !hasPermanent {
-		ui.Text(c, L.ProtectedNeedsPermanent()).FontSize(sizeSmall).TextColor(c.Theme().TextMuted)
-	}
 }
 
 // protectedCard tops the AI page in protected mode: what it is, and the
@@ -745,15 +602,19 @@ func (a *App) protectedCard(c *ui.Context) {
 	})
 }
 
-// byAddressSettings is the Network page's connections by address: the
-// switch, and the ranges they are accepted from (edited, then saved).
-func (a *App) byAddressSettings(c *ui.Context) {
+// byAddressRows are the Network page's connections by address: the switch,
+// and while it is on the ranges they are accepted from (edited, then saved).
+func (a *App) byAddressRows(c *ui.Context, r *rows) {
 	t := c.Theme()
 	a.mu.Lock()
 	by, edited, busy := a.status.ByAddress, a.access.ranges, a.busy["access"]
 	a.mu.Unlock()
 	on := by.On
-	settingRow(c, "by-address", L.ByAddressTitle(), L.ByAddressHint(), func() {
+	s := setting{title: L.ByAddressTitle(), about: L.ByAddressAbout(), more: L.ByAddressHint()}
+	if by.On && by.Port == 0 {
+		s.about, s.col = L.ByAddressFailed(), t.Warning
+	}
+	r.row(c, "by-address", tile(rowGlobe), s, func() {
 		if ui.Switch(c.Key("by-address-sw"), &on).Label(L.ByAddressTitle()).Disabled(busy).Changed() {
 			a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings,
 				ByAddress: &localapi.ByAddress{On: on, Ranges: by.Ranges}}, nil)
@@ -762,38 +623,37 @@ func (a *App) byAddressSettings(c *ui.Context) {
 	if !by.On {
 		return
 	}
-	if by.Port == 0 {
-		ui.Text(c, L.ByAddressFailed()).FontSize(sizeSmall).TextColor(t.Warning)
-	}
 	ranges := strings.Join(by.Ranges, "\n")
 	if edited != nil {
 		ranges = *edited
 	}
-	ui.Column(c.Key("by-address-ranges")).Gap(4).FillWidth().Children(func() {
-		ui.Text(c, L.ByAddressRanges())
+	r.block(c, "by-address-ranges", func() {
+		ui.Text(c, L.ByAddressRanges()).FontWeight(500)
 		if ui.TextArea(c.Key("by-address-ranges-in"), &ranges).FillWidth().MinHeight(inputAreaH).Disabled(busy).Changed() {
 			a.mu.Lock()
 			a.access.ranges = &ranges
 			a.mu.Unlock()
 		}
 		ui.Text(c, L.ByAddressRangesHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-	})
-	if edited != nil {
-		ui.Row(c).Gap(gap).Children(func() {
-			if ui.Button(c.Key("by-address-save"), L.ActionSave()).Disabled(busy).Clicked() {
+		if edited == nil {
+			return
+		}
+		ui.Row(c).Gap(gap).FillWidth().Children(func() {
+			ui.Box(c).Grow(1)
+			if ui.Button(c.Key("by-address-cancel"), L.ActionCancel()).Disabled(busy).Clicked() {
+				a.mu.Lock()
+				a.access.ranges = nil
+				a.mu.Unlock()
+			}
+			if ui.PrimaryButton(c.Key("by-address-save"), L.ActionSave()).Disabled(busy).Clicked() {
 				a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings,
 					ByAddress: &localapi.ByAddress{On: true, Ranges: append([]string{}, lines(ranges)...)}}, func() {
 					a.access.ranges = nil
 					a.setToast(L.ByAddressSaved(), false)
 				})
 			}
-			if ui.Button(c.Key("by-address-cancel"), L.ActionCancel()).Disabled(busy).Clicked() {
-				a.mu.Lock()
-				a.access.ranges = nil
-				a.mu.Unlock()
-			}
 		})
-	}
+	})
 }
 
 // allPermissions are the permissions in the order the Permissions page lists them.
@@ -801,28 +661,6 @@ var allPermissions = []string{
 	localapi.PermViewScreen, localapi.PermControlInput, localapi.PermClipboard,
 	localapi.PermFiles, localapi.PermHearSound, localapi.PermRunAITask, localapi.PermApproveAIAction,
 	localapi.PermSeeStatus, localapi.PermUseSSH, localapi.PermUseRDP, localapi.PermUseVNC,
-}
-
-// passwordGrants is the Permissions page's choice of what a correct password
-// grants without asking.
-func (a *App) passwordGrants(c *ui.Context, grants []string, busy bool) {
-	t := c.Theme()
-	ui.Text(c, L.PasswordGrantsTitle())
-	ui.Text(c, L.PasswordGrantsHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-	for _, p := range allPermissions {
-		on := slices.Contains(grants, p)
-		ui.Row(c.Key("pwgrant-row-" + p)).Gap(8).AlignItems(ui.Center).Children(func() {
-			if ui.Switch(c.Key("pwgrant-"+p), &on).Label(permissionLabel(p)).Disabled(busy).Changed() {
-				// Never nil: an empty list (no grants) must not read as missing.
-				next := slices.DeleteFunc(append([]string{}, grants...), func(x string) bool { return x == p })
-				if on {
-					next = append(next, p)
-				}
-				a.accessCommand(localapi.Request{Type: localapi.RequestPasswordGrants, Grants: &next}, func() {})
-			}
-			ui.Text(c, permissionLabel(p))
-		})
-	}
 }
 
 func (a *App) loadTrusted() {
@@ -903,55 +741,6 @@ func desktopController(s localapi.SessionInfo) bool {
 // servicePortNames are the services whose ports the Permissions page sets,
 // in its order.
 var servicePortNames = [3]string{serviceSSH, serviceRDP, serviceVNC}
-
-// servicePorts is the Permissions page's ports of this computer's SSH,
-// Remote Desktop and VNC (edited, then saved): another device only names
-// the service, and its tunnel reaches the port set here.
-func (a *App) servicePorts(c *ui.Context) {
-	t := c.Theme()
-	a.mu.Lock()
-	set, edited, busy := a.status.ServicePorts, a.access.ports, a.busy["access"]
-	a.mu.Unlock()
-	fields := portFields(set)
-	if edited != nil {
-		fields = *edited
-	}
-	ui.Text(c, L.ServicePortsTitle())
-	ui.Text(c, L.ServicePortsHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-	ui.Row(c.Key("svc-ports")).Gap(gap).FillWidth().Children(func() {
-		for i, s := range servicePortNames {
-			ui.Column(c.Key("svc-port-col-" + s)).Gap(4).Grow(1).Children(func() {
-				ui.Text(c, serviceName(s)).FontSize(sizeSmall)
-				in := ui.TextInput(c.Key("svc-port-"+s), &fields[i]).Placeholder(strconv.Itoa(standardPorts[i])).Label(serviceName(s)).FillWidth().Disabled(busy)
-				if in.Changed() {
-					a.mu.Lock()
-					a.access.ports = &fields
-					a.mu.Unlock()
-				}
-			})
-		}
-	})
-	if edited == nil {
-		return
-	}
-	ports, ok := parsePorts(fields)
-	if !ok {
-		ui.Text(c, L.ServicePortsInvalid()).FontSize(sizeSmall).TextColor(t.Danger)
-	}
-	ui.Row(c).Gap(gap).Children(func() {
-		if ui.Button(c.Key("svc-ports-save"), L.ActionSave()).Disabled(busy || !ok).Clicked() {
-			a.accessCommand(localapi.Request{Type: localapi.RequestAccessSettings, ServicePorts: &ports}, func() {
-				a.access.ports = nil
-				a.setToast(L.ServicePortsSaved(), false)
-			})
-		}
-		if ui.Button(c.Key("svc-ports-cancel"), L.ActionCancel()).Disabled(busy).Clicked() {
-			a.mu.Lock()
-			a.access.ports = nil
-			a.mu.Unlock()
-		}
-	})
-}
 
 // standardPorts are SSH's, Remote Desktop's and VNC's standard ports.
 var standardPorts = [3]int{22, 3389, 5900}

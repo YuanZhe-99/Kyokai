@@ -111,6 +111,9 @@ and Latin words only where it helps readability.
 | pane / pane header / group (panes split together) | 小窗 / 小窗标题栏 / 分组（分屏在一起的小窗） |
 | sidebar / rail (the sidebar hidden to its icons) | 侧边栏 / 图标栏（隐藏后只剩图标的侧边栏） |
 | Settings sheet / a window of its own | 设置面板 / 独立窗口 |
+| Search settings / How it works (the ⓘ beside a setting) | 搜索设置 / 工作原理 |
+| tile (a permission a password grants) / Manage (the keys) | 图块 / 管理 |
+| In use / Switch (a run mode) | 使用中 / 切换 |
 | Split right / Split down / Maximize, Restore (a pane) | 向右分屏 / 向下分屏 / 最大化、还原（小窗） |
 | window buttons (drawn on Windows) / snap layouts | 窗口按钮（Windows 上自绘） / 贴靠布局 |
 | appearance: follow the system / light / dark | 外观：跟随系统 / 浅色 / 深色 |

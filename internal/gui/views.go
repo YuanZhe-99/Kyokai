@@ -134,7 +134,7 @@ func (a *App) homeView(c *ui.Context) {
 		})
 		ui.Column(c).Grow(1).Children(func() { a.connectCard(c) })
 	})
-	a.permissionsCard(c, false)
+	a.permissionsCard(c)
 	a.devicesCard(c)
 }
 
@@ -152,155 +152,148 @@ func secretsNote(p string) string {
 	return p
 }
 
-// permissionsView is the Permissions page: what this Mac lets Kyokai do,
-// which passwords open this device and what they grant without asking, the
-// trusted devices, and the sound to share.
-func (a *App) permissionsView(c *ui.Context) {
-	if !a.engineState(c) {
-		return
-	}
-	a.permissionsCard(c, true)
-	a.accessSettings(c)
-	a.watchersCard(c)
-	a.trustedCard(c)
-	a.mu.Lock()
-	p := a.prefs
-	a.mu.Unlock()
-	card(c).Children(func() { a.soundSourceRow(c, p) })
-}
-
 // securityView is the Security page: the device identity, protected mode,
 // and what Kyokai lets others see and keeps on this computer.
 func (a *App) securityView(c *ui.Context) {
-	if !a.engineState(c) {
-		return
-	}
-	a.identitySettings(c)
-	a.keysSettings(c)
-	card(c).Children(func() { a.protectedSetting(c) })
-	a.privacySettings(c)
+	settingsPage(c, L.NavSecurityPrivacy(), L.SettingsAboutSecurity(), func() {
+		if !a.engineState(c) {
+			return
+		}
+		a.identitySettings(c)
+		a.keysSettings(c)
+		a.privacySettings(c)
+	})
 }
 
 // generalView is the General page: the app's language and look, and how it
 // starts and closes.
-func (a *App) generalView(c *ui.Context) { a.generalSettings(c) }
-
-// runModeView is the Run mode page: where this device runs (runModeCard).
-func (a *App) runModeView(c *ui.Context) {
-	if a.engineState(c) {
-		a.runModeCard(c)
+func (a *App) generalView(c *ui.Context) {
+	langs := mygo.App.Languages()
+	options := []string{L.LanguageSystem()}
+	for _, l := range langs {
+		options = append(options, i18n.Autonym(l))
 	}
-}
-
-// aboutView is the About page: the version and updates, diagnostics and
-// the open source licenses.
-func (a *App) aboutView(c *ui.Context) {
-	a.aboutSettings(c)
-	if a.engineState(c) {
-		a.diagnostics(c)
+	a.mu.Lock()
+	p, login := a.prefs, a.openAtLogin
+	a.mu.Unlock()
+	cur := options[0]
+	if i := slices.Index(langs, p.Language); i >= 0 {
+		cur = options[i+1]
 	}
-	a.licenses(c)
-}
-
-func (a *App) generalSettings(c *ui.Context) {
-	card(c).Children(func() {
-		ui.Text(c, L.SettingsGeneral()).FontSize(sizeHeading).Bold()
-		langs := mygo.App.Languages()
-		options := []string{L.LanguageSystem()}
-		for _, l := range langs {
-			options = append(options, i18n.Autonym(l))
-		}
-		a.mu.Lock()
-		p, login := a.prefs, a.openAtLogin
-		a.mu.Unlock()
-		cur := options[0]
-		if i := slices.Index(langs, p.Language); i >= 0 {
-			cur = options[i+1]
-		}
-		settingRow(c, "lang", L.SettingsLanguage(), "", func() {
-			if ui.Select(c.Key("lang-select"), &cur, options).Width(200).Changed() {
-				lang := ""
-				if i := slices.Index(options, cur); i > 0 {
-					lang = langs[i-1]
+	settingsPage(c, L.SettingsGeneral(), L.SettingsAboutGeneral(), func() {
+		a.section(c, "look", L.SectionLook(), nil, func(r *rows) {
+			r.row(c, "lang", tile(rowGlobe), setting{title: L.SettingsLanguage(), about: L.SettingsLanguageAbout()}, func() {
+				if ui.Select(c.Key("lang-select"), &cur, options).Width(200).Changed() {
+					lang := ""
+					if i := slices.Index(options, cur); i > 0 {
+						lang = langs[i-1]
+					}
+					mygo.App.SetLocale(lang)
+					p.Language = lang
+					a.setPrefs(p)
 				}
-				mygo.App.SetLocale(lang)
-				p.Language = lang
-				a.setPrefs(p)
-			}
-		})
-		themes := []string{"system", "light", "dark"}
-		themeIdx := max(slices.Index(themes, p.Theme), 0)
-		settingRow(c, "theme", L.SettingsTheme(), "", func() {
-			if ui.Segmented(c.Key("theme-seg"), &themeIdx, L.ThemeSystem(), L.ThemeLight(), L.ThemeDark()).Changed() {
-				p.Theme = themes[themeIdx]
-				ApplyTheme(p.Theme)
-				a.setPrefs(p)
-			}
-		})
-		settingRow(c, "login", L.SettingsOpenAtLogin(), L.SettingsOpenAtLoginHint(), func() {
-			if ui.Switch(c.Key("login-sw"), &login).Label(L.SettingsOpenAtLogin()).Changed() {
-				if err := mygo.App.SetOpenAtLogin(login); err != nil {
-					a.update(func() { a.setToast(err.Error(), true) })
-					return
+			})
+			themes := []string{"system", "light", "dark"}
+			themeIdx := max(slices.Index(themes, p.Theme), 0)
+			r.row(c, "theme", tile(shellAuto), setting{title: L.SettingsTheme(), about: L.SettingsThemeAbout()}, func() {
+				if ui.Segmented(c.Key("theme-seg"), &themeIdx, L.ThemeSystem(), L.ThemeLight(), L.ThemeDark()).Changed() {
+					p.Theme = themes[themeIdx]
+					ApplyTheme(p.Theme)
+					a.setPrefs(p)
 				}
-				a.mu.Lock()
-				a.openAtLogin = login
-				a.mu.Unlock()
-			}
+			})
 		})
-		tray := !p.ShowAtLogin
-		settingRow(c, "login-tray", L.SettingsStartHidden(), "", func() {
-			if ui.Switch(c.Key("login-tray-sw"), &tray).Label(L.SettingsStartHidden()).Changed() {
-				p.ShowAtLogin = !tray
-				a.setPrefs(p)
+		a.section(c, "start", L.SectionStart(), nil, func(r *rows) {
+			r.row(c, "login", tile(rowPower), setting{title: L.SettingsOpenAtLogin(), about: L.SettingsOpenAtLoginHint()}, func() {
+				if ui.Switch(c.Key("login-sw"), &login).Label(L.SettingsOpenAtLogin()).Changed() {
+					if err := mygo.App.SetOpenAtLogin(login); err != nil {
+						a.update(func() { a.setToast(err.Error(), true) })
+						return
+					}
+					a.mu.Lock()
+					a.openAtLogin = login
+					a.mu.Unlock()
+				}
+			})
+			tray := !p.ShowAtLogin
+			r.row(c, "login-tray", tile(rowTray), setting{title: L.SettingsStartHidden(), about: L.SettingsStartHiddenAbout()}, func() {
+				if ui.Switch(c.Key("login-tray-sw"), &tray).Label(L.SettingsStartHidden()).Changed() {
+					p.ShowAtLogin = !tray
+					a.setPrefs(p)
+				}
+			})
+			closeIdx := 0
+			if p.CloseQuits {
+				closeIdx = 1
 			}
-		})
-		closeIdx := 0
-		if p.CloseQuits {
-			closeIdx = 1
-		}
-		settingRow(c, "close", L.SettingsCloseButton(), "", func() {
-			if ui.Segmented(c.Key("close-seg"), &closeIdx, L.CloseHide(), L.CloseQuit()).Changed() {
-				p.CloseQuits = closeIdx == 1
-				a.setPrefs(p)
-			}
+			r.row(c, "close", tile(paneClose), setting{title: L.SettingsCloseButton(), about: L.SettingsCloseButtonAbout()}, func() {
+				if ui.Segmented(c.Key("close-seg"), &closeIdx, L.CloseHide(), L.CloseQuit()).Changed() {
+					p.CloseQuits = closeIdx == 1
+					a.setPrefs(p)
+				}
+			})
 		})
 	})
 }
 
+// runModeView is the Run mode page: where this device runs
+// (runModeSection).
+func (a *App) runModeView(c *ui.Context) {
+	settingsPage(c, L.SettingsRunMode(), L.SettingsAboutRunMode(), func() {
+		if a.engineState(c) {
+			a.runModeSection(c)
+		}
+	})
+}
+
+// aboutView is the About & updates page: Kyokai, its license and the open
+// source licenses; updates; and diagnostics.
+func (a *App) aboutView(c *ui.Context) {
+	settingsPage(c, L.NavAboutUpdates(), L.SettingsAboutAbout(), func() {
+		a.aboutSection(c)
+		a.updateSection(c)
+		if a.engineState(c) {
+			a.diagnostics(c)
+		}
+	})
+}
+
+// identitySettings is the Security & privacy page's Device identity: the
+// Device ID, the friendly name, the fingerprint, back up or restore, and
+// reset.
 func (a *App) identitySettings(c *ui.Context) {
-	t := c.Theme()
 	a.mu.Lock()
 	st := *a.status
 	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.SettingsIdentity()).FontSize(sizeHeading).Bold()
-		settingRow(c, "id", L.HomeDeviceID(), "", func() {
+	a.section(c, "identity", L.SettingsIdentity(), nil, func(r *rows) {
+		r.row(c, "id", tile(rowID), setting{title: L.HomeDeviceID(), about: L.IdentityIDAbout()}, func() {
 			ui.Text(c, groupDigits(st.DeviceID)).FontFeatures("tnum").Selectable()
+			if ui.Button(c.Key("id-copy"), L.ActionCopy()).Clicked() {
+				mygo.Clipboard.WriteText(st.DeviceID)
+				a.update(func() { a.setToast(L.Copied(), false) })
+			}
 		})
-		a.nameSetting(c, st)
-		ui.Text(c, L.IdentityFingerprint())
-		ui.Text(c, groupHex(st.Fingerprint)).FontSize(sizeSmall).FontFeatures("tnum").Selectable()
-		ui.Text(c, L.IdentityFingerprintHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		a.identityBackup(c)
+		a.nameSetting(c, r, st)
+		r.row(c, "fingerprint", tile(navSecurity), setting{title: L.IdentityFingerprint(), about: groupHex(st.Fingerprint), more: L.IdentityFingerprintHint()}, func() {
+			if ui.Button(c.Key("fp-copy"), L.ActionCopy()).Clicked() {
+				mygo.Clipboard.WriteText(st.Fingerprint)
+				a.update(func() { a.setToast(L.Copied(), false) })
+			}
+		})
+		a.identityBackup(c, r)
 	})
 }
 
-// privacySettings is the Security page's card of what Kyokai lets others
-// see and keeps here: Hide Kyokai from screen capture, how secrets are kept,
-// and No logs.
+// privacySettings is the Security & privacy page's Privacy: Hide Kyokai
+// from screen capture, No logs, how secrets are kept, and protected mode.
 func (a *App) privacySettings(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
-	st := *a.status
+	st, p := *a.status, a.prefs
 	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.SettingsPrivacy()).FontSize(sizeHeading).Bold()
-		a.mu.Lock()
-		p := a.prefs
-		a.mu.Unlock()
+	a.section(c, "privacy", L.SettingsPrivacy(), nil, func(r *rows) {
 		hide := !p.ShowInCapture
-		settingRow(c, "capture", L.SettingsHideFromCapture(), L.SettingsHideFromCaptureHint(), func() {
+		r.row(c, "capture", tile(rowEyeOff), setting{title: L.SettingsHideFromCapture(), about: L.HideFromCaptureAbout(), more: L.SettingsHideFromCaptureHint()}, func() {
 			if ui.Switch(c.Key("capture-sw"), &hide).Label(L.SettingsHideFromCapture()).Changed() {
 				if hide {
 					a.setShowInCapture(p, false)
@@ -319,15 +312,12 @@ func (a *App) privacySettings(c *ui.Context) {
 				}()
 			}
 		})
-		settingRow(c, "secrets", L.StorageSecrets(), "", func() {
-			col := t.TextMuted
-			if st.Persistence != "os-store" {
-				col = t.Warning
-			}
-			ui.Text(c, secretsNote(st.Persistence)).FontSize(sizeSmall).TextColor(col).MaxWidth(360)
-		})
 		off := p.NoLogs
-		settingRow(c, "no-logs", L.NoLogsTitle(), L.NoLogsHint(), func() {
+		logs := setting{title: L.NoLogsTitle(), about: L.NoLogsAbout(), more: L.NoLogsHint()}
+		if off && !st.LogsOff {
+			logs.about, logs.col = L.NoLogsEngineBehind(), t.Warning
+		}
+		r.row(c, "no-logs", tile(rowLog), logs, func() {
 			if ui.Switch(c.Key("no-logs-sw"), &off).Label(L.NoLogsTitle()).Changed() {
 				if !off {
 					a.setNoLogs(p, false)
@@ -344,42 +334,42 @@ func (a *App) privacySettings(c *ui.Context) {
 				}()
 			}
 		})
-		if off && !st.LogsOff {
-			ui.Text(c, L.NoLogsEngineBehind()).FontSize(sizeSmall).TextColor(t.Warning)
+		secrets := setting{title: L.StorageSecrets(), about: secretsNote(st.Persistence)}
+		if st.Persistence != "os-store" {
+			secrets.col = t.Warning
 		}
+		r.row(c, "secrets", tile(rowLock), secrets, nil)
+		a.protectedSetting(c, r)
 	})
 }
 
+// diagnostics is About & updates' Diagnostics: the version and ABI, when
+// the engine started, the run mode, the data folder, and the logs (Open
+// folder, Save logs…) or that there are none.
 func (a *App) diagnostics(c *ui.Context) {
 	a.mu.Lock()
 	st := *a.status
+	busy := a.busy["logs"]
 	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.SettingsDiagnostics()).FontSize(sizeHeading).Bold()
-		settingRow(c, "ver", L.DiagVersion(), "", func() { ui.Text(c, version.Version+" · ABI "+strconv.Itoa(st.ABI)) })
-		settingRow(c, "eng", L.DiagEngine(), "", func() {
-			ui.Text(c, L.DiagEngineRunning(st.Started.Local().Format(time.DateTime)))
-		})
-		settingRow(c, "mode", L.DiagRunMode(), "", func() {
-			ui.Text(c, []string{L.RunModeUser(), L.RunModeFollow(), L.RunModeBackground()}[a.currentMode()])
-		})
-		settingRow(c, "dir", L.StorageLocation(), st.StateDir, func() {
+	a.section(c, "diagnostics", L.SettingsDiagnostics(), nil, func(r *rows) {
+		r.row(c, "ver", tile(navAbout), setting{title: L.DiagVersion(), about: version.Version + " · ABI " + strconv.Itoa(st.ABI)}, nil)
+		r.row(c, "eng", tile(rowServer), setting{title: L.DiagEngine(), about: L.DiagEngineRunning(st.Started.Local().Format(time.DateTime))}, nil)
+		r.row(c, "mode", tile(navSecurity), setting{title: L.DiagRunMode(), about: []string{L.RunModeUser(), L.RunModeFollow(), L.RunModeBackground()}[a.currentMode()]}, nil)
+		r.row(c, "dir", tile(rowFolder), setting{title: L.StorageLocation(), about: st.StateDir}, func() {
 			if ui.Button(c.Key("open-dir"), L.ActionOpenFolder()).Clicked() {
 				_ = mygo.Shell.OpenPath(st.StateDir)
 			}
 		})
 		if st.LogsOff {
-			settingRow(c, "logs", L.DiagLogs(), "", func() {
-				ui.Text(c, L.DiagLogsOff()).FontSize(sizeSmall).TextColor(c.Theme().TextMuted)
-			})
+			r.row(c, "logs", tile(rowLog), setting{title: L.DiagLogs(), about: L.DiagLogsOff()}, nil)
 			return
 		}
 		logs := filepath.Join(st.StateDir, "logs")
-		settingRow(c, "logs", L.DiagLogs(), logs, func() {
+		r.row(c, "logs", tile(rowLog), setting{title: L.DiagLogs(), about: logs}, func() {
 			if ui.Button(c.Key("open-logs"), L.ActionOpenFolder()).Clicked() {
 				_ = mygo.Shell.OpenPath(logs)
 			}
-			if ui.Button(c.Key("save-logs"), L.ActionSaveLogs()).Disabled(a.busy["logs"]).Clicked() {
+			if ui.Button(c.Key("save-logs"), L.ActionSaveLogs()).Disabled(busy).Clicked() {
 				go a.saveLogs(st.StateDir)
 			}
 		})
@@ -424,26 +414,21 @@ func (a *App) saveLogs(engineDir string) {
 	})
 }
 
-func (a *App) aboutSettings(c *ui.Context) {
-	t := c.Theme()
-	card(c).Children(func() {
-		ui.Text(c, L.SettingsAbout()).FontSize(sizeHeading).Bold()
-		ui.Text(c, "Kyokai (鏡界) "+version.Version+" — "+L.AboutTagline())
-		ui.Text(c, L.AboutLicense()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		if ui.Button(c.Key("source"), L.AboutSource()).Clicked() {
-			_ = mygo.Shell.OpenExternal(sourceURL)
-		}
-		a.appUpdateSettings(c)
-	})
-}
-
-func (a *App) licenses(c *ui.Context) {
+// aboutSection is About & updates' Kyokai: the version with the source
+// code, and the license with the open source notices it ships (shown on
+// request).
+func (a *App) aboutSection(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	open := a.showLicenses
 	a.mu.Unlock()
-	card(c).Children(func() {
-		settingRow(c, "lic", L.SettingsLicenses(), L.LicensesHint(), func() {
+	a.section(c, "kyokai", "Kyokai", nil, func(r *rows) {
+		r.row(c, "version", tile(appMark), setting{title: "Kyokai (鏡界) " + version.Version, about: L.AboutTagline()}, func() {
+			if ui.Button(c.Key("source"), L.AboutSource()).Clicked() {
+				_ = mygo.Shell.OpenExternal(sourceURL)
+			}
+		})
+		r.row(c, "lic", tile(rowLog), setting{title: L.SettingsLicenses(), about: L.AboutLicense()}, func() {
 			label := L.ActionShow()
 			if open {
 				label = L.ActionHide()
@@ -455,7 +440,7 @@ func (a *App) licenses(c *ui.Context) {
 			}
 		})
 		if open {
-			ui.Text(c, noticesText()).FontSize(sizeSmall).TextColor(t.TextMuted).Selectable()
+			r.block(c, "lic-text", func() { ui.Text(c, noticesText()).FontSize(sizeSmall).TextColor(t.TextMuted).Selectable() })
 		}
 	})
 }
@@ -511,9 +496,9 @@ type nameForm struct {
 	editing bool
 }
 
-// nameSetting is the identity card's friendly-name row: the name other
+// nameSetting is Device identity's friendly-name row: the name other
 // devices see beside this Device ID once their login succeeded.
-func (a *App) nameSetting(c *ui.Context, st localapi.Status) {
+func (a *App) nameSetting(c *ui.Context, r *rows, st localapi.Status) {
 	a.mu.Lock()
 	f, busy := a.name, a.busy["name"]
 	a.mu.Unlock()
@@ -525,8 +510,8 @@ func (a *App) nameSetting(c *ui.Context, st localapi.Status) {
 	if st.Name == "" {
 		placeholder = st.About.Name
 	}
-	settingRow(c, "name", L.SettingsName(), L.SettingsNameHint(), func() {
-		if ui.TextInput(c.Key("name-in"), &f.text).Placeholder(placeholder).Width(220).Disabled(busy).Changed() {
+	r.row(c, "name", tile(rowTag), setting{title: L.SettingsName(), about: L.SettingsNameAbout(), more: L.SettingsNameHint()}, func() {
+		if ui.TextInput(c.Key("name-in"), &f.text).Placeholder(placeholder).Width(200).Disabled(busy).Changed() {
 			a.mu.Lock()
 			a.name = nameForm{text: f.text, editing: true}
 			a.mu.Unlock()
@@ -559,33 +544,4 @@ func (a *App) saveName(name string) {
 			}
 		})
 	}()
-}
-
-// soundSourceRow is Settings' choice of the sound this device shares with
-// the devices that control it: what it plays, or one input device.
-func (a *App) soundSourceRow(c *ui.Context, p Prefs) {
-	a.loadSoundDevices()
-	a.mu.Lock()
-	devices := a.soundDevices
-	a.mu.Unlock()
-	ids, labels := []string{""}, []string{L.SettingsSoundSystem()}
-	for _, d := range devices {
-		name := d.Name
-		if name == "" {
-			name = L.SettingsSoundUnnamed()
-		}
-		ids, labels = append(ids, d.ID), append(labels, name)
-	}
-	// A device chosen before that is gone now still shows as chosen.
-	if !slices.Contains(ids, p.SoundSource) {
-		ids, labels = append(ids, p.SoundSource), append(labels, L.SettingsSoundMissing())
-	}
-	picked := labels[slices.Index(ids, p.SoundSource)]
-	settingRow(c, "sound-source", L.SettingsSoundSource(), L.SettingsSoundSourceHint(), func() {
-		if ui.Select(c.Key("sound-source-sel"), &picked, labels).Width(260).Changed() {
-			if i := slices.Index(labels, picked); i >= 0 {
-				a.setSoundSource(p, ids[i])
-			}
-		}
-	})
 }

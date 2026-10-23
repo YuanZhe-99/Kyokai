@@ -1,8 +1,6 @@
 package gui
 
 import (
-	"maps"
-
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
@@ -26,22 +24,19 @@ func permissionsMissing(p *localapi.Permissions) bool {
 	return p != nil && !(p.Screen && p.Accessibility && p.InputMonitoring && p.Keychain)
 }
 
-// permissionsCard shows the system's privacy permissions Kyokai needs
-// (macOS) with Allow for a missing one. Inputs: always shows it even when
-// everything is granted (Settings); Home shows it only while one is missing.
-// Notes: a privacy permission asked for in this run offers to reopen
-// Kyokai, since macOS counts a new grant only in an engine started after it.
-func (a *App) permissionsCard(c *ui.Context, always bool) {
+// permissionsCard shows on Home, while one is missing, the system's privacy
+// permissions Kyokai needs (macOS), with Allow for a missing one (Access
+// lists them always: privacySection).
+func (a *App) permissionsCard(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	var p *localapi.Permissions
 	if a.status != nil {
 		p = a.status.Permissions
 	}
-	asked := maps.Clone(a.asked)
 	helperMode := a.status != nil && a.status.RunMode == "helper"
 	a.mu.Unlock()
-	if p == nil || !always && !permissionsMissing(p) {
+	if p == nil || !permissionsMissing(p) {
 		return
 	}
 	card(c.Key("perms")).Children(func() {
@@ -50,37 +45,8 @@ func (a *App) permissionsCard(c *ui.Context, always bool) {
 		if helperMode {
 			ui.Text(c, L.PermissionsHelperHint()).FontSize(sizeSmall).TextColor(t.Warning)
 		}
-		for _, row := range []struct {
-			name, title, hint string
-			granted           bool
-		}{
-			{"screen", L.PermissionScreen(), L.PermissionScreenHint(), p.Screen},
-			{"accessibility", L.PermissionAccessibility(), L.PermissionAccessibilityHint(), p.Accessibility},
-			{"input-monitoring", L.PermissionInputMonitoring(), L.PermissionInputMonitoringHint(), p.InputMonitoring},
-			{"keychain", L.PermissionKeychain(), L.PermissionKeychainHint(), p.Keychain},
-		} {
-			settingRow(c, "perm-"+row.name, row.title, row.hint, func() {
-				if row.granted {
-					ui.Text(c, L.PermissionGranted()).TextColor(t.Success)
-					return
-				}
-				if helperMode && row.name != "keychain" {
-					if ui.Button(c.Key("perm-restart-"+row.name), L.ActionRestartHelper()).Clicked() {
-						a.restartAgent()
-					}
-				}
-				if asked[row.name] && !helperMode {
-					if ui.Button(c.Key("perm-reopen"), L.ActionReopen()).Clicked() {
-						a.reopen()
-					}
-				}
-				if ui.Button(c.Key("perm-ask-"+row.name), L.ActionAllowPermission()).Clicked() {
-					a.mu.Lock()
-					a.markAsked(row.name)
-					a.mu.Unlock()
-					a.askPermission(row.name, true)
-				}
-			})
+		for _, pr := range privacyRows(p) {
+			settingRow(c, "perm-"+pr.name, pr.title, pr.hint, func() { a.permissionControl(c, pr.name, pr.granted) })
 		}
 	})
 }

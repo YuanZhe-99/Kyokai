@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/YuanZhe-99/Kyokai/internal/version"
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
@@ -107,37 +108,41 @@ func (a *App) installApp() {
 	}()
 }
 
-// appUpdateSettings is the update part of the About card.
-func (a *App) appUpdateSettings(c *ui.Context) {
+// updateSection is About & updates' Updates: a new version with Install
+// and restart, installing's progress, or Check for updates; then the
+// daily check. A copy that cannot update itself says so.
+func (a *App) updateSection(c *ui.Context) {
 	t := c.Theme()
-	if !mygo.Updater.Enabled() {
-		ui.Text(c, L.AppUpdateUnavailable()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		return
-	}
 	a.mu.Lock()
 	up, busy, updating, progress, p := a.appUpdate, a.busy["app-update"], a.updating, a.updateProgress, a.prefs
 	a.mu.Unlock()
-	switch {
-	case updating:
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			busyMark(c, L.AppUpdateInstalling(int(progress*100)), busySize)
-			ui.Text(c, L.AppUpdateInstalling(int(progress*100))).FontSize(sizeSmall).TextColor(t.TextMuted)
-		})
-	case up != nil:
-		ui.Row(c).Gap(8).Padding(8, 12).Radius(8).Background(t.Accent.Alpha(0.1)).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, L.AppUpdateAvailable(up.Version)).FontSize(sizeSmall).Grow(1)
-			if ui.Button(c, L.ActionInstallUpdate()).Disabled(busy).Clicked() {
-				a.installApp()
+	a.section(c, "updates", L.SectionUpdates(), nil, func(r *rows) {
+		if !mygo.Updater.Enabled() {
+			r.row(c, "update", tile(rowDownload), setting{title: L.AppUpdateInstalled(version.Version), about: L.AppUpdateUnavailable()}, nil)
+			return
+		}
+		switch {
+		case updating:
+			r.row(c, "update", tile(rowDownload), setting{title: L.AppUpdateInstalling(int(progress * 100))}, func() {
+				busyMark(c, L.AppUpdateInstalling(int(progress*100)), busySize)
+			})
+		case up != nil:
+			r.row(c, "update", tile(rowDownload), setting{title: L.AppUpdateAvailable(up.Version), about: L.AppUpdateInstalled(version.Version), col: t.Accent}, func() {
+				if ui.PrimaryButton(c.Key("install-update"), L.ActionInstallUpdate()).Disabled(busy).Clicked() {
+					a.installApp()
+				}
+			})
+		default:
+			r.row(c, "update", tile(rowDownload), setting{title: L.AppUpdateInstalled(version.Version)}, func() {
+				if ui.Button(c.Key("check-update"), L.ActionCheckAppUpdate()).Disabled(busy).Clicked() {
+					go a.checkApp(true)
+				}
+			})
+		}
+		r.row(c, "app-auto", tile(rowRefresh), setting{title: L.SettingsCheckAppUpdates(), about: L.SettingsCheckAppUpdatesHint()}, func() {
+			if ui.Switch(c.Key("app-auto-sw"), &p.CheckAppUpdates).Label(L.SettingsCheckAppUpdates()).Changed() {
+				a.setPrefs(p)
 			}
 		})
-	default:
-		if ui.Button(c.Key("check-update"), L.ActionCheckAppUpdate()).Disabled(busy).Clicked() {
-			go a.checkApp(true)
-		}
-	}
-	settingRow(c, "app-auto", L.SettingsCheckAppUpdates(), L.SettingsCheckAppUpdatesHint(), func() {
-		if ui.Switch(c.Key("app-auto-sw"), &p.CheckAppUpdates).Label(L.SettingsCheckAppUpdates()).Changed() {
-			a.setPrefs(p)
-		}
 	})
 }

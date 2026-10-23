@@ -40,21 +40,32 @@ type aiState struct {
 	polling bool
 }
 
-// aiView is the AI page: the task in progress (or a new one), the provider
-// and the history.
+// aiView is the AI page: the task in progress (or a new one), the
+// providers, and the history; in protected mode, topped by the card that
+// turns it off.
 func (a *App) aiView(c *ui.Context) {
-	if !a.engineState(c) {
-		return
-	}
-	a.mu.Lock()
-	loaded, busy := a.ai.loaded, a.busy["ai"]
-	a.mu.Unlock()
-	if !loaded && !busy {
-		a.loadAI()
-	}
-	a.aiTaskCard(c)
-	a.aiProviderCard(c)
-	a.aiHistoryCard(c)
+	settingsPage(c, L.NavAI(), L.SettingsAboutAI(), func() {
+		a.mu.Lock()
+		protected := a.protected()
+		a.mu.Unlock()
+		if protected {
+			ui.Column(c.Key("protected-wrap")).FillWidth().Padding(18, 0, 0, 0).Children(func() { a.protectedCard(c) })
+		}
+		if !a.engineState(c) {
+			return
+		}
+		a.mu.Lock()
+		loaded, busy := a.ai.loaded, a.busy["ai"]
+		a.mu.Unlock()
+		if !loaded && !busy {
+			a.loadAI()
+		}
+		// The task and its history keep their cards until AI sessions
+		// become panes of their own.
+		ui.Column(c.Key("ai-task-wrap")).FillWidth().Padding(18, 0, 0, 0).Children(func() { a.aiTaskCard(c) })
+		a.aiProviders(c)
+		ui.Column(c.Key("ai-history-wrap")).FillWidth().Padding(18, 0, 0, 0).Children(func() { a.aiHistoryCard(c) })
+	})
 }
 
 // aiTaskCard shows the task in progress with its controls, or the latest

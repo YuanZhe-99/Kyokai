@@ -12,7 +12,6 @@ import (
 	"errors"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -177,9 +176,9 @@ func keyFingerprint(line string) (fp, kind string) {
 	return ssh.FingerprintSHA256(pub), kind
 }
 
-// keysSettings are the Security page's cards of keys: this device's keys
+// keysSettings are the Security & privacy page's keys: this device's keys
 // and what is saved for other devices (the keys that can connect to it are
-// on the Permissions page, among the ways to sign in).
+// in Access, among the ways to sign in).
 func (a *App) keysSettings(c *ui.Context) {
 	a.mu.Lock()
 	k := a.keys
@@ -187,11 +186,8 @@ func (a *App) keysSettings(c *ui.Context) {
 	if !k.loaded && !k.busy {
 		a.loadKeys()
 	}
-	if k.shown != nil && !k.shown.pair {
-		a.shownKeyCard(c, *k.shown)
-	}
-	a.myKeysCard(c, k)
-	a.savedCard(c)
+	a.myKeys(c, k)
+	a.savedKeys(c)
 }
 
 // loadKeys fetches this device's keys and the keys that can connect to it.
@@ -214,16 +210,11 @@ func (a *App) loadKeys() {
 	}()
 }
 
-// keyRow is one key: its name, type and fingerprint, Copy public key and
-// Remove.
-func (a *App) keyRow(c *ui.Context, key, name, public string, busy bool, remove func()) {
-	t := c.Theme()
+// keyRow is one key's row: its name, type and fingerprint, Copy public key
+// and Remove.
+func (a *App) keyRow(c *ui.Context, r *rows, key, name, public string, busy bool, remove func()) {
 	fp, kind := keyFingerprint(public)
-	ui.Row(c.Key(key)).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-			ui.Text(c, name).Bold().SingleLine()
-			ui.Text(c, kind+" · "+fp).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted).Selectable()
-		})
+	r.row(c, key, tile(navPermissions), setting{title: name, about: kind + " · " + fp}, func() {
 		a.keyActions(c, key, name, public, busy, remove)
 	})
 }
@@ -243,34 +234,35 @@ func (a *App) keyActions(c *ui.Context, key, name, public string, busy bool, rem
 	}
 }
 
-// myKeysCard is "Your keys": the keys this device signs in with, to other
-// Kyokai devices (Ed25519) and to SSH servers, with Generate and Import.
-func (a *App) myKeysCard(c *ui.Context, k keysState) {
+// myKeys is "Your keys": the keys this device signs in with, to other
+// Kyokai devices (Ed25519) and to SSH servers, Generate and Import beside
+// the title, and a private key just made, shown once.
+func (a *App) myKeys(c *ui.Context, k keysState) {
 	t := c.Theme()
-	card(c.Key("my-keys")).Children(func() {
-		ui.Text(c, L.KeysMineTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.KeysMineHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		if k.loaded && len(k.mine) == 0 {
-			ui.Text(c, L.KeysNone()).FontSize(sizeSmall).TextColor(t.TextMuted)
+	forming := k.form.kind == "generate" || k.form.kind == "import"
+	aside := func() {
+		if ui.Button(c.Key("key-gen"), L.KeysGenerate()).Disabled(k.busy || forming).Clicked() {
+			a.openKeyForm("generate")
+		}
+		if ui.Button(c.Key("key-import"), L.KeysImport()).Disabled(k.busy || forming).Clicked() {
+			a.openKeyForm("import")
+		}
+	}
+	a.section(c, "my-keys", L.KeysMineTitle(), aside, func(r *rows) {
+		if k.shown != nil && !k.shown.pair {
+			r.block(c, "shown-key", func() { a.shownKey(c, *k.shown) })
+		}
+		if k.loaded && len(k.mine) == 0 && !forming {
+			r.block(c, "keys-none", func() { ui.Text(c, L.KeysMineHint()).FontSize(sizeSmall).TextColor(t.TextMuted) })
 		}
 		for _, key := range k.mine {
 			id := key.ID
-			a.keyRow(c, "key-"+id, key.Name, key.Public, k.busy, func() {
+			a.keyRow(c, r, "key-"+id, key.Name, key.Public, k.busy, func() {
 				a.keysCommand(localapi.Request{Type: localapi.RequestKeysRemove, LoginKey: &localapi.LoginKey{ID: id}}, "")
 			})
 		}
-		switch k.form.kind {
-		case "generate", "import":
-			a.keyForm(c, k)
-		default:
-			ui.Row(c).Gap(gap).Children(func() {
-				if ui.Button(c.Key("key-gen"), L.KeysGenerate()).Disabled(k.busy).Clicked() {
-					a.openKeyForm("generate")
-				}
-				if ui.Button(c.Key("key-import"), L.KeysImport()).Disabled(k.busy).Clicked() {
-					a.openKeyForm("import")
-				}
-			})
+		if forming {
+			r.block(c, "key-form", func() { a.keyForm(c, k) })
 		}
 	})
 }
@@ -469,12 +461,12 @@ func (a *App) keysCommand(req localapi.Request, done string, shown ...*shownKey)
 	}()
 }
 
-// shownKeyCard shows a private key once, to copy or save to a file, with
-// Done, after which it is gone.
-func (a *App) shownKeyCard(c *ui.Context, k shownKey) {
+// shownKey shows a private key once (in a block of its list), to copy or
+// save to a file, with Done, after which it is gone.
+func (a *App) shownKey(c *ui.Context, k shownKey) {
 	t := c.Theme()
-	card(c.Key("shown-key")).Border(2, t.Accent).Children(func() {
-		ui.Text(c, k.title).FontSize(sizeHeading).Bold()
+	ui.Column(c.Key("shown-key-body")).FillWidth().Gap(8).Padding(12).Radius(10).Border(2, t.Accent).Children(func() {
+		ui.Text(c, k.title).Bold()
 		ui.Text(c, L.KeysShownHint()).FontSize(sizeSmall).TextColor(t.Warning)
 		ui.Text(c, k.pem).FontSize(sizeSmall).FontFeatures("tnum").Selectable()
 		ui.Row(c).Gap(gap).Children(func() {
@@ -530,10 +522,10 @@ func savedFlags(s localapi.Saved) [][2]string {
 	return out
 }
 
-// savedCard is "Saved passwords and keys": per device, a chip for each
+// savedKeys is "Saved passwords and keys": per device, a chip for each
 // sign-in kept for it (flags only, never a secret), each with Forget, and
 // Forget all.
-func (a *App) savedCard(c *ui.Context) {
+func (a *App) savedKeys(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	var recent []localapi.RecentDevice
@@ -542,29 +534,24 @@ func (a *App) savedCard(c *ui.Context) {
 	}
 	prefs := a.prefs
 	a.mu.Unlock()
-	card(c.Key("saved")).Children(func() {
-		ui.Text(c, L.SavedTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.SavedHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
+	a.section(c, "saved", L.SavedTitle(), nil, func(r *rows) {
 		listed := false
-		for _, r := range recent {
-			flags := savedFlags(r.Saved)
-			if r.SavedPassword && !r.Saved.Password {
+		for _, rd := range recent {
+			flags := savedFlags(rd.Saved)
+			if rd.SavedPassword && !rd.Saved.Password {
 				flags = append([][2]string{{"password", L.SavedPassword()}}, flags...)
 			}
 			if len(flags) == 0 {
 				continue
 			}
 			listed = true
-			device := r.DeviceID
-			ui.Row(c.Key("saved-" + device)).Gap(gap).AlignItems(ui.Center).FillWidth().Children(func() {
-				deviceAvatar(c, prefs.named(device, r.About))
-				ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-					ui.Text(c, deviceTitle(prefs.named(device, r.About), device)).SingleLine()
-					ui.Row(c).Wrap().Gap(6).Children(func() {
-						for _, f := range flags {
-							savedChip(c, "saved-"+device+"-"+f[0], f[1], func() { a.forgetSaved(device, f[0]) })
-						}
-					})
+			device := rd.DeviceID
+			about := prefs.named(device, rd.About)
+			r.row(c, "saved-"+device, avatarLead(about), setting{title: deviceTitle(about, device)}, func() {
+				ui.Row(c).Wrap().Gap(6).Children(func() {
+					for _, f := range flags {
+						savedChip(c, "saved-"+device+"-"+f[0], f[1], func() { a.forgetSaved(device, f[0]) })
+					}
 				})
 				if ui.Button(c.Key("saved-all-"+device), L.SavedForgetAll()).Clicked() {
 					a.forgetSaved(device, "")
@@ -572,7 +559,7 @@ func (a *App) savedCard(c *ui.Context) {
 			})
 		}
 		if !listed {
-			ui.Text(c, L.SavedNone()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			r.block(c, "saved-none", func() { ui.Text(c, L.SavedHint()).FontSize(sizeSmall).TextColor(t.TextMuted) })
 		}
 	})
 }
@@ -615,34 +602,4 @@ func (a *App) forgetSaved(device, what string) {
 			}
 		})
 	}()
-}
-
-// watchersCard is the Permissions page's list of the devices watching this
-// computer's status, with when they started.
-func (a *App) watchersCard(c *ui.Context) {
-	t := c.Theme()
-	a.mu.Lock()
-	var watchers []localapi.Watcher
-	if a.status != nil {
-		watchers = a.status.Watchers
-	}
-	prefs := a.prefs
-	a.mu.Unlock()
-	card(c.Key("watchers")).Children(func() {
-		ui.Text(c, L.WatchersTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.WatchersHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		if len(watchers) == 0 {
-			ui.Text(c, L.WatchersNone()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		}
-		for _, w := range watchers {
-			about := prefs.named(w.DeviceID, w.About)
-			ui.Row(c.Key("watcher-" + w.DeviceID)).Gap(gap).AlignItems(ui.Center).Children(func() {
-				deviceAvatar(c, about)
-				ui.Column(c).Grow(1).Gap(2).Children(func() {
-					ui.Text(c, deviceTitle(about, w.DeviceID))
-					ui.Text(c, L.WatchersSince(time.Unix(w.Since, 0).Local().Format("15:04"))).FontSize(sizeSmall).TextColor(t.TextMuted)
-				})
-			})
-		}
-	})
 }

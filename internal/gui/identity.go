@@ -11,18 +11,14 @@ import (
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
-// identityBackup is the identity card's backup, restore and reset part.
-// The passphrase field is write-only and cleared after each use.
-func (a *App) identityBackup(c *ui.Context) {
-	t := c.Theme()
+// identityBackup is Device identity's rows of back up or restore, and
+// reset. The passphrase field is write-only and cleared after each use.
+func (a *App) identityBackup(c *ui.Context, r *rows) {
 	a.mu.Lock()
 	pass, busy, id := a.passphrase, a.busy["identity"], a.status.DeviceID
 	a.mu.Unlock()
-	ui.Divider(c)
-	ui.Text(c, L.BackupTitle())
-	ui.Text(c, L.BackupHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-	ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
-		in := ui.TextInput(c.Key("backup-pass"), &pass).Password().Placeholder(L.BackupPassphrase()).Grow(1).Disabled(busy)
+	r.row(c, "backup", tile(rowArchive), setting{title: L.BackupTitle(), about: L.BackupAbout(), more: L.BackupHint()}, func() {
+		in := ui.TextInput(c.Key("backup-pass"), &pass).Password().Placeholder(L.BackupPassphrase()).Label(L.BackupPassphrase()).Width(170).Disabled(busy)
 		if in.Changed() {
 			a.mu.Lock()
 			a.passphrase = pass
@@ -35,7 +31,7 @@ func (a *App) identityBackup(c *ui.Context) {
 			go a.restore(pass)
 		}
 	})
-	settingRow(c, "reset-id", L.ResetTitle(), L.ResetHint(), func() {
+	r.row(c, "reset-id", tile(rowRefresh), setting{title: L.ResetTitle(), about: L.ResetAbout(), more: L.ResetHint()}, func() {
 		if ui.Button(c.Key("reset-go"), L.ActionReset()).Disabled(busy).Clicked() {
 			go a.resetIdentity()
 		}

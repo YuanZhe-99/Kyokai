@@ -147,66 +147,86 @@ func aiTaskModel(s *localapi.AISettings, task *localapi.AITask) string {
 	return friendlyModelName(task.Model, "", "")
 }
 
-// aiProviderCard is the AI page's settings: the model tasks use, the
-// approval policy, and the providers with their models.
-func (a *App) aiProviderCard(c *ui.Context) {
+// aiProviders are the AI page's settings: Defaults for new tasks (the model
+// and when to ask), the providers with their models and key — Add provider
+// from a template beside the title, the editor under its row — and who
+// else may run tasks here (set in Access).
+func (a *App) aiProviders(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
-	s, edit, busy := a.ai.settings, a.ai.edit, a.busy["ai"]
+	s, edit, busy, pick := a.ai.settings, a.ai.edit, a.busy["ai"], a.ai.template
 	a.mu.Unlock()
-	card(c).Children(func() {
-		ui.Text(c, L.AISettingsTitle()).FontSize(sizeHeading).Bold()
-		ui.Text(c, L.AISettingsHint()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		if s == nil {
-			busyMark(c, L.AISettingsTitle(), busySizeLarge)
-			return
-		}
-		// The model: every model of every source.
-		var labels []string
-		var refs []localapi.AIModelRef
-		cur := ""
-		for i := range s.Sources {
-			src := &s.Sources[i]
-			for _, m := range src.Models {
-				label := aiModelLabel(src, m)
-				labels = append(labels, label)
-				refs = append(refs, localapi.AIModelRef{Source: src.ID, ID: m.ID})
-				if s.Model != nil && *s.Model == refs[len(refs)-1] {
-					cur = label
-				}
+	if s == nil {
+		ui.Row(c.Key("ai-loading")).Padding(18, 0, 0, 0).Children(func() { busyMark(c, L.AISettingsTitle(), busySizeLarge) })
+		return
+	}
+	// The model: every model of every source.
+	var labels []string
+	var refs []localapi.AIModelRef
+	cur := ""
+	for i := range s.Sources {
+		src := &s.Sources[i]
+		for _, m := range src.Models {
+			label := aiModelLabel(src, m)
+			labels = append(labels, label)
+			refs = append(refs, localapi.AIModelRef{Source: src.ID, ID: m.ID})
+			if s.Model != nil && *s.Model == refs[len(refs)-1] {
+				cur = label
 			}
 		}
-		settingRow(c, "ai-model", L.AIModel(), "", func() {
-			if ui.Select(c.Key("ai-model-sel"), &cur, labels).Width(360).Disabled(busy).Changed() {
+	}
+	policies := []string{L.AIApprovalFlaggedOption(), L.AIApprovalEveryOption()}
+	policy := policies[0]
+	if s.Approval == "every-action" {
+		policy = policies[1]
+	}
+	a.section(c, "ai-defaults", L.SectionAIDefaults(), nil, func(r *rows) {
+		r.row(c, "ai-model", tile(navAI), setting{title: L.AIModel(), about: L.AIModelAbout()}, func() {
+			if ui.Select(c.Key("ai-model-sel"), &cur, labels).Width(280).Disabled(busy).Changed() {
 				if i := slices.Index(labels, cur); i >= 0 {
 					ref := refs[i]
 					a.saveAISettings(&localapi.AISettings{Model: &ref}, "")
 				}
 			}
 		})
-		policies := []string{L.AIApprovalFlaggedOption(), L.AIApprovalEveryOption()}
-		policy := policies[0]
-		if s.Approval == "every-action" {
-			policy = policies[1]
-		}
-		settingRow(c, "ai-policy", L.AIApproval(), "", func() {
+		r.row(c, "ai-policy", tile(rowCheck), setting{title: L.AIApproval(), about: L.AIApprovalAbout()}, func() {
 			if ui.Select(c.Key("ai-policy-sel"), &policy, policies).Width(280).Disabled(busy).Changed() {
 				a.saveAISettings(&localapi.AISettings{Approval: []string{"flagged", "every-action"}[slices.Index(policies, policy)]}, "")
 			}
 		})
-		ui.Divider(c)
-		ui.Text(c, L.AISources()).Bold()
+	})
+	names := make([]string, len(aiTemplates))
+	for i, tp := range aiTemplates {
+		names[i] = templateName(tp)
+	}
+	if pick == "" {
+		pick = names[2] // OpenRouter
+	}
+	aside := func() {
+		if ui.Select(c.Key("ai-template"), &pick, names).Width(200).Disabled(edit != nil).Changed() {
+			a.update(func() { a.ai.template = pick })
+		}
+		if ui.Button(c.Key("ai-add"), L.AIAddSource()).Disabled(busy || edit != nil).Clicked() {
+			tp := aiTemplates[max(0, slices.Index(names, pick))]
+			a.update(func() { a.ai.edit = newAIEdit(s, tp) })
+		}
+	}
+	a.section(c, "ai-sources", L.AISources(), aside, func(r *rows) {
+		if edit != nil && edit.isNew {
+			r.block(c, "ai-editor-new", func() { a.aiSourceEditor(c, edit, busy) })
+		}
 		for i := range s.Sources {
 			src := s.Sources[i]
-			state := L.AINoKeyShort()
+			state, col := L.AINoKeyShort(), t.Warning
 			switch {
 			case s.Keys[src.ID]:
-				state = L.AIKeyShort()
+				state, col = L.AIKeyShort(), t.Success
 			case src.Protocol == "openai-chat" && isLocal(src.URL):
-				state = L.AINoKeyNeeded()
+				state, col = L.AINoKeyNeeded(), t.TextMuted
 			}
-			hint := fmt.Sprintf("%s · %s · %s", templateName(templateOf(src.Template)), L.AIModelCount(len(src.Models)), state)
-			settingRow(c, "ai-src-"+src.ID, src.Name, hint, func() {
+			about := fmt.Sprintf("%s · %s", templateName(templateOf(src.Template)), L.AIModelCount(len(src.Models)))
+			r.row(c, "ai-src-"+src.ID, letterTile(src.Name), setting{title: src.Name, about: about}, func() {
+				ui.Text(c, state).FontSize(sizeSmall).TextColor(col)
 				if ui.Button(c.Key("ai-src-edit-"+src.ID), L.AIEditSource()).Disabled(busy || edit != nil).Clicked() {
 					a.update(func() { a.ai.edit = &aiEdit{src: src} })
 				}
@@ -214,28 +234,23 @@ func (a *App) aiProviderCard(c *ui.Context) {
 					a.removeAISource(src.ID)
 				}
 			})
-		}
-		if edit != nil {
-			a.aiSourceEditor(c, edit, busy)
-			return
-		}
-		names := make([]string, len(aiTemplates))
-		for i, tp := range aiTemplates {
-			names[i] = templateName(tp)
-		}
-		a.mu.Lock()
-		pick := a.ai.template
-		a.mu.Unlock()
-		if pick == "" {
-			pick = names[2] // OpenRouter
-		}
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
-			if ui.Select(c.Key("ai-template"), &pick, names).Width(300).Changed() {
-				a.update(func() { a.ai.template = pick })
+			if edit != nil && !edit.isNew && edit.src.ID == src.ID {
+				r.block(c, "ai-editor-"+src.ID, func() { a.aiSourceEditor(c, edit, busy) })
 			}
-			if ui.Button(c.Key("ai-add"), L.AIAddSource()).Disabled(busy).Clicked() {
-				tp := aiTemplates[max(0, slices.Index(names, pick))]
-				a.update(func() { a.ai.edit = newAIEdit(s, tp) })
+		}
+	})
+	a.mu.Lock()
+	protected := a.protected()
+	a.mu.Unlock()
+	if protected {
+		return // Access stays hidden until protected mode is off
+	}
+	a.section(c, "ai-others", L.SectionOtherDevices(), nil, func(r *rows) {
+		r.row(c, "ai-who", tile(navPermissions), setting{title: L.AIWhoMay(), about: L.AIWhoMayAbout()}, func() {
+			if ui.Button(c.Key("ai-open-access"), L.NavAccess()).Clicked() {
+				a.mu.Lock()
+				a.page = pageAccess
+				a.mu.Unlock()
 			}
 		})
 	})

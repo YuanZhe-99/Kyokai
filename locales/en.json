@@ -8,6 +8,7 @@
   "AIAddModel": "Add model",
   "AIAddSource": "Add provider",
   "AIApproval": "Ask before acting",
+  "AIApprovalAbout": "Which steps wait for your OK.",
   "AIApprovalBanner": "The AI task is waiting for your approval.",
   "AIApprovalEveryOption": "Every action",
   "AIApprovalFlagged": "The provider flagged this step:",
@@ -165,6 +166,7 @@
   "AIKeyStored": "A key is stored. Leave this empty to keep it.",
   "AIListModels": "List models",
   "AIModel": "Model",
+  "AIModelAbout": "The model new tasks use.",
   "AIModelCount": "Models: {count}",
   "@AIModelCount": {
     "placeholders": {
@@ -207,7 +209,6 @@
   "AIReplyHint": "Reply to continue this task",
   "AIReview": "Review",
   "AISaved": "AI settings saved.",
-  "AISettingsHint": "Tasks on this computer use this computer's key. It is kept in the secrets store here and never sent to other devices.",
   "AISettingsTitle": "AI providers",
   "AISourceAddress": "Address",
   "AISourceFormat": "Format",
@@ -235,6 +236,8 @@
   },
   "AITaskHint": "The AI works on this computer's screen with this computer's API key. Using the keyboard or mouse pauses it at once.",
   "AITaskTitle": "AI task",
+  "AIWhoMay": "Who may run AI tasks here",
+  "AIWhoMayAbout": "Set in Access: Run AI tasks and Approve AI actions. They use these providers, never their own keys.",
   "AboutLicense": "AGPL-3.0-only. Includes MyGo (MIT).",
   "AboutSource": "Source code",
   "AboutTagline": "AI Computer Use Across Devices",
@@ -251,9 +254,10 @@
   "ActionDisconnect": "Disconnect",
   "ActionEdit": "Edit",
   "ActionForgetIdentity": "Forget old identity",
-  "ActionForgetPassword": "Forget password",
   "ActionHide": "Hide",
   "ActionInstallUpdate": "Install and restart",
+  "ActionManage": "Manage",
+  "ActionMore": "More",
   "ActionNewPassword": "New password",
   "ActionOpenFolder": "Open folder",
   "ActionRemove": "Remove",
@@ -277,6 +281,14 @@
   },
   "AppUpdateCheckFailed": "Could not check for updates.",
   "AppUpdateInstallFailed": "The update could not be installed.",
+  "AppUpdateInstalled": "Kyokai {version} is installed.",
+  "@AppUpdateInstalled": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
   "AppUpdateInstalling": "Installing… {percent}%",
   "@AppUpdateInstalling": {
     "placeholders": {
@@ -289,11 +301,13 @@
   "AppearanceDark": "Appearance: dark",
   "AppearanceFollow": "Appearance: follow the system",
   "AppearanceLight": "Appearance: light",
+  "BackupAbout": "Into a file locked with a passphrase you choose.",
   "BackupFileKind": "Kyokai identity backup",
   "BackupHint": "A backup keeps this Device ID, the permanent password, trusted devices and known devices, encrypted with a passphrase of at least 10 characters. Without the passphrase it can't be opened.",
   "BackupPassphrase": "Backup passphrase",
   "BackupSaved": "Backup saved.",
   "BackupTitle": "Back up or restore",
+  "ByAddressAbout": "By IP address or domain name, on port 47310. A password or your OK is still needed.",
   "ByAddressFailed": "Not accepting yet: port 47310 is in use or blocked on this computer.",
   "ByAddressHint": "Other devices can connect by this computer's IP address or domain name (port 47310), without a network. They still need a password or your confirmation. Windows may ask to let Kyokai through its firewall.",
   "ByAddressRanges": "Accepted from",
@@ -302,7 +316,6 @@
   "ByAddressTitle": "Accept connections by address",
   "CardAI": "AI",
   "CardConnected": "Connected",
-  "CardNeedsUpdate": "Needs Kyokai 0.4.1 or later on that device",
   "CardNotOnNetwork": "Not on the network",
   "CardOffline": "Offline",
   "CardOnline": "Online",
@@ -335,7 +348,6 @@
   "ConnectIdentifying": "Looking for the device at that address…",
   "ConnectNeedsNetwork": "To connect by Device ID, join a network on the Network page first. An IP address or domain name works without one.",
   "ConnectOptions": "Options",
-  "ConnectPasswordSaved": "Password saved",
   "ConnectPlaceholder": "Device ID or address",
   "ConnectRecent": "Recent",
   "ConnectRemember": "Remember password",
@@ -393,6 +405,7 @@
   "FailUnreachable": "Couldn't reach that device. Check that it's online in the same network.",
   "FailWrongDevice": "A different device answered for that ID.",
   "HelperRestarted": "Kyokai Helper restarted with the permissions allowed so far.",
+  "HideFromCaptureAbout": "Keeps Kyokai's windows out of screenshots, screen sharing and the AI's view.",
   "HomeDeviceID": "Device ID",
   "HomePasswordHint": "Changes every time Kyokai starts, or when you ask for a new one.",
   "HomePasswordsOff": "No password opens this device: other devices sign in with a key, or ask you. Change it in Permissions.",
@@ -401,16 +414,16 @@
   "HomeTemporaryPassword": "Temporary password",
   "HomeThisDevice": "This device",
   "HostConnected": "{device} is connected to this device",
+  "HowItWorks": "How it works",
   "IdentifyBroken": "No Kyokai device answered at that address.",
   "IdentifySelf": "That address is this device.",
   "IdentifyUnreachable": "Nothing answered at that address. Check the address, and that the device accepts connections by address from here.",
   "IdentityFingerprint": "Fingerprint",
   "IdentityFingerprintHint": "The full identity behind the Device ID. Compare it when another computer asks you to confirm this device.",
+  "IdentityIDAbout": "Others use it to reach this computer.",
   "IdentityReplaced": "Identity replaced.",
   "KeysAuthorize": "Add a key",
   "KeysAuthorized": "The key can connect to this device now.",
-  "KeysAuthorizedHint": "A device signing in with one of these keys is admitted as a correct password is. Their public keys stay visible here.",
-  "KeysAuthorizedTitle": "Keys that can connect to this device",
   "KeysChooseFile": "Choose a file…",
   "KeysCopyPublic": "Copy public key",
   "KeysDefaultName": "Kyokai key",
@@ -423,7 +436,6 @@
   "KeysMineHint": "This device signs in with these keys to other Kyokai devices (Ed25519) and to SSH. Their private parts stay in Kyokai's store and never leave it.",
   "KeysMineTitle": "Your keys",
   "KeysName": "Name",
-  "KeysNone": "None yet.",
   "KeysPair": "Generate a pair",
   "KeysPassphrase": "The key's passphrase",
   "KeysPassphraseOptional": "Passphrase for the copy you take (optional)",
@@ -461,7 +473,6 @@
       }
     }
   },
-  "LicensesHint": "Kyokai and the components it includes.",
   "LogsFileKind": "Text file",
   "LogsSaved": "Logs saved.",
   "NameSaved": "Name saved.",
@@ -474,34 +485,51 @@
   "NavAccess": "Access",
   "NavHome": "Home",
   "NavNetwork": "Network",
-  "NavPermissions": "Permissions",
-  "NavSecurity": "Security",
   "NavSecurityPrivacy": "Security & privacy",
   "NavSettings": "Settings",
   "NetworkAdd": "Add a network",
-  "NetworkAddress": "Virtual address",
   "NetworkAdvanced": "Advanced",
   "NetworkConnecting": "Connecting…",
-  "NetworkConnections": "How devices reach this one",
-  "NetworkDevices": "Kyokai devices in this network",
+  "NetworkDeviceCount": "{count, plural, =0 {No Kyokai devices} one {# Kyokai device} other {# Kyokai devices}}",
+  "@NetworkDeviceCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "NetworkDevicesHint": "A Device ID here is what a device announces. Kyokai checks who a device really is when it connects.",
   "NetworkDirect": "Try direct connections",
+  "NetworkDirectAbout": "Faster where both networks allow it. Off by default.",
   "NetworkDirectHelper": "The helper always tries direct connections: its installer allowed it through the firewall.",
   "NetworkDirectHint": "Faster when both networks allow it. Windows may ask to let Kyokai through its firewall; while this is off, connections go through the server.",
   "NetworkDirectWarning": "This makes Kyokai listen on network ports and answer other devices' packets: Windows Firewall may ask, and other devices on your networks can find this one more easily. It changes what this device exposes, not just a protocol.",
   "NetworkError": "Could not connect",
+  "NetworkErrorReason": "Couldn't connect: {reason}",
+  "@NetworkErrorReason": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
   "NetworkJoin": "Join",
   "NetworkLabel": "Name shown here",
   "NetworkLabelHint": "Optional; the network name shows otherwise.",
   "NetworkLatencyFirst": "Latency-first routing",
   "NetworkLatencyFirstHint": "Prefer the route with the lowest delay over the one with the fewest hops, in every network.",
-  "NetworkNAT": "NAT type",
+  "NetworkListenPort": "port {port}",
+  "@NetworkListenPort": {
+    "placeholders": {
+      "port": {
+        "type": "String"
+      }
+    }
+  },
   "NetworkName": "Network name",
-  "NetworkNoDevices": "No other Kyokai device is online in this network.",
   "NetworkNone": "No network yet. Add one to reach other devices by their Device ID.",
   "NetworkNotJoined": "Not joined",
   "NetworkOnline": "Connected",
-  "NetworkPort": "Port for direct addresses",
   "NetworkRemoveConfirm": "Remove {name}? Kyokai leaves this network and forgets its servers, network name and secret.",
   "@NetworkRemoveConfirm": {
     "placeholders": {
@@ -517,8 +545,21 @@
   "NetworkSecretWeak": "This network secret is short. Anyone who guesses it can join the network, though joining alone grants no access to this device.",
   "NetworkServers": "Servers",
   "NetworkServersHint": "One address per line, for example tcp://example.org:11010",
+  "NetworkSummary": "Networks connected: {online} of {joined}.",
+  "@NetworkSummary": {
+    "placeholders": {
+      "joined": {
+        "type": "int"
+      },
+      "online": {
+        "type": "int"
+      }
+    }
+  },
+  "NetworkSummaryNone": "Not in any network yet.",
   "NetworkTitle": "Networks",
   "NetworksHint": "Join EasyTier networks through standard EasyTier servers, several at once if you like: this device has the same Device ID in each. A device you want to reach by its Device ID joins one of the same networks.",
+  "NoLogsAbout": "Keeps no logs or record of connections on this computer.",
   "NoLogsConfirm": "This is a security risk: afterwards you can't find out who connected to this computer, or which devices it connected to. A device whose key changed is no longer recognized after Kyokai restarts, and a crash leaves nothing to investigate. The logs written so far are deleted.",
   "NoLogsEngineBehind": "The engine in use doesn't support this yet; it still keeps logs until it is updated.",
   "NoLogsHint": "Kyokai writes no logs or crash reports and keeps no record of connections on this computer: trusted devices and Recent last only until Kyokai quits. Turning it on deletes the logs already written. Reports the system makes itself (macOS crash reports, Windows Error Reporting) are not Kyokai's to stop.",
@@ -535,7 +576,7 @@
   "PaneSplitNone": "Open another connection first; it can then go beside this one.",
   "PaneSplitRight": "Split right",
   "PasswordForgotten": "The saved password is forgotten.",
-  "PasswordGrantsHint": "A device that enters your password gets these without asking you. Anything else it asks for waits for you to allow it.",
+  "PasswordGrantsNote": "Anything else waits for your OK",
   "PasswordGrantsTitle": "With a correct password",
   "PathDirect": "Direct",
   "PathRelay": "Relayed",
@@ -546,13 +587,18 @@
   "PermHearSound": "Hear sound",
   "PermRunAITask": "Run AI tasks",
   "PermSeeStatus": "See this computer's status",
+  "PermShortClipboard": "Clipboard",
+  "PermShortInput": "Mouse & keyboard",
+  "PermShortStatus": "See status",
   "PermUseRDP": "Connect to its Remote Desktop",
   "PermUseSSH": "Connect to its SSH",
   "PermUseVNC": "Connect to its VNC or Screen Sharing",
   "PermViewScreen": "See the screen",
+  "PermanentChange": "Change…",
   "PermanentNotSet": "Not set.",
   "PermanentSaved": "Permanent password saved.",
-  "PermanentSet": "Set.",
+  "PermanentSetAbout": "Set. Stays the same until you change it.",
+  "PermanentSetButton": "Set…",
   "PermanentTitle": "Permanent password",
   "PermissionAccessibility": "Accessibility",
   "PermissionAccessibilityHint": "Lets other devices and AI tasks use the mouse and keyboard here.",
@@ -566,9 +612,10 @@
   "PermissionsHelperHint": "In this run mode the helper captures and controls this Mac: allow these for Kyokai Helper, then restart it here.",
   "PermissionsHint": "macOS asks you before an app may record the screen or control the computer. Without these, other devices see a placeholder picture and cannot use the mouse or keyboard here. A permission you allow counts once Kyokai is reopened.",
   "PermissionsTitle": "Privacy permissions",
+  "ProtectedAbout": "Leaves only AI settings and tasks until the permanent password turns it off.",
   "ProtectedConfirm": "Kyokai will show only the AI settings and AI tasks. To change anything else, you'll need the permanent password to turn protected mode off. Connection requests and devices connected here still show, so you can always deny and disconnect them.",
   "ProtectedHint": "This computer's Kyokai then offers only the AI settings and AI tasks; everything else, including the network, permissions and security, stays hidden until the permanent password turns it off. Needs a permanent password.",
-  "ProtectedNeedsPermanent": "Set a permanent password in Permissions first.",
+  "ProtectedNeedsPermanent": "Set a permanent password in Access first.",
   "ProtectedOnHint": "Only the AI settings and AI tasks are available. Enter the permanent password to turn protected mode off.",
   "ProtectedTitle": "Protected mode",
   "ProtectedTurnOff": "Turn off",
@@ -603,6 +650,7 @@
       }
     }
   },
+  "ResetAbout": "A new Device ID; trusted and known devices are forgotten.",
   "ResetConfirm": "This device gets a new Device ID. Other devices will see it as a new device, and its permanent password, trusted devices and known devices are forgotten. This can't be undone without a backup.",
   "ResetHint": "Gives this device a new Device ID and forgets its permanent password, trusted devices and known devices.",
   "ResetTitle": "Reset identity",
@@ -654,10 +702,12 @@
     }
   },
   "RunModeBackground": "Background service",
+  "RunModeBackgroundAbout": "The helper also lets devices in before anyone signs in.",
   "RunModeCancelled": "The administrator prompt was cancelled.",
   "RunModeChanged": "Run mode changed.",
   "RunModeFollow": "Follow Kyokai",
-  "RunModeHint": "Where this device runs: in Kyokai itself, or in a helper that can also show and operate sign-in and administrator prompts.",
+  "RunModeFollowAbout": "While Kyokai runs, a helper that can also show and use sign-in and administrator prompts.",
+  "RunModeInUse": "In use",
   "RunModeKept": "Nothing was moved: each run mode keeps its own identity.",
   "RunModeMovedHint": "Its Device ID, networks and saved passwords moved to Kyokai Helper, which is not installed now. Install it again to get them back, or start over here with a new identity.",
   "RunModeMovedInstall": "Install Kyokai Helper",
@@ -679,11 +729,14 @@
   },
   "RunModeReplace": "Replace it",
   "RunModeReplaceIdentity": "The other run mode holds another identity of this computer, with its own settings. Replace it with this one? Its Device ID, networks and saved passwords are then gone.",
+  "RunModeSwitch": "Switch",
   "RunModeSwitching": "Switching…",
   "RunModeUnavailable": "Only No privileges is available on this system yet.",
   "RunModeUpdate": "Update the helper",
   "RunModeUpdated": "Helper updated.",
   "RunModeUser": "No privileges",
+  "RunModeUserAbout": "Runs inside Kyokai itself. Nothing to install.",
+  "RunModeWhere": "Where Kyokai runs",
   "SavedForget": "Forget {what}",
   "@SavedForget": {
     "placeholders": {
@@ -696,13 +749,20 @@
   "SavedForgotten": "Forgotten.",
   "SavedHint": "What this device keeps to sign in to others. Only that something is kept shows here, never a password.",
   "SavedKey": "Key",
-  "SavedNone": "Nothing is saved.",
   "SavedPassword": "Kyokai password",
   "SavedTitle": "Saved passwords and keys",
   "SecretsDenied": "Access to the Keychain was denied: secrets are kept only until Kyokai quits. Allow it under Privacy permissions.",
   "SecretsMemoryOnly": "In memory only: this computer's credential store is not available, so the Device ID changes on the next start.",
   "SecretsOSStore": "Encrypted with this computer's credential store",
   "SecretsUnreadable": "The saved identity cannot be unlocked. Kyokai uses a temporary one this time and leaves the saved one untouched.",
+  "SectionAIDefaults": "Defaults for new tasks",
+  "SectionLook": "Language and look",
+  "SectionOtherDevices": "Other devices",
+  "SectionOtherWays": "Other ways in",
+  "SectionPasswordRight": "When the password is right",
+  "SectionSound": "Sound",
+  "SectionStart": "Start and close",
+  "SectionUpdates": "Updates",
   "ServiceConnecting": "Connecting to {service}…",
   "@ServiceConnecting": {
     "placeholders": {
@@ -728,6 +788,14 @@
   "ServiceNoTunnel": "That device runs an older Kyokai: update it there to reach its services.",
   "ServiceNoneHint": "For a VNC server that asks for no password.",
   "ServicePassword": "Password",
+  "ServicePortStandard": "Empty: the standard port, {port}.",
+  "@ServicePortStandard": {
+    "placeholders": {
+      "port": {
+        "type": "String"
+      }
+    }
+  },
   "ServicePortsHint": "Where SSH, Remote Desktop and VNC listen on this computer. Another device only chooses the service: Kyokai connects it to the port set here. Leave a field empty for the standard port.",
   "ServicePortsInvalid": "A port is a number from 1 to 65535.",
   "ServicePortsSaved": "Service ports saved.",
@@ -785,10 +853,17 @@
   },
   "SessionConnecting": "Connecting…",
   "SessionReconnecting": "Connection lost — reconnecting…",
-  "SettingsAbout": "About",
+  "SettingsAboutAI": "AI tasks on this computer use its own providers and keys, which never go to other devices.",
+  "SettingsAboutAbout": "Kyokai's version, updates, and what helps when something goes wrong.",
+  "SettingsAboutAccess": "Who can connect to this computer, and what they can do.",
+  "SettingsAboutGeneral": "Language, look, and how Kyokai starts and closes.",
+  "SettingsAboutNetwork": "How this computer finds your other devices.",
+  "SettingsAboutRunMode": "Where Kyokai runs on this computer, and what it can reach.",
+  "SettingsAboutSecurity": "This computer's identity, your keys, and what Kyokai keeps.",
   "SettingsCheckAppUpdates": "Check for updates daily",
   "SettingsCheckAppUpdatesHint": "Only signed updates from Kyokai's GitHub releases are offered.",
   "SettingsCloseButton": "Close button",
+  "SettingsCloseButtonAbout": "What the window's close button does.",
   "SettingsDiagnostics": "Diagnostics",
   "SettingsGeneral": "General",
   "SettingsGroupAI": "AI",
@@ -800,21 +875,26 @@
   "SettingsHideFromCaptureOff": "Show Kyokai",
   "SettingsIdentity": "Device identity",
   "SettingsLanguage": "Language",
+  "SettingsLanguageAbout": "Follows the system unless you choose one.",
   "SettingsLicenses": "Open source licenses",
   "SettingsName": "Friendly name",
+  "SettingsNameAbout": "What others see beside the Device ID.",
   "SettingsNameHint": "What other devices see beside this Device ID once their login succeeded. Leave it empty to use this computer's name.",
   "SettingsOpenAtLogin": "Open at login",
   "SettingsOpenAtLoginHint": "Off unless you turn it on: Kyokai never starts by itself.",
-  "SettingsPasswords": "Passwords and keys",
   "SettingsPrivacy": "Privacy",
   "SettingsRunMode": "Run mode",
+  "SettingsSearch": "Search settings",
+  "SettingsSearchNone": "No setting matches.",
   "SettingsSoundMissing": "An input not connected now",
   "SettingsSoundSource": "Sound to share",
   "SettingsSoundSourceHint": "What devices that control this one hear: what this computer plays, or an input such as a microphone.",
   "SettingsSoundSystem": "What this computer plays",
   "SettingsSoundUnnamed": "Unnamed input",
   "SettingsStartHidden": "Start in the tray when opened at login",
+  "SettingsStartHiddenAbout": "Opened at login, Kyokai shows only its tray icon.",
   "SettingsTheme": "Appearance",
+  "SettingsThemeAbout": "The button at the bottom of the sidebar switches it too.",
   "ShellOffline": "Offline",
   "ShellOnline": "Online",
   "SidebarHide": "Hide the sidebar",
@@ -822,13 +902,22 @@
   "SidebarOpen": "Open",
   "SidebarOwnWindow": "In a window of its own",
   "SidebarShow": "Show the sidebar",
-  "SignInHint": "Each one checked lets another device in with what a correct password grants. Check any combination; with none checked, every connection asks you.",
+  "SignInKeys": "Keys",
+  "SignInKeysAbout": "{count, plural, one {# key can sign in instead of a password.} other {# keys can sign in instead of a password.}}",
+  "@SignInKeysAbout": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "SignInKeysNone": "No key can sign in yet.",
   "SignInNone": "Nothing is checked: every connection asks you, and with nobody at this computer no one gets in.",
-  "SignInPermanentHint": "The one set above.",
-  "SignInPermanentMissing": "Not set yet: it works once set above.",
+  "SignInPermanentMissing": "Not set yet. Set one to use it.",
   "SignInTemporary": "Temporary password",
-  "SignInTemporaryHint": "The one shown on the Home page.",
+  "SignInTemporaryAbout": "Shown on Home. Changes each time Kyokai starts.",
   "SignInTitle": "Ways to sign in",
+  "SoundSourceAbout": "What devices controlling this one hear.",
   "StartOverDone": "This device has a new identity, kept from now on.",
   "StartOverHint": "Without a backup it cannot come back. Start over to keep a new identity from now on; the old file stays aside, untouched.",
   "StatusApps": "Apps",
@@ -926,7 +1015,6 @@
       }
     }
   },
-  "TrustedNone": "None yet.",
   "TrustedTitle": "Trusted devices",
   "ViewerAIHint": "The task runs on the other computer with its own AI provider. Your input in the picture pauses it.",
   "ViewerAIHostApproves": "The other computer's user approves this step.",
@@ -964,7 +1052,6 @@
   "ViewerClipboard": "Clipboard",
   "ViewerCodec": "Codec",
   "ViewerCodecAuto": "Auto",
-  "ViewerCodecHint": "The video codec. Auto lets the other computer choose; the list shows what both computers support.",
   "ViewerCtrlAltDel": "Ctrl+Alt+Del",
   "ViewerDecoding": "Decoding (this computer): {codec}, {impl}",
   "@ViewerDecoding": {
@@ -1030,7 +1117,6 @@
   "ViewerImplUnknown": "not known yet",
   "ViewerInputPaused": "Input paused — the connection is behind",
   "ViewerKeyboard": "Keyboard",
-  "ViewerKeyboardHint": "Map sends each key by its place on the keyboard, and the other computer's layout decides what it types. Translate types with your layout and input method. Legacy sends only the keys this window receives.",
   "ViewerKeyboardLegacy": "Legacy",
   "ViewerKeyboardMap": "Map",
   "ViewerKeyboardNoGrab": "Allow Accessibility for Kyokai in System Settings to send every key, then reopen this connection.",
@@ -1040,7 +1126,6 @@
   "ViewerNoDecoder": "The picture can't be shown: Kyokai's core library is missing.",
   "ViewerNoPicture": "This session does not show the screen.",
   "ViewerOriginal": "Original size",
-  "ViewerPaneAlone": "Show only this",
   "ViewerPasswordAgain": "Enter its password:",
   "ViewerPasswordHint": "Or enter its password:",
   "ViewerPlaceholder": "The other device can't record its screen yet: this is a placeholder picture.",
@@ -1051,14 +1136,10 @@
   "ViewerReconnect": "Reconnect",
   "ViewerRecovering": "Recovering the picture…",
   "ViewerRelayedHint": "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices.",
-  "ViewerScaleHint": "Fit shows the whole screen in the window. Original size shows one point per pixel of the other computer; drag the scroll bars to move around.",
   "ViewerShowBar": "Show controls",
   "ViewerSound": "Sound",
   "ViewerSoundHint": "Plays what the other computer plays. Remembered for this device.",
   "ViewerSwapKeys": "Swap Ctrl and Cmd",
-  "ViewerSwapKeysHint": "Ctrl on one computer acts as Cmd (the Windows key) on the other, and back, so Cmd+C on a Mac copies on Windows. On by default between a Mac and Windows; remembered for this device.",
-  "ViewerTabClose": "Disconnect and close this tab",
-  "ViewerTabOut": "Open in new window",
   "ViewerTimes": "The other computer takes {encode} ms to encode, the network {network} ms; this one takes {decode} ms to decode and {draw} ms to draw. {fps} frames a second, up to {target}.",
   "@ViewerTimes": {
     "placeholders": {
@@ -1116,6 +1197,7 @@
   "WindowMaximize": "Maximize window",
   "WindowMinimize": "Minimize window",
   "WindowRestore": "Restore window",
+  "WithoutAskingAbout": "Off: you allow each connection yourself.",
   "WithoutAskingHint": "A way to sign in checked above lets a device in with what passwords grant, without asking you. With nobody at this computer (Background service), only the permanent password or a key does. Off: you are always asked.",
   "WithoutAskingTitle": "Connect without asking"
 }

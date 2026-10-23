@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log"
 	"runtime"
+	"strconv"
 	"sync"
 	"time"
 
@@ -27,7 +28,7 @@ const (
 	pageHome page = iota
 	pageNetwork
 	pageAI
-	pagePermissions
+	pageAccess
 	pageSecurity
 	pageGeneral
 	pageAbout
@@ -134,15 +135,20 @@ type App struct {
 	// The AI page (ai.go).
 	ai aiState
 
-	// View state: the Settings sheet open, at page.
-	settingsOpen bool
-	page         page
-	openAtLogin  bool
-	showLicenses bool
-	busy         map[string]bool
-	toast        string
-	toastErr     bool
-	toastAt      time.Time
+	// View state: the Settings sheet open, at page; what its search holds,
+	// the setting a search hit leads to, and the explanation open (its
+	// row's key).
+	settingsOpen  bool
+	page          page
+	settingsQuery string
+	settingsFocus settingsFocus
+	more          string
+	openAtLogin   bool
+	showLicenses  bool
+	busy          map[string]bool
+	toast         string
+	toastErr      bool
+	toastAt       time.Time
 
 	// App updates (update.go).
 	appUpdate      *mygo.Update
@@ -550,8 +556,7 @@ func (a *App) View(c *ui.Context) {
 }
 
 // pageView is a page: Home in its pane, the others in the Settings sheet;
-// in protected mode always the AI page, topped by the card that turns it
-// off.
+// in protected mode always the AI page.
 func (a *App) pageView(c *ui.Context, pg page) {
 	t := c.Theme()
 	a.mu.Lock()
@@ -560,17 +565,19 @@ func (a *App) pageView(c *ui.Context, pg page) {
 	if protected {
 		pg = pageAI
 	}
-	ui.Scroll(c.Key("page")).Grow(1).Fill().Padding(24).Gap(gap).Background(t.Background).Children(func() {
+	if pg == pageHome {
+		ui.Scroll(c.Key("page")).Grow(1).Fill().Padding(24).Gap(gap).Background(t.Background).Children(func() { a.homeView(c) })
+		return
+	}
+	// A page of Settings: its own scroll, its column centred.
+	ui.Scroll(c.Key("page-"+strconv.Itoa(int(pg)))).Grow(1).Fill().Padding(22, 40, 24, 40).AlignItems(ui.Center).Background(t.Background).Children(func() {
 		switch pg {
 		case pageNetwork:
 			a.networkView(c)
 		case pageAI:
-			if protected {
-				a.protectedCard(c)
-			}
 			a.aiView(c)
-		case pagePermissions:
-			a.permissionsView(c)
+		case pageAccess:
+			a.accessView(c)
 		case pageSecurity:
 			a.securityView(c)
 		case pageGeneral:
@@ -579,8 +586,6 @@ func (a *App) pageView(c *ui.Context, pg page) {
 			a.runModeView(c)
 		case pageAbout:
 			a.aboutView(c)
-		default:
-			a.homeView(c)
 		}
 	})
 }

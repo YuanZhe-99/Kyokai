@@ -164,7 +164,7 @@ A device running Kyokai 0.4.1 or later lets you reach its own SSH, Remote Deskto
 Sharing on a Mac) through Kyokai, with no port opened to the network. Its card on Home shows
 **SSH**, **Remote Desktop** or **VNC** for the services it has switched on, and its ⋯ menu always
 offers them. Each opens as a pane like a desktop's. Its user allows each one like any other
-permission (Access, **With a correct password**, has a switch for each, off by default).
+permission (Access, **With a correct password**, has a tile for each, off by default).
 The first time, Kyokai asks how to sign in before it connects: for SSH with **Key** (your keys, see
 below) or **Password**; for VNC with **Password only**, **User name and password** (a Mac's) or
 **No sign-in**; for Remote Desktop with **User name and password** or **On the remote screen** (the
@@ -191,30 +191,30 @@ shown. The other computer sees who is watching in its Access settings and can tu
 Security & privacy, **Your keys**: **Generate a key** makes an Ed25519 key and shows its private part once, to
 copy or save (with an optional passphrase) for other SSH clients; Kyokai keeps it and never lets it
 out. **Import a key** takes an existing OpenSSH or PEM key. To let a key sign in to this device, go
-to Access, **Passwords and keys**, and **Add a key** with its public key, or **Generate a
+to Access, **Keys**, **Manage**, and **Add a key** with its public key, or **Generate a
 pair** there and take the private part away. A key that can connect counts as a correct password;
-unchecking it keeps it but stops it signing in. **Saved passwords and keys** (Security & privacy) lists what
+switching it off keeps it but stops it signing in. **Saved passwords and keys** (Security & privacy) lists what
 is kept for each device you connect to, with × to forget one — the Kyokai password, the key, or a
 service's sign-in — or **Forget all**.
 
 ## Let someone control this device
 
-Someone with your password gets in at once with what Access, **With a correct password**
-allows (by default seeing the screen, the mouse and keyboard, the clipboard and files, but no AI
+Someone with your password gets in at once with what Access, **With a correct password**,
+allows — the tiles turned on (by default seeing the screen, the mouse and keyboard, the clipboard and files, but no AI
 tasks). Otherwise — they ask for more, ask without a password, or a known Device ID arrives with a
 new key — a request appears above the panes with their Device ID, a warning in the last
 two cases, and a switch for each permission they asked for. Choose what to allow, then **Allow**, or **Deny**. Devices you allowed are listed in
 Access; **Remove** revokes one at once and ends its connections. There, **Ways to sign in**
 chooses what lets a device in: the temporary password, the permanent password and each key that can
-connect, each with its own check box, in any combination; with none checked, every connection asks
-you. **Connect without asking** (on by default) lets a checked way in without asking you; switched
+connect, each with its own switch, in any combination; with none on, every connection asks
+you. **Connect without asking** (on by default) lets a way that is on in without asking you; switched
 off, you are always asked. With nobody at the computer (Background service), only the permanent
 password or a key gets in. Your own use
 of the keyboard and mouse always wins over theirs and over any AI.
 
 ## Run Kyokai as a helper
 
-**Run mode** chooses where this device runs. **No privileges** (the default) needs
+**Run mode** chooses where this device runs: **Switch** on the one you want. **No privileges** (the default) needs
 nothing. **Follow Kyokai** and **Background service** install a helper once, after one
 administrator prompt, so the other side can also see and use sign-in screens and administrator
 prompts on this computer; Background service also lets devices you allowed to connect without

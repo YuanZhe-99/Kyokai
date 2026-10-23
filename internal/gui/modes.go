@@ -52,41 +52,55 @@ func (a *App) currentMode() int {
 	return modeFollow
 }
 
-// runModeCard is General's choice of No privileges, Follow GUI and
-// Background service.
-func (a *App) runModeCard(c *ui.Context) {
+// runModeSection is the Run mode page's choice of No privileges, Follow
+// Kyokai and Background service: each a row, the one in use marked, the
+// others with Switch; while switching, its progress; a helper behind the
+// app, with Update.
+func (a *App) runModeSection(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	busy := a.busy["mode"]
 	a.mu.Unlock()
 	cur := a.currentMode()
-	idx := cur
-	card(c).Children(func() {
-		ui.Text(c, L.SettingsRunMode()).FontSize(sizeHeading).Bold()
-		available := runtime.GOOS == "windows" || runtime.GOOS == "darwin"
-		settingRow(c, "mode-choice", L.SettingsRunMode(), L.RunModeHint(), func() {
-			if ui.Segmented(c.Key("mode-seg"), &idx, L.RunModeUser(), L.RunModeFollow(), L.RunModeBackground()).
-				Disabled(busy || !available).Changed() && idx != cur {
-				a.switchMode(cur, idx)
+	available := runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+	a.section(c, "run-mode", L.RunModeWhere(), nil, func(r *rows) {
+		for mode, m := range []struct {
+			icon         *ui.SVG
+			title, about string
+		}{
+			{rowUser, L.RunModeUser(), L.RunModeUserAbout()},
+			{navSecurity, L.RunModeFollow(), L.RunModeFollowAbout()},
+			{rowServer, L.RunModeBackground(), L.RunModeBackgroundAbout()},
+		} {
+			s := setting{title: m.title, about: m.about}
+			if mode == modeFollow {
+				s.more = L.RunModeNote()
 			}
-		})
-		note := L.RunModeNote()
+			r.row(c, "mode-"+strconv.Itoa(mode), tile(m.icon), s, func() {
+				if mode == cur {
+					ui.Text(c, L.RunModeInUse()).FontSize(sizeSmall).TextColor(t.Success)
+					return
+				}
+				if ui.Button(c.Key("mode-use-"+strconv.Itoa(mode)), L.RunModeSwitch()).Disabled(busy || !available).Clicked() {
+					a.switchMode(cur, mode)
+				}
+			})
+		}
 		switch {
 		case !available:
-			note = L.RunModeUnavailable()
+			r.block(c, "mode-unavailable", func() { ui.Text(c, L.RunModeUnavailable()).FontSize(sizeSmall).TextColor(t.TextMuted) })
 		case busy:
-			note = L.RunModeSwitching()
+			r.block(c, "mode-busy", func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					busyMark(c, L.RunModeSwitching(), busySize)
+					ui.Text(c, L.RunModeSwitching()).FontSize(sizeSmall).TextColor(t.TextMuted)
+				})
+			})
 		}
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			if busy {
-				busyMark(c, note, busySize)
-			}
-			ui.Text(c, note).FontSize(sizeSmall).TextColor(t.TextMuted)
-		})
 		// A helper behind the app is updated on request too: from a signed
 		// build without a prompt, from an unsigned one with one.
 		if behind := a.outdatedHelper(); behind.helper != "" {
-			settingRow(c, "mode-update", L.RunModeOutdated(behind.helper, behind.app), "", func() {
+			r.row(c, "mode-update", tile(rowDownload), setting{title: L.RunModeOutdated(behind.helper, behind.app)}, func() {
 				if ui.Button(c.Key("mode-update-btn"), L.RunModeUpdate()).Disabled(busy).Clicked() {
 					a.updateHelper()
 				}
