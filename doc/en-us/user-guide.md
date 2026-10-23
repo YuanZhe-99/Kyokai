@@ -77,7 +77,9 @@ anything more its user is asked. The other computer's user chooses what to allow
 | Approve AI actions | answer the approvals of those tasks |
 
 Once connected, the tab shows the other screen. Drag the tab out of the window (or click its ⧉)
-for a window of its own, and onto another Kyokai window to move it there. The toolbar floating
+for a window of its own, and onto another Kyokai window to move it there. To see several at once,
+drag a tab onto the picture: drop it at an edge to show it beside the other, or in a corner for up
+to four; the one you click in takes the keyboard, and its ▢ shows it alone again. The toolbar floating
 over the top of the picture holds the controls; rest the pointer on an icon to see its name. Drag
 it by its grip at the left end to wherever along the top edge suits you, and fold it with ⌃ to a small handle;
 Kyokai remembers both. **Display** chooses the screen when the other computer has several, and

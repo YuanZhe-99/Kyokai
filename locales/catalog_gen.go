@@ -5890,6 +5890,26 @@ func (msgs Messages) ViewerOriginal() string {
 	return Catalog.Format(msgs.locale, "ViewerOriginal", nil)
 }
 
+// ViewerPaneAlone says "Show only this"
+// in the language the app shows.
+func ViewerPaneAlone() string { return In(i18n.Locale()).ViewerPaneAlone() }
+
+// ViewerPaneAlone says "Show only this"
+// in the language of msgs.
+func (msgs Messages) ViewerPaneAlone() string {
+	return Catalog.Format(msgs.locale, "ViewerPaneAlone", nil)
+}
+
+// ViewerPaneEmpty says "Drag a tab here"
+// in the language the app shows.
+func ViewerPaneEmpty() string { return In(i18n.Locale()).ViewerPaneEmpty() }
+
+// ViewerPaneEmpty says "Drag a tab here"
+// in the language of msgs.
+func (msgs Messages) ViewerPaneEmpty() string {
+	return Catalog.Format(msgs.locale, "ViewerPaneEmpty", nil)
+}
+
 // ViewerPasswordAgain says "Enter its password:"
 // in the language the app shows.
 func ViewerPasswordAgain() string { return In(i18n.Locale()).ViewerPasswordAgain() }

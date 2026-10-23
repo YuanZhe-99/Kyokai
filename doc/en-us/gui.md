@@ -177,7 +177,16 @@ when `SCREENSHOT_DIR` is set.
   Reconnect. An empty password uses the one saved for the device, else asks its user. Closing a
   tab (×) disconnects. A tab dragged onto another Kyokai window's tabs moves there; dropped
   outside Kyokai, or with its ⧉, it gets a window of its own, which closes with its last tab;
-  closing such a window disconnects its tabs. Keys grabbed for a window go to the tab shown. A tab
+  closing such a window disconnects its tabs. A tab dragged over a window's picture area (from
+  its own strip or another window's) shows where it may go and splits the area there, as Claude
+  Desktop splits sessions: an edge puts it beside the tabs shown (two side by side, or one above
+  the other), a corner in one of four places, the middle in place of the tab in focus (`split`,
+  `split.place`). The dividers move; while split each place has a thin header with its title and
+  Show only this, and the place in focus an accent edge: the focus follows the keyboard into a
+  place, and choosing a tab in the strip brings its place into focus or puts it in the one in
+  focus. A closed tab gives its place up and the layout shrinks to fit; Home shows over the whole
+  window. Every tab shown keeps its connection running; only the one in focus takes the keyboard
+  and the clipboard. Keys grabbed for a window go to the tab in focus. A tab
   is a desktop or one of a device's services (SSH, Remote Desktop, VNC; `tab`, `serviceTab`), one
   per device and kind, and every kind drags, moves and closes alike.
 - A service tab ([remote-services.md](remote-services.md), "Clients") is titled "SSH · device"

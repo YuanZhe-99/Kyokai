@@ -590,6 +590,8 @@
   "ViewerNoDecoder": "画面を表示できません。Kyokai のコアライブラリが見つかりません。",
   "ViewerNoPicture": "このセッションでは画面を表示しません。",
   "ViewerOriginal": "原寸",
+  "ViewerPaneAlone": "これだけを表示",
+  "ViewerPaneEmpty": "ここにタブをドラッグ",
   "ViewerPasswordAgain": "パスワードを入力：",
   "ViewerPasswordHint": "またはパスワードを入力：",
   "ViewerPlaceholder": "相手のデバイスはまだ画面を収録できません。これはプレースホルダの画像です。",

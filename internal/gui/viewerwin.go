@@ -2,6 +2,7 @@ package gui
 
 import (
 	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/egoist/mygo"
@@ -56,7 +57,13 @@ type viewerWindow struct {
 
 	mu   sync.Mutex
 	tabs []tab
-	cur  int
+	// split: which tabs show where; its focus is the tab shown.
+	split split
+	// across and down: where the dividers of a split sit, in percent.
+	across, down float32
+	// dragging: a tab was dragged over the picture area in the last frame,
+	// which then shows where it may be dropped.
+	dragging bool
 	// home: the main window shows Home rather than a connection.
 	home bool
 	// full: the window is in full screen, which hides the tabs.
@@ -144,16 +151,21 @@ func (vw *viewerWindow) fullScreen() bool {
 	return vw.full
 }
 
-// add puts a tab in this window as the last tab, shown.
-// Notes: call on the main thread.
-func (vw *viewerWindow) add(v tab) {
+// add puts a tab in this window as the last tab, shown in the place in
+// focus. Notes: call on the main thread.
+func (vw *viewerWindow) add(v tab) { vw.addAt(v, zoneMiddle) }
+
+// addAt puts a tab in this window as the last tab, shown where it was
+// dropped (split.place). Notes: call on the main thread.
+func (vw *viewerWindow) addAt(v tab, z dropZone) {
 	if vw.main {
 		vw.app.mainWindow()
 	}
 	vw.mu.Lock()
 	prev := vw.shown()
 	vw.tabs = append(vw.tabs, v)
-	vw.cur, vw.home = len(vw.tabs)-1, false
+	vw.split.place(v, z)
+	vw.home = false
 	vw.mu.Unlock()
 	if prev != nil && prev != v {
 		prev.endGrab()
@@ -170,8 +182,9 @@ func (vw *viewerWindow) add(v tab) {
 func (vw *viewerWindow) show(v tab) {
 	vw.mu.Lock()
 	prev := vw.shown()
-	if i := slices.Index(vw.tabs, v); i >= 0 {
-		vw.cur, vw.home = i, false
+	if slices.Contains(vw.tabs, v) {
+		vw.split.show(v)
+		vw.home = false
 	}
 	vw.mu.Unlock()
 	if prev != nil && prev != v {
@@ -195,8 +208,11 @@ func (vw *viewerWindow) remove(v tab) bool {
 		return false
 	}
 	vw.tabs = slices.Delete(vw.tabs, i, i+1)
-	if vw.cur >= i && vw.cur > 0 {
-		vw.cur--
+	// Its place goes to the others shown; with none left the tab before
+	// it shows.
+	vw.split.remove(v)
+	if vw.split.focused() == nil && len(vw.tabs) > 0 {
+		vw.split.single(vw.tabs[max(i-1, 0)])
 	}
 	empty := len(vw.tabs) == 0
 	if empty {
@@ -222,10 +238,10 @@ func (vw *viewerWindow) remove(v tab) bool {
 
 // shown is the tab shown, or nil for Home. Notes: the caller holds vw.mu.
 func (vw *viewerWindow) shown() tab {
-	if vw.home || vw.cur >= len(vw.tabs) {
+	if vw.home {
 		return nil
 	}
-	return vw.tabs[vw.cur]
+	return vw.split.focused()
 }
 
 // retitle names the window after the tab shown.
@@ -278,31 +294,140 @@ func (vw *viewerWindow) closeTab(v tab) {
 }
 
 // view is the window: the tab strip, which is its title bar (none in full
-// screen), then Home or the connection shown.
+// screen), then Home or the connections shown, split as the window says.
 func (vw *viewerWindow) view(c *ui.Context) {
 	vw.mu.Lock()
 	tabs := slices.Clone(vw.tabs)
-	cur, home, full := vw.cur, vw.home || len(vw.tabs) == 0, vw.full
+	home, full := vw.home || len(vw.tabs) == 0, vw.full
+	sp := vw.split
 	vw.mu.Unlock()
 	ui.Column(c).Fill().Children(func() {
 		if !full {
-			vw.tabBar(c, tabs, cur, home)
+			vw.tabBar(c, tabs, sp, home)
 		}
-		switch {
-		case vw.main && home:
+		if vw.main && home {
 			ui.Column(c.Key("home")).Grow(1).FillWidth().Children(func() { vw.app.View(c) })
-		case cur < len(tabs):
-			v := tabs[cur]
-			ui.Column(c.Key("tab-" + v.tabKey())).Grow(1).FillWidth().Children(func() { v.view(c) })
+		} else if len(tabs) > 0 {
+			vw.panesView(c, sp)
 		}
 	})
 	// A tab not shown takes no keys (regression: a grab stayed on behind
 	// the Home tab, and keys typed there went to the other computer).
-	for i, v := range tabs {
-		if i != cur || vw.main && home {
+	shown := sp.shownTabs()
+	for _, v := range tabs {
+		if vw.main && home || !slices.Contains(shown, v) {
 			v.syncGrab(false)
 		}
 	}
+}
+
+// panesView is the picture area: the tabs shown in the split's places,
+// with its dividers, and — while a tab is dragged over it — where a drop
+// would put it: an edge splits the area in two there, a corner in four,
+// the middle replaces the tab in focus.
+func (vw *viewerWindow) panesView(c *ui.Context, sp split) {
+	t := c.Theme()
+	area := ui.Column(c.Key("panes")).Grow(1).FillWidth().MinHeight(0)
+	_, over := ui.DragOver[tabDrag](area)
+	vw.mu.Lock()
+	if vw.across == 0 {
+		vw.across, vw.down = 50, 50
+	}
+	dragging := vw.dragging
+	vw.dragging = over
+	vw.mu.Unlock()
+	pane := func(i int) func() {
+		return func() { vw.pane(c, sp, i) }
+	}
+	area.Children(func() {
+		switch sp.layout {
+		case layoutColumns:
+			ui.SplitPercent(c.Key("split-across"), &vw.across, pane(0), pane(1)).Fill()
+		case layoutRows:
+			ui.SplitVerticalPercent(c.Key("split-down"), &vw.down, pane(0), pane(1)).Fill()
+		case layoutGrid:
+			ui.SplitVerticalPercent(c.Key("split-down"), &vw.down, func() {
+				ui.SplitPercent(c.Key("split-top"), &vw.across, pane(0), pane(1)).Fill()
+			}, func() {
+				ui.SplitPercent(c.Key("split-bottom"), &vw.across, pane(2), pane(3)).Fill()
+			}).Fill()
+		default:
+			pane(0)()
+		}
+		if !dragging && !over {
+			return
+		}
+		for _, z := range dropZones {
+			box := ui.Box(c.Key("drop-" + strconv.Itoa(int(z.zone)))).Absolute().
+				LeftPercent(z.x).TopPercent(z.y).WidthPercent(z.w).HeightPercent(z.h).Radius(8)
+			if _, on := ui.DragOver[tabDrag](box); on {
+				vw.mu.Lock()
+				vw.dragging = true
+				vw.mu.Unlock()
+				box.Background(t.Accent.Alpha(0.28)).Border(2, t.Accent)
+			}
+			if d, ok := ui.Drop[tabDrag](box); ok {
+				vw.app.dropTab(d.key, vw, z.zone)
+			}
+		}
+	})
+}
+
+// dropZones are where a tab dragged over the picture area may go, in
+// percent of the area: the corners, the edges between them, the middle.
+var dropZones = []struct {
+	zone       dropZone
+	x, y, w, h float32
+}{
+	{zoneTopLeft, 0, 0, 25, 25}, {zoneTop, 25, 0, 50, 25}, {zoneTopRight, 75, 0, 25, 25},
+	{zoneLeft, 0, 25, 25, 50}, {zoneMiddle, 25, 25, 50, 50}, {zoneRight, 75, 25, 25, 50},
+	{zoneBottomLeft, 0, 75, 25, 25}, {zoneBottom, 25, 75, 50, 25}, {zoneBottomRight, 75, 75, 25, 25},
+}
+
+// pane is one place of the split: its tab with, while the area is split, a
+// thin header (its title, Show alone) and an accent edge on the pane in
+// focus; an empty place says a tab may be dragged there. The focus follows
+// the keyboard into a pane.
+func (vw *viewerWindow) pane(c *ui.Context, sp split, i int) {
+	t := c.Theme()
+	v := sp.panes[i]
+	split := sp.layout != layoutOne
+	box := ui.Column(c.Key("pane-" + strconv.Itoa(i))).Fill().MinWidth(0).MinHeight(0)
+	if split && i == sp.focus {
+		box.Border(2, t.Accent)
+	}
+	if v != nil && box.FocusWithin() && i != sp.focus {
+		vw.mu.Lock()
+		if vw.split.panes[i] == v {
+			vw.split.focus = i
+		}
+		vw.mu.Unlock()
+		vw.retitle()
+		vw.app.syncFront()
+	}
+	box.Children(func() {
+		if v == nil {
+			ui.Column(c).Fill().Background(t.Surface).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+				ui.Text(c, L.ViewerPaneEmpty()).FontSize(sizeSmall).TextColor(t.TextMuted)
+			})
+			return
+		}
+		key := v.tabKey()
+		if split {
+			ui.Row(c.Key("pane-head")).FillWidth().Shrink(0).Padding(2, 8).Gap(6).AlignItems(ui.Center).
+				Background(t.Background).Children(func() {
+				ui.Text(c, v.tabTitle()).FontSize(sizeSmall).SingleLine().Grow(1).MinWidth(0)
+				if tabIcon(c, "pane-alone-"+key, "▢", L.ViewerPaneAlone()) {
+					vw.mu.Lock()
+					vw.split.single(v)
+					vw.mu.Unlock()
+					vw.retitle()
+					vw.app.syncFront()
+				}
+			})
+		}
+		ui.Column(c.Key("tab-" + key)).Grow(1).FillWidth().MinHeight(0).Children(func() { v.view(c) })
+	})
 }
 
 // tabBar is the tab strip, which is the window's title bar: room for the
@@ -310,7 +435,8 @@ func (vw *viewerWindow) view(c *ui.Context) {
 // one tab per connection with Open in new window and Close, and an empty
 // part that moves the window (a double click zooms it, as a title bar
 // does). Dragging a tab moves it; a tab dropped on the strip comes here.
-func (vw *viewerWindow) tabBar(c *ui.Context, tabs []tab, cur int, home bool) {
+func (vw *viewerWindow) tabBar(c *ui.Context, tabs []tab, sp split, home bool) {
+	cur := slices.Index(tabs, sp.focused())
 	t := c.Theme()
 	first := 0 // the index of the first connection's tab
 	if vw.main {
@@ -333,7 +459,7 @@ func (vw *viewerWindow) tabBar(c *ui.Context, tabs []tab, cur int, home bool) {
 	strip.Children(func() {
 		bar := ui.TabsBase(c.Key("tabs"), &sel, len(tabs)+first)
 		bar.List.Gap(4).MinWidth(0).Clip()
-		vw.tabList(c, bar, tabs, cur, home, first)
+		vw.tabList(c, bar, tabs, sp, home, first)
 		ui.Box(c.Key("strip-drag")).Grow(1).FillHeight().DragWindow()
 	})
 	if sel == shown {
@@ -344,10 +470,12 @@ func (vw *viewerWindow) tabBar(c *ui.Context, tabs []tab, cur int, home bool) {
 	if vw.main && sel == 0 {
 		vw.home = true
 	} else if i := sel - first; i >= 0 && i < len(vw.tabs) {
-		vw.cur, vw.home = i, false
+		vw.split.show(vw.tabs[i])
+		vw.home = false
 	}
+	now := vw.shown()
 	vw.mu.Unlock()
-	if prev != nil {
+	if prev != nil && prev != now {
 		prev.endGrab()
 	}
 	vw.retitle()
@@ -359,8 +487,9 @@ func (vw *viewerWindow) tabBar(c *ui.Context, tabs []tab, cur int, home bool) {
 
 // tabList fills the strip's tab list: Home (the Kyokai tab) in the main
 // window, then each connection's tab, which drags into another window.
-func (vw *viewerWindow) tabList(c *ui.Context, bar ui.TabsParts, tabs []tab, cur int, home bool, first int) {
+func (vw *viewerWindow) tabList(c *ui.Context, bar ui.TabsParts, tabs []tab, sp split, home bool, first int) {
 	t := c.Theme()
+	shown := sp.shownTabs()
 	bar.List.Children(func() {
 		if vw.main {
 			tab := bar.Tab(0).Padding(4, 10).Radius(6)
@@ -376,8 +505,13 @@ func (vw *viewerWindow) tabList(c *ui.Context, bar ui.TabsParts, tabs []tab, cur
 		}
 		for i, v := range tabs {
 			tab := bar.Tab(i+first).Padding(4, 10).Radius(6)
-			if i == cur && !home {
+			// The tab in focus stands out; the others shown beside it less.
+			switch {
+			case home:
+			case v == sp.focused():
 				tab.Background(t.Surface)
+			case slices.Contains(shown, v):
+				tab.Background(t.Surface.Alpha(0.5))
 			}
 			key, title := v.tabKey(), v.tabTitle()
 			tab.Drag(tabDrag{key}).DragData(transfer.TextData(title), transfer.DragOptions{
@@ -458,4 +592,31 @@ func (a *App) allTabs() []tab {
 		out = append(out, s)
 	}
 	return out
+}
+
+// dropTab puts a tab, by its tabKey, where it was dropped on a window's
+// picture area (split.place), bringing it from another window first.
+// Notes: call on the main thread.
+func (a *App) dropTab(key string, to *viewerWindow, z dropZone) {
+	v := a.tabFor(key)
+	if v == nil {
+		return
+	}
+	if from := v.tabWindow(); from != to {
+		if from != nil {
+			from.remove(v)
+		}
+		to.addAt(v, z)
+		return
+	}
+	to.mu.Lock()
+	prev := to.shown()
+	to.split.place(v, z)
+	to.home = false
+	to.mu.Unlock()
+	if prev != nil && prev != v {
+		prev.endGrab()
+	}
+	to.retitle()
+	a.syncFront()
 }
