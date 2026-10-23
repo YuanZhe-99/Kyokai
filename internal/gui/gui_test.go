@@ -753,7 +753,19 @@ func TestShellRenders(t *testing.T) {
 	}
 	a := &App{viewers: map[string]*viewer{}, services: map[string]*serviceTab{}, busy: map[string]bool{}}
 	a.connected = true
-	a.status = &localapi.Status{DeviceID: "482916735", Persistence: "os-store", Network: localapi.NetworkStatus{NetworkNode: localapi.NetworkNode{State: "online"}}}
+	a.status = &localapi.Status{DeviceID: "482916735", Persistence: "os-store", Network: localapi.NetworkStatus{NetworkNode: localapi.NetworkNode{State: "online",
+		Devices: []localapi.NetworkDevice{{DeviceID: "657365333", Path: "direct", LatencyMS: 3}, {DeviceID: "402118905", Path: "relay", LatencyMS: 48}}}}}
+	// For the + picker: one device offering SSH, one whose saved sign-in
+	// does not grant it, one without status.
+	a.status.Recent = []localapi.RecentDevice{
+		{DeviceID: "657365333", Last: 1797400000, Features: []string{"tunnel"}, About: localapi.About{Name: "Studio Mac", Maker: "Apple", OS: "macos"}},
+		{DeviceID: "402118905", Last: 1797300000, Features: []string{"tunnel"}, About: localapi.About{Name: "NUC", Maker: "Intel", OS: "windows"}},
+		{DeviceID: "647222040", Last: 1797200000},
+	}
+	a.status.Watching = []localapi.Watched{
+		{DeviceID: "657365333", ReceivedAt: time.Now().UnixMilli(), Sample: &localapi.SystemSample{Services: []string{serviceSSH}, Offers: []string{localapi.PermUseSSH, localapi.PermRunAITask}, AI: true}},
+		{DeviceID: "402118905", ReceivedAt: time.Now().UnixMilli(), Sample: &localapi.SystemSample{Services: []string{serviceSSH}}},
+	}
 	a.home = &homeTab{app: a}
 	var tabs []tab
 	for i, c := range []struct{ title, device, state string }{
@@ -783,6 +795,10 @@ func TestShellRenders(t *testing.T) {
 		drops    []drop
 		rail     bool
 		settings bool
+		// The + picker open where it opened from, of a kind, with words
+		// typed; search open with words typed.
+		pick, kind, query string
+		palette           bool
 	}{
 		{name: "shell-empty", cur: -1, empty: true}, {name: "shell-home", cur: -1},
 		{name: "shell-picture"}, {name: "shell-waiting", cur: 1}, {name: "shell-failed", cur: 2},
@@ -796,6 +812,14 @@ func TestShellRenders(t *testing.T) {
 		{name: "shell-split-four", drops: []drop{{1, 0, zoneRight}, {2, 1, zoneBottom}, {3, 0, zoneBottom}}},
 		{name: "shell-rail", rail: true, drops: []drop{{1, 0, zoneRight}}},
 		{name: "shell-settings", cur: -1, settings: true},
+		{name: "shell-picker", cur: -1, pick: "sidebar"},
+		{name: "shell-picker-ssh", cur: -1, pick: "sidebar", kind: serviceSSH},
+		{name: "shell-picker-ai", cur: -1, pick: "sidebar", kind: actionAI},
+		{name: "shell-picker-typed", cur: -1, pick: "sidebar", query: "192.168.1.20"},
+		{name: "shell-picker-rail", cur: -1, rail: true, pick: "rail"},
+		{name: "shell-picker-split", pick: "split-2-213559601"},
+		{name: "shell-palette", cur: -1, palette: true},
+		{name: "shell-palette-query", palette: true, query: "pass"},
 	}
 	for _, lang := range []string{"en", "zh-Hans", "zh-Hant", "ja"} {
 		i18n.SetLocaleFunc(func() string { return lang })
@@ -824,6 +848,13 @@ func TestShellRenders(t *testing.T) {
 				}
 				a.prefs.SidebarRail = shot.rail
 				a.settingsOpen, a.page = shot.settings, pageGeneral
+				a.picker, a.palette = pickerState{}, paletteState{}
+				if shot.pick != "" {
+					a.picker = pickerState{at: shot.pick, kind: shot.kind, query: shot.query}
+				}
+				if shot.palette {
+					a.palette = paletteState{open: true, query: shot.query}
+				}
 				cur, want := vw.cur, vw.cur.split
 				ownWindowButtons = !shot.mac
 				tt := ui.NewTester(vw.view, 1280, 800)

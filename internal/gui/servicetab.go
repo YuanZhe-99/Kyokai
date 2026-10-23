@@ -142,6 +142,9 @@ type serviceClient interface {
 	grabs() bool
 	// scan passes it a key the grab took.
 	scan(ev core.KeyEvent)
+	// keys is what takes the keyboard for the other computer: the
+	// picture or the terminal (main thread).
+	keys() *ui.Handle
 	// setFront tells it whether its tab is the one in front, which alone
 	// exchanges the clipboard.
 	setFront(on bool)

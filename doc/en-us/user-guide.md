@@ -17,7 +17,8 @@ The window is a sidebar and, beside it, panes: Home, and each connection. The ge
 the sidebar opens **Settings** over the whole window: **General**, **Access**, **Network**,
 **Security & privacy**, **Run mode**, **AI** and **About & updates**; Escape or × closes it.
 Beside the gear, the appearance follows the system or stays light or dark, and the networks'
-state opens Network.
+state opens Network. The magnifier there, or Ctrl+K (⌘K on a Mac), searches the devices, the open
+panes, the settings and a few actions: type a few letters, choose with ↑ and ↓, and press Enter.
 
 On macOS, open the disk image and drag Kyokai to Applications. Kyokai is signed but not notarized
 by Apple, so macOS may call the downloaded app damaged: run
@@ -71,6 +72,10 @@ and keyboard, share the clipboard and copy files. **Open as** chooses what Conne
 for the AI permissions as well, as **Connect with AI** in a device's ⋯ menu does. Switch on
 **Others in my networks** to also see the Kyokai devices your networks reach that you never
 connected to, each with Connect. The connection opens as a pane of its own, listed in the sidebar.
+The **+** at the top of the sidebar opens one from anywhere: choose what to open — **Desktop**,
+**SSH**, **Remote Desktop**, **VNC** or **AI task** —, then the device (type to find it by name,
+Device ID or address; a device that does not offer that kind is greyed and says so), whether it
+opens **On its own** or **Beside current**, and open it.
 While the other computer's user is asked, the pane offers to enter its password instead; with
 **Remember password** it is kept (encrypted) for next time, and Security & privacy, **Saved
 passwords and keys**, forgets it. With
@@ -88,7 +93,8 @@ anything more its user is asked. The other computer's user chooses what to allow
 
 Once connected, the pane shows the other screen; click a connection in the sidebar to show it, and
 **Hide the sidebar** at its top keeps only its icons. To see several at once, choose **Split
-right** or **Split down** in a pane's header and pick another connection, or drag a pane by its
+right** or **Split down** in a pane's header and pick another open pane, or **Open a device…** to
+open one there, or drag a pane by its
 title onto another: drop it at an edge to show it beside, above or below that one (up to four, in
 any arrangement), and the sidebar lists them together as one group. The one you click in takes the
 keyboard, and **Maximize** in its header shows it alone until **Restore**; dropped on the sidebar,

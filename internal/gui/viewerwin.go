@@ -613,6 +613,32 @@ func (a *App) allTabs() []tab {
 	return out
 }
 
+// keysAway reports whether the keyboard focus is on what sends the keys to
+// another computer — a desktop's picture, a service's screen or terminal —
+// which then gets the window's shortcuts too (Ctrl+K in a shell).
+func (vw *viewerWindow) keysAway(c *ui.Context) bool {
+	vw.mu.Lock()
+	tabs := slices.Clone(vw.tabs)
+	vw.mu.Unlock()
+	for _, v := range tabs {
+		var h *ui.Handle
+		switch v := v.(type) {
+		case *viewer:
+			h = &v.pic
+		case *serviceTab:
+			v.mu.Lock()
+			if v.client != nil {
+				h = v.client.keys()
+			}
+			v.mu.Unlock()
+		}
+		if h != nil && c.Focused(*h) {
+			return true
+		}
+	}
+	return false
+}
+
 // view is the window: the main window's sidebar and the group shown
 // (shellView), a window of its own's one pane, or in full screen the pane
 // in focus alone, without its header.
@@ -849,10 +875,12 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 		if v == d.topRight {
 			// Under the Settings sheet they keep their room, unseen: the
 			// sheet shows them in this very place, above the dimming.
+			vw.app.mu.Lock()
 			shown := float32(1)
-			if vw.main && vw.app.covered() {
+			if vw.main && vw.app.settingsOpen {
 				shown = 0
 			}
+			vw.app.mu.Unlock()
 			ui.Row(c.Key("head-win")).Gap(4).AlignItems(ui.Center).Opacity(shown).Children(func() {
 				windowButtons(c, "head-win", vw.win, false)
 			})
@@ -860,9 +888,10 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 	})
 }
 
-// splitButton is a header's split right or split down: a menu of the other
-// open panes, any of which then goes beside this one (dropTab), or a note
-// that there is none yet.
+// splitButton is a header's split right or split down: the + picker,
+// beside this pane on that side; with other panes open, first a menu of
+// them, any of which then goes beside this one (dropTab), ending with Open
+// a device… for the picker.
 func (vw *viewerWindow) splitButton(c *ui.Context, v tab, z dropZone) {
 	t := c.Theme()
 	icon, label := paneSplitRight, L.PaneSplitRight()
@@ -879,9 +908,6 @@ func (vw *viewerWindow) splitButton(c *ui.Context, v tab, z dropZone) {
 		here = g.split.shownTabs()
 	}
 	vw.mu.Unlock()
-	if b.Clicked() {
-		open = !open
-	}
 	var others []tab
 	for _, o := range append([]tab{vw.app.home}, vw.app.allTabs()...) {
 		if !slices.Contains(here, o) {
@@ -889,32 +915,44 @@ func (vw *viewerWindow) splitButton(c *ui.Context, v tab, z dropZone) {
 		}
 	}
 	slices.SortFunc(others, func(x, y tab) int { return strings.Compare(x.tabTitle(), y.tabTitle()) })
+	pick := func() { vw.app.openPicker("split-"+id, true, v.tabKey(), z) }
+	if b.Clicked() {
+		if len(others) == 0 {
+			pick()
+		} else {
+			open = !open
+		}
+	}
+	row := func(key string, icon *ui.SVG, title, kind string) bool {
+		r := ui.ButtonBase(c.Key(key)).Padding(6, 8).Radius(8).FillWidth().Label(title)
+		if r.Hovered() {
+			r.Background(t.SurfaceHover)
+		}
+		r.Children(func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, icon).FontSize(navIconSize).TextColor(t.TextMuted)
+				ui.Text(c, title).SingleLine()
+				if kind != "" {
+					ui.Text(c, kind).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine()
+				}
+			})
+		})
+		return r.Clicked()
+	}
 	if open {
 		ui.Popover(c, b, &open, func() {
 			ui.Column(c).Width(splitMenuW).Padding(6).Gap(2).Children(func() {
-				if len(others) == 0 {
-					ui.Text(c, L.PaneSplitNone()).FontSize(sizeSmall).TextColor(t.TextMuted).Padding(6, 8)
-					return
-				}
 				for _, o := range others {
 					oh := o.head()
-					row := ui.ButtonBase(c.Key("split-to-"+id+"-"+o.tabKey())).Padding(6, 8).Radius(8).FillWidth().Label(oh.title)
-					if row.Hovered() {
-						row.Background(t.SurfaceHover)
-					}
-					row.Children(func() {
-						ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-							ui.Icon(c, oh.icon).FontSize(navIconSize).TextColor(t.TextMuted)
-							ui.Text(c, oh.title).SingleLine()
-							if oh.kind != "" {
-								ui.Text(c, oh.kind).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine()
-							}
-						})
-					})
-					if row.Clicked() {
+					if row("split-to-"+id+"-"+o.tabKey(), oh.icon, oh.title, oh.kind) {
 						open = false
 						vw.app.dropTab(o.tabKey(), vw, v, z)
 					}
+				}
+				ui.Divider(c)
+				if row("split-new-"+id, shellPlus, L.PaneSplitNew(), "") {
+					open = false
+					pick()
 				}
 			})
 		})
@@ -927,6 +965,7 @@ func (vw *viewerWindow) splitButton(c *ui.Context, v tab, z dropZone) {
 		vw.menu = ""
 	}
 	vw.mu.Unlock()
+	vw.app.pickerView(c, "split-"+id, b)
 }
 
 // iconButton is a borderless icon button of a pane's header or the

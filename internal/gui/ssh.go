@@ -229,10 +229,11 @@ func sshShell(client *ssh.Client, tunnel net.Conn) (*sshTerm, error) {
 }
 
 // sshClient is a running SSH tab: MyGo's terminal on the shell, in the
-// app's theme.
+// app's theme; pic is the terminal's view (main thread).
 type sshClient struct {
 	term *terminal.Terminal
 	conn *sshTerm
+	pic  ui.Handle
 }
 
 // newTerminal starts a terminal on a connection; it ran when the shell
@@ -296,7 +297,7 @@ func dialSSH(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 }
 
 func (c *sshClient) view(ctx *ui.Context, _ *serviceTab) {
-	terminal.View(ctx, c.term).Fill().AutoFocus()
+	terminal.View(ctx, c.term).Fill().AutoFocus().Bind(&c.pic)
 }
 
 func (c *sshClient) close() {
@@ -309,3 +310,4 @@ func (c *sshClient) close() {
 func (c *sshClient) grabs() bool        { return false }
 func (c *sshClient) scan(core.KeyEvent) {}
 func (c *sshClient) setFront(bool)      {}
+func (c *sshClient) keys() *ui.Handle   { return &c.pic }

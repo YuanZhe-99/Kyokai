@@ -84,6 +84,14 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 		})
 	})
 	a.settingsSheet(c, vw.win)
+	// Ctrl+K (⌘K) opens search and closes it, unless the keys go to
+	// another computer.
+	if !vw.keysAway(c) && c.Shortcut(ui.Cmd, ui.KeyK) {
+		a.mu.Lock()
+		a.palette = paletteState{open: !a.palette.open}
+		a.mu.Unlock()
+	}
+	a.paletteView(c)
 }
 
 // bannersView is what needs the user whatever shows: the connection
@@ -140,11 +148,12 @@ func groupName(tabs []tab) string {
 }
 
 // sidebarView is the main window's sidebar (doc/en-us/gui.md, "Windows"),
-// drawn on the window's material: hide the sidebar and + (Home's Connect)
+// drawn on the window's material: hide the sidebar and + (the picker)
 // beside the traffic lights; Home; the open panes, a group of several as a
 // card with its panes under its name, panes in windows of their own last;
-// and at the bottom light or dark, the settings and the network's state. A
-// pane dropped on the list gets an entry of its own. Folded, it is the rail.
+// and at the bottom search, light or dark, the settings and the network's
+// state. A pane dropped on the list gets an entry of its own. Folded, it is
+// the rail.
 func (a *App) sidebarView(c *ui.Context, vw *viewerWindow) {
 	t := c.Theme()
 	bar := c.TitleBar()
@@ -161,9 +170,11 @@ func (a *App) sidebarView(c *ui.Context, vw *viewerWindow) {
 			if iconButton(c, "sb-hide", shellSidebar, L.SidebarHide()) {
 				a.setRail(true)
 			}
-			if iconButton(c, "sb-new", shellPlus, L.SidebarNew()) {
-				vw.showHome()
+			plus := iconButtonBase(c, "sb-new", shellPlus, L.SidebarNew())
+			if plus.Clicked() {
+				a.openPicker("sidebar", false, "", zoneMiddle)
 			}
+			a.pickerView(c, "sidebar", plus)
 			ui.Box(c.Key("sb-drag")).Grow(1).FillHeight().DragWindow()
 		})
 		ui.Box(c).Height(8).Shrink(0)
@@ -209,6 +220,9 @@ func (a *App) sidebarView(c *ui.Context, vw *viewerWindow) {
 			}
 		})
 		ui.Row(c.Key("sb-bottom")).Shrink(0).Gap(2).AlignItems(ui.Center).Padding(8, 0, 0, 0).Children(func() {
+			if iconButton(c, "sb-search", shellSearch, L.SidebarSearch(shortcutName("K"))) {
+				a.openPalette()
+			}
 			a.themeButton(c)
 			if iconButton(c, "sb-settings", shellGear, L.NavSettings()) {
 				a.openSettings(pageGeneral)
@@ -312,7 +326,8 @@ func (a *App) ownWindows() []ownWindow {
 
 // railView is the sidebar folded to its icons: show the sidebar and +,
 // Home, an icon per entry (a group's with how many panes it holds, named in
-// its tooltip), then light or dark, the settings and the network's dot.
+// its tooltip), then search, light or dark, the settings and the network's
+// dot.
 func (a *App) railView(c *ui.Context, vw *viewerWindow) {
 	t := c.Theme()
 	bar := c.TitleBar()
@@ -324,9 +339,11 @@ func (a *App) railView(c *ui.Context, vw *viewerWindow) {
 		if iconButton(c, "rail-show", shellSidebar, L.SidebarShow()) {
 			a.setRail(false)
 		}
-		if iconButton(c, "rail-new", shellPlus, L.SidebarNew()) {
-			vw.showHome()
+		plus := iconButtonBase(c, "rail-new", shellPlus, L.SidebarNew())
+		if plus.Clicked() {
+			a.openPicker("rail", false, "", zoneMiddle)
 		}
+		a.pickerView(c, "rail", plus)
 		ui.Box(c).Width(24).Height(1).Shrink(0).Margin(6, 0).Background(t.Border)
 		homeShown := slices.ContainsFunc(entries, func(e sbEntry) bool { return e.shown && e.homeAlone() })
 		if railButton(c, "rail-home", appMark, L.NavHome(), 0, homeShown) {
@@ -351,6 +368,9 @@ func (a *App) railView(c *ui.Context, vw *viewerWindow) {
 			}
 		}
 		ui.Box(c).Grow(1)
+		if iconButton(c, "rail-search", shellSearch, L.SidebarSearch(shortcutName("K"))) {
+			a.openPalette()
+		}
 		a.themeButton(c)
 		if iconButton(c, "rail-settings", shellGear, L.NavSettings()) {
 			a.openSettings(pageGeneral)

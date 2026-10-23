@@ -232,6 +232,10 @@ var (
 	scrimHover  = ui.RGBA(255, 255, 255, 0.14)
 )
 
+// paletteScrim is the search palette's dimming, lighter than the Settings
+// sheet's: the palette is gone with the next choice.
+var paletteScrim = ui.RGBA(0, 0, 0, 0.18)
+
 // closeHover is the window's close button under the pointer, white on
 // Windows' red.
 var (
@@ -314,6 +318,12 @@ const (
 	permTileH       float32 = 60  // a permission's toggle tile
 	moreW           float32 = 360 // a row's longer explanation (How it works)
 	splitMenuW      float32 = 280 // a pane header's split menu
+	pickerW         float32 = 424 // the + picker
+	pickerRowH      float32 = 44  // a device in it
+	pickerRowsMaxH  float32 = 300 // its devices, scrolling beyond
+	paletteW        float32 = 600 // the search palette
+	paletteTop      float32 = 72  // from the window's top
+	paletteMaxH     float32 = 380 // its results, scrolling beyond
 	deviceCardW     float32 = 236 // a recent device's card on Home
 	onlineDot       float32 = 8   // a device's online dot
 	connectPanelW   float32 = 420 // a connection tab's panel before the picture

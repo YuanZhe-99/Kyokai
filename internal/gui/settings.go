@@ -21,12 +21,13 @@ func (a *App) openSettings(p page) {
 	a.mu.Unlock()
 }
 
-// covered reports whether something covers the panes, so that no picture
-// takes the keyboard: the Settings sheet.
+// covered reports whether something over the panes takes the keyboard, so
+// that no picture does: the Settings sheet, the search palette or the +
+// picker.
 func (a *App) covered() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.settingsOpen
+	return a.settingsOpen || a.palette.open || a.picker.at != ""
 }
 
 // settingsItem is a page of the Settings sheet's sections.

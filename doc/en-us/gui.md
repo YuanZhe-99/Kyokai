@@ -13,21 +13,22 @@ when `SCREENSHOT_DIR` is set.
   Desktop, VNC) is a pane (`tab`: `homeTab`, `viewer`, `serviceTab`). Requests waiting for the
   user, a device connected here and an AI task here show as cards above the panes, a toast at
   their foot. The window is named after the pane in focus.
-- **Sidebar** (`sidebarView`): at the top Hide the sidebar and + (Connect to a device: Home, until
-  the picker comes), after the traffic lights on macOS; Home, with Kyokai's mark; "Open" with how
+- **Sidebar** (`sidebarView`): at the top Hide the sidebar and + (the + picker, below), after the
+  traffic lights on macOS; Home, with Kyokai's mark; "Open" with how
   many panes are open, then one entry per group in the order they opened — a pane alone as a row
   (its kind's icon, the device's name, the kind in words: Desktop, SSH, Remote Desktop, VNC), a
   group of several as a card with its devices' names ("Studio Mac + NUC") over its panes' rows —
   and last the panes in windows of their own, which a click brings forward. The entry shown
   stands out, and in a group the pane in focus in the accent's tint; a row drags its pane as its
-  header does. At the bottom: the appearance (follow the system, light and dark in turn — a
-  half-filled monitor, a sun, a moon), the gear (Settings), and the networks' state as a dot and a
+  header does. At the bottom: search (below), the appearance (follow the system, light and dark in
+  turn — a half-filled monitor, a sun, a moon), the gear (Settings), and the networks' state as a dot and a
   word (Online, Connecting…, Could not connect, Offline) that opens Settings at Network. Hidden, the sidebar is
   a rail of icons, a group's with its count and names in tooltips (`sidebar_rail` in `gui.json`).
 - **A pane's header** (44 points): the kind's icon, the device's name and its Device ID (or the
   service), which drag the pane; an empty part that moves the window, a double click maximizing
-  it; in the main window Split right and Split down — a menu of the other open panes, the one
-  chosen going beside this one, or a note to open another first —, in a group of several
+  it; in the main window Split right and Split down — the + picker, opening beside this pane on
+  that side; with other panes open, first a menu of them, the one chosen going beside this one,
+  and Open a device… for the picker —, in a group of several
   Maximize (the pane alone over its group, the others still running) or Restore, and close (×;
   not on Home alone, which has nothing to close to). In a group the pane in focus has an accent
   edge; the focus follows the keyboard and clicks into a pane.
@@ -42,6 +43,38 @@ when `SCREENSHOT_DIR` is set.
   one pane, no sidebar, never split — which closes with its pane, disconnecting it; dropped on the
   main window's sidebar or panes, it comes back. Its header keeps the room of the traffic lights
   on macOS.
+- **The + picker** (`pickerView`): a popover under the sidebar's + (the rail's), or under a pane
+  header's split button. First the kind — Desktop, SSH, Remote Desktop, VNC or AI task, the one
+  chosen last kept —, then a search by name, Device ID (spaces aside) or address, then the devices
+  (`pickRows`): for an AI task This computer first (Settings › AI until AI tasks are panes); a
+  Device ID typed that no device has (Connect by Device ID), or an address typed — with a dot or a
+  colon, or a word that nothing else matches — (Connect by address); the devices this one
+  connected to, each with its way (direct or relayed and its delay, connected, or when it was last
+  connected), greyed with "… isn't available" when its status of the last minute says it does not
+  open the kind (`kindOffered`: the service does not answer or the saved sign-in does not grant
+  it; its AI is not ready or not granted), never for want of a status; for the desktop, last, the
+  Kyokai devices the joined networks reach and this one never connected to, with a dashed icon,
+  under In your networks. At its foot, where it opens — On its own (an entry of its own) or Beside
+  current (a split with the pane in focus, or on its side with the pane whose split button opened
+  the picker, which then starts at Beside current) — and Open (Open SSH, Start AI task…). The
+  search takes the keys as it opens; ↑ and ↓ choose among the devices that open the kind, Enter
+  opens the one chosen or else the first, Escape or a click outside closes it, and Tab reaches the
+  kinds and the rest.
+- **Search** (`paletteView`): Ctrl+K (⌘K on macOS) in the main window, or the magnifier at the
+  sidebar's bottom, opens a palette 72 points from the window's top over the window lightly
+  dimmed: a field that takes the keys, then the results by group, at most six each, the first
+  word typed marked in their titles — This device (the temporary password to copy, while it is
+  accepted, and New password; the Device ID to copy), Open panes, Devices (connect, or show the
+  one open), Actions (Connect to a device: the + picker; Settings; Hide or Show the sidebar; the
+  three appearances) and Settings (every setting the Settings search finds, opened on its page
+  scrolled to it). Every word typed must be in a result's title, the line under it or a
+  setting's words, ignoring case; titles that match come first in their group; with nothing
+  typed, all but the settings (`searchPalette`). ↑ and ↓ choose around the ends, Enter or a click
+  opens the one chosen (copies, for the password and the Device ID), and Escape, a click outside
+  or Ctrl+K again closes it. While a desktop's picture, a Remote Desktop or VNC screen or an SSH
+  terminal has the keyboard, Ctrl+K goes to that computer instead (`keysAway`); the magnifier
+  still opens search. While the picker or search is open, no picture takes the keyboard
+  (`covered`).
 - **The window's controls:** on macOS the traffic lights over the sidebar's top row, centred on
   the top pane's header (in a window of its own, on its pane's header). On Windows the system's
   buttons would sit on the window's corner, half outside the pane, so the window hides them

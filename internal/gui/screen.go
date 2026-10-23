@@ -151,6 +151,8 @@ func (sc *screenClient) setFront(on bool) {
 
 func (sc *screenClient) grabs() bool { return true }
 
+func (sc *screenClient) keys() *ui.Handle { return &sc.pic }
+
 // scan sends a key the grab took.
 func (sc *screenClient) scan(ev core.KeyEvent) {
 	k, ok := remoteKeysByScan[ev.Code]

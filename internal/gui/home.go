@@ -391,7 +391,7 @@ func (a *App) connectCard(c *ui.Context) {
 				a.mu.Unlock()
 			}
 			if ui.PrimaryButton(c.Key("conn-go"), L.ActionConnect()).Disabled(!ready).Clicked() || id.Submitted() && ready {
-				a.connectAs(device, address, f.as)
+				a.connectAs(device, address, f.as, nil)
 			}
 		})
 		ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Wrap().Children(func() {
@@ -417,14 +417,21 @@ func (a *App) connectCard(c *ui.Context) {
 
 // connectAs opens what Open as names on a device, by its Device ID or at an
 // address (asked for its Device ID first): its desktop, one of its
-// services, or its desktop asking to run AI tasks.
-func (a *App) connectAs(device, address, as string) {
+// services, or its desktop asking to run AI tasks. placed, when set, then
+// gets the pane's tabKey (the + picker puts it beside another).
+// Notes: call on the main thread; placed runs on it.
+func (a *App) connectAs(device, address, as string, placed func(key string)) {
 	open := func(device, address string) {
+		key := device
 		switch as {
 		case serviceSSH, serviceRDP, serviceVNC:
 			a.openService(device, address, as)
+			key = serviceKey(device, as)
 		default:
 			a.connectDevice(device, address, a.recentAbout(device), connectWant(as == actionAI))
+		}
+		if placed != nil {
+			placed(key)
 		}
 	}
 	if address != "" {

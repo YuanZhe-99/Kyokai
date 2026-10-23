@@ -3098,6 +3098,66 @@ func (msgs Messages) NotifyStillRunningTitle() string {
 	return Catalog.Format(msgs.locale, "NotifyStillRunningTitle", nil)
 }
 
+// PaletteActions says "Actions"
+// in the language the app shows.
+func PaletteActions() string { return In(i18n.Locale()).PaletteActions() }
+
+// PaletteActions says "Actions"
+// in the language of msgs.
+func (msgs Messages) PaletteActions() string {
+	return Catalog.Format(msgs.locale, "PaletteActions", nil)
+}
+
+// PaletteAnywhere says "from anywhere"
+// in the language the app shows.
+func PaletteAnywhere() string { return In(i18n.Locale()).PaletteAnywhere() }
+
+// PaletteAnywhere says "from anywhere"
+// in the language of msgs.
+func (msgs Messages) PaletteAnywhere() string {
+	return Catalog.Format(msgs.locale, "PaletteAnywhere", nil)
+}
+
+// PaletteMove says "Choose"
+// in the language the app shows.
+func PaletteMove() string { return In(i18n.Locale()).PaletteMove() }
+
+// PaletteMove says "Choose"
+// in the language of msgs.
+func (msgs Messages) PaletteMove() string {
+	return Catalog.Format(msgs.locale, "PaletteMove", nil)
+}
+
+// PaletteNone says "Nothing matches."
+// in the language the app shows.
+func PaletteNone() string { return In(i18n.Locale()).PaletteNone() }
+
+// PaletteNone says "Nothing matches."
+// in the language of msgs.
+func (msgs Messages) PaletteNone() string {
+	return Catalog.Format(msgs.locale, "PaletteNone", nil)
+}
+
+// PaletteOpen says "Open panes"
+// in the language the app shows.
+func PaletteOpen() string { return In(i18n.Locale()).PaletteOpen() }
+
+// PaletteOpen says "Open panes"
+// in the language of msgs.
+func (msgs Messages) PaletteOpen() string {
+	return Catalog.Format(msgs.locale, "PaletteOpen", nil)
+}
+
+// PaletteSearch says "Search devices, panes and settings"
+// in the language the app shows.
+func PaletteSearch() string { return In(i18n.Locale()).PaletteSearch() }
+
+// PaletteSearch says "Search devices, panes and settings"
+// in the language of msgs.
+func (msgs Messages) PaletteSearch() string {
+	return Catalog.Format(msgs.locale, "PaletteSearch", nil)
+}
+
 // PaneClose says "Close"
 // in the language the app shows.
 func PaneClose() string { return In(i18n.Locale()).PaneClose() }
@@ -3148,14 +3208,14 @@ func (msgs Messages) PaneSplitDown() string {
 	return Catalog.Format(msgs.locale, "PaneSplitDown", nil)
 }
 
-// PaneSplitNone says "Open another connection first; it can then go beside this one."
+// PaneSplitNew says "Open a device…"
 // in the language the app shows.
-func PaneSplitNone() string { return In(i18n.Locale()).PaneSplitNone() }
+func PaneSplitNew() string { return In(i18n.Locale()).PaneSplitNew() }
 
-// PaneSplitNone says "Open another connection first; it can then go beside this one."
+// PaneSplitNew says "Open a device…"
 // in the language of msgs.
-func (msgs Messages) PaneSplitNone() string {
-	return Catalog.Format(msgs.locale, "PaneSplitNone", nil)
+func (msgs Messages) PaneSplitNew() string {
+	return Catalog.Format(msgs.locale, "PaneSplitNew", nil)
 }
 
 // PaneSplitRight says "Split right"
@@ -3546,6 +3606,126 @@ func PermissionsTitle() string { return In(i18n.Locale()).PermissionsTitle() }
 // in the language of msgs.
 func (msgs Messages) PermissionsTitle() string {
 	return Catalog.Format(msgs.locale, "PermissionsTitle", nil)
+}
+
+// PickAlone says "On its own"
+// in the language the app shows.
+func PickAlone() string { return In(i18n.Locale()).PickAlone() }
+
+// PickAlone says "On its own"
+// in the language of msgs.
+func (msgs Messages) PickAlone() string {
+	return Catalog.Format(msgs.locale, "PickAlone", nil)
+}
+
+// PickBeside says "Beside current"
+// in the language the app shows.
+func PickBeside() string { return In(i18n.Locale()).PickBeside() }
+
+// PickBeside says "Beside current"
+// in the language of msgs.
+func (msgs Messages) PickBeside() string {
+	return Catalog.Format(msgs.locale, "PickBeside", nil)
+}
+
+// PickByAddress says "Connect by address"
+// in the language the app shows.
+func PickByAddress() string { return In(i18n.Locale()).PickByAddress() }
+
+// PickByAddress says "Connect by address"
+// in the language of msgs.
+func (msgs Messages) PickByAddress() string {
+	return Catalog.Format(msgs.locale, "PickByAddress", nil)
+}
+
+// PickByID says "Connect by Device ID"
+// in the language the app shows.
+func PickByID() string { return In(i18n.Locale()).PickByID() }
+
+// PickByID says "Connect by Device ID"
+// in the language of msgs.
+func (msgs Messages) PickByID() string {
+	return Catalog.Format(msgs.locale, "PickByID", nil)
+}
+
+// PickChoose says "Choose a device"
+// in the language the app shows.
+func PickChoose() string { return In(i18n.Locale()).PickChoose() }
+
+// PickChoose says "Choose a device"
+// in the language of msgs.
+func (msgs Messages) PickChoose() string {
+	return Catalog.Format(msgs.locale, "PickChoose", nil)
+}
+
+// PickNone says "No device matches."
+// in the language the app shows.
+func PickNone() string { return In(i18n.Locale()).PickNone() }
+
+// PickNone says "No device matches."
+// in the language of msgs.
+func (msgs Messages) PickNone() string {
+	return Catalog.Format(msgs.locale, "PickNone", nil)
+}
+
+// PickNotOffered says "{kind} isn't available"
+// in the language the app shows.
+func PickNotOffered(kind string) string { return In(i18n.Locale()).PickNotOffered(kind) }
+
+// PickNotOffered says "{kind} isn't available"
+// in the language of msgs.
+func (msgs Messages) PickNotOffered(kind string) string {
+	return Catalog.Format(msgs.locale, "PickNotOffered", map[string]any{"kind": kind})
+}
+
+// PickOpenKind says "Open {kind}"
+// in the language the app shows.
+func PickOpenKind(kind string) string { return In(i18n.Locale()).PickOpenKind(kind) }
+
+// PickOpenKind says "Open {kind}"
+// in the language of msgs.
+func (msgs Messages) PickOpenKind(kind string) string {
+	return Catalog.Format(msgs.locale, "PickOpenKind", map[string]any{"kind": kind})
+}
+
+// PickSearch says "Name, Device ID or address"
+// in the language the app shows.
+func PickSearch() string { return In(i18n.Locale()).PickSearch() }
+
+// PickSearch says "Name, Device ID or address"
+// in the language of msgs.
+func (msgs Messages) PickSearch() string {
+	return Catalog.Format(msgs.locale, "PickSearch", nil)
+}
+
+// PickStartAI says "Start AI task"
+// in the language the app shows.
+func PickStartAI() string { return In(i18n.Locale()).PickStartAI() }
+
+// PickStartAI says "Start AI task"
+// in the language of msgs.
+func (msgs Messages) PickStartAI() string {
+	return Catalog.Format(msgs.locale, "PickStartAI", nil)
+}
+
+// PickThisComputer says "This computer"
+// in the language the app shows.
+func PickThisComputer() string { return In(i18n.Locale()).PickThisComputer() }
+
+// PickThisComputer says "This computer"
+// in the language of msgs.
+func (msgs Messages) PickThisComputer() string {
+	return Catalog.Format(msgs.locale, "PickThisComputer", nil)
+}
+
+// PickThisComputerNote says "Runs here, with this computer's providers"
+// in the language the app shows.
+func PickThisComputerNote() string { return In(i18n.Locale()).PickThisComputerNote() }
+
+// PickThisComputerNote says "Runs here, with this computer's providers"
+// in the language of msgs.
+func (msgs Messages) PickThisComputerNote() string {
+	return Catalog.Format(msgs.locale, "PickThisComputerNote", nil)
 }
 
 // ProtectedAbout says "Leaves only AI settings and tasks until the permanent password turns it off."
@@ -5404,6 +5584,16 @@ func SidebarOwnWindow() string { return In(i18n.Locale()).SidebarOwnWindow() }
 // in the language of msgs.
 func (msgs Messages) SidebarOwnWindow() string {
 	return Catalog.Format(msgs.locale, "SidebarOwnWindow", nil)
+}
+
+// SidebarSearch says "Search ({keys})"
+// in the language the app shows.
+func SidebarSearch(keys string) string { return In(i18n.Locale()).SidebarSearch(keys) }
+
+// SidebarSearch says "Search ({keys})"
+// in the language of msgs.
+func (msgs Messages) SidebarSearch(keys string) string {
+	return Catalog.Format(msgs.locale, "SidebarSearch", map[string]any{"keys": keys})
 }
 
 // SidebarShow says "Show the sidebar"

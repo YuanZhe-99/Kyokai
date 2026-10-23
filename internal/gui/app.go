@@ -152,6 +152,11 @@ type App struct {
 	toastErr      bool
 	toastAt       time.Time
 
+	// The + picker and the search palette while open (picker.go,
+	// palette.go).
+	picker  pickerState
+	palette paletteState
+
 	// App updates (update.go).
 	appUpdate      *mygo.Update
 	updating       bool
