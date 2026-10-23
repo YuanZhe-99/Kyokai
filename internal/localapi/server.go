@@ -179,13 +179,19 @@ func ServeWith(ctx context.Context, ln net.Listener, h Handler, authz Authorizer
 	}
 }
 
+// serveConn answers one connection's requests, once its peer is allowed,
+// until it closes or ctx ends.
 func serveConn(ctx context.Context, conn net.Conn, h Handler, authz Authorizer) {
 	defer conn.Close()
 	done := make(chan struct{})
 	defer close(done)
+	// The goroutine takes ctx's channel now, not the variable: ctx is
+	// wrapped below, and an interface read while it is written can tear
+	// (regression: a test's context came out corrupt and its run crashed).
+	stop := ctx.Done()
 	go func() {
 		select {
-		case <-ctx.Done():
+		case <-stop:
 			// Interrupt idle reads without racing the final response from an
 			// active shutdown handler. The handler receives ctx cancellation;
 			// its response is written before serveConn closes the connection.
