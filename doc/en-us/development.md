@@ -111,7 +111,8 @@ does (`--keys-every D` presses the keys again every D until the watch ends).
 
 `ctl watch` prints a line each second: the frames that came, the longest gap between two, and
 "stall" when that passed a second while the host says it sent frames ("still" for a still
-screen, which sends none), and at the end the longest gap of the watch. `tools/netdelay` turns a
+screen, which sends none), and at the end the longest gap of the watch. `ctl logs` prints the engine's logs
+(`logs.read`: the helper's and its agent's in the helper modes) to its owner or the helper's operator. `tools/netdelay` turns a
 fast path into a slow, uneven one for trying sessions over high latency on one machine: a TCP
 proxy that delays each direction by half the round trip, limits it to a rate, adds random jitter
 and freezes the path now and then, keeping the bytes in order and the bytes waiting bounded.

@@ -51,13 +51,18 @@ pub fn wake_display() {
 }
 
 /// Whether the system reports the display off (Windows' console display
-/// state; elsewhere never).
+/// state; macOS: the main display asleep, or no display active while one is
+/// connected; elsewhere never).
 pub fn display_off() -> bool {
     #[cfg(windows)]
     {
         imp::display_off()
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        crate::mac::asleep()
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     false
 }
 
@@ -189,16 +194,26 @@ mod windows_impl {
         }
     }
 
-    /// Wakes the displays (`super::wake_display`): on the desktop that
-    /// receives input (the agent follows it to the lock screen), with
-    /// absolute moves, which mouse acceleration cannot shrink to nothing
-    /// (regression: a one-pixel relative move woke no display).
+    /// Wakes the displays (`super::wake_display`): resets the display idle
+    /// timer, which turns a dark display on (measured on the ARM64 test
+    /// computer: on within 5 s, the Kernel-Power reason
+    /// SetThreadExecutionState), and moves the pointer a pixel and back on
+    /// the desktop that receives input, with absolute moves, which mouse
+    /// acceleration cannot shrink to nothing (regression: a one-pixel
+    /// relative move woke no display).
+    /// Notes: the move runs on a thread of its own, which follows the input
+    /// desktop (the agent's, to the lock screen): the caller — often a
+    /// capture thread — stays on its desktop, with the capturer it opened
+    /// there (regression: a wake moved the capture's thread behind its
+    /// capturer, and its check for a moved desktop saw nothing).
     pub fn wake() {
         use windows::Win32::System::Power::{ES_DISPLAY_REQUIRED, SetThreadExecutionState};
-        crate::agent::follow_input_desktop();
         // SAFETY: a one-shot execution state, no pointers.
         unsafe { SetThreadExecutionState(ES_DISPLAY_REQUIRED) };
-        crate::input::nudge_pointer();
+        let _ = std::thread::Builder::new().name("wake".into()).spawn(|| {
+            crate::agent::follow_input_desktop();
+            crate::input::nudge_pointer();
+        });
     }
 
     /// GUID_CONSOLE_DISPLAY_STATE: the console's display turned off, on or

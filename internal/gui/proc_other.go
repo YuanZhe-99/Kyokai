@@ -8,3 +8,6 @@ func hideWindow(*exec.Cmd) {}
 
 // lightTaskbar is false off Windows: macOS tints the template glyph itself.
 func lightTaskbar() bool { return false }
+
+// TraceShown does nothing off Windows.
+func TraceShown() {}

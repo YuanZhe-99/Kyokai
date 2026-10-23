@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -58,6 +59,10 @@ type hostStats struct {
 	// Frames is how many frames the host sent the last second (0 from a
 	// 0.4.0 host, which does not say).
 	Frames int `json:"frames"`
+	// Video is what the host's video is doing: "live", "dark" (its display
+	// is off), "recovering" (it opened the video again), "placeholder"
+	// (it tries the screen again meanwhile); empty from 0.5.2 and older.
+	Video string `json:"video"`
 }
 
 // hostPointer is where the host's pointer is (media CURSOR), as fractions
@@ -88,6 +93,11 @@ type videoStart struct {
 	// hardware, as the encoder reports.
 	Encoder  string `json:"encoder"`
 	Hardware bool   `json:"hardware"`
+	// Placeholder says why the host sends its placeholder (the test
+	// pattern) instead of its screen: "asleep", "no-display", "agent",
+	// "no-encoder", "retrying", "no-codec", "cannot-capture"; empty for the
+	// screen, and from 0.5.2 and older.
+	Placeholder string `json:"placeholder"`
 }
 
 // codecImpl is which encoder or decoder handles a stream ("" unknown) and
@@ -231,6 +241,12 @@ type viewer struct {
 	heardAt    time.Time
 	recovering bool
 	asleep     bool
+	// decodeFailed: the last frame the decoder took failed, and no
+	// picture came since (the viewer tells the host why it shows none).
+	decodeFailed bool
+	// noPictureLogged: the log has a line for the present stretch without a
+	// picture (one per stretch, never per frame).
+	noPictureLogged bool
 	// stalled: the session took no input at the watchdog's last look
 	// (inputStalled); a change rebuilds the view, which grabs again.
 	stalled bool
@@ -705,10 +721,25 @@ func (g *videoGate) ask(now time.Time) bool {
 
 // viewerNeedsKey reports whether the picture needs a key frame although
 // the gate is open: no picture came for noPicture while the host says it
-// sent frames (a key frame lost on the way, a decoder that gave up). A
-// still screen sends none, and a 0.4.0 host does not say.
-func viewerNeedsKey(sincePicture time.Duration, hostFrames int) bool {
-	return sincePicture >= noPicture && hostFrames > 0
+// sent frames (a key frame lost on the way, a decoder that gave up), or
+// the viewer has had no picture at all yet, whatever the host says (a host
+// that sends nothing must be asked too: regression, a viewer waited for
+// good on a host whose encoder gave no output). After a picture, a still
+// screen sends none, and a 0.4.0 host does not say.
+func viewerNeedsKey(sincePicture time.Duration, hostFrames int, pictured bool) bool {
+	return sincePicture >= noPicture && (hostFrames > 0 || !pictured)
+}
+
+// viewerAsleep reports whether to offer waking the host's screen: when the
+// host says its display is off or asleep, or — a host that does not say
+// (0.5.2 and older) — once there has been no picture for wakeAfter
+// (regression: the offer showed while the host's display was on and only
+// its video was stuck).
+func viewerAsleep(sincePicture time.Duration, hostVideo, placeholder string) bool {
+	if hostVideo != "" {
+		return hostVideo == "dark" || placeholder == "asleep"
+	}
+	return sincePicture >= wakeAfter
 }
 
 // askKey asks the host for a key frame; a full queue leaves the request
@@ -734,15 +765,38 @@ func (v *viewer) watchdog(done <-chan struct{}, keyRequest []byte) {
 		case now := <-t.C:
 			v.mu.Lock()
 			since := now.Sub(v.pictureAt)
-			need := viewerNeedsKey(since, v.host.Frames)
-			recovering, asleep := need && v.bm != nil, since >= wakeAfter && v.control
+			pictured := v.bm != nil
+			need := viewerNeedsKey(since, v.host.Frames, pictured)
+			recovering := need && pictured
+			asleep := v.control && viewerAsleep(since, v.host.Video, v.start.Placeholder)
 			// The keyboard grab follows the stall rule (inputStalled).
 			stalled := v.inputStalled(now)
 			changed := recovering != v.recovering || asleep != v.asleep || stalled != v.stalled
 			v.recovering, v.asleep, v.stalled = recovering, asleep, stalled
+			why := ""
+			switch {
+			case v.decodeFailed:
+				why = "decode-error"
+			case !pictured:
+				why = "waiting"
+			case recovering:
+				why = "stale"
+			}
+			logIt := why != "" && since >= noPicture && !v.noPictureLogged
+			v.noPictureLogged = why != "" && (v.noPictureLogged || logIt)
+			host := v.host
 			v.mu.Unlock()
 			if v.gate.again(need, now) {
 				v.askKey(keyRequest)
+			}
+			// The host recovers a picture its viewer says it does not show
+			// (the controller passes this on to hosts that announced
+			// `recovery`).
+			if logIt {
+				log.Printf("viewer: no picture for %v (%s); the host sent %d frames, its video: %q", since.Round(time.Second), why, host.Frames, host.Video)
+			}
+			if why != "" && since >= noPicture {
+				v.sendControl(map[string]any{"type": "no-picture", "for_ms": since.Milliseconds(), "why": why})
 			}
 			if changed {
 				v.update(func() {})
@@ -805,6 +859,9 @@ func (v *viewer) decodeVideo(lib *core.Lib, video <-chan []byte, pool packetPool
 			fresh = false
 			if v.show(dec, p[10:]) != nil {
 				fresh = true
+				v.mu.Lock()
+				v.decodeFailed = true
+				v.mu.Unlock()
 				if v.gate.broke(time.Now()) {
 					v.askKey(keyRequest)
 				}
@@ -895,6 +952,7 @@ func (v *viewer) show(dec *core.Decoder, data []byte) error {
 	v.mu.Lock()
 	v.frames++
 	v.pictureAt = decoded
+	v.decodeFailed = false
 	v.decoding += decoded.Sub(began)
 	v.ready, v.readyAt = free, decoded
 	if el := decoded.Sub(v.counted); el >= time.Second {
@@ -1068,19 +1126,24 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 	focused := false
 	defer func() { v.syncGrab(focused) }()
 	v.mu.Lock()
-	recovering, asleep, mapped := v.recovering, v.asleep, v.grabbed == "map"
+	recovering, asleep, mapped, hostVideo := v.recovering, v.asleep, v.grabbed == "map", v.host.Video
 	v.mu.Unlock()
+	waiting, retrying := viewerWaitText(hostVideo, start.Placeholder)
 	area.Children(func() {
 		switch {
 		case state != "":
 			ui.Text(c, state).TextColor(ui.Hex("#ffffff"))
-		case bm == nil:
+		// No picture yet, or the host's placeholder: what is happening
+		// there, not the placeholder's colour bars.
+		case bm == nil || start.Placeholder != "":
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				busyMarkIn(c, L.ViewerWaiting(), busySize, ui.Hex("#ffffff"))
-				ui.Text(c, L.ViewerWaiting()).TextColor(ui.Hex("#ffffff"))
+				if retrying {
+					busyMarkIn(c, waiting, busySize, ui.Hex("#ffffff"))
+				}
+				ui.Text(c, waiting).TextColor(ui.Hex("#ffffff"))
 			})
 			if asleep {
-				v.wakeOffer(c)
+				v.wakeOffer(c, hostVideo == "")
 			}
 		default:
 			// The picture takes text: macOS turns keys into text (and input
@@ -1105,7 +1168,7 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 						busyMarkIn(c, L.ViewerRecovering(), busySize, ui.Hex("#ffffff"))
 						ui.Text(c, L.ViewerRecovering()).TextColor(ui.Hex("#ffffff"))
 						if asleep {
-							v.wakeOffer(c)
+							v.wakeOffer(c, hostVideo == "")
 						}
 					})
 				})
@@ -1119,16 +1182,48 @@ func notice(c *ui.Context, children func()) {
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(6, 12).Radius(barRadius).Background(ui.RGBA(0, 0, 0, 0.7)).Children(children)
 }
 
-// wakeOffer says the host's screen may be asleep and offers to wake it,
-// for a session that may control input: the host's wake action, which its
-// engine turns into a Shift press and release for a host without it.
-func (v *viewer) wakeOffer(c *ui.Context) {
+// wakeOffer offers to wake the host's screen, for a session that may
+// control input: the host's wake action, which its engine turns into a
+// Shift press and release for a host without it. `guess`: the host does
+// not say whether its display is off (0.5.2 and older), so the offer says
+// it may be asleep.
+func (v *viewer) wakeOffer(c *ui.Context, guess bool) {
 	ui.Row(c.Key("wake")).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, L.ViewerAsleep()).TextColor(ui.Hex("#ffffff"))
+		if guess {
+			ui.Text(c, L.ViewerAsleep()).TextColor(ui.Hex("#ffffff"))
+		}
 		if ui.Button(c.Key("wake-it"), L.ViewerWake()).Clicked() {
 			v.sendControl(map[string]any{"type": "action", "action": "wake"})
 		}
 	})
+}
+
+// viewerWaitText is what the viewer says while it shows no picture of the
+// host's screen, from what the host says where it does (its placeholder's
+// reason, its video's state), and whether the host is trying again.
+func viewerWaitText(hostVideo, placeholder string) (string, bool) {
+	switch placeholder {
+	case "":
+	case "asleep":
+		return L.ViewerHostAsleep(), true
+	case "no-display":
+		return L.ViewerHostNoDisplay(), true
+	case "agent":
+		return L.ViewerHostAgent(), true
+	case "no-codec":
+		return L.ViewerHostNoCodec(), false
+	case "cannot-capture":
+		return L.ViewerHostCannotCapture(), false
+	default:
+		return L.ViewerHostRetrying(), true
+	}
+	switch hostVideo {
+	case "dark":
+		return L.ViewerHostDark(), true
+	case "recovering":
+		return L.ViewerHostRestarting(), true
+	}
+	return L.ViewerWaiting(), true
 }
 
 // originalPicture is the host's screen at one point per pixel: scrolled in
@@ -1490,8 +1585,13 @@ func pathChip(c *ui.Context, b bar) {
 	}
 	start := b.start
 	if start.Codec == "raw-rgba" {
-		// The host sends its test pattern: it may not record its screen.
-		ui.Text(c.Key("bar-path"), "⚠").TextColor(t.Warning).Label(L.ViewerPlaceholder()).Tooltip(L.ViewerPlaceholder())
+		// The host sends its placeholder: why, where it says (0.5.3 and
+		// later), else that it may not record its screen.
+		tip := L.ViewerPlaceholder()
+		if start.Placeholder != "" {
+			tip, _ = viewerWaitText("", start.Placeholder)
+		}
+		ui.Text(c.Key("bar-path"), "⚠").TextColor(t.Warning).Label(tip).Tooltip(tip)
 		return
 	}
 	if start.Width == 0 {

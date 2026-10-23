@@ -259,13 +259,9 @@ func (a *App) statusPushed(st *localapi.Status) {
 	if approval {
 		go a.notify("ai-approval", L.AINotifyApprovalTitle(), L.AINotifyApprovalBody())
 	}
-	// The connections' tabs follow the sessions (main thread).
-	a.mu.Lock()
-	w := a.window
-	a.mu.Unlock()
-	if w != nil {
-		w.Update(a.syncViewers)
-	}
+	// The connections' tabs follow the sessions (main thread), with or
+	// without the main window.
+	a.later(a.syncViewers)
 }
 
 // request sends one request to the engine.

@@ -58,6 +58,19 @@ static LINK: OnceLock<Arc<Link>> = OnceLock::new();
 /// desktop).
 static AGENT: AtomicBool = AtomicBool::new(false);
 
+/// Where the macOS agent sends its log lines: to the helper, which writes
+/// them to its own log (launchd keeps the agent's stderr nowhere, and the
+/// helper's state folder is not the agent user's to write).
+static LOG_TO_HELPER: OnceLock<std_mpsc::Sender<String>> = OnceLock::new();
+
+/// Sends one of this agent's log lines to the helper (macOS), none
+/// elsewhere or before the agent serves.
+pub(crate) fn forward_log(line: &str) {
+    if let Some(tx) = LOG_TO_HELPER.get() {
+        let _ = tx.send(line.to_owned());
+    }
+}
+
 /// The helper's link to its agent, when this engine is the helper.
 pub fn link() -> Option<&'static Arc<Link>> {
     LINK.get()
@@ -145,6 +158,11 @@ pub struct Link {
     /// The sound streams, by the same numbering as the video's.
     sounds: Mutex<HashMap<u32, mpsc::Sender<Vec<u8>>>>,
     next_stream: AtomicU32,
+    /// Counts the agents attached: only the newest one's end clears the
+    /// link (an older connection may end after a newer agent attached).
+    generation: AtomicU64,
+    /// A wake asked for while no agent was attached, sent to the next one.
+    wake_pending: AtomicBool,
 }
 
 impl Link {
@@ -156,6 +174,8 @@ impl Link {
             streams: Mutex::default(),
             sounds: Mutex::default(),
             next_stream: AtomicU32::new(1),
+            generation: AtomicU64::new(0),
+            wake_pending: AtomicBool::new(false),
         }
     }
 
@@ -164,7 +184,13 @@ impl Link {
     /// Side effects: when the agent goes, every call waiting fails and every
     /// video stream ends.
     fn attach(self: &Arc<Self>, input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
+        // The older agent's writer goes with it: that agent sees its link end
+        // and exits.
         *self.out.lock().expect("agent link") = Some(BufWriter::new(out));
+        let generation = self.generation.fetch_add(1, Ordering::Relaxed) + 1;
+        if self.wake_pending.swap(false, Ordering::Relaxed) {
+            self.wake_display();
+        }
         // A new agent captures as the host user chose: Kyokai's windows
         // shown or not, and the sound to share (regression: an agent that
         // started again shared what the computer plays, whatever was chosen).
@@ -175,6 +201,9 @@ impl Link {
             let mut input = input;
             while let Ok((kind, body)) = read_message(&mut input) {
                 link.received(kind, body);
+            }
+            if link.generation.load(Ordering::Relaxed) != generation {
+                return;
             }
             *link.out.lock().expect("agent link") = None;
             link.waiting.lock().expect("agent link").clear();
@@ -191,6 +220,11 @@ impl Link {
                 let Ok(v) = serde_json::from_slice::<Value>(&body) else {
                     return;
                 };
+                // A line of the macOS agent's log, kept in the helper's.
+                if let Some(line) = v["log"].as_str() {
+                    eprintln!("{} agent {line}", crate::now());
+                    return;
+                }
                 // A stream whose capture ended (its thread could not follow
                 // the input desktop, its encoder failed twice): the session
                 // sees its frames end and opens it again.
@@ -338,8 +372,9 @@ impl Link {
     /// None) in the first of `choices` that opens; its frames go to `tx`,
     /// and `key` and `targets` are followed until `stop` is set.
     /// Returns: the stream's start, the display shown and the stream, whose
-    /// drop closes it, or None when the agent cannot start it (the caller
-    /// shows the test pattern).
+    /// drop closes it, or why the agent cannot start it (the link is down,
+    /// or the agent has no display or encoder): the caller shows the
+    /// placeholder and tries again.
     pub fn open_video(
         self: &Arc<Self>,
         display: Option<Display>,
@@ -348,7 +383,7 @@ impl Link {
         key: Arc<AtomicBool>,
         targets: Arc<Targets>,
         stop: Arc<AtomicBool>,
-    ) -> Option<(VideoStart, Option<Display>, AgentVideo)> {
+    ) -> Result<(VideoStart, Option<Display>, AgentVideo), String> {
         let stream = self.next_stream.fetch_add(1, Ordering::Relaxed);
         self.streams.lock().expect("agent link").insert(
             stream,
@@ -368,9 +403,12 @@ impl Link {
             json!({"stream": stream, "display": display, "choices": choices}),
         ) {
             Ok(o) => o,
-            Err(_) => {
+            Err(e) => {
                 self.streams.lock().expect("agent link").remove(&stream);
-                return None;
+                // An open that timed out may still finish in the agent, which
+                // handles requests in turn: this close follows it there.
+                let _ = self.send("video.close", json!({"stream": stream}));
+                return Err(e);
             }
         };
         // Follows the session's requests on the stream's behalf.
@@ -400,7 +438,7 @@ impl Link {
             link: self.clone(),
             stream,
         };
-        Some((opened.start, opened.display, video))
+        Ok((opened.start, opened.display, video))
     }
 
     /// Starts the computer's sound in the agent for one session.
@@ -473,8 +511,12 @@ impl Link {
     }
 
     /// Wakes the console session's displays (`crate::power::wake_display`).
+    /// Side effects: while no agent is attached the wake waits for the next
+    /// one (a display left dark otherwise stays dark).
     pub fn wake_display(&self) {
-        let _ = self.send("wake", json!({}));
+        if self.send("wake", json!({})).is_err() {
+            self.wake_pending.store(true, Ordering::Relaxed);
+        }
     }
 
     /// Blocks or unblocks the host's own input for injector `id`.
@@ -654,6 +696,21 @@ impl Drop for RemoteDesktop {
 pub fn serve(input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
     AGENT.store(true, Ordering::Relaxed);
     let out = Arc::new(Mutex::new(BufWriter::new(out)));
+    // Log lines go out on a thread of their own: a line logged while this
+    // thread holds `out` must not wait for it.
+    #[cfg(target_os = "macos")]
+    {
+        let (tx, lines) = std_mpsc::channel::<String>();
+        if LOG_TO_HELPER.set(tx).is_ok() {
+            let out = out.clone();
+            std::thread::spawn(move || {
+                for line in lines {
+                    let body = serde_json::to_vec(&json!({ "log": line })).expect("json");
+                    let _ = write_message(&mut *out.lock().expect("agent out"), JSON, &[&body]);
+                }
+            });
+        }
+    }
     let mut agent = Agent {
         out: out.clone(),
         sources: HashMap::new(),
@@ -792,6 +849,13 @@ impl Agent {
                     .filter_map(|w| crate::video::Choice::parse(&w.codec, w.i444))
                     .collect();
                 let mut source = crate::video::Source::open(display, &choices);
+                // A capture that did not open says why: the helper's session
+                // shows its own placeholder and tries again, rather than
+                // streaming a test pattern it would take for the screen.
+                if let Some(why) = source.why.take() {
+                    let code = source.start.placeholder.take().unwrap_or_default();
+                    return Err(format!("{code}: {why}"));
+                }
                 let reply = json!({"start": source.start, "display": source.display});
                 let (_, empty) = mpsc::channel(1);
                 let mut frames = std::mem::replace(&mut source.frames, empty);
@@ -1693,6 +1757,37 @@ mod tests {
         link
     }
 
+    /// Regression: an older agent's connection that ended after a newer
+    /// agent attached took the newer one's link down (and ended its
+    /// streams); a wake asked for while no agent was attached was lost.
+    #[test]
+    fn only_the_newest_agent_owns_the_link_and_a_wake_waits_for_one() {
+        let link = Arc::new(Link::new());
+        let (old_up_r, old_up_w) = std::io::pipe().unwrap();
+        let (_old_down_r, old_down_w) = std::io::pipe().unwrap();
+        link.attach(Box::new(old_up_r), Box::new(old_down_w));
+        let (new_up_r, _new_up_w) = std::io::pipe().unwrap();
+        let (_new_down_r, new_down_w) = std::io::pipe().unwrap();
+        link.attach(Box::new(new_up_r), Box::new(new_down_w));
+        drop(old_up_w);
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(
+            link.out.lock().unwrap().is_some(),
+            "the old agent's end took the link"
+        );
+        // The next agent gets the wake asked for while none was attached
+        // (among the capture settings every attach sends).
+        let link = Arc::new(Link::new());
+        link.wake_display();
+        let (up_r, _up_w) = std::io::pipe().unwrap();
+        let (mut down_r, down_w) = std::io::pipe().unwrap();
+        link.attach(Box::new(up_r), Box::new(down_w));
+        let wake = (0..3)
+            .map(|_| read_message(&mut down_r).unwrap().1)
+            .any(|body| serde_json::from_slice::<Value>(&body).unwrap()["op"] == "wake");
+        assert!(wake, "the waiting wake was not sent");
+    }
+
     #[test]
     fn messages_keep_their_kind_and_body_and_refuse_bad_lengths() {
         let mut buf = Vec::new();
@@ -1712,20 +1807,24 @@ mod tests {
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
         let targets = Arc::new(Targets::default());
-        // A machine without a display shows the test pattern; with one, the
-        // screen. Either way frames arrive through the agent.
-        // The choice crosses to the agent: software VP9 in full colour.
+        // The screen comes through the agent, in the choice that crossed to
+        // it: software VP9 in full colour.
         let choices = [Choice {
             codec: "vp9-sw",
             i444: true,
         }];
-        let (start, _, video) = link
-            .open_video(None, &choices, tx, key, targets, stop.clone())
-            .expect("the agent opens a stream");
+        let (start, _, video) =
+            match link.open_video(None, &choices, tx, key, targets, stop.clone()) {
+                Ok(opened) => opened,
+                // A machine that cannot capture (no display, no permission)
+                // says why; the helper's session then shows its placeholder.
+                Err(why) => {
+                    assert!(!why.is_empty(), "a refusal without a reason");
+                    return;
+                }
+            };
         assert!(start.width > 0 && start.height > 0);
-        if start.codec != "raw-rgba" {
-            assert_eq!((start.codec.as_str(), start.i444), ("vp9-sw", true));
-        }
+        assert_eq!((start.codec.as_str(), start.i444), ("vp9-sw", true));
         let frame = rx.blocking_recv().expect("a frame through the agent");
         assert!(!frame.data.is_empty());
         // The stream ends as its source drops it: the link forgets it at

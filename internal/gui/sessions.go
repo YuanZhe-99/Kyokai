@@ -246,13 +246,10 @@ func (a *App) connectAddress(address string, want []string) {
 				a.setToast(identifyFailure(resp.Failure), true)
 			}
 		})
-		a.mu.Lock()
-		w := a.window
-		a.mu.Unlock()
-		// On the main thread (Window.Update) and not under a.mu, which
-		// connectDevice takes itself.
-		if err == nil && resp.DeviceID != "" && w != nil {
-			w.Update(func() { a.connectDevice(resp.DeviceID, address, a.recentAbout(resp.DeviceID), want) })
+		// On the main thread and not under a.mu, which connectDevice takes
+		// itself.
+		if err == nil && resp.DeviceID != "" {
+			a.later(func() { a.connectDevice(resp.DeviceID, address, a.recentAbout(resp.DeviceID), want) })
 		}
 	}()
 }

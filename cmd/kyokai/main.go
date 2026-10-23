@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/engine"
 	"github.com/YuanZhe-99/Kyokai/internal/gui"
@@ -60,39 +59,23 @@ func main() {
 			{Role: mygo.RoleEditMenu},
 			{Role: mygo.RoleWindowMenu},
 		}))
-		// The tab strip is the title bar (gui.TitleBarOptions).
-		w := mygo.NewWindow(gui.TitleBarOptions(mygo.WindowOptions{
-			Title:     "Kyokai",
-			Width:     1000,
-			Height:    700,
-			MinWidth:  760,
-			MinHeight: 520,
-			StateKey:  "main",
-			// Shown once its display affinity is set: never captured for a
-			// moment.
-			Hidden:  true,
-			Content: ui.View(a.MainView),
-		}))
-		// Kyokai's windows stay out of every capture (the viewer's video and
-		// the AI's screenshots) unless Security says otherwise.
-		a.SetWindow(w)
-		if !hidden {
-			w.Show()
-		}
-		a.SetVisible(!hidden)
-		if hidden {
-			a.KeepHidden()
-		}
+		gui.TraceShown()
+		// The main window exists only while shown (gui.App.mainWindow):
+		// started in the tray, Kyokai makes none.
 		tray := a.NewTray()
 		a.SetTray(tray)
-		w.OnClose(a.HandleClose)
-		a.WatchMainFullScreen()
+		if hidden {
+			a.SetVisible(false)
+		} else {
+			a.Focus()
+		}
+		// Closing the main window puts Kyokai in the tray, so the app goes
+		// on without windows.
+		mygo.App.OnWindowAllClosed(func() {})
 		// Quitting the app (its menu, the Dock, logging out or shutting
-		// down) quits even while closing the window only hides it, and ends
-		// this GUI's connections.
+		// down) quits even while closing the window only puts Kyokai in the
+		// tray, and ends this GUI's connections.
 		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.BeforeQuit() })
-		w.OnHide(func() { a.SetVisible(false) })
-		w.OnShow(func() { a.SetVisible(true) })
 		mygo.App.OnLocaleChanged(func(string) { tray.Refresh() })
 		a.Start()
 	})

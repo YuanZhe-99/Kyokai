@@ -81,6 +81,10 @@ pub struct VideoStart {
     pub encoder: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hardware: bool,
+    /// Why the host sends a placeholder (the test pattern) instead of its
+    /// screen, while it keeps trying the screen; left out for the screen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
 }
 
 /// Splits one frame into chunks that each fit one Noise message.
@@ -295,7 +299,24 @@ impl Queue {
                     .filter(|p| p.first() == Some(&packet::FRAME))
                     .count();
                 if frames >= KEEP_FRAMES {
-                    q.packets.retain(|p| p.first() != Some(&packet::FRAME));
+                    // Before a frame that is not a key frame, the newest key
+                    // frame waiting stays, alone: a reader that has not
+                    // caught up (a viewer still opening) gets one picture it
+                    // can decode instead of none (regression: the stream's
+                    // first key frame went before the viewer read it).
+                    let keep = if key {
+                        None
+                    } else {
+                        q.packets.iter().rposition(|p| {
+                            p.first() == Some(&packet::FRAME)
+                                && p.get(1).is_some_and(|f| f & KEY_FRAME != 0)
+                        })
+                    };
+                    let mut at = 0;
+                    q.packets.retain(|p| {
+                        at += 1;
+                        p.first() != Some(&packet::FRAME) || Some(at - 1) == keep
+                    });
                     if !key {
                         q.skipping = true;
                         return;
@@ -467,18 +488,22 @@ mod tests {
     }
 
     /// Regression: a slow reader lost the oldest frame and decoded the next
-    /// ones without it, which smeared the picture until a key frame.
+    /// ones without it, which smeared the picture until a key frame; and a
+    /// reader that had not read yet lost the stream's first key frame with
+    /// the frames after it, and showed nothing.
     #[test]
     fn a_slow_reader_goes_on_from_the_next_key_frame() {
         let q = Queue::default();
         let frame = |n: u8, key: bool| vec![packet::FRAME, if key { KEY_FRAME } else { 0 }, n];
-        // With no reader, frames are dropped the same way but no key frame
-        // is asked for.
+        // With no reader yet (a viewer still opening), the frames after the
+        // first key frame go but the key frame stays; no key frame is asked
+        // for.
         for n in 0..5 {
             q.push(frame(n, n == 0));
         }
         assert!(!q.waiting_for_key());
         q.push(frame(5, true));
+        assert_eq!(q.pop(Duration::ZERO).unwrap(), frame(0, true));
         assert_eq!(q.pop(Duration::ZERO).unwrap(), frame(5, true));
         // A reader that took a packet and fell behind waits for a key frame.
         q.push(vec![packet::VIDEO_START]);
@@ -486,19 +511,23 @@ mod tests {
         q.push(frame(1, false));
         q.push(frame(2, false));
         assert!(!q.waiting_for_key());
-        // A fourth frame finds the reader behind: the waiting frames go, and
-        // so do the frames until a key frame.
+        // A fourth frame finds the reader behind: the frames after the key
+        // frame go, and so do the frames until the next key frame.
         q.push(frame(3, false));
         assert!(q.waiting_for_key());
         q.push(frame(4, false));
         q.push(frame(5, true));
         assert!(!q.waiting_for_key());
         q.push(frame(6, false));
-        // A full queue keeps a key frame (it decodes on its own).
+        // The newest key frame waiting is the one that stays.
         q.push(frame(7, false));
+        // A full queue keeps a key frame coming (it decodes on its own).
         q.push(frame(8, true));
         let got: Vec<Vec<u8>> = std::iter::from_fn(|| q.pop(Duration::ZERO).ok()).collect();
-        assert_eq!(got, vec![vec![packet::VIDEO_START], frame(8, true)]);
+        assert_eq!(
+            got,
+            vec![vec![packet::VIDEO_START], frame(5, true), frame(8, true)]
+        );
         assert!(!q.waiting_for_key());
     }
 

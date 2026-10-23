@@ -78,6 +78,7 @@ const (
 	RequestPasswordGrants       RequestType = "access.password_grants"     // what a correct password grants without asking (Request.Grants)
 	RequestProtect              RequestType = "protect.set"                // protected mode on (needs a permanent password) or off (with it) (Request.Protect); while on, the engine serves only the status, the AI requests, confirmations, disconnecting, quitting and what the GUI sends as it attaches
 	RequestLogs                 RequestType = "logs.set"                   // keep no logs, crash traces or connection history (Request.LogsOff), or keep them again; the GUI sends it as it attaches and when the setting changes
+	RequestLogsRead             RequestType = "logs.read"                  // the engine's logs (its own, the helper's and its agent's) as text (Response.Document); owner or operator only
 	RequestCaptureShow          RequestType = "capture.show"               // whether captures show Kyokai's windows (Request.Show); hidden until a GUI says otherwise
 	RequestInputKyokai          RequestType = "input.kyokai"               // whether a person's remote input may reach Kyokai's windows (Request.KyokaiInput); refused until a GUI says otherwise
 	RequestSoundSource          RequestType = "sound.source"               // the sound to share (Request.SoundSource): "" what the computer plays, else an input device's id
@@ -513,7 +514,8 @@ type Response struct {
 	Failure  string `json:"failure,omitempty"`
 	// Trusted answers RequestTrustedList.
 	Trusted []TrustedDevice `json:"trusted,omitempty"`
-	// Document answers RequestIdentityExport: the encrypted backup.
+	// Document answers RequestIdentityExport: the encrypted backup, and
+	// RequestLogsRead: the logs.
 	Document string `json:"document,omitempty"`
 	// SoundDevices answers RequestSoundDevices.
 	SoundDevices []SoundDevice `json:"sound_devices,omitempty"`

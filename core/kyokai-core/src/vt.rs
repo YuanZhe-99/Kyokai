@@ -648,8 +648,9 @@ impl Decoder {
     }
 
     /// Decodes one Annex B frame into `rgba` (resized to width×height×4).
-    /// Returns: the picture's size, or None while the decoder waits for a
-    /// key frame with its parameter sets.
+    /// Returns: the picture's size, None for a frame before the first key
+    /// frame with its parameter sets, or an error for a key frame that comes
+    /// before any parameter set.
     pub fn decode(
         &mut self,
         frame: &[u8],
@@ -663,6 +664,12 @@ impl Decoder {
             self.open(&sets)?;
         }
         let (Some(session), Some(format)) = (&self.session, &self.format) else {
+            // A key frame before any parameter set cannot open the session,
+            // which would take it and every frame after and show nothing, for
+            // good: an error, so that the viewer asks for another key frame.
+            if annexb::units(frame).any(|u| syntax.key(u)) {
+                return Err("a key frame without its parameter sets".into());
+            }
             return Ok(None);
         };
         self.sample.clear();
@@ -945,6 +952,34 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A key frame that reaches a fresh decoder without its parameter sets
+    /// is an error, for the viewer to ask for another, not a silent wait;
+    /// the whole key frame then opens the session.
+    #[test]
+    fn a_key_frame_without_its_parameter_sets_is_an_error() {
+        let (w, h) = (320usize, 192usize);
+        let mut enc = Encoder::new(Codec::H264, w as u32, h as u32, 30, 2_000_000).unwrap();
+        enc.picture(&picture(w, h, 0), w, h, w * 4);
+        let (key, _) = enc
+            .encode(true)
+            .unwrap()
+            .into_iter()
+            .find(|(_, key)| *key)
+            .expect("a key frame");
+        let syntax = Codec::H264.syntax();
+        let mut bare = Vec::new();
+        for u in annexb::units(&key).filter(|u| !syntax.parameter_set(u)) {
+            annexb::append_annexb(u, &mut bare);
+        }
+        let mut dec = Decoder::new(Codec::H264);
+        let mut rgba = Vec::new();
+        assert!(dec.decode(&bare, &mut rgba).is_err());
+        assert_eq!(
+            dec.decode(&key, &mut rgba).unwrap(),
+            Some((w as u32, h as u32))
+        );
     }
 
     #[test]

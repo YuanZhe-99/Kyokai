@@ -113,8 +113,10 @@ this computer, newest first, with **Copy** for text — kept only until the tab 
 devices connected, only the one whose tab is in front (in the Kyokai window you used last) shares
 the clipboard; switching to a tab sends what you copied meanwhile. Quality, frame rate, Fit or
 Original size, codec, sound, the swap and the clipboard switch are remembered for each device. While you are connected the other computer does not go to
-sleep by itself, and a screen that was dark already is woken; if the picture still does not come,
-**Wake it** presses Shift there for you. Closing the tab (×) disconnects; when a connection ends, its tab says why and offers
+sleep by itself, and a screen that was dark already is woken. If the picture does not come, the
+other computer keeps trying to bring it back by itself, and the picture area says what is happening
+there (its screen asleep, Kyokai Helper getting ready, the picture starting again); when it says
+the screen is asleep or off, **Wake it** wakes it for you. Closing the tab (×) disconnects; when a connection ends, its tab says why and offers
 **Reconnect**. A connection that drops reconnects by itself for a minute without asking again.
 Closing a window disconnects its tabs: Kyokai asks first when that ends two connections or more, or
 one you cannot see because Home is in front; with **Quit** chosen for the close button, closing the
@@ -276,7 +278,8 @@ warning and can choose **Forget old identity**.
 ## When something is wrong
 
 - "The Kyokai engine is not running.": its background part stopped; the reason is shown, and Kyokai
-  starts it again. Logs are in the folder that About, Diagnostics, opens.
+  starts it again. Logs are in the folder that About, Diagnostics, opens; **Save logs…** there puts
+  them, Kyokai Helper's included (whose folder needs administrator rights), into one file to send.
 - The network shows an error: check the server addresses, the name and the secret.
 - The other device is reached through a relay: turn on **Try direct connections** (Advanced on the Network
   page) on both devices; if it stays relayed, the networks block direct paths: it works, a little slower.

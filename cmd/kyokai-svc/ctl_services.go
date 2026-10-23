@@ -30,6 +30,7 @@ var ctlServices = map[string]func(args []string) error{
 	"credentials-get":    ctlCredentials,
 	"credentials-forget": ctlCredentials,
 	"watch-status":       ctlWatchStatus,
+	"logs":               ctlLogs,
 }
 
 // ctlWatchStatus watches devices' status for a while, as Home does (a lease
@@ -208,4 +209,18 @@ func ctlKeys(args []string) error {
 		fmt.Println("ok")
 	}
 	return nil
+}
+
+// ctlLogs prints the engine's logs (the helper's and its agent's in the
+// helper modes); only the owner or the helper's operator may read them.
+func ctlLogs(args []string) error {
+	fs := flag.NewFlagSet("ctl logs", flag.ExitOnError)
+	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "local API socket path")
+	fs.Parse(args[1:])
+	resp, err := localapi.NewClient(*socket).Do(context.Background(), localapi.Request{Type: localapi.RequestLogsRead})
+	if err != nil {
+		return err
+	}
+	_, err = io.WriteString(os.Stdout, resp.Document)
+	return err
 }

@@ -109,18 +109,18 @@ while it is silent, the packets waiting when a frame's chunk was sent going out 
 chunk, [computer-use.md](computer-use.md), "Sound") (`auto`, or a name of the offer; another
 name changes nothing), and a resumed controller sends its viewer's `quality`, `codec` and `audio` again
 before its `codecs`. Before its first frame the host
-sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer than 3 are unacknowledged, takes only an acknowledgement of a frame it sent and that was not acknowledged, and when none came for 3 seconds takes the frames in flight for lost and goes on from a key frame. The controller may send `{"type":
+sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern; a `recovery` host adds `placeholder` to the test pattern's: `asleep`, `no-display`, `agent`, `no-encoder`, `retrying`, `no-codec` or `cannot-capture`). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer than 3 are unacknowledged, takes only an acknowledgement of a frame it sent and that was not acknowledged, and when none came for 3 seconds takes the frames in flight for lost and goes on from a key frame. The controller may send `{"type":
 "key-frame"}` (the host then describes the stream, its displays and the codec offer again and
 sends a key frame) — its GUI's requests (as it opens, after a frame it lost or failed to decode,
 each second until a key frame comes), and the controller's own while its queue leaves frames out
-(at most once a second, on a timer of its own, so also while no frame comes) — and,
+(at most once a second, on a timer of its own, so also while no frame comes), and to a host that announced `recovery`, `{"type": "no-picture", for_ms, why}` when its viewer has shown no picture for 5 seconds (`why`: `decode-error`, `waiting` or `stale`; at most once a second; the host takes it as trouble, [computer-use.md](computer-use.md), "Video") — and,
 with `control-input`, `{"type": "input", event}`; to a host that announced `input-sync` an
 event may be `{"kind": "sync", held: {scans, keys, buttons}}`, the keys (by scan code and by
 name) and buttons the controller holds after a stall or a resume, and the host lets go of
 whatever else that session holds (at most 64 entries, all of them known, or it is dropped). While it sends video the host sends `{"type":
 "test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":
 "stats", delay_ms, fps, bitrate, encode_ms, frames}` (`encode_ms`: the last second's frames' average from
-picture to frame; `frames`: how many frames it sent that second, which 0.4.0 leaves out) ([computer-use.md](computer-use.md)); the controller may set
+picture to frame; `frames`: how many frames it sent that second, which 0.4.0 leaves out); a `recovery` host adds `video`: `live`, `dark`, `recovering` or `placeholder`) ([computer-use.md](computer-use.md)); the controller may set
 the quality with `{"type": "quality", preset, fps, i444}`, where `i444` asks for full colour
 (4:4:4) where both sides do it. With more than one display the host also sends `{"type": "displays", list, current}` (each
 display's place and size, the primary first) and the controller may ask for another with
@@ -139,7 +139,7 @@ sender to stop with `{"type": "files-stop", id}`, and the sender gives up an acc
 as plaintexts that start with byte `0x03` and the offer's id (u64, big-endian), then bytes: every
 file of the offer in its order, each exactly its `size`; a newer offer replaces an older one. The host sends video only while the
 controller may view the screen: its screen in the codec chosen from `codecs`, or the 320×180 raw RGBA test pattern (codec
-`raw-rgba`) on a host that cannot capture.
+`raw-rgba`) while it cannot capture, which a `recovery` host never takes for final.
 
 ## Tunnels
 
@@ -205,6 +205,7 @@ outside the range this build speaks (10 to 10) is refused as incompatible.
 | `status` | quiet status watchers and the `system` message; permission `see-status` |
 | `input-sync` | the controller's `sync` input event (the keys and buttons it holds) |
 | `wake` | the `wake` session action (the host wakes its displays) |
+| `recovery` | the controller's `no-picture`; the host's `placeholder` in `video-start` and `video` in its stats |
 
 ## Decoders
 

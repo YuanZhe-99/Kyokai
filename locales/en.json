@@ -262,6 +262,7 @@
   "ActionRestartHelper": "Restart Kyokai Helper",
   "ActionRestore": "Restore…",
   "ActionSave": "Save",
+  "ActionSaveLogs": "Save logs…",
   "ActionShow": "Show",
   "ActionStartOver": "Start over",
   "AppUpToDate": "Kyokai is up to date.",
@@ -457,6 +458,8 @@
     }
   },
   "LicensesHint": "Kyokai and the components it includes.",
+  "LogsFileKind": "Text file",
+  "LogsSaved": "Logs saved.",
   "NameSaved": "Name saved.",
   "NatCone": "Cone (easy to connect directly)",
   "NatOpen": "Open internet",
@@ -975,6 +978,14 @@
   "ViewerFrameRate": "Frame rate",
   "ViewerFullScreen": "Full screen",
   "ViewerHideBar": "Hide controls",
+  "ViewerHostAgent": "Kyokai Helper is getting ready there. Trying again…",
+  "ViewerHostAsleep": "The screen there is asleep. Waking it…",
+  "ViewerHostCannotCapture": "That computer can't share its screen.",
+  "ViewerHostDark": "The screen there is off. Waking it…",
+  "ViewerHostNoCodec": "This device can't show the picture that computer sends.",
+  "ViewerHostNoDisplay": "The computer there shows no screen right now. Trying again…",
+  "ViewerHostRestarting": "Starting the picture again…",
+  "ViewerHostRetrying": "The picture there could not start. Trying again…",
   "ViewerImplHardware": "{name} in hardware",
   "@ViewerImplHardware": {
     "placeholders": {

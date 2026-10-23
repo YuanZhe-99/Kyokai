@@ -22,7 +22,8 @@ import (
 //
 // Side effects: on Windows its stderr, with the core's log lines and any
 // crash trace, goes to the helper's logs\agent.log unless No logs is on
-// (macOS: launchd's own log for the agent).
+// (macOS: the agent sends its log lines to the helper, whose helper.log
+// keeps them).
 func agentCmd(args []string) error {
 	fs := flag.NewFlagSet("agent", flag.ExitOnError)
 	down := fs.String("down", "", "the pipe the helper writes requests to (Windows)")

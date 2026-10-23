@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/YuanZhe-99/Kyokai/internal/engine"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	"github.com/YuanZhe-99/Kyokai/internal/version"
 	L "github.com/YuanZhe-99/Kyokai/locales"
@@ -422,7 +423,48 @@ func (a *App) diagnostics(c *ui.Context) {
 			if ui.Button(c.Key("open-logs"), L.ActionOpenFolder()).Clicked() {
 				_ = mygo.Shell.OpenPath(logs)
 			}
+			if ui.Button(c.Key("save-logs"), L.ActionSaveLogs()).Disabled(a.busy["logs"]).Clicked() {
+				go a.saveLogs(st.StateDir)
+			}
 		})
+	})
+}
+
+// saveLogs asks where to save, then writes there the engine's logs (the
+// helper's and its agent's in the helper modes, which only administrators
+// open) and, when the engine keeps them elsewhere, this GUI's own.
+// Side effects: writes a file readable only by this user.
+func (a *App) saveLogs(engineDir string) {
+	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
+		Parent: a.window, Title: L.ActionSaveLogs(), DefaultPath: "kyokai-logs-" + time.Now().Format("20060102-150405") + ".txt",
+		Filters: []mygo.FileFilter{{Name: L.LogsFileKind(), Extensions: []string{"txt"}}},
+	})
+	if err != nil || path == "" {
+		return
+	}
+	a.update(func() { a.busy["logs"] = true })
+	resp, err := a.requestWith(localapi.Request{Type: localapi.RequestLogsRead})
+	var refused *localapi.RequestError
+	var werr error
+	if err == nil {
+		text := resp.Document
+		if filepath.Clean(engineDir) != filepath.Clean(a.stateDir) {
+			text += engine.ReadLogs(a.stateDir)
+		}
+		werr = os.WriteFile(path, []byte(text), 0o600)
+	}
+	a.update(func() {
+		delete(a.busy, "logs")
+		switch {
+		case errors.As(err, &refused):
+			a.setToast(refused.Message, true)
+		case err != nil:
+			a.setToast(L.EngineDown(), true)
+		case werr != nil:
+			a.setToast(werr.Error(), true)
+		default:
+			a.setToast(L.LogsSaved(), false)
+		}
 	})
 }
 

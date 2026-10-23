@@ -43,6 +43,9 @@ pub mod feature {
     pub const INPUT_SYNC: &str = "input-sync";
     /// The `wake` session action.
     pub const WAKE: &str = "wake";
+    /// The `no-picture` message: the host recovers a picture its viewer
+    /// says it does not show.
+    pub const RECOVERY: &str = "recovery";
 }
 
 /// The features this build announces.
@@ -52,6 +55,7 @@ pub const FEATURES: &[&str] = &[
     feature::STATUS,
     feature::INPUT_SYNC,
     feature::WAKE,
+    feature::RECOVERY,
 ];
 
 /// What the other side of a session announced: its features, none for
@@ -214,6 +218,15 @@ enum Message {
     VideoStart(media::VideoStart),
     /// controller → host: send a key frame next.
     KeyFrame,
+    /// controller → host (`recovery`): the viewer has shown no picture for
+    /// `for_ms`, and why it thinks so (`waiting`: none came yet;
+    /// `decode-error`: what came did not decode; `stale`: frames come but
+    /// none shows); the host takes the next recovery step.
+    NoPicture {
+        for_ms: u32,
+        #[serde(default)]
+        why: String,
+    },
     /// controller → host: every chunk of this frame (and of the ones
     /// before it) arrived; the host keeps at most `IN_FLIGHT` frames
     /// unacknowledged.
@@ -251,6 +264,12 @@ enum Message {
         encode_ms: u32,
         #[serde(default)]
         frames: u32,
+        /// The host's video, for the viewer to say what is happening:
+        /// `live`, `dark` (the system reports the display off),
+        /// `recovering` (the stream was opened again), `placeholder` (the
+        /// screen is tried again meanwhile); empty from 0.5.2 and older.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        video: String,
     },
     /// controller → host (`run-ai-task`): start an AI task on the host; the
     /// key makes a repeated start (after a reconnect) start one task.
@@ -552,32 +571,59 @@ fn key_due(waiting: bool, asked: Option<Instant>, now: Instant) -> bool {
 /// may never come.
 const ACK_WAIT: Duration = Duration::from_secs(3);
 
-/// How soon after its last end a host's video opens again, and how many
-/// ends within REOPEN_WINDOW give the test pattern instead.
-const REOPEN_EVERY: Duration = Duration::from_secs(2);
-const REOPEN_WINDOW: Duration = Duration::from_secs(30);
-const REOPEN_LIMIT: usize = 3;
+/// How long a host's stream may send nothing while a picture is due (it
+/// just opened, or the controller asked for a key frame) before it counts
+/// as a stream that gives no picture.
+const NO_PICTURE: Duration = Duration::from_secs(5);
+/// How long a viewer may say it shows no picture before the host takes the
+/// next recovery step, and how long the host then gives the step to work.
+const VIEWER_WAIT: Duration = Duration::from_secs(3);
+const STEP_GRACE: Duration = Duration::from_secs(4);
+/// How long after a key frame was sent a request for another counts as one
+/// the viewer could not use.
+const KEY_UNUSED: Duration = Duration::from_secs(2);
+/// How long a stream must go without trouble for the recovery to start over
+/// from its first step.
+const RECOVERED: Duration = Duration::from_secs(10);
+/// The pause before the second reopening, and how often the screen is tried
+/// again while the placeholder shows: sooner at first, then every
+/// PROBE_MAX.
+const REOPEN_PAUSE: Duration = Duration::from_secs(2);
+const PROBE_FIRST: Duration = Duration::from_secs(2);
+const PROBE_MAX: Duration = Duration::from_secs(10);
 
-/// What a host does when its video's frames ended by themselves (the
-/// capture or its agent ended): open it again, or send the test pattern.
+/// What a host does next for a stream whose picture does not reach the
+/// viewer: it ended, did not open, sends nothing although a picture is due,
+/// or the viewer says it shows none (doc/en-us/computer-use.md, "Video").
 #[derive(Debug, PartialEq, Eq)]
-enum Reopen {
-    After(Duration),
-    Pattern,
+enum Recovery {
+    /// Open the capture and its encoder again, after this long.
+    Reopen(Duration),
+    /// Open them again with the next codec the controller decodes first.
+    NextCodec,
+    /// Show the placeholder and try the screen again after this long.
+    Placeholder(Duration),
 }
 
-/// Decides how a host's video goes on after its frames ended.
-/// Inputs: the times its frames ended, this one last (older ones beyond
-/// REOPEN_WINDOW are dropped).
-fn reopen_plan(ends: &mut Vec<Instant>, now: Instant) -> Reopen {
-    ends.retain(|t| now.saturating_duration_since(*t) < REOPEN_WINDOW);
-    if ends.len() >= REOPEN_LIMIT {
-        return Reopen::Pattern;
+/// The recovery step for the `trouble`-th trouble in a row (0 first): open
+/// again at once, again after REOPEN_PAUSE, in the next codec, then the
+/// placeholder while the screen is tried again after PROBE_FIRST, doubling
+/// up to PROBE_MAX. It never gives up: the screen is tried as long as the
+/// session lasts, and a stream that goes RECOVERED without trouble starts
+/// over (regression: after three ends within 30 s the host sent the test
+/// pattern for good, and a Mac whose display had slept never showed its
+/// screen again).
+fn recovery(trouble: u32) -> Recovery {
+    match trouble {
+        0 => Recovery::Reopen(Duration::ZERO),
+        1 => Recovery::Reopen(REOPEN_PAUSE),
+        2 => Recovery::NextCodec,
+        n => Recovery::Placeholder(
+            PROBE_FIRST
+                .saturating_mul(2u32.saturating_pow((n - 3).min(8)))
+                .min(PROBE_MAX),
+        ),
     }
-    let previous = ends.iter().rev().nth(1);
-    Reopen::After(previous.map_or(Duration::ZERO, |t| {
-        (*t + REOPEN_EVERY).saturating_duration_since(now)
-    }))
 }
 
 /// How often the host looks for changes of a controller's AI task.
@@ -2569,7 +2615,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         _ => None,
     };
     // The displays the controller may choose from, with the one shown.
-    let displays = if wants_video {
+    let mut displays = if wants_video {
         video::displays()
     } else {
         Vec::new()
@@ -2650,6 +2696,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     };
     // A host without the `wake` action is woken by a Shift press instead.
     let host_wakes = matches!(&side, Side::Controller { host, .. } if host.has(feature::WAKE));
+    let host_recovers =
+        matches!(&side, Side::Controller { host, .. } if host.has(feature::RECOVERY));
     let meter = match &side {
         Side::Controller { meter, .. } => Some(meter.clone()),
         Side::Host { .. } => None,
@@ -2729,9 +2777,28 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // flight have waited for an acknowledgement (ACK_WAIT).
     let mut acked: u32 = 0;
     let mut acked_at = Instant::now();
-    // When the video's frames ended by themselves, and when it opens again.
-    let mut ends: Vec<Instant> = Vec::new();
+    // The recovery of the host's picture (`recovery`): troubles in a row, since
+    // when the stream has gone without trouble, since when a picture has
+    // been due (the stream opened, a key frame was asked for) with no frame
+    // sent, and when the last step was taken; when the video opens again
+    // (or the placeholder tries the screen), the next time in the next
+    // codec.
+    let mut trouble: u32 = 0;
+    let mut good_since = Instant::now();
+    let mut due_since: Option<Instant> = None;
+    let mut stepped_at: Option<Instant> = None;
     let mut reopen_at: Option<tokio::time::Instant> = None;
+    let mut next_codec = false;
+    // The display the viewer chose (None: the primary), kept while the
+    // stream is closed or the placeholder shows.
+    let mut want_display: Option<video::Display> = None;
+    // The last key frame sent (its number and when), and the key frames the
+    // controller asked for again a while after it had one: ones it could not
+    // use.
+    let mut key_sent: Option<(u32, Instant)> = None;
+    let mut unused_keys: u32 = 0;
+    // Whether the system reported the display off at the last look.
+    let mut dark = false;
     let mut ping = tokio::time::interval(PING_EVERY);
     // RustDesk's QoS on the host: one probe a second, frames counted per
     // second, frame rate and bitrate applied to the source.
@@ -2792,19 +2859,80 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     if let Some(inj) = &injector {
         seal_json(&mut noise, &mut buf, &mut wr, &offered(inj)).await?;
     }
+    // Takes the next recovery step for a stream whose picture does not reach
+    // the viewer (`recovery`), and says why in the log: the stream is dropped
+    // and opened again (soon, or in the next codec), or the placeholder
+    // shows while the screen is tried again.
+    macro_rules! trouble {
+        ($why:expr) => {{
+            let why: String = $why;
+            let mut next = recovery(trouble);
+            trouble = trouble.saturating_add(1);
+            if next == Recovery::NextCodec && chosen.len() <= 1 {
+                next = recovery(trouble);
+                trouble = trouble.saturating_add(1);
+            }
+            log::info!(
+                "host session: the video so far: {frame_no} frames sent, {acked} acknowledged, a key frame sent since the last ask: {}, {unused_keys} key frames asked again, the display off: {dark}",
+                key_sent.is_some()
+            );
+            let now = Instant::now();
+            (good_since, due_since, stepped_at, unused_keys) = (now, None, Some(now), 0);
+            match next {
+                Recovery::Reopen(after) => {
+                    log::info!("host session: {why}: opening the video again in {} s", after.as_secs());
+                    source = None;
+                    reopen_at = Some(tokio::time::Instant::now() + after);
+                }
+                Recovery::NextCodec => {
+                    log::info!("host session: {why}: opening the video again in the next codec");
+                    source = None;
+                    next_codec = true;
+                    reopen_at = Some(tokio::time::Instant::now());
+                }
+                Recovery::Placeholder(after) => {
+                    log::info!("host session: {why}: the placeholder shows, the screen is tried again in {} s", after.as_secs());
+                    if source.as_ref().is_none_or(|s| s.why.is_none()) {
+                        let p = video::Source::pattern("retrying", &why);
+                        announce(&mut noise, &mut buf, &mut wr, &p, &displays).await?;
+                        acked = frame_no;
+                        p.set_room(IN_FLIGHT);
+                        source = Some(p);
+                    }
+                    reopen_at = Some(tokio::time::Instant::now() + after);
+                }
+            }
+        }};
+    }
     // Opens the video on a display (None: the primary) from the chosen
-    // candidates, once the old capture let go of its encoder (dropping it
-    // parks its thread, which Source::open waits for), and describes it to
-    // the controller. Opening blocks for as long as a second: it runs off
-    // the network's two threads, and one that panicked sends the pattern.
+    // candidates (without the first after NextCodec), once the old capture
+    // let go of its encoder (dropping it parks its thread, which
+    // Source::open waits for), and describes it to the controller, with the
+    // displays as they are now. Opening blocks for as long as a second: it
+    // runs off the network's two threads. A source that is the placeholder
+    // (it did not open, or panicked) is trouble for the recovery.
     macro_rules! reopen {
         ($display:expr) => {{
             let display = $display;
+            want_display = display;
             source = None;
-            let wanted = chosen.clone();
-            let s = tokio::task::spawn_blocking(move || video::Source::open(display, &wanted))
-                .await
-                .unwrap_or_else(|_| video::Source::pattern());
+            let mut wanted = chosen.clone();
+            if std::mem::take(&mut next_codec) && wanted.len() > 1 {
+                wanted.remove(0);
+            }
+            let (s, list) = tokio::task::spawn_blocking(move || {
+                (video::Source::open(display, &wanted), video::displays())
+            })
+            .await
+            .unwrap_or_else(|_| {
+                (
+                    video::Source::pattern("retrying", "the capture failed"),
+                    Vec::new(),
+                )
+            });
+            if !list.is_empty() {
+                displays = list;
+            }
             #[cfg(any(windows, target_os = "macos"))]
             if let Some(inj) = injector.as_mut() {
                 inj.set_area(s.display.map(area));
@@ -2818,9 +2946,19 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             // old one still unacknowledged are not waited for.
             acked = frame_no;
             s.set_room(IN_FLIGHT);
+            let why = s.why.clone();
             source = Some(s);
             pointer_sent = None;
             reopen_at = None;
+            due_since = Some(Instant::now());
+            key_sent = None;
+            // No codec in common: nothing to try until the controller's
+            // codecs or choice change (which open the video again).
+            if let Some(why) = why
+                && !chosen.is_empty()
+            {
+                trouble!(why);
+            }
         }};
     }
     let outcome: Result<(), Failure> = async { loop {
@@ -3007,7 +3145,36 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         s.key_frame();
                     }
                 }
-                let stats = Message::Stats { delay_ms: last_delay, fps, bitrate: kbps.saturating_mul(1000), encode_ms, frames };
+                // The picture's recovery, once a second: a display that came
+                // back is tried at once from the placeholder; a stream that
+                // sends nothing while a picture is due takes the next step;
+                // one that went RECOVERED without trouble starts over.
+                let off = crate::power::display_off();
+                let came_on = dark && !off;
+                dark = off;
+                let placeholder = source.as_ref().is_some_and(|s| s.why.is_some());
+                if placeholder && came_on && reopen_at.is_some() {
+                    reopen_at = Some(tokio::time::Instant::now());
+                } else if !placeholder
+                    && reopen_at.is_none()
+                    && due_since.is_some_and(|t| t.elapsed() >= NO_PICTURE)
+                {
+                    trouble!(format!("no frame for {} s although a picture was due", NO_PICTURE.as_secs()));
+                } else if trouble > 0
+                    && !placeholder
+                    && due_since.is_none()
+                    && good_since.elapsed() >= RECOVERED
+                {
+                    trouble = 0;
+                    log::info!("host session: the picture is back");
+                }
+                let video = match () {
+                    _ if source.as_ref().is_some_and(|s| s.why.is_some()) => "placeholder",
+                    _ if off => "dark",
+                    _ if trouble > 0 => "recovering",
+                    _ => "live",
+                };
+                let stats = Message::Stats { delay_ms: last_delay, fps, bitrate: kbps.saturating_mul(1000), encode_ms, frames, video: video.into() };
                 seal_json(&mut noise, &mut buf, &mut wr, &stats).await?;
             }
             () = async {
@@ -3016,33 +3183,19 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     None => std::future::pending().await,
                 }
             } => {
-                reopen!(source.as_ref().and_then(|s| s.display));
+                reopen!(want_display);
             }
             f = async {
                 match source.as_mut() {
                     Some(s) => s.frames.recv().await,
                     None => std::future::pending().await,
                 }
-            }, if reopen_at.is_none() && frame_no.wrapping_sub(acked) < IN_FLIGHT => {
+            }, if frame_no.wrapping_sub(acked) < IN_FLIGHT => {
                 let Some(f) = f else {
                     // The capture ended by itself (its encoder failed twice,
                     // its thread could not follow the input desktop, the
-                    // helper's agent went): it opens again, the test
-                    // pattern after too many ends.
-                    ends.push(Instant::now());
-                    match reopen_plan(&mut ends, Instant::now()) {
-                        Reopen::After(wait) => {
-                            log::info!("host session: the video ended: opening it again in {} ms", wait.as_millis());
-                            reopen_at = Some(tokio::time::Instant::now() + wait);
-                        }
-                        Reopen::Pattern => {
-                            log::info!("host session: the video ended {REOPEN_LIMIT} times: sending the test pattern");
-                            let s = video::Source::pattern();
-                            announce(&mut noise, &mut buf, &mut wr, &s, &displays).await?;
-                            acked = frame_no;
-                            source = Some(s);
-                        }
-                    }
+                    // helper's agent went): the next recovery step.
+                    trouble!("the video ended".to_string());
                     continue;
                 };
                 if frame_no == acked {
@@ -3051,6 +3204,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 frame_no = frame_no.wrapping_add(1);
                 if let Some(s) = &source {
                     s.set_room(IN_FLIGHT.saturating_sub(frame_no.wrapping_sub(acked)));
+                }
+                due_since = None;
+                if f.flags & media::KEY_FRAME != 0 {
+                    key_sent = Some((frame_no, Instant::now()));
                 }
                 sent_this_second += 1;
                 took_this_second += u64::from(f.took_us);
@@ -3110,7 +3267,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     continue;
                 }
                 // Only messages a GUI may send pass on to the host.
-                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::Codec { .. } | Message::Audio { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. })) = serde_json::from_value::<Message>(msg) {
+                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::Codec { .. } | Message::Audio { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. } | Message::NoPicture { .. })) = serde_json::from_value::<Message>(msg) {
                     // The viewer's latest choices, for a resumed session.
                     if let (Some(c), Ok(v)) = (&choices, serde_json::to_value(&m))
                         && let Ok(mut c) = c.lock()
@@ -3121,6 +3278,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             Message::Audio { .. } => c.audio = Some(v),
                             _ => {}
                         }
+                    }
+                    // Only a host that recovers its picture hears that the
+                    // viewer shows none (a 0.4.0 host would not parse it).
+                    if matches!(m, Message::NoPicture { .. }) && !host_recovers {
+                        continue;
                     }
                     if matches!(m, Message::Action { action: SessionAction::Wake }) && !host_wakes {
                         for down in [true, false] {
@@ -3201,7 +3363,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             let first_changed = c.first() != chosen.first();
                             chosen = c;
                             if wants_video && source.is_some() && first_changed {
-                                reopen!(source.as_ref().and_then(|s| s.display));
+                                reopen!(want_display);
                             }
                         }
                         let quality = match preset.as_str() {
@@ -3261,14 +3423,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             qos.user_network_delay(QOS_VIEWER, last_delay);
                         }
                     }
-                    Message::Stats { delay_ms, fps, bitrate, encode_ms, frames } => {
+                    Message::Stats { delay_ms, fps, bitrate, encode_ms, frames, video } => {
                         host_sends_video = true;
                         if let Some(m) = &meter {
                             m.bitrate(bitrate / 1000);
                         }
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::STATS];
-                            packet.extend(serde_json::to_vec(&json!({"delay_ms": delay_ms, "fps": fps, "bitrate": bitrate, "encode_ms": encode_ms, "frames": frames})).map_err(|_| Failure::Broken)?);
+                            packet.extend(serde_json::to_vec(&json!({"delay_ms": delay_ms, "fps": fps, "bitrate": bitrate, "encode_ms": encode_ms, "frames": frames, "video": video})).map_err(|_| Failure::Broken)?);
                             q.push(packet);
                         }
                     }
@@ -3395,7 +3557,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         let first_changed = source.is_none() || c.first() != chosen.first();
                         chosen = c;
                         if wants_video && first_changed {
-                            reopen!(source.as_ref().and_then(|s| s.display));
+                            reopen!(want_display);
                         }
                     }
                     // The viewer picks a codec of the offer, or Auto (a name
@@ -3409,7 +3571,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             let first_changed = c.first() != chosen.first();
                             chosen = c;
                             if source.is_some() && first_changed {
-                                reopen!(source.as_ref().and_then(|s| s.display));
+                                reopen!(want_display);
                             }
                         }
                     }
@@ -3432,12 +3594,46 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // stream, its displays and the codecs again and start a
                     // new group of pictures.
                     Message::KeyFrame => {
+                        let mut unused = false;
                         if let Some(s) = &source {
                             s.key_frame();
                             announce(&mut noise, &mut buf, &mut wr, s, &displays).await?;
                             if !offer.is_empty() {
                                 seal_json(&mut noise, &mut buf, &mut wr, &Message::CodecOffer { codecs: offer.clone() }).await?;
                             }
+                            if s.why.is_none() {
+                                due_since.get_or_insert_with(Instant::now);
+                                // A key frame that arrived (acknowledged) and
+                                // was asked for again a while later is one
+                                // the viewer could not use: after three, the
+                                // next recovery step (for viewers that do
+                                // not say so themselves).
+                                if let Some((no, at)) = key_sent
+                                    && at.elapsed() >= KEY_UNUSED
+                                    && (acked.wrapping_sub(no) as i32) >= 0
+                                    && stepped_at.is_none_or(|t| t.elapsed() >= STEP_GRACE)
+                                {
+                                    key_sent = None;
+                                    unused_keys += 1;
+                                    unused = unused_keys >= 3;
+                                }
+                            }
+                        }
+                        if unused {
+                            trouble!("the viewer could not use the key frames it got".to_string());
+                        }
+                    }
+                    // The viewer has shown no picture for a while (a
+                    // `recovery` controller says so each second): after
+                    // VIEWER_WAIT the next recovery step, each given
+                    // STEP_GRACE to work.
+                    Message::NoPicture { for_ms, why } => {
+                        if source.as_ref().is_some_and(|s| s.why.is_none())
+                            && reopen_at.is_none()
+                            && u128::from(for_ms) >= VIEWER_WAIT.as_millis()
+                            && stepped_at.is_none_or(|t| t.elapsed() >= STEP_GRACE)
+                        {
+                            trouble!(format!("the viewer shows no picture ({why})"));
                         }
                     }
                     // Input reaches the host only with control-input; a
@@ -5891,29 +6087,27 @@ mod tests {
         }
     }
 
-    /// A video whose frames end opens again at once, then no sooner than
-    /// REOPEN_EVERY after the last end; the third end in REOPEN_WINDOW
-    /// gives the test pattern.
+    /// The recovery of a host's picture: open again at once, then after a
+    /// pause, then in the next codec, then the placeholder while the screen
+    /// is tried again ever less often but never given up (regression: the
+    /// third end within 30 s gave the test pattern for good).
     #[test]
-    fn an_ended_video_opens_again_then_falls_back_to_the_pattern() {
-        let t0 = Instant::now();
-        let at = |ms| t0 + Duration::from_millis(ms);
-        let mut ends = vec![at(0)];
-        assert_eq!(reopen_plan(&mut ends, at(0)), Reopen::After(Duration::ZERO));
-        ends.push(at(500));
-        assert_eq!(
-            reopen_plan(&mut ends, at(500)),
-            Reopen::After(Duration::from_millis(1500))
-        );
-        ends.push(at(9000));
-        assert_eq!(reopen_plan(&mut ends, at(9000)), Reopen::Pattern);
-        // Ends long ago are forgotten.
-        let mut ends = vec![at(0), at(20_000), at(45_000)];
-        assert_eq!(
-            reopen_plan(&mut ends, at(45_000)),
-            Reopen::After(Duration::ZERO)
-        );
-        assert_eq!(ends.len(), 2);
+    fn the_host_never_gives_up_on_the_picture() {
+        let s = Duration::from_secs;
+        let cases = [
+            (0, Recovery::Reopen(Duration::ZERO)),
+            (1, Recovery::Reopen(REOPEN_PAUSE)),
+            (2, Recovery::NextCodec),
+            (3, Recovery::Placeholder(s(2))),
+            (4, Recovery::Placeholder(s(4))),
+            (5, Recovery::Placeholder(s(8))),
+            (6, Recovery::Placeholder(PROBE_MAX)),
+            (40, Recovery::Placeholder(PROBE_MAX)),
+            (u32::MAX, Recovery::Placeholder(PROBE_MAX)),
+        ];
+        for (trouble, want) in cases {
+            assert_eq!(recovery(trouble), want, "trouble {trouble}");
+        }
     }
 
     /// Reads from a raw channel until a message of `kind` arrives.

@@ -19,14 +19,15 @@ use objc2_core_foundation::{
     CGPoint, CGRect, kCFRunLoopCommonModes, kCFRunLoopDefaultMode,
 };
 use objc2_core_graphics::{
-    CGDirectDisplayID, CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayIsMain, CGDisplayMode,
-    CGError, CGEvent, CGEventField, CGEventFlags, CGEventMask, CGEventSource, CGEventSourceStateID,
-    CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventTapProxy, CGEventType,
-    CGGetActiveDisplayList, CGKeyCode, CGMouseButton, CGPreflightListenEventAccess,
-    CGPreflightScreenCaptureAccess, CGRectMakeWithDictionaryRepresentation,
-    CGRequestListenEventAccess, CGRequestScreenCaptureAccess, CGScrollEventUnit,
-    CGWindowListCopyWindowInfo, CGWindowListOption, kCGWindowBounds, kCGWindowLayer,
-    kCGWindowOwnerPID,
+    CGDirectDisplayID, CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayIsAsleep,
+    CGDisplayIsMain, CGDisplayMode, CGError, CGEvent, CGEventField, CGEventFlags, CGEventMask,
+    CGEventSource, CGEventSourceStateID, CGEventTapLocation, CGEventTapOptions,
+    CGEventTapPlacement, CGEventTapProxy, CGEventType, CGGetActiveDisplayList,
+    CGGetOnlineDisplayList, CGKeyCode, CGMainDisplayID, CGMouseButton,
+    CGPreflightListenEventAccess, CGPreflightScreenCaptureAccess,
+    CGRectMakeWithDictionaryRepresentation, CGRequestListenEventAccess,
+    CGRequestScreenCaptureAccess, CGScrollEventUnit, CGWindowListCopyWindowInfo,
+    CGWindowListOption, kCGWindowBounds, kCGWindowLayer, kCGWindowOwnerPID,
 };
 use objc2_core_media::{CMSampleBuffer, CMTime, CMTimeFlags};
 use objc2_core_video::{
@@ -141,6 +142,21 @@ fn active() -> Vec<CGDirectDisplayID> {
         return Vec::new();
     }
     ids[..(n as usize).min(MAX_DISPLAYS)].to_vec()
+}
+
+/// Whether the displays are asleep: the main display sleeps, or a display
+/// is connected while none is active (a sleeping display leaves the active
+/// list, so a stream opened then finds none).
+pub fn asleep() -> bool {
+    if CGDisplayIsAsleep(CGMainDisplayID()) {
+        return true;
+    }
+    let mut ids = [0 as CGDirectDisplayID; MAX_DISPLAYS];
+    let mut n = 0u32;
+    // SAFETY: `ids` has room for MAX_DISPLAYS ids and `n` receives how many
+    // were written.
+    let err = unsafe { CGGetOnlineDisplayList(MAX_DISPLAYS as u32, ids.as_mut_ptr(), &mut n) };
+    err == CGError::Success && n > 0 && active().is_empty()
 }
 
 /// A display's place in global coordinates (points, top left at the main
@@ -402,7 +418,12 @@ define_class!(
     unsafe impl SCStreamDelegate for Output {
         #[unsafe(method(stream:didStopWithError:))]
         fn stream_did_stop(&self, _stream: &SCStream, error: &NSError) {
-            log::info!("the screen stream stopped: {}", error.localizedDescription());
+            log::info!(
+                "the screen stream stopped: {} ({} {})",
+                error.localizedDescription(),
+                error.domain(),
+                error.code()
+            );
             crate::guarded(|| self.ivars().stop());
         }
     }
@@ -596,8 +617,8 @@ define_class!(
     // has no Drop logic beyond its ivars.
     #[unsafe(super(NSObject))]
     #[name = "KyokaiSoundOutput"]
-    #[ivars = Arc<crate::audio::Pcm>]
-    /// Receives a stream's sound.
+    #[ivars = Sound]
+    /// Receives a stream's sound and its end.
     struct SoundOutput;
 
     unsafe impl NSObjectProtocol for SoundOutput {}
@@ -611,15 +632,38 @@ define_class!(
             kind: SCStreamOutputType,
         ) {
             if kind == SCStreamOutputType::Audio {
-                crate::guarded(|| take_sound(sample, self.ivars()));
+                crate::guarded(|| take_sound(sample, &self.ivars().pcm));
             }
+        }
+    }
+
+    unsafe impl SCStreamDelegate for SoundOutput {
+        #[unsafe(method(stream:didStopWithError:))]
+        fn stream_did_stop(&self, _stream: &SCStream, error: &NSError) {
+            log::info!(
+                "the sound stream stopped: {} ({} {})",
+                error.localizedDescription(),
+                error.domain(),
+                error.code()
+            );
+            self.ivars().stopped.store(true, Ordering::Relaxed);
         }
     }
 );
 
+/// What a sound stream's callbacks share with its `AudioCapture`.
+struct Sound {
+    pcm: Arc<crate::audio::Pcm>,
+    /// The stream stopped by itself (the display slept or went away).
+    stopped: AtomicBool,
+}
+
 impl SoundOutput {
     fn new(pcm: Arc<crate::audio::Pcm>) -> Retained<Self> {
-        let this = Self::alloc().set_ivars(pcm);
+        let this = Self::alloc().set_ivars(Sound {
+            pcm,
+            stopped: AtomicBool::new(false),
+        });
         // SAFETY: NSObject's init on a freshly allocated object.
         unsafe { msg_send![super(this), init] }
     }
@@ -696,14 +740,14 @@ impl AudioCapture {
             config
         };
         let output = SoundOutput::new(pcm);
-        // SAFETY: no delegate; `AudioCapture` holds the output for the
-        // stream's life.
+        // SAFETY: the stream keeps the delegate weakly; `AudioCapture` holds
+        // it, as the output, for the stream's life.
         let stream = unsafe {
             SCStream::initWithFilter_configuration_delegate(
                 SCStream::alloc(),
                 &filter,
                 &config,
-                None,
+                Some(ProtocolObject::from_ref(&*output)),
             )
         };
         let queue = DispatchQueue::new("com.yuanzhe.kyokai.sound", None);
@@ -730,6 +774,12 @@ impl AudioCapture {
             stream,
             _output: output,
         })
+    }
+
+    /// Whether the stream stopped by itself: a display sleep ends it, and
+    /// the sound comes back only through a new stream.
+    pub fn stopped(&self) -> bool {
+        self._output.ivars().stopped.load(Ordering::Relaxed)
     }
 }
 

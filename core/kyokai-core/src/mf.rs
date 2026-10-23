@@ -338,6 +338,11 @@ pub struct Encoder {
     next: Option<usize>,
     /// The output sample, given again, for a transform that wants one.
     spare: Option<IMFSample>,
+    /// How often the transform changed its output format.
+    changes: u32,
+    /// Pictures fed to the transform, and empty outputs it gave.
+    fed: u32,
+    empty: u32,
 }
 
 /// Whether a hardware encoder is open in this process: one at a time (the
@@ -354,7 +359,9 @@ const HARDWARE_TRIAL: usize = 30;
 
 impl Encoder {
     /// Opens an encoder for `width`×`height` (even) at `fps` and a target
-    /// bitrate, tuned for low latency (no B-frames, frequent key frames).
+    /// bitrate, tuned for low latency (no B-frames, frequent key frames):
+    /// the GPU's when `hardware` allows it and one is free, else the
+    /// software one.
     /// Returns: an error when this system has no encoder for the codec
     /// (Windows N and Server editions lack even H.264).
     pub fn new(
@@ -363,11 +370,12 @@ impl Encoder {
         height: u32,
         fps: u32,
         bitrate: u32,
+        hardware: bool,
     ) -> Result<Self, String> {
         startup()?;
         // The GPU's encoder, if it opens and encodes a few frames; some need
         // a Direct3D device or reject system memory, so it is tried first.
-        if !HARDWARE_IN_USE.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        if hardware && !HARDWARE_IN_USE.swap(true, std::sync::atomic::Ordering::AcqRel) {
             if let Some(t) = find_transform(
                 MFT_CATEGORY_VIDEO_ENCODER,
                 true,
@@ -393,6 +401,15 @@ impl Encoder {
     /// Whether this is the GPU's encoder (the software one otherwise).
     pub fn hardware(&self) -> bool {
         self.events.is_some()
+    }
+
+    /// What the transform did, for the log when it fails: pictures fed,
+    /// empty outputs, output format changes.
+    pub fn counts(&self) -> String {
+        format!(
+            "{} pictures fed, {} empty outputs, {} format changes",
+            self.fed, self.empty, self.changes
+        )
     }
 
     /// The bytes of one NV12 picture of the stream's size, and of its luma
@@ -533,6 +550,9 @@ impl Encoder {
             out_frame: -1,
             next: None,
             spare: None,
+            changes: 0,
+            fed: 0,
+            empty: 0,
         })
     }
 
@@ -621,6 +641,7 @@ impl Encoder {
             None => {
                 // SAFETY: the transform takes its own reference to the sample.
                 unsafe { self.t.ProcessInput(0, &sample, 0)? };
+                self.fed += 1;
                 let mut out = Vec::new();
                 while let Some(u) = self.output()? {
                     out.push(u);
@@ -637,8 +658,26 @@ impl Encoder {
     /// key frame; its time frees the inputs up to the frame it carries.
     /// Returns: None when the transform has no output now.
     fn output(&mut self) -> windows::core::Result<Option<Unit>> {
-        let Output::Sample(s) = output_once(&self.t, &mut self.spare)? else {
-            return Ok(None);
+        let mut changed = 0;
+        let s = loop {
+            match output_once(&self.t, &mut self.spare)? {
+                Output::Sample(s) => break s,
+                Output::NeedInput => return Ok(None),
+                // A transform that changed its output format holds its
+                // output, and asks for no more input, until the new type is
+                // set (Media Foundation's rule; ignored, it would go silent).
+                Output::StreamChange if changed < 3 => {
+                    changed += 1;
+                    self.changes += 1;
+                    // SAFETY: COM calls on the transform and the type it
+                    // offers.
+                    unsafe {
+                        let t = self.t.GetOutputAvailableType(0, 0)?;
+                        self.t.SetOutputType(0, &t, 0)?;
+                    }
+                }
+                Output::StreamChange => return Err(windows::Win32::Foundation::E_FAIL.into()),
+            }
         };
         // SAFETY: plain reads of the output sample.
         let (key, time) = unsafe {
@@ -673,6 +712,7 @@ impl Encoder {
                 // SAFETY: the transform takes its own reference to the sample.
                 unsafe { self.t.ProcessInput(0, sample, 0)? };
                 self.wanted -= 1;
+                self.fed += 1;
                 fed = true;
             }
             // SAFETY: a non-blocking event query on the transform.
@@ -691,10 +731,13 @@ impl Encoder {
                         self.wanted += 1;
                     } else if kind == METransformHaveOutput.0 as u32
                         && let Some(u) = self.output()?
-                        // Some GPUs' encoders give empty outputs between frames.
-                        && !u.0.is_empty()
                     {
-                        out.push(u);
+                        // Some GPUs' encoders give empty outputs between frames.
+                        if u.0.is_empty() {
+                            self.empty += 1;
+                        } else {
+                            out.push(u);
+                        }
                     }
                 }
                 Err(e) if e.code() == MF_E_NO_EVENTS_AVAILABLE => {
@@ -911,6 +954,10 @@ pub struct Decoder {
     gpu: bool,
     /// The output sample, given again, for a transform that wants one.
     spare: Option<IMFSample>,
+    /// The stream's unit syntax (H.264, HEVC; None for VP9), and whether
+    /// parameter sets came yet.
+    syntax: Option<crate::annexb::Syntax>,
+    sets_seen: bool,
 }
 
 impl Decoder {
@@ -978,6 +1025,12 @@ impl Decoder {
             n: 0,
             gpu,
             spare: None,
+            syntax: match codec {
+                Codec::H264 => Some(crate::annexb::Syntax::H264),
+                Codec::Hevc => Some(crate::annexb::Syntax::Hevc),
+                Codec::Vp9 => None,
+            },
+            sets_seen: false,
         };
         d.pick_output()
             .map_err(|e| format!("{} decoder: {e}", codec.name()))?;
@@ -1028,6 +1081,21 @@ impl Decoder {
         height: u32,
         rgba: &mut Vec<u8>,
     ) -> Result<Option<(u32, u32)>, String> {
+        // A key frame before any parameter set cannot start the decoder,
+        // which would take it and the frames after it and give nothing, for
+        // good: an error, so that the viewer asks for another key frame.
+        if let Some(syntax) = self.syntax
+            && !self.sets_seen
+        {
+            let mut key = false;
+            for u in crate::annexb::units(unit) {
+                self.sets_seen |= syntax.parameter_set(u);
+                key |= syntax.key(u);
+            }
+            if key && !self.sets_seen {
+                return Err("decoder: a key frame without its parameter sets".into());
+            }
+        }
         let out = self
             .decode_unit(unit, width, height, rgba)
             .map_err(|e| format!("decoder: {e}"))?;
@@ -1077,7 +1145,7 @@ mod tests {
         let mut tried = Vec::new();
         for codec in Codec::ALL {
             let (Ok(encoder), Ok(decoder)) = (
-                Encoder::new(codec, 320, 192, 30, 1_000_000),
+                Encoder::new(codec, 320, 192, 30, 1_000_000, true),
                 Decoder::new(codec, 320, 192),
             ) else {
                 // Windows N and Server images without Media Foundation; a
@@ -1097,9 +1165,220 @@ mod tests {
     #[ignore = "needs a GPU that encodes and decodes HEVC; run alone"]
     fn hardware_hevc_survives_at_1080p() {
         let (w, h) = (1920, 1080);
-        let encoder = Encoder::new(Codec::Hevc, w, h, 30, 4_000_000).unwrap();
+        let encoder = Encoder::new(Codec::Hevc, w, h, 30, 4_000_000, true).unwrap();
         assert!(encoder.events.is_some(), "no hardware HEVC encoder");
         round_trip(encoder, Decoder::new(Codec::Hevc, w, h).unwrap(), w, h);
+    }
+
+    /// Frame `n` of a grey picture with a bright square moving across it.
+    fn moving(w: u32, h: u32, n: usize) -> Vec<u8> {
+        (0..(w * h) as usize)
+            .flat_map(|i| {
+                let (x, y) = (i % w as usize, i / w as usize);
+                let on = (x + 300 - n * 8 % 300) % 300 < 40 && (60..120).contains(&y);
+                if on {
+                    [240u8, 240, 240, 255]
+                } else {
+                    [90, 90, 90, 255]
+                }
+            })
+            .collect()
+    }
+
+    /// Gives the encoder one BGRA picture of `w`×`h`.
+    fn give(e: &mut Encoder, bgra: &[u8], w: u32, h: u32) {
+        e.picture(video::Picture {
+            bgra,
+            width: w as usize,
+            height: h as usize,
+            stride: w as usize * 4,
+        });
+    }
+
+    /// The H.264 or HEVC encoders this machine has, each with whether it is
+    /// the GPU's: that one after the trial a stream gives it (left out when
+    /// it fails it), and the software one.
+    fn encoders(codec: Codec, w: u32, h: u32) -> Vec<(bool, Encoder)> {
+        startup().expect("Media Foundation");
+        let mut found = Vec::new();
+        for hardware in [true, false] {
+            if let Some(t) = find_transform(
+                MFT_CATEGORY_VIDEO_ENCODER,
+                hardware,
+                MFVideoFormat_NV12,
+                codec.subtype(),
+            ) && let Ok(mut e) = Encoder::open(t, codec, w, h, 30, 4_000_000, hardware)
+                && (!hardware || e.works())
+            {
+                found.push((hardware, e));
+            }
+        }
+        found
+    }
+
+    /// Wakes the display and keeps it on while it lives: the GPU's
+    /// encoders give nothing while it is off (see the test below).
+    struct DisplayOn;
+
+    impl DisplayOn {
+        fn new() -> DisplayOn {
+            use windows::Win32::System::Power::{
+                ES_CONTINUOUS, ES_DISPLAY_REQUIRED, SetThreadExecutionState,
+            };
+            // SAFETY: execution states, no pointers.
+            unsafe {
+                SetThreadExecutionState(ES_DISPLAY_REQUIRED);
+                SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED);
+            }
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            DisplayOn
+        }
+    }
+
+    impl Drop for DisplayOn {
+        fn drop(&mut self) {
+            use windows::Win32::System::Power::{ES_CONTINUOUS, SetThreadExecutionState};
+            // SAFETY: an execution state, no pointers.
+            unsafe { SetThreadExecutionState(ES_CONTINUOUS) };
+        }
+    }
+
+    /// The unit syntax of an H.264 or HEVC stream.
+    fn syntax(codec: Codec) -> crate::annexb::Syntax {
+        match codec {
+            Codec::Hevc => crate::annexb::Syntax::Hevc,
+            _ => crate::annexb::Syntax::H264,
+        }
+    }
+
+    /// Every key frame of every H.264 and HEVC encoder here carries its
+    /// parameter sets, so a decoder that missed the stream's first key frame
+    /// opens on the next one, as the viewer expects (true of Qualcomm's and
+    /// Microsoft's encoders, 2026-10-22, doc/en-us/platform-notes.md).
+    #[test]
+    #[ignore = "uses the GPU's encoders; run alone"]
+    fn every_key_frame_carries_its_parameter_sets() {
+        let _on = DisplayOn::new();
+        let (w, h) = (1280u32, 720u32);
+        for codec in [Codec::H264, Codec::Hevc] {
+            let syntax = syntax(codec);
+            for (hardware, mut e) in encoders(codec, w, h) {
+                let what = format!("{} (GPU: {hardware})", codec.name());
+                let mut stream = Vec::new();
+                for n in 0..60usize {
+                    give(&mut e, &moving(w, h, n), w, h);
+                    stream.extend(e.encode(n % 20 == 0).unwrap());
+                }
+                let keys: Vec<usize> = (0..stream.len()).filter(|&i| stream[i].1).collect();
+                assert!(keys.len() >= 2, "{what}: key frames {keys:?}");
+                for &i in &keys {
+                    assert!(
+                        crate::annexb::units(&stream[i].0).any(|u| syntax.parameter_set(u)),
+                        "{what}: key frame {i} without its parameter sets"
+                    );
+                }
+                let mut d = Decoder::new(codec, w, h).expect("a decoder");
+                let mut rgba = Vec::new();
+                assert!(
+                    stream[keys[1]..]
+                        .iter()
+                        .any(|(unit, _)| matches!(d.decode(unit, w, h, &mut rgba), Ok(Some(_)))),
+                    "{what}: no picture from the second key frame"
+                );
+            }
+        }
+    }
+
+    /// With the display on, the GPU's encoder answers every key frame asked
+    /// for on a still screen after a dark start, fed as the capture loop
+    /// feeds it (the last picture again while a key frame is asked for or
+    /// frames are held). With the display off, Qualcomm's answered none, and
+    /// none once the display was back either (2026-10-22,
+    /// doc/en-us/platform-notes.md): the capture opens the GPU's encoder only
+    /// with the display on and counts silence as a failure. The test wakes
+    /// the display and keeps it on while it runs.
+    #[test]
+    #[ignore = "uses the GPU's encoders and keeps the display on; run alone"]
+    fn the_gpu_encoder_answers_every_key_frame_with_the_display_on() {
+        use std::time::{Duration, Instant};
+        let _on = DisplayOn::new();
+        let (w, h) = (1920u32, 1080u32);
+        let black: Vec<u8> = [0u8, 0, 0, 255].repeat((w * h) as usize);
+        for codec in [Codec::Hevc, Codec::H264] {
+            let Some((_, mut e)) = encoders(codec, w, h).into_iter().find(|(gpu, _)| *gpu) else {
+                eprintln!("skipped: no GPU encoder for {}", codec.name());
+                continue;
+            };
+            for n in 0..10 {
+                give(&mut e, &black, w, h);
+                e.encode(n == 0).unwrap();
+            }
+            give(&mut e, &moving(w, h, 7), w, h);
+            e.encode(false).unwrap();
+            let (mut asked, mut answered) = (0, 0);
+            let (mut pending, mut forced, mut held) = (false, None::<Instant>, 0);
+            for i in 0..300usize {
+                std::thread::sleep(Duration::from_millis(33));
+                if i % 30 == 0 {
+                    (pending, asked) = (true, asked + 1);
+                }
+                if !(pending || held > 0) {
+                    continue;
+                }
+                let force =
+                    pending && forced.is_none_or(|t| t.elapsed() >= Duration::from_millis(500));
+                if force {
+                    forced = Some(Instant::now());
+                }
+                let out = e.encode(force).unwrap();
+                held = if out.is_empty() {
+                    (held + 1).min(30)
+                } else {
+                    0
+                };
+                if pending && out.iter().any(|(_, key)| *key) {
+                    (pending, forced, answered) = (false, None, answered + 1);
+                }
+            }
+            assert_eq!(answered, asked, "{}: key frames answered", codec.name());
+        }
+    }
+
+    /// A key frame that reaches a fresh decoder without its parameter sets
+    /// is an error, for the viewer to ask for another, not a silent wait (a
+    /// decoder that misses them would take every frame after and show
+    /// nothing, for good); the whole key frame then starts it.
+    #[test]
+    fn a_key_frame_without_its_parameter_sets_is_an_error() {
+        let (w, h) = (320u32, 192u32);
+        let (Ok(mut e), Ok(mut d)) = (
+            Encoder::new(Codec::H264, w, h, 30, 1_000_000, false),
+            Decoder::new(Codec::H264, w, h),
+        ) else {
+            return eprintln!("skipped: no H.264 encoder or decoder");
+        };
+        give(&mut e, &moving(w, h, 0), w, h);
+        let (key, _) = e
+            .encode(true)
+            .unwrap()
+            .into_iter()
+            .find(|(_, key)| *key)
+            .expect("a key frame");
+        let syntax = crate::annexb::Syntax::H264;
+        let mut bare = Vec::new();
+        for u in crate::annexb::units(&key).filter(|u| !syntax.parameter_set(u)) {
+            crate::annexb::append_annexb(u, &mut bare);
+        }
+        let mut rgba = Vec::new();
+        assert!(d.decode(&bare, w, h, &mut rgba).is_err());
+        let mut shown = d.decode(&key, w, h, &mut rgba).unwrap();
+        for n in 1..5 {
+            give(&mut e, &moving(w, h, n), w, h);
+            for (unit, _) in e.encode(false).unwrap() {
+                shown = shown.or(d.decode(&unit, w, h, &mut rgba).unwrap());
+            }
+        }
+        assert_eq!(shown, Some((w, h)), "no picture after the whole key frame");
     }
 
     /// Carries 30 frames of a moving picture through, checking the last one.
@@ -1107,24 +1386,7 @@ mod tests {
         let mut rgba = Vec::new();
         let mut shown = None;
         for n in 0..30usize {
-            // A grey picture with a bright square moving across it.
-            let bgra: Vec<u8> = (0..(w * h) as usize)
-                .flat_map(|i| {
-                    let (x, y) = (i % w as usize, i / w as usize);
-                    let on = (x + 300 - n * 8) % 300 < 40 && (60..120).contains(&y);
-                    if on {
-                        [240u8, 240, 240, 255]
-                    } else {
-                        [90, 90, 90, 255]
-                    }
-                })
-                .collect();
-            encoder.picture(video::Picture {
-                bgra: &bgra,
-                width: w as usize,
-                height: h as usize,
-                stride: w as usize * 4,
-            });
+            give(&mut encoder, &moving(w, h, n), w, h);
             for (unit, _) in encoder.encode(n == 0).unwrap() {
                 if let Some(size) = decoder.decode(&unit, w, h, &mut rgba).unwrap() {
                     shown = Some(size);
@@ -1157,7 +1419,7 @@ mod latency {
     #[test]
     fn the_encoder_answers_within_two_frames() {
         let (w, h) = (640u32, 360u32);
-        let Ok(mut e) = Encoder::new(Codec::H264, w, h, 30, 2_000_000) else {
+        let Ok(mut e) = Encoder::new(Codec::H264, w, h, 30, 2_000_000, true) else {
             return eprintln!("skipped: no encoder");
         };
         let mut n = 0;

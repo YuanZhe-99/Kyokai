@@ -168,16 +168,55 @@ func startSocket(helperMode, installed bool, own string) string {
 	return own
 }
 
-// SetWindow hands the GUI its main window and keeps it out of capture
-// unless the person chose otherwise.
-func (a *App) SetWindow(w *mygo.Window) {
+// mainWindow returns the main window, made first when there is none: it
+// exists only while shown (doc/en-us/gui.md, "Tray"). A hidden window
+// kept for later came up at Windows sign-in as a white frame that Kyokai
+// took for hidden: Windows' rearranging of windows when the displays
+// changed made it visible, unpainted, behind MyGo's back.
+// Side effects: a new hidden window at the place it had, kept out of
+// capture unless the person chose otherwise; the caller shows it.
+// Notes: call on the main thread.
+func (a *App) mainWindow() *mygo.Window {
+	a.mu.Lock()
+	w := a.window
+	show := a.prefs.ShowInCapture
+	a.mu.Unlock()
+	if w != nil {
+		return w
+	}
+	// The tab strip is the title bar (TitleBarOptions).
+	w = mygo.NewWindow(TitleBarOptions(mygo.WindowOptions{
+		Title: "Kyokai", Width: 1000, Height: 700, MinWidth: 760, MinHeight: 520,
+		StateKey: "main",
+		// Shown once its display affinity is set: never captured for a
+		// moment.
+		Hidden:  true,
+		Content: ui.View(a.MainView),
+	}))
+	w.SetContentProtection(!show)
 	a.mu.Lock()
 	a.window = w
 	a.main.win = w
-	show := a.prefs.ShowInCapture
 	a.mu.Unlock()
-	w.SetContentProtection(!show)
 	a.watchFocus(a.main)
+	a.main.watchFullScreen()
+	w.OnClose(a.HandleClose)
+	w.OnHide(func() { a.SetVisible(false) })
+	w.OnShow(func() { a.SetVisible(true) })
+	return w
+}
+
+// later runs fn on the main thread after the caller returns, and redraws
+// the main window when there is one.
+func (a *App) later(fn func()) {
+	a.mu.Lock()
+	w := a.window
+	a.mu.Unlock()
+	if w != nil {
+		w.Update(fn)
+		return
+	}
+	go mygo.RunOnMain(fn)
 }
 
 // setShowInCapture saves whether capture may see Kyokai's windows and
@@ -392,46 +431,17 @@ func (a *App) Stop() {
 	a.engine.stop(a.userSocket)
 }
 
-// Focus shows and raises the window.
+// Focus shows and raises the main window, made first when there is none.
+// Safe from any goroutine.
 func (a *App) Focus() {
-	a.mu.Lock()
-	w := a.window
-	a.mu.Unlock()
-	if w == nil {
-		return
-	}
-	// The Dock icon first: an accessory app's window does not come forward.
-	a.SetVisible(true)
-	w.Show()
-	w.Focus()
-}
-
-// When, after a start in the tray, KeepHidden looks whether the main
-// window stayed hidden.
-var keepHiddenChecks = []time.Duration{time.Second, 3 * time.Second, 10 * time.Second, 30 * time.Second}
-
-// KeepHidden hides the main window again when, in the first half minute
-// after a start in the tray, something other than Kyokai showed it.
-// Side effects: a goroutine; hides the window (main thread, through MyGo).
-// Notes: started at Windows sign-in, the window came up as a blank frame
-// that MyGo had never drawn and Kyokai took for hidden, until Show Kyokai;
-// what shows it was not found. Once Kyokai shows the window it stops.
-func (a *App) KeepHidden() {
-	go func() {
-		start := time.Now()
-		for _, at := range keepHiddenChecks {
-			time.Sleep(time.Until(start.Add(at)))
-			a.mu.Lock()
-			w, shown := a.window, a.visible
-			a.mu.Unlock()
-			if shown {
-				return
-			}
-			if w.IsVisible() {
-				w.Hide()
-			}
-		}
-	}()
+	mygo.RunOnMain(func() {
+		w := a.mainWindow()
+		// The Dock icon first: an accessory app's window does not come
+		// forward.
+		a.SetVisible(true)
+		w.Show()
+		w.Focus()
+	})
 }
 
 // Quit ends the app; the engine stops with it.
@@ -465,11 +475,13 @@ func (a *App) MarkQuitting() {
 func (a *App) update(fn func()) {
 	a.mu.Lock()
 	fn()
-	w, t := a.window, a.tray
+	t := a.tray
 	a.mu.Unlock()
-	if w != nil {
-		w.Update(func() { t.Refresh() })
-	}
+	a.later(func() {
+		if t != nil {
+			t.Refresh()
+		}
+	})
 }
 
 // notify shows a desktop notification where the system has them.
@@ -501,10 +513,6 @@ func (a *App) setToast(msg string, isErr bool) {
 	a.toast, a.toastErr, a.toastAt = msg, isErr, time.Now()
 	time.AfterFunc(4*time.Second+100*time.Millisecond, func() { a.update(func() {}) })
 }
-
-// WatchMainFullScreen keeps the main window's full-screen state, which
-// hides its tabs. Notes: call once, after SetWindow.
-func (a *App) WatchMainFullScreen() { a.main.watchFullScreen() }
 
 // MainView is the main window: Home and the connections' tabs.
 func (a *App) MainView(c *ui.Context) { a.main.view(c) }

@@ -50,6 +50,7 @@ Kyokai runs the same flow with any configured provider, and the live runs so far
 | Multi-monitor selection | Verified (Windows VM) | platform notes: Displays |
 | DPI coordinate mapping | Tested | the input mapping tests over the virtual desktop; a mixed-DPI setup has not been tried |
 | Disconnection releases resources | Tested | held keys and buttons released, capture and encoder dropped with the session |
+| The picture returns after a dark display | Tested | platform notes: Encoders in the dark, No picture after a dark display (the silent encoder and the ladder in the tests; live runs and the Mac mini host pending) |
 
 ## AI Computer Use (the specification's "OpenAI Computer Use")
 
@@ -90,6 +91,7 @@ Kyokai runs the same flow with any configured provider, and the live runs so far
 | Exit stops AI execution | Verified (Windows) | the engine, which runs AI tasks, ends with the app |
 | No permanent networking daemon remains | Verified (Windows) | platform notes: The helper (uninstall leaves nothing) |
 | Configuration paths displayed | Verified (Windows) | About → Diagnostics (data and logs folders) |
+| No window at a start in the tray | Tested | platform notes: White window at sign-in (the main window exists only while shown; a real sign-in pending) |
 
 ## Build and release
 

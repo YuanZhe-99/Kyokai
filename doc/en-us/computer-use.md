@@ -13,7 +13,7 @@ control, Phase 4 AI tasks).
 | Encode (macOS) | host engine | H.264 and HEVC through VideoToolbox (`core/kyokai-core/src/vt.rs`): the hardware encoder required, with low-latency rate control where it takes it (its low-latency encoder, `rtvc`, runs on the hardware though VideoToolbox's encoder list calls it software: 1080p takes 8 ms a frame on an M1 either way, 2 ms of it CPU for our own conversion, 2026-10-18), then without, then any encoder where there is no hardware; real time, no frame reordering, the average bitrate with at most one and a half times that in any second (a picture after a still screen stays small), a key frame every 4 seconds and on request; NV12 from the session's pixel buffer pool in, Annex B out with the parameter sets before each key frame, as Media Foundation's encoders give it (`annexb.rs`) |
 | Encode (software) | host engine | VP9 (`vp9-sw`) and VP8 through libvpx, AV1 through libaom — RustDesk's wrappers (`core/third_party/rustdesk-codec`) and settings: real-time, CBR at RustDesk's quality ratio of the base bitrate, a key frame every 4 seconds and on request; VP9 profile 1 and AV1 profile 1 carry 4:4:4 |
 | Carry | session | media chunks in the Noise channel ([protocol.md](protocol.md)); one frame waits for the session at most: the capture loop takes a picture only once the session has room for its frame — room the acknowledgements leave, which the session tells the capture (and the helper its agent, with the frame rate and bitrate) — so what goes out is the newest picture, not one that waited behind the network or for an acknowledgement. The host keeps at most 3 frames ahead of the controller's acknowledgements (`received`, sent as each frame's last chunk arrives), so on a slow path (a relay passing a few hundred kbit/s) the frames wait at the capture rather than in the transport's buffers, and the picture and the delay probe stay a round trip behind, not seconds; when no acknowledgement came for 3 seconds the host takes the frames in flight for lost and goes on from a key frame (RustDesk's bounded wait). Frames from the helper's session agent arrive as it captures and get as many places as the host keeps ahead; one that finds none is left out with the frames after it until a key frame, which the agent is asked for, again every 250 ms while frames are left out (a key frame that found no place too) |
-| Forward | controller engine | the session's media queue → `session.media` on the local API; a GUI that is 3 frames behind loses the frames waiting and the frames after them until a key frame (a frame without the ones before it cannot be decoded), which the controller asks the host for, again each second until it comes, on a timer of its own (a still screen sends nothing to wait for) |
+| Forward | controller engine | the session's media queue → `session.media` on the local API; a GUI that is 3 frames behind loses the frames waiting, except the newest key frame among them, and the frames after them until a key frame (a frame without the ones before it cannot be decoded), which the controller asks the host for, again each second until it comes, on a timer of its own (a still screen sends nothing to wait for) |
 | Decode | GUI | the GUI's own copy of the core (`kyokai_decoder_*`): Media Foundation's decoder for `h264`, `hevc` and `vp9` in low-latency mode (Microsoft's for H.264, the Store's video extensions for HEVC and VP9; through Direct3D 11 on the GPU for HEVC, and for H.264 where the GPU has an H.264 decoder, as a Mac decodes both through VideoToolbox), NV12 into RGBA, cropped to the stream's size, read in place from the decoder's buffer (a GPU surface mapped with its own pitch) as from VideoToolbox's pixel buffer; on macOS VideoToolbox for `h264` and `hevc`; libvpx or libaom for `vp9-sw`, `vp8` and `av1`, I420 or I444 into RGBA. VP9 through Media Foundation decodes in software (it gets no Direct3D device); each decoder says which it is and whether it runs in hardware (`kyokai_decoder_info`) |
 | Show | GUI | the viewer window's bitmap from three pictures: the one shown, the newest decoded one waiting for the main thread, and the one the next frame is decoded into; decoding never waits for drawing, a picture not drawn yet gives way to a newer one, and the pictures of a new stream are ready before its first frame |
 
@@ -21,13 +21,33 @@ While a frame waits inside the encoder, the host repeats the last picture so it 
 the screen stays still. A key frame asked for stays asked until one comes out: on a still screen
 the last picture is encoded again for it, and the encoder is asked again every half second (Media
 Foundation's asynchronous encoder may answer with frames it held; it waits a little for its own
-frame's output, and its error event, `MEError`, counts as a failure). An encoder that fails is
-logged and opened again once, with the display, for a first picture; when it fails again, or the
-capture ends otherwise (in the helper modes, an agent that went or a capture thread that could not
-follow the input desktop), the stream's frames end and the session opens the video again — at
-once, then no sooner than 2 seconds after the last end — and sends the test pattern after 3 ends
-within 30 seconds. A host that cannot capture (no interactive desktop, such as a service or an
-SSH session) sends the 320×180 test pattern instead (`raw-rgba`); a host without Media
+frame's output, and its error event, `MEError`, counts as a failure). An encoder that takes
+pictures and gives nothing for 2 seconds has failed too: a GPU's encoder may give no output while
+the display is off and stay silent once it is back (Qualcomm's, on the ARM64 test computer:
+[platform-notes.md](platform-notes.md)), so a stream takes the GPU's encoder only while the system
+reports the display on — a dark display is woken and given 2 seconds first — uses the software
+encoder otherwise, and moves back to the GPU when the display comes on. A failed encoder is logged
+with what it was fed and gave, and opened again, with the display, for a first picture (on the
+software encoder when the GPU's failed with the display on); a second failure before a key frame
+went out ends the stream. When the stream ends, or the capture ends otherwise (in the helper
+modes, an agent that went or a capture thread that could not follow the input desktop), the
+session's recovery takes over.
+
+The host never gives up on the picture. Its session watches the stream: frames ending, an open
+that found no display, no encoder or no agent, no frame for 5 seconds although one was due (since
+the start or a key frame asked for), key frames that keep being asked for after one went out, and
+— from a controller that announced `recovery` — the viewer saying it shows no picture
+([protocol.md](protocol.md)). Each counts as trouble and takes the next step: open the video again
+at once, then after 2 seconds, then in the next codec offered, then a placeholder while the real
+capture is tried again after 2, 4 and 8 seconds and then every 10 seconds; a step gets 4 seconds
+to work before the next counts. The placeholder (the 320×180 test pattern, `raw-rgba`) carries why
+(`video-start`'s `placeholder`: the display asleep, no display, Kyokai Helper's agent away, no
+encoder, no codec in common, or the screen not capturable), and the viewer shows that, not the
+pattern. A display the system reports back on is tried at once; a picture that keeps coming for 10
+seconds starts the count over. An open that finds no display while the system reports it asleep
+wakes it and looks again first (macOS leaves a sleeping display out of its list). A host that
+cannot capture (no interactive desktop, such as a service or an SSH session) shows the placeholder
+for good; a host without Media
 Foundation's encoders (Windows N, Server editions without Media Foundation) sends in software. When the display is lost — a mode change, the lock
 screen or a UAC prompt — the host releases it and opens the primary display again every half
 second; the stream keeps its size and a new mode is scaled into it (a changed aspect ratio shows
@@ -38,8 +58,9 @@ desktop's black), and takes a change — the lock screen, the sign-in screen or 
 or going — for a lost display; a display that opened while the input desktop moved, or a GDI
 capture whose retry of desktop duplication had to move the thread, opens again on the new desktop.
 A new desktop duplication that hands over no picture for a second (a still lock or sign-in screen
-draws nothing) gets one from GDI, and duplication is tried again 2 seconds later. Each failure to
-open the display again is logged once.
+draws nothing) gets one from GDI, and duplication is tried again 2 seconds later; GDI that cannot
+start is tried again a second later, and a duplication that comes back gets the same fallback. Each
+failure to open the display again is logged once.
 
 With more than one display the host sends the list (the primary first, the others left to
 right) with the stream, and the viewer offers them by number; choosing one restarts capture on it
@@ -98,11 +119,21 @@ tied to; up to 4 frames wait) and sound to a sound goroutine (up to 50 packets);
 reports it handles itself. When the video queue is full a frame is left out, and so is every frame
 after it until a key frame, which alone lets frames through again; the viewer asks the host for
 one at once and again each second until it comes, and so it does after a frame its decoder fails
-on (the decoder then takes nothing but a key frame). Once a second it also looks at the picture:
-when none came for 2 seconds although the host says it sent frames (`frames` in its stats; a still
-screen sends none, a 0.4.0 host does not say), it asks for a key frame and says "Recovering the
-picture…" over the picture shown. Sound that finds its queue full is left out. A slow picture so
-never holds up sound, input or the host's reports.
+on (the decoder then takes nothing but a key frame). A key frame that leaves a fresh decoder
+without a picture because its parameter sets are missing is such a failure, not a wait. Once a
+second it also looks at the picture: when none came for 2 seconds although the host says it sent
+frames (`frames` in its stats; a still screen sends none, a 0.4.0 host does not say), or none has
+come yet, it asks for a key frame and says "Recovering the picture…" over the picture shown; after
+5 seconds without one it tells a `recovery` host (`no-picture`, with why: a decode error, still
+waiting, or a stale picture), and the GUI log gets one line for the stretch. The controller's own
+queue, when it overflows for a reader that is behind, keeps the newest key frame waiting and
+skips to it, so the reader gets one decodable picture rather than none. A `recovery` host says
+what its video is doing in its stats (`video`: live, dark, recovering or placeholder), and the
+viewer shows that — the screen asleep or off and being woken, Kyokai Helper getting ready, the
+picture starting again — instead of guessing; it offers **Wake it** only when the host says its
+display is dark or asleep (an older host: after 3 seconds without a picture, as before). Sound
+that finds its queue full is left out. A slow picture so never holds up sound, input or the
+host's reports.
 
 ## Quality and bandwidth
 
@@ -149,7 +180,8 @@ it changes, `sound.source`; the helper passes it to its agent; a running stream 
 what the computer plays, or one input device (`sound.devices` lists them: Core Audio's devices with
 inputs on macOS, the active capture endpoints on Windows). `audio.rs` captures what the computer
 plays on macOS through a ScreenCaptureKit stream of the main display that carries only sound
-(Kyokai's own left out; the Screen Recording permission covers it) and an input through an audio
+(Kyokai's own left out; the Screen Recording permission covers it; a display sleep ends that stream,
+and a stream that stopped or could not start is started again every 2 seconds) and an input through an audio
 queue (the Microphone permission: both apps carry its usage text and the `audio-input`
 entitlement, and choosing an input asks for it); on Windows through WASAPI, loopback of the default
 output device or the input device, in their own format. It turns the sound into 48 kHz stereo
@@ -301,8 +333,14 @@ person's input would — on Windows, on the desktop that receives input (the loc
 `SetThreadExecutionState(ES_DISPLAY_REQUIRED)` and an absolute pointer move one pixel aside and
 back, tagged as Kyokai's input so the host user's input watch leaves it out; on macOS
 `IOPMAssertionDeclareUserActivity` — at most every 5 seconds, in the user's session (the
-agent's, in the helper modes). A viewer that has waited 3 seconds for its first picture, or for
-one while recovering it, says the screen there may be asleep and, with `control-input`, offers
+agent's, in the helper modes). On Windows the execution state turns a dark display on within the
+second (Kernel-Power's event 566 names it, reason 8); the pointer move runs on a thread of its own
+on the desktop that receives input, so the capture thread keeps its desktop. A wake asked for
+while the helper's agent is away is sent to the next agent. macOS reports a display asleep when
+the main display sleeps or no display is active while one is connected
+(`CGDisplayIsAsleep`, `CGGetOnlineDisplayList`); the capture, its recovery and the viewer see it
+as Windows' display state. A viewer whose host says its display is dark or asleep (an older
+host: after 3 seconds without a picture) says so and, with `control-input`, offers
 **Wake it**: the `wake` session action, which wakes the displays the same way at once and asks
 for a key frame; it takes nothing over from the host's AI and is not stopped by the guard that
 keeps remote input off Kyokai's windows. A host without `wake` (0.5.1 and older) gets a Shift
@@ -535,7 +573,7 @@ continues it until the engine stops.
 |---|---|
 | Permissions | Screen Recording for capture, Accessibility for input, Input Monitoring for the local-input watch, and the Keychain item of the secrets store ([security.md](security.md)); the engine reports them (`permissions` in the status); the GUI asks for them on its first start per version and through Allow on its permissions card — the privacy permissions in its own process (`kyokai_privacy_request`), so that a prompt belongs to the app, whose grant covers the engine (macOS counts the engine as part of it), and the Keychain through the engine (`permission.request` `keychain`). macOS 27 shows no prompt for either process: Allow opens the pane, where Kyokai is switched on (Accessibility's pane is called Device Control and Data Access there), which also opens the pane in System Settings. A Screen Recording grant counts once Kyokai restarts, which the card's Reopen Kyokai does (it stops the engine first) |
 | Displays | Core Graphics' active displays in points, the unit of its global coordinates (a Retina display is half its pixels); the main display is the primary |
-| Capture | a ScreenCaptureKit stream of the display at its pixel size scaled to fit 1920×1080, BGRA, without the pointer (the viewer draws it from the pointer messages) and, while Security's Hide Kyokai from capture is on (the default), without the windows of Kyokai's processes and app: the GUI tells the engine the setting as it attaches and whenever it changes (`capture.show`; in the helper modes the helper passes it to its agent, again whenever an agent starts), a running stream opens again on the new filter (half a second without pictures; updating its filter in place was tried once, and Kyokai stayed hidden when that did not take), and AI screenshots follow it too; an unchanged screen sends no picture; a program without a bundle identifier is never taken for Kyokai. Without the permission (checked before any ScreenCaptureKit call, so nothing waits on a prompt) the host sends the test pattern and no sound at once. A stream ends by removing its output and stopping, waiting up to 2 s; its completion keeps the stream alive until ScreenCaptureKit answers, and a start that did not answer in time is stopped the same way. Every callback from the system frameworks (pictures, sound, VideoToolbox, the event taps, the audio queue) catches its own panic, which the engine log records |
+| Capture | a ScreenCaptureKit stream of the display at its pixel size scaled to fit 1920×1080, BGRA, without the pointer (the viewer draws it from the pointer messages) and, while Security's Hide Kyokai from capture is on (the default), without the windows of Kyokai's processes and app: the GUI tells the engine the setting as it attaches and whenever it changes (`capture.show`; in the helper modes the helper passes it to its agent, again whenever an agent starts), a running stream opens again on the new filter (half a second without pictures; updating its filter in place was tried once, and Kyokai stayed hidden when that did not take), and AI screenshots follow it too; an unchanged screen sends no picture; a program without a bundle identifier is never taken for Kyokai. Without the permission (checked before any ScreenCaptureKit call, so nothing waits on a prompt) the host shows the placeholder (the screen not capturable) and sends no sound at once. A stream that stops logs ScreenCaptureKit's error domain and code. A stream ends by removing its output and stopping, waiting up to 2 s; its completion keeps the stream alive until ScreenCaptureKit answers, and a start that did not answer in time is stopped the same way. Every callback from the system frameworks (pictures, sound, VideoToolbox, the event taps, the audio queue) catches its own panic, which the engine log records |
 | Encode | VideoToolbox's H.264 and HEVC (above), then the software codecs (`vp9-sw`, `av1`, `vp8`) |
 | Decode | the viewer decodes `h264` and `hevc` through VideoToolbox and the software codecs through libvpx and libaom |
 | Input | Core Graphics events posted at the HID level and tagged as Kyokai's: pointer events in points with click counts for double and triple clicks, wheel notches as lines, named keys and modifiers (`ctrl` → Control, `alt` → Option, `meta` → Command) with the held modifiers' flags, text as Unicode, scan codes through a table to Mac key codes (Caps Lock follows the controller's; a Mac has no NumLock). The guard looks up the owner of the window under the point (or the frontmost normal window for keys) and drops events for any of Kyokai's processes — the app, the engine, Kyokai Helper — told by their executable as on Windows (before 0.4.0 it matched this engine and its parent, which missed the app in the helper modes, where launchd starts the agent) |

@@ -1193,17 +1193,48 @@ func TestInputStalled(t *testing.T) {
 // (which does not say) do not.
 func TestViewerNeedsKey(t *testing.T) {
 	for _, c := range []struct {
-		since  time.Duration
-		frames int
-		want   bool
+		since    time.Duration
+		frames   int
+		pictured bool
+		want     bool
 	}{
-		{500 * time.Millisecond, 30, false},
-		{2 * time.Second, 30, true},
-		{10 * time.Second, 0, false},
-		{3 * time.Second, 1, true},
+		{500 * time.Millisecond, 30, true, false},
+		{2 * time.Second, 30, true, true},
+		// A still screen after a picture sends nothing: nothing to ask.
+		{10 * time.Second, 0, true, false},
+		{3 * time.Second, 1, true, true},
+		// No picture yet: asked whatever the host says (regression: a host
+		// whose encoder gave nothing was never asked again).
+		{3 * time.Second, 0, false, true},
+		{500 * time.Millisecond, 0, false, false},
 	} {
-		if got := viewerNeedsKey(c.since, c.frames); got != c.want {
-			t.Errorf("%v %d: %v", c.since, c.frames, got)
+		if got := viewerNeedsKey(c.since, c.frames, c.pictured); got != c.want {
+			t.Errorf("%v %d %v: %v", c.since, c.frames, c.pictured, got)
+		}
+	}
+}
+
+// TestViewerAsleep: the viewer offers to wake the host's screen when the
+// host says its display is off or asleep, and only then (regression: the
+// offer showed while the host's display was on and its video was stuck); a
+// host that does not say (0.5.2 and older) gets the old guess after
+// wakeAfter.
+func TestViewerAsleep(t *testing.T) {
+	for _, c := range []struct {
+		since       time.Duration
+		video, code string
+		want        bool
+	}{
+		{10 * time.Second, "live", "", false},
+		{10 * time.Second, "recovering", "", false},
+		{0, "dark", "", true},
+		{0, "placeholder", "asleep", true},
+		{10 * time.Second, "placeholder", "agent", false},
+		{2 * time.Second, "", "", false},
+		{4 * time.Second, "", "", true},
+	} {
+		if got := viewerAsleep(c.since, c.video, c.code); got != c.want {
+			t.Errorf("%v %q %q: %v", c.since, c.video, c.code, got)
 		}
 	}
 }

@@ -65,6 +65,9 @@ Studio 2026）：
 | 登录密钥（2026-10-21） | 本机上的两个开发引擎（各自的 profile，经中继加入同一网络）：在控制端生成（`ctl keys-generate`）并在被控端授权（`ctl authorized-add`）的密钥，在密码授予的权限范围内不用密码接入了会话，被控端记录了它的登录 |
 | 隧道（2026-10-21） | 同样两个引擎：`ctl tunnel --service vnc` 到被控端 127.0.0.1:5900 上的回显替身，字节双向往返；`use-vnc` 不在授予范围内时被控端询问，允许后隧道打开；`ctl tunnel --service rdp` 到达本机自己的远程桌面，它以协商响应答复了 X.224 连接请求（未尝试登录） |
 | 状态查看者（2026-10-21） | 同样两个引擎：被控端仍以没有 `status` 的版本为人所知时，控制端上的 `ctl watch-status` 不拨号，报告 `unsupported`；一次会话刷新被控端的声明之后，它凭保存的密钥查看，每 2 秒打印一次采样（处理器、内存、经 PDH 读取的 3D 引擎负载、系统盘、网络速率、这台台式机没有电池、运行时间，以及正在监听的服务 `rdp` 与 `vnc`）；被控端列出了它的查看者而没有为它列出会话，租约放开后就不再列出。macOS 的采样器已针对 `aarch64-apple-darwin` 做过类型检查与 lint，但尚未在 Mac 上运行 |
+| 黑屏时的编码器（2026-10-22） | 本机的 Qualcomm 编码器（HEVC 与 H.264，异步），每个进程一个，显示器保持开启或任其关闭：显示器关闭时，请求的 20 个关键帧一个也没有输出；开启时 20 个全部在 55 ms 内输出；在黑屏时打开的编码器在显示器恢复后仍无输出。这里的每个编码器（GPU 与软件）都在每个强制关键帧上携带其 VPS/SPS/PPS（`every_key_frame_carries_its_parameter_sets`、`the_gpu_encoder_answers_every_key_frame_with_the_display_on`，需要显示器开启的 ignored 测试）。Kernel-Power 的事件 566 表明 Kyokai 的唤醒在一秒内打开了显示器（原因 8，`SetThreadExecutionState`） |
+| 显示器变黑后没有画面（2026-10-22） | 从 Mac 到本机（助手模式）的一次会话在其显示器休眠后的助手日志：唤醒在 2 秒内生效，采集也在继续，查看窗口却始终没有显示画面——硬件编码器已不再输出，而这一点没有任何东西计数。无输出的编码器、恢复阶梯与上述日志都由此而来；脚本化的无输出编码器（`a_silent_encoder_is_opened_again`、`an_encoder_that_stays_silent_ends_the_stream`）与恢复阶梯（`the_host_never_gives_up_on_the_picture`）在测试中运行 |
+| 登录时的白色窗口（2026-10-22） | 本机自动登录、自行锁屏，并经 KVM 连接显示器；Kyokai 隐藏的主窗口带有 Windows 在显示变化时重新排列窗口所用的 `SysSetRedraw` 属性（EasyTier MyGo 的没有），并在一次登录后显示为白色。以 `--mygo-opened-at-login` 隐藏启动的 Kyokai 0.5.2 在约 15 次锁屏、黑屏与亮屏循环中保持隐藏，因此触发条件需要一次解锁或显示器重新连接；从 0.5.3 起不再存在隐藏的主窗口 |
 | `cargo deny` | 把 VS 的 clang 加入 `PATH` 后通过（advisories、bans、licenses、sources） |
 
 ## macOS

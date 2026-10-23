@@ -588,7 +588,22 @@ pub struct Source {
     done: Option<std::thread::JoinHandle<()>>,
     /// A stream of the helper's agent, closed as the source drops.
     _agent: Option<crate::agent::AgentVideo>,
+    /// Why this is the placeholder (the test pattern) and not the screen;
+    /// None for the screen.
+    pub why: Option<String>,
 }
+
+/// Why a host sends its placeholder, as the viewer is told
+/// (`VideoStart::placeholder`).
+const PLACEHOLDERS: [&str; 7] = [
+    "asleep",
+    "no-display",
+    "agent",
+    "no-encoder",
+    "retrying",
+    "no-codec",
+    "cannot-capture",
+];
 
 /// Capture threads of dropped sources that may still hold their display
 /// and encoder: a new source waits for them first, STOP_WAIT at most, so
@@ -631,8 +646,10 @@ impl Default for Targets {
 
 impl Source {
     /// Starts the best source this host has: `display` (the primary when
-    /// None) in the first of `choices` whose encoder opens, or the test
-    /// pattern.
+    /// None) in the first of `choices` whose encoder opens, or else the
+    /// placeholder (the test pattern), saying why (`Source::why`): the
+    /// helper's agent is not there or refused, there is no display (or it
+    /// sleeps), no encoder opened, or this computer cannot capture at all.
     /// Notes: waits first for the capture threads of dropped sources
     /// (`wait_stopped`), and opening a capture can take a second: call it
     /// off the async runtime.
@@ -651,25 +668,33 @@ impl Source {
         } else {
             1
         });
-        if let Some(link) = link
-            && let Some((start, shown, agent)) = link.open_video(
+        if let Some(link) = link {
+            let opened = link.open_video(
                 display,
                 choices,
-                tx.clone(),
+                tx,
                 key.clone(),
                 targets.clone(),
                 stop.clone(),
-            )
-        {
-            return Source {
-                start,
-                display: shown,
-                frames,
-                key,
-                stop,
-                targets,
-                done: None,
-                _agent: Some(agent),
+            );
+            return match opened {
+                Ok((start, shown, agent)) => Source {
+                    start,
+                    display: shown,
+                    frames,
+                    key,
+                    stop,
+                    targets,
+                    done: None,
+                    _agent: Some(agent),
+                    why: None,
+                },
+                // The agent says why as `code: reason` (`Source::pattern`);
+                // a link that failed only says why.
+                Err(e) => match e.split_once(": ") {
+                    Some((code, why)) if PLACEHOLDERS.contains(&code) => Source::pattern(code, why),
+                    _ => Source::pattern("agent", &format!("the session agent: {e}")),
+                },
             };
         }
         #[cfg(windows)]
@@ -677,42 +702,73 @@ impl Source {
         #[cfg(target_os = "macos")]
         type Platform = crate::mac::Capture;
         #[cfg(any(windows, target_os = "macos"))]
-        if link.is_none()
-            && let Some(d) = display.or_else(|| displays().first().copied())
-            && let Some((start, done)) = choices.iter().find_map(|&c| {
-                capture::start::<Platform>(
+        {
+            // A sleeping display is missing from macOS's active displays:
+            // it is woken and looked for again.
+            let mut found = display.or_else(|| displays().first().copied());
+            if found.is_none() && capture::display_on(&stop) {
+                found = display.or_else(|| displays().first().copied());
+            }
+            let Some(d) = found else {
+                return if crate::power::display_off() {
+                    Source::pattern("asleep", "the display is asleep")
+                } else {
+                    Source::pattern("no-display", "no display")
+                };
+            };
+            if choices.is_empty() {
+                return Source::pattern(
+                    "no-codec",
+                    "no codec this host sends is one the controller decodes",
+                );
+            }
+            let mut why = String::new();
+            for &c in choices {
+                match capture::start::<Platform>(
                     tx.clone(),
                     key.clone(),
                     stop.clone(),
                     targets.clone(),
                     d,
                     c,
-                )
-                .ok()
-            })
-        {
-            return Source {
-                start,
-                display: Some(d),
-                frames,
-                key,
-                stop,
-                targets,
-                done: Some(done),
-                _agent: None,
-            };
+                ) {
+                    Ok((start, done)) => {
+                        return Source {
+                            start,
+                            display: Some(d),
+                            frames,
+                            key,
+                            stop,
+                            targets,
+                            done: Some(done),
+                            _agent: None,
+                            why: None,
+                        };
+                    }
+                    Err(e) => why = e,
+                }
+            }
+            Source::pattern("no-encoder", &why)
         }
-        let _ = (display, choices);
-        Source::pattern()
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            let _ = (display, choices, tx, frames);
+            Source::pattern("cannot-capture", "this computer cannot capture its screen")
+        }
     }
 
-    /// The test pattern alone: for a host that cannot capture, and when
-    /// opening the screen failed outright.
-    pub fn pattern() -> Source {
+    /// The placeholder alone, the test pattern: for a host that cannot
+    /// capture (yet). `code` tells the viewer why in the stream
+    /// description (`asleep`, `no-display`, `agent`, `no-encoder`,
+    /// `retrying`, `no-codec`, `cannot-capture`); `why` is the reason in
+    /// full, for the host's log.
+    pub fn pattern(code: &str, why: &str) -> Source {
         let stop = Arc::new(AtomicBool::new(false));
         let (tx, frames) = mpsc::channel(1);
+        let mut start = test_pattern(tx, stop.clone());
+        start.placeholder = Some(code.into());
         Source {
-            start: test_pattern(tx, stop.clone()),
+            start,
             display: None,
             frames,
             key: Arc::new(AtomicBool::new(true)),
@@ -720,6 +776,7 @@ impl Source {
             targets: Arc::new(Targets::default()),
             done: None,
             _agent: None,
+            why: Some(why.into()),
         }
     }
 
@@ -839,6 +896,36 @@ mod capture {
     /// How often a capture compares the input desktop with
     /// its own (the agent's, in the helper modes).
     const DESK_CHECK: Duration = Duration::from_millis(500);
+    /// How long an encoder may take pictures and give nothing before it
+    /// counts as failed (an asynchronous one answers within two frames).
+    const ENCODER_SILENT: Duration = Duration::from_secs(2);
+    /// How long a stream waits for a display it woke before it opens its
+    /// encoder.
+    const WAKE_WAIT: Duration = Duration::from_secs(2);
+
+    /// Whether the display is on, after waking it and giving it WAKE_WAIT
+    /// when the system reports it off.
+    /// Notes: a stream takes the GPU's encoder only while this holds. A
+    /// GPU's encoder may give no output
+    /// then, and keep giving none once the display is back (Qualcomm's, on
+    /// the ARM64 test computer: no key frame of 20 asked for came while the
+    /// display was off, all 20 within 55 ms once it was on; an encoder opened
+    /// in the dark stayed silent after the display came on). The display is
+    /// woken first and given WAKE_WAIT.
+    pub(super) fn display_on(stop: &AtomicBool) -> bool {
+        if !crate::power::display_off() {
+            return true;
+        }
+        crate::power::wake_display();
+        let until = Instant::now() + WAKE_WAIT;
+        while Instant::now() < until && !stop.load(Ordering::Relaxed) {
+            std::thread::sleep(STOP_POLL);
+            if !crate::power::display_off() {
+                return true;
+            }
+        }
+        false
+    }
 
     /// Sleeps `d`, or less once `stop` is set: a dropped source's thread
     /// ends within STOP_POLL, so the next source gets its encoder soon.
@@ -864,11 +951,33 @@ mod capture {
         /// VideoToolbox, fed NV12 in buffers of its own.
         #[cfg(target_os = "macos")]
         Vt(crate::vt::Encoder),
+        /// For the tests: an encoder that takes pictures and gives nothing
+        /// while `silent` (as a GPU's encoder did in the dark), else a key
+        /// frame per picture. `mute-once` is silent on its first open only,
+        /// `mute-always` on every one.
+        #[cfg(test)]
+        Mute { silent: bool, picture: bool },
     }
 
     impl Encoder {
-        /// Opens the encoder a choice names for `width`×`height`.
-        fn open(choice: Choice, width: u32, height: u32) -> Result<Encoder, String> {
+        /// Opens the encoder a choice names for `width`×`height`; with
+        /// `hardware` false, Media Foundation's software encoder, never the
+        /// GPU's.
+        fn open(
+            choice: Choice,
+            width: u32,
+            height: u32,
+            hardware: bool,
+        ) -> Result<Encoder, String> {
+            #[cfg(test)]
+            if let Some(kind) = choice.codec.strip_prefix("mute-") {
+                static OPENED: AtomicBool = AtomicBool::new(false);
+                let silent = kind == "always" || !OPENED.swap(true, Ordering::SeqCst);
+                return Ok(Encoder::Mute {
+                    silent,
+                    picture: false,
+                });
+            }
             if let Some(c) = crate::soft::Codec::from_name(choice.codec) {
                 return crate::soft::Encoder::new(c, width, height, FPS, BITRATE, choice.i444)
                     .map(|e| Encoder::Soft(Box::new(e)));
@@ -876,10 +985,11 @@ mod capture {
             #[cfg(windows)]
             {
                 let c = crate::mf::Codec::from_name(choice.codec).ok_or("unknown codec")?;
-                crate::mf::Encoder::new(c, width, height, FPS, BITRATE).map(Encoder::Mf)
+                crate::mf::Encoder::new(c, width, height, FPS, BITRATE, hardware).map(Encoder::Mf)
             }
             #[cfg(target_os = "macos")]
             {
+                let _ = hardware;
                 let c = crate::vt::Codec::from_name(choice.codec).ok_or("unknown codec")?;
                 crate::vt::Encoder::new(c, width, height, FPS, BITRATE).map(Encoder::Vt)
             }
@@ -894,6 +1004,18 @@ mod capture {
                 Encoder::Soft(e) => (e.library(), false),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => ("videotoolbox", e.hardware()),
+                #[cfg(test)]
+                Encoder::Mute { .. } => ("test", false),
+            }
+        }
+
+        /// What the encoder did, for the log when it fails (Media
+        /// Foundation's counts; empty for the others).
+        fn counts(&self) -> String {
+            match self {
+                #[cfg(windows)]
+                Encoder::Mf(e) => e.counts(),
+                _ => String::new(),
             }
         }
 
@@ -915,6 +1037,8 @@ mod capture {
                 Encoder::Soft(e) => e.picture(bgra, width, height, stride),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.picture(bgra, width, height, stride),
+                #[cfg(test)]
+                Encoder::Mute { picture, .. } => *picture = true,
             }
         }
 
@@ -926,6 +1050,8 @@ mod capture {
                 Encoder::Soft(e) => e.has_picture(),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.has_picture(),
+                #[cfg(test)]
+                Encoder::Mute { picture, .. } => *picture,
             }
         }
 
@@ -937,6 +1063,12 @@ mod capture {
                 Encoder::Soft(e) => e.encode(key),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.encode(key),
+                #[cfg(test)]
+                Encoder::Mute { silent, picture } => Ok(if *silent || !*picture {
+                    Vec::new()
+                } else {
+                    vec![(vec![0, 0, 0, 1, 0x65], true)]
+                }),
             }
         }
 
@@ -948,6 +1080,8 @@ mod capture {
                 Encoder::Soft(e) => e.set_bitrate(bitrate),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.set_bitrate(bitrate),
+                #[cfg(test)]
+                Encoder::Mute { .. } => {}
             }
         }
     }
@@ -967,10 +1101,13 @@ mod capture {
     ) -> Result<(VideoStart, std::thread::JoinHandle<()>), String> {
         let (ready_tx, ready) = std::sync::mpsc::channel();
         let thread = std::thread::spawn(move || {
+            // A dark display is woken before anything opens: desktop
+            // duplication and the GPU's encoder both want it on.
+            let mut gpu_wanted = display_on(&stop);
             let opened = (|| {
                 let (capturer, dw, dh) = G::open(display)?;
                 let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
-                let encoder = Encoder::open(choice, w, h)?;
+                let encoder = Encoder::open(choice, w, h, gpu_wanted)?;
                 Ok::<_, String>((capturer, encoder, w, h))
             })();
             let colour = if choice.i444 { " 4:4:4" } else { "" };
@@ -995,6 +1132,7 @@ mod capture {
                 i444: encoder.i444(),
                 encoder: name.into(),
                 hardware,
+                placeholder: None,
             }));
             let t0 = Instant::now();
             let mut bitrate = BITRATE;
@@ -1018,8 +1156,15 @@ mod capture {
             let mut woke: Option<Instant> = None;
             // When the input desktop was last compared with this thread's.
             let mut desk_checked = t0;
-            // The encoder failed once and was opened again.
+            // The encoder failed once and was opened again (until a key frame
+            // of the new one comes out: two failures hours apart do not end
+            // the stream).
             let mut reopened = false;
+            // Since when the encoder has taken pictures and given nothing.
+            let mut silent_since: Option<Instant> = None;
+            // Whether the GPU's encoder may still be used: not after it
+            // failed while the display was on.
+            let mut gpu_ok = true;
             // Why the display last failed to open again, logged once.
             let mut open_failed = String::new();
             // None while the display is lost: the old capturer is released
@@ -1036,6 +1181,30 @@ mod capture {
                     woke = Some(Instant::now());
                     log::info!("capture: no picture, or the display is off: waking it");
                     crate::power::wake_display();
+                }
+                // A stream that took the software encoder because the display
+                // was off goes back to the GPU's once it is on.
+                if !gpu_wanted
+                    && gpu_ok
+                    && off_since.is_none()
+                    && encoder.kind() == ("media-foundation", false)
+                {
+                    gpu_wanted = true;
+                    match Encoder::open(choice, w, h, true) {
+                        Ok(e) => {
+                            log::info!(
+                                "video: the display is on: {} back on the GPU's encoder",
+                                choice.codec
+                            );
+                            encoder = e;
+                        }
+                        Err(e) => {
+                            log::info!("video: {}{colour} did not open again: {e}", choice.codec)
+                        }
+                    }
+                    (key_pending, forced, held, silent_since) = (true, None, 0, None);
+                    capturer = None;
+                    continue;
                 }
                 let Some(cap) = capturer.as_mut() else {
                     nap(REOPEN_AFTER, &stop);
@@ -1133,20 +1302,46 @@ mod capture {
                     }
                 }
                 let taken = taken.unwrap_or_else(Instant::now);
-                let units = match encoder.encode(force) {
+                // An encoder that takes pictures and gives nothing has failed
+                // as surely as one that says so (regression: a GPU's encoder
+                // opened while the display was off answered nothing for
+                // good, which looked like a still screen, and the viewer
+                // waited forever).
+                let encoded = encoder.encode(force).and_then(|units| {
+                    if !units.is_empty() {
+                        silent_since = None;
+                    } else if silent_since.get_or_insert_with(Instant::now).elapsed()
+                        >= ENCODER_SILENT
+                    {
+                        return Err(format!("no output for {} s", ENCODER_SILENT.as_secs()));
+                    }
+                    Ok(units)
+                });
+                let units = match encoded {
                     Ok(units) => units,
                     Err(e) => {
-                        // Once a stream the encoder is opened again (with
-                        // the display, for a first picture); a second
-                        // failure ends the stream, which the session opens
-                        // again.
-                        log::info!("video: {}{colour} failed: {e}", choice.codec);
+                        // The encoder is opened again (with the display, for
+                        // a first picture), in software when the GPU's failed
+                        // with the display on; a second failure before the
+                        // new one's first key frame ends the stream, which
+                        // the session opens again.
+                        let (name, gpu) = encoder.kind();
+                        log::info!(
+                            "video: {}{colour} failed: {e} ({name}{} {})",
+                            choice.codec,
+                            if gpu { " on the GPU" } else { "" },
+                            encoder.counts()
+                        );
                         drop(permit);
                         if reopened {
                             return;
                         }
                         reopened = true;
-                        match Encoder::open(choice, w, h) {
+                        if encoder.kind().1 && !crate::power::display_off() {
+                            gpu_ok = false;
+                        }
+                        gpu_wanted = gpu_ok && display_on(&stop);
+                        match Encoder::open(choice, w, h, gpu_wanted) {
                             Ok(e) => encoder = e,
                             Err(e) => {
                                 log::info!(
@@ -1156,7 +1351,7 @@ mod capture {
                                 return;
                             }
                         }
-                        (key_pending, forced, held) = (true, None, 0);
+                        (key_pending, forced, held, silent_since) = (true, None, 0, None);
                         capturer = None;
                         continue;
                     }
@@ -1165,7 +1360,7 @@ mod capture {
                     forced = Some(Instant::now());
                 }
                 if units.iter().any(|(_, is_key)| *is_key) {
-                    (key_pending, forced) = (false, None);
+                    (key_pending, forced, reopened) = (false, None, false);
                 }
                 held = if units.is_empty() {
                     (held + 1).min(FPS)
@@ -1330,12 +1525,16 @@ mod screen {
             }
             // A still lock or sign-in screen gives a new duplication nothing
             // to hand over: GDI copies a picture, and duplication is tried
-            // again GDI_RETRY later.
+            // again GDI_RETRY later. GDI that cannot start yet is tried again
+            // FIRST_PICTURE later (regression: one failed try left the stream
+            // without a picture for good).
             if !self.pictured && !self.cap.is_gdi() && self.opened.elapsed() >= FIRST_PICTURE {
-                self.pictured = true;
                 if self.cap.set_gdi() {
+                    self.pictured = true;
                     self.tried = Instant::now();
                     log::info!("capture: no picture yet: GDI copies one");
+                } else {
+                    self.opened = Instant::now();
                 }
             }
             match self.cap.frame(timeout.as_millis() as u32) {
@@ -1381,6 +1580,8 @@ mod screen {
             {
                 cap.scale_to(self.size.0, self.size.1);
                 self.cap = cap;
+                // The new duplication gets its own FIRST_PICTURE and fallback.
+                (self.opened, self.pictured) = (Instant::now(), false);
                 log::info!("capture: desktop duplication is back");
             }
             false
@@ -1812,6 +2013,7 @@ mod tests {
             targets,
             done: Some(done),
             _agent: None,
+            why: None,
         };
         assert!(FAKE_OPEN.load(Ordering::SeqCst));
         drop(source);
@@ -1848,6 +2050,15 @@ mod tests {
     fn test_stream<G: Grab>(
         targets: Arc<Targets>,
     ) -> (mpsc::Receiver<Encoded>, Arc<AtomicBool>, Arc<AtomicBool>) {
+        test_stream_in::<G>(targets, "vp8")
+    }
+
+    /// Starts a stream in `codec` from a test capturer.
+    #[cfg(any(windows, target_os = "macos"))]
+    fn test_stream_in<G: Grab>(
+        targets: Arc<Targets>,
+        codec: &'static str,
+    ) -> (mpsc::Receiver<Encoded>, Arc<AtomicBool>, Arc<AtomicBool>) {
         let (tx, frames) = mpsc::channel(1);
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
@@ -1858,13 +2069,46 @@ mod tests {
             height: 48,
             primary: true,
         };
-        let choice = Choice {
-            codec: "vp8",
-            i444: false,
-        };
+        let choice = Choice { codec, i444: false };
         capture::start::<G>(tx, key.clone(), stop.clone(), targets, display, choice)
-            .expect("VP8 opens");
+            .expect("the encoder opens");
         (frames, key, stop)
+    }
+
+    /// An encoder that takes pictures and gives nothing is opened again and
+    /// the stream goes on (regression: a GPU's encoder opened while the
+    /// display was off gave no output for good, which looked like a still
+    /// screen, and the viewer waited for its picture forever).
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn a_silent_encoder_is_opened_again() {
+        let (mut frames, _key, stop) =
+            test_stream_in::<Still>(Arc::new(Targets::default()), "mute-once");
+        let first = next_frame(&mut frames, Duration::from_secs(8))
+            .expect("a frame from the encoder opened again");
+        assert_eq!(first.flags & media::KEY_FRAME, media::KEY_FRAME);
+        stop.store(true, Ordering::SeqCst);
+    }
+
+    /// An encoder that stays silent ends the stream, for the session to
+    /// open again, instead of keeping it silent forever.
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn an_encoder_that_stays_silent_ends_the_stream() {
+        let (mut frames, _key, stop) =
+            test_stream_in::<Still>(Arc::new(Targets::default()), "mute-always");
+        assert!(
+            next_frame(&mut frames, Duration::from_secs(10)).is_none(),
+            "a frame from a silent encoder"
+        );
+        assert!(
+            matches!(
+                frames.try_recv(),
+                Err(mpsc::error::TryRecvError::Disconnected)
+            ),
+            "the stream did not end"
+        );
+        stop.store(true, Ordering::SeqCst);
     }
 
     /// The next frame within `wait`.

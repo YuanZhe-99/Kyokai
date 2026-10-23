@@ -149,14 +149,14 @@ when `SCREENSHOT_DIR` is set.
   how secrets are kept, and No logs — off by default, turning it on after a warning
   that nobody can tell any more who connected or whom this device connected to, with a note when
   the engine in use cannot do it yet.
-- **General:** language, appearance, open at login — off by default; started at login, Kyokai shows no window, only its tray icon (on a Mac, as a login item, asked once the app is ready: asked earlier, macOS answered no), unless Start in the tray when opened at login (on by default) is off; should anything else show the window in the first half minute after starting in the tray, Kyokai hides it again (on Windows it came up as a blank frame at sign-in) — and the close button; Run
+- **General:** language, appearance, open at login — off by default; started at login, Kyokai shows no window, only its tray icon (on a Mac, as a login item, asked once the app is ready: asked earlier, macOS answered no), unless Start in the tray when opened at login (on by default) is off — and the close button; Run
   mode: No privileges / Follow Kyokai / Background service, a note on the one administrator prompt
   and what moves along; switching runs in the background with a loading indicator and a toast
   ([run-modes.md](run-modes.md)); Windows and macOS. While this profile's own engine is parked
   (its identity moved to Kyokai Helper, which is gone), every page shows a card to install the helper
   again or start over here.
 - **About:** version, license, source code and app updates; Diagnostics (version and ABI, engine
-  start time, run mode, data folder with Open folder, logs folder, or "Off" with No logs); Open
+  start time, run mode, data folder with Open folder, logs folder with Open folder and **Save logs…** — the engine's logs through `logs.read`, the helper's and its agent's in the helper modes, which only administrators open, and this GUI's own, into one text file — or "Off" with No logs); Open
   source licenses (the shipped notices).
 - **Protected mode:** the sidebar shows only AI and every page is the AI page, topped by a card
   with the permanent password field and Turn off (a wrong password says so); confirmations and
@@ -218,8 +218,12 @@ when `SCREENSHOT_DIR` is set.
   screen, a warning sign saying "this is a placeholder picture". Before the first picture the
   picture area says "Waiting for the picture…"; when no picture came for 2 seconds although the
   host sends frames, a strip near the picture's bottom edge says "Recovering the picture…" over
-  the last one. After 3 seconds of either, a session with `control-input` also says the screen
-  there may be asleep, with **Wake it** ([computer-use.md](computer-use.md), "Sleep"). While the
+  the last one. A host showing its placeholder gets a status over the dark picture area instead of
+  the colour bars, saying what the host says: its screen asleep or off and being woken, no screen
+  to show, Kyokai Helper getting ready, the picture starting again, no codec in common, or a screen
+  it cannot share. A session with `control-input` offers **Wake it** when the host says its
+  display is dark or asleep — an older host, which does not say, after 3 seconds of waiting or
+  recovering ([computer-use.md](computer-use.md), "Sleep"). While the
   engine refuses input as behind, the path is led by "Input paused — the connection is behind" in
   the warning colour, and the keyboard grab steps aside after half a second
   ([computer-use.md](computer-use.md), "Input"). After a choice in the toolbar the
@@ -275,15 +279,22 @@ when `SCREENSHOT_DIR` is set.
 - Kyokai's windows are excluded from screen capture, so neither a viewer nor an AI task sees them,
   and remote input never reaches them, unless Security's Hide Kyokai from capture is off (the AI
   never reaches them).
-- Closing the window hides it to the tray and says so the first time; without a tray, or with
+- The main window exists only while it is shown: started in the tray Kyokai makes none, and
+  closing it to the tray ends it (its place and size are kept for the next one); Show Kyokai, a
+  second launch, a connection request, a connection's tab or the Dock make it anew. A hidden
+  window kept for later came up at Windows sign-in as a white frame Kyokai took for hidden:
+  Windows' rearranging of windows when the displays changed (lock, a dark display, a KVM's
+  monitor coming back) made it visible behind MyGo's back. On Windows the GUI log notes every
+  window of Kyokai's that turns visible.
+- Closing the window puts Kyokai in the tray and says so the first time; without a tray, or with
   "Quit" chosen for the close button, closing quits. Quitting the app itself (its menu, the Dock,
   logging out or shutting down) always quits, never asks, and has the engine end this GUI's
   connections (`sessions.close_controllers`, waiting a second at most).
 - Closing a window decides by `decideClose`: the main window with Quit chosen asks while any
   connection is live anywhere, then quits; otherwise a window asks when it holds two live
   connections or more (connecting, waiting, connected or reconnecting; desktops and services
-  alike), or one it does not show (the main window on Home), then disconnects its tabs and hides
-  (the main window) or closes. The question is a dialog naming the connections, with "Disconnect
+  alike), or one it does not show (the main window on Home), then disconnects its tabs and closes
+  (the main window into the tray). The question is a dialog naming the connections, with "Disconnect
   and close" (or "Disconnect and quit") and Cancel.
 - On macOS the Dock icon is shown only while a Kyokai window is open (the main window or a
   connection's own window); with only the menu bar icon left, Kyokai leaves the Dock and the app

@@ -147,6 +147,9 @@ func (vw *viewerWindow) fullScreen() bool {
 // add puts a tab in this window as the last tab, shown.
 // Notes: call on the main thread.
 func (vw *viewerWindow) add(v tab) {
+	if vw.main {
+		vw.app.mainWindow()
+	}
 	vw.mu.Lock()
 	prev := vw.shown()
 	vw.tabs = append(vw.tabs, v)

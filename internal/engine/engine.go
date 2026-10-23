@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"runtime/debug"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -353,13 +354,26 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 		if req.LogsOff == nil {
 			return localapi.Fail(localapi.CodeInvalid, "logs choice missing")
 		}
-		// The helper's session agent keeps its own log: it starts again
-		// (its supervisor restarts it), and the new one follows the choice.
-		_ = h.lib.Call("agent.restart", nil, nil)
+		// The helper's session agent keeps its own log (Windows): when the
+		// choice changes it starts again (its supervisor restarts it), and
+		// the new one follows the choice. Every GUI that attaches sends its
+		// settings again; restarting the agent then ended every stream it
+		// carried.
+		changed := LogsOff(h.stateDir) != *req.LogsOff
 		if err := SetLogsOff(h.stateDir, *req.LogsOff); err != nil {
 			return localapi.Fail(localapi.CodeInternal, "logs: %v", err)
 		}
+		if changed {
+			_ = h.lib.Call("agent.restart", nil, nil)
+		}
 		return h.command("access.history", map[string]bool{"keep": !*req.LogsOff})
+	case localapi.RequestLogsRead:
+		// The helper's logs need administrator rights to open: its
+		// operator reads them here; the kyokai group does not.
+		if !localapi.IsOwner(ctx) {
+			return localapi.Fail(localapi.CodeInvalid, "only this computer's owner reads its logs")
+		}
+		return localapi.Response{OK: true, Document: ReadLogs(h.stateDir)}
 	case localapi.RequestCaptureShow:
 		if req.Show == nil {
 			return localapi.Fail(localapi.CodeInvalid, "show missing")
@@ -806,6 +820,33 @@ var logFile struct {
 	path string
 	f    *os.File
 	off  bool
+}
+
+// logTail is how much of each log ReadLogs returns: its newest part.
+const logTail = 1 << 20
+
+// ReadLogs returns the logs a state directory keeps (logs/*.log and the
+// macOS helper's helper.log), each under its name and cut to its newest
+// logTail bytes.
+// Returns: "" while the state directory says no logs, or none exist.
+func ReadLogs(stateDir string) string {
+	if LogsOff(stateDir) {
+		return ""
+	}
+	paths, _ := filepath.Glob(filepath.Join(stateDir, "logs", "*.log"))
+	paths = append(paths, filepath.Join(stateDir, "helper.log"))
+	var b strings.Builder
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		if len(data) > logTail {
+			data = data[len(data)-logTail:]
+		}
+		fmt.Fprintf(&b, "==== %s ====\n%s\n", filepath.Base(p), data)
+	}
+	return b.String()
 }
 
 // LogsOff reports whether a state directory says to keep no logs.

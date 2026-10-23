@@ -94,8 +94,8 @@ func (a *App) closeFactsFor(vw *viewerWindow) closeFacts {
 }
 
 // HandleClose decides what closing the main window does (decideClose):
-// let it close as the app quits, quit, or disconnect its tabs and hide it
-// into the tray, after asking when that ends connections not in view.
+// let it close as the app quits, quit, or disconnect its tabs and end it,
+// leaving Kyokai in the tray, after asking when that ends connections not in view.
 func (a *App) HandleClose(e *mygo.CloseEvent) { a.handleClose(a.main, e) }
 
 // closeViewerWindow decides what closing a window of its own does: it
@@ -157,16 +157,22 @@ func (a *App) applyClose(vw *viewerWindow, action closeAction) {
 	a.hideMain()
 }
 
-// hideMain hides the main window into the tray and says so the first time.
+// hideMain puts Kyokai in the tray, ending the main window (it exists only
+// while shown, mainWindow; its place is kept), and says so the first time.
+// Notes: call on the main thread, once the window's tabs are closed.
 func (a *App) hideMain() {
 	a.mu.Lock()
 	w := a.window
+	a.window, a.main.win = nil, nil
 	first := !a.prefs.TrayHintShown
 	a.prefs.TrayHintShown = true
 	p := a.prefs
 	a.mu.Unlock()
+	a.main.mu.Lock()
+	a.main.full = false
+	a.main.mu.Unlock()
 	if w != nil {
-		w.Hide()
+		w.Destroy()
 	}
 	a.SetVisible(false)
 	if first {

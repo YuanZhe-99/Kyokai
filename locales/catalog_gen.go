@@ -1212,6 +1212,16 @@ func (msgs Messages) ActionSave() string {
 	return Catalog.Format(msgs.locale, "ActionSave", nil)
 }
 
+// ActionSaveLogs says "Save logs…"
+// in the language the app shows.
+func ActionSaveLogs() string { return In(i18n.Locale()).ActionSaveLogs() }
+
+// ActionSaveLogs says "Save logs…"
+// in the language of msgs.
+func (msgs Messages) ActionSaveLogs() string {
+	return Catalog.Format(msgs.locale, "ActionSaveLogs", nil)
+}
+
 // ActionShow says "Show"
 // in the language the app shows.
 func ActionShow() string { return In(i18n.Locale()).ActionShow() }
@@ -2404,6 +2414,26 @@ func LicensesHint() string { return In(i18n.Locale()).LicensesHint() }
 // in the language of msgs.
 func (msgs Messages) LicensesHint() string {
 	return Catalog.Format(msgs.locale, "LicensesHint", nil)
+}
+
+// LogsFileKind says "Text file"
+// in the language the app shows.
+func LogsFileKind() string { return In(i18n.Locale()).LogsFileKind() }
+
+// LogsFileKind says "Text file"
+// in the language of msgs.
+func (msgs Messages) LogsFileKind() string {
+	return Catalog.Format(msgs.locale, "LogsFileKind", nil)
+}
+
+// LogsSaved says "Logs saved."
+// in the language the app shows.
+func LogsSaved() string { return In(i18n.Locale()).LogsSaved() }
+
+// LogsSaved says "Logs saved."
+// in the language of msgs.
+func (msgs Messages) LogsSaved() string {
+	return Catalog.Format(msgs.locale, "LogsSaved", nil)
 }
 
 // NameSaved says "Name saved."
@@ -5628,6 +5658,86 @@ func ViewerHideBar() string { return In(i18n.Locale()).ViewerHideBar() }
 // in the language of msgs.
 func (msgs Messages) ViewerHideBar() string {
 	return Catalog.Format(msgs.locale, "ViewerHideBar", nil)
+}
+
+// ViewerHostAgent says "Kyokai Helper is getting ready there. Trying again…"
+// in the language the app shows.
+func ViewerHostAgent() string { return In(i18n.Locale()).ViewerHostAgent() }
+
+// ViewerHostAgent says "Kyokai Helper is getting ready there. Trying again…"
+// in the language of msgs.
+func (msgs Messages) ViewerHostAgent() string {
+	return Catalog.Format(msgs.locale, "ViewerHostAgent", nil)
+}
+
+// ViewerHostAsleep says "The screen there is asleep. Waking it…"
+// in the language the app shows.
+func ViewerHostAsleep() string { return In(i18n.Locale()).ViewerHostAsleep() }
+
+// ViewerHostAsleep says "The screen there is asleep. Waking it…"
+// in the language of msgs.
+func (msgs Messages) ViewerHostAsleep() string {
+	return Catalog.Format(msgs.locale, "ViewerHostAsleep", nil)
+}
+
+// ViewerHostCannotCapture says "That computer can't share its screen."
+// in the language the app shows.
+func ViewerHostCannotCapture() string { return In(i18n.Locale()).ViewerHostCannotCapture() }
+
+// ViewerHostCannotCapture says "That computer can't share its screen."
+// in the language of msgs.
+func (msgs Messages) ViewerHostCannotCapture() string {
+	return Catalog.Format(msgs.locale, "ViewerHostCannotCapture", nil)
+}
+
+// ViewerHostDark says "The screen there is off. Waking it…"
+// in the language the app shows.
+func ViewerHostDark() string { return In(i18n.Locale()).ViewerHostDark() }
+
+// ViewerHostDark says "The screen there is off. Waking it…"
+// in the language of msgs.
+func (msgs Messages) ViewerHostDark() string {
+	return Catalog.Format(msgs.locale, "ViewerHostDark", nil)
+}
+
+// ViewerHostNoCodec says "This device can't show the picture that computer sends."
+// in the language the app shows.
+func ViewerHostNoCodec() string { return In(i18n.Locale()).ViewerHostNoCodec() }
+
+// ViewerHostNoCodec says "This device can't show the picture that computer sends."
+// in the language of msgs.
+func (msgs Messages) ViewerHostNoCodec() string {
+	return Catalog.Format(msgs.locale, "ViewerHostNoCodec", nil)
+}
+
+// ViewerHostNoDisplay says "The computer there shows no screen right now. Trying again…"
+// in the language the app shows.
+func ViewerHostNoDisplay() string { return In(i18n.Locale()).ViewerHostNoDisplay() }
+
+// ViewerHostNoDisplay says "The computer there shows no screen right now. Trying again…"
+// in the language of msgs.
+func (msgs Messages) ViewerHostNoDisplay() string {
+	return Catalog.Format(msgs.locale, "ViewerHostNoDisplay", nil)
+}
+
+// ViewerHostRestarting says "Starting the picture again…"
+// in the language the app shows.
+func ViewerHostRestarting() string { return In(i18n.Locale()).ViewerHostRestarting() }
+
+// ViewerHostRestarting says "Starting the picture again…"
+// in the language of msgs.
+func (msgs Messages) ViewerHostRestarting() string {
+	return Catalog.Format(msgs.locale, "ViewerHostRestarting", nil)
+}
+
+// ViewerHostRetrying says "The picture there could not start. Trying again…"
+// in the language the app shows.
+func ViewerHostRetrying() string { return In(i18n.Locale()).ViewerHostRetrying() }
+
+// ViewerHostRetrying says "The picture there could not start. Trying again…"
+// in the language of msgs.
+func (msgs Messages) ViewerHostRetrying() string {
+	return Catalog.Format(msgs.locale, "ViewerHostRetrying", nil)
 }
 
 // ViewerImplHardware says "{name} in hardware"

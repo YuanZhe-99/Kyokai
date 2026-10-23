@@ -124,8 +124,11 @@ helper passes the session's room for frames to the agent with the frame rate and
 (`video.targets`), so the agent captures only what the session can send; its channel from the agent
 holds as many frames as the host keeps ahead. The agent writes its log — the core's lines and
 any crash trace — to `logs\agent.log` in the helper's state folder unless No logs is on
-([security.md](security.md), "Logging"); switching No logs restarts the agent, which follows the
-choice.
+([security.md](security.md), "Logging"); changing No logs restarts the agent, which follows the
+choice (a GUI that attaches sends its choice again, which changes nothing and restarts nothing).
+The macOS agent, whose user cannot write the helper's folder, sends its log lines over the link
+and the helper writes them to its own `helper.log`. The helper's operator reads these logs
+without administrator rights through `logs.read` (Diagnostics, **Save logs…**; `ctl logs`).
 
 They talk over two one-way named pipes (synchronous I/O on one pipe handle is serialized, so a
 waiting read would block every write), each with a random name, created as the first instance
@@ -138,13 +141,17 @@ events, clipboard text, clipboard images this computer copied (as PNG, encoded b
 paths of copied files and the AI's screenshots cross. Both processes are privileged and never decode remote media, so in the
 helper modes clipboard images from a controller are not taken. Files on the clipboard are read
 and written by the helper while it impersonates the console's signed-in user
-([computer-use.md](computer-use.md), "Files"). Without an agent, video falls back
-to the test pattern, input is refused, and an AI task reads it as the host user taking over.
+([computer-use.md](computer-use.md), "Files"). Without an agent, video shows the
+placeholder (Kyokai Helper getting ready) while the session tries again ([computer-use.md](computer-use.md),
+"Video"), input is refused, and an AI task reads it as the host user taking over. An open that
+the agent answers too late is closed there again, a wake asked for while no agent is attached
+reaches the next one, and only the newest agent's connection ending takes the link down.
 
 On macOS launchd starts the agent, not the helper: it connects to `agent.sock` in the helper's
 folder (root-owned, so only root can hold it; the agent checks that the peer is root), and the
 helper takes a connection only from its own `kyokai-svc` (`LOCAL_PEERPID`, `proc_pidpath`) run by
-the user at the screen or by root at the login window; the newest agent replaces an older one.
+the user at the screen or by root at the login window; the newest agent replaces an older one,
+and the older one's connection ending later leaves the newer one's streams alone.
 The link's messages are the same. The agent injects with its own permissions; blocking the
 user's input, privacy mode and locking are not offered there. The status's `permissions` are the
 agent's in the helper modes, and a permission asked for there is asked by the agent; macOS counts

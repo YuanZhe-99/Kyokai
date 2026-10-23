@@ -75,10 +75,10 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 控制端，以字节 `0x04` 开头的明文，后接一个 48 kHz 立体声、10 毫秒的 Opus 数据包，静音时不发送，发送某帧的一个分片时已在等待的数据包在
 该帧下一个分片之前发出，[computer-use.md](computer-use.md)“声音”）；恢复的控制端
 会在发送其 `codecs` 之前再次发送查看者的 `quality`、`codec` 与 `audio`。
-被控端在第一帧之前发送 `{"type": "video-start", codec, width, height, i444, encoder, hardware}`（`i444` 与 `hardware` 仅在为真时出现；`encoder`：`videotoolbox`、`media-foundation`、`libvpx` 或 `libaom`，由编码器自己报告，测试图案不带此字段）。每帧的最后一个分片到达时，控制端发送 `{"type": "received", frame}`（该帧的编号）；被控端只在未确认的帧少于 3 个时发送新帧，只接受对它已发送且尚未确认的帧的确认，并在 3 秒没有收到确认时把途中的帧视为丢失，从一个关键帧继续。控制端可以发送
+被控端在第一帧之前发送 `{"type": "video-start", codec, width, height, i444, encoder, hardware}`（`i444` 与 `hardware` 仅在为真时出现；`encoder`：`videotoolbox`、`media-foundation`、`libvpx` 或 `libaom`，由编码器自己报告，测试图案不带此字段；声明了 `recovery` 的被控端会在测试图案的 `video-start` 中加上 `placeholder`：`asleep`、`no-display`、`agent`、`no-encoder`、`retrying`、`no-codec` 或 `cannot-capture`）。每帧的最后一个分片到达时，控制端发送 `{"type": "received", frame}`（该帧的编号）；被控端只在未确认的帧少于 3 个时发送新帧，只接受对它已发送且尚未确认的帧的确认，并在 3 秒没有收到确认时把途中的帧视为丢失，从一个关键帧继续。控制端可以发送
 `{"type": "key-frame"}`（被控端随后重新说明视频流、其显示器与编码清单，并发送关键帧）——即其界面的请求（打开时、丢失某帧或解码失败之后，以及在关键帧到达之前每秒一次），以及控制端在其队列丢弃帧期间自己的请求
-（最多每秒一次，用它自己的计时器，因此没有帧到达时也会请求）——在拥有 `control-input` 时还可发送 `{"type": "input", event}`；发给声明了 `input-sync` 的被控端时，事件可以是 `{"kind": "sync", held: {scans, keys, buttons}}`，即控制端在停顿或恢复之后按住的按键（按扫描码与按名称）与按钮，被控端随即松开该会话按住的其他一切（最多 64 项，且都必须是已知的，否则丢弃）。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
-回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate, encode_ms, frames}`（`encode_ms`：上一秒各帧从画面到编码完成的平均时间；`frames`：它在这一秒发送的帧数，0.4.0 不带此字段）（[computer-use.md](computer-use.md)）；控制端可用
+（最多每秒一次，用它自己的计时器，因此没有帧到达时也会请求），以及发给声明了 `recovery` 的被控端的 `{"type": "no-picture", for_ms, why}`，即其查看窗口已 5 秒没有显示画面（`why`：`decode-error`、`waiting` 或 `stale`；最多每秒一次；被控端把它视为故障，[computer-use.md](computer-use.md)“视频”）——在拥有 `control-input` 时还可发送 `{"type": "input", event}`；发给声明了 `input-sync` 的被控端时，事件可以是 `{"kind": "sync", held: {scans, keys, buttons}}`，即控制端在停顿或恢复之后按住的按键（按扫描码与按名称）与按钮，被控端随即松开该会话按住的其他一切（最多 64 项，且都必须是已知的，否则丢弃）。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
+回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate, encode_ms, frames}`（`encode_ms`：上一秒各帧从画面到编码完成的平均时间；`frames`：它在这一秒发送的帧数，0.4.0 不带此字段；声明了 `recovery` 的被控端加上 `video`：`live`、`dark`、`recovering` 或 `placeholder`）（[computer-use.md](computer-use.md)）；控制端可用
 `{"type": "quality", preset, fps, i444}` 设置画质，其中 `i444` 表示在双方都支持时要求全彩（4:4:4）。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用
 `{"type": "display", index}` 请求另一个显示器。发送视频期间，被控端还会在指针移动时发送 `{"type": "cursor", x, y, visible}`，即以画面比例表示的指针位置；`visible` 表示它是否在所显示的显示器上。拥有 `control-input` 时，被控端在会话开始时发送
 `{"type": "actions", ctrl_alt_del, blocked, privacy}`（阻止或隐私模式变化时也会发送），控制端可以发送 `{"type": "action", action}`，其值为 `lock`、`ctrl-alt-del`、`block`、`unblock`、
@@ -87,8 +87,8 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 files}` 提供本端复制的文件，每个文件为 `{path, size, dir}`（名称之间用 `/` 分隔的相对路径；最多 1000 项、1 GiB）；
 另一端用 `{"type": "files-get", id}` 接受，之后可以用 `{"type": "files-stop", id}` 请发送方停止，发送方用
 `{"type": "files-cancel", id}` 放弃已被接受的提供（[computer-use.md](computer-use.md)，“文件”）。内容随后以明文发送：以字节 `0x03`
-和提供的 id（u64，大端）开头，然后是字节：按顺序依次为该提供的每个文件，每个恰好 `size` 字节；较新的提供取代较旧的。只有在控制端可以查看屏幕时，被控端才发送视频：它的屏幕（以从 `codecs` 中选定的编解码器），或在无法采集的被控端上发送
-320×180 的原始 RGBA 测试图案（编解码器 `raw-rgba`）。
+和提供的 id（u64，大端）开头，然后是字节：按顺序依次为该提供的每个文件，每个恰好 `size` 字节；较新的提供取代较旧的。只有在控制端可以查看屏幕时，被控端才发送视频：它的屏幕（以从 `codecs` 中选定的编解码器），或在它无法采集期间发送
+320×180 的原始 RGBA 测试图案（编解码器 `raw-rgba`），声明了 `recovery` 的被控端从不把这种情况视为最终状态。
 
 ## 隧道
 
@@ -138,6 +138,7 @@ net, battery, services, offers, ai}`，每 2 秒一次，此外只有 `ping`、`
 | `status` | 静默的状态查看者与 `system` 消息；权限 `see-status` |
 | `input-sync` | 控制端的 `sync` 输入事件（它按住的键与按钮） |
 | `wake` | `wake` 会话操作（被控端唤醒其显示器） |
+| `recovery` | 控制端的 `no-picture`；被控端 `video-start` 中的 `placeholder` 与其统计信息中的 `video` |
 
 ## 解码
 

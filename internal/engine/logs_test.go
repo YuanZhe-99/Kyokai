@@ -89,3 +89,33 @@ func closeLog() {
 		logFile.f = nil
 	}
 }
+
+// TestReadLogs: the logs come back under their names, each cut to its
+// newest part; with No logs on, nothing.
+func TestReadLogs(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "logs"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	long := strings.Repeat("x", logTail) + "newest"
+	for name, text := range map[string]string{"logs/engine.log": "engine line", "logs/agent.log": long, "helper.log": "helper line"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := ReadLogs(dir)
+	for _, want := range []string{"==== engine.log ====\nengine line", "==== helper.log ====\nhelper line", "newest"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("logs miss %q", want)
+		}
+	}
+	if len(got) > 2*logTail {
+		t.Errorf("logs are %d bytes, want each cut to %d", len(got), logTail)
+	}
+	if err := os.WriteFile(filepath.Join(dir, noLogs), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadLogs(dir); got != "" {
+		t.Errorf("logs read with No logs on: %q", got)
+	}
+}

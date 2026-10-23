@@ -120,7 +120,13 @@ backtrace; a provider's error carries its status and message, never the key. A G
 error and every goroutine's stack when its main thread has not answered for 10 seconds) holds the stack and the runtime's message, which never include secrets. The macOS helper's
 launchd job sends its stderr to `helper.log` in its state directory until the engine points it at
 `engine.log`. The Windows helper's session agent writes its own stderr, the core's lines about capture and
-the desktop it follows, to `logs/agent.log` in the helper's state directory.
+the desktop it follows, to `logs/agent.log` in the helper's state directory; the macOS agent sends
+the same lines (and its panics) to the helper over their link, which writes them to its own log.
+The video's recovery logs each step with why and what the stream had sent, and the viewer one
+line per stretch without a picture — counts and states, never a picture. The helper's logs need
+administrator rights to open; `logs.read` returns the logs of the engine's state directory (each
+cut to its newest megabyte) to the engine's owner or the helper's operator only, never to the
+`kyokai` group, nor in protected mode, and nothing while No logs is on.
 
 ### No logs
 

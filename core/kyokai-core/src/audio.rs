@@ -8,12 +8,14 @@ use crate::opus;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 /// Packets waiting for the session: about half a second; newer ones are
 /// dropped beyond it.
 const QUEUE: usize = 50;
+/// How often a sound capture that stopped or could not start is tried again.
+const RESTART: Duration = Duration::from_secs(2);
 /// Silent frames sent before the host goes quiet: half a second, so the
 /// viewer plays the sound's tail out (as RustDesk's zero gate).
 const SILENT_AFTER: u32 = 50;
@@ -188,12 +190,24 @@ impl Source {
         let stopped = stop.clone();
         std::thread::spawn(move || {
             let mut silent = 0u32;
+            let mut tried = Instant::now();
             while !stopped.load(Ordering::Relaxed) {
                 let (now, source) = chosen();
-                if now != generation {
+                // A new choice applies at once; a capture that stopped by
+                // itself (macOS ends it when the display sleeps) or could
+                // not start is tried again every RESTART.
+                let ended = capture.as_ref().is_none_or(Capture::stopped);
+                if now != generation || (ended && tried.elapsed() >= RESTART) {
                     generation = now;
+                    tried = Instant::now();
                     drop(capture.take());
-                    capture = Capture::start(pcm.clone(), &source).ok();
+                    capture = match Capture::start(pcm.clone(), &source) {
+                        Ok(c) => Some(c),
+                        Err(e) => {
+                            log::info!("sound: cannot capture: {e}");
+                            None
+                        }
+                    };
                 }
                 let Some(frame) = pcm.take(Duration::from_millis(100)) else {
                     continue;
@@ -258,7 +272,7 @@ pub fn devices() -> Vec<Device> {
 enum Capture {
     /// What the computer plays.
     #[cfg(target_os = "macos")]
-    System(#[allow(dead_code)] crate::mac::AudioCapture),
+    System(crate::mac::AudioCapture),
     /// An input device through an audio queue.
     #[cfg(target_os = "macos")]
     Device(#[allow(dead_code)] input::Input),
@@ -283,6 +297,16 @@ impl Capture {
         {
             let _ = (pcm, source);
             Err("sound is not captured on this system".into())
+        }
+    }
+
+    /// Whether the capture stopped by itself and needs starting again.
+    fn stopped(&self) -> bool {
+        match self {
+            #[cfg(target_os = "macos")]
+            Capture::System(c) => c.stopped(),
+            #[allow(unreachable_patterns)]
+            _ => false,
         }
     }
 }

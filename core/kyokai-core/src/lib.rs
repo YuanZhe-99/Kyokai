@@ -615,7 +615,9 @@ impl log::Log for StderrLog {
 
     fn log(&self, r: &log::Record) {
         if self.enabled(r.metadata()) {
-            eprintln!("{} core {}: {}", now(), r.level(), r.args());
+            let line = format!("core {}: {}", r.level(), r.args());
+            eprintln!("{} {line}", now());
+            crate::agent::forward_log(&line);
         }
     }
 
@@ -623,7 +625,7 @@ impl log::Log for StderrLog {
 }
 
 /// The local time as the engine's log writes it.
-fn now() -> String {
+pub(crate) fn now() -> String {
     chrono::Local::now().format("%Y/%m/%d %H:%M:%S").to_string()
 }
 
@@ -638,12 +640,13 @@ fn diagnostics() {
         }
         std::panic::set_hook(Box::new(|info| {
             let thread = std::thread::current();
-            eprintln!(
-                "{} core panic on thread {}: {info}\n{}",
-                now(),
+            let line = format!(
+                "core panic on thread {}: {info}\n{}",
                 thread.name().unwrap_or("unnamed"),
                 std::backtrace::Backtrace::force_capture()
             );
+            eprintln!("{} {line}", now());
+            crate::agent::forward_log(&line);
         }));
     });
 }

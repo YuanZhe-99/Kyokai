@@ -38,6 +38,10 @@ and Latin words only where it helps readability.
 | permission | 权限 |
 | approval | 批准 |
 | take over | 接管 |
+| placeholder (picture) | 占位画面 |
+| recovery (of the picture) | 画面恢复 |
+| Save logs | 保存日志 |
+| silent encoder | 无输出的编码器 |
 | Screen Recording / Accessibility / Input Monitoring (macOS) | 屏幕录制 / 辅助功能 / 输入监控 |
 | emergency stop | 紧急停止 |
 | input lease | 输入租约 |
