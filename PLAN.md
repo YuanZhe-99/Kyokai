@@ -14,76 +14,13 @@ this file when the plan is complete.
 - macOS builds are signed with the maintainer's Apple Development certificate (Team ID); the helper
   verifies its own updates (bundle signature on Windows, code signature on macOS).
 
-## Next version: 0.6.0, the interface
-
-Decided with the maintainer on 2026-10-23 from a design draft of ten screens (light and dark,
-Windows and macOS chrome; a private canvas the maintainer keeps). Kyokai's own look, not a copy of
-another app's: other apps were references for behaviour only.
-
-- **Shell.** The sidebar is drawn on the window's material (Mica on Windows, the sidebar material
-  on macOS; `WindowOptions.Vibrancy`); the content floats on it as rounded panes 8 px from the
-  edges. The tab strip goes. The sidebar lists Home and every open pane; a split shows as one group,
-  its panes indented under the group's name, the group a card while it is in front; a pane dragged
-  out of a group leaves it. Top: hide the sidebar, and + (the picker below). Bottom: search,
-  appearance (Follow system, Light and Dark in turn: a half-filled monitor, a sun, a moon), the
-  settings gear, the network state. Hidden, the sidebar folds to an icon rail with tooltips.
-- **Panes.** Home, Desktop, SSH, Remote Desktop, VNC and AI task panes share one header: icon,
-  device name, a second line (Device ID, "SSH · user", "AI task"), route and delay, then split
-  right, split down, maximize or restore, and close; a narrow pane folds the first three into ⋯.
-  Windows' caption buttons are drawn by the view (`HideWindowButtons`; maximize keeps the snap
-  layouts through `MaximizeButton`) and end the top-right pane's header after a separator, staying
-  in that place above the dimming while Settings is up; macOS' traffic lights sit at the top of the sidebar or rail.
-  The pane in focus has an accent edge. Splits use the existing pane tree
-  (`split`, four panes at most). A single pane dragged out gets a window of its own without a
-  sidebar: the pane alone, never split (its header has no split buttons), the header holding the
-  window's controls (the traffic lights at its start on macOS); closing that window disconnects
-  it. The viewer's floating toolbar stays as it
-  is (RustDesk parity).
-- **+ picker.** A popover under +: the kind first (Desktop, SSH, Remote Desktop, VNC, AI task),
-  then the device (a search by name, Device ID or address). Devices that do not offer the kind are
-  greyed out with the reason; a device without status is not; AI task adds This computer; devices
-  the joined networks route to and that were never connected come last with a dashed icon. Last,
-  where it opens: New window (its own sidebar entry) or Beside current (a split). A pane header's
-  split buttons open the same picker.
-- **Search (Ctrl+K).** A palette over the window: devices, open panes, settings rows and actions,
-  matched as typed and grouped; Enter opens the first (or copies, for the password).
-- **Settings.** The top layer: a sheet over the whole window, the sidebar too, opened only by the
-  gear or search, never part of a split, closed with × or Esc. Grouped navigation with a search
-  field: Preferences (General), This computer (Access, Network, Security & privacy, Run mode), AI
-  (Providers), Kyokai (About & updates). A row is a title, one short sentence and its control on
-  the right; longer explanations move behind "How … works" links; the permissions a password
-  grants are tiles that toggle; a problem says what to do next (Fix…).
-- **Home.** This device (Device ID; the password with show, copy and new) and Connect (an ID or
-  address, Open as Desktop, SSH, Remote Desktop, VNC or AI task). Devices as cards of equal height
-  with one row of compact metrics, Open while connected, Connect otherwise, services as icon
-  buttons. "Others in my networks" (off by default, kept in `gui.json`) adds the Kyokai devices
-  the joined networks route to and that were never connected, as dashed cards with Connect.
-- **AI.** An AI session is a pane, and a device (this computer or a host) may have several, each
-  with a title the user can rename (its first instruction until then): the conversation (the instruction, the model's text, its steps — a thumbnail where it took a
-  screenshot — and approvals inline with Allow and Deny) and the prompt box at the bottom; under
-  the box the approval mode, where it runs and the model with whose key ("NUC's key"). Today's
-  hosts run one task at a time, so a second session there says the device is busy until the
-  first ends. A new session's pane centres the box, with suggestions and recent tasks — this
-  computer's and those of the devices it has connected to. Watch its screen opens the device's
-  Desktop beside it. Providers, keys, the default model and the default approval mode move to
-  Settings › AI; the AI page goes. A send-key preference: Enter sends and Shift+Enter breaks the line (the
-  default), the reverse, or both break and only the button sends.
-
-| Milestone | Scope | Done when |
-|---|---|---|
-| M0–M6 on macOS | the shell, Settings, Home, the + picker, search, AI sessions and the cards above the panes built and run on a Mac: the sidebar material behind floating panes, the traffic lights over the sidebar's top row and on a window of its own's pane, the Settings pages and the keyboard grab stepping aside under the sheet, the picker and ⌘K search, a session with the Mac's own AI and one with a host's, a request and a device connected to the Mac, Home's privacy permissions while one is missing (Windows done: platform-notes, "0.6.0 shell, M1", "0.6.0 Settings, M2", "0.6.0 Home, M3", "0.6.0 + and search, M4", "0.6.0 AI sessions, M5" and "0.6.0 states in the shell, M6") | seen on the maintainer's Mac, recorded in platform-notes |
-| M7 Finish | left: the maintainer's review of the new interface (Windows done: platform-notes, "0.6.0 contrast and keyboard, M7"; contrast, keyboard and the docs pass are in), then the release — version 0.6.0 and its version-history entry (also the core's ctutils 0.4.5, for RUSTSEC-2026-0385) | the full gate; native screenshots on both platforms (macOS: the row above); the maintainer's review |
-
-Released as 0.6.0 once M7 is done; the milestones land on `main` unreleased. 0.6.0 is about the
-interface: backend work that is not small waits, among it Pi as the agent behind AI sessions
-(Left, "Pi as the agent backend").
-
 ## Left
 
 | Item | Scope | Done when |
 |---|---|---|
+| 0.6.0 on macOS | the new interface built and run on a Mac: the sidebar material behind floating panes, the traffic lights over the sidebar's top row and on a window of its own's pane, the Settings pages and the keyboard grab stepping aside under the sheet, the + picker and ⌘K search, a session with the Mac's own AI and one with a host's, a request and a device connected to the Mac, Home's privacy permissions while one is missing, contrast and the keyboard (Windows done: platform-notes, "0.6.0 shell, M1" to "0.6.0 contrast and keyboard, M7") | seen on the maintainer's Mac, recorded in platform-notes |
 | Pi as the agent backend | after 0.6.0, AI sessions run as Kyokai's providers → Pi → computer use: Pi (pi-mono, TypeScript) is the agent loop on the host, several sessions per host, through its RPC or SDK mode; it calls models through the providers set in Settings › AI (keys reach it in memory only) and acts only through Kyokai's computer-use actions, an extension in place of its own tools (shell and files stay off), so the executor, approvals, take-over and no-replay rules hold. With it, a host's model and approval mode chosen per task from the prompt box (`ai-start` with an optional model and approval mode, a host listing its usable models to `run-ai-task` controllers, behind a feature token). Not small: a JavaScript runtime ships with Kyokai, and Pi's session files follow No logs | a spike answers each point; then a task runs through Pi on a host with approvals and take-over intact, on both platforms |
-| Shared AI record and draft | the host keeps one AI record that every controller sees and may steer with its permissions (done in the core); the AI prompt draft is shared live: what one controller or the host's user types reaches the host, which passes it to every other controller and its own AI page | two controllers and the host see the same task and the same draft, recorded in platform-notes |
+| Shared AI record and draft | the host keeps one AI record that every controller sees and may steer with its permissions (done in the core); the AI prompt draft is shared live: what one controller or the host's user types reaches the host, which passes it to every other controller and its own AI sessions | two controllers and the host see the same task and the same draft, recorded in platform-notes |
 | macOS crash | the Mac app "crashed" when a connection request came in: most likely the GUI froze, announcing the request under its lock while macOS asked about notifications (fixed in 0.4.0, with a watchdog that writes the stacks of a frozen GUI to `gui-crash.log`) | the first connection to a Mac host no longer freezes on the user's Macs, or the new logs name another cause |
 | macOS pass | done on one Mac (platform-notes): capture, permissions, input and keyboard as host, Follow Kyokai. Left: the clipboard, Background service and the login-window agent, the helper's self-disable, sleep notifications, a Mac as controller of another machine through the viewer window, a Mac host from another machine | the acceptance record's rows hold on macOS, both directions Mac ↔ Windows |
 | OpenAI live run | the Responses adapter against the real API (fixtures and fakes only so far) | a task on a real desktop, recorded in platform-notes |

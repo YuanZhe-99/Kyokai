@@ -1,5 +1,33 @@
 # Version history
 
+## 0.6.0 (2026-10-23)
+
+- A new interface. The sidebar, on the window's material, lists Home and every open pane — a
+  desktop, SSH, Remote Desktop, VNC, a host's status or an AI session — and the panes float beside
+  it, rounded. A pane splits right or down (four in a group at most), its group shows as one entry,
+  and a pane dragged out becomes a window of its own. Every pane has one header; a narrow one folds
+  its buttons into ⋯. On Windows the view draws the window's buttons at the top-right pane's end.
+- + opens a picker: the kind first (Desktop, SSH, Remote Desktop, VNC or AI task), then the device
+  by name, Device ID or address, greyed with the reason where it does not offer the kind. Ctrl+K
+  (⌘K) searches the devices, the open panes, the settings and the actions.
+- Settings is a sheet over the whole window: grouped sections with a search, each row a title, one
+  sentence and its control, longer explanations behind ⓘ, a password's grants as tiles.
+- Home: This device and Connect side by side, Open as (Desktop, SSH, Remote Desktop, VNC or AI
+  task), the devices as cards of equal height with four live figures; Others in my networks adds
+  the Kyokai devices the joined networks reach.
+- AI sessions are panes, several per device, each renamable: the conversation with the steps in
+  groups between replies, approvals inline, the prompt box with the send key you choose, the
+  approval mode, where it runs and the model with whose key; recent tasks, this computer's and
+  those with other devices. A host's AI goes over a link of its own that asks only to run AI tasks
+  and approve their actions. The AI page goes; the providers stay in Settings › AI.
+- What needs you shows as cards above the panes: connection requests — what they ask for as tiles
+  you can switch off before Allow —, devices connected here, an AI task waiting or at work here.
+  Protected mode, Starting… and the engine down are part of the new shell too.
+- Words reach WCAG AA's contrast in both appearances, and everything works from the keyboard.
+- The core: ctutils 0.4.5 (RUSTSEC-2026-0385).
+- Protocol 10, local API 2 and ABI 6, unchanged. Upstream versions: MyGo v0.6.3 (from v0.6.2),
+  EasyTier v2.7.0, RustDesk 1.5.0 (vendored code), vcpkg 2026.10.16, Rust 1.99.1.
+
 ## 0.5.5 (2026-10-23)
 
 - A Mac controller sends every key again (a 0.5.4 regression). Its tap also asked that Kyokai own
