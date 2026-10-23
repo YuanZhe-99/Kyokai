@@ -33,8 +33,9 @@ another app's: other apps were references for behaviour only.
   Windows' caption buttons end the top-right pane's header; macOS' traffic lights sit at the top of
   the sidebar or rail. The pane in focus has an accent edge. Splits use the existing pane tree
   (`split`, four panes at most). A single pane dragged out gets a window of its own without a
-  sidebar: the pane alone, its header holding the window's controls (the traffic lights at its
-  start on macOS); closing that window disconnects it. The viewer's floating toolbar stays as it
+  sidebar: the pane alone, never split (its header has no split buttons), the header holding the
+  window's controls (the traffic lights at its start on macOS); closing that window disconnects
+  it. The viewer's floating toolbar stays as it
   is (RustDesk parity).
 - **+ picker.** A popover under +: the kind first (Desktop, SSH, Remote Desktop, VNC, AI task),
   then the device (a search by name, Device ID or address). Devices that do not offer the kind are
@@ -67,7 +68,7 @@ another app's: other apps were references for behaviour only.
 | Milestone | Scope | Done when |
 |---|---|---|
 | M0 Spikes | the material behind a transparent page with floating panes (light, dark; Windows 11, macOS); MyGo's Windows caption buttons (46 × `TitleBarHeight`, snap layouts) at the end of the top-right pane's header — placed, or hidden (`HideWindowButtons`) for our own, or a MyGo change; a live picture clipped to a rounded pane without a cost on the video path; the keyboard grab stepping aside while a sheet, popover or palette is open | each answered on both platforms, recorded in platform-notes |
-| M1 Shell | the sidebar (Home, open panes and groups, the bottom row, the rail), pane headers and focus, no tab strip, groups on the split tree; a single pane dragged out into a window of its own without a sidebar; tray, close and quit rules unchanged | view tests render 0, 1, 3 and 4 panes in both themes and four languages; the native app seen on Windows and macOS; gui.md rewritten |
+| M1 Shell | the sidebar (Home, open panes and groups, the bottom row, the rail), pane headers and focus, no tab strip, groups on the split tree; a single pane dragged out into a window of its own, without a sidebar and never split; tray, close and quit rules unchanged | view tests render 0, 1, 3 and 4 panes in both themes and four languages; the native app seen on Windows and macOS; gui.md rewritten |
 | M2 Settings | the sheet, grouped navigation, settings search, the row style and permission tiles; every current setting moved (General; Permissions as Access; Network; Security as Security & privacy; Run mode; AI providers; About), the copy shortened | every setting reachable in the sheet and by search; no settings page left in the sidebar |
 | M3 Home | This device, Connect with Open as, cards of equal height, "Others in my networks", the status details as a pane | view tests with the network devices on and off |
 | M4 + and search | the picker (kinds, what each device offers, where it opens) and the Ctrl+K palette | both usable by keyboard alone; tests for the matching and the offers |
@@ -100,7 +101,7 @@ Open decisions:
 - The interface (2026-10-23): everything is a pane the sidebar holds; Settings is the top layer
   over the whole window and never part of a split; AI tasks are panes of their own, apart from the
   providers in Settings › AI; a single pane dragged out becomes a window of its own without a
-  sidebar; the sidebar keeps search, light/dark, the gear and the network state at its bottom
+  sidebar and is never split there; the sidebar keeps search, light/dark, the gear and the network state at its bottom
   (Kyokai has no user accounts, so nothing account-like goes there).
 - 0.5.0 (2026-10-21): a device has routes — the Kyokai network and any number of addresses; Auto picks by latency now and throughput remembered per route, at connect and on resume only (a healthy session never moves); a route can be fixed by hand. Addresses are edited from the card (⋯ → Addresses…), its path line is a route picker, and the connect form adds addresses. KCP/QUIC switches stay out (EasyTier's proxies never carry Kyokai's sessions; `quic://` server URLs already work).
 - 0.4.1 (2026-10-21): SSH, RDP and VNC run in built-in clients through tunnels inside Kyokai sessions to the host's own ports, each a permission like the others, off by default; saved service passwords stay in the engine's store and reach the GUI's client only at sign-in, private keys never leave the engine. A controller with a saved password or key watches a host's status quietly. KCP/QUIC proxies are not used (they never carry Kyokai's sessions). Home is a grid of rich device cards. Remote control is a stream: stale frames and input are skipped, key state stays in step, a stalled session never traps the controller's keyboard.
