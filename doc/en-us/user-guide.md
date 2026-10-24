@@ -124,8 +124,14 @@ elsewhere it works as usual): to type Chinese or Japanese, use **Map** and the o
 input method — switch it on there, for example with Win+Space. If the connection stalls, typing pauses
 ("Input paused" in the toolbar) instead of arriving late, and your own keyboard keeps working. Between a Mac and Windows, **Swap Ctrl and Cmd** (on by default) makes
 your usual shortcuts work there: Cmd+C copies on a Windows PC, Ctrl+C on a Mac. Keys go there
-while the pointer is over the picture; with connections side by side, to the one under the pointer.
-Move the pointer off the picture (to the toolbar, for example) to type in Kyokai itself. You hear what the other computer plays (or the input
+while the pointer is anywhere in the connection's pane, its toolbar too; with connections side by
+side, to the one under the pointer. Move the pointer out of the pane (to the sidebar, for example)
+to type in Kyokai itself; a menu opened in the pane gets the keys while it is open. In Map and
+Translate two dots under the toolbar's **Keyboard** icon say how it goes: the first is green while
+Kyokai holds your keyboard, the second while your keys reach it. An amber second dot means some keys
+are not getting through — for example while another app (Terminal's secure keyboard entry, a
+password prompt) keeps the keyboard to itself; its tooltip says why. Kyokai then sends those keys
+as **Legacy** does and takes the keyboard again on its own. You hear what the other computer plays (or the input
 its user chose in Access, **Sound to share**, such as a microphone; a Mac asks for its
 Microphone permission then); **Sound** in the toolbar turns it off. **Clipboard** pulls out the
 clipboard panel: **Share the clipboard with this device** turns sharing off or on for that device,

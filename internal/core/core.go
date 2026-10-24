@@ -17,7 +17,7 @@ import (
 
 // ABIVersion is the C ABI this package speaks; the library must report the
 // same one.
-const ABIVersion = 6
+const ABIVersion = 7
 
 // LibraryName is the file name of the core library on this platform.
 func LibraryName() string {
@@ -52,16 +52,17 @@ type Lib struct {
 	mediaRead, mediaWrite                 uintptr
 	decOpen, decDecode, decClose, decInfo uintptr
 	audOpen, audDecode, audClose          uintptr
-	kbGrab, kbRead, privacy               uintptr
+	kbGrab, kbRead, kbState, privacy      uintptr
 	mu                                    sync.Mutex // the core is one process-wide instance
-	// out receives a response's buffer. It lives in the Lib (on the heap,
-	// which never moves) rather than on a goroutine stack, which may move
-	// between converting its address to a uintptr and the C call. Guarded
-	// by mu.
+	// out receives a response's buffer, and kbBuf a keyboard state. They
+	// live in the Lib (on the heap, which never moves) rather than on a
+	// goroutine stack, which may move between converting its address to a
+	// uintptr and the C call. Guarded by mu.
 	out struct {
 		ptr *byte
 		len uintptr
 	}
+	kbBuf [256]byte
 }
 
 // Config is what the core starts with.
@@ -153,7 +154,7 @@ func Load(path string) (*Lib, error) {
 		"kyokai_decoder_open": &l.decOpen, "kyokai_decoder_decode": &l.decDecode, "kyokai_decoder_close": &l.decClose,
 		"kyokai_decoder_info": &l.decInfo,
 		"kyokai_audio_open":   &l.audOpen, "kyokai_audio_decode": &l.audDecode, "kyokai_audio_close": &l.audClose,
-		"kyokai_keyboard_grab": &l.kbGrab, "kyokai_keyboard_read": &l.kbRead,
+		"kyokai_keyboard_grab": &l.kbGrab, "kyokai_keyboard_read": &l.kbRead, "kyokai_keyboard_state": &l.kbState,
 		"kyokai_privacy_request": &l.privacy,
 	} {
 		if *dst, err = symbol(h, name); err != nil {
@@ -428,6 +429,33 @@ func (l *Lib) KeyboardGrab(window uintptr, mode string) error {
 		return fmt.Errorf("unknown keyboard mode %q", mode)
 	}
 	return ErrNoKeyboard
+}
+
+// KeyboardState is how a viewer window's keyboard grab stands
+// (keyboard::Standing): whether the keys typed into the window reach the
+// grab, or what lets them pass.
+type KeyboardState struct {
+	// State is "taking", "none", "off", "secure-input", "other-window",
+	// "no-reader" or "behind".
+	State string `json:"state"`
+	// Holder names the program holding Secure Event Input or in front,
+	// when known.
+	Holder string `json:"holder,omitempty"`
+}
+
+// KeyboardState reports how the grab of a viewer window (its native handle)
+// stands.
+// Returns: ErrNoKeyboard where the hook is unavailable.
+// Side effects: on macOS the core reads the on-screen window list.
+func (l *Lib) KeyboardState(window uintptr) (KeyboardState, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := int32(syscallN(l.kbState, window, uintptr(unsafe.Pointer(&l.kbBuf[0])), uintptr(len(l.kbBuf))))
+	var s KeyboardState
+	if n < 0 {
+		return s, ErrNoKeyboard
+	}
+	return s, json.Unmarshal(l.kbBuf[:n], &s)
 }
 
 // PrivacyRequest asks macOS, from this process, for a privacy permission

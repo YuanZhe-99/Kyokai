@@ -471,13 +471,13 @@ func (s *serviceTab) setFront(on bool) {
 }
 
 // syncGrab has the core grab the keyboard for the tab's window while the
-// pointer is over its picture in Map or Translate mode, for a client that
-// takes keys that way, and ends the grab otherwise.
+// pointer is anywhere in its pane (inPane) in Map or Translate mode, for a
+// client that takes keys that way, and ends the grab otherwise.
 // Side effects: starts the app's key reader with the first grab.
-func (s *serviceTab) syncGrab(focused bool) {
+func (s *serviceTab) syncGrab(inPane bool) {
 	client := s.running()
 	want := ""
-	if focused && client != nil && client.grabs() {
+	if inPane && client != nil && client.grabs() {
 		if mode := s.app.keyboardMode(); mode != "legacy" {
 			want = mode
 		}

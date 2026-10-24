@@ -22,12 +22,45 @@ func (a *App) openSettings(p page) {
 }
 
 // covered reports whether something over the panes takes the keyboard, so
-// that no picture does: the Settings sheet, the search palette or the +
-// picker.
+// that no pane grabs it: the Settings sheet, the search palette, the +
+// picker, or a pane's menu or split list (menuOpened).
+// Notes: nil-safe for view tests without an app.
 func (a *App) covered() bool {
+	if a == nil {
+		return false
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.settingsOpen || a.palette.open || a.picker.at != ""
+	return a.settingsOpen || a.palette.open || a.picker.at != "" || a.paneMenu
+}
+
+// menuOpened notes that a pane's menu or split list opens: it takes the
+// keyboard, so every grab ends at once (a native menu shows after this
+// frame, and no frame need come while it is open) and none is taken until
+// menuClosed. MyGo says when an item is chosen, not when a menu is
+// dismissed: the pointer moving over a picture also counts as closed.
+// Notes: call on the main thread; nil-safe for view tests without an app.
+func (a *App) menuOpened() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.paneMenu = true
+	a.mu.Unlock()
+	for _, t := range a.allTabs() {
+		t.endGrab()
+	}
+}
+
+// menuClosed lets the panes grab the keyboard again (menuOpened).
+// Notes: nil-safe.
+func (a *App) menuClosed() {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.paneMenu = false
+	a.mu.Unlock()
 }
 
 // settingsItem is a page of the Settings sheet's sections.

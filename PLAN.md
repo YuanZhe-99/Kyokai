@@ -14,9 +14,31 @@ this file when the plan is complete.
 - macOS builds are signed with the maintainer's Apple Development certificate (Team ID); the helper
   verifies its own updates (bundle signature on Windows, code signature on macOS).
 
+## 0.6.2
+
+Fixes for what the maintainer's Mac showed on 0.6.1 (2026-10-24): closing the window with
+connections open quit the app, and Map and Translate now and then sent only letters (no Enter,
+Delete or Command) until Kyokai restarted, with two connections open and switched between; nothing
+in the log.
+
+| Item | Scope | Done when |
+|---|---|---|
+| Closing to the tray ends every connection | `applyClose` looped over the window's tabs while each close deleted from that same list in place, so every other tab stayed open (Home comes first since 0.6.0: the first connection always); the one left kept redrawing a window that had ended, and MyGo's `Update` on the nil window crashed the app, tray and all (the five panics in the Mac's log). Same code on Windows | a regression test closes Home with one, two and three connections; on the Mac, closing with two connections leaves Kyokai in the tray |
+| The grab holds in the whole pane | Map and Translate take the keys while the pointer is anywhere in the pane (header, toolbar, clipboard panel, picture), not only over the picture; they step aside only while Kyokai's own controls need the keys: a pane's menu or split list open, Settings, search, the + picker. The picture keeps the text focus meanwhile. MyGo reports neither an open native menu nor its dismissal: a pane's menu ends the grab as it opens, and the grab comes back with the choice or the next pointer movement over the picture or out of the pane | view tests: held over the toolbar, ended over another pane and outside the window, off while a menu or the split list is open |
+| No key lost to a grab that lets it pass | a viewer that holds the grab but receives a key the grab always takes (Map: every key; Translate: Enter, Esc, Backspace, Tab, Delete, Insert, the arrows, Home, End, Page Up and Down, the F keys, and keys with Cmd or Ctrl, on Windows also Alt alone or Win) sends it itself as Legacy does, notes it and renews the grab | table tests of the keys and modes |
+| The grab renewed | when its window becomes active again, when the pointer comes back into the pane and after a missed key, the core checks its grab: on macOS the tap is turned on again if macOS turned it off, and started anew if its thread ended; on Windows the hook is installed again (Windows removes a slow low-level hook without notice) | unit tests where they reach; seen on both systems |
+| The macOS tap's start and stop | each tap turns itself on again with its own handle (a stopping tap could clear the shared pointer after a new tap had set it, and the new one then stayed off once macOS turned it off); a stop asked before the tap's run loop ran is no longer lost (the loop runs in slices and checks a flag) | unit tests; the macOS CI build |
+| Two status dots | under the toolbar's keyboard icon in Map and Translate: the first lights while Kyokai holds the grab, the second while the system hands the keys to it, from a new core call (`kyokai_keyboard_state`, ABI 7: the window's grab, the front window, the key reader, the tap or hook running, Kyokai in front, and on macOS Secure Event Input with the program holding it) and the missed keys; amber when keys pass, its tooltip saying why in the person's words; grey without a grab | view tests of the three states; seen on the Mac |
+| A log line for the grab | each change of the grab's state, with its reason, in the GUI log | the reason in the Mac's log the next time keys go missing |
+
+The version becomes 0.6.2 when the user confirms the release. For its version-history entry: ABI 7
+(`kyokai_keyboard_state`; `kyokai_keyboard_grab` renews a grab asked again); the core's
+clipboard-win 5.4.3 (5.4.1 was yanked); RUSTSEC-2026-0387 (crypto-bigint 0.5 through opaque-ke's
+elliptic-curve 0.13) ignored in `core/deny.toml`, as the OPAQUE suite is Ristretto255.
+
 ## 0.7.0
 
-The AI update, after 0.6.1.
+The AI update, after 0.6.2.
 
 | Item | Scope | Done when |
 |---|---|---|

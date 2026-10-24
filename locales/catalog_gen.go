@@ -7080,6 +7080,88 @@ func (msgs Messages) ViewerKeyboard() string {
 	return Catalog.Format(msgs.locale, "ViewerKeyboard", nil)
 }
 
+// ViewerKeyboardGrabBehind says "Keyboard: another window is in front of Kyokai's, so the keys stay there."
+// in the language the app shows.
+func ViewerKeyboardGrabBehind() string { return In(i18n.Locale()).ViewerKeyboardGrabBehind() }
+
+// ViewerKeyboardGrabBehind says "Keyboard: another window is in front of Kyokai's, so the keys stay there."
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardGrabBehind() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardGrabBehind", nil)
+}
+
+// ViewerKeyboardGrabMissed says "Keyboard: some keys got past Kyokai; it sent them itself and took the keyboard again."
+// in the language the app shows.
+func ViewerKeyboardGrabMissed() string { return In(i18n.Locale()).ViewerKeyboardGrabMissed() }
+
+// ViewerKeyboardGrabMissed says "Keyboard: some keys got past Kyokai; it sent them itself and took the keyboard again."
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardGrabMissed() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardGrabMissed", nil)
+}
+
+// ViewerKeyboardGrabNoReader says "Keyboard: Kyokai is not reading the keys right now; they go as in Legacy meanwhile."
+// in the language the app shows.
+func ViewerKeyboardGrabNoReader() string { return In(i18n.Locale()).ViewerKeyboardGrabNoReader() }
+
+// ViewerKeyboardGrabNoReader says "Keyboard: Kyokai is not reading the keys right now; they go as in Legacy meanwhile."
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardGrabNoReader() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardGrabNoReader", nil)
+}
+
+// ViewerKeyboardGrabOff says "Keyboard: move the pointer into this pane to send every key to the device."
+// in the language the app shows.
+func ViewerKeyboardGrabOff() string { return In(i18n.Locale()).ViewerKeyboardGrabOff() }
+
+// ViewerKeyboardGrabOff says "Keyboard: move the pointer into this pane to send every key to the device."
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardGrabOff() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardGrabOff", nil)
+}
+
+// ViewerKeyboardGrabRenewing says "Keyboard: the system stopped handing the keys to Kyokai; it is taking the keyboard again."
+// in the language the app shows.
+func ViewerKeyboardGrabRenewing() string { return In(i18n.Locale()).ViewerKeyboardGrabRenewing() }
+
+// ViewerKeyboardGrabRenewing says "Keyboard: the system stopped handing the keys to Kyokai; it is taking the keyboard again."
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardGrabRenewing() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardGrabRenewing", nil)
+}
+
+// ViewerKeyboardGrabSecure says "Keyboard: another app has secure keyboard entry on, so macOS keeps the keys from Kyokai; they go as in Legacy meanwhile."
+// in the language the app shows.
+func ViewerKeyboardGrabSecure() string { return In(i18n.Locale()).ViewerKeyboardGrabSecure() }
+
+// ViewerKeyboardGrabSecure says "Keyboard: another app has secure keyboard entry on, so macOS keeps the keys from Kyokai; they go as in Legacy meanwhile."
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardGrabSecure() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardGrabSecure", nil)
+}
+
+// ViewerKeyboardGrabSecureBy says "Keyboard: {app} has secure keyboard entry on, so macOS keeps the keys from Kyokai; they go as in Legacy meanwhile."
+// in the language the app shows.
+func ViewerKeyboardGrabSecureBy(app string) string {
+	return In(i18n.Locale()).ViewerKeyboardGrabSecureBy(app)
+}
+
+// ViewerKeyboardGrabSecureBy says "Keyboard: {app} has secure keyboard entry on, so macOS keeps the keys from Kyokai; they go as in Legacy meanwhile."
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardGrabSecureBy(app string) string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardGrabSecureBy", map[string]any{"app": app})
+}
+
+// ViewerKeyboardGrabTaking says "Keyboard: every key goes to the device."
+// in the language the app shows.
+func ViewerKeyboardGrabTaking() string { return In(i18n.Locale()).ViewerKeyboardGrabTaking() }
+
+// ViewerKeyboardGrabTaking says "Keyboard: every key goes to the device."
+// in the language of msgs.
+func (msgs Messages) ViewerKeyboardGrabTaking() string {
+	return Catalog.Format(msgs.locale, "ViewerKeyboardGrabTaking", nil)
+}
+
 // ViewerKeyboardLegacy says "Legacy"
 // in the language the app shows.
 func ViewerKeyboardLegacy() string { return In(i18n.Locale()).ViewerKeyboardLegacy() }

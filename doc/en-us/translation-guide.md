@@ -135,6 +135,8 @@ and Latin words only where it helps readability.
 | input method / composition (IME) | 输入法 / 输入组合 |
 | keyboard grab / the grab steps aside | 键盘抓取 / 抓取让开 |
 | the keyboard follows the pointer | 键盘跟随指针 |
+| renew the grab / a key got past the grab / the keyboard dots | 重新持有抓取 / 按键绕过抓取 / 键盘状态点 |
+| secure keyboard entry (Terminal) / Secure Event Input (macOS) | 安全键盘输入（终端） / Secure Event Input（macOS，不翻译） |
 | slow path / the session's writer | 慢速路径 / 会话的写入器 |
 | wake (a display) | 唤醒（显示器） |
 | loading indicator | 加载指示器 |

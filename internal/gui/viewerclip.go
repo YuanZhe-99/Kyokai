@@ -222,13 +222,21 @@ func (a *App) syncFront() {
 	}
 }
 
-// watchFocus records a window as the one used last when it gets the focus.
+// watchFocus records a window as the one used last when it gets the focus,
+// and has its panes renew their keyboard grabs (focusGen): while Kyokai was
+// in the background macOS may have switched its tap off, or Windows removed
+// its hook.
 func (a *App) watchFocus(vw *viewerWindow) {
-	vw.win.OnFocus(func() {
+	w := vw.win
+	w.OnFocus(func() {
 		a.mu.Lock()
 		a.lastWin = vw
 		a.mu.Unlock()
+		vw.mu.Lock()
+		vw.focusGen++
+		vw.mu.Unlock()
 		a.syncFront()
+		w.Invalidate()
 	})
 }
 

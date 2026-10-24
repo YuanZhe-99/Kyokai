@@ -217,10 +217,86 @@ impl Grab {
     }
 }
 
+/// How a viewer window's grab stands, as `kyokai_keyboard_state` reports it
+/// to the GUI (its status dots, its log): whether the keys typed into the
+/// window reach the grab, or what lets them pass.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Standing {
+    /// The grab takes the window's keys.
+    Taking,
+    /// The window holds no grab.
+    None,
+    /// No tap or hook runs (macOS turned the tap off, or it could not
+    /// start).
+    Off,
+    /// macOS keeps keys from every event tap while Secure Event Input is
+    /// on: the program holding it, when known.
+    SecureInput(String),
+    /// The keys go to another window's grab (on macOS, the window that
+    /// grabbed last).
+    OtherWindow,
+    /// The GUI has read no key for longer than the core waits for it.
+    NoReader,
+    /// Another program's window is in front of Kyokai's: its name, when
+    /// known.
+    Behind(String),
+}
+
+impl Standing {
+    /// The name the standing crosses the FFI as.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Standing::Taking => "taking",
+            Standing::None => "none",
+            Standing::Off => "off",
+            Standing::SecureInput(_) => "secure-input",
+            Standing::OtherWindow => "other-window",
+            Standing::NoReader => "no-reader",
+            Standing::Behind(_) => "behind",
+        }
+    }
+
+    /// The program the standing names ("" for none).
+    pub fn holder(&self) -> &str {
+        match self {
+            Standing::SecureInput(p) | Standing::Behind(p) => p,
+            _ => "",
+        }
+    }
+}
+
+/// Decides how a window's grab stands, in the order a key meets what can
+/// let it pass: the window's grab, the tap or hook, Secure Event Input, the
+/// window the keys go to, the GUI's reader, the window in front.
+/// Inputs: `secure` — the program holding Secure Event Input, when it is
+/// on; `behind` — asked last (it reads the window list): the program in
+/// front of Kyokai's window, None while Kyokai's is in front.
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+fn standing(
+    grabbed: bool,
+    running: bool,
+    secure: Option<String>,
+    front: bool,
+    reader: bool,
+    behind: impl FnOnce() -> Option<String>,
+) -> Standing {
+    match () {
+        _ if !grabbed => Standing::None,
+        _ if !running => Standing::Off,
+        _ if secure.is_some() => Standing::SecureInput(secure.unwrap_or_default()),
+        _ if !front => Standing::OtherWindow,
+        _ if !reader => Standing::NoReader,
+        _ => match behind() {
+            Some(program) => Standing::Behind(program),
+            None => Standing::Taking,
+        },
+    }
+}
+
 #[cfg(target_os = "macos")]
-pub use mac_impl::{grab, next};
+pub use mac_impl::{grab, next, state};
 #[cfg(windows)]
-pub use windows_impl::{grab, next};
+pub use windows_impl::{grab, next, state};
 
 /// Grabs the keyboard for a viewer window. Not available here.
 /// Returns: false.
@@ -236,13 +312,23 @@ pub fn next(_timeout: std::time::Duration) -> Option<KeyEvent> {
     None
 }
 
+/// How a viewer window's grab stands. Not available here.
+/// Returns: `Standing::None`.
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn state(_window: usize) -> Standing {
+    Standing::None
+}
+
 /// The keyboard grab on macOS: an event tap that takes the keys going to
 /// Kyokai while a viewer grabs, as RustDesk's grab does there.
 #[cfg(target_os = "macos")]
 mod mac_impl {
     use super::*;
     use crate::input::INJECTED_TAG;
-    use objc2_core_foundation::{CFMachPort, CFRetained, CFRunLoop, kCFRunLoopCommonModes};
+    use objc2_core_foundation::{
+        CFMachPort, CFRetained, CFRunLoop, CFRunLoopRunResult, kCFRunLoopCommonModes,
+        kCFRunLoopDefaultMode,
+    };
     use objc2_core_graphics::{
         CGEvent, CGEventField, CGEventFlags, CGEventMask, CGEventTapLocation, CGEventTapOptions,
         CGEventTapPlacement, CGEventTapProxy, CGEventType,
@@ -250,20 +336,47 @@ mod mac_impl {
     use std::collections::{HashMap, VecDeque};
     use std::ffi::c_void;
     use std::ptr::NonNull;
-    use std::sync::atomic::{AtomicPtr, Ordering};
-    use std::sync::{Condvar, Mutex};
+    use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+    use std::sync::{Arc, Condvar, Mutex};
     use std::time::Duration;
 
     /// Most keys waiting for the GUI; newer ones are dropped beyond it.
     const QUEUE: usize = 1024;
     /// Caps Lock's Mac key code.
     const CAPS_LOCK: u16 = 0x39;
+    /// How long the tap's run loop runs before it looks at its stop flag.
+    const SLICE: f64 = 0.5;
 
-    /// The tap's run loop, stopped from the thread that ends the last grab.
-    struct Loop(CFRetained<CFRunLoop>);
+    /// A tap on a thread of its own: its run loop and port, and the flags
+    /// its thread shares with the thread that ends the last grab.
+    struct Tap {
+        run_loop: CFRetained<CFRunLoop>,
+        port: CFRetained<CFMachPort>,
+        /// Asks the thread to end: its run loop runs in slices and looks at
+        /// the flag between them, so a stop asked before it ran is not lost
+        /// (CFRunLoopStop stops only a loop that runs; regression: such a
+        /// stop left a tap running until Kyokai quit).
+        stop: Arc<AtomicBool>,
+        /// Set by the thread as it ends.
+        done: Arc<AtomicBool>,
+    }
 
-    // SAFETY: CFRunLoopStop may be called from any thread.
-    unsafe impl Send for Loop {}
+    // SAFETY: CFRunLoopStop, CGEventTapEnable and CGEventTapIsEnabled may be
+    // called from any thread.
+    unsafe impl Send for Tap {}
+
+    impl Tap {
+        /// Whether the thread runs and macOS has the tap on.
+        fn running(&self) -> bool {
+            !self.done.load(Ordering::Acquire) && CGEvent::tap_is_enabled(&self.port)
+        }
+
+        /// Ends the thread, which switches the tap off and invalidates it.
+        fn end(&self) {
+            self.stop.store(true, Ordering::Release);
+            self.run_loop.stop();
+        }
+    }
 
     /// The grab's state, shared by the tap's thread and the GUI's calls.
     #[derive(Default)]
@@ -276,7 +389,7 @@ mod mac_impl {
         /// The controller's Caps Lock (a Mac has no NumLock).
         caps: bool,
         queue: VecDeque<KeyEvent>,
-        run_loop: Option<Loop>,
+        tap: Option<Tap>,
         /// When the GUI last asked for a key: keys are taken only while it
         /// reads them, so none are lost when its reader is gone.
         read: Option<std::time::Instant>,
@@ -310,16 +423,16 @@ mod mac_impl {
 
     static STATE: Mutex<Option<State>> = Mutex::new(None);
     static READY: Condvar = Condvar::new();
-    /// The tap, to switch it on again when macOS turned it off.
-    static TAP: AtomicPtr<CFMachPort> = AtomicPtr::new(std::ptr::null_mut());
 
     /// Grabs the keyboard for a viewer window in a mode, or ends its grab
-    /// (`Ask::Off`).
+    /// (`Ask::Off`). A grab asked again renews the tap.
     /// Returns: whether the tap runs for it (false without the
     /// Accessibility permission, or for an ended grab).
     /// Side effects: starts the tap on a thread of its own with the first
-    /// grab and stops it with the last; queues the release of the keys a
-    /// window's grab held when its grab ends or changes mode.
+    /// grab and stops it with the last; on a grab, switches the tap on
+    /// again when macOS switched it off, and starts a new one when its
+    /// thread ended; queues the release of the keys a window's grab held
+    /// when its grab ends or changes mode.
     pub fn grab(window: usize, ask: Ask) -> bool {
         let Ok(mut guard) = STATE.lock() else {
             return false;
@@ -339,23 +452,65 @@ mod mac_impl {
             Ask::Off if st.front == Some(window) => st.front = None,
             Ask::Off => {}
         }
-        match (st.windows.is_empty(), st.run_loop.is_some()) {
-            (true, true) => {
-                if let Some(l) = st.run_loop.take() {
-                    l.0.stop();
+        if st.windows.is_empty() {
+            if let Some(tap) = st.tap.take() {
+                tap.end();
+            }
+            return false;
+        }
+        if ask == Ask::Off {
+            return false;
+        }
+        match &st.tap {
+            Some(tap) if !tap.done.load(Ordering::Acquire) => {
+                if !CGEvent::tap_is_enabled(&tap.port) {
+                    CGEvent::tap_enable(&tap.port, true);
                 }
             }
-            (false, false) => match start() {
-                Some(l) => st.run_loop = Some(l),
+            _ => match start() {
+                Some(tap) => st.tap = Some(tap),
                 None => {
+                    st.tap = None;
                     st.windows.clear();
                     st.front = None;
                     return false;
                 }
             },
-            _ => {}
         }
-        ask != Ask::Off
+        true
+    }
+
+    /// How a viewer window's grab stands now (`Standing`).
+    /// Side effects: reads the session's Secure Event Input holder and, last,
+    /// the on-screen window list.
+    pub fn state(window: usize) -> Standing {
+        let secure = crate::mac::secure_input_holder();
+        let (grabbed, running, front, reader) = {
+            let Ok(guard) = STATE.lock() else {
+                return Standing::Off;
+            };
+            let Some(st) = guard.as_ref() else {
+                return Standing::None;
+            };
+            (
+                st.windows.contains_key(&window),
+                st.tap.as_ref().is_some_and(Tap::running),
+                st.front == Some(window),
+                st.read.is_some_and(|t| t.elapsed() <= READER_GONE),
+            )
+        };
+        standing(
+            grabbed,
+            running,
+            secure,
+            front,
+            reader,
+            || match crate::mac::window_owner(None) {
+                Some(pid) if pid as i64 == std::process::id() as i64 => None,
+                Some(pid) => Some(crate::mac::process_name(pid)),
+                None => Some(String::new()),
+            },
+        )
     }
 
     /// How long after the GUI last asked for a key the tap still takes keys:
@@ -377,9 +532,9 @@ mod mac_impl {
     }
 
     /// Starts the tap on a thread of its own.
-    /// Returns: its run loop, or None when macOS refused the tap (no
+    /// Returns: the running tap, or None when macOS refused it (no
     /// Accessibility permission).
-    fn start() -> Option<Loop> {
+    fn start() -> Option<Tap> {
         let (tx, rx) = std::sync::mpsc::sync_channel(1);
         std::thread::spawn(move || {
             let mask: CGEventMask = [
@@ -389,8 +544,17 @@ mod mac_impl {
             ]
             .iter()
             .fold(0, |m, t| m | 1 << t.0);
-            // SAFETY: `tapped` matches the callback type and keeps no
-            // pointer from `info`.
+            // The callback switches its own tap on again through `info`
+            // (regression: a shared pointer, which a tap stopping just as a
+            // new one started could clear, left the new one off for good
+            // once macOS switched it off). The thread keeps the cell until
+            // the tap is invalidated.
+            let cell = Box::new(AtomicPtr::<CFMachPort>::new(std::ptr::null_mut()));
+            let info = std::ptr::from_ref::<AtomicPtr<CFMachPort>>(&*cell)
+                .cast_mut()
+                .cast::<c_void>();
+            // SAFETY: `tapped` matches the callback type; `info` points to
+            // the cell, which outlives the tap.
             let tap = unsafe {
                 CGEvent::tap_create(
                     CGEventTapLocation::SessionEventTap,
@@ -398,7 +562,7 @@ mod mac_impl {
                     CGEventTapOptions::Default,
                     mask,
                     Some(tapped),
-                    std::ptr::null_mut(),
+                    info,
                 )
             };
             let Some(tap) = tap else {
@@ -412,19 +576,36 @@ mod mac_impl {
                 let _ = tx.send(None);
                 return;
             };
-            TAP.store(CFRetained::as_ptr(&tap).as_ptr(), Ordering::Release);
+            cell.store(CFRetained::as_ptr(&tap).as_ptr(), Ordering::Release);
             // SAFETY: an immutable constant of the framework.
             run_loop.add_source(Some(&source), unsafe { kCFRunLoopCommonModes });
             CGEvent::tap_enable(&tap, true);
-            let _ = tx.send(Some(Loop(run_loop)));
-            CFRunLoop::run();
+            let (stop, done) = (
+                Arc::new(AtomicBool::new(false)),
+                Arc::new(AtomicBool::new(false)),
+            );
+            let _ = tx.send(Some(Tap {
+                run_loop: run_loop.clone(),
+                port: tap.clone(),
+                stop: stop.clone(),
+                done: done.clone(),
+            }));
+            while !stop.load(Ordering::Acquire) {
+                // SAFETY: an immutable constant of the framework.
+                let mode = unsafe { kCFRunLoopDefaultMode };
+                // Finished: the tap's source went (macOS invalidated it).
+                if CFRunLoop::run_in_mode(mode, SLICE, false) == CFRunLoopRunResult::Finished {
+                    break;
+                }
+            }
             // The tap goes with its run loop: left installed, macOS would
             // wait on it for every key of every program (regression: the
             // keyboard froze everywhere until Kyokai quit).
-            TAP.store(std::ptr::null_mut(), Ordering::Release);
             CGEvent::tap_enable(&tap, false);
             source.invalidate();
             tap.invalidate();
+            done.store(true, Ordering::Release);
+            drop(cell);
         });
         rx.recv().ok().flatten()
     }
@@ -449,12 +630,16 @@ mod mac_impl {
         _proxy: CGEventTapProxy,
         kind: CGEventType,
         event: NonNull<CGEvent>,
-        _info: *mut c_void,
+        info: *mut c_void,
     ) -> *mut CGEvent {
         if kind == CGEventType::TapDisabledByTimeout || kind == CGEventType::TapDisabledByUserInput
         {
-            // SAFETY: the tap lives as long as its thread's run loop runs.
-            if let Some(tap) = unsafe { TAP.load(Ordering::Acquire).as_ref() } {
+            // SAFETY: `info` is the tap's cell (`start`), which its thread
+            // keeps until the tap is invalidated; the tap it points to lives
+            // as long.
+            let cell = unsafe { &*info.cast::<AtomicPtr<CFMachPort>>() };
+            // SAFETY: as above.
+            if let Some(tap) = unsafe { cell.load(Ordering::Acquire).as_ref() } {
                 CGEvent::tap_enable(tap, true);
             }
             return event.as_ptr();
@@ -648,6 +833,7 @@ mod mac_impl {
 mod windows_impl {
     use super::*;
     use std::collections::{HashMap, VecDeque};
+    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{Condvar, Mutex};
     use std::time::Duration;
     use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
@@ -656,13 +842,19 @@ mod windows_impl {
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, GA_ROOT, GetAncestor, GetCursorPos, GetForegroundWindow, GetMessageW,
-        GetWindowThreadProcessId, KBDLLHOOKSTRUCT, LLKHF_EXTENDED, LLKHF_INJECTED, MSG,
-        PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_KEYDOWN,
-        WM_QUIT, WM_SYSKEYDOWN, WindowFromPoint,
+        GetWindowThreadProcessId, HHOOK, KBDLLHOOKSTRUCT, LLKHF_EXTENDED, LLKHF_INJECTED, MSG,
+        PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP,
+        WM_KEYDOWN, WM_QUIT, WM_SYSKEYDOWN, WindowFromPoint,
     };
 
     /// Most keys waiting for the GUI; newer ones are dropped beyond it.
     const QUEUE: usize = 1024;
+    /// Asks the hook thread to install its hook again.
+    const REHOOK: u32 = WM_APP + 1;
+    /// The hook thread whose hook is installed (0: none). Windows removes a
+    /// low-level hook that kept it waiting too long, without notice: a grab
+    /// asked again installs it again.
+    static HOOKED: AtomicU32 = AtomicU32::new(0);
 
     /// The hook's state, shared by the hook thread and the GUI's calls.
     #[derive(Default)]
@@ -709,13 +901,15 @@ mod windows_impl {
     static READY: Condvar = Condvar::new();
 
     /// Grabs the keyboard for a viewer window in a mode, or ends its grab
-    /// (`Ask::Off`). Keys are taken only while that window is in front.
+    /// (`Ask::Off`). Keys are taken only while that window is in front. A
+    /// grab asked again renews the hook.
     /// Returns: whether the hook runs for it (false when it cannot be
     /// installed, or for an ended grab).
     /// Side effects: installs the hook on a thread of its own with the
-    /// first grab and removes it with the last; reads the lock keys'
-    /// state on the calling thread (the GUI's); queues the release of the
-    /// keys the window's grab held when its grab ends or changes mode.
+    /// first grab and removes it with the last, and installs it again on
+    /// later grabs; reads the lock keys' state on the calling thread (the
+    /// GUI's); queues the release of the keys the window's grab held when
+    /// its grab ends or changes mode.
     pub fn grab(window: usize, ask: Ask) -> bool {
         let Ok(mut guard) = STATE.lock() else {
             return false;
@@ -751,9 +945,38 @@ mod windows_impl {
                     return false;
                 }
             },
+            (false, Some(thread)) if ask != Ask::Off => {
+                // SAFETY: posts REHOOK to the hook thread started below.
+                let _ = unsafe { PostThreadMessageW(thread, REHOOK, WPARAM(0), LPARAM(0)) };
+            }
             _ => {}
         }
         ask != Ask::Off
+    }
+
+    /// How a viewer window's grab stands now (`Standing`).
+    pub fn state(window: usize) -> Standing {
+        let (grabbed, running, reader) = {
+            let Ok(guard) = STATE.lock() else {
+                return Standing::Off;
+            };
+            let Some(st) = guard.as_ref() else {
+                return Standing::None;
+            };
+            (
+                st.windows.contains_key(&window),
+                st.thread
+                    .is_some_and(|t| HOOKED.load(Ordering::Acquire) == t),
+                st.read.is_some_and(|t| t.elapsed() <= READER_GONE),
+            )
+        };
+        // The hook takes keys for the window in front while the pointer is
+        // over it (`hook_event`).
+        standing(grabbed, running, None, true, reader, || {
+            // SAFETY: a plain query of the window in front.
+            let front = unsafe { GetForegroundWindow() };
+            (front.0 as usize != window || !pointer_over(front)).then(String::new)
+        })
     }
 
     /// How long after the GUI last asked for a key the hook still takes keys:
@@ -784,14 +1007,31 @@ mod windows_impl {
             // pumps messages for it until WM_QUIT.
             unsafe {
                 let module = GetModuleHandleW(None).ok().map(|m| HINSTANCE(m.0));
-                let Ok(hook) = SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_hook), module, 0) else {
+                let install = || SetWindowsHookExW(WH_KEYBOARD_LL, Some(key_hook), module, 0).ok();
+                let Some(first) = install() else {
                     let _ = tx.send(None);
                     return;
                 };
-                let _ = tx.send(Some(GetCurrentThreadId()));
+                let id = GetCurrentThreadId();
+                let mut hook: Option<HHOOK> = Some(first);
+                HOOKED.store(id, Ordering::Release);
+                let _ = tx.send(Some(id));
                 let mut msg = MSG::default();
-                while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
-                let _ = UnhookWindowsHookEx(hook);
+                while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                    // Only the thread in `State::thread` is sent REHOOK.
+                    if msg.message == REHOOK {
+                        if let Some(h) = hook.take() {
+                            let _ = UnhookWindowsHookEx(h);
+                        }
+                        hook = install();
+                        HOOKED.store(if hook.is_some() { id } else { 0 }, Ordering::Release);
+                    }
+                }
+                if let Some(h) = hook {
+                    let _ = UnhookWindowsHookEx(h);
+                }
+                // Only this thread's: a newer one may have installed its own.
+                let _ = HOOKED.compare_exchange(id, 0, Ordering::AcqRel, Ordering::Acquire);
             }
         });
         rx.recv().ok().flatten()
@@ -1116,5 +1356,60 @@ mod tests {
                 assert_eq!(v, Verdict { send, swallow }, "{mode:?} step {i}");
             }
         }
+    }
+
+    /// A grab's standing names the first thing a key meets that lets it
+    /// pass, and reads the window list only when nothing before it does;
+    /// the names are what crosses the FFI.
+    #[test]
+    fn standing_names_what_lets_keys_pass() {
+        struct Case {
+            grabbed: bool,
+            running: bool,
+            secure: bool,
+            front: bool,
+            reader: bool,
+            behind: Option<&'static str>,
+            want: Standing,
+            name: &'static str,
+        }
+        let case = |grabbed, running, secure, front, reader, behind, want, name| Case {
+            grabbed,
+            running,
+            secure,
+            front,
+            reader,
+            behind,
+            want,
+            name,
+        };
+        #[rustfmt::skip]
+        let cases = [
+            case(false, false, true, false, false, None, Standing::None, "none"),
+            case(true, false, true, false, false, None, Standing::Off, "off"),
+            case(true, true, true, false, false, None, Standing::SecureInput("Terminal".into()), "secure-input"),
+            case(true, true, false, false, false, None, Standing::OtherWindow, "other-window"),
+            case(true, true, false, true, false, None, Standing::NoReader, "no-reader"),
+            case(true, true, false, true, true, Some("Finder"), Standing::Behind("Finder".into()), "behind"),
+            case(true, true, false, true, true, Some(""), Standing::Behind(String::new()), "behind"),
+            case(true, true, false, true, true, None, Standing::Taking, "taking"),
+        ];
+        for c in cases {
+            let asked = std::cell::Cell::new(false);
+            let secure = c.secure.then(|| "Terminal".to_string());
+            let got = standing(c.grabbed, c.running, secure, c.front, c.reader, || {
+                asked.set(true);
+                c.behind.map(str::to_string)
+            });
+            assert_eq!(got, c.want);
+            assert_eq!(got.name(), c.name);
+            let listed = c.name == "behind" || c.name == "taking";
+            assert_eq!(asked.get(), listed, "{}: window list read", c.name);
+        }
+        assert_eq!(
+            Standing::SecureInput("Terminal".into()).holder(),
+            "Terminal"
+        );
+        assert_eq!(Standing::OtherWindow.holder(), "");
     }
 }

@@ -213,8 +213,16 @@ type viewer struct {
 	grabbed string
 	noGrab  bool
 	window  uintptr
-	// ungrabbed: when this tab's grab last ended (grabFor).
-	ungrabbed time.Time
+	// ungrabbed: when this tab's grab last ended (grabFor); grabbedAt: when
+	// it was last taken or renewed.
+	ungrabbed, grabbedAt time.Time
+	// The grab is renewed after a key it should have taken reached the
+	// window (renew), and once its window became active again (grabGen:
+	// the window's focusGen at the last renewal).
+	renew   bool
+	grabGen uint64
+	// kb is how the core says the grab stands, for the toolbar's dots.
+	kb grabStatus
 	// The engine refuses input as behind (media INPUT), since when.
 	paused   bool
 	pausedAt time.Time
@@ -1176,8 +1184,10 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start videoStart, ptr hostPointer) {
 	area := ui.Column(c.Key("picture-area")).Grow(1).FillHeight().AlignItems(ui.Center).Justify(ui.Center)
 	at := area.LayoutBounds()
-	focused := false
-	defer func() { v.syncGrab(focused && !v.app.covered()) }()
+	// The keyboard is grabbed while the picture shows and the pointer is
+	// anywhere in the pane (doc/en-us/computer-use.md, "Keyboard modes").
+	inPane, covered, shows := v.inPane(), v.app.covered(), false
+	defer func() { v.syncGrab(inPane && shows && !covered) }()
 	v.mu.Lock()
 	recovering, asleep, hostVideo := v.recovering, v.asleep, v.host.Video
 	v.mu.Unlock()
@@ -1208,7 +1218,8 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 			// back as the picture loses the focus.
 			img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().
 				TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(false).HandleInput(v.sendInput).Bind(&v.pic)
-			focused = pointerKeys(img)
+			pointerKeys(img, inPane, covered)
+			shows = true
 			box := img.LayoutBounds()
 			v.mu.Lock()
 			v.box = box
@@ -1287,8 +1298,8 @@ func viewerWaitText(hostVideo, placeholder string) (string, bool) {
 // move it; the wheel goes to the host while this session controls it),
 // centred on black when it is smaller. The pointer ring scrolls with it.
 func (v *viewer) originalPicture(c *ui.Context, bm *ui.Bitmap, start videoStart, ptr hostPointer) {
-	focused := false
-	defer func() { v.syncGrab(focused && !v.app.covered()) }()
+	inPane, covered := v.inPane(), v.app.covered()
+	defer func() { v.syncGrab(inPane && !covered) }()
 	w, h := float32(start.Width), float32(start.Height)
 	scroll := ui.ScrollBoth(c.Key("picture-scroll")).Grow(1).MinWidth(0).FillHeight()
 	area := scroll.LayoutBounds()
@@ -1299,7 +1310,7 @@ func (v *viewer) originalPicture(c *ui.Context, bm *ui.Bitmap, start videoStart,
 				// input method off too.
 				img := ui.Image(c.Key("picture"), bm).Width(w).Height(h).Focusable().
 					TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(false).HandleInput(v.sendInput).Bind(&v.pic)
-				focused = pointerKeys(img)
+				pointerKeys(img, inPane, covered)
 				box := img.LayoutBounds()
 				v.mu.Lock()
 				v.box = box
@@ -1438,9 +1449,39 @@ func flatButton(c *ui.Context, key string, icon *ui.SVG, label string) ui.Elemen
 }
 
 // barMenu is a menu button of the toolbar: its icon, named by label, and
-// the menu that build fills.
-func barMenu(c *ui.Context, key string, icon *ui.SVG, label string, build func(m *ui.Menu)) ui.Element {
-	return barButton(c, key, icon, label).Menu(build)
+// the menu that build fills, which takes the keyboard while it is open
+// (App.menuOpened; a choice calls menuClosed).
+func barMenu(c *ui.Context, a *App, key string, icon *ui.SVG, label string, build func(m *ui.Menu)) ui.Element {
+	return barButton(c, key, icon, label).Menu(paneMenu(a, build))
+}
+
+// keyboardDots are the two dots under the toolbar's keyboard icon
+// (grabDots): green, amber or the border's grey.
+func keyboardDots(c *ui.Context, first, second dot) {
+	t := c.Theme()
+	tone := func(d dot) ui.Color {
+		switch d {
+		case dotOn:
+			return t.Success
+		case dotWarn:
+			return t.Warning
+		}
+		return t.Border
+	}
+	ui.Row(c.Key("bar-keyboard-dots")).Absolute().Left(0).Right(0).Bottom(grabDotBottom).Justify(ui.Center).Gap(grabDotGap).PassThrough().Children(func() {
+		for _, d := range []dot{first, second} {
+			ui.Box(c).Size(grabDot, grabDot).Radius(grabDot / 2).Background(tone(d))
+		}
+	})
+}
+
+// paneMenu is build for a menu in a pane, which ends the keyboard grabs as
+// it opens (App.menuOpened).
+func paneMenu(a *App, build func(m *ui.Menu)) func(m *ui.Menu) {
+	return func(m *ui.Menu) {
+		a.menuOpened()
+		build(m)
+	}
 }
 
 // barToggle is an icon toggle of the toolbar, pressed while *on.
@@ -1466,14 +1507,14 @@ func (v *viewer) fold(on bool) {
 // picture takes the keyboard again.
 func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool) {
 	t := c.Theme()
-	back := func() { v.pic.Focus(c) }
+	back := func() { v.app.menuClosed(); v.pic.Focus(c) }
 	preset, fpsCap, full := b.preset, b.fpsCap, b.full
 	v.mu.Lock()
 	original, soundOn, swap, peerOS, refused := v.original, !v.mute, v.swapping(), v.phase.Peer.OS, v.noGrab
 	canClip, clipShown := v.clip.may, v.clip.shown
 	v.mu.Unlock()
 
-	barMenu(c, "bar-display", barDisplay, L.ViewerDisplay(), func(m *ui.Menu) {
+	barMenu(c, v.app, "bar-display", barDisplay, L.ViewerDisplay(), func(m *ui.Menu) {
 		if n := len(b.displays.List); n > 1 {
 			for i := range n {
 				if m.Item(L.ViewerDisplayN(strconv.Itoa(i + 1))).Checked(i == b.displays.Current).Chosen() {
@@ -1494,7 +1535,7 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 		}
 	})
 
-	barMenu(c, "bar-quality", barQuality, L.ViewerQuality(), func(m *ui.Menu) {
+	barMenu(c, v.app, "bar-quality", barQuality, L.ViewerQuality(), func(m *ui.Menu) {
 		for i, label := range []string{L.QualitySpeed(), L.QualityBalanced(), L.QualityBest()} {
 			if m.Item(label).Checked(i == preset).Chosen() {
 				v.setQuality(i, fpsCap, full)
@@ -1533,7 +1574,25 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 		// permission: the viewer works in Legacy mode meanwhile, and the
 		// button says why.
 		noGrab := refused && runtime.GOOS == "darwin"
-		kb := barMenu(c, "bar-keyboard", barKeyboard, L.ViewerKeyboard(), func(m *ui.Menu) {
+		// In Map and Translate two dots under the icon say whether Kyokai
+		// holds the grab and whether the keys reach it (grabDots).
+		dots := grabsKeyboard && !refused && v.app != nil && v.app.keyboardMode() != "legacy"
+		v.mu.Lock()
+		grabbing, status := v.grabbed != "", v.kb
+		v.mu.Unlock()
+		now := time.Now()
+		first, second := grabDots(grabbing, status, now)
+		tip := L.ViewerKeyboard()
+		if dots {
+			tip = grabHint(grabbing, status, now)
+		}
+		kb := ui.Button(c.Key("bar-keyboard"), "").Label(L.ViewerKeyboard()).Tooltip(tip).Children(func() {
+			ui.Icon(c, barKeyboard).Size(barIconSize, barIconSize)
+			if dots {
+				keyboardDots(c, first, second)
+			}
+		})
+		kb.Menu(paneMenu(v.app, func(m *ui.Menu) {
 			if grabsKeyboard {
 				mode := v.app.keyboardMode()
 				for i, label := range []string{L.ViewerKeyboardMap(), L.ViewerKeyboardTranslate(), L.ViewerKeyboardLegacy()} {
@@ -1552,7 +1611,7 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 					back()
 				}
 			}
-		})
+		}))
 		if noGrab {
 			kb.TextColor(t.Warning).Tooltip(L.ViewerKeyboardNoGrab())
 		}
@@ -1564,7 +1623,7 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 			v.sendControl(map[string]any{"type": "action", "action": name})
 			back()
 		}
-		barMenu(c, "bar-actions", barActions, L.ViewerActions(), func(m *ui.Menu) {
+		barMenu(c, v.app, "bar-actions", barActions, L.ViewerActions(), func(m *ui.Menu) {
 			if m.Item(L.ViewerLock()).Chosen() {
 				action("lock")
 			}

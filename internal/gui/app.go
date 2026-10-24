@@ -164,6 +164,8 @@ type App struct {
 	picker     pickerState
 	palette    paletteState
 	pickSearch ui.Handle
+	// paneMenu: a pane's menu or split list is open (menuOpened).
+	paneMenu bool
 
 	// App updates (update.go).
 	appUpdate      *mygo.Update

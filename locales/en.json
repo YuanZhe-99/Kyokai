@@ -1330,6 +1330,21 @@
   "ViewerImplUnknown": "not known yet",
   "ViewerInputPaused": "Input paused — the connection is behind",
   "ViewerKeyboard": "Keyboard",
+  "ViewerKeyboardGrabBehind": "Keyboard: another window is in front of Kyokai's, so the keys stay there.",
+  "ViewerKeyboardGrabMissed": "Keyboard: some keys got past Kyokai; it sent them itself and took the keyboard again.",
+  "ViewerKeyboardGrabNoReader": "Keyboard: Kyokai is not reading the keys right now; they go as in Legacy meanwhile.",
+  "ViewerKeyboardGrabOff": "Keyboard: move the pointer into this pane to send every key to the device.",
+  "ViewerKeyboardGrabRenewing": "Keyboard: the system stopped handing the keys to Kyokai; it is taking the keyboard again.",
+  "ViewerKeyboardGrabSecure": "Keyboard: another app has secure keyboard entry on, so macOS keeps the keys from Kyokai; they go as in Legacy meanwhile.",
+  "ViewerKeyboardGrabSecureBy": "Keyboard: {app} has secure keyboard entry on, so macOS keeps the keys from Kyokai; they go as in Legacy meanwhile.",
+  "@ViewerKeyboardGrabSecureBy": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "ViewerKeyboardGrabTaking": "Keyboard: every key goes to the device.",
   "ViewerKeyboardLegacy": "Legacy",
   "ViewerKeyboardMap": "Map",
   "ViewerKeyboardNoGrab": "Allow Accessibility for Kyokai in System Settings to send every key, then reopen this connection.",

@@ -102,6 +102,28 @@ type viewerWindow struct {
 	// area is the panes' room as the last frame laid it out; need is the
 	// main window's minimum for what it shows, as last applied (fitWindow).
 	area, need size
+	// pointerIn is the pane under the pointer as the frame being built
+	// found it (nil for none): a desktop's or a screen's keyboard grab
+	// holds while the pointer is anywhere in its pane.
+	pointerIn tab
+	// focusGen counts the times the window became active: a grab taken
+	// before the last one is renewed (viewer.syncGrab).
+	focusGen uint64
+}
+
+// pointerOver reports whether the pointer is in t's pane in the frame
+// being built (pointerIn).
+func (vw *viewerWindow) pointerOver(t tab) bool {
+	vw.mu.Lock()
+	defer vw.mu.Unlock()
+	return vw.pointerIn == t
+}
+
+// activeGen is how many times the window became active (focusGen).
+func (vw *viewerWindow) activeGen() uint64 {
+	vw.mu.Lock()
+	defer vw.mu.Unlock()
+	return vw.focusGen
 }
 
 // tabDrag is what a dragged pane carries: its tabKey.
@@ -817,11 +839,18 @@ func (vw *viewerWindow) view(c *ui.Context) {
 		g = *vw.cur
 	}
 	full := vw.full
+	vw.pointerIn = nil // the panes drawn below say which is under the pointer
 	vw.mu.Unlock()
 	shown := g.shownTabs()
 	switch {
 	case full && g.split.focus != nil:
-		ui.Column(c.Key("full")).Fill().Children(func() { g.split.focus.view(c) })
+		alone := ui.Column(c.Key("full")).Fill()
+		if alone.Hovered() {
+			vw.mu.Lock()
+			vw.pointerIn = g.split.focus
+			vw.mu.Unlock()
+		}
+		alone.Children(func() { g.split.focus.view(c) })
 		shown = []tab{g.split.focus}
 	case vw.main:
 		vw.app.shellView(c, vw, g)
@@ -948,6 +977,11 @@ func (vw *viewerWindow) tabPane(c *ui.Context, d paneDraw, v tab) {
 func (vw *viewerWindow) paneBox(c *ui.Context, d paneDraw, v tab, box ui.Element, several bool) {
 	t := c.Theme()
 	key := v.tabKey()
+	if box.Hovered() {
+		vw.mu.Lock()
+		vw.pointerIn = v
+		vw.mu.Unlock()
+	}
 	if several && v == d.g.split.focus {
 		box.Border(2, t.Accent)
 	}
@@ -1186,7 +1220,9 @@ func (vw *viewerWindow) foldedButtons(c *ui.Context, d paneDraw, v tab, several 
 	b := iconButtonBase(c, "head-more-"+key, rowMore, L.ActionMore())
 	others := vw.othersFor(v)
 	across, down := d.splits(v)
-	b.Menu(func(m *ui.Menu) {
+	// The menu takes the keyboard while it is open (App.menuOpened).
+	chosen := vw.app.menuClosed
+	b.Menu(paneMenu(vw.app, func(m *ui.Menu) {
 		for _, z := range []dropZone{zoneRight, zoneBottom} {
 			label, room := L.PaneSplitRight(), across
 			if z == zoneBottom {
@@ -1204,6 +1240,7 @@ func (vw *viewerWindow) foldedButtons(c *ui.Context, d paneDraw, v tab, several 
 						name += " · " + oh.kind
 					}
 					if m.Item(name).Chosen() {
+						chosen()
 						vw.app.dropTab(o.tabKey(), vw, v, z)
 					}
 				}
@@ -1211,6 +1248,7 @@ func (vw *viewerWindow) foldedButtons(c *ui.Context, d paneDraw, v tab, several 
 					m.Separator()
 				}
 				if m.Item(L.PaneSplitNew()).Chosen() {
+					chosen()
 					vw.app.openPicker("fold-"+key, true, key, z)
 				}
 			})
@@ -1221,10 +1259,11 @@ func (vw *viewerWindow) foldedButtons(c *ui.Context, d paneDraw, v tab, several 
 				label = L.PaneRestore()
 			}
 			if m.Item(label).Chosen() {
+				chosen()
 				vw.toggleZoom(v)
 			}
 		}
-	})
+	}))
 	vw.app.pickerView(c, "fold-"+key, b)
 }
 
@@ -1290,14 +1329,22 @@ func (vw *viewerWindow) splitButton(c *ui.Context, v tab, z dropZone, room bool)
 			})
 		})
 	}
+	// The list takes the keyboard while it is open (App.menuOpened).
 	vw.mu.Lock()
+	was := vw.menu == id
 	switch {
 	case open:
 		vw.menu = id
-	case vw.menu == id:
+	case was:
 		vw.menu = ""
 	}
 	vw.mu.Unlock()
+	switch {
+	case open && !was:
+		vw.app.menuOpened()
+	case was && !open:
+		vw.app.menuClosed()
+	}
 	vw.app.pickerView(c, "split-"+id, b)
 }
 

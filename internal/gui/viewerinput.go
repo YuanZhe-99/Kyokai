@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"runtime"
 	"slices"
 	"time"
@@ -368,18 +369,36 @@ func controlPacket(e inputEvent) []byte {
 
 // sendInput passes one viewer event to the host, on the media connection.
 func (v *viewer) sendInput(ev ui.InputEvent) bool {
+	if ev.Kind == ui.InputPointerMove || ev.Kind == ui.InputPointerDown {
+		v.app.menuClosed() // a native menu takes the pointer while it is open
+	}
+	now := time.Now()
 	v.mu.Lock()
 	box, start, may := v.box, v.start, v.control
 	if v.held == nil {
 		v.held = map[ui.Key]bool{}
 	}
+	// A key the grab should have taken that reached the window got past it
+	// (the system did not hand it to the grab): it goes as in Legacy mode,
+	// and the grab is renewed. So do a Mac menu's commands.
 	grabbed := v.grabbed
-	e, ok := toEvent(ev, box, start.Width, start.Height, v.held, v.grabbed)
+	held := grabbed != "" && now.Sub(v.grabbedAt) > grabMissGrace
+	passed := held && grabLetPass(grabbed, ev, runtime.GOOS)
+	command := ev.Kind == ui.InputCommand && runtime.GOOS == "darwin" && (grabbed == "" || held)
+	if passed || command && grabbed != "" {
+		name := ev.Text
+		if n, ok := keyNames[ev.Key]; ok && passed {
+			name = n
+		}
+		v.missedKeyLocked(name, now)
+		grabbed = ""
+	}
+	e, ok := toEvent(ev, box, start.Width, start.Height, v.held, grabbed)
 	v.mu.Unlock()
 	// A Mac's menu takes Cmd+C and the like before the picture sees the
-	// keys: they come back as the menu's commands (Legacy mode; a grab
-	// takes the keys first).
-	if ev.Kind == ui.InputCommand && grabbed == "" && runtime.GOOS == "darwin" {
+	// keys: they come back as the menu's commands (Legacy mode, or a grab
+	// they got past).
+	if command {
 		es := commandEvents(ev.Text)
 		for _, c := range es {
 			if may {
@@ -651,33 +670,42 @@ func (v *viewer) inputStalled(now time.Time) bool {
 const inputPauseGrace = 500 * time.Millisecond
 
 // syncGrab has the core grab the keyboard for this viewer's window while
-// the pointer is over its picture (pointerKeys) in Map or Translate mode
-// and the session takes input, and ends the grab otherwise. A grab the core refuses leaves the
-// viewer in Legacy mode.
-// Side effects: starts the app's key reader with the first grab. Call it
-// on the main thread.
-func (v *viewer) syncGrab(focused bool) {
+// the pointer is anywhere in its pane (inPane: not covered, see covered) in
+// Map or Translate mode and the session takes input, and ends the grab
+// otherwise; a grab it holds is renewed after a key got past it and once
+// its window became active again (grabCall). A grab the core refuses
+// leaves the viewer in Legacy mode.
+// Side effects: starts the app's key reader with the first grab; asks how
+// the grab stands while it holds (askGrabState). Call it on the main
+// thread.
+func (v *viewer) syncGrab(inPane bool) {
 	want := ""
+	now := time.Now()
 	v.mu.Lock()
-	stalled := v.inputStalled(time.Now())
+	stalled := v.inputStalled(now)
 	v.mu.Unlock()
-	if focused && v.control && !stalled {
+	if inPane && v.control && !stalled {
 		if mode := v.app.keyboardMode(); mode != "legacy" {
 			want = mode
 		}
 	}
+	w := v.home.Load()
+	var active uint64
+	if w != nil {
+		active = w.activeGen()
+	}
 	v.mu.Lock()
 	have, refused := v.grabbed, v.noGrab
+	renewing := want != "" && want == have && (v.renew || v.grabGen != active)
 	v.mu.Unlock()
-	if want == have || refused && want != "" {
+	if !grabCall(want, have, refused, renewing) {
+		if want != "" {
+			v.askGrabState(now)
+		}
 		return
 	}
 	lib, err := coreLib()
-	if err != nil {
-		return
-	}
-	w := v.home.Load()
-	if w == nil {
+	if err != nil || w == nil {
 		return
 	}
 	window := w.win.NativeHandle()
@@ -692,12 +720,219 @@ func (v *viewer) syncGrab(focused bool) {
 		want = ""
 	}
 	if have != "" && want == "" {
-		v.ungrabbed = time.Now()
+		v.ungrabbed = now
+	}
+	if want != "" {
+		v.grabbedAt, v.renew, v.grabGen = now, false, active
+		v.kb.at = time.Time{} // ask how the renewed grab stands at once
 	}
 	v.grabbed = want
 	v.mu.Unlock()
 	if want != "" {
 		v.app.keyReader.Do(func() { go v.app.readKeys(lib) })
+		v.askGrabState(now)
+	}
+}
+
+// grabCall decides whether a viewer asks the core about its grab: when what
+// it wants changes, and to renew the grab it holds (renewing); never to
+// take a grab the core refused.
+func grabCall(want, have string, refused, renewing bool) bool {
+	if refused && want != "" {
+		return false
+	}
+	return want != have || renewing
+}
+
+// grabStatus is how the core last said a viewer's keyboard grab stands
+// (core.KeyboardState), for the toolbar's dots and the log.
+type grabStatus struct {
+	core.KeyboardState
+	// at: when the core was asked; missed: when a key the grab should have
+	// taken last reached the window.
+	at, missed time.Time
+	// logged is the state the log last noted as letting keys pass ("" while
+	// the grab takes them).
+	logged string
+	// asking: a redraw that asks again is on its way.
+	asking bool
+}
+
+// Timings of the grab's status: how often a viewer that grabs asks the core
+// how its grab stands; how soon after the grab was taken a key reaching the
+// window was typed before it (not missed); how long a missed key keeps the
+// second dot amber.
+const (
+	grabAskEvery  = 500 * time.Millisecond
+	grabMissGrace = 150 * time.Millisecond
+	grabMissShown = 3 * time.Second
+)
+
+// askGrabState asks the core, at most every grabAskEvery, how the grab
+// stands; notes in the log when it starts letting keys pass and when it
+// takes them again; asks for a renewal where one helps (the tap or hook
+// off, the grab gone or another window's); and has the window drawn again
+// to ask once more while the grab lasts.
+// Notes: call on the main thread while the viewer grabs.
+func (v *viewer) askGrabState(now time.Time) {
+	v.mu.Lock()
+	due, window := now.Sub(v.kb.at) >= grabAskEvery, v.window
+	v.mu.Unlock()
+	if due {
+		if lib, err := coreLib(); err == nil {
+			if s, err := lib.KeyboardState(window); err == nil {
+				v.noteGrabState(s, now)
+			}
+		}
+	}
+	v.mu.Lock()
+	again := !v.kb.asking
+	v.kb.asking = true
+	v.mu.Unlock()
+	if again {
+		time.AfterFunc(grabAskEvery, func() {
+			v.update(func() {
+				v.mu.Lock()
+				v.kb.asking = false
+				v.mu.Unlock()
+			})
+		})
+	}
+}
+
+// noteGrabState keeps what the core said of the grab (askGrabState).
+// Side effects: a log line as the grab starts letting keys pass, with why,
+// and as it takes them again — not for another program in front, which is
+// what switching programs does (a key missed meanwhile says it); asks for a
+// renewal where one helps.
+func (v *viewer) noteGrabState(s core.KeyboardState, now time.Time) {
+	v.mu.Lock()
+	v.kb.KeyboardState, v.kb.at = s, now
+	logged := v.kb.logged
+	passing := s.State != "taking" && s.State != "behind"
+	if passing {
+		v.kb.logged = s.State
+	} else {
+		v.kb.logged = ""
+	}
+	switch s.State {
+	case "off", "none", "other-window":
+		v.renew = true
+	}
+	device := v.device
+	v.mu.Unlock()
+	switch {
+	case passing && logged != s.State:
+		log.Printf("keyboard: the grab for %s lets keys pass: %s%s; renewing it where that helps", device, s.State, holderNote(s.Holder))
+	case !passing && logged != "":
+		log.Printf("keyboard: the grab for %s takes the keys again", device)
+	}
+}
+
+// holderNote names the program a grab state names, for the log.
+func holderNote(holder string) string {
+	if holder == "" {
+		return ""
+	}
+	return " (" + holder + ")"
+}
+
+// grabLetPass reports whether a key that reached the window had to get past
+// a grab in mode: in Map every key goes by position, so any key the window
+// sees did; in Translate the keys that type stay the controller's by design,
+// so only those that never type (Enter, Esc, Backspace, Tab, Delete,
+// Insert, the arrows, Home, End, Page Up and Down, the F keys) and shortcuts
+// did — Cmd or Ctrl on a Mac, Win, or Ctrl or Alt alone, elsewhere (Ctrl
+// and Alt together are AltGr, which types).
+func grabLetPass(mode string, ev ui.InputEvent, goos string) bool {
+	if ev.Kind != ui.InputKeyDown {
+		return false
+	}
+	if _, ok := keyNames[ev.Key]; !ok {
+		return false
+	}
+	if mode == "map" {
+		return true
+	}
+	ctrl, alt, meta := ev.Mods&ui.Ctrl != 0, ev.Mods&ui.Alt != 0, ev.Mods&ui.Super != 0
+	if meta || goos == "darwin" && ctrl || goos != "darwin" && ctrl != alt {
+		return true
+	}
+	return !typing[ev.Key] && !punctuation[ev.Key]
+}
+
+// punctuation are the named keys besides the letters and digits (typing)
+// that type a character, which Translate leaves to the controller's layout:
+// Space and the punctuation keys.
+var punctuation = map[ui.Key]bool{
+	ui.KeySpace: true, ui.KeyMinus: true, ui.KeyEqual: true, ui.KeyComma: true, ui.KeyPeriod: true,
+	ui.KeySlash: true, ui.KeySemicolon: true, ui.KeyQuote: true, ui.KeyBracketLeft: true,
+	ui.KeyBracketRight: true, ui.KeyBackslash: true, ui.KeyBackquote: true,
+}
+
+// dot is one of the toolbar's keyboard dots: off, on, or amber.
+type dot int
+
+const (
+	dotOff dot = iota
+	dotOn
+	dotWarn
+)
+
+// grabDots are the toolbar's keyboard dots: the first on while the viewer
+// holds the grab; the second on while the core says the grab takes the keys
+// and none got past it within grabMissShown, amber otherwise; both off
+// without a grab.
+func grabDots(grabbing bool, s grabStatus, now time.Time) (first, second dot) {
+	if !grabbing {
+		return dotOff, dotOff
+	}
+	if s.State != "taking" && s.State != "" || !s.missed.IsZero() && now.Sub(s.missed) < grabMissShown {
+		return dotOn, dotWarn
+	}
+	if s.State == "" {
+		return dotOn, dotOff // not asked yet
+	}
+	return dotOn, dotOn
+}
+
+// grabHint says in the keyboard button's tooltip how the grab stands.
+func grabHint(grabbing bool, s grabStatus, now time.Time) string {
+	if !grabbing {
+		return L.ViewerKeyboardGrabOff()
+	}
+	if !s.missed.IsZero() && now.Sub(s.missed) < grabMissShown && s.State == "taking" {
+		return L.ViewerKeyboardGrabMissed()
+	}
+	switch s.State {
+	case "taking", "":
+		return L.ViewerKeyboardGrabTaking()
+	case "secure-input":
+		if s.Holder != "" {
+			return L.ViewerKeyboardGrabSecureBy(s.Holder)
+		}
+		return L.ViewerKeyboardGrabSecure()
+	case "behind":
+		return L.ViewerKeyboardGrabBehind()
+	case "no-reader":
+		return L.ViewerKeyboardGrabNoReader()
+	}
+	return L.ViewerKeyboardGrabRenewing()
+}
+
+// missedKeyLocked notes a key that got past the grab: the second dot turns
+// amber, the grab is renewed, and the log says so once in a while.
+// Notes: the caller holds v.mu.
+func (v *viewer) missedKeyLocked(name string, now time.Time) {
+	first := v.kb.missed.IsZero() || now.Sub(v.kb.missed) >= grabMissShown
+	v.kb.missed, v.renew = now, true
+	if first {
+		state := v.kb.State
+		if state == "" {
+			state = "not asked yet"
+		}
+		log.Printf("keyboard: %s for %s got past the %s grab (the core last said: %s%s); sent it as typed, renewing the grab",
+			name, v.device, v.grabbed, state, holderNote(v.kb.Holder))
 	}
 }
 
@@ -774,18 +1009,20 @@ func scanEvent(ev core.KeyEvent) inputEvent {
 	return inputEvent{Kind: "scan", Code: ev.Code, Down: ev.Down != 0, Caps: ev.Caps != 0, Num: ev.Num != 0}
 }
 
-// pointerKeys reports whether a picture takes the keyboard: while the
-// pointer is over it (doc/en-us/computer-use.md, "Keyboard modes"), so with
-// several connections side by side the keys go to the one under the
-// pointer. It takes the text focus with them, so that typed text goes to
-// the same session as the keys. The core takes the keys only while Kyokai
-// is in front (on Windows, also while its window shows at the pointer).
-func pointerKeys(img ui.Element) bool {
-	if !img.Hovered() {
-		return false
-	}
-	if !img.Focused() {
+// pointerKeys gives a picture the text focus while the pointer is over it,
+// or anywhere in its pane where the grab holds (inPane), unless something
+// over the panes takes the keyboard (covered): typed text then goes to the
+// session the grab sends the keys to, with panes side by side the one under
+// the pointer (doc/en-us/computer-use.md, "Keyboard modes").
+func pointerKeys(img ui.Element, inPane, covered bool) {
+	if (inPane || img.Hovered()) && !covered && !img.Focused() {
 		img.Focus()
 	}
-	return true
+}
+
+// inPane reports whether the pointer is in the viewer's pane in the frame
+// being built (viewerWindow.pointerIn).
+func (v *viewer) inPane() bool {
+	w := v.home.Load()
+	return w != nil && w.pointerOver(v)
 }

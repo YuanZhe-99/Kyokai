@@ -455,6 +455,9 @@ const (
 	barMargin       float32 = 8   // the least room it keeps from the picture's sides
 	barRadius       float32 = 10  // its corners
 	barIconSize     float32 = 16  // its icons
+	grabDot         float32 = 4   // a keyboard dot under the keyboard icon (grabDots)
+	grabDotGap      float32 = 3   // between the two
+	grabDotBottom   float32 = 1   // from the button's bottom edge
 	avatarSize      float32 = 36  // a device's round avatar
 	logoSize        float32 = 22  // a vendor logo inside it (about 64%)
 	busySize        float32 = 16  // a loading indicator beside text

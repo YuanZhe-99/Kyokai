@@ -50,7 +50,7 @@ use std::sync::{Arc, Mutex};
 
 /// Version of the C ABI. Hosts compare it with their own before any other
 /// call; changing an export's signature or meaning bumps it.
-pub const ABI_VERSION: u32 = 6;
+pub const ABI_VERSION: u32 = 7;
 
 /// The running core: what `kyokai_start` set up, until `kyokai_stop`.
 struct Core {
@@ -525,7 +525,9 @@ pub extern "C" fn kyokai_decoder_close(id: u64) {
 }
 
 /// Grabs the keyboard for a viewer window, or ends its grab
-/// (doc/en-us/computer-use.md, "Keyboard modes"). Needs no started core.
+/// (doc/en-us/computer-use.md, "Keyboard modes"); a grab asked again
+/// renews it (the macOS tap switched on again or started anew, the Windows
+/// hook installed again). Needs no started core.
 /// Inputs: `window` — the viewer's native window handle; `mode`/`len` — the
 /// mode's name (`map`, `translate`, `off`), borrowed for the call.
 /// Returns: 0; -1 for an unknown mode or no window; -2 when the keyboard cannot be
@@ -586,6 +588,45 @@ pub unsafe extern "C" fn kyokai_keyboard_read(
         Ok(None) => 0,
         Err(_) => -2,
     }
+}
+
+/// Describes how a viewer window's keyboard grab stands as
+/// `{"state": name, "holder": program}` JSON written into `out`: the
+/// state's name is `taking`, `none`, `off`, `secure-input`, `other-window`,
+/// `no-reader` or `behind` (`keyboard::Standing`); `holder`, present when
+/// known, names the program holding Secure Event Input or in front. Needs
+/// no started core.
+/// Inputs: `window` — the viewer's native window handle; `out`/`cap` —
+/// memory the caller owns.
+/// Returns: the length written; -1 for a null `out`; -2 when the keyboard
+/// cannot be grabbed here; -3 when it does not fit `cap`.
+/// Side effects: on macOS reads the session's Secure Event Input holder
+/// and the on-screen window list.
+///
+/// # Safety
+/// `out` is valid for `cap` bytes of writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn kyokai_keyboard_state(window: usize, out: *mut u8, cap: usize) -> i32 {
+    if out.is_null() {
+        return -1;
+    }
+    if !cfg!(any(windows, target_os = "macos")) {
+        return -2;
+    }
+    let Ok(standing) = catch_unwind(|| keyboard::state(window)) else {
+        return -2;
+    };
+    let mut v = json!({"state": standing.name()});
+    if !standing.holder().is_empty() {
+        v["holder"] = json!(standing.holder());
+    }
+    let json = v.to_string();
+    if json.len() > cap {
+        return -3;
+    }
+    // SAFETY: `out` has `cap >= json.len()` writable bytes, per the contract.
+    unsafe { std::ptr::copy_nonoverlapping(json.as_ptr(), out, json.len()) };
+    json.len() as i32
 }
 
 /// Frees a response buffer from `kyokai_start` or `kyokai_call`.

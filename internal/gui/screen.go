@@ -168,6 +168,9 @@ func (sc *screenClient) close() { sc.desk.close() }
 // and the wheel in its pixels, keys by name and text in Legacy mode (the
 // grab takes keys in Map and Translate).
 func (sc *screenClient) input(ev ui.InputEvent) bool {
+	if ev.Kind == ui.InputPointerMove || ev.Kind == ui.InputPointerDown {
+		sc.s.app.menuClosed() // a native menu takes the pointer while it is open
+	}
 	sc.mu.Lock()
 	box, fb := sc.box, sc.fb
 	grabbed := sc.s.grabMode()
@@ -278,8 +281,11 @@ func (sc *screenClient) view(c *ui.Context, s *serviceTab) {
 	sc.mu.Lock()
 	bm, fb, original := sc.bm, sc.fb, sc.original
 	sc.mu.Unlock()
-	focused := false
-	defer func() { s.syncGrab(focused && !s.app.covered()) }()
+	// The keyboard is grabbed while the screen shows and the pointer is
+	// anywhere in the pane, as for a desktop.
+	w := s.home.Load()
+	inPane, covered, shows := w != nil && w.pointerOver(s), s.app.covered(), false
+	defer func() { s.syncGrab(inPane && shows && !covered) }()
 	ui.Column(c).Fill().Background(ui.Hex("#000000")).Children(func() {
 		stage := ui.Column(c.Key("screen-stage")).Grow(1).FillWidth().MinHeight(0)
 		stage.Children(func() {
@@ -296,7 +302,8 @@ func (sc *screenClient) view(c *ui.Context, s *serviceTab) {
 					ui.Column(c).MinWidth(area.W).MinHeight(area.H).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 						img := ui.Image(c.Key("screen"), bm).Width(w).Height(h).Shrink(0).Focusable().
 							TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(false).HandleInput(sc.input).Bind(&sc.pic)
-						focused = pointerKeys(img)
+						pointerKeys(img, inPane, covered)
+						shows = true
 						sc.setBox(img.LayoutBounds())
 					})
 				})
@@ -305,7 +312,8 @@ func (sc *screenClient) view(c *ui.Context, s *serviceTab) {
 				// screen, as in a desktop viewer's picture.
 				img := ui.Image(c.Key("screen"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().
 					TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(false).HandleInput(sc.input).Bind(&sc.pic)
-				focused = pointerKeys(img)
+				pointerKeys(img, inPane, covered)
+				shows = true
 				sc.setBox(img.LayoutBounds())
 			}
 			sc.toolbar(c, s)
@@ -325,14 +333,14 @@ func (sc *screenClient) setBox(box ui.Rect) {
 // Ctrl+Alt+Del and Full screen.
 func (sc *screenClient) toolbar(c *ui.Context, s *serviceTab) {
 	t := c.Theme()
-	back := func() { sc.pic.Focus(c) }
+	back := func() { s.app.menuClosed(); sc.pic.Focus(c) }
 	sc.mu.Lock()
 	original := sc.original
 	sc.mu.Unlock()
 	ui.Row(c.Key("screen-bar-lane")).Absolute().Top(barTop).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
 		ui.Row(c.Key("screen-bar")).AlignItems(ui.Center).Gap(2).Padding(2, 6).Radius(barRadius).
 			Background(t.Surface).Border(1, t.Border).Shadow(0, 2, 10, 0, ui.RGBA(0, 0, 0, 0.3)).Children(func() {
-			barMenu(c, "screen-display", barDisplay, L.ViewerDisplay(), func(m *ui.Menu) {
+			barMenu(c, s.app, "screen-display", barDisplay, L.ViewerDisplay(), func(m *ui.Menu) {
 				for i, label := range []string{L.ViewerFit(), L.ViewerOriginal()} {
 					if m.Item(label).Checked(original == (i == 1)).Chosen() {
 						sc.mu.Lock()
@@ -343,7 +351,7 @@ func (sc *screenClient) toolbar(c *ui.Context, s *serviceTab) {
 				}
 			})
 			if grabsKeyboard {
-				barMenu(c, "screen-keyboard", barKeyboard, L.ViewerKeyboard(), func(m *ui.Menu) {
+				barMenu(c, s.app, "screen-keyboard", barKeyboard, L.ViewerKeyboard(), func(m *ui.Menu) {
 					mode := s.app.keyboardMode()
 					for i, label := range []string{L.ViewerKeyboardMap(), L.ViewerKeyboardTranslate(), L.ViewerKeyboardLegacy()} {
 						if m.Item(label).Checked(keyboardModes[i] == mode).Chosen() {
@@ -353,7 +361,7 @@ func (sc *screenClient) toolbar(c *ui.Context, s *serviceTab) {
 					}
 				})
 			}
-			barMenu(c, "screen-actions", barActions, L.ViewerActions(), func(m *ui.Menu) {
+			barMenu(c, s.app, "screen-actions", barActions, L.ViewerActions(), func(m *ui.Menu) {
 				if m.Item(L.ViewerCtrlAltDel()).Chosen() {
 					go sc.ctrlAltDel()
 					back()

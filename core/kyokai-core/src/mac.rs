@@ -26,8 +26,9 @@ use objc2_core_graphics::{
     CGGetOnlineDisplayList, CGKeyCode, CGMainDisplayID, CGMouseButton,
     CGPreflightListenEventAccess, CGPreflightScreenCaptureAccess,
     CGRectMakeWithDictionaryRepresentation, CGRequestListenEventAccess,
-    CGRequestScreenCaptureAccess, CGScrollEventUnit, CGWindowListCopyWindowInfo,
-    CGWindowListOption, kCGWindowBounds, kCGWindowLayer, kCGWindowOwnerPID,
+    CGRequestScreenCaptureAccess, CGScrollEventUnit, CGSessionCopyCurrentDictionary,
+    CGWindowListCopyWindowInfo, CGWindowListOption, kCGWindowBounds, kCGWindowLayer,
+    kCGWindowOwnerPID,
 };
 use objc2_core_media::{CMSampleBuffer, CMTime, CMTimeFlags};
 use objc2_core_video::{
@@ -1064,6 +1065,37 @@ pub(crate) fn window_owner(at: Option<CGPoint>) -> Option<i32> {
     None
 }
 
+/// The program holding Secure Event Input, while one has it on: macOS then
+/// keeps keys from every event tap, the keyboard grab's too. Its name ("" when
+/// unknown), from the session's `kCGSSessionSecureInputPID`.
+pub(crate) fn secure_input_holder() -> Option<String> {
+    let session = CGSessionCopyCurrentDictionary()?;
+    // SAFETY: the session dictionary has string keys.
+    let session = unsafe { CFRetained::cast_unchecked::<CFDictionary<CFString, CFType>>(session) };
+    let key = CFString::from_static_str("kCGSSessionSecureInputPID");
+    let pid = session.get(&key)?.downcast::<CFNumber>().ok()?.as_i64()?;
+    (pid > 0).then(|| process_name(pid as i32))
+}
+
+/// A process's name as people know it: its app's ("" when unknown).
+pub(crate) fn process_name(pid: i32) -> String {
+    let mut path = [0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    // SAFETY: proc_pidpath writes at most the buffer's length and returns
+    // the length it wrote (0 or less for an unknown process).
+    let n = unsafe { libc::proc_pidpath(pid, path.as_mut_ptr().cast(), path.len() as u32) };
+    if n <= 0 {
+        return String::new();
+    }
+    program_name(&String::from_utf8_lossy(&path[..n as usize]))
+}
+
+/// A program's name from its executable's path: its outermost app bundle's
+/// name without `.app`, else the file's name.
+fn program_name(path: &str) -> String {
+    let path = path.find(".app/").map_or(path, |i| &path[..i]);
+    path.rsplit('/').next().unwrap_or(path).to_string()
+}
+
 /// Whether a process is one of Kyokai's: the app, the engine or Kyokai
 /// Helper, told by its executable's name as on Windows, whoever started it
 /// (regression: "this engine or its parent" missed the app in the helper
@@ -1661,6 +1693,34 @@ mod tests {
         assert!(kyokai_process(std::process::id() as i32));
         assert!(!kyokai_process(1), "launchd");
         assert!(!kyokai_process(-1), "no such process");
+    }
+
+    /// The program the keyboard grab's status names: an app by its bundle,
+    /// a bare executable by its file.
+    #[test]
+    fn programs_are_named_by_their_app() {
+        for (path, name) in [
+            (
+                "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+                "Terminal",
+            ),
+            (
+                "/Applications/1Password.app/Contents/MacOS/1Password",
+                "1Password",
+            ),
+            (
+                "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app/Contents/MacOS/Simulator",
+                "Xcode",
+            ),
+            (
+                "/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow",
+                "loginwindow",
+            ),
+            ("/usr/bin/sudo", "sudo"),
+        ] {
+            assert_eq!(program_name(path), name, "{path}");
+        }
+        assert_eq!(process_name(-1), "", "no such process");
     }
 
     /// Every key the Map table names comes back to its scan code, so a Mac

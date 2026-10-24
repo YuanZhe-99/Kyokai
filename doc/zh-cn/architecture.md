@@ -47,7 +47,7 @@
 
 | 导出 | 作用 |
 |---|---|
-| `kyokai_abi_version() -> u32` | ABI 版本（6）；不一致时宿主拒绝加载 |
+| `kyokai_abi_version() -> u32` | ABI 版本（7）；不一致时宿主拒绝加载 |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | 以 `{version, state_dir, profile}` 启动核心 |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | 应答 `{method, params}` |
 | `kyokai_free(ptr, len)` | 释放响应缓冲区 |
@@ -61,8 +61,9 @@
 | `kyokai_audio_open() -> u64` | 打开被控端声音（Opus）的解码器；无法打开时为 0。不需要已启动的核心 |
 | `kyokai_audio_decode(id, packet, len, out, cap) -> i32` | 把一个 Opus 数据包解码到调用方的浮点缓冲区，为 48 kHz 交错立体声：返回写入的帧数，-1 错误，-3 放不下 |
 | `kyokai_audio_close(id)` | 释放声音解码器 |
-| `kyokai_keyboard_grab(window, mode, len) -> i32` | 以 `map` 或 `translate` 模式为查看窗口（其原生句柄）抓取键盘，或以 `off` 结束抓取：0，-1 未知模式或没有窗口，-2 此处不可用（没有钩子；在 macOS 上，事件监听需要应用的“辅助功能”权限）。不需要已启动的核心 |
+| `kyokai_keyboard_grab(window, mode, len) -> i32` | 以 `map` 或 `translate` 模式为查看窗口（其原生句柄）抓取键盘，或以 `off` 结束抓取；再次请求抓取即重新持有它（macOS 的事件监听被重新打开或重新创建，Windows 的钩子被重新安装）：0，-1 未知模式或没有窗口，-2 此处不可用（没有钩子；在 macOS 上，事件监听需要应用的“辅助功能”权限）。不需要已启动的核心 |
 | `kyokai_keyboard_read(*event, timeout_ms) -> i32` | 等待抓取到的下一个按键，并写入调用方的 `{window: usize, code: u32, down, caps, num: u8, pad: u8}`：1 有按键，0 超时，-2 不可用 |
+| `kyokai_keyboard_state(window, *out, cap) -> i32` | 查看窗口的抓取状态，以 `{"state", "holder"}` JSON 写入调用方的缓冲区：`taking`、`none`、`off`、`secure-input`、`other-window`、`no-reader` 或 `behind`，已知时 `holder` 给出持有 Secure Event Input 或位于前台的程序；返回长度，-1 `out` 为空，-2 不可用，-3 缓冲区太小。不需要已启动的核心 |
 | `kyokai_privacy_request(name, len) -> i32` | 在调用进程中向 macOS 请求 `screen`、`accessibility` 或 `input-monitoring`（由应用调用，因此提示属于应用本身）：1 已授权，0 尚未授权，-1 名称未知或本系统没有该权限。无需已启动的核心 |
 
 响应是核心分配的缓冲区中的 `{"ok": true, "result": …}` 或 `{"ok": false, "error": "…"}`；panic 在边界处捕获并作为错误返回。

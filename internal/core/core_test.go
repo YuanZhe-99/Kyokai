@@ -1,10 +1,12 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 )
@@ -36,6 +38,33 @@ func TestRealLibrary(t *testing.T) {
 	defer l.Stop()
 	if len(st.DeviceID) != 9 || st.Version != "0.0.0-test" || st.ABI != ABIVersion {
 		t.Fatalf("status %+v", st)
+	}
+	// No viewer grabs the keyboard here: a window's grab stands at none. A
+	// grab for a window that is never in front takes no key: it is held,
+	// behind; asked again it is renewed; ended, none again. Without the
+	// Accessibility permission (a Mac runner) the grab is refused.
+	state := func(want ...string) {
+		t.Helper()
+		ks, err := l.KeyboardState(0x1234)
+		if err != nil || !slices.Contains(want, ks.State) {
+			t.Fatalf("keyboard state: %v %+v, want one of %v", err, ks, want)
+		}
+	}
+	state("none")
+	switch err := l.KeyboardGrab(0x1234, "map"); {
+	case err == nil:
+		_, _, _ = l.Keyboard().Read(10 * time.Millisecond) // the GUI's reader asks
+		state("behind", "secure-input")
+		if err := l.KeyboardGrab(0x1234, "map"); err != nil {
+			t.Fatalf("renew the grab: %v", err)
+		}
+		state("behind", "secure-input")
+		if err := l.KeyboardGrab(0x1234, "off"); err != nil {
+			t.Fatalf("end the grab: %v", err)
+		}
+		state("none")
+	case !errors.Is(err, ErrNoKeyboard):
+		t.Fatalf("grab: %v", err)
 	}
 	var pw struct{ Temporary string }
 	if err := l.Call("password.reveal", nil, &pw); err != nil || len(pw.Temporary) != 8 {

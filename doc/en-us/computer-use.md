@@ -276,13 +276,23 @@ names (Fn, the media keys) stay the Mac's, and Caps Lock, which a Mac reports on
 goes as a press and a release. The tap takes keys only while Kyokai owns the frontmost window and
 the viewer reads them (it lets every key pass when either stops), a viewer whose pane is hidden or
 whose connection ended releases its grab, and the tap is switched off and invalidated with its
-thread (left installed, it froze every program's keyboard until Kyokai quit).
+thread (left installed, it froze every program's keyboard until Kyokai quit). Each tap turns itself
+on again with its own handle when macOS switches it off, and its run loop runs in half-second
+slices that look at a stop flag, so a stop asked before it ran is not lost (in 0.6.1 a stopping tap
+could clear the shared handle a newer tap needed, which then stayed off once macOS switched it off,
+and a stop asked too early left a tap running).
 
-The keyboard follows the pointer. In Map and Translate a viewer grabs while the pointer is over its
-picture, and the picture takes the text focus with it, so typed text and keys go to the same
-session; with panes side by side the keys go to the connection under the pointer. With the pointer
-away from the picture (the toolbar, Home, outside the window) nothing is grabbed and keys go to
-Kyokai's own interface. The core takes the keys only while Kyokai's window is in front; on Windows
+The keyboard follows the pointer. In Map and Translate a viewer grabs while its picture shows and the
+pointer is anywhere in its pane — its header, its toolbar, its clipboard panel, the picture — and the
+picture keeps the text focus meanwhile, so typed text and keys go to the same session; with panes
+side by side the keys go to the connection under the pointer. A Remote Desktop or VNC screen does
+the same. With the pointer outside the panes (the sidebar, Home, outside the window) nothing is
+grabbed and keys go to Kyokai's own interface (up to 0.6.1 the grab ended at the picture's edge, so
+pointing at the toolbar ended it). The grab steps aside while Kyokai's own controls need the keys:
+the Settings sheet, search, the + picker, and a pane's menu or split list; a menu ends every grab as
+it opens (it shows after the frame, and MyGo says when an item is chosen, not when a menu is
+dismissed), and the grab comes back with the choice or the next pointer movement over a picture.
+The core takes the keys only while Kyokai's window is in front; on Windows
 also only while it is the topmost window at the pointer (the root of `WindowFromPoint` is the
 foreground window), so another program's window over the pointer takes them back, and keys the
 grab sent down are released on the host. A Mac's tap asks only for the frontmost window and leaves
@@ -298,6 +308,26 @@ text while it has the focus: macOS makes text of keys only for an element that d
 sends letters as that text (with it missing, no
 letter reached the host from a Mac). In Legacy mode a Mac's menu takes Cmd+C, X, V, A, Z and
 Shift+Cmd+Z before the window sees them; their edit commands are sent as those shortcuts again.
+
+A grab can stop taking keys without Kyokai being told: macOS switches a tap off when it waited too
+long, and hands no key to any tap while another program holds Secure Event Input (Terminal's secure
+keyboard entry, a password prompt); Windows removes a low-level hook that kept it waiting too long.
+So a viewer renews its grab when its window becomes active again, when the pointer comes back into
+its pane, after a key got past it, and when the core says the tap or hook is off, the grab gone or
+another window's: on macOS the tap is turned on again, or started anew if its thread ended; on
+Windows the hook is installed again. A key that reaches the window although the grab should have
+taken it — in Map every key, in Translate Enter, Esc, Backspace, Tab, Delete, Insert, the arrows,
+Home, End, Page Up and Down, the F keys and shortcuts — is sent as Legacy mode sends it, and so are
+a Mac menu's edit commands (regression: such keys were dropped, so only letters reached the host, as
+text, until Kyokai restarted). While it grabs, a viewer asks the core twice a second how its grab
+stands (`kyokai_keyboard_state`): taking the keys, the tap or hook off, Secure Event Input with the
+program holding it, another window's grab, the reader gone, another program in front. Two dots
+under the toolbar's keyboard icon show it in Map and Translate: the first while Kyokai holds the
+grab, the second green while the keys reach it and amber when they do not or a key got past it
+within the last three seconds, the button's tooltip saying why in the person's words; both grey
+without a grab. The GUI log notes when a grab starts letting keys pass and why, when it takes them
+again, and each key that got past with what the core last said (another program in front is not
+noted on its own: switching programs does that).
 
 The controller's input method is off in the picture, in every mode, and in a Remote Desktop or VNC
 screen too (MyGo's `InputMethod(false)`): only for that element while it has the keyboard focus —

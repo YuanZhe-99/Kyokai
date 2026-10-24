@@ -341,7 +341,8 @@ when `SCREENSHOT_DIR` is set.
   user: that request ends at once and never comes back as a pane of its own. How panes move,
   split and get windows of their own: [Windows](#windows). Every pane shown keeps its connection
   running; only the one in focus takes the keyboard and the clipboard; in Map and Translate the
-  keys go to the pane whose picture is under the pointer, which takes the focus with them, and in
+  keys go to the pane under the pointer (anywhere in it: header, toolbar or picture), whose picture
+  takes the focus with them, a pane's menu or split list taking them while open, and in
   every mode a picture (a Remote Desktop or VNC screen's too) keeps the controller's input method
   off ([computer-use.md](computer-use.md), "Keyboard modes"). A pane is a desktop or one of a
   device's services (SSH, Remote Desktop, VNC; `viewer`, `serviceTab`), one per device and kind,
@@ -369,7 +370,10 @@ when `SCREENSHOT_DIR` is set.
   codec name only, when there is a choice, and Full colour), Keyboard (with `control-input`, on
   Windows and macOS: the keyboard mode Map, Translate or Legacy, remembered for every viewer, and
   Swap Ctrl and Cmd where a Mac is on either side; on a Mac without Kyokai's Accessibility
-  permission the icon takes the warning colour and its tooltip says to allow it), Actions (with
+  permission the icon takes the warning colour and its tooltip says to allow it; in Map and
+  Translate two dots under the icon, the first green while Kyokai holds the keyboard, the second
+  green while the keys reach it and amber when they do not, both grey without a grab, the tooltip
+  saying why: `grabDots`, `grabHint`, [computer-use.md](computer-use.md), "Keyboard modes"), Actions (with
   `control-input`, when the host offers them, a Windows host: Lock screen, Ctrl+Alt+Del in the
   helper modes, Block their keyboard and mouse and Privacy mode, checked as the host reports),
   then toggles for Sound (plays the host's sound; on unless chosen, kept for each device), Pointer

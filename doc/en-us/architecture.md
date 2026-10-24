@@ -51,7 +51,7 @@ integers and pointers only:
 
 | Export | Does |
 |---|---|
-| `kyokai_abi_version() -> u32` | ABI version (6); hosts refuse a mismatch |
+| `kyokai_abi_version() -> u32` | ABI version (7); hosts refuse a mismatch |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | Starts the core with `{version, state_dir, profile}` |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | Answers `{method, params}` |
 | `kyokai_free(ptr, len)` | Frees a response buffer |
@@ -65,8 +65,9 @@ integers and pointers only:
 | `kyokai_audio_open() -> u64` | Opens a decoder of the host's sound (Opus); 0 when it cannot. Needs no started core |
 | `kyokai_audio_decode(id, packet, len, out, cap) -> i32` | Decodes one Opus packet into the caller's float buffer as interleaved stereo at 48 kHz: the frames written, -1 error, -3 too large |
 | `kyokai_audio_close(id)` | Releases a sound decoder |
-| `kyokai_keyboard_grab(window, mode, len) -> i32` | Grabs the keyboard for a viewer window (its native handle) in mode `map` or `translate`, or ends its grab with `off`: 0, -1 unknown mode or no window, -2 not available here (no hook; on macOS, an event tap needs the app's Accessibility permission). Needs no started core |
+| `kyokai_keyboard_grab(window, mode, len) -> i32` | Grabs the keyboard for a viewer window (its native handle) in mode `map` or `translate`, or ends its grab with `off`; a grab asked again renews it (the macOS tap turned on again or started anew, the Windows hook installed again): 0, -1 unknown mode or no window, -2 not available here (no hook; on macOS, an event tap needs the app's Accessibility permission). Needs no started core |
 | `kyokai_keyboard_read(*event, timeout_ms) -> i32` | Waits for the next key the grab took and writes it into the caller's `{window: usize, code: u32, down, caps, num: u8, pad: u8}`: 1 a key, 0 timeout, -2 not available |
+| `kyokai_keyboard_state(window, *out, cap) -> i32` | How a viewer window's grab stands, as `{"state", "holder"}` JSON in the caller's buffer: `taking`, `none`, `off`, `secure-input`, `other-window`, `no-reader` or `behind`, `holder` naming the program holding Secure Event Input or in front when known; the length, -1 null `out`, -2 not available, -3 too small. Needs no started core |
 | `kyokai_privacy_request(name, len) -> i32` | Asks macOS, from the calling process, for `screen`, `accessibility` or `input-monitoring` (the app calls it, so a prompt is the app's own): 1 granted, 0 not yet, -1 unknown name or no such permission here. Needs no started core |
 
 Responses are `{"ok": true, "result": …}` or `{"ok": false, "error": "…"}` in a buffer the core
