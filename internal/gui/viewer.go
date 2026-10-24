@@ -1111,8 +1111,8 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 			v.mu.Unlock()
 		}
 	}
-	ui.Column(c).Fill().Background(t.Background).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		homeCard(c, "connect-panel-"+v.tabKey()).Width(connectPanelW).Children(func() {
+	ui.Column(c).Fill().Background(t.Background).AlignItems(ui.Center).Justify(ui.Center).Padding(0, paneMargin*2).Children(func() {
+		homeCard(c, "connect-panel-"+v.tabKey()).FillWidth().MaxWidth(connectPanelW).Children(func() {
 			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
 				deviceAvatar(c, phase.Peer)
 				ui.Text(c, v.title).FontSize(sizeHeading).Bold()

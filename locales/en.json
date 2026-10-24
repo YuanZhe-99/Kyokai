@@ -488,6 +488,11 @@
   "DiagLogsOff": "Off (No logs)",
   "DiagRunMode": "Run mode",
   "DiagVersion": "Version",
+  "DropAbove": "Above",
+  "DropBelow": "Below",
+  "DropHere": "In its place",
+  "DropLeft": "Left",
+  "DropRight": "Right",
   "EngineDown": "The Kyokai engine is not running.",
   "EngineStarting": "Starting…",
   "FailAbsent": "Nobody is at that computer to allow the connection.",
@@ -710,6 +715,10 @@
   "PaneClose": "Close",
   "PaneDesktop": "Desktop",
   "PaneMaximize": "Maximize",
+  "PaneNoRoomAcross": "No room side by side",
+  "PaneNoRoomAcrossHint": "No room side by side: make the window wider",
+  "PaneNoRoomDown": "No room above and below",
+  "PaneNoRoomDownHint": "No room above and below: make the window taller",
   "PaneRestore": "Restore",
   "PaneSplitDown": "Split down",
   "PaneSplitNew": "Open a device…",
@@ -954,6 +963,17 @@
   "ServiceNoAnswer": "The server did not answer the sign-in. After failed sign-ins a server can hold new ones for several minutes: wait a few minutes, check the user name and password, then reconnect.",
   "ServiceNoTunnel": "That device runs an older Kyokai: update it there to reach its services.",
   "ServiceNoneHint": "For a VNC server that asks for no password.",
+  "ServiceNumbered": "{service} {n}",
+  "@ServiceNumbered": {
+    "placeholders": {
+      "service": {
+        "type": "String"
+      },
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "ServicePassword": "Password",
   "ServicePortStandard": "Empty: the standard port, {port}.",
   "@ServicePortStandard": {
@@ -1094,6 +1114,17 @@
   "SignInTemporaryAbout": "Shown on Home. Changes each time Kyokai starts.",
   "SignInTitle": "Ways to sign in",
   "SoundSourceAbout": "What devices controlling this one hear.",
+  "SplitCameApart": "{group} didn't fit on this display, so its {count} panes each have their own entry now.",
+  "@SplitCameApart": {
+    "placeholders": {
+      "group": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "StartOverDone": "This device has a new identity, kept from now on.",
   "StartOverHint": "Without a backup it cannot come back. Start over to keep a new identity from now on; the old file stays aside, untouched.",
   "StatusApps": "Apps",

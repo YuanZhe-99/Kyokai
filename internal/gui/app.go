@@ -221,13 +221,13 @@ func (a *App) mainWindow() *mygo.Window {
 	// The window's controls sit over the sidebar and the panes
 	// (TitleBarOptions).
 	w = mygo.NewWindow(TitleBarOptions(mygo.WindowOptions{
-		Title: "Kyokai", Width: 1200, Height: 760, MinWidth: 760, MinHeight: 520,
+		Title: "Kyokai", Width: 1200, Height: 760, MinWidth: int(mainMinW), MinHeight: int(mainMinH),
 		StateKey: "main",
 		// Shown once its display affinity is set: never captured for a
 		// moment.
 		Hidden:  true,
 		Content: ui.View(a.MainView),
-	}))
+	}, trafficMainX))
 	w.SetContentProtection(!show)
 	a.mu.Lock()
 	a.window = w
@@ -235,6 +235,7 @@ func (a *App) mainWindow() *mygo.Window {
 	a.mu.Unlock()
 	a.watchFocus(a.main)
 	a.main.watchFullScreen()
+	a.main.watchRoom()
 	w.OnClose(a.HandleClose)
 	w.OnHide(func() { a.SetVisible(false) })
 	w.OnShow(func() { a.SetVisible(true) })

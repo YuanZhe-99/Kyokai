@@ -72,6 +72,8 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
 界面的客户端（`internal/gui`：`remote.go`、`servicetab.go`、`ssh.go`、`desktops.go`、`screen.go`）运行在控制端，
 只经由隧道访问服务；服务小窗与桌面的小窗一样（[gui.md](gui.md)，“连接”）。
 
+- **小窗**（`openService`）。每打开一次 SSH 就是一个单独的小窗和连接，从第二个起编号（SSH 2、SSH 3），
+  受被控端最多 8 条隧道的限制；设备的远程桌面或 VNC 是它屏幕的一个会话，只有一个小窗，再次打开时显示它，已结束则重新连接。
 - **链接（`serviceLink`）。** `Open` 是隧道（经由引擎的 `tunnel.open`，一个承载该服务字节的 `net.Conn`）；
   `Credential` 与 `SaveCredential` 即 `credentials.get` 与 `credentials.set`；`Keys` 与 `Sign` 即 `keys.list` 与
   `keys.sign`。`credentials.get` 在客户端登录之前才调用；密码从应答直接交给客户端，绝不保存在界面的状态中。

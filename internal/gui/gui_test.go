@@ -787,6 +787,10 @@ func TestShellRenders(t *testing.T) {
 		drops    []drop
 		rail     bool
 		settings bool
+		// width: the window's, else 1280; drag: a pane dragged over the
+		// panes.
+		width int
+		drag  bool
 		// The + picker open where it opened from, of a kind, with words
 		// typed; search open with words typed.
 		pick, kind, query string
@@ -803,6 +807,12 @@ func TestShellRenders(t *testing.T) {
 		{name: "shell-split-three", drops: []drop{{1, 0, zoneRight}, {2, 1, zoneBottom}}},
 		{name: "shell-split-four", drops: []drop{{1, 0, zoneRight}, {2, 1, zoneBottom}, {3, 0, zoneBottom}}},
 		{name: "shell-rail", rail: true, drops: []drop{{1, 0, zoneRight}}},
+		{name: "shell-rail-mac", mac: true, rail: true, drops: []drop{{1, 0, zoneRight}}},
+		// Panes at their minimum; a pane with no room to split right;
+		// the drop zones that fit.
+		{name: "shell-split-min", width: 989, drops: []drop{{1, 0, zoneRight}}},
+		{name: "shell-split-room", width: 1600, drops: []drop{{1, 0, zoneRight}, {2, 1, zoneBottom}}},
+		{name: "shell-drop-room", width: 1600, drag: true, drops: []drop{{1, 0, zoneRight}, {2, 1, zoneBottom}}},
 		{name: "shell-settings", cur: -1, settings: true},
 		{name: "shell-picker", cur: -1, pick: "sidebar"},
 		{name: "shell-picker-ssh", cur: -1, pick: "sidebar", kind: serviceSSH},
@@ -849,13 +859,26 @@ func TestShellRenders(t *testing.T) {
 				}
 				cur, want := vw.cur, vw.cur.split
 				ownWindowButtons = !shot.mac
-				tt := ui.NewTester(vw.view, 1280, 800)
+				width := 1280
+				if shot.width > 0 {
+					width = shot.width
+				}
+				tt := ui.NewTester(vw.view, width, 800)
 				tt.SetDark(dark)
 				if shot.mac {
-					tt.SetTitleBar(ui.TitleBar{Height: 28, Left: 76})
+					tt.SetTitleBar(ui.TitleBar{Height: 28, Left: trafficMainX + 54})
 				}
 				tt.Frame()
 				tt.Frame()
+				if shot.drag {
+					// NUC's sidebar row dragged over the lower right pane.
+					r, _ := tt.Find("NUC")
+					tt.Press(r.X+r.W/2, r.Y+r.H/2)
+					for _, x := range []float32{400, 800, 1200, 1450} {
+						tt.Move(x, 600)
+						tt.Frame()
+					}
+				}
 				if vw.cur != cur || vw.cur.split != want {
 					t.Fatalf("%s: rendering changed the pane shown", shot.name)
 				}

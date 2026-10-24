@@ -43,8 +43,8 @@ func TestCloseFactsCountEveryKind(t *testing.T) {
 	a.main = &viewerWindow{app: a, main: true}
 	desk := &viewer{app: a, device: "111111111", phase: localapi.SessionInfo{State: "connected"}}
 	ended := &viewer{app: a, device: "222222222", phase: localapi.SessionInfo{State: "failed"}}
-	ssh := &serviceTab{app: a, device: "111111111", service: serviceSSH, phase: svcRunning}
-	form := &serviceTab{app: a, device: "333333333", service: serviceVNC, phase: svcForm}
+	ssh := &serviceTab{app: a, device: "111111111", service: serviceSSH, key: serviceKey("111111111", serviceSSH), phase: svcRunning}
+	form := &serviceTab{app: a, device: "333333333", service: serviceVNC, key: serviceKey("333333333", serviceVNC), phase: svcForm}
 	a.viewers[desk.device], a.viewers[ended.device] = desk, ended
 	a.services[ssh.tabKey()], a.services[form.tabKey()] = ssh, form
 	for _, v := range []tab{desk, ended, ssh, form} {

@@ -99,6 +99,9 @@ type viewerWindow struct {
 	// menu is the split menu open in a pane's header: its zone and the
 	// pane's key, or "".
 	menu string
+	// area is the panes' room as the last frame laid it out; need is the
+	// main window's minimum for what it shows, as last applied (fitWindow).
+	area, need size
 }
 
 // tabDrag is what a dragged pane carries: its tabKey.
@@ -109,11 +112,13 @@ type tabDrag struct{ key string }
 // own), centred on the top pane's header; on Windows the view draws
 // minimize, maximize and close itself, at the end of the top-right pane's
 // header (windowButtons). The window keeps its resizing edges, shadow and
-// corners; its material shows around the panes.
-func TitleBarOptions(o mygo.WindowOptions) mygo.WindowOptions {
+// corners; its material shows around the panes. lightsX is how far from
+// the window's edge the traffic lights start (trafficMainX, trafficOwnX):
+// MyGo places them only as the window opens.
+func TitleBarOptions(o mygo.WindowOptions, lightsX int) mygo.WindowOptions {
 	o.TitleBarStyle = mygo.TitleBarHidden
 	o.HideWindowButtons = ownWindowButtons
-	o.TrafficLightPosition = &mygo.Point{X: trafficX, Y: trafficY}
+	o.TrafficLightPosition = &mygo.Point{X: lightsX, Y: trafficY}
 	o.Vibrancy = windowMaterial()
 	return o
 }
@@ -201,7 +206,7 @@ func (a *App) newViewerWindow() *viewerWindow {
 		// moment.
 		Hidden:  true,
 		Content: ui.View(vw.view),
-	}))
+	}, trafficOwnX))
 	a.mu.Lock()
 	show := a.prefs.ShowInCapture
 	a.viewerWins = append(a.viewerWins, vw)
@@ -320,9 +325,17 @@ func (vw *viewerWindow) addAt(v, target tab, z dropZone) {
 // (split.place), the pane it replaces then getting an entry of its own;
 // otherwise t shows in its own group, made when it has none. A tab leaving
 // another group takes its pane along, and a group left empty goes. The
-// group t lands in is shown. Notes: the caller holds vw.mu.
+// group t lands in is shown. Beside a pane without room for it on that
+// side t goes on the other (sideLocked), or gets an entry of its own.
+// Notes: the caller holds vw.mu.
 func (vw *viewerWindow) placeLocked(t, target tab, z dropZone) {
 	to := vw.groupOf(target)
+	if to != nil && z != zoneMiddle {
+		var ok bool
+		if z, ok = vw.sideLocked(to, target, z); !ok {
+			to = nil
+		}
+	}
 	if !vw.main || to == nil || target == t {
 		if g := vw.groupOf(t); g != nil {
 			g.split.show(t)
@@ -347,6 +360,146 @@ func (vw *viewerWindow) placeLocked(t, target tab, z dropZone) {
 		g.split.single(target)
 		vw.groups = append(vw.groups, g)
 	}
+}
+
+// sideLocked is the side of target's pane in g where another goes: z when
+// the pane has room to split there (fits), else the other way when it has
+// room for that; false when it has neither. While the panes' room is not
+// known yet, z. Notes: the caller holds vw.mu.
+func (vw *viewerWindow) sideLocked(g *group, target tab, z dropZone) (dropZone, bool) {
+	room, ok := g.split.roomOf(target, vw.area)
+	if vw.area.w <= 0 || !ok || fits(room, z) {
+		return z, true
+	}
+	other := zoneBottom
+	if z == zoneTop || z == zoneBottom {
+		other = zoneRight
+	}
+	return other, fits(room, other)
+}
+
+// comeApartLocked gives each pane of g an entry of its own in g's place,
+// the pane in focus shown when g was. Notes: the caller holds vw.mu.
+func (vw *viewerWindow) comeApartLocked(g *group) {
+	i := slices.Index(vw.groups, g)
+	if i < 0 {
+		return
+	}
+	var apart []*group
+	for _, t := range g.split.shownTabs() {
+		n := &group{}
+		n.split.single(t)
+		apart = append(apart, n)
+		if vw.cur == g && t == g.split.focus {
+			vw.cur = n
+		}
+	}
+	vw.groups = slices.Replace(vw.groups, i, i+1, apart...)
+}
+
+// windowNeed is the main window's content minimum while it shows g beside
+// a sidebar side wide: the panes' least room (one pane's while one is
+// maximized) and the margins round them, never less than mainMinW ×
+// mainMinH.
+func windowNeed(g group, side float32) size {
+	m := g.split.root.minRoom()
+	if g.zoom != nil {
+		m = paneRoom
+	}
+	return size{max(mainMinW, side+paneMargin/2+m.w), max(mainMinH, paneMargin+m.h)}
+}
+
+// needNow is the main window's content minimum for what it shows now
+// (windowNeed): mainMinW × mainMinH in protected mode, in full screen and
+// with nothing shown.
+func (vw *viewerWindow) needNow() size {
+	a := vw.app
+	a.mu.Lock()
+	side, protected := shellSidebarW, a.protected()
+	if a.prefs.SidebarRail {
+		side = railWidth()
+	}
+	a.mu.Unlock()
+	vw.mu.Lock()
+	defer vw.mu.Unlock()
+	if protected || vw.full || vw.cur == nil {
+		return size{mainMinW, mainMinH}
+	}
+	return windowNeed(*vw.cur, side)
+}
+
+// fitLater has fitWindow run after this frame when what the main window
+// shows needs another minimum.
+func (vw *viewerWindow) fitLater() {
+	need := vw.needNow()
+	vw.mu.Lock()
+	changed := need != vw.need
+	vw.mu.Unlock()
+	if changed && vw.win != nil {
+		vw.win.Update(vw.fitWindow)
+	}
+}
+
+// fitWindow makes the main window hold the group it shows (fitFor): its
+// minimum follows the group, it grows on its display while smaller, and a
+// group of several panes its display cannot hold comes apart, which a toast
+// says.
+// Side effects: the window's minimum size and bounds; the sidebar's
+// entries; the toast.
+// Notes: call on the main thread, after a move, a resize, a change of the
+// displays and of what the window shows (fitLater).
+func (vw *viewerWindow) fitWindow() {
+	b, cb := vw.win.Bounds(), vw.win.ContentBounds()
+	work := mygo.Screen.DisplayMatching(b).WorkArea
+	// MyGo's minimum is the frame's: the content's and the frame round it.
+	frame := size{float32(b.Width - cb.Width), float32(b.Height - cb.Height)}
+	room := size{float32(work.Width) - frame.w, float32(work.Height) - frame.h}
+	win := size{float32(cb.Width), float32(cb.Height)}
+	need := vw.needNow()
+	f := fitFor(need, win, room)
+	if f == fitApart {
+		vw.mu.Lock()
+		g := vw.cur
+		var shown []tab
+		if g != nil {
+			shown = g.split.shownTabs()
+		}
+		if len(shown) > 1 {
+			vw.comeApartLocked(g)
+		}
+		vw.mu.Unlock()
+		if len(shown) > 1 {
+			vw.app.update(func() { vw.app.setToast(L.SplitCameApart(groupName(shown), len(shown)), false) })
+			need = vw.needNow()
+			f = fitFor(need, win, room)
+		}
+	}
+	vw.mu.Lock()
+	vw.need = need
+	vw.mu.Unlock()
+	// A display smaller than even one pane needs keeps the window on it.
+	w := int(min(need.w, room.w) + frame.w + 0.999)
+	h := int(min(need.h, room.h) + frame.h + 0.999)
+	vw.win.SetMinimumSize(w, h)
+	if f != fitGrow || vw.win.IsMaximized() {
+		return
+	}
+	nb := b
+	nb.Width, nb.Height = max(b.Width, w), max(b.Height, h)
+	nb.X = max(work.X, min(b.X, work.X+work.Width-nb.Width))
+	nb.Y = max(work.Y, min(b.Y, work.Y+work.Height-nb.Height))
+	vw.win.SetBounds(nb)
+}
+
+// watchRoom has the main window fit the group it shows (fitWindow) as it
+// moves, resizes and the displays change.
+// Side effects: listeners on the window and the displays, the latter
+// removed as the window closes.
+func (vw *viewerWindow) watchRoom() {
+	vw.win.OnMove(vw.fitWindow)
+	vw.win.OnResize(vw.fitWindow)
+	off := mygo.Screen.OnDisplaysChanged(vw.fitWindow)
+	vw.win.OnClosed(off)
 }
 
 // leaveGroupLocked takes t's pane out of g; g goes when it empties, and
@@ -672,6 +825,7 @@ func (vw *viewerWindow) view(c *ui.Context) {
 		shown = []tab{g.split.focus}
 	case vw.main:
 		vw.app.shellView(c, vw, g)
+		vw.fitLater()
 	case g.split.focus != nil:
 		ui.Column(c).Fill().Padding(paneMargin / 2).Children(func() {
 			vw.tabPane(c, paneDraw{g: g, topRight: g.split.focus}, g.split.focus)
@@ -687,12 +841,24 @@ func (vw *viewerWindow) view(c *ui.Context) {
 }
 
 // paneDraw is how the panes of the group shown draw: the group, the pane
-// whose header ends with the window's buttons, and whether a pane is
-// dragged over them.
+// whose header ends with the window's buttons, whether a pane is dragged
+// over them, and their room as the last frame laid it out.
 type paneDraw struct {
 	g        group
 	topRight tab
 	dragging bool
+	area     size
+}
+
+// splits reports whether v's pane has room to split side by side and above
+// and below (fits), as its group lays it out with none maximized; both
+// while the panes' room is not known yet.
+func (d paneDraw) splits(v tab) (across, down bool) {
+	room, ok := d.g.split.roomOf(v, d.area)
+	if d.area.w <= 0 || !ok {
+		return true, true
+	}
+	return fits(room, zoneRight), fits(room, zoneBottom)
 }
 
 // panesView is the group shown: its panes with their dividers, or the one
@@ -700,11 +866,13 @@ type paneDraw struct {
 func (vw *viewerWindow) panesView(c *ui.Context, g group) {
 	area := ui.Column(c.Key("panes")).Grow(1).FillWidth().MinHeight(0)
 	_, over := ui.DragOver[tabDrag](area)
+	r := area.LayoutBounds()
 	vw.mu.Lock()
 	dragging := vw.dragging || over
 	vw.dragging = over
+	vw.area = size{r.W, r.H}
 	vw.mu.Unlock()
-	d := paneDraw{g: g, topRight: g.split.topRight(), dragging: dragging}
+	d := paneDraw{g: g, topRight: g.split.topRight(), dragging: dragging, area: size{r.W, r.H}}
 	if g.zoom != nil {
 		d.topRight = g.zoom
 	}
@@ -713,16 +881,18 @@ func (vw *viewerWindow) panesView(c *ui.Context, g group) {
 			vw.tabPane(c, d, g.zoom)
 			return
 		}
-		vw.paneView(c, d, g.split.root, "p")
+		vw.paneView(c, d, g.split.root, "p", d.area)
 	})
 }
 
-// paneView draws one pane of the split: a tab, or its two halves with the
-// divider between them (keyed by their path in the tree). The divider runs
+// paneView draws one pane of the split in its room: a tab, or its two
+// halves with the divider between them (keyed by their path in the tree),
+// which stops where either half would go below its least room (keepRoom).
+// The divider runs
 // in the gap between floating panes, so it shows only in the accent while
 // hovered or dragged: the split takes a theme whose border is transparent,
 // and its halves the window's again.
-func (vw *viewerWindow) paneView(c *ui.Context, d paneDraw, p *pane, path string) {
+func (vw *viewerWindow) paneView(c *ui.Context, d paneDraw, p *pane, path string, room size) {
 	if p == nil {
 		return
 	}
@@ -730,28 +900,25 @@ func (vw *viewerWindow) paneView(c *ui.Context, d paneDraw, p *pane, path string
 		vw.tabPane(c, d, p.tab)
 		return
 	}
+	am, bm := p.first.minRoom(), p.second.minRoom()
+	if p.across {
+		p.ratio = keepRoom(p.ratio, room.w, am.w, bm.w)
+	} else {
+		p.ratio = keepRoom(p.ratio, room.h, am.h, bm.h)
+	}
+	ra, rb := p.halves(room)
 	t := c.Theme()
 	quiet := *t
 	quiet.Border = ui.Transparent
 	c.SetTheme(&quiet)
-	first := func() { c.SetTheme(t); vw.paneView(c, d, p.first, path+"a") }
-	second := func() { c.SetTheme(t); vw.paneView(c, d, p.second, path+"b") }
+	first := func() { c.SetTheme(t); vw.paneView(c, d, p.first, path+"a", ra) }
+	second := func() { c.SetTheme(t); vw.paneView(c, d, p.second, path+"b", rb) }
 	if p.across {
 		ui.SplitPercent(c.Key(path), &p.ratio, first, second).Fill()
 	} else {
 		ui.SplitVerticalPercent(c.Key(path), &p.ratio, first, second).Fill()
 	}
 	c.SetTheme(t)
-}
-
-// dropZones are where on a pane a dragged pane may go, in percent of the
-// pane: beside it on each side (splitting it), or in its place.
-var dropZones = []struct {
-	zone       dropZone
-	x, y, w, h float32
-}{
-	{zoneLeft, 0, 0, 25, 100}, {zoneRight, 75, 0, 25, 100},
-	{zoneTop, 25, 0, 50, 25}, {zoneBottom, 25, 75, 50, 25}, {zoneMiddle, 25, 25, 50, 50},
 }
 
 // tabPane is a floating pane: rounded, on the window's material, its header
@@ -775,7 +942,9 @@ func (vw *viewerWindow) tabPane(c *ui.Context, d paneDraw, v tab) {
 }
 
 // paneBox fills a pane's box: the accent edge in focus, its header and its
-// content, and the drop zones while a pane is dragged over it (tabPane).
+// content, and while a pane is dragged over it the drop zones that fit
+// (dropZonesFor), each named, the middle also saying which way it has no
+// room.
 func (vw *viewerWindow) paneBox(c *ui.Context, d paneDraw, v tab, box ui.Element, several bool) {
 	t := c.Theme()
 	key := v.tabKey()
@@ -797,20 +966,71 @@ func (vw *viewerWindow) paneBox(c *ui.Context, d paneDraw, v tab, box ui.Element
 		if !d.dragging || !vw.main {
 			return
 		}
-		for _, z := range dropZones {
+		across, down := d.splits(v)
+		note := noRoomNote(across, down)
+		for _, z := range dropZonesFor(across, down) {
 			zone := ui.Box(c.Key("drop-" + key + "-" + strconv.Itoa(int(z.zone)))).Absolute().
-				LeftPercent(z.x).TopPercent(z.y).WidthPercent(z.w).HeightPercent(z.h).Radius(8)
+				LeftPercent(z.x).TopPercent(z.y).WidthPercent(z.w).HeightPercent(z.h).Radius(8).Center()
+			fg := t.TextMuted
 			if _, on := ui.DragOver[tabDrag](zone); on {
 				vw.mu.Lock()
 				vw.dragging = true
 				vw.mu.Unlock()
 				zone.Background(t.Accent.Alpha(0.28)).Border(2, t.Accent)
+				fg = t.Accent
 			}
+			// Each name in a pill of its own, readable over any picture; the
+			// middle's says which way there is no room.
+			zone.Children(func() {
+				ui.Column(c).Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, zoneName(z.zone)).FontSize(sizeSmall).Bold().TextColor(fg).SingleLine().
+						Padding(4, 10).Radius(12).Background(t.Background).Border(1, t.Border)
+					if z.zone == zoneMiddle && note != "" {
+						ui.Text(c, note).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine().
+							Padding(4, 10).Radius(12).Background(t.Background).Border(1, t.Border)
+					}
+				})
+			})
 			if dr, ok := ui.Drop[tabDrag](zone); ok {
 				vw.app.dropTab(dr.key, vw, v, z.zone)
 			}
 		}
 	})
+}
+
+// zoneName names a drop zone where it shows on a pane.
+func zoneName(z dropZone) string {
+	switch z {
+	case zoneLeft:
+		return L.DropLeft()
+	case zoneRight:
+		return L.DropRight()
+	case zoneTop:
+		return L.DropAbove()
+	case zoneBottom:
+		return L.DropBelow()
+	}
+	return L.DropHere()
+}
+
+// noRoomNote says which way a pane has no room to split, or "".
+func noRoomNote(across, down bool) string {
+	switch {
+	case !across:
+		return L.PaneNoRoomAcross()
+	case !down:
+		return L.PaneNoRoomDown()
+	}
+	return ""
+}
+
+// noRoomHint says why a split button is greyed out: no room that way, and
+// what makes it.
+func noRoomHint(z dropZone) string {
+	if z == zoneBottom {
+		return L.PaneNoRoomDownHint()
+	}
+	return L.PaneNoRoomAcrossHint()
 }
 
 // paneHeader is a pane's header: the kind's icon, the device's name and
@@ -820,7 +1040,8 @@ func (vw *viewerWindow) paneBox(c *ui.Context, d paneDraw, v tab, box ui.Element
 // Rename and a pill while its task waits or is paused; an empty part that
 // moves the window; a host's AI session's Watch its screen; then, in the
 // main window, split right and split down (beside the pane: another open
-// pane or the + picker) and, in a group of several, maximize or restore;
+// pane or the + picker), greyed out with the reason while the pane has no
+// room for it, and, in a group of several, maximize or restore;
 // and close, except on Home alone. The top-right pane's header ends with
 // the window's buttons on Windows (unseen while Settings covers it, which
 // shows them in their place); a window of its own's keeps the room of the
@@ -888,8 +1109,9 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 		case vw.main && narrow:
 			vw.foldedButtons(c, d, v, several)
 		case vw.main:
-			vw.splitButton(c, v, zoneRight)
-			vw.splitButton(c, v, zoneBottom)
+			across, down := d.splits(v)
+			vw.splitButton(c, v, zoneRight, across)
+			vw.splitButton(c, v, zoneBottom, down)
 			if several {
 				icon, label := paneMaximize, L.PaneMaximize()
 				if d.g.zoom == v {
@@ -957,16 +1179,22 @@ func (vw *viewerWindow) othersFor(v tab) []tab {
 
 // foldedButtons are a narrow pane's split right, split down and maximize
 // or restore, folded into ⋯: each split lists the other open panes, then
-// Open a device… (the + picker beside this pane on that side).
+// Open a device… (the + picker beside this pane on that side); a split the
+// pane has no room for is a greyed-out item saying why.
 func (vw *viewerWindow) foldedButtons(c *ui.Context, d paneDraw, v tab, several bool) {
 	key := v.tabKey()
 	b := iconButtonBase(c, "head-more-"+key, rowMore, L.ActionMore())
 	others := vw.othersFor(v)
+	across, down := d.splits(v)
 	b.Menu(func(m *ui.Menu) {
 		for _, z := range []dropZone{zoneRight, zoneBottom} {
-			label := L.PaneSplitRight()
+			label, room := L.PaneSplitRight(), across
 			if z == zoneBottom {
-				label = L.PaneSplitDown()
+				label, room = L.PaneSplitDown(), down
+			}
+			if !room {
+				m.Item(label + " — " + noRoomHint(z)).Disabled(true)
+				continue
 			}
 			m.Submenu(label, func(m *ui.Menu) {
 				for _, o := range others {
@@ -1003,8 +1231,9 @@ func (vw *viewerWindow) foldedButtons(c *ui.Context, d paneDraw, v tab, several 
 // splitButton is a header's split right or split down: the + picker,
 // beside this pane on that side; with other panes open, first a menu of
 // them, any of which then goes beside this one (dropTab), ending with Open
-// a device… for the picker.
-func (vw *viewerWindow) splitButton(c *ui.Context, v tab, z dropZone) {
+// a device… for the picker. Without room (fits) it is greyed out, its
+// tooltip saying why.
+func (vw *viewerWindow) splitButton(c *ui.Context, v tab, z dropZone, room bool) {
 	t := c.Theme()
 	icon, label := paneSplitRight, L.PaneSplitRight()
 	if z == zoneBottom {
@@ -1012,8 +1241,11 @@ func (vw *viewerWindow) splitButton(c *ui.Context, v tab, z dropZone) {
 	}
 	id := strconv.Itoa(int(z)) + "-" + v.tabKey()
 	b := iconButtonBase(c, "head-split-"+id, icon, label)
+	if !room {
+		b.Disabled(true).Opacity(0.4).Tooltip(noRoomHint(z))
+	}
 	vw.mu.Lock()
-	open := vw.menu == id
+	open := vw.menu == id && room
 	vw.mu.Unlock()
 	others := vw.othersFor(v)
 	pick := func() { vw.app.openPicker("split-"+id, true, v.tabKey(), z) }

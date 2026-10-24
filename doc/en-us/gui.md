@@ -36,10 +36,12 @@ when `SCREENSHOT_DIR` is set.
   that moves the window, a double click maximizing it; in the
   main window Split right and Split down — the + picker, opening beside this pane on that side;
   with other panes open, first a menu of them, the one chosen going beside this one, and Open a
-  device… for the picker —, in a group of several Maximize (the pane alone over its group, the
+  device… for the picker; greyed out, its tooltip saying why, while the pane has no room for
+  that split —, in a group of several Maximize (the pane alone over its group, the
   others still running) or Restore, and close (×; not on Home alone, which has nothing to close
   to). A pane narrower than 560 points folds the splits and Maximize into ⋯, each split a submenu
-  of the other panes and Open a device… (`foldedButtons`). In a group the pane in focus has an
+  of the other panes and Open a device…, or without room a greyed-out item saying why
+  (`foldedButtons`). In a group the pane in focus has an
   accent edge; the focus follows the keyboard and clicks into a pane.
 - **Groups.** Each pane opened gets an entry of its own and shows. A pane dropped on an edge of
   another splits that pane there — beside, above or below it — and joins its group, so one side
@@ -47,7 +49,21 @@ when `SCREENSHOT_DIR` is set.
   shown, a fifth takes a place); dropped in a pane's middle it takes that pane's place, and that
   pane keeps an entry of its own; dropped on the sidebar's list it leaves its group for an entry of
   its own. A group left with one pane is that pane's entry; an emptied entry goes and the one
-  before it shows; with nothing left, Home shows. The dividers move.
+  before it shows; with nothing left, Home shows. The dividers move, and stop where a pane would
+  go below its minimum (`keepRoom`; MyGo's split keeps none of its own).
+- **Pane sizes.** A pane in a group is at least 360 × 280 points (`paneMinW`, `paneMinH`), so
+  that Home keeps one column of cards. A pane splits only where both halves keep that (`fits`):
+  side by side from 737 points wide with its margin, above and below from 577 tall. Without room
+  the split buttons and their ⋯ items grey out and say why; a pane dragged over another shows only
+  the zones that fit, each named (Left, Right, Above, Below, In its place), the middle taking the
+  room of the sides that do not, and a pill says which way there is no room (`dropZonesFor`);
+  anything else that puts a pane beside another (the + picker's Beside current, an AI session's
+  Watch its screen) takes the other way, or an entry of its own (`sideLocked`). The main window's
+  minimum follows the group shown: the sidebar or the rail, the panes' least room and the margins,
+  never below 760 × 520 (`windowNeed`) — about 990 for two side by side, about 800 beside the
+  rail. A window smaller than that, as when the sidebar comes back, grows on its display; when its
+  display cannot hold the group (moved to a smaller display, a resolution change) the group comes
+  apart into entries of their own, the pane in focus shown, and a toast says so (`fitWindow`).
 - **A window of its own:** a pane dragged out of Kyokai's windows moves into a window of its own —
   one pane, no sidebar, never split — which closes with its pane, disconnecting it; dropped on the
   main window's sidebar or panes, it comes back. Its header keeps the room of the traffic lights
@@ -85,8 +101,12 @@ when `SCREENSHOT_DIR` is set.
   terminal has the keyboard, Ctrl+K goes to that computer instead (`keysAway`); the magnifier
   still opens search. While the picker or search is open, no picture takes the keyboard
   (`covered`).
-- **The window's controls:** on macOS the traffic lights over the sidebar's top row, centred on
-  the top pane's header (in a window of its own, on its pane's header). On Windows the system's
+- **The window's controls:** on macOS the traffic lights over the sidebar's top row, 9 points from
+  the window's edge as on the system's own windows, centred on the top pane's header; the rail is
+  72 points wide there (`railWidth`), the lights and 9 on either side, so that they and its icons
+  share one centre line, and protected mode keeps a strip as wide for them beside its pane. In a
+  window of its own they sit on its pane's header, 18 points from the edge (MyGo places them only
+  as a window opens: `TitleBarOptions`). On Windows the system's
   buttons would sit on the window's corner, half outside the pane, so the window hides them
   (`HideWindowButtons`) and the view draws minimize, maximize or restore, and close after a
   separator at the end of the top-right pane's header (`windowButtons`), maximize with Windows

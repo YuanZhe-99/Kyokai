@@ -65,24 +65,35 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 	protected := a.protected()
 	a.mu.Unlock()
 	if protected {
-		ui.Column(c.Key("protected")).Fill().Padding(paneMargin).Children(func() {
-			ui.Column(c).Fill().Radius(paneRadius).Clip().Background(t.Background).Border(1, t.Border).Children(func() {
-				ui.Row(c.Key("protected-head")).Height(paneHeaderH).Shrink(0).FillWidth().Padding(0, 8, 0, 14).Gap(4).AlignItems(ui.Center).Children(func() {
-					ui.Icon(c, navAI).FontSize(navIconSize).TextColor(t.TextMuted)
-					ui.Text(c, L.PickThisComputer()).FontSize(sizeBody).Bold()
-					ui.Box(c).Grow(1).FillHeight().DragWindow()
-					if iconButton(c, "protected-settings", shellGear, L.NavSettings()) {
-						a.openSettings(pageAI)
-					}
-					windowButtons(c, "protected-win", vw.win, false)
+		bar := c.TitleBar()
+		ui.Row(c.Key("protected-shell")).Fill().AlignItems(ui.Stretch).Children(func() {
+			// On macOS the traffic lights keep a strip of the window's material,
+			// as wide as the rail: MyGo places them only as the window opens, so
+			// they stay where the main window has them.
+			left := paneMargin
+			if bar.Left > 0 {
+				ui.Box(c.Key("protected-lights")).Width(railWidth()).Shrink(0).FillHeight().DragWindow()
+				left = paneMargin / 2
+			}
+			ui.Column(c.Key("protected")).Grow(1).MinWidth(0).FillHeight().Padding(paneMargin, paneMargin, paneMargin, left).Children(func() {
+				ui.Column(c).Fill().Radius(paneRadius).Clip().Background(t.Background).Border(1, t.Border).Children(func() {
+					ui.Row(c.Key("protected-head")).Height(paneHeaderH).Shrink(0).FillWidth().Padding(0, 8, 0, 14).Gap(4).AlignItems(ui.Center).Children(func() {
+						ui.Icon(c, navAI).FontSize(navIconSize).TextColor(t.TextMuted)
+						ui.Text(c, L.PickThisComputer()).FontSize(sizeBody).Bold()
+						ui.Box(c).Grow(1).FillHeight().DragWindow()
+						if iconButton(c, "protected-settings", shellGear, L.NavSettings()) {
+							a.openSettings(pageAI)
+						}
+						windowButtons(c, "protected-win", vw.win, false)
+					})
+					ui.Column(c.Key("protected-cards")).FillWidth().Shrink(0).Padding(8, 20, 0, 20).Children(func() {
+						a.requestsView(c)
+						a.hostBanner(c)
+						a.protectedCard(c)
+					})
+					a.protectedSession().view(c)
+					a.toastView(c)
 				})
-				ui.Column(c.Key("protected-cards")).FillWidth().Shrink(0).Padding(8, 20, 0, 20).Children(func() {
-					a.requestsView(c)
-					a.hostBanner(c)
-					a.protectedCard(c)
-				})
-				a.protectedSession().view(c)
-				a.toastView(c)
 			})
 		})
 		a.settingsSheet(c, vw.win)
@@ -379,7 +390,7 @@ func (a *App) railView(c *ui.Context, vw *viewerWindow) {
 	t := c.Theme()
 	bar := c.TitleBar()
 	entries := vw.entries()
-	ui.Column(c.Key("rail")).Width(max(railW, bar.Left)).Shrink(0).FillHeight().Padding(10, 0).Gap(4).AlignItems(ui.Center).Children(func() {
+	ui.Column(c.Key("rail")).Width(max(railWidth(), bar.Left)).Shrink(0).FillHeight().Padding(10, 0).Gap(4).AlignItems(ui.Center).Children(func() {
 		if bar.Left > 0 {
 			ui.Box(c).Height(sbTopH).Shrink(0).FillWidth().DragWindow()
 		}

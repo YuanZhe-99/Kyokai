@@ -2156,6 +2156,56 @@ func (msgs Messages) DiagVersion() string {
 	return Catalog.Format(msgs.locale, "DiagVersion", nil)
 }
 
+// DropAbove says "Above"
+// in the language the app shows.
+func DropAbove() string { return In(i18n.Locale()).DropAbove() }
+
+// DropAbove says "Above"
+// in the language of msgs.
+func (msgs Messages) DropAbove() string {
+	return Catalog.Format(msgs.locale, "DropAbove", nil)
+}
+
+// DropBelow says "Below"
+// in the language the app shows.
+func DropBelow() string { return In(i18n.Locale()).DropBelow() }
+
+// DropBelow says "Below"
+// in the language of msgs.
+func (msgs Messages) DropBelow() string {
+	return Catalog.Format(msgs.locale, "DropBelow", nil)
+}
+
+// DropHere says "In its place"
+// in the language the app shows.
+func DropHere() string { return In(i18n.Locale()).DropHere() }
+
+// DropHere says "In its place"
+// in the language of msgs.
+func (msgs Messages) DropHere() string {
+	return Catalog.Format(msgs.locale, "DropHere", nil)
+}
+
+// DropLeft says "Left"
+// in the language the app shows.
+func DropLeft() string { return In(i18n.Locale()).DropLeft() }
+
+// DropLeft says "Left"
+// in the language of msgs.
+func (msgs Messages) DropLeft() string {
+	return Catalog.Format(msgs.locale, "DropLeft", nil)
+}
+
+// DropRight says "Right"
+// in the language the app shows.
+func DropRight() string { return In(i18n.Locale()).DropRight() }
+
+// DropRight says "Right"
+// in the language of msgs.
+func (msgs Messages) DropRight() string {
+	return Catalog.Format(msgs.locale, "DropRight", nil)
+}
+
 // EngineDown says "The Kyokai engine is not running."
 // in the language the app shows.
 func EngineDown() string { return In(i18n.Locale()).EngineDown() }
@@ -3520,6 +3570,46 @@ func PaneMaximize() string { return In(i18n.Locale()).PaneMaximize() }
 // in the language of msgs.
 func (msgs Messages) PaneMaximize() string {
 	return Catalog.Format(msgs.locale, "PaneMaximize", nil)
+}
+
+// PaneNoRoomAcross says "No room side by side"
+// in the language the app shows.
+func PaneNoRoomAcross() string { return In(i18n.Locale()).PaneNoRoomAcross() }
+
+// PaneNoRoomAcross says "No room side by side"
+// in the language of msgs.
+func (msgs Messages) PaneNoRoomAcross() string {
+	return Catalog.Format(msgs.locale, "PaneNoRoomAcross", nil)
+}
+
+// PaneNoRoomAcrossHint says "No room side by side: make the window wider"
+// in the language the app shows.
+func PaneNoRoomAcrossHint() string { return In(i18n.Locale()).PaneNoRoomAcrossHint() }
+
+// PaneNoRoomAcrossHint says "No room side by side: make the window wider"
+// in the language of msgs.
+func (msgs Messages) PaneNoRoomAcrossHint() string {
+	return Catalog.Format(msgs.locale, "PaneNoRoomAcrossHint", nil)
+}
+
+// PaneNoRoomDown says "No room above and below"
+// in the language the app shows.
+func PaneNoRoomDown() string { return In(i18n.Locale()).PaneNoRoomDown() }
+
+// PaneNoRoomDown says "No room above and below"
+// in the language of msgs.
+func (msgs Messages) PaneNoRoomDown() string {
+	return Catalog.Format(msgs.locale, "PaneNoRoomDown", nil)
+}
+
+// PaneNoRoomDownHint says "No room above and below: make the window taller"
+// in the language the app shows.
+func PaneNoRoomDownHint() string { return In(i18n.Locale()).PaneNoRoomDownHint() }
+
+// PaneNoRoomDownHint says "No room above and below: make the window taller"
+// in the language of msgs.
+func (msgs Messages) PaneNoRoomDownHint() string {
+	return Catalog.Format(msgs.locale, "PaneNoRoomDownHint", nil)
 }
 
 // PaneRestore says "Restore"
@@ -5164,6 +5254,18 @@ func (msgs Messages) ServiceNoneHint() string {
 	return Catalog.Format(msgs.locale, "ServiceNoneHint", nil)
 }
 
+// ServiceNumbered says "{service} {n}"
+// in the language the app shows.
+func ServiceNumbered(service string, n int) string {
+	return In(i18n.Locale()).ServiceNumbered(service, n)
+}
+
+// ServiceNumbered says "{service} {n}"
+// in the language of msgs.
+func (msgs Messages) ServiceNumbered(service string, n int) string {
+	return Catalog.Format(msgs.locale, "ServiceNumbered", map[string]any{"service": service, "n": n})
+}
+
 // ServicePassword says "Password"
 // in the language the app shows.
 func ServicePassword() string { return In(i18n.Locale()).ServicePassword() }
@@ -6048,6 +6150,18 @@ func SoundSourceAbout() string { return In(i18n.Locale()).SoundSourceAbout() }
 // in the language of msgs.
 func (msgs Messages) SoundSourceAbout() string {
 	return Catalog.Format(msgs.locale, "SoundSourceAbout", nil)
+}
+
+// SplitCameApart says "{group} didn't fit on this display, so its {count} panes each have their own entry now."
+// in the language the app shows.
+func SplitCameApart(group string, count int) string {
+	return In(i18n.Locale()).SplitCameApart(group, count)
+}
+
+// SplitCameApart says "{group} didn't fit on this display, so its {count} panes each have their own entry now."
+// in the language of msgs.
+func (msgs Messages) SplitCameApart(group string, count int) string {
+	return Catalog.Format(msgs.locale, "SplitCameApart", map[string]any{"group": group, "count": count})
 }
 
 // StartOverDone says "This device has a new identity, kept from now on."

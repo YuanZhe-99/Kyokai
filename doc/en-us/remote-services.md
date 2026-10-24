@@ -95,6 +95,9 @@ The GUI's clients (`internal/gui`: `remote.go`, `servicetab.go`, `ssh.go`, `desk
 `screen.go`) run on the controller and reach the service only through the tunnel; a service pane
 is a pane like a desktop's ([gui.md](gui.md), "Connections").
 
+- **Panes** (`openService`). Each SSH opened is a pane and a connection of its own, numbered from
+  the second (SSH 2, SSH 3), within the host's 8 tunnels; a device's Remote Desktop or VNC, a
+  session of its screen, is one pane, shown when opened again and connected again when it ended.
 - **The link (`serviceLink`).** `Open` is the tunnel (`tunnel.open` through the engine, a
   `net.Conn` carrying the service's bytes); `Credential` and `SaveCredential` are
   `credentials.get` and `credentials.set`; `Keys` and `Sign` are `keys.list` and `keys.sign`.

@@ -172,7 +172,8 @@ Auto; a working one is never moved. The viewer's path badge shows the route in u
 A device running Kyokai 0.4.1 or later lets you reach its own SSH, Remote Desktop or VNC (Screen
 Sharing on a Mac) through Kyokai, with no port opened to the network. Its card on Home shows
 **SSH**, **Remote Desktop** or **VNC** for the services it has switched on, and its ⋯ menu always
-offers them. Each opens as a pane like a desktop's. Its user allows each one like any other
+offers them. Each opens as a pane like a desktop's; SSH opens a new pane each time, so you can
+have several shells on one device (SSH 2, SSH 3). Its user allows each one like any other
 permission (Access, **With a correct password**, has a tile for each, off by default).
 The first time, Kyokai asks how to sign in before it connects: for SSH with **Key** (your keys, see
 below) or **Password**; for VNC with **Password only**, **User name and password** (a Mac's) or

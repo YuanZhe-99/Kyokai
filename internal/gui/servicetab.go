@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -169,8 +170,12 @@ type serviceTab struct {
 	device  string
 	service string
 	address string
+	// key is its tabKey (serviceKey, with its number for a second SSH pane
+	// and after); kind the service in words, numbered from the second.
+	key  string
+	kind string
 	// name is the device's name and Device ID (deviceTitle); title the
-	// tab's, with the service.
+	// tab's, with kind.
 	name  string
 	title string
 	home  atomic.Pointer[viewerWindow]
@@ -194,8 +199,15 @@ type serviceTab struct {
 	front   bool
 }
 
-// serviceKey is a service tab's tabKey.
-func serviceKey(device, service string) string { return device + "/" + service }
+// serviceKey is a service tab's tabKey: the device's first pane of a
+// service, and with n from 2 its further SSH panes.
+func serviceKey(device, service string, n ...int) string {
+	k := device + "/" + service
+	if len(n) > 0 && n[0] > 1 {
+		k += "/" + strconv.Itoa(n[0])
+	}
+	return k
+}
 
 // serviceName words a service.
 func serviceName(service string) string {
@@ -208,11 +220,21 @@ func serviceName(service string) string {
 	return L.ServiceVNC()
 }
 
-// openService opens a device's service in a tab of the main window, or
-// shows its tab when it is open; one that ended connects again.
+// openService opens a device's service in a tab of the main window: SSH in
+// a new one each time, numbered from the second ("SSH 2"), each its own
+// connection; Remote Desktop and VNC, a session of the remote screen each,
+// show their tab when it is open, and one that ended connects again.
+// Returns: the tab's tabKey.
 // Notes: call on the main thread.
-func (a *App) openService(device, address, service string) {
-	if t := a.tabFor(serviceKey(device, service)); t != nil {
+func (a *App) openService(device, address, service string) string {
+	n := 1
+	if service == serviceSSH {
+		a.mu.Lock()
+		for a.services[serviceKey(device, service, n)] != nil {
+			n++
+		}
+		a.mu.Unlock()
+	} else if t := a.tabFor(serviceKey(device, service)); t != nil {
 		s := t.(*serviceTab)
 		if w := s.tabWindow(); w != nil {
 			w.show(s)
@@ -223,7 +245,7 @@ func (a *App) openService(device, address, service string) {
 		if ended {
 			s.connect(nil)
 		}
-		return
+		return s.key
 	}
 	a.mu.Lock()
 	about := a.prefs.named(device, localapi.About{})
@@ -233,12 +255,17 @@ func (a *App) openService(device, address, service string) {
 		}
 	}
 	name := deviceTitle(about, device)
+	kind := serviceName(service)
+	if n > 1 {
+		kind = L.ServiceNumbered(kind, n)
+	}
 	s := &serviceTab{app: a, device: device, service: service, address: address, name: name,
-		title: L.ServiceTabTitle(name, serviceName(service))}
-	a.services[serviceKey(device, service)] = s
+		key: serviceKey(device, service, n), kind: kind, title: L.ServiceTabTitle(name, kind)}
+	a.services[s.key] = s
 	a.mu.Unlock()
 	a.main.add(s)
 	s.connect(nil)
+	return s.key
 }
 
 // statusRecent is the engine's recent devices (caller holds a.mu).
@@ -366,15 +393,14 @@ func (s *serviceTab) redraw() { s.update(func() {}) }
 
 // The tab interface (viewerwin.go).
 
-func (s *serviceTab) tabKey() string   { return serviceKey(s.device, s.service) }
+func (s *serviceTab) tabKey() string   { return s.key }
 func (s *serviceTab) tabTitle() string { return s.title }
 
 // head is the service's pane header: its kind's icon, the device's name,
 // and the service.
 func (s *serviceTab) head() paneHead {
 	title, _ := splitTitle(s.name)
-	kind := serviceName(s.service)
-	return paneHead{icon: serviceIcon(s.service), title: title, sub: kind, kind: kind}
+	return paneHead{icon: serviceIcon(s.service), title: title, sub: s.kind, kind: s.kind}
 }
 func (s *serviceTab) tabWindow() *viewerWindow     { return s.home.Load() }
 func (s *serviceTab) setTabWindow(w *viewerWindow) { s.home.Store(w) }
@@ -533,8 +559,8 @@ func (s *serviceTab) view(c *ui.Context) {
 	}
 	s.syncGrab(false)
 	t := c.Theme()
-	ui.Column(c).Fill().Background(t.Background).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-		homeCard(c, "connect-panel-"+s.tabKey()).Width(connectPanelW).Children(func() {
+	ui.Column(c).Fill().Background(t.Background).AlignItems(ui.Center).Justify(ui.Center).Padding(0, paneMargin*2).Children(func() {
+		homeCard(c, "connect-panel-"+s.tabKey()).FillWidth().MaxWidth(connectPanelW).Children(func() {
 			ui.Text(c, s.title).FontSize(sizeHeading).Bold()
 			switch phase {
 			case svcForm:

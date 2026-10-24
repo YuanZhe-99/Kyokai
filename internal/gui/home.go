@@ -439,8 +439,7 @@ func (a *App) connectAs(device, address, as string, placed func(key string)) {
 		key := device
 		switch as {
 		case serviceSSH, serviceRDP, serviceVNC:
-			a.openService(device, address, as)
-			key = serviceKey(device, as)
+			key = a.openService(device, address, as)
 		case actionAI:
 			key = a.openAISession(device, address, "", nil, zoneMiddle).tabKey()
 		default:

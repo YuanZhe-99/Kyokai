@@ -2,6 +2,7 @@ package gui
 
 import (
 	_ "embed"
+	"runtime"
 
 	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
@@ -402,13 +403,18 @@ const (
 	aiRenameW       float32 = 260 // a session's title being typed in the header
 	clipPanelW      float32 = 300 // the viewer's clipboard panel
 	shellSidebarW   float32 = 248 // the sidebar beside the panes
-	railW           float32 = 56  // the sidebar folded to its icons
+	railW           float32 = 56  // the sidebar folded to its icons (railWidth)
+	railMacW        float32 = 72  // on macOS: the traffic lights and 9 on either side
 	sbRowH          float32 = 32  // a row of the sidebar
 	sbNameMaxW      float32 = 140 // its name, before the kind beside it gives way
 	sbTopH          float32 = 40  // its top row: hide the sidebar and +
 	paneMargin      float32 = 8   // between the panes, and from the window's edges
 	paneHeaderH     float32 = 44  // a pane's header
 	paneNarrowW     float32 = 560 // narrower, a header folds its split and maximize buttons into ⋯
+	paneMinW        float32 = 360 // a pane in a group, at least: Home keeps one column of cards
+	paneMinH        float32 = 280 // and its height
+	mainMinW        float32 = 760 // the main window, at least, whatever the group shown
+	mainMinH        float32 = 520 // and its height
 	paneNameMaxW    float32 = 200 // a header's name, at most
 	paneRadius      float32 = 14  // a pane's corners
 	paneButton      float32 = 28  // a button in a pane's header or the sidebar
@@ -443,7 +449,7 @@ const (
 	paletteMaxH     float32 = 380 // its results, scrolling beyond
 	deviceCardW     float32 = 236 // a recent device's card on Home
 	onlineDot       float32 = 8   // a device's online dot
-	connectPanelW   float32 = 420 // a connection tab's panel before the picture
+	connectPanelW   float32 = 420 // a connection tab's panel before the picture, at most
 	pointerR        float32 = 6   // the host's pointer marker in the viewer
 	barTop          float32 = 8   // the viewer toolbar, from the picture's top edge
 	barMargin       float32 = 8   // the least room it keeps from the picture's sides
@@ -478,12 +484,25 @@ const (
 )
 
 // Where the macOS traffic lights sit: the close button's top-left corner,
-// which centres the 14-point buttons on the top pane's header, at the
-// sidebar's left edge.
+// which centres the 14-point buttons on the top pane's header — in the main
+// window at the system's own inset from its edge, over the sidebar's top
+// row or the rail; in a window of its own clear of its pane's edge, which
+// starts paneMargin from the window's.
 const (
-	trafficX = 18
-	trafficY = int(paneMargin + (paneHeaderH-14)/2)
+	trafficMainX = 9
+	trafficOwnX  = 18
+	trafficY     = int(paneMargin + (paneHeaderH-14)/2)
 )
+
+// railWidth is the width of the sidebar folded to its icons: on macOS the
+// traffic lights' with their inset on either side, so that they and the
+// icons share one centre line.
+func railWidth() float32 {
+	if runtime.GOOS == "darwin" {
+		return railMacW
+	}
+	return railW
+}
 
 // busyMark is the loading indicator shown while something is under way:
 // loading.dev's Arc (MyGo's loading plugin) in the theme's accent, named
