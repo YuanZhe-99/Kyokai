@@ -1,5 +1,21 @@
 # Version history
 
+## 0.6.1 (2026-10-23)
+
+- Panes keep a usable size: at least 360 × 280 in a group. A split is offered only where both
+  halves fit — the split buttons grey out and say why, a drag shows only the places that fit —,
+  dividers stop at the minimum, the main window's minimum follows the group shown, the window
+  grows on its display when the sidebar comes back, and a group its display cannot hold comes
+  apart into entries of their own, with a toast. A connection's card fits a narrow pane.
+- macOS: the main window's traffic lights sit 9 points from its edge, as on the system's own
+  windows, over a 72-point rail; protected mode keeps room for them.
+- SSH opens a new pane each time, so one device can have several shells (SSH 2, SSH 3).
+- Fixes: an SSH connection refuses a re-key that shows another server key; stopping the engine's
+  local API no longer races its connections (a crash seen once in CI).
+- Go: purego 0.11.2; the core: libc 0.2.191.
+- Protocol 10, local API 2 and ABI 6, unchanged. Upstream versions checked, unchanged: MyGo
+  v0.6.3, EasyTier v2.7.0, RustDesk 1.5.0 (vendored code), vcpkg 2026.10.16, Rust 1.99.1.
+
 ## 0.6.0 (2026-10-23)
 
 - A new interface. The sidebar, on the window's material, lists Home and every open pane — a

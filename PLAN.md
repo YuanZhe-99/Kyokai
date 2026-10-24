@@ -14,16 +14,6 @@ this file when the plan is complete.
 - macOS builds are signed with the maintainer's Apple Development certificate (Team ID); the helper
   verifies its own updates (bundle signature on Windows, code signature on macOS).
 
-## 0.6.1
-
-The interface only; released as 0.6.1 once done and verified (the user, 2026-10-23).
-
-| Item | Scope | Done when |
-|---|---|---|
-| Panes keep a usable size | implemented as designed (gui.md, "Pane sizes"); the room rules, drop zones, window minimum and coming apart pass their table tests, and the shell renders at the minimum, with a split greyed out and with the drop zones that fit (view tests) | seen in the native app on Windows (a group at its minimum, the sidebar coming back, a move to a smaller display) and on the maintainer's Mac, recorded in platform-notes |
-| macOS traffic lights | implemented as designed (gui.md, "The window's controls"): the main window's lights at 9, windows of their own at 18, the rail 72 on macOS, protected mode's strip | seen on the maintainer's Mac with the sidebar, the rail, a window of its own, protected mode and full screen, recorded in platform-notes |
-| Several SSH panes per device | implemented: each SSH opened is a pane and a connection of its own, numbered from the second (remote-services.md, "Panes"); Remote Desktop and VNC stay one pane per device | two SSH shells on one device side by side in the native app, recorded in platform-notes |
-
 ## 0.7.0
 
 The AI update, after 0.6.1.
@@ -41,6 +31,7 @@ The AI update, after 0.6.1.
 
 | Item | Scope | Done when |
 |---|---|---|
+| 0.6.1 seen in the native app | released on its tests and view renders: the room rules, the window minimum and coming apart, several SSH panes, the macOS traffic lights | on Windows: a group at its minimum, the sidebar coming back, a move to a smaller display, two SSH shells side by side; on the maintainer's Mac: the lights with the sidebar, the rail, a window of its own, protected mode and full screen; recorded in platform-notes |
 | 0.6.0 on macOS | the new interface built and run on a Mac: the sidebar material behind floating panes, the traffic lights over the sidebar's top row and on a window of its own's pane, the Settings pages and the keyboard grab stepping aside under the sheet, the + picker and ⌘K search, a session with the Mac's own AI and one with a host's, a request and a device connected to the Mac, Home's privacy permissions while one is missing, contrast and the keyboard (Windows done: platform-notes, "0.6.0 shell, M1" to "0.6.0 contrast and keyboard, M7") | seen on the maintainer's Mac, recorded in platform-notes |
 | Shared AI record and draft | the host keeps one AI record that every controller sees and may steer with its permissions (done in the core); the AI prompt draft is shared live: what one controller or the host's user types reaches the host, which passes it to every other controller and its own AI sessions | two controllers and the host see the same task and the same draft, recorded in platform-notes |
 | macOS crash | the Mac app "crashed" when a connection request came in: most likely the GUI froze, announcing the request under its lock while macOS asked about notifications (fixed in 0.4.0, with a watchdog that writes the stacks of a frozen GUI to `gui-crash.log`) | the first connection to a Mac host no longer freezes on the user's Macs, or the new logs name another cause |
