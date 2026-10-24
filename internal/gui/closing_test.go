@@ -1,10 +1,52 @@
 package gui
 
 import (
+	"context"
+	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 )
+
+// closedTab is a pane that notes when closing disconnects it.
+type closedTab struct {
+	fakeTab
+	closed *[]string
+}
+
+func (c *closedTab) disconnect() { *c.closed = append(*c.closed, c.tabKey()) }
+
+// Regression: closing the main window to the tray looped over its tabs
+// while each close deleted from that list, so every other pane stayed open
+// (Home first: the first connection always); the one left redrew the ended
+// window and the app crashed.
+func TestCloseToTrayDisconnectsEveryPane(t *testing.T) {
+	for n := 1; n <= 3; n++ {
+		a := &App{viewers: map[string]*viewer{}, services: map[string]*serviceTab{}, tray: &Tray{}, ctx: context.Background()}
+		a.prefs.TrayHintShown = true
+		a.home = &homeTab{app: a}
+		a.main = &viewerWindow{app: a, main: true}
+		a.main.homeGroupLocked()
+		var want, closed []string
+		for i := range n {
+			p := &closedTab{fakeTab: fakeTab(fmt.Sprint("pane-", i)), closed: &closed}
+			want = append(want, p.tabKey())
+			a.main.tabs = append(a.main.tabs, p)
+			a.main.placeLocked(p, nil, zoneMiddle)
+		}
+		a.applyClose(a.main, closeHide)
+		slices.Sort(closed)
+		if !slices.Equal(closed, want) {
+			t.Errorf("%d connections: closing to the tray disconnected %v, want %v", n, closed, want)
+		}
+		for _, tb := range a.main.tabs {
+			if tb != tab(a.home) {
+				t.Errorf("%d connections: %s still in the main window", n, tb.tabKey())
+			}
+		}
+	}
+}
 
 // TestDecideClose: quitting never asks; the main window with Quit chosen
 // asks while anything is live, then quits; otherwise a window asks for two

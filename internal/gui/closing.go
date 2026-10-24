@@ -150,8 +150,12 @@ func (a *App) applyClose(vw *viewerWindow, action closeAction) {
 		a.Quit()
 		return
 	}
+	// A copy: each close deletes its tab from vw.tabs in place (regression:
+	// looping over vw.tabs itself skipped every other tab, Home first, so a
+	// connection stayed open, redrew the main window that had ended, and the
+	// app crashed instead of going to the tray).
 	vw.mu.Lock()
-	tabs := vw.tabs
+	tabs := slices.Clone(vw.tabs)
 	vw.mu.Unlock()
 	for _, t := range tabs {
 		vw.closeTab(t)
