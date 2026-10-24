@@ -1,5 +1,30 @@
 # Version history
 
+## 0.6.2 (2026-10-24)
+
+- Closing the main window with connections open put Kyokai in the tray for only some of them: the
+  close ended every other connection, and the one left redrew the window that had ended, which
+  crashed the app (a 0.6.0 regression, on every system). Every connection now closes and Kyokai
+  stays in the tray.
+- The keyboard grab holds while the pointer is anywhere in a pane — its header, toolbar, clipboard
+  panel or picture — and steps aside while a pane's menu or split list, Settings, search or the +
+  picker is open (up to 0.6.1 it ended at the picture's edge).
+- Map and Translate no longer lose keys to a grab that lets them pass: such a key goes as Legacy
+  sends it, and the grab is renewed — also when the window becomes active again, when the pointer
+  comes back into the pane and when the core says it stopped (macOS: the tap turned on again or
+  started anew; Windows: the hook installed again, as Windows removes a slow hook without notice).
+  On a Mac, Map and Translate now and then sent only letters until Kyokai restarted.
+- macOS: each tap turns itself on again with its own handle, and a stop asked before its run loop
+  ran is no longer lost.
+- Two dots under the toolbar's keyboard icon: Kyokai holds the keyboard; the keys reach it (amber,
+  with the reason, when they do not — another app's secure keyboard entry, for one). The GUI log
+  notes when a grab lets keys pass and why.
+- The core: clipboard-win 5.4.3 (5.4.1 was yanked); RUSTSEC-2026-0387 (crypto-bigint 0.5 through
+  opaque-ke's elliptic-curve 0.13) ignored, as the OPAQUE suite is Ristretto255.
+- ABI 7 (`kyokai_keyboard_state`; `kyokai_keyboard_grab` renews a grab asked again); protocol 10
+  and local API 2, unchanged. Upstream versions checked, unchanged: MyGo v0.6.3, EasyTier v2.7.0,
+  RustDesk 1.5.0 (vendored code), vcpkg 2026.10.16, Rust 1.99.1.
+
 ## 0.6.1 (2026-10-23)
 
 - Panes keep a usable size: at least 360 × 280 in a group. A split is offered only where both
