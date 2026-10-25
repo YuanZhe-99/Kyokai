@@ -77,7 +77,11 @@ host's system draws its cursor: Windows hides it with no mouse attached, except 
 the ring once showed only then.
 
 The controller says which codecs it decodes, and which of them in full colour, as the session
-starts; the host waits up to a second for that before it starts the video. It tries, in order,
+starts; the host waits up to a second for that before it starts the video, once: every later
+opening of the video (a recovery step, another display) keeps the controller's codecs (up to 0.6.2
+the elapsed wait ran again whenever a recovery step closed the video, which then opened on the
+primary display as for a controller that names no codecs — on a Mac host the "no codec"
+placeholder, for good). It tries, in order,
 H.264, HEVC and VP9 through Media Foundation (Windows hosts) or H.264 and HEVC through
 VideoToolbox (macOS hosts), then VP9, AV1 and VP8 in software, and sends in the first one the
 controller decodes whose encoder opens — so a host or controller without the system's codecs
@@ -135,7 +139,10 @@ skips to it, so the reader gets one decodable picture rather than none. A `recov
 what its video is doing in its stats (`video`: live, dark, recovering or placeholder), and the
 viewer shows that — the screen asleep or off and being woken, Kyokai Helper getting ready, the
 picture starting again — instead of guessing; it offers **Wake it** only when the host says its
-display is dark or asleep (an older host: after 3 seconds without a picture, as before). Sound
+display is dark or asleep (an older host: after 3 seconds without a picture, as before). While the
+host says it will not try again (no codec in common, a screen it cannot capture), or no picture of
+its screen has shown for 10 seconds, the viewer offers **Reconnect**: the session is closed and
+dialed again, as Reconnect after an end does, and the new one starts its video afresh. Sound
 that finds its queue full is left out. A slow picture so never holds up sound, input or the
 host's reports.
 
@@ -470,7 +477,8 @@ them.
 ## Host status
 
 A controller with a saved password for a host, or a sign-in key the host admitted, watches that
-host's status quietly while its Home shows ([protocol.md](protocol.md), "Status watchers"): a
+host's status quietly while its main window is open, slowly while Home is hidden
+([protocol.md](protocol.md), "Status watchers"): a
 session of its own that asks only for `see-status`, carries no picture, input or sound, keeps no
 awake request on the host and shows no banner there. The host admits a watcher only with a
 correct password or key within its password grants while Connect without asking is on — it never
@@ -480,8 +488,10 @@ next sample. A host serves at most 16 watchers besides its other sessions; they 
 among its sessions, leave no trace among its trusted devices, and the status lists them apart
 (`watchers`: `{device_id, about, since}`).
 
-While anyone watches, the host samples itself every 2 seconds on a thread of its own and sends
-each sample as a `system` message:
+While anyone watches, the host samples itself every 2 seconds on a thread of its own — every 5
+seconds while all its watchers asked for the slow pace (`pace`), and again at once when one asks
+for the usual pace and the last sample is older than 2 seconds — and sends each sample to every
+watcher as a `system` message:
 
 | Field | Windows | macOS |
 |---|---|---|
@@ -497,8 +507,13 @@ each sample as a `system` message:
 | `offers` | per watcher: the permissions its password or key grants without asking (the password grants while Connect without asking is on, else none), so the controller offers only what will work | the same |
 | `ai` | per watcher: whether the host's AI could start a task now (a model chosen and, unless its server is on the host, its provider's key present) | the same |
 
-The controller's GUI holds a lease on the hosts it shows (`watch.set` `{devices}`, at most 8,
-renewed every 10 seconds while Home is visible; it lapses after 30 seconds). The engine watches
+The controller's GUI holds a lease on the hosts it shows (`watch.set` `{devices, slow}`, at most
+8, `slow` those of them at the slow pace; renewed every 10 seconds while the main window is open
+or a status pane is, and at once as Home shows or hides; it lapses after 30 seconds). Home's hosts
+are at the slow pace while Home is hidden — the main window under Settings or showing other panes
+— and at the usual pace again as it shows, over the same watch; closing the main window lets them
+go (up to 0.6.2 a hidden Home let them go, and every host was dialed again as it showed). A watch
+session tells its host the lease's pace as it starts and whenever it changes. The engine watches
 only recent hosts that announced `status` and for which it keeps a password or a working key;
 otherwise it says why and dials nothing (`unsupported`, `no-credential`). It dials like a desktop
 session, never resumes, and after a drop waits 10 seconds, doubling up to 5 minutes; a refused

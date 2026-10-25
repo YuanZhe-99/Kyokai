@@ -116,7 +116,7 @@ const (
 	RequestCredentialsGet       RequestType = "credentials.get"            // a device's saved sign-in for one service (Request.DeviceID, Request.Service → Response.Credentials), at a client's sign-in only; owner or operator only
 	RequestCredentialsSet       RequestType = "credentials.set"            // save a device's sign-in for one service (Request.DeviceID, Request.Credentials)
 	RequestCredentialsForget    RequestType = "credentials.forget"         // forget one service's saved sign-in (Request.DeviceID, Request.Service), or all of them (no Service)
-	RequestWatchSet             RequestType = "watch.set"                  // watch these hosts' status for a while (Request.Watch): a lease the GUI renews
+	RequestWatchSet             RequestType = "watch.set"                  // watch these hosts' status for a while (Request.Watch, some slowly: Request.WatchSlow): a lease the GUI renews
 	RequestRoutesSet            RequestType = "routes.set"                 // change a known host's routes: add or remove an address, choose the route (Request.Routes)
 	RequestRoutesProbe          RequestType = "routes.probe"               // look at these known hosts' addresses in the background (Request.Probe); the status shows what was found
 	RequestTunnelOpen           RequestType = "tunnel.open"                // a tunnel to a device's own service (Request.Tunnel); the connection then carries its bytes
@@ -216,8 +216,11 @@ type Request struct {
 	Service string `json:"service,omitempty"`
 	// Credentials are RequestCredentialsSet's.
 	Credentials *Credentials `json:"credentials,omitempty"`
-	// Watch are the Device IDs RequestWatchSet watches (empty: none).
-	Watch *[]string `json:"watch,omitempty"`
+	// Watch are the Device IDs RequestWatchSet watches (empty: none), and
+	// WatchSlow those of them at the slow pace (Home hidden; an older
+	// engine watches them all at the usual pace).
+	Watch     *[]string `json:"watch,omitempty"`
+	WatchSlow *[]string `json:"watch_slow,omitempty"`
 	// Routes is RequestRoutesSet's change.
 	Routes *RoutesChange `json:"routes,omitempty"`
 	// Probe are the Device IDs RequestRoutesProbe looks at (16 at most).

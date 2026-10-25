@@ -175,9 +175,12 @@ admits a watcher only with a correct password or a key within its password grant
 without asking is on, and never asks its user: anything else is refused as `denied`. A watcher's
 verdict carries no resume token. After it the host sends `{"type": "system", at, uptime_s, cpu,
 memory, gpu, disk, disk_io, net, battery, services, offers, ai}` with each sample, every 2 seconds, besides `ping`,
-`pong` and `bye`; there is no video, input or other message. The host ends the watch with `bye`
-when `see-status` leaves its password grants, and either side closes one with no frame for 15
-seconds.
+`pong` and `bye`; there is no video, input or other message. The watcher says the pace it wants
+with `{"type": "pace", "slow": bool}` as the watch starts and whenever it changes, and the host
+samples every 5 seconds while every watcher asked for `slow`; hosts before 0.6.3 ignore it, as
+every host that announced `status` ignores message types it does not know, and keep to 2 seconds.
+The host ends the watch with `bye` when `see-status` leaves its password grants, and either side
+closes one with no frame for 15 seconds.
 
 ## AI tasks
 

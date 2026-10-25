@@ -2200,14 +2200,16 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             ctx.sessions.end(id, result.err());
             Outcome::Done
         }
-        // A status watch hands the host's samples to the watch manager.
+        // A status watch hands the host's samples to the watch manager, and
+        // the lease's pace to the host.
         Ok((ch, granted, _, Kind::Watch)) => {
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
                 e.granted = granted;
             });
             let Channel { stream, noise, .. } = ch;
-            let result = crate::watch::follow(stream, noise, &stop, |sample| {
+            let pace = ctx.watching.pace(&device_id);
+            let result = crate::watch::follow(stream, noise, &stop, pace, |sample| {
                 ctx.watching.sampled(&device_id, sample)
             })
             .await;
@@ -2755,8 +2757,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut source: Option<video::Source> = None;
     // The host's sound, while the controller asks for it.
     let mut sound: Option<audio::Source> = None;
-    let video_wait = tokio::time::sleep(CODECS_WAIT);
-    tokio::pin!(video_wait);
+    // Until when the host waits for the codecs: once, and no longer once
+    // they came (regression: the elapsed wait ran again whenever a recovery
+    // step dropped the video, which then opened on the primary display as
+    // for a controller that names no codecs — none on a Mac).
+    let mut codecs_due = wants_video.then(|| tokio::time::Instant::now() + CODECS_WAIT);
     // The host's input service; dropping it releases what it holds.
     #[cfg(any(windows, target_os = "macos"))]
     let mut injector = match side {
@@ -3194,8 +3199,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             } => {
                 out.plain(sound_packet(&p))?;
             }
-            _ = &mut video_wait, if wants_video && source.is_none() => {
-                // A controller that names no codecs gets H.264.
+            () = async {
+                match codecs_due {
+                    Some(t) => tokio::time::sleep_until(t).await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                // A controller that names no codecs gets H.264 (Windows).
+                codecs_due = None;
                 chosen = video::choose(&[], &[], false, false);
                 reopen!(None);
             }
@@ -3698,6 +3709,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // The controller's codecs: the video starts in the best
                     // of them this host can send.
                     Message::Codecs { decode, i444 } => {
+                        codecs_due = None;
                         decodes = (decode, i444);
                         // Listing the encoders asks the system: off the
                         // network's threads.
@@ -5380,6 +5392,108 @@ mod tests {
             "{start}"
         );
         assert!(capped(&queue), "a resumed session lost the viewer's cap");
+    }
+
+    /// Regression: the host's wait for the controller's codecs stayed ready
+    /// once it had fired, and ran again whenever a recovery step dropped the
+    /// video before opening it again: the host opened the primary display
+    /// as for a controller that names no codecs (H.264 on Windows; on a Mac
+    /// none, the "no codec" placeholder for good). A recovery opens the
+    /// video again in the controller's codec.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_recovery_keeps_the_controller_s_codec() {
+        let host = device("1.0.0");
+        let controller = device("1.0.0");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.3".parse().unwrap(),
+        };
+        let (a, b) = tokio::io::duplex(1 << 20);
+        tokio::spawn(serve(host.clone(), b, from));
+        let (id, stop) = begin(&controller, &dialed, Remember::default());
+        tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop.clone(),
+            a,
+            dialed,
+            zeroize::Zeroizing::new("k7mq2xpa".into()),
+            vec![Permission::ViewScreen],
+            None,
+        ));
+        for _ in 0..200 {
+            if let Some(q) = host
+                .access
+                .pending()
+                .as_array()
+                .and_then(|a| a.first().cloned())
+            {
+                let id = q["id"].as_u64().unwrap();
+                host.access
+                    .decide(id, Some(vec![Permission::ViewScreen]))
+                    .unwrap();
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let (queue, control) = controller.sessions.media(id).unwrap();
+        // The controller decodes VP8 alone, which every host encodes (said
+        // once the video runs: what a GUI sends before its session runs is
+        // dropped).
+        next_packet(&queue, media::packet::VIDEO_START, "video");
+        control
+            .try_send(json!({"type": "codecs", "decode": ["vp8"], "i444": []}))
+            .unwrap();
+        let until = Instant::now() + Duration::from_secs(8);
+        loop {
+            let start = next_packet(&queue, media::packet::VIDEO_START, "video in vp8");
+            if start["codec"] == "vp8" {
+                break;
+            }
+            // A machine that cannot capture shows the placeholder, which
+            // takes no recovery step.
+            if start["placeholder"].is_string() && start["placeholder"] != "no-codec" {
+                stop.notify_one();
+                return;
+            }
+            assert!(
+                Instant::now() < until,
+                "the video never started in vp8: {start}"
+            );
+        }
+        // The viewer says it shows nothing: two recovery steps, opening the
+        // video again at once and then after a pause.
+        let until = Instant::now() + STEP_GRACE * 2 + REOPEN_PAUSE;
+        let mut said: Option<Instant> = None;
+        let mut reopened = 0;
+        while reopened < 2 && Instant::now() < until {
+            if said.is_none_or(|t| t.elapsed() >= Duration::from_millis(500)) {
+                control
+                    .try_send(json!({"type": "no-picture", "for_ms": 60_000, "why": "waiting"}))
+                    .unwrap();
+                said = Some(Instant::now());
+            }
+            let Ok(p) = queue.pop(Duration::from_millis(100)) else {
+                continue;
+            };
+            if p[0] == media::packet::VIDEO_START {
+                let start: Value = serde_json::from_slice(&p[1..]).unwrap();
+                assert_eq!(
+                    start["codec"], "vp8",
+                    "a recovery left the controller's codec: {start}"
+                );
+                reopened += 1;
+            }
+        }
+        assert_eq!(reopened, 2, "recovery steps");
+        stop.notify_one();
     }
 
     /// A small xorshift generator: the fuzz rounds are random but repeatable.
@@ -7170,6 +7284,28 @@ mod watch_tests {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         assert_eq!(host.sessions.watchers(), json!([]));
+    }
+
+    /// A watcher whose Home hides asks its host for the slow pace, and for
+    /// the usual one as Home shows again, on the session it has (regression:
+    /// Home dropped its watches as it hid and dialed every host again as it
+    /// showed).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_watcher_changes_its_pace_on_the_same_session() {
+        let host = host_with(vec![Permission::SeeStatus]);
+        let controller = device("1.0.1");
+        let (id, _task) = watch(&host, &controller, "k7mq2xpa").await;
+        assert_eq!(state(&controller, id), Some(State::Connected));
+        let dialed = host.identity.device_id();
+        for (slow, watchers) in [(true, 1), (false, 0)] {
+            controller.watching.expect_slow(&dialed, slow);
+            let until = Instant::now() + Duration::from_secs(2);
+            while crate::system::slow_watchers() != watchers && Instant::now() < until {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            assert_eq!(crate::system::slow_watchers(), watchers, "slow: {slow}");
+            assert_eq!(state(&controller, id), Some(State::Connected));
+        }
     }
 
     /// A watcher is admitted only by a password or key within the grants,

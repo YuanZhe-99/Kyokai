@@ -2,19 +2,24 @@
 //! "Host status"): the processor, memory, graphics, the system disk and its
 //! reads and writes, the network's rates, the battery, the uptime, and which
 //! of its SSH, Remote Desktop and VNC answer on loopback. Sampled on a thread
-//! of its own every SAMPLE_EVERY while anyone watches, with the system's own
-//! counters (no crate of its own).
+//! of its own every SAMPLE_EVERY while anyone watches (SLOW_EVERY while every
+//! watcher asks for the slow pace), with the system's own counters (no crate
+//! of its own).
 
 use crate::access::Permission;
 use crate::tunnel::Service;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::watch;
 
 /// How often a watched host samples itself.
 pub const SAMPLE_EVERY: Duration = Duration::from_secs(2);
+/// How often it samples itself while every watcher asks for the slow pace
+/// (its Home hidden): under the 6 s a sample shows as current, so Home's
+/// figures do not dim as it shows again.
+pub const SLOW_EVERY: Duration = Duration::from_secs(5);
 /// How often a watcher's session looks which services listen.
 pub const PROBE_EVERY: Duration = Duration::from_secs(30);
 /// How long one look at a service's port may take.
@@ -107,37 +112,104 @@ pub struct Battery {
 /// sampler runs while any subscription is held.
 pub struct Watch {
     pub samples: watch::Receiver<Option<Arc<Sample>>>,
+    /// Whether this watcher asked for the slow pace (`set_slow`).
+    slow: bool,
 }
 
-/// The running sampler: where it sends, how many watch, and what stops it.
+/// The running sampler: where it sends, how many watch and how many of
+/// them asked for the slow pace, the pause between its samples in
+/// milliseconds (`pace`), and what stops it.
 struct Running {
     tx: watch::Sender<Option<Arc<Sample>>>,
     watchers: usize,
+    slow: usize,
+    every: Arc<AtomicU64>,
     stop: Arc<AtomicBool>,
+}
+
+impl Running {
+    /// Sets the pause between samples from the watchers' paces.
+    fn pace(&self) {
+        let every = pace(self.watchers, self.slow);
+        self.every
+            .store(every.as_millis() as u64, Ordering::Relaxed);
+    }
+}
+
+/// The pause between samples for `watchers` watchers, `slow` of which
+/// asked for the slow pace: SLOW_EVERY only while all of them did.
+fn pace(watchers: usize, slow: usize) -> Duration {
+    if watchers > 0 && slow >= watchers {
+        SLOW_EVERY
+    } else {
+        SAMPLE_EVERY
+    }
 }
 
 static SAMPLER: Mutex<Option<Running>> = Mutex::new(None);
 
-/// Subscribes to the host's samples.
-/// Side effects: the first subscription starts the sampler's thread.
+/// How many watchers ask for the slow pace now, for the tests.
+#[cfg(test)]
+pub fn slow_watchers() -> usize {
+    SAMPLER
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .map_or(0, |r| r.slow)
+}
+
+/// Subscribes to the host's samples, at the usual pace.
+/// Side effects: the first subscription starts the sampler's thread; a
+/// later one brings the usual pace back.
 pub fn watch() -> Watch {
     let mut s = SAMPLER.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(r) = s.as_mut() {
         r.watchers += 1;
+        r.pace();
         return Watch {
             samples: r.tx.subscribe(),
+            slow: false,
         };
     }
     let (tx, samples) = watch::channel(None);
     let stop = Arc::new(AtomicBool::new(false));
-    let (sender, stopped) = (tx.clone(), stop.clone());
-    std::thread::spawn(move || run(sender, stopped));
+    let every = Arc::new(AtomicU64::new(SAMPLE_EVERY.as_millis() as u64));
+    let (sender, paced, stopped) = (tx.clone(), every.clone(), stop.clone());
+    std::thread::spawn(move || run(sender, paced, stopped));
     *s = Some(Running {
         tx,
         watchers: 1,
+        slow: 0,
+        every,
         stop,
     });
-    Watch { samples }
+    Watch {
+        samples,
+        slow: false,
+    }
+}
+
+impl Watch {
+    /// Asks for the slow pace (its watcher's Home is hidden) or the usual
+    /// one.
+    /// Side effects: the sampler takes SLOW_EVERY while every watcher asks
+    /// for it; back at the usual pace, a sample older than SAMPLE_EVERY is
+    /// taken again at once.
+    pub fn set_slow(&mut self, slow: bool) {
+        if slow == self.slow {
+            return;
+        }
+        self.slow = slow;
+        let mut s = SAMPLER.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(r) = s.as_mut() {
+            if slow {
+                r.slow += 1;
+            } else {
+                r.slow -= 1;
+            }
+            r.pace();
+        }
+    }
 }
 
 impl Drop for Watch {
@@ -145,21 +217,30 @@ impl Drop for Watch {
         let mut s = SAMPLER.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(r) = s.as_mut() {
             r.watchers -= 1;
+            if self.slow {
+                r.slow -= 1;
+            }
             if r.watchers == 0 {
                 r.stop.store(true, Ordering::Relaxed);
                 *s = None;
+            } else {
+                r.pace();
             }
         }
     }
 }
 
-/// The sampler's thread: a sample every SAMPLE_EVERY until stopped.
-fn run(tx: watch::Sender<Option<Arc<Sample>>>, stop: Arc<AtomicBool>) {
+/// The sampler's thread: a sample, then the pause `every` holds (looked at
+/// again every 100 ms, so a faster pace takes effect at once), until
+/// stopped.
+fn run(tx: watch::Sender<Option<Arc<Sample>>>, every: Arc<AtomicU64>, stop: Arc<AtomicBool>) {
     let mut probe = Probe::new();
     while !stop.load(Ordering::Relaxed) {
         tx.send_replace(Some(Arc::new(probe.sample())));
-        let until = Instant::now() + SAMPLE_EVERY;
-        while !stop.load(Ordering::Relaxed) && Instant::now() < until {
+        let taken = Instant::now();
+        while !stop.load(Ordering::Relaxed)
+            && taken.elapsed() < Duration::from_millis(every.load(Ordering::Relaxed))
+        {
             std::thread::sleep(Duration::from_millis(100));
         }
     }
@@ -994,6 +1075,24 @@ mod tests {
             "at", "uptime_s", "cpu", "memory", "gpu", "disk", "net", "battery",
         ] {
             assert!(v.get(key).is_some(), "{key}");
+        }
+    }
+
+    /// The host samples at the slow pace only while every watcher asks for
+    /// it: one at the usual pace keeps the usual pace for all.
+    #[test]
+    fn the_slow_pace_needs_every_watcher() {
+        for (watchers, slow, every) in [
+            (1, 0, SAMPLE_EVERY),
+            (1, 1, SLOW_EVERY),
+            (2, 1, SAMPLE_EVERY),
+            (2, 2, SLOW_EVERY),
+        ] {
+            assert_eq!(
+                pace(watchers, slow),
+                every,
+                "{watchers} watching, {slow} slow"
+            );
         }
     }
 

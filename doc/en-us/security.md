@@ -63,7 +63,7 @@ status ([computer-use.md](computer-use.md), "Host status"): its load, memory, di
 battery, uptime and which of its remote services listen — nothing on the screen, no input, no
 files. Watchers are never asked about, so the host's user turns `see-status` off in the password
 grants to keep everyone out, and Access lists who watches now. On the controller the samples
-stay in memory, and only for the hosts its GUI shows.
+stay in memory, and only for the hosts its GUI shows while its main window is open.
 
 ## AI tasks
 

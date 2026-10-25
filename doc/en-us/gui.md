@@ -187,10 +187,11 @@ when `SCREENSHOT_DIR` is set.
   joined networks reach that this one never connected to, each once by its best way — direct
   before relayed, then the lowest latency (`networkOthers`) — as dashed cards with the Device ID,
   the network and the way with its latency, and Connect.
-- **Live status on Home:** while Home shows (the main window visible, its Home pane shown and
-  Settings closed), the GUI leases a watch of the recent devices (`watch.set`, eight at most,
-  renewed every 10 s and dropped as Home hides); a host whose status pane is open stays in the
-  lease, first, Home shown or not (`watchLease`). A watched device's card shows four figures
+- **Live status on Home:** while the main window is open, the GUI leases a watch of the recent
+  devices (`watch.set`, eight at most, renewed every 10 s): at the usual pace while Home shows (its
+  Home pane shown and Settings closed), at the slow pace while it is hidden, so that coming back
+  needs no new connection; closing the main window lets them go. A host whose status pane is open
+  stays in the lease, first, at the usual pace, the window open or not (`watchLease`). A watched device's card shows four figures
   (`compactFigures`): CPU now, memory in use and the download rate, then the battery, else the
   GPU, else the free disk — each with its name, value and unit, and a thin bar in the metric's
   colour (CPU blue; memory green; GPU red; disk orange; network teal, its bar against the last
@@ -394,7 +395,10 @@ when `SCREENSHOT_DIR` is set.
   to show, Kyokai Helper getting ready, the picture starting again, no codec in common, or a screen
   it cannot share. A session with `control-input` offers **Wake it** when the host says its
   display is dark or asleep — an older host, which does not say, after 3 seconds of waiting or
-  recovering ([computer-use.md](computer-use.md), "Sleep"). While the
+  recovering ([computer-use.md](computer-use.md), "Sleep"). Under that status, **Reconnect**
+  shows while the host will not try again (no codec in common, a screen it cannot share) or no
+  picture of its screen has shown for 10 seconds; it connects the pane again as its Reconnect
+  after an end does. While the
   engine refuses input as behind, the path is led by "Input paused — the connection is behind" in
   the warning colour, and the keyboard grab steps aside after half a second
   ([computer-use.md](computer-use.md), "Input"). After a choice in the toolbar the

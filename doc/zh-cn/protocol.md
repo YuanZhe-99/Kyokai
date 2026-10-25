@@ -110,8 +110,9 @@ files}` 提供本端复制的文件，每个文件为 `{path, size, dir}`（名�
 `client_hello` 中发送 `watch: true`，并只请求 `see-status`；控制端从不把它发给没有声明 `status` 的被控端，而是在第 2 帧之后就停下
 （`unsupported`）。被控端只在“无需确认即可连接”开启、且正确的密码或密钥在其密码授予的权限之内时才准入查看者，从不询问其用户：其他情况一律以
 `denied` 拒绝。查看者的结果不带续接令牌。此后被控端每次采样都发送 `{"type": "system", at, uptime_s, cpu, memory, gpu, disk, disk_io,
-net, battery, services, offers, ai}`，每 2 秒一次，此外只有 `ping`、`pong` 与 `bye`；没有视频、输入或其他消息。`see-status` 离开密码授予的权限时，被控端以
-`bye` 结束查看；15 秒内没有任何帧时，任一方都会关闭它。
+net, battery, services, offers, ai}`，每 2 秒一次，此外只有 `ping`、`pong` 与 `bye`；没有视频、输入或其他消息。查看者在查看开始时以及每当速度改变时以
+`{"type": "pace", "slow": bool}` 说明它要的速度，所有查看者都要求 `slow` 时被控端每 5 秒采样一次；0.6.3 以前的被控端忽略它（每个声明了 `status`
+的被控端都忽略它不认识的消息类型），仍为 2 秒。`see-status` 离开密码授予的权限时，被控端以 `bye` 结束查看；15 秒内没有任何帧时，任一方都会关闭它。
 
 ## AI 任务
 

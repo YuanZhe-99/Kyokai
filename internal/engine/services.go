@@ -98,11 +98,14 @@ func (h *handler) services(ctx context.Context, req localapi.Request) (localapi.
 	case localapi.RequestCredentialsForget:
 		return h.command("credentials.forget", map[string]string{"device_id": req.DeviceID, "service": req.Service}), true
 	case localapi.RequestWatchSet:
-		devices := []string{}
+		devices, slow := []string{}, []string{}
 		if req.Watch != nil {
 			devices = append(devices, *req.Watch...)
 		}
-		return h.command("watch.set", map[string][]string{"devices": devices}), true
+		if req.WatchSlow != nil {
+			slow = append(slow, *req.WatchSlow...)
+		}
+		return h.command("watch.set", map[string][]string{"devices": devices, "slow": slow}), true
 	case localapi.RequestRoutesSet:
 		if req.Routes == nil {
 			return localapi.Fail(localapi.CodeInvalid, "routes missing"), true

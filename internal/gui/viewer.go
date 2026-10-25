@@ -247,6 +247,12 @@ type viewer struct {
 	heardAt    time.Time
 	recovering bool
 	asleep     bool
+	// screenAt: when a picture of the host's screen last showed (the
+	// stream's start until the first; the host's placeholder is none);
+	// screenLost: none for reconnectAfter, so the picture area offers
+	// Reconnect.
+	screenAt   time.Time
+	screenLost bool
 	// decodeFailed: the last frame the decoder took failed, and no
 	// picture came since (the viewer tells the host why it shows none).
 	decodeFailed bool
@@ -580,7 +586,7 @@ func (v *viewer) pump() {
 	}
 	v.mu.Lock()
 	v.conn = conn
-	v.pictureAt, v.heardAt = time.Now(), time.Now()
+	v.pictureAt, v.heardAt, v.screenAt, v.screenLost = time.Now(), time.Now(), time.Now(), false
 	v.mu.Unlock()
 	defer conn.Close()
 	keyRequest := append([]byte{packetControl}, `{"type":"key-frame"}`...)
@@ -727,13 +733,15 @@ type videoGate struct {
 
 // Picture health (viewer.watchdog): how often the viewer asks the host for
 // a key frame at most, how long without a picture while the host sends
-// frames counts as a lost picture, and after how long without a picture
-// the viewer offers to wake the host's screen.
+// frames counts as a lost picture, after how long without a picture the
+// viewer offers to wake the host's screen, and after how long without a
+// picture of the host's screen it offers Reconnect.
 const (
-	keyAgain    = time.Second
-	noPicture   = 2 * time.Second
-	wakeAfter   = 3 * time.Second
-	stalledFeed = 3 * time.Second
+	keyAgain       = time.Second
+	noPicture      = 2 * time.Second
+	wakeAfter      = 3 * time.Second
+	stalledFeed    = 3 * time.Second
+	reconnectAfter = 10 * time.Second
 )
 
 // pass queues frame p unless it must be left out.
@@ -833,10 +841,14 @@ func (v *viewer) watchdog(done <-chan struct{}, keyRequest []byte) {
 			need := viewerNeedsKey(since, v.host.Frames, pictured)
 			recovering := need && pictured
 			asleep := v.control && viewerAsleep(since, v.host.Video, v.start.Placeholder)
+			if pictured && v.start.Placeholder == "" {
+				v.screenAt = now
+			}
+			screenLost := now.Sub(v.screenAt) >= reconnectAfter
 			// The keyboard grab follows the stall rule (inputStalled).
 			stalled := v.inputStalled(now)
-			changed := recovering != v.recovering || asleep != v.asleep || stalled != v.stalled
-			v.recovering, v.asleep, v.stalled = recovering, asleep, stalled
+			changed := recovering != v.recovering || asleep != v.asleep || stalled != v.stalled || screenLost != v.screenLost
+			v.recovering, v.asleep, v.stalled, v.screenLost = recovering, asleep, stalled, screenLost
 			why := ""
 			switch {
 			case v.decodeFailed:
@@ -1189,7 +1201,7 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 	inPane, covered, shows := v.inPane(), v.app.covered(), false
 	defer func() { v.syncGrab(inPane && shows && !covered) }()
 	v.mu.Lock()
-	recovering, asleep, hostVideo := v.recovering, v.asleep, v.host.Video
+	recovering, asleep, hostVideo, screenLost := v.recovering, v.asleep, v.host.Video, v.screenLost
 	v.mu.Unlock()
 	waiting, retrying := viewerWaitText(hostVideo, start.Placeholder)
 	area.Children(func() {
@@ -1207,6 +1219,17 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 			})
 			if asleep {
 				v.wakeOffer(c, hostVideo == "")
+			}
+			// A host that will not try again, or no picture of its screen
+			// for a while: connecting again opens a fresh session there, as
+			// Reconnect after an end does (closing and opening the pane did).
+			if !retrying || screenLost {
+				if ui.Button(c.Key("reconnect"), L.ViewerReconnect()).Margin(gap, 0, 0, 0).Clicked() {
+					v.mu.Lock()
+					remember := v.remember
+					v.mu.Unlock()
+					v.redial("", remember)
+				}
 			}
 		default:
 			// The picture takes text: macOS turns keys into text only for an

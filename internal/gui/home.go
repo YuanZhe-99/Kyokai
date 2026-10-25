@@ -25,8 +25,8 @@ const (
 	statusStale = 60 * time.Second
 )
 
-// The watch lease (watch.set): renewed every leaseEvery while Home shows,
-// for at most leaseHosts hosts.
+// The watch lease (watch.set): renewed every leaseEvery while the main
+// window is open or a status pane is, for at most leaseHosts hosts.
 const (
 	leaseEvery = 10 * time.Second
 	leaseHosts = 8
@@ -120,7 +120,7 @@ func (r *hostRings) push(s *localapi.SystemSample) {
 // histories. Fields are guarded by a.mu, sent and at by the lease too.
 type watchState struct {
 	rings map[string]*hostRings
-	sent  []string
+	sent  lease
 	at    time.Time
 	// mu keeps the lease's requests in order (syncWatch).
 	mu sync.Mutex
@@ -151,27 +151,40 @@ func (a *App) recordSamples(st *localapi.Status, now time.Time) {
 	}
 }
 
+// lease is a watch lease (watch.set): the hosts watched, and those of them
+// at the slow pace. Neither is nil, so that both go as lists.
+type lease struct{ hosts, slow []string }
+
 // watchLease decides the lease to send: the hosts whose status panes are
-// open, then while Home shows the recent hosts (leaseHosts in all), sent
-// when they changed or every leaseEvery; with none, an empty lease, sent
-// once.
-// Returns: whether to send, and the hosts.
-func watchLease(visible bool, recent []localapi.RecentDevice, panes, sent []string, at, now time.Time) (bool, []string) {
-	hosts := slices.Clone(panes)[:min(len(panes), leaseHosts)]
-	if visible {
+// open, then while the main window is open (`open`) the recent hosts
+// (leaseHosts in all) — at the slow pace while Home does not show, so that
+// their watches stay connected (regression: they ended as Home hid, and
+// every host was dialed again as it showed); sent when it changed or every
+// leaseEvery; with no host, an empty lease, sent once.
+// Returns: whether to send, and the lease.
+func watchLease(open, visible bool, recent []localapi.RecentDevice, panes []string, sent lease, at, now time.Time) (bool, lease) {
+	l := lease{hosts: slices.Clone(panes)[:min(len(panes), leaseHosts)], slow: []string{}}
+	if l.hosts == nil {
+		l.hosts = []string{}
+	}
+	if open {
 		for _, r := range recent {
-			if len(hosts) == leaseHosts {
+			if len(l.hosts) == leaseHosts {
 				break
 			}
-			if !slices.Contains(hosts, r.DeviceID) {
-				hosts = append(hosts, r.DeviceID)
+			if !slices.Contains(l.hosts, r.DeviceID) {
+				l.hosts = append(l.hosts, r.DeviceID)
+				if !visible {
+					l.slow = append(l.slow, r.DeviceID)
+				}
 			}
 		}
 	}
-	if len(hosts) == 0 {
-		return len(sent) > 0, []string{}
+	if len(l.hosts) == 0 {
+		return len(sent.hosts) > 0, l
 	}
-	return !slices.Equal(hosts, sent) || now.Sub(at) >= leaseEvery, hosts
+	changed := !slices.Equal(l.hosts, sent.hosts) || !slices.Equal(l.slow, sent.slow)
+	return changed || now.Sub(at) >= leaseEvery, l
 }
 
 // homeVisible reports whether Home shows: the main window is visible with
@@ -190,6 +203,14 @@ func (a *App) homeVisible() bool {
 	return main.homeShownLocked()
 }
 
+// mainOpen reports whether the main window is open (not closed to the
+// tray), outside protected mode: Home's hosts stay watched, shown or not.
+func (a *App) mainOpen() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.visible && !a.protected()
+}
+
 // homeVisibilityChanged sends the watch lease at once as Home shows or
 // hides.
 func (a *App) homeVisibilityChanged() { go a.syncWatch() }
@@ -198,23 +219,23 @@ func (a *App) homeVisibilityChanged() { go a.syncWatch() }
 func (a *App) syncWatch() {
 	a.watch.mu.Lock()
 	defer a.watch.mu.Unlock()
-	visible := a.homeVisible()
+	open, visible := a.mainOpen(), a.homeVisible()
 	a.mu.Lock()
 	recent, panes := a.statusRecent(), a.statusHosts()
 	sent, at := a.watch.sent, a.watch.at
 	a.mu.Unlock()
-	send, hosts := watchLease(visible, recent, panes, sent, at, time.Now())
+	send, l := watchLease(open, visible, recent, panes, sent, at, time.Now())
 	if !send {
 		return
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
 	defer cancel()
-	_, err := localapi.NewClient(a.sock()).Do(ctx, localapi.Request{Type: localapi.RequestWatchSet, Watch: &hosts})
+	_, err := localapi.NewClient(a.sock()).Do(ctx, localapi.Request{Type: localapi.RequestWatchSet, Watch: &l.hosts, WatchSlow: &l.slow})
 	if err != nil {
 		return // an older engine watches nothing; asked again with the next lease
 	}
 	a.mu.Lock()
-	a.watch.sent, a.watch.at = hosts, time.Now()
+	a.watch.sent, a.watch.at = l, time.Now()
 	a.mu.Unlock()
 }
 

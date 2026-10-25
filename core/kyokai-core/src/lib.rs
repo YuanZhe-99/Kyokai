@@ -1174,10 +1174,15 @@ fn call(input: &[u8]) -> Result<Value, String> {
             {
                 return Err("a Device ID has 9 digits".into());
             }
+            // Those of them at the slow pace (Home hidden); none from an
+            // older GUI.
+            let slow: Option<Vec<String>> = serde_json::from_value(req.params["slow"].take())
+                .map_err(|e| format!("bad slow: {e}"))?;
+            let slow = slow.unwrap_or_default();
             try_core(|c| {
                 c.ctx
                     .watching
-                    .set(&devices, &c.network.dialer(), &c.network.handle());
+                    .set(&devices, &slow, &c.network.dialer(), &c.network.handle());
                 Ok(json!({}))
             })
         }

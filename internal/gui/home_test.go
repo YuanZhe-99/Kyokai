@@ -44,9 +44,11 @@ func TestStatusFreshness(t *testing.T) {
 	}
 }
 
-// The lease goes out as Home shows, as its hosts change and every 10 s;
-// hidden, an empty lease goes once. A host's open status pane keeps it in
-// the lease, first, Home shown or not.
+// The lease goes out as Home shows, as its hosts or their pace change and
+// every 10 s. Home's hosts stay in it while the main window is open, at the
+// slow pace while Home is hidden; with the window closed, an empty lease
+// goes once. A host's open status pane keeps it in the lease, first, at the
+// usual pace, the window open or not.
 func TestWatchLease(t *testing.T) {
 	now := time.Now()
 	recent := []localapi.RecentDevice{{DeviceID: "1"}, {DeviceID: "2"}}
@@ -54,29 +56,34 @@ func TestWatchLease(t *testing.T) {
 	for i := range many {
 		many[i].DeviceID = string(rune('a' + i))
 	}
+	both, none := []string{"1", "2"}, []string{}
 	for _, c := range []struct {
-		name    string
-		visible bool
-		recent  []localapi.RecentDevice
-		panes   []string
-		sent    []string
-		age     time.Duration
-		send    bool
-		hosts   []string
+		name          string
+		open, visible bool
+		recent        []localapi.RecentDevice
+		panes         []string
+		sent          lease
+		age           time.Duration
+		send          bool
+		want          lease
 	}{
-		{"shown first", true, recent, nil, nil, time.Hour, true, []string{"1", "2"}},
-		{"renewed after 10 s", true, recent, nil, []string{"1", "2"}, 10 * time.Second, true, []string{"1", "2"}},
-		{"not yet", true, recent, nil, []string{"1", "2"}, 9 * time.Second, false, []string{"1", "2"}},
-		{"hosts changed", true, recent, nil, []string{"1"}, time.Second, true, []string{"1", "2"}},
-		{"at most eight", true, many, nil, nil, 0, true, []string{"a", "b", "c", "d", "e", "f", "g", "h"}},
-		{"hidden", false, recent, nil, []string{"1", "2"}, time.Second, true, []string{}},
-		{"hidden, already stopped", false, recent, nil, []string{}, time.Hour, false, []string{}},
-		{"a pane, Home hidden", false, recent, []string{"9"}, []string{"1", "2"}, time.Second, true, []string{"9"}},
-		{"a pane first, once", true, recent, []string{"2"}, nil, 0, true, []string{"2", "1"}},
+		{"shown first", true, true, recent, nil, lease{}, time.Hour, true, lease{both, none}},
+		{"renewed after 10 s", true, true, recent, nil, lease{both, none}, 10 * time.Second, true, lease{both, none}},
+		{"not yet", true, true, recent, nil, lease{both, none}, 9 * time.Second, false, lease{both, none}},
+		{"hosts changed", true, true, recent, nil, lease{[]string{"1"}, none}, time.Second, true, lease{both, none}},
+		{"at most eight", true, true, many, nil, lease{}, 0, true, lease{[]string{"a", "b", "c", "d", "e", "f", "g", "h"}, none}},
+		{"Home hidden: slower", true, false, recent, nil, lease{both, none}, time.Second, true, lease{both, both}},
+		{"Home hidden, renewed", true, false, recent, nil, lease{both, both}, 10 * time.Second, true, lease{both, both}},
+		{"Home shown again", true, true, recent, nil, lease{both, both}, time.Second, true, lease{both, none}},
+		{"the window closed", false, false, recent, nil, lease{both, both}, time.Second, true, lease{none, none}},
+		{"closed, already stopped", false, false, recent, nil, lease{none, none}, time.Hour, false, lease{none, none}},
+		{"a pane, the window closed", false, false, recent, []string{"9"}, lease{both, none}, time.Second, true, lease{[]string{"9"}, none}},
+		{"a pane, Home hidden", true, false, recent, []string{"2"}, lease{}, 0, true, lease{[]string{"2", "1"}, []string{"1"}}},
+		{"a pane first, once", true, true, recent, []string{"2"}, lease{}, 0, true, lease{[]string{"2", "1"}, none}},
 	} {
-		send, hosts := watchLease(c.visible, c.recent, c.panes, c.sent, now.Add(-c.age), now)
-		if send != c.send || !slices.Equal(hosts, c.hosts) || hosts == nil {
-			t.Errorf("%s: send %v hosts %v, want %v and %v", c.name, send, hosts, c.send, c.hosts)
+		send, got := watchLease(c.open, c.visible, c.recent, c.panes, c.sent, now.Add(-c.age), now)
+		if send != c.send || !slices.Equal(got.hosts, c.want.hosts) || !slices.Equal(got.slow, c.want.slow) || got.hosts == nil || got.slow == nil {
+			t.Errorf("%s: send %v lease %v, want %v and %v", c.name, send, got, c.send, c.want)
 		}
 	}
 }

@@ -36,8 +36,14 @@ enum Message {
     Ping,
     Pong,
     Bye,
-    /// host → watcher: the host's status, every SAMPLE_EVERY.
+    /// host → watcher: the host's status, every SAMPLE_EVERY (SLOW_EVERY
+    /// while every watcher asks for the slow pace).
     System(Box<Sample>),
+    /// watcher → host: the pace it wants, slow while its Home is hidden;
+    /// the usual one until it says. Hosts before 0.6.3 ignore it.
+    Pace {
+        slow: bool,
+    },
     /// Anything else a peer sends: ignored.
     #[serde(other)]
     Unknown,
@@ -76,9 +82,9 @@ fn reader<R: AsyncRead + Unpin + Send + 'static>(
 
 /// Serves an admitted watcher until either side ends, as the host: a
 /// `system` message with each sample (with what the watcher's password
-/// grants without asking and whether the host's AI is ready), the
-/// heartbeat, and the end when
-/// `see-status` leaves the password grants.
+/// grants without asking and whether the host's AI is ready) at the pace it
+/// asks for, the heartbeat, and the end when `see-status` leaves the
+/// password grants.
 /// Notes: no capture, no input, no awake request.
 pub async fn host<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     stream: S,
@@ -137,6 +143,7 @@ pub async fn host<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     match serde_json::from_slice::<Message>(&plain[..n]) {
                         Ok(Message::Ping) => send(&mut noise, &mut buf, &mut wr, &Message::Pong).await?,
                         Ok(Message::Bye) => return Ok(()),
+                        Ok(Message::Pace { slow }) => status.set_slow(slow),
                         Ok(_) => {}
                         Err(_) => return Err(Failure::Broken),
                     }
@@ -151,11 +158,13 @@ pub async fn host<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
 }
 
 /// Follows a host's status as its watcher until either side ends, handing
-/// each sample to `sampled`.
+/// each sample to `sampled`, and tells the host the pace `slow` holds, as
+/// the session starts and whenever it changes.
 pub async fn follow<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     stream: S,
     mut noise: snow::TransportState,
     stop: &Notify,
+    mut slow: tokio::sync::watch::Receiver<bool>,
     mut sampled: impl FnMut(Sample),
 ) -> Result<(), Failure> {
     let (rd, mut wr) = tokio::io::split(stream);
@@ -164,11 +173,22 @@ pub async fn follow<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut heard = Instant::now();
     let (mut buf, mut plain) = (vec![0u8; MAX_FRAME], vec![0u8; MAX_FRAME]);
     let outcome = async {
+        let pace = Message::Pace { slow: *slow.borrow_and_update() };
+        send(&mut noise, &mut buf, &mut wr, &pace).await?;
         loop {
             tokio::select! {
                 _ = stop.notified() => {
                     send(&mut noise, &mut buf, &mut wr, &Message::Bye).await?;
                     return Ok(());
+                }
+                // The lease that held the pace let go: the watch ends with it.
+                changed = slow.changed() => {
+                    if changed.is_err() {
+                        send(&mut noise, &mut buf, &mut wr, &Message::Bye).await?;
+                        return Ok(());
+                    }
+                    let pace = Message::Pace { slow: *slow.borrow_and_update() };
+                    send(&mut noise, &mut buf, &mut wr, &pace).await?;
                 }
                 _ = ping.tick() => {
                     if heard.elapsed() > IDLE_LIMIT {
@@ -219,6 +239,21 @@ struct Watched {
     received_at: u64,
     /// Whether a task watches it now.
     running: bool,
+    /// Whether the lease asks for the slow pace, for its session (`follow`).
+    slow: tokio::sync::watch::Sender<bool>,
+}
+
+impl Watched {
+    /// A host about to be watched, at the usual pace.
+    fn new() -> Watched {
+        Watched {
+            phase: Phase::Connecting,
+            sample: None,
+            received_at: 0,
+            running: false,
+            slow: tokio::sync::watch::Sender::new(false),
+        }
+    }
 }
 
 /// The hosts this device watches (controller side), in memory only.
@@ -236,10 +271,18 @@ fn unix_ms() -> u64 {
 
 impl Watching {
     /// Holds the lease on watching `devices` (the first MAX_WATCHED) for
-    /// LEASE: hosts left out stop being watched, new ones start (`watch.set`).
+    /// LEASE, those also in `slow` at the slow pace: hosts left out stop
+    /// being watched, new ones start (`watch.set`).
     /// Side effects: spawns a task per host on `rt`, which dials it through
-    /// `dialer` while the lease lasts.
-    pub fn set(self: &Arc<Self>, devices: &[String], dialer: &Dialer, rt: &tokio::runtime::Handle) {
+    /// `dialer` while the lease lasts; a host's session tells it a changed
+    /// pace.
+    pub fn set(
+        self: &Arc<Self>,
+        devices: &[String],
+        slow: &[String],
+        dialer: &Dialer,
+        rt: &tokio::runtime::Handle,
+    ) {
         let Ok(mut w) = self.inner.lock() else {
             return;
         };
@@ -247,12 +290,10 @@ impl Watching {
         let wanted: Vec<&String> = devices.iter().take(MAX_WATCHED).collect();
         w.1.retain(|id, _| wanted.contains(&id));
         for id in wanted {
-            let e = w.1.entry(id.clone()).or_insert(Watched {
-                phase: Phase::Connecting,
-                sample: None,
-                received_at: 0,
-                running: false,
-            });
+            let e = w.1.entry(id.clone()).or_insert_with(Watched::new);
+            let paced = slow.contains(id);
+            e.slow
+                .send_if_modified(|s| std::mem::replace(s, paced) != paced);
             if !e.running {
                 e.running = true;
                 rt.spawn(keep(self.clone(), dialer.clone(), id.clone()));
@@ -273,12 +314,28 @@ impl Watching {
     pub fn expect(&self, id: &str) {
         let mut w = self.inner.lock().unwrap();
         w.0 = Some(Instant::now() + LEASE);
-        w.1.entry(id.to_owned()).or_insert(Watched {
-            phase: Phase::Connecting,
-            sample: None,
-            received_at: 0,
-            running: true,
-        });
+        w.1.entry(id.to_owned())
+            .or_insert_with(Watched::new)
+            .running = true;
+    }
+
+    /// Asks for a listed host's slow pace, or the usual one, as a lease
+    /// does, for the tests.
+    #[cfg(test)]
+    pub fn expect_slow(&self, id: &str, slow: bool) {
+        if let Some(e) = self.inner.lock().unwrap().1.get(id) {
+            e.slow.send_replace(slow);
+        }
+    }
+
+    /// The pace the lease asks for a host, as it changes, for its session;
+    /// one that ends at once for a host the lease does not list.
+    pub fn pace(&self, id: &str) -> tokio::sync::watch::Receiver<bool> {
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|w| w.1.get(id).map(|e| e.slow.subscribe()))
+            .unwrap_or_else(|| tokio::sync::watch::channel(false).1)
     }
 
     /// Keeps a host's newest sample.
@@ -494,15 +551,7 @@ mod tests {
         {
             let mut inner = w.inner.lock().unwrap();
             inner.0 = Some(Instant::now() + LEASE);
-            inner.1.insert(
-                "100000002".into(),
-                Watched {
-                    phase: Phase::Connecting,
-                    sample: None,
-                    received_at: 0,
-                    running: false,
-                },
-            );
+            inner.1.insert("100000002".into(), Watched::new());
         }
         w.sampled("100000002", Sample::default());
         let listed = w.list();

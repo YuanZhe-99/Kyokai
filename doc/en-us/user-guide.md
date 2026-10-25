@@ -143,7 +143,8 @@ Original size, codec, sound, the swap and the clipboard switch are remembered fo
 sleep by itself, and a screen that was dark already is woken. If the picture does not come, the
 other computer keeps trying to bring it back by itself, and the picture area says what is happening
 there (its screen asleep, Kyokai Helper getting ready, the picture starting again); when it says
-the screen is asleep or off, **Wake it** wakes it for you. Closing the pane (×) disconnects; when a connection ends, its pane says why and offers
+the screen is asleep or off, **Wake it** wakes it for you. When it cannot come, or has not come for
+ten seconds, **Reconnect** under it connects again without closing the pane. Closing the pane (×) disconnects; when a connection ends, its pane says why and offers
 **Reconnect**. A connection that drops reconnects by itself for a minute without asking again.
 Closing a window disconnects its panes: Kyokai asks first when that ends two connections or more, or
 one you cannot see; with **Quit** chosen for the close button, closing the
@@ -197,7 +198,9 @@ shares the clipboard's text while its pane is in front.
 
 Home shows each device as a card. A device with a saved password or key that runs Kyokai 0.4.1 or
 later shows four figures — processor, memory, download and its battery (else graphics, else free
-disk) — updated every two seconds while Home is in front. Click them to open its status in a pane
+disk) — updated every two seconds while Home is in front, and every five while the Kyokai window
+shows something else, so they are current again as soon as you come back to Home; closing the
+window stops watching. Click them to open its status in a pane
 of its own: every figure in full with the last two minutes, and how long it has been up.
 Values older than six seconds are dimmed with their age, and after a minute they are no longer
 shown. The other computer sees who is watching in its Access settings and can turn

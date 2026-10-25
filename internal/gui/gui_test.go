@@ -323,6 +323,9 @@ func TestViewerRenders(t *testing.T) {
 			v.pointer = hostPointer{X: 0.25, Y: 0.5, Visible: true}
 		},
 		"viewer-unsupported": func(v *viewer) { v.state = "This picture uses h265, which this version can't show yet." },
+		"viewer-no-codec": func(v *viewer) {
+			v.start = videoStart{Codec: "raw-rgba", Width: 320, Height: 180, Placeholder: "no-codec"}
+		},
 		"viewer-displays": func(v *viewer) {
 			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
 			v.displays.List = make([]struct {
@@ -397,6 +400,33 @@ func TestViewerRenders(t *testing.T) {
 			t.Fatal(err)
 		}
 		f.Close()
+	}
+}
+
+// The picture area offers Reconnect while the host will not try again, or
+// once no picture of its screen showed for reconnectAfter; not while the
+// host still brings it up (regression: a Mac host's "no codec" placeholder
+// stayed until the pane was closed and opened again).
+func TestViewerOffersReconnect(t *testing.T) {
+	cases := []struct {
+		name, placeholder string
+		lost, want        bool
+	}{
+		{"no codec in common", "no-codec", false, true},
+		{"a screen it cannot share", "cannot-capture", false, true},
+		{"the host waking its display", "asleep", false, false},
+		{"waiting for the first picture", "", false, false},
+		{"waiting for long", "", true, true},
+		{"the host trying again for long", "retrying", true, true},
+	}
+	for _, c := range cases {
+		v := &viewer{device: "657365333", preset: 1, fpsCap: "30 fps", pumping: true,
+			start: videoStart{Codec: "raw-rgba", Width: 320, Height: 180, Placeholder: c.placeholder}, screenLost: c.lost}
+		tt := ui.NewTester(v.view, 1100, 560)
+		tt.Frame()
+		if got := tt.HasText(L.ViewerReconnect()); got != c.want {
+			t.Errorf("%s: Reconnect shown %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
