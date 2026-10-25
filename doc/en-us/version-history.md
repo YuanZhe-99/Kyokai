@@ -1,5 +1,23 @@
 # Version history
 
+## 0.6.3 (2026-10-25)
+
+- A Mac host could show "This device can't show the picture that computer sends" until the pane
+  was closed and opened again: the host's one-second wait for the controller's codecs, once
+  elapsed, ran again whenever a recovery step closed the video, which then opened on the primary
+  display as for a controller that names no codecs — none on a Mac, so the "no codec" placeholder
+  for good; on Windows H.264, whatever the viewer chose. The wait now runs once, and a recovery
+  opens the video again in the controller's codec.
+- The picture area offers Reconnect while the host will not try again (no codec in common, a
+  screen it cannot share) or no picture of its screen has shown for 10 seconds.
+- Home's device status no longer reconnects each time Home shows: while the main window is open,
+  Home's hosts stay watched, every 5 seconds while Home is hidden and every 2 as it shows; closing
+  the window ends the watches. The watcher tells its host the pace (`pace`; older hosts ignore it
+  and keep to 2 seconds), and the host samples every 5 seconds while all its watchers ask for that.
+- Upstream: MyGo v0.6.4 (Go 1.27.3), no UI migration. Checked, unchanged: EasyTier v2.7.0,
+  RustDesk 1.5.0 (vendored code), vcpkg 2026.10.16, Rust 1.99.1. ABI 7, protocol 10 and local API
+  2, unchanged (`watch.set` takes `slow`, which an older engine ignores).
+
 ## 0.6.2 (2026-10-24)
 
 - Closing the main window with connections open put Kyokai in the tray for only some of them: the
