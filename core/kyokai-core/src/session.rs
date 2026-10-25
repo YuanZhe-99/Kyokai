@@ -6121,6 +6121,9 @@ mod tests {
         assert!(at < CHUNKS - 5, "the ping waited behind the video: {at}");
     }
 
+    /// How long the tests read a new stream's first frames.
+    const FIRST_FRAMES: Duration = Duration::from_secs(3);
+
     /// Reads a raw channel for `wait` and counts the frames whose last chunk
     /// arrived. Returns: the count and the newest frame's number.
     async fn raw_frames(
@@ -6173,7 +6176,11 @@ mod tests {
         })
         .await
         .unwrap();
-        let (count, newest) = raw_frames(&mut peer, Duration::from_millis(800)).await;
+        // The window includes opening the video, which first waits for the
+        // capture threads other tests left stopping (STOP_WAIT); without
+        // acknowledgements no more than IN_FLIGHT come however long it is
+        // (regression: an 800 ms window saw 2 on a macOS runner).
+        let (count, newest) = raw_frames(&mut peer, FIRST_FRAMES).await;
         assert_eq!(count, IN_FLIGHT as usize, "frames without acknowledgements");
         // An acknowledgement of a frame never sent moves nothing.
         peer.send(&Message::Received { frame: 1000 }).await.unwrap();
@@ -6222,7 +6229,11 @@ mod tests {
         })
         .await
         .unwrap();
-        let (count, newest) = raw_frames(&mut peer, Duration::from_millis(800)).await;
+        // The window includes opening the video, which first waits for the
+        // capture threads other tests left stopping (STOP_WAIT); without
+        // acknowledgements no more than IN_FLIGHT come however long it is
+        // (regression: an 800 ms window saw 2 on a macOS runner).
+        let (count, newest) = raw_frames(&mut peer, FIRST_FRAMES).await;
         assert_eq!(count, IN_FLIGHT as usize);
         let held = raw_frames(&mut peer, Duration::from_secs(4)).await.0;
         assert_eq!(held, 0, "nothing more while the acknowledgements are late");
