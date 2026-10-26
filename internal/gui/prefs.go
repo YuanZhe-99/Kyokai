@@ -73,6 +73,10 @@ type Prefs struct {
 	// AISessions are the AI sessions kept on this computer, newest first
 	// (aisession.go); never written while NoLogs is on.
 	AISessions []AIRecord `json:"ai_sessions,omitempty"`
+	// Tour is the first-run tour (tour.go): "pending" from a fresh
+	// profile's first start until it is finished or skipped, then "done";
+	// "" for a profile from before the tour, which never sees it.
+	Tour string `json:"tour,omitempty"`
 	// SendKey is what sends an AI prompt: "" Enter (Shift+Enter breaks the
 	// line), "shift-enter" the reverse, "button" only the send button.
 	SendKey string `json:"send_key,omitempty"`

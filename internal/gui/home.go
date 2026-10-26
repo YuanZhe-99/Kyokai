@@ -314,7 +314,6 @@ func (a *App) thisDeviceCard(c *ui.Context) {
 	t := c.Theme()
 	a.mu.Lock()
 	st := *a.status
-	pw, show := a.password, a.showPassword && a.passwordFor == a.status.PasswordSerial
 	startingOver := a.busy["start-over"]
 	a.mu.Unlock()
 	word, col := a.networkState(t)
@@ -341,38 +340,7 @@ func (a *App) thisDeviceCard(c *ui.Context) {
 		case st.PasswordMode == "permanent":
 			ui.Text(c, L.HomePermanentMissing()).FontSize(sizeSmall).TextColor(textTone(t, t.Warning))
 		default:
-			ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
-				// Short of room it wraps, a word a line, rather than losing words.
-				ui.Text(c, L.HomeTemporaryPassword()).FontSize(sizeSmall).TextColor(t.TextMuted).Shrink(1)
-				shown := strings.Repeat("•", 8)
-				if show {
-					shown = pw
-				}
-				ui.Text(c, shown).FontSize(sizeHeading).FontFeatures("tnum").Selectable().Margin(0, 0, 0, 8)
-				ui.Box(c).Grow(1)
-				icon, label := rowEye, L.ActionShow()
-				if show {
-					icon, label = rowEyeOff, L.ActionHide()
-				}
-				if iconButton(c, "show-pw", icon, label) {
-					if show {
-						a.mu.Lock()
-						a.showPassword = false
-						a.mu.Unlock()
-					} else {
-						a.revealPassword(func(string) { a.update(func() { a.showPassword = true }) })
-					}
-				}
-				if iconButton(c, "copy-pw", rowCopy, L.ActionCopy()) {
-					a.revealPassword(func(p string) {
-						clipboardWrite(p)
-						a.update(func() { a.setToast(L.Copied(), false) })
-					})
-				}
-				if iconButton(c, "new-pw", rowRefresh, L.ActionNewPassword()) {
-					go func() { _, _ = a.request(localapi.RequestPasswordRegenerate) }()
-				}
-			})
+			a.passwordRow(c, "")
 		}
 		if note := secretsNote(st.Persistence); note != "" && st.Persistence != "os-store" {
 			ui.Text(c, note).FontSize(sizeSmall).TextColor(textTone(t, t.Warning))
@@ -384,6 +352,48 @@ func (a *App) thisDeviceCard(c *ui.Context) {
 					a.startOver()
 				}
 			})
+		}
+	})
+}
+
+// passwordRow is the temporary password, masked, with Show (Hide), Copy
+// and New password, its controls keyed with prefix (Home's This device and
+// the tour's).
+func (a *App) passwordRow(c *ui.Context, prefix string) {
+	t := c.Theme()
+	a.mu.Lock()
+	pw, show := a.password, a.showPassword && a.status != nil && a.passwordFor == a.status.PasswordSerial
+	a.mu.Unlock()
+	ui.Row(c).FillWidth().Gap(4).AlignItems(ui.Center).Children(func() {
+		// Short of room it wraps, a word a line, rather than losing words.
+		ui.Text(c, L.HomeTemporaryPassword()).FontSize(sizeSmall).TextColor(t.TextMuted).Shrink(1)
+		shown := strings.Repeat("•", 8)
+		if show {
+			shown = pw
+		}
+		ui.Text(c, shown).FontSize(sizeHeading).FontFeatures("tnum").Selectable().Margin(0, 0, 0, 8)
+		ui.Box(c).Grow(1)
+		icon, label := rowEye, L.ActionShow()
+		if show {
+			icon, label = rowEyeOff, L.ActionHide()
+		}
+		if iconButton(c, prefix+"show-pw", icon, label) {
+			if show {
+				a.mu.Lock()
+				a.showPassword = false
+				a.mu.Unlock()
+			} else {
+				a.revealPassword(func(string) { a.update(func() { a.showPassword = true }) })
+			}
+		}
+		if iconButton(c, prefix+"copy-pw", rowCopy, L.ActionCopy()) {
+			a.revealPassword(func(p string) {
+				clipboardWrite(p)
+				a.update(func() { a.setToast(L.Copied(), false) })
+			})
+		}
+		if iconButton(c, prefix+"new-pw", rowRefresh, L.ActionNewPassword()) {
+			go func() { _, _ = a.request(localapi.RequestPasswordRegenerate) }()
 		}
 	})
 }

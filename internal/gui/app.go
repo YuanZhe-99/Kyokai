@@ -142,6 +142,9 @@ type App struct {
 	grabbing map[uintptr]any
 	// The AI page (ai.go).
 	ai aiState
+	// The first-run tour, or the tour shown again from Settings, while it
+	// shows (tour.go).
+	tour *tour
 
 	// View state: the Settings sheet open, at page; what its search holds,
 	// the setting a search hit leads to, and the explanation open (its
@@ -180,6 +183,15 @@ func New(profile, stateDir, socket string) *App {
 		profile: profile, stateDir: stateDir, socket: socket, userSocket: socket, ctx: ctx, cancel: cancel,
 		prefs: loadPrefs(stateDir), busy: map[string]bool{}, grants: map[uint64][]string{}, viewers: map[string]*viewer{},
 		services: map[string]*serviceTab{}, statuses: map[string]*statusTab{}, aiTabs: map[string]*aiTab{}, aiLinks: map[string]*aiLink{},
+	}
+	// A fresh profile gets the first-run tour, which asks for the macOS
+	// permissions in its own step, not at the first status.
+	if a.prefs.Tour == "" && freshProfile(stateDir) {
+		a.prefs.Tour = tourPending
+		_ = savePrefs(stateDir, a.prefs)
+	}
+	if a.prefs.Tour == tourPending {
+		a.tour, a.permissionsAsked = &tour{openAI: true}, true
 	}
 	a.link = newServiceLink(a)
 	a.home = &homeTab{app: a}

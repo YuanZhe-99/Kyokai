@@ -13,6 +13,13 @@ with Windows unless you switch on "Open at login"; started at login, it opens no
 in the notification area (the menu bar on a Mac), unless you switch off "Start in the tray when opened
 at login".
 
+The first time Kyokai starts, a short tour shows what it does, step by step: networks, connecting,
+letting others in, AI, how far others reach while nobody is at the computer, and keeping it awake
+(on Windows, that a computer needs a monitor or a dummy plug to show a picture, else Remote
+Desktop or a virtual display driver). **Skip** asks first, then starts with No privileges, which
+needs no administrator. **General**, **Show the tour again**, shows it later; closing it then
+changes nothing.
+
 The window is a sidebar and, beside it, panes: Home, and each connection. The gear at the bottom of
 the sidebar opens **Settings** over the whole window: **General**, **Access**, **Network**,
 **Security & privacy**, **Run mode**, **AI providers** and **About & updates**; Escape or × closes it.
@@ -23,7 +30,7 @@ panes, the settings and a few actions: type a few letters, choose with ↑ and �
 On macOS, open the disk image and drag Kyokai to Applications. Kyokai is signed but not notarized
 by Apple, so macOS may call the downloaded app damaged: run
 `xattr -dr com.apple.quarantine /Applications/Kyokai.app` in Terminal once, then open it.
-Kyokai asks on its first start for **Screen Recording** (so others can see this screen),
+Its first-run tour asks for **Screen Recording** (so others can see this screen),
 **Accessibility** (so they can use the mouse and keyboard) and **Input Monitoring** (so your own
 keyboard and mouse pause an AI task, and Control+Option+Shift+Esc stops it). Allow them in System
 Settings, Privacy & Security; **Privacy permissions** on Home and in Access shows what is still

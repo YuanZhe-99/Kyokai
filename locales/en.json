@@ -1210,6 +1210,186 @@
   "ThemeDark": "Dark",
   "ThemeLight": "Light",
   "ThemeSystem": "System",
+  "TourAIAfter": "Opens after the tour",
+  "TourAIApprove": "A step that needs you waits for Allow, here or from whoever you let approve.",
+  "TourAIBody": "Add an AI provider, and an AI task works on this computer's screen, for you or for someone you let in.",
+  "TourAIKey": "The provider's key stays on this computer and goes only to that provider.",
+  "TourAILater": "Settings › AI providers, when you like",
+  "TourAIPause": "Touch the keyboard or mouse and the task pauses at once.",
+  "TourAIStop": "{keys} stops a running task.",
+  "@TourAIStop": {
+    "placeholders": {
+      "keys": {
+        "type": "String"
+      }
+    }
+  },
+  "TourAITitle": "AI on this computer",
+  "TourAgain": "Show the tour again",
+  "TourAgainAbout": "What Kyokai does and how far others reach, step by step.",
+  "TourAgainShow": "Show",
+  "TourArtAllowed": "{count, plural, one {# of 4 allowed} other {# of 4 allowed}}",
+  "@TourArtAllowed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "TourArtAsleep": "Asleep: offline until it wakes",
+  "TourArtAwake": "Awake: others can reach it",
+  "TourArtControl": "Control",
+  "TourArtDirect": "Straight between the two computers",
+  "TourArtDisplay": "A display or a dummy plug attached",
+  "TourArtFromStart": "Reachable from start-up",
+  "TourArtGrants": "What a correct password lets in",
+  "TourArtInput": "Your mouse and keyboard",
+  "TourArtKeyHere": "Key stays here",
+  "TourArtKeychain": "Keychain",
+  "TourArtLetIn": "Someone you let in",
+  "TourArtOther": "Another computer",
+  "TourArtPanes": "Every connection opens as a pane, beside others if you like.",
+  "TourArtPaused": "Paused: you moved the mouse",
+  "TourArtPicture": "Its picture",
+  "TourArtPrompts": "Administrator prompts and the lock screen",
+  "TourArtPromptsMac": "Password prompts and the lock screen",
+  "TourArtProvider": "Your AI provider",
+  "TourArtReach": "What others can see and use",
+  "TourArtReachIt": "Devices that reach it",
+  "TourArtScreen": "Screen",
+  "TourArtServer": "Your network's server",
+  "TourArtSignInScreen": "The sign-in screen, before anyone signs in",
+  "TourArtSignedIn": "Reachable while you're signed in",
+  "TourArtThis": "This computer",
+  "TourArtThisMac": "This Mac",
+  "TourArtViaServer": "Everything passes through the server",
+  "TourArtWorking": "The AI is working",
+  "TourArtYouChoose": "You choose, at this computer",
+  "TourArtYourDesktop": "Your desktop, while you're signed in",
+  "TourArtYourInput": "Your input",
+  "TourAwakeBody": "Asleep, this computer is offline in every run mode: nobody reaches it until it wakes.",
+  "TourAwakeMac1": "In System Settings › Energy, turn on Prevent automatic sleeping when the display is off (on a MacBook: Battery › Options).",
+  "TourAwakeMac2": "The display may sleep: only the Mac needs to stay awake, and it works without a display attached.",
+  "TourAwakeTitle": "Keep it awake",
+  "TourAwakeWin1": "In Settings › System › Power, set the computer to never sleep while plugged in.",
+  "TourAwakeWin2": "The screen may turn off: Kyokai turns it on when someone connects.",
+  "TourAwayBackground": "From start-up, before anyone signs in, for a computer nobody sits at. Only the permanent password or a key gets in then.",
+  "TourAwayBody": "Choose how far others can reach. It takes effect when you finish; Settings › Run mode changes it any time.",
+  "TourAwayFollow": "Also administrator prompts and the lock screen, while Kyokai runs.",
+  "TourAwayHelperMac": "On a Mac, Kyokai Helper then asks for its own Screen Recording and Accessibility.",
+  "TourAwayTitle": "When nobody is at this computer",
+  "TourAwayUser": "Your desktop while you're signed in. The usual choice.",
+  "TourBack": "Back",
+  "TourConnectBody": "On Home, type the other device's Device ID, or an address, and choose Connect. Open as chooses what opens.",
+  "TourConnectChecked": "Being in the same network grants nothing: every connection signs in, or its user says yes.",
+  "TourConnectTitle": "Connect to a device",
+  "TourDirect": "Direct",
+  "TourDirectAskMac": "macOS may ask to let Kyokai find devices on the local network.",
+  "TourDirectAskWin": "Windows may ask to let Kyokai through its firewall.",
+  "TourDirectListens": "This computer listens for connections and is easier to find.",
+  "TourDirectOff": "Off until you switch on Try direct connections in Settings › Network.",
+  "TourDirectYes": "Faster, where both networks allow it.",
+  "TourDisplayBody": "With no monitor attached, Windows has no screen to show. Leave a monitor connected, or plug in a display emulator (an HDMI or DisplayPort dummy plug). Without either, connect through Remote Desktop, or install a virtual display driver.",
+  "TourDisplayTitle": "Windows needs a display to share",
+  "TourDone": "Done",
+  "TourFinish": "Finish",
+  "TourInstallFinish": "Install and finish",
+  "TourKindAI": "An AI task that runs there, with that computer's provider and key; its user is asked first.",
+  "TourKindDesktop": "Its screen, mouse and keyboard, clipboard, files and sound.",
+  "TourKindRDP": "Windows' own Remote Desktop to it, carried by Kyokai.",
+  "TourKindSSH": "A terminal on its own SSH server, carried by Kyokai: nothing opened to the internet.",
+  "TourKindVNC": "Its VNC server, a Mac's Screen Sharing too, carried by Kyokai.",
+  "TourLetInBody": "Others reach this computer by its Device ID. What they may do depends on how they sign in.",
+  "TourLetInTitle": "Let others in",
+  "TourLoginOff": "Off: others reach this computer once you open Kyokai.",
+  "TourLoginOn": "Kyokai waits in the tray after you sign in.",
+  "TourLoginService": "The service runs from start-up anyway; this opens the window too.",
+  "TourNetworkBody": "Devices find each other through EasyTier networks. Whoever runs yours gives you its servers, its name and its secret.",
+  "TourNetworkLater": "No network yet? You can still connect by address, or add one later.",
+  "TourNetworkTitle": "Join a network",
+  "TourNext": "Continue",
+  "TourNoInstall": "Nothing to install",
+  "TourNoNetwork": "None yet",
+  "TourOff": "Off",
+  "TourOn": "On",
+  "TourOnePrompt": "One administrator prompt",
+  "TourOpenAI": "Open AI providers when I finish",
+  "TourOpenAIAbout": "Claude and OpenAI are there already; many more are a click away.",
+  "TourOpenAINow": "Open AI providers",
+  "TourOpenNetwork": "Open Network settings",
+  "TourOpenPower": "Open power settings",
+  "TourPasswordNote": "The temporary password changes every time Kyokai starts; give it only to someone you want to let in.",
+  "TourPrivacyBody": "macOS lets Kyokai share this screen and take input only with your permission. Allow… opens the right page of System Settings.",
+  "TourPrivacyLater": "One you skip stays on Home under Privacy permissions until you allow it.",
+  "TourPrivacyTitle": "Allow what macOS asks",
+  "TourReadyAuthMac": "Here's what you chose. macOS asks once for an administrator's password to install Kyokai Helper.",
+  "TourReadyAuthWin": "Here's what you chose. Windows asks once for an administrator's approval to install Kyokai Helper.",
+  "TourReadyTitle": "You're ready",
+  "TourReadyUser": "Here's what you chose. Nothing needs an administrator.",
+  "TourReplayCurrent": "This computer runs in {mode}.",
+  "@TourReplayCurrent": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+  "TourReplayOther": "This computer runs in {current}. You looked at {chosen}: Switch changes to it.",
+  "@TourReplayOther": {
+    "placeholders": {
+      "current": {
+        "type": "String"
+      },
+      "chosen": {
+        "type": "String"
+      }
+    }
+  },
+  "TourReplayTitle": "How this computer is set up",
+  "TourSkip": "Skip",
+  "TourSkipBody": "Kyokai starts with No privileges, which needs no administrator. Settings › General can show the tour again.",
+  "TourSkipKeep": "Keep going",
+  "TourSkipTitle": "Skip the tour?",
+  "TourStart": "Get started",
+  "TourStepOf": "Step {step} of {count}",
+  "@TourStepOf": {
+    "placeholders": {
+      "step": {
+        "type": "String"
+      },
+      "count": {
+        "type": "String"
+      }
+    }
+  },
+  "TourSummary": "What you chose",
+  "TourSummaryNow": "As it is now",
+  "TourSwitchTo": "Switch to {mode}",
+  "@TourSwitchTo": {
+    "placeholders": {
+      "mode": {
+        "type": "String"
+      }
+    }
+  },
+  "TourTopicAI": "AI",
+  "TourTopicAway": "When you're away",
+  "TourTopicConnect": "Connecting",
+  "TourTopicLetIn": "Letting others in",
+  "TourTopicNetwork": "Networks",
+  "TourTopicPrivacy": "Privacy",
+  "TourViaServer": "Through the server",
+  "TourViaServerNote": "Slower when the server is far from both of you.",
+  "TourViaServerYes": "Works on any network; nothing on this computer listens for connections.",
+  "TourWelcomeBody": "See and use another computer as if you sat at it. An AI can work on a computer for its user too, always on that computer, with that computer's own provider key.",
+  "TourWelcomeNote": "About two minutes. Nothing changes until you choose it, and Settings › General can show this again.",
+  "TourWelcomeTitle": "Welcome to Kyokai",
+  "TourWithNo": "No AI tasks, sound or services unless you allow them in Access.",
+  "TourWithPassword": "With the right password",
+  "TourWithYes": "In at once, with the screen, mouse and keyboard, clipboard and files.",
+  "TourWithoutAsk": "A request shows who it is and what it asks for. Turn off what you don't want to give, then Allow, or Deny.",
+  "TourWithoutPassword": "Without one",
+  "TourYouWin": "Your own keyboard and mouse always win, over theirs and over any AI.",
   "TrayDeviceID": "Device ID {id}",
   "@TrayDeviceID": {
     "placeholders": {

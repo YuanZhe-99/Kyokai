@@ -1,5 +1,20 @@
 # Version history
 
+## 0.6.4 (2026-10-25)
+
+- A first-run tour: a fresh profile's first start shows, step by step, joining a network, connecting,
+  letting others in, AI on this computer, the privacy permissions (macOS), how far others reach
+  while nobody is at the computer (choosing the run mode), keeping it awake (on Windows, that the
+  picture needs a monitor or a dummy plug, else Remote Desktop or a virtual display driver) and
+  what was chosen. Its illustrations are drawn — this computer as a Windows Dev Kit or a Mac mini
+  with the system's mark on its top — and stand still under Reduce Motion. Skip asks first, then
+  starts in No privileges with nothing else changed; on macOS the permissions are asked in the
+  tour rather than at the first start. Settings › General, Show the tour again, shows it over the
+  window, and closing it changes nothing. A profile from before the tour never sees it. The layout
+  and drawings follow EasyTier MyGo's tour; the design draws on Arion's onboarding (no code).
+- Upstream checked, unchanged: MyGo v0.6.4, EasyTier v2.7.0, RustDesk 1.5.0 (vendored code),
+  vcpkg 2026.10.16, Rust 1.99.1. ABI 7, protocol 10 and local API 2, unchanged.
+
 ## 0.6.3 (2026-10-25)
 
 - A Mac host could show "This device can't show the picture that computer sends" until the pane

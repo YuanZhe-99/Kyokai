@@ -22,7 +22,7 @@ func (a *App) openSettings(p page) {
 }
 
 // covered reports whether something over the panes takes the keyboard, so
-// that no pane grabs it: the Settings sheet, the search palette, the +
+// that no pane grabs it: the Settings sheet, the tour, the search palette, the +
 // picker, or a pane's menu or split list (menuOpened).
 // Notes: nil-safe for view tests without an app.
 func (a *App) covered() bool {
@@ -31,7 +31,7 @@ func (a *App) covered() bool {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.settingsOpen || a.palette.open || a.picker.at != "" || a.paneMenu
+	return a.settingsOpen || a.tour != nil || a.palette.open || a.picker.at != "" || a.paneMenu
 }
 
 // menuOpened notes that a pane's menu or split list opens: it takes the
@@ -510,6 +510,7 @@ func settingsHits() []settingsHit {
 		{pageGeneral, L.SettingsOpenAtLogin(), L.SettingsOpenAtLoginHint()},
 		{pageGeneral, L.SettingsStartHidden(), L.SettingsStartHiddenAbout()},
 		{pageGeneral, L.SettingsCloseButton(), join(L.SettingsCloseButtonAbout(), L.CloseHide(), L.CloseQuit())},
+		{pageGeneral, L.TourAgain(), join(L.TourAgainAbout(), L.TourAgainShow())},
 		{pageAccess, L.SignInTemporary(), L.SignInTemporaryAbout()},
 		{pageAccess, L.PermanentTitle(), L.PermanentSetAbout()},
 		{pageAccess, L.SignInKeys(), join(L.KeysAuthorize(), L.KeysPair())},

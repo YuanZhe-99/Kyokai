@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/i18n"
 
 	// MyGo's own strings in the app's languages.
+	_ "github.com/egoist/mygo/locales/ja"
 	_ "github.com/egoist/mygo/locales/zh-Hans"
 	_ "github.com/egoist/mygo/locales/zh-Hant"
 )
@@ -6592,6 +6593,1328 @@ func ThemeSystem() string { return In(i18n.Locale()).ThemeSystem() }
 // in the language of msgs.
 func (msgs Messages) ThemeSystem() string {
 	return Catalog.Format(msgs.locale, "ThemeSystem", nil)
+}
+
+// TourAIAfter says "Opens after the tour"
+// in the language the app shows.
+func TourAIAfter() string { return In(i18n.Locale()).TourAIAfter() }
+
+// TourAIAfter says "Opens after the tour"
+// in the language of msgs.
+func (msgs Messages) TourAIAfter() string {
+	return Catalog.Format(msgs.locale, "TourAIAfter", nil)
+}
+
+// TourAIApprove says "A step that needs you waits for Allow, here or from whoever you let approve."
+// in the language the app shows.
+func TourAIApprove() string { return In(i18n.Locale()).TourAIApprove() }
+
+// TourAIApprove says "A step that needs you waits for Allow, here or from whoever you let approve."
+// in the language of msgs.
+func (msgs Messages) TourAIApprove() string {
+	return Catalog.Format(msgs.locale, "TourAIApprove", nil)
+}
+
+// TourAIBody says "Add an AI provider, and an AI task works on this computer's screen, for you or for someone you let in."
+// in the language the app shows.
+func TourAIBody() string { return In(i18n.Locale()).TourAIBody() }
+
+// TourAIBody says "Add an AI provider, and an AI task works on this computer's screen, for you or for someone you let in."
+// in the language of msgs.
+func (msgs Messages) TourAIBody() string {
+	return Catalog.Format(msgs.locale, "TourAIBody", nil)
+}
+
+// TourAIKey says "The provider's key stays on this computer and goes only to that provider."
+// in the language the app shows.
+func TourAIKey() string { return In(i18n.Locale()).TourAIKey() }
+
+// TourAIKey says "The provider's key stays on this computer and goes only to that provider."
+// in the language of msgs.
+func (msgs Messages) TourAIKey() string {
+	return Catalog.Format(msgs.locale, "TourAIKey", nil)
+}
+
+// TourAILater says "Settings › AI providers, when you like"
+// in the language the app shows.
+func TourAILater() string { return In(i18n.Locale()).TourAILater() }
+
+// TourAILater says "Settings › AI providers, when you like"
+// in the language of msgs.
+func (msgs Messages) TourAILater() string {
+	return Catalog.Format(msgs.locale, "TourAILater", nil)
+}
+
+// TourAIPause says "Touch the keyboard or mouse and the task pauses at once."
+// in the language the app shows.
+func TourAIPause() string { return In(i18n.Locale()).TourAIPause() }
+
+// TourAIPause says "Touch the keyboard or mouse and the task pauses at once."
+// in the language of msgs.
+func (msgs Messages) TourAIPause() string {
+	return Catalog.Format(msgs.locale, "TourAIPause", nil)
+}
+
+// TourAIStop says "{keys} stops a running task."
+// in the language the app shows.
+func TourAIStop(keys string) string { return In(i18n.Locale()).TourAIStop(keys) }
+
+// TourAIStop says "{keys} stops a running task."
+// in the language of msgs.
+func (msgs Messages) TourAIStop(keys string) string {
+	return Catalog.Format(msgs.locale, "TourAIStop", map[string]any{"keys": keys})
+}
+
+// TourAITitle says "AI on this computer"
+// in the language the app shows.
+func TourAITitle() string { return In(i18n.Locale()).TourAITitle() }
+
+// TourAITitle says "AI on this computer"
+// in the language of msgs.
+func (msgs Messages) TourAITitle() string {
+	return Catalog.Format(msgs.locale, "TourAITitle", nil)
+}
+
+// TourAgain says "Show the tour again"
+// in the language the app shows.
+func TourAgain() string { return In(i18n.Locale()).TourAgain() }
+
+// TourAgain says "Show the tour again"
+// in the language of msgs.
+func (msgs Messages) TourAgain() string {
+	return Catalog.Format(msgs.locale, "TourAgain", nil)
+}
+
+// TourAgainAbout says "What Kyokai does and how far others reach, step by step."
+// in the language the app shows.
+func TourAgainAbout() string { return In(i18n.Locale()).TourAgainAbout() }
+
+// TourAgainAbout says "What Kyokai does and how far others reach, step by step."
+// in the language of msgs.
+func (msgs Messages) TourAgainAbout() string {
+	return Catalog.Format(msgs.locale, "TourAgainAbout", nil)
+}
+
+// TourAgainShow says "Show"
+// in the language the app shows.
+func TourAgainShow() string { return In(i18n.Locale()).TourAgainShow() }
+
+// TourAgainShow says "Show"
+// in the language of msgs.
+func (msgs Messages) TourAgainShow() string {
+	return Catalog.Format(msgs.locale, "TourAgainShow", nil)
+}
+
+// TourArtAllowed says "{count, plural, one {# of 4 allowed} other {# of 4 allowed}}"
+// in the language the app shows.
+func TourArtAllowed(count int) string { return In(i18n.Locale()).TourArtAllowed(count) }
+
+// TourArtAllowed says "{count, plural, one {# of 4 allowed} other {# of 4 allowed}}"
+// in the language of msgs.
+func (msgs Messages) TourArtAllowed(count int) string {
+	return Catalog.Format(msgs.locale, "TourArtAllowed", map[string]any{"count": count})
+}
+
+// TourArtAsleep says "Asleep: offline until it wakes"
+// in the language the app shows.
+func TourArtAsleep() string { return In(i18n.Locale()).TourArtAsleep() }
+
+// TourArtAsleep says "Asleep: offline until it wakes"
+// in the language of msgs.
+func (msgs Messages) TourArtAsleep() string {
+	return Catalog.Format(msgs.locale, "TourArtAsleep", nil)
+}
+
+// TourArtAwake says "Awake: others can reach it"
+// in the language the app shows.
+func TourArtAwake() string { return In(i18n.Locale()).TourArtAwake() }
+
+// TourArtAwake says "Awake: others can reach it"
+// in the language of msgs.
+func (msgs Messages) TourArtAwake() string {
+	return Catalog.Format(msgs.locale, "TourArtAwake", nil)
+}
+
+// TourArtControl says "Control"
+// in the language the app shows.
+func TourArtControl() string { return In(i18n.Locale()).TourArtControl() }
+
+// TourArtControl says "Control"
+// in the language of msgs.
+func (msgs Messages) TourArtControl() string {
+	return Catalog.Format(msgs.locale, "TourArtControl", nil)
+}
+
+// TourArtDirect says "Straight between the two computers"
+// in the language the app shows.
+func TourArtDirect() string { return In(i18n.Locale()).TourArtDirect() }
+
+// TourArtDirect says "Straight between the two computers"
+// in the language of msgs.
+func (msgs Messages) TourArtDirect() string {
+	return Catalog.Format(msgs.locale, "TourArtDirect", nil)
+}
+
+// TourArtDisplay says "A display or a dummy plug attached"
+// in the language the app shows.
+func TourArtDisplay() string { return In(i18n.Locale()).TourArtDisplay() }
+
+// TourArtDisplay says "A display or a dummy plug attached"
+// in the language of msgs.
+func (msgs Messages) TourArtDisplay() string {
+	return Catalog.Format(msgs.locale, "TourArtDisplay", nil)
+}
+
+// TourArtFromStart says "Reachable from start-up"
+// in the language the app shows.
+func TourArtFromStart() string { return In(i18n.Locale()).TourArtFromStart() }
+
+// TourArtFromStart says "Reachable from start-up"
+// in the language of msgs.
+func (msgs Messages) TourArtFromStart() string {
+	return Catalog.Format(msgs.locale, "TourArtFromStart", nil)
+}
+
+// TourArtGrants says "What a correct password lets in"
+// in the language the app shows.
+func TourArtGrants() string { return In(i18n.Locale()).TourArtGrants() }
+
+// TourArtGrants says "What a correct password lets in"
+// in the language of msgs.
+func (msgs Messages) TourArtGrants() string {
+	return Catalog.Format(msgs.locale, "TourArtGrants", nil)
+}
+
+// TourArtInput says "Your mouse and keyboard"
+// in the language the app shows.
+func TourArtInput() string { return In(i18n.Locale()).TourArtInput() }
+
+// TourArtInput says "Your mouse and keyboard"
+// in the language of msgs.
+func (msgs Messages) TourArtInput() string {
+	return Catalog.Format(msgs.locale, "TourArtInput", nil)
+}
+
+// TourArtKeyHere says "Key stays here"
+// in the language the app shows.
+func TourArtKeyHere() string { return In(i18n.Locale()).TourArtKeyHere() }
+
+// TourArtKeyHere says "Key stays here"
+// in the language of msgs.
+func (msgs Messages) TourArtKeyHere() string {
+	return Catalog.Format(msgs.locale, "TourArtKeyHere", nil)
+}
+
+// TourArtKeychain says "Keychain"
+// in the language the app shows.
+func TourArtKeychain() string { return In(i18n.Locale()).TourArtKeychain() }
+
+// TourArtKeychain says "Keychain"
+// in the language of msgs.
+func (msgs Messages) TourArtKeychain() string {
+	return Catalog.Format(msgs.locale, "TourArtKeychain", nil)
+}
+
+// TourArtLetIn says "Someone you let in"
+// in the language the app shows.
+func TourArtLetIn() string { return In(i18n.Locale()).TourArtLetIn() }
+
+// TourArtLetIn says "Someone you let in"
+// in the language of msgs.
+func (msgs Messages) TourArtLetIn() string {
+	return Catalog.Format(msgs.locale, "TourArtLetIn", nil)
+}
+
+// TourArtOther says "Another computer"
+// in the language the app shows.
+func TourArtOther() string { return In(i18n.Locale()).TourArtOther() }
+
+// TourArtOther says "Another computer"
+// in the language of msgs.
+func (msgs Messages) TourArtOther() string {
+	return Catalog.Format(msgs.locale, "TourArtOther", nil)
+}
+
+// TourArtPanes says "Every connection opens as a pane, beside others if you like."
+// in the language the app shows.
+func TourArtPanes() string { return In(i18n.Locale()).TourArtPanes() }
+
+// TourArtPanes says "Every connection opens as a pane, beside others if you like."
+// in the language of msgs.
+func (msgs Messages) TourArtPanes() string {
+	return Catalog.Format(msgs.locale, "TourArtPanes", nil)
+}
+
+// TourArtPaused says "Paused: you moved the mouse"
+// in the language the app shows.
+func TourArtPaused() string { return In(i18n.Locale()).TourArtPaused() }
+
+// TourArtPaused says "Paused: you moved the mouse"
+// in the language of msgs.
+func (msgs Messages) TourArtPaused() string {
+	return Catalog.Format(msgs.locale, "TourArtPaused", nil)
+}
+
+// TourArtPicture says "Its picture"
+// in the language the app shows.
+func TourArtPicture() string { return In(i18n.Locale()).TourArtPicture() }
+
+// TourArtPicture says "Its picture"
+// in the language of msgs.
+func (msgs Messages) TourArtPicture() string {
+	return Catalog.Format(msgs.locale, "TourArtPicture", nil)
+}
+
+// TourArtPrompts says "Administrator prompts and the lock screen"
+// in the language the app shows.
+func TourArtPrompts() string { return In(i18n.Locale()).TourArtPrompts() }
+
+// TourArtPrompts says "Administrator prompts and the lock screen"
+// in the language of msgs.
+func (msgs Messages) TourArtPrompts() string {
+	return Catalog.Format(msgs.locale, "TourArtPrompts", nil)
+}
+
+// TourArtPromptsMac says "Password prompts and the lock screen"
+// in the language the app shows.
+func TourArtPromptsMac() string { return In(i18n.Locale()).TourArtPromptsMac() }
+
+// TourArtPromptsMac says "Password prompts and the lock screen"
+// in the language of msgs.
+func (msgs Messages) TourArtPromptsMac() string {
+	return Catalog.Format(msgs.locale, "TourArtPromptsMac", nil)
+}
+
+// TourArtProvider says "Your AI provider"
+// in the language the app shows.
+func TourArtProvider() string { return In(i18n.Locale()).TourArtProvider() }
+
+// TourArtProvider says "Your AI provider"
+// in the language of msgs.
+func (msgs Messages) TourArtProvider() string {
+	return Catalog.Format(msgs.locale, "TourArtProvider", nil)
+}
+
+// TourArtReach says "What others can see and use"
+// in the language the app shows.
+func TourArtReach() string { return In(i18n.Locale()).TourArtReach() }
+
+// TourArtReach says "What others can see and use"
+// in the language of msgs.
+func (msgs Messages) TourArtReach() string {
+	return Catalog.Format(msgs.locale, "TourArtReach", nil)
+}
+
+// TourArtReachIt says "Devices that reach it"
+// in the language the app shows.
+func TourArtReachIt() string { return In(i18n.Locale()).TourArtReachIt() }
+
+// TourArtReachIt says "Devices that reach it"
+// in the language of msgs.
+func (msgs Messages) TourArtReachIt() string {
+	return Catalog.Format(msgs.locale, "TourArtReachIt", nil)
+}
+
+// TourArtScreen says "Screen"
+// in the language the app shows.
+func TourArtScreen() string { return In(i18n.Locale()).TourArtScreen() }
+
+// TourArtScreen says "Screen"
+// in the language of msgs.
+func (msgs Messages) TourArtScreen() string {
+	return Catalog.Format(msgs.locale, "TourArtScreen", nil)
+}
+
+// TourArtServer says "Your network's server"
+// in the language the app shows.
+func TourArtServer() string { return In(i18n.Locale()).TourArtServer() }
+
+// TourArtServer says "Your network's server"
+// in the language of msgs.
+func (msgs Messages) TourArtServer() string {
+	return Catalog.Format(msgs.locale, "TourArtServer", nil)
+}
+
+// TourArtSignInScreen says "The sign-in screen, before anyone signs in"
+// in the language the app shows.
+func TourArtSignInScreen() string { return In(i18n.Locale()).TourArtSignInScreen() }
+
+// TourArtSignInScreen says "The sign-in screen, before anyone signs in"
+// in the language of msgs.
+func (msgs Messages) TourArtSignInScreen() string {
+	return Catalog.Format(msgs.locale, "TourArtSignInScreen", nil)
+}
+
+// TourArtSignedIn says "Reachable while you're signed in"
+// in the language the app shows.
+func TourArtSignedIn() string { return In(i18n.Locale()).TourArtSignedIn() }
+
+// TourArtSignedIn says "Reachable while you're signed in"
+// in the language of msgs.
+func (msgs Messages) TourArtSignedIn() string {
+	return Catalog.Format(msgs.locale, "TourArtSignedIn", nil)
+}
+
+// TourArtThis says "This computer"
+// in the language the app shows.
+func TourArtThis() string { return In(i18n.Locale()).TourArtThis() }
+
+// TourArtThis says "This computer"
+// in the language of msgs.
+func (msgs Messages) TourArtThis() string {
+	return Catalog.Format(msgs.locale, "TourArtThis", nil)
+}
+
+// TourArtThisMac says "This Mac"
+// in the language the app shows.
+func TourArtThisMac() string { return In(i18n.Locale()).TourArtThisMac() }
+
+// TourArtThisMac says "This Mac"
+// in the language of msgs.
+func (msgs Messages) TourArtThisMac() string {
+	return Catalog.Format(msgs.locale, "TourArtThisMac", nil)
+}
+
+// TourArtViaServer says "Everything passes through the server"
+// in the language the app shows.
+func TourArtViaServer() string { return In(i18n.Locale()).TourArtViaServer() }
+
+// TourArtViaServer says "Everything passes through the server"
+// in the language of msgs.
+func (msgs Messages) TourArtViaServer() string {
+	return Catalog.Format(msgs.locale, "TourArtViaServer", nil)
+}
+
+// TourArtWorking says "The AI is working"
+// in the language the app shows.
+func TourArtWorking() string { return In(i18n.Locale()).TourArtWorking() }
+
+// TourArtWorking says "The AI is working"
+// in the language of msgs.
+func (msgs Messages) TourArtWorking() string {
+	return Catalog.Format(msgs.locale, "TourArtWorking", nil)
+}
+
+// TourArtYouChoose says "You choose, at this computer"
+// in the language the app shows.
+func TourArtYouChoose() string { return In(i18n.Locale()).TourArtYouChoose() }
+
+// TourArtYouChoose says "You choose, at this computer"
+// in the language of msgs.
+func (msgs Messages) TourArtYouChoose() string {
+	return Catalog.Format(msgs.locale, "TourArtYouChoose", nil)
+}
+
+// TourArtYourDesktop says "Your desktop, while you're signed in"
+// in the language the app shows.
+func TourArtYourDesktop() string { return In(i18n.Locale()).TourArtYourDesktop() }
+
+// TourArtYourDesktop says "Your desktop, while you're signed in"
+// in the language of msgs.
+func (msgs Messages) TourArtYourDesktop() string {
+	return Catalog.Format(msgs.locale, "TourArtYourDesktop", nil)
+}
+
+// TourArtYourInput says "Your input"
+// in the language the app shows.
+func TourArtYourInput() string { return In(i18n.Locale()).TourArtYourInput() }
+
+// TourArtYourInput says "Your input"
+// in the language of msgs.
+func (msgs Messages) TourArtYourInput() string {
+	return Catalog.Format(msgs.locale, "TourArtYourInput", nil)
+}
+
+// TourAwakeBody says "Asleep, this computer is offline in every run mode: nobody reaches it until it wakes."
+// in the language the app shows.
+func TourAwakeBody() string { return In(i18n.Locale()).TourAwakeBody() }
+
+// TourAwakeBody says "Asleep, this computer is offline in every run mode: nobody reaches it until it wakes."
+// in the language of msgs.
+func (msgs Messages) TourAwakeBody() string {
+	return Catalog.Format(msgs.locale, "TourAwakeBody", nil)
+}
+
+// TourAwakeMac1 says "In System Settings › Energy, turn on Prevent automatic sleeping when the display is off (on a MacBook: Battery › …"
+// in the language the app shows.
+func TourAwakeMac1() string { return In(i18n.Locale()).TourAwakeMac1() }
+
+// TourAwakeMac1 says "In System Settings › Energy, turn on Prevent automatic sleeping when the display is off (on a MacBook: Battery › …"
+// in the language of msgs.
+func (msgs Messages) TourAwakeMac1() string {
+	return Catalog.Format(msgs.locale, "TourAwakeMac1", nil)
+}
+
+// TourAwakeMac2 says "The display may sleep: only the Mac needs to stay awake, and it works without a display attached."
+// in the language the app shows.
+func TourAwakeMac2() string { return In(i18n.Locale()).TourAwakeMac2() }
+
+// TourAwakeMac2 says "The display may sleep: only the Mac needs to stay awake, and it works without a display attached."
+// in the language of msgs.
+func (msgs Messages) TourAwakeMac2() string {
+	return Catalog.Format(msgs.locale, "TourAwakeMac2", nil)
+}
+
+// TourAwakeTitle says "Keep it awake"
+// in the language the app shows.
+func TourAwakeTitle() string { return In(i18n.Locale()).TourAwakeTitle() }
+
+// TourAwakeTitle says "Keep it awake"
+// in the language of msgs.
+func (msgs Messages) TourAwakeTitle() string {
+	return Catalog.Format(msgs.locale, "TourAwakeTitle", nil)
+}
+
+// TourAwakeWin1 says "In Settings › System › Power, set the computer to never sleep while plugged in."
+// in the language the app shows.
+func TourAwakeWin1() string { return In(i18n.Locale()).TourAwakeWin1() }
+
+// TourAwakeWin1 says "In Settings › System › Power, set the computer to never sleep while plugged in."
+// in the language of msgs.
+func (msgs Messages) TourAwakeWin1() string {
+	return Catalog.Format(msgs.locale, "TourAwakeWin1", nil)
+}
+
+// TourAwakeWin2 says "The screen may turn off: Kyokai turns it on when someone connects."
+// in the language the app shows.
+func TourAwakeWin2() string { return In(i18n.Locale()).TourAwakeWin2() }
+
+// TourAwakeWin2 says "The screen may turn off: Kyokai turns it on when someone connects."
+// in the language of msgs.
+func (msgs Messages) TourAwakeWin2() string {
+	return Catalog.Format(msgs.locale, "TourAwakeWin2", nil)
+}
+
+// TourAwayBackground says "From start-up, before anyone signs in, for a computer nobody sits at. Only the permanent password or a key gets in then."
+// in the language the app shows.
+func TourAwayBackground() string { return In(i18n.Locale()).TourAwayBackground() }
+
+// TourAwayBackground says "From start-up, before anyone signs in, for a computer nobody sits at. Only the permanent password or a key gets in then."
+// in the language of msgs.
+func (msgs Messages) TourAwayBackground() string {
+	return Catalog.Format(msgs.locale, "TourAwayBackground", nil)
+}
+
+// TourAwayBody says "Choose how far others can reach. It takes effect when you finish; Settings › Run mode changes it any time."
+// in the language the app shows.
+func TourAwayBody() string { return In(i18n.Locale()).TourAwayBody() }
+
+// TourAwayBody says "Choose how far others can reach. It takes effect when you finish; Settings › Run mode changes it any time."
+// in the language of msgs.
+func (msgs Messages) TourAwayBody() string {
+	return Catalog.Format(msgs.locale, "TourAwayBody", nil)
+}
+
+// TourAwayFollow says "Also administrator prompts and the lock screen, while Kyokai runs."
+// in the language the app shows.
+func TourAwayFollow() string { return In(i18n.Locale()).TourAwayFollow() }
+
+// TourAwayFollow says "Also administrator prompts and the lock screen, while Kyokai runs."
+// in the language of msgs.
+func (msgs Messages) TourAwayFollow() string {
+	return Catalog.Format(msgs.locale, "TourAwayFollow", nil)
+}
+
+// TourAwayHelperMac says "On a Mac, Kyokai Helper then asks for its own Screen Recording and Accessibility."
+// in the language the app shows.
+func TourAwayHelperMac() string { return In(i18n.Locale()).TourAwayHelperMac() }
+
+// TourAwayHelperMac says "On a Mac, Kyokai Helper then asks for its own Screen Recording and Accessibility."
+// in the language of msgs.
+func (msgs Messages) TourAwayHelperMac() string {
+	return Catalog.Format(msgs.locale, "TourAwayHelperMac", nil)
+}
+
+// TourAwayTitle says "When nobody is at this computer"
+// in the language the app shows.
+func TourAwayTitle() string { return In(i18n.Locale()).TourAwayTitle() }
+
+// TourAwayTitle says "When nobody is at this computer"
+// in the language of msgs.
+func (msgs Messages) TourAwayTitle() string {
+	return Catalog.Format(msgs.locale, "TourAwayTitle", nil)
+}
+
+// TourAwayUser says "Your desktop while you're signed in. The usual choice."
+// in the language the app shows.
+func TourAwayUser() string { return In(i18n.Locale()).TourAwayUser() }
+
+// TourAwayUser says "Your desktop while you're signed in. The usual choice."
+// in the language of msgs.
+func (msgs Messages) TourAwayUser() string {
+	return Catalog.Format(msgs.locale, "TourAwayUser", nil)
+}
+
+// TourBack says "Back"
+// in the language the app shows.
+func TourBack() string { return In(i18n.Locale()).TourBack() }
+
+// TourBack says "Back"
+// in the language of msgs.
+func (msgs Messages) TourBack() string {
+	return Catalog.Format(msgs.locale, "TourBack", nil)
+}
+
+// TourConnectBody says "On Home, type the other device's Device ID, or an address, and choose Connect. Open as chooses what opens."
+// in the language the app shows.
+func TourConnectBody() string { return In(i18n.Locale()).TourConnectBody() }
+
+// TourConnectBody says "On Home, type the other device's Device ID, or an address, and choose Connect. Open as chooses what opens."
+// in the language of msgs.
+func (msgs Messages) TourConnectBody() string {
+	return Catalog.Format(msgs.locale, "TourConnectBody", nil)
+}
+
+// TourConnectChecked says "Being in the same network grants nothing: every connection signs in, or its user says yes."
+// in the language the app shows.
+func TourConnectChecked() string { return In(i18n.Locale()).TourConnectChecked() }
+
+// TourConnectChecked says "Being in the same network grants nothing: every connection signs in, or its user says yes."
+// in the language of msgs.
+func (msgs Messages) TourConnectChecked() string {
+	return Catalog.Format(msgs.locale, "TourConnectChecked", nil)
+}
+
+// TourConnectTitle says "Connect to a device"
+// in the language the app shows.
+func TourConnectTitle() string { return In(i18n.Locale()).TourConnectTitle() }
+
+// TourConnectTitle says "Connect to a device"
+// in the language of msgs.
+func (msgs Messages) TourConnectTitle() string {
+	return Catalog.Format(msgs.locale, "TourConnectTitle", nil)
+}
+
+// TourDirect says "Direct"
+// in the language the app shows.
+func TourDirect() string { return In(i18n.Locale()).TourDirect() }
+
+// TourDirect says "Direct"
+// in the language of msgs.
+func (msgs Messages) TourDirect() string {
+	return Catalog.Format(msgs.locale, "TourDirect", nil)
+}
+
+// TourDirectAskMac says "macOS may ask to let Kyokai find devices on the local network."
+// in the language the app shows.
+func TourDirectAskMac() string { return In(i18n.Locale()).TourDirectAskMac() }
+
+// TourDirectAskMac says "macOS may ask to let Kyokai find devices on the local network."
+// in the language of msgs.
+func (msgs Messages) TourDirectAskMac() string {
+	return Catalog.Format(msgs.locale, "TourDirectAskMac", nil)
+}
+
+// TourDirectAskWin says "Windows may ask to let Kyokai through its firewall."
+// in the language the app shows.
+func TourDirectAskWin() string { return In(i18n.Locale()).TourDirectAskWin() }
+
+// TourDirectAskWin says "Windows may ask to let Kyokai through its firewall."
+// in the language of msgs.
+func (msgs Messages) TourDirectAskWin() string {
+	return Catalog.Format(msgs.locale, "TourDirectAskWin", nil)
+}
+
+// TourDirectListens says "This computer listens for connections and is easier to find."
+// in the language the app shows.
+func TourDirectListens() string { return In(i18n.Locale()).TourDirectListens() }
+
+// TourDirectListens says "This computer listens for connections and is easier to find."
+// in the language of msgs.
+func (msgs Messages) TourDirectListens() string {
+	return Catalog.Format(msgs.locale, "TourDirectListens", nil)
+}
+
+// TourDirectOff says "Off until you switch on Try direct connections in Settings › Network."
+// in the language the app shows.
+func TourDirectOff() string { return In(i18n.Locale()).TourDirectOff() }
+
+// TourDirectOff says "Off until you switch on Try direct connections in Settings › Network."
+// in the language of msgs.
+func (msgs Messages) TourDirectOff() string {
+	return Catalog.Format(msgs.locale, "TourDirectOff", nil)
+}
+
+// TourDirectYes says "Faster, where both networks allow it."
+// in the language the app shows.
+func TourDirectYes() string { return In(i18n.Locale()).TourDirectYes() }
+
+// TourDirectYes says "Faster, where both networks allow it."
+// in the language of msgs.
+func (msgs Messages) TourDirectYes() string {
+	return Catalog.Format(msgs.locale, "TourDirectYes", nil)
+}
+
+// TourDisplayBody says "With no monitor attached, Windows has no screen to show. Leave a monitor connected, or plug in a display emulator (an…"
+// in the language the app shows.
+func TourDisplayBody() string { return In(i18n.Locale()).TourDisplayBody() }
+
+// TourDisplayBody says "With no monitor attached, Windows has no screen to show. Leave a monitor connected, or plug in a display emulator (an…"
+// in the language of msgs.
+func (msgs Messages) TourDisplayBody() string {
+	return Catalog.Format(msgs.locale, "TourDisplayBody", nil)
+}
+
+// TourDisplayTitle says "Windows needs a display to share"
+// in the language the app shows.
+func TourDisplayTitle() string { return In(i18n.Locale()).TourDisplayTitle() }
+
+// TourDisplayTitle says "Windows needs a display to share"
+// in the language of msgs.
+func (msgs Messages) TourDisplayTitle() string {
+	return Catalog.Format(msgs.locale, "TourDisplayTitle", nil)
+}
+
+// TourDone says "Done"
+// in the language the app shows.
+func TourDone() string { return In(i18n.Locale()).TourDone() }
+
+// TourDone says "Done"
+// in the language of msgs.
+func (msgs Messages) TourDone() string {
+	return Catalog.Format(msgs.locale, "TourDone", nil)
+}
+
+// TourFinish says "Finish"
+// in the language the app shows.
+func TourFinish() string { return In(i18n.Locale()).TourFinish() }
+
+// TourFinish says "Finish"
+// in the language of msgs.
+func (msgs Messages) TourFinish() string {
+	return Catalog.Format(msgs.locale, "TourFinish", nil)
+}
+
+// TourInstallFinish says "Install and finish"
+// in the language the app shows.
+func TourInstallFinish() string { return In(i18n.Locale()).TourInstallFinish() }
+
+// TourInstallFinish says "Install and finish"
+// in the language of msgs.
+func (msgs Messages) TourInstallFinish() string {
+	return Catalog.Format(msgs.locale, "TourInstallFinish", nil)
+}
+
+// TourKindAI says "An AI task that runs there, with that computer's provider and key; its user is asked first."
+// in the language the app shows.
+func TourKindAI() string { return In(i18n.Locale()).TourKindAI() }
+
+// TourKindAI says "An AI task that runs there, with that computer's provider and key; its user is asked first."
+// in the language of msgs.
+func (msgs Messages) TourKindAI() string {
+	return Catalog.Format(msgs.locale, "TourKindAI", nil)
+}
+
+// TourKindDesktop says "Its screen, mouse and keyboard, clipboard, files and sound."
+// in the language the app shows.
+func TourKindDesktop() string { return In(i18n.Locale()).TourKindDesktop() }
+
+// TourKindDesktop says "Its screen, mouse and keyboard, clipboard, files and sound."
+// in the language of msgs.
+func (msgs Messages) TourKindDesktop() string {
+	return Catalog.Format(msgs.locale, "TourKindDesktop", nil)
+}
+
+// TourKindRDP says "Windows' own Remote Desktop to it, carried by Kyokai."
+// in the language the app shows.
+func TourKindRDP() string { return In(i18n.Locale()).TourKindRDP() }
+
+// TourKindRDP says "Windows' own Remote Desktop to it, carried by Kyokai."
+// in the language of msgs.
+func (msgs Messages) TourKindRDP() string {
+	return Catalog.Format(msgs.locale, "TourKindRDP", nil)
+}
+
+// TourKindSSH says "A terminal on its own SSH server, carried by Kyokai: nothing opened to the internet."
+// in the language the app shows.
+func TourKindSSH() string { return In(i18n.Locale()).TourKindSSH() }
+
+// TourKindSSH says "A terminal on its own SSH server, carried by Kyokai: nothing opened to the internet."
+// in the language of msgs.
+func (msgs Messages) TourKindSSH() string {
+	return Catalog.Format(msgs.locale, "TourKindSSH", nil)
+}
+
+// TourKindVNC says "Its VNC server, a Mac's Screen Sharing too, carried by Kyokai."
+// in the language the app shows.
+func TourKindVNC() string { return In(i18n.Locale()).TourKindVNC() }
+
+// TourKindVNC says "Its VNC server, a Mac's Screen Sharing too, carried by Kyokai."
+// in the language of msgs.
+func (msgs Messages) TourKindVNC() string {
+	return Catalog.Format(msgs.locale, "TourKindVNC", nil)
+}
+
+// TourLetInBody says "Others reach this computer by its Device ID. What they may do depends on how they sign in."
+// in the language the app shows.
+func TourLetInBody() string { return In(i18n.Locale()).TourLetInBody() }
+
+// TourLetInBody says "Others reach this computer by its Device ID. What they may do depends on how they sign in."
+// in the language of msgs.
+func (msgs Messages) TourLetInBody() string {
+	return Catalog.Format(msgs.locale, "TourLetInBody", nil)
+}
+
+// TourLetInTitle says "Let others in"
+// in the language the app shows.
+func TourLetInTitle() string { return In(i18n.Locale()).TourLetInTitle() }
+
+// TourLetInTitle says "Let others in"
+// in the language of msgs.
+func (msgs Messages) TourLetInTitle() string {
+	return Catalog.Format(msgs.locale, "TourLetInTitle", nil)
+}
+
+// TourLoginOff says "Off: others reach this computer once you open Kyokai."
+// in the language the app shows.
+func TourLoginOff() string { return In(i18n.Locale()).TourLoginOff() }
+
+// TourLoginOff says "Off: others reach this computer once you open Kyokai."
+// in the language of msgs.
+func (msgs Messages) TourLoginOff() string {
+	return Catalog.Format(msgs.locale, "TourLoginOff", nil)
+}
+
+// TourLoginOn says "Kyokai waits in the tray after you sign in."
+// in the language the app shows.
+func TourLoginOn() string { return In(i18n.Locale()).TourLoginOn() }
+
+// TourLoginOn says "Kyokai waits in the tray after you sign in."
+// in the language of msgs.
+func (msgs Messages) TourLoginOn() string {
+	return Catalog.Format(msgs.locale, "TourLoginOn", nil)
+}
+
+// TourLoginService says "The service runs from start-up anyway; this opens the window too."
+// in the language the app shows.
+func TourLoginService() string { return In(i18n.Locale()).TourLoginService() }
+
+// TourLoginService says "The service runs from start-up anyway; this opens the window too."
+// in the language of msgs.
+func (msgs Messages) TourLoginService() string {
+	return Catalog.Format(msgs.locale, "TourLoginService", nil)
+}
+
+// TourNetworkBody says "Devices find each other through EasyTier networks. Whoever runs yours gives you its servers, its name and its secret."
+// in the language the app shows.
+func TourNetworkBody() string { return In(i18n.Locale()).TourNetworkBody() }
+
+// TourNetworkBody says "Devices find each other through EasyTier networks. Whoever runs yours gives you its servers, its name and its secret."
+// in the language of msgs.
+func (msgs Messages) TourNetworkBody() string {
+	return Catalog.Format(msgs.locale, "TourNetworkBody", nil)
+}
+
+// TourNetworkLater says "No network yet? You can still connect by address, or add one later."
+// in the language the app shows.
+func TourNetworkLater() string { return In(i18n.Locale()).TourNetworkLater() }
+
+// TourNetworkLater says "No network yet? You can still connect by address, or add one later."
+// in the language of msgs.
+func (msgs Messages) TourNetworkLater() string {
+	return Catalog.Format(msgs.locale, "TourNetworkLater", nil)
+}
+
+// TourNetworkTitle says "Join a network"
+// in the language the app shows.
+func TourNetworkTitle() string { return In(i18n.Locale()).TourNetworkTitle() }
+
+// TourNetworkTitle says "Join a network"
+// in the language of msgs.
+func (msgs Messages) TourNetworkTitle() string {
+	return Catalog.Format(msgs.locale, "TourNetworkTitle", nil)
+}
+
+// TourNext says "Continue"
+// in the language the app shows.
+func TourNext() string { return In(i18n.Locale()).TourNext() }
+
+// TourNext says "Continue"
+// in the language of msgs.
+func (msgs Messages) TourNext() string {
+	return Catalog.Format(msgs.locale, "TourNext", nil)
+}
+
+// TourNoInstall says "Nothing to install"
+// in the language the app shows.
+func TourNoInstall() string { return In(i18n.Locale()).TourNoInstall() }
+
+// TourNoInstall says "Nothing to install"
+// in the language of msgs.
+func (msgs Messages) TourNoInstall() string {
+	return Catalog.Format(msgs.locale, "TourNoInstall", nil)
+}
+
+// TourNoNetwork says "None yet"
+// in the language the app shows.
+func TourNoNetwork() string { return In(i18n.Locale()).TourNoNetwork() }
+
+// TourNoNetwork says "None yet"
+// in the language of msgs.
+func (msgs Messages) TourNoNetwork() string {
+	return Catalog.Format(msgs.locale, "TourNoNetwork", nil)
+}
+
+// TourOff says "Off"
+// in the language the app shows.
+func TourOff() string { return In(i18n.Locale()).TourOff() }
+
+// TourOff says "Off"
+// in the language of msgs.
+func (msgs Messages) TourOff() string {
+	return Catalog.Format(msgs.locale, "TourOff", nil)
+}
+
+// TourOn says "On"
+// in the language the app shows.
+func TourOn() string { return In(i18n.Locale()).TourOn() }
+
+// TourOn says "On"
+// in the language of msgs.
+func (msgs Messages) TourOn() string {
+	return Catalog.Format(msgs.locale, "TourOn", nil)
+}
+
+// TourOnePrompt says "One administrator prompt"
+// in the language the app shows.
+func TourOnePrompt() string { return In(i18n.Locale()).TourOnePrompt() }
+
+// TourOnePrompt says "One administrator prompt"
+// in the language of msgs.
+func (msgs Messages) TourOnePrompt() string {
+	return Catalog.Format(msgs.locale, "TourOnePrompt", nil)
+}
+
+// TourOpenAI says "Open AI providers when I finish"
+// in the language the app shows.
+func TourOpenAI() string { return In(i18n.Locale()).TourOpenAI() }
+
+// TourOpenAI says "Open AI providers when I finish"
+// in the language of msgs.
+func (msgs Messages) TourOpenAI() string {
+	return Catalog.Format(msgs.locale, "TourOpenAI", nil)
+}
+
+// TourOpenAIAbout says "Claude and OpenAI are there already; many more are a click away."
+// in the language the app shows.
+func TourOpenAIAbout() string { return In(i18n.Locale()).TourOpenAIAbout() }
+
+// TourOpenAIAbout says "Claude and OpenAI are there already; many more are a click away."
+// in the language of msgs.
+func (msgs Messages) TourOpenAIAbout() string {
+	return Catalog.Format(msgs.locale, "TourOpenAIAbout", nil)
+}
+
+// TourOpenAINow says "Open AI providers"
+// in the language the app shows.
+func TourOpenAINow() string { return In(i18n.Locale()).TourOpenAINow() }
+
+// TourOpenAINow says "Open AI providers"
+// in the language of msgs.
+func (msgs Messages) TourOpenAINow() string {
+	return Catalog.Format(msgs.locale, "TourOpenAINow", nil)
+}
+
+// TourOpenNetwork says "Open Network settings"
+// in the language the app shows.
+func TourOpenNetwork() string { return In(i18n.Locale()).TourOpenNetwork() }
+
+// TourOpenNetwork says "Open Network settings"
+// in the language of msgs.
+func (msgs Messages) TourOpenNetwork() string {
+	return Catalog.Format(msgs.locale, "TourOpenNetwork", nil)
+}
+
+// TourOpenPower says "Open power settings"
+// in the language the app shows.
+func TourOpenPower() string { return In(i18n.Locale()).TourOpenPower() }
+
+// TourOpenPower says "Open power settings"
+// in the language of msgs.
+func (msgs Messages) TourOpenPower() string {
+	return Catalog.Format(msgs.locale, "TourOpenPower", nil)
+}
+
+// TourPasswordNote says "The temporary password changes every time Kyokai starts; give it only to someone you want to let in."
+// in the language the app shows.
+func TourPasswordNote() string { return In(i18n.Locale()).TourPasswordNote() }
+
+// TourPasswordNote says "The temporary password changes every time Kyokai starts; give it only to someone you want to let in."
+// in the language of msgs.
+func (msgs Messages) TourPasswordNote() string {
+	return Catalog.Format(msgs.locale, "TourPasswordNote", nil)
+}
+
+// TourPrivacyBody says "macOS lets Kyokai share this screen and take input only with your permission. Allow… opens the right page of System…"
+// in the language the app shows.
+func TourPrivacyBody() string { return In(i18n.Locale()).TourPrivacyBody() }
+
+// TourPrivacyBody says "macOS lets Kyokai share this screen and take input only with your permission. Allow… opens the right page of System…"
+// in the language of msgs.
+func (msgs Messages) TourPrivacyBody() string {
+	return Catalog.Format(msgs.locale, "TourPrivacyBody", nil)
+}
+
+// TourPrivacyLater says "One you skip stays on Home under Privacy permissions until you allow it."
+// in the language the app shows.
+func TourPrivacyLater() string { return In(i18n.Locale()).TourPrivacyLater() }
+
+// TourPrivacyLater says "One you skip stays on Home under Privacy permissions until you allow it."
+// in the language of msgs.
+func (msgs Messages) TourPrivacyLater() string {
+	return Catalog.Format(msgs.locale, "TourPrivacyLater", nil)
+}
+
+// TourPrivacyTitle says "Allow what macOS asks"
+// in the language the app shows.
+func TourPrivacyTitle() string { return In(i18n.Locale()).TourPrivacyTitle() }
+
+// TourPrivacyTitle says "Allow what macOS asks"
+// in the language of msgs.
+func (msgs Messages) TourPrivacyTitle() string {
+	return Catalog.Format(msgs.locale, "TourPrivacyTitle", nil)
+}
+
+// TourReadyAuthMac says "Here's what you chose. macOS asks once for an administrator's password to install Kyokai Helper."
+// in the language the app shows.
+func TourReadyAuthMac() string { return In(i18n.Locale()).TourReadyAuthMac() }
+
+// TourReadyAuthMac says "Here's what you chose. macOS asks once for an administrator's password to install Kyokai Helper."
+// in the language of msgs.
+func (msgs Messages) TourReadyAuthMac() string {
+	return Catalog.Format(msgs.locale, "TourReadyAuthMac", nil)
+}
+
+// TourReadyAuthWin says "Here's what you chose. Windows asks once for an administrator's approval to install Kyokai Helper."
+// in the language the app shows.
+func TourReadyAuthWin() string { return In(i18n.Locale()).TourReadyAuthWin() }
+
+// TourReadyAuthWin says "Here's what you chose. Windows asks once for an administrator's approval to install Kyokai Helper."
+// in the language of msgs.
+func (msgs Messages) TourReadyAuthWin() string {
+	return Catalog.Format(msgs.locale, "TourReadyAuthWin", nil)
+}
+
+// TourReadyTitle says "You're ready"
+// in the language the app shows.
+func TourReadyTitle() string { return In(i18n.Locale()).TourReadyTitle() }
+
+// TourReadyTitle says "You're ready"
+// in the language of msgs.
+func (msgs Messages) TourReadyTitle() string {
+	return Catalog.Format(msgs.locale, "TourReadyTitle", nil)
+}
+
+// TourReadyUser says "Here's what you chose. Nothing needs an administrator."
+// in the language the app shows.
+func TourReadyUser() string { return In(i18n.Locale()).TourReadyUser() }
+
+// TourReadyUser says "Here's what you chose. Nothing needs an administrator."
+// in the language of msgs.
+func (msgs Messages) TourReadyUser() string {
+	return Catalog.Format(msgs.locale, "TourReadyUser", nil)
+}
+
+// TourReplayCurrent says "This computer runs in {mode}."
+// in the language the app shows.
+func TourReplayCurrent(mode string) string { return In(i18n.Locale()).TourReplayCurrent(mode) }
+
+// TourReplayCurrent says "This computer runs in {mode}."
+// in the language of msgs.
+func (msgs Messages) TourReplayCurrent(mode string) string {
+	return Catalog.Format(msgs.locale, "TourReplayCurrent", map[string]any{"mode": mode})
+}
+
+// TourReplayOther says "This computer runs in {current}. You looked at {chosen}: Switch changes to it."
+// in the language the app shows.
+func TourReplayOther(current string, chosen string) string {
+	return In(i18n.Locale()).TourReplayOther(current, chosen)
+}
+
+// TourReplayOther says "This computer runs in {current}. You looked at {chosen}: Switch changes to it."
+// in the language of msgs.
+func (msgs Messages) TourReplayOther(current string, chosen string) string {
+	return Catalog.Format(msgs.locale, "TourReplayOther", map[string]any{"current": current, "chosen": chosen})
+}
+
+// TourReplayTitle says "How this computer is set up"
+// in the language the app shows.
+func TourReplayTitle() string { return In(i18n.Locale()).TourReplayTitle() }
+
+// TourReplayTitle says "How this computer is set up"
+// in the language of msgs.
+func (msgs Messages) TourReplayTitle() string {
+	return Catalog.Format(msgs.locale, "TourReplayTitle", nil)
+}
+
+// TourSkip says "Skip"
+// in the language the app shows.
+func TourSkip() string { return In(i18n.Locale()).TourSkip() }
+
+// TourSkip says "Skip"
+// in the language of msgs.
+func (msgs Messages) TourSkip() string {
+	return Catalog.Format(msgs.locale, "TourSkip", nil)
+}
+
+// TourSkipBody says "Kyokai starts with No privileges, which needs no administrator. Settings › General can show the tour again."
+// in the language the app shows.
+func TourSkipBody() string { return In(i18n.Locale()).TourSkipBody() }
+
+// TourSkipBody says "Kyokai starts with No privileges, which needs no administrator. Settings › General can show the tour again."
+// in the language of msgs.
+func (msgs Messages) TourSkipBody() string {
+	return Catalog.Format(msgs.locale, "TourSkipBody", nil)
+}
+
+// TourSkipKeep says "Keep going"
+// in the language the app shows.
+func TourSkipKeep() string { return In(i18n.Locale()).TourSkipKeep() }
+
+// TourSkipKeep says "Keep going"
+// in the language of msgs.
+func (msgs Messages) TourSkipKeep() string {
+	return Catalog.Format(msgs.locale, "TourSkipKeep", nil)
+}
+
+// TourSkipTitle says "Skip the tour?"
+// in the language the app shows.
+func TourSkipTitle() string { return In(i18n.Locale()).TourSkipTitle() }
+
+// TourSkipTitle says "Skip the tour?"
+// in the language of msgs.
+func (msgs Messages) TourSkipTitle() string {
+	return Catalog.Format(msgs.locale, "TourSkipTitle", nil)
+}
+
+// TourStart says "Get started"
+// in the language the app shows.
+func TourStart() string { return In(i18n.Locale()).TourStart() }
+
+// TourStart says "Get started"
+// in the language of msgs.
+func (msgs Messages) TourStart() string {
+	return Catalog.Format(msgs.locale, "TourStart", nil)
+}
+
+// TourStepOf says "Step {step} of {count}"
+// in the language the app shows.
+func TourStepOf(step string, count string) string { return In(i18n.Locale()).TourStepOf(step, count) }
+
+// TourStepOf says "Step {step} of {count}"
+// in the language of msgs.
+func (msgs Messages) TourStepOf(step string, count string) string {
+	return Catalog.Format(msgs.locale, "TourStepOf", map[string]any{"step": step, "count": count})
+}
+
+// TourSummary says "What you chose"
+// in the language the app shows.
+func TourSummary() string { return In(i18n.Locale()).TourSummary() }
+
+// TourSummary says "What you chose"
+// in the language of msgs.
+func (msgs Messages) TourSummary() string {
+	return Catalog.Format(msgs.locale, "TourSummary", nil)
+}
+
+// TourSummaryNow says "As it is now"
+// in the language the app shows.
+func TourSummaryNow() string { return In(i18n.Locale()).TourSummaryNow() }
+
+// TourSummaryNow says "As it is now"
+// in the language of msgs.
+func (msgs Messages) TourSummaryNow() string {
+	return Catalog.Format(msgs.locale, "TourSummaryNow", nil)
+}
+
+// TourSwitchTo says "Switch to {mode}"
+// in the language the app shows.
+func TourSwitchTo(mode string) string { return In(i18n.Locale()).TourSwitchTo(mode) }
+
+// TourSwitchTo says "Switch to {mode}"
+// in the language of msgs.
+func (msgs Messages) TourSwitchTo(mode string) string {
+	return Catalog.Format(msgs.locale, "TourSwitchTo", map[string]any{"mode": mode})
+}
+
+// TourTopicAI says "AI"
+// in the language the app shows.
+func TourTopicAI() string { return In(i18n.Locale()).TourTopicAI() }
+
+// TourTopicAI says "AI"
+// in the language of msgs.
+func (msgs Messages) TourTopicAI() string {
+	return Catalog.Format(msgs.locale, "TourTopicAI", nil)
+}
+
+// TourTopicAway says "When you're away"
+// in the language the app shows.
+func TourTopicAway() string { return In(i18n.Locale()).TourTopicAway() }
+
+// TourTopicAway says "When you're away"
+// in the language of msgs.
+func (msgs Messages) TourTopicAway() string {
+	return Catalog.Format(msgs.locale, "TourTopicAway", nil)
+}
+
+// TourTopicConnect says "Connecting"
+// in the language the app shows.
+func TourTopicConnect() string { return In(i18n.Locale()).TourTopicConnect() }
+
+// TourTopicConnect says "Connecting"
+// in the language of msgs.
+func (msgs Messages) TourTopicConnect() string {
+	return Catalog.Format(msgs.locale, "TourTopicConnect", nil)
+}
+
+// TourTopicLetIn says "Letting others in"
+// in the language the app shows.
+func TourTopicLetIn() string { return In(i18n.Locale()).TourTopicLetIn() }
+
+// TourTopicLetIn says "Letting others in"
+// in the language of msgs.
+func (msgs Messages) TourTopicLetIn() string {
+	return Catalog.Format(msgs.locale, "TourTopicLetIn", nil)
+}
+
+// TourTopicNetwork says "Networks"
+// in the language the app shows.
+func TourTopicNetwork() string { return In(i18n.Locale()).TourTopicNetwork() }
+
+// TourTopicNetwork says "Networks"
+// in the language of msgs.
+func (msgs Messages) TourTopicNetwork() string {
+	return Catalog.Format(msgs.locale, "TourTopicNetwork", nil)
+}
+
+// TourTopicPrivacy says "Privacy"
+// in the language the app shows.
+func TourTopicPrivacy() string { return In(i18n.Locale()).TourTopicPrivacy() }
+
+// TourTopicPrivacy says "Privacy"
+// in the language of msgs.
+func (msgs Messages) TourTopicPrivacy() string {
+	return Catalog.Format(msgs.locale, "TourTopicPrivacy", nil)
+}
+
+// TourViaServer says "Through the server"
+// in the language the app shows.
+func TourViaServer() string { return In(i18n.Locale()).TourViaServer() }
+
+// TourViaServer says "Through the server"
+// in the language of msgs.
+func (msgs Messages) TourViaServer() string {
+	return Catalog.Format(msgs.locale, "TourViaServer", nil)
+}
+
+// TourViaServerNote says "Slower when the server is far from both of you."
+// in the language the app shows.
+func TourViaServerNote() string { return In(i18n.Locale()).TourViaServerNote() }
+
+// TourViaServerNote says "Slower when the server is far from both of you."
+// in the language of msgs.
+func (msgs Messages) TourViaServerNote() string {
+	return Catalog.Format(msgs.locale, "TourViaServerNote", nil)
+}
+
+// TourViaServerYes says "Works on any network; nothing on this computer listens for connections."
+// in the language the app shows.
+func TourViaServerYes() string { return In(i18n.Locale()).TourViaServerYes() }
+
+// TourViaServerYes says "Works on any network; nothing on this computer listens for connections."
+// in the language of msgs.
+func (msgs Messages) TourViaServerYes() string {
+	return Catalog.Format(msgs.locale, "TourViaServerYes", nil)
+}
+
+// TourWelcomeBody says "See and use another computer as if you sat at it. An AI can work on a computer for its user too, always on that compu…"
+// in the language the app shows.
+func TourWelcomeBody() string { return In(i18n.Locale()).TourWelcomeBody() }
+
+// TourWelcomeBody says "See and use another computer as if you sat at it. An AI can work on a computer for its user too, always on that compu…"
+// in the language of msgs.
+func (msgs Messages) TourWelcomeBody() string {
+	return Catalog.Format(msgs.locale, "TourWelcomeBody", nil)
+}
+
+// TourWelcomeNote says "About two minutes. Nothing changes until you choose it, and Settings › General can show this again."
+// in the language the app shows.
+func TourWelcomeNote() string { return In(i18n.Locale()).TourWelcomeNote() }
+
+// TourWelcomeNote says "About two minutes. Nothing changes until you choose it, and Settings › General can show this again."
+// in the language of msgs.
+func (msgs Messages) TourWelcomeNote() string {
+	return Catalog.Format(msgs.locale, "TourWelcomeNote", nil)
+}
+
+// TourWelcomeTitle says "Welcome to Kyokai"
+// in the language the app shows.
+func TourWelcomeTitle() string { return In(i18n.Locale()).TourWelcomeTitle() }
+
+// TourWelcomeTitle says "Welcome to Kyokai"
+// in the language of msgs.
+func (msgs Messages) TourWelcomeTitle() string {
+	return Catalog.Format(msgs.locale, "TourWelcomeTitle", nil)
+}
+
+// TourWithNo says "No AI tasks, sound or services unless you allow them in Access."
+// in the language the app shows.
+func TourWithNo() string { return In(i18n.Locale()).TourWithNo() }
+
+// TourWithNo says "No AI tasks, sound or services unless you allow them in Access."
+// in the language of msgs.
+func (msgs Messages) TourWithNo() string {
+	return Catalog.Format(msgs.locale, "TourWithNo", nil)
+}
+
+// TourWithPassword says "With the right password"
+// in the language the app shows.
+func TourWithPassword() string { return In(i18n.Locale()).TourWithPassword() }
+
+// TourWithPassword says "With the right password"
+// in the language of msgs.
+func (msgs Messages) TourWithPassword() string {
+	return Catalog.Format(msgs.locale, "TourWithPassword", nil)
+}
+
+// TourWithYes says "In at once, with the screen, mouse and keyboard, clipboard and files."
+// in the language the app shows.
+func TourWithYes() string { return In(i18n.Locale()).TourWithYes() }
+
+// TourWithYes says "In at once, with the screen, mouse and keyboard, clipboard and files."
+// in the language of msgs.
+func (msgs Messages) TourWithYes() string {
+	return Catalog.Format(msgs.locale, "TourWithYes", nil)
+}
+
+// TourWithoutAsk says "A request shows who it is and what it asks for. Turn off what you don't want to give, then Allow, or Deny."
+// in the language the app shows.
+func TourWithoutAsk() string { return In(i18n.Locale()).TourWithoutAsk() }
+
+// TourWithoutAsk says "A request shows who it is and what it asks for. Turn off what you don't want to give, then Allow, or Deny."
+// in the language of msgs.
+func (msgs Messages) TourWithoutAsk() string {
+	return Catalog.Format(msgs.locale, "TourWithoutAsk", nil)
+}
+
+// TourWithoutPassword says "Without one"
+// in the language the app shows.
+func TourWithoutPassword() string { return In(i18n.Locale()).TourWithoutPassword() }
+
+// TourWithoutPassword says "Without one"
+// in the language of msgs.
+func (msgs Messages) TourWithoutPassword() string {
+	return Catalog.Format(msgs.locale, "TourWithoutPassword", nil)
+}
+
+// TourYouWin says "Your own keyboard and mouse always win, over theirs and over any AI."
+// in the language the app shows.
+func TourYouWin() string { return In(i18n.Locale()).TourYouWin() }
+
+// TourYouWin says "Your own keyboard and mouse always win, over theirs and over any AI."
+// in the language of msgs.
+func (msgs Messages) TourYouWin() string {
+	return Catalog.Format(msgs.locale, "TourYouWin", nil)
 }
 
 // TrayDeviceID says "Device ID {id}"

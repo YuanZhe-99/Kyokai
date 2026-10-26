@@ -141,6 +141,8 @@ library loaded by both; the core embeds EasyTier. See
   networking, NAT traversal, and connectivity technologies.
 - **[MyGo](https://github.com/egoist/mygo)** — for its cross-platform desktop application
   framework and application integration capabilities.
+- **[Arion](https://github.com/AstraFoundry/Arion)** — the design of Kyokai's first-run tour draws
+  on Arion's onboarding; no code from Arion is used.
 
 ## Open Source Licenses
 

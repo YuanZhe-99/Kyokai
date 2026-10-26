@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/engine"
@@ -92,30 +91,13 @@ func (a *App) securityView(c *ui.Context) {
 // generalView is the General page: the app's language and look, and how it
 // starts and closes.
 func (a *App) generalView(c *ui.Context) {
-	langs := mygo.App.Languages()
-	options := []string{L.LanguageSystem()}
-	for _, l := range langs {
-		options = append(options, i18n.Autonym(l))
-	}
 	a.mu.Lock()
 	p, login := a.prefs, a.openAtLogin
 	a.mu.Unlock()
-	cur := options[0]
-	if i := slices.Index(langs, p.Language); i >= 0 {
-		cur = options[i+1]
-	}
 	settingsPage(c, L.SettingsGeneral(), L.SettingsAboutGeneral(), func() {
 		a.section(c, "look", L.SectionLook(), nil, func(r *rows) {
 			r.row(c, "lang", tile(rowGlobe), setting{title: L.SettingsLanguage(), about: L.SettingsLanguageAbout()}, func() {
-				if ui.Select(c.Key("lang-select"), &cur, options).Width(200).Changed() {
-					lang := ""
-					if i := slices.Index(options, cur); i > 0 {
-						lang = langs[i-1]
-					}
-					mygo.App.SetLocale(lang)
-					p.Language = lang
-					a.setPrefs(p)
-				}
+				a.languageSelect(c, "lang-select", 200)
 			})
 			themes := []string{"system", "light", "dark"}
 			themeIdx := max(slices.Index(themes, p.Theme), 0)
@@ -130,13 +112,7 @@ func (a *App) generalView(c *ui.Context) {
 		a.section(c, "start", L.SectionStart(), nil, func(r *rows) {
 			r.row(c, "login", tile(rowPower), setting{title: L.SettingsOpenAtLogin(), about: L.SettingsOpenAtLoginHint()}, func() {
 				if ui.Switch(c.Key("login-sw"), &login).Label(L.SettingsOpenAtLogin()).Changed() {
-					if err := mygo.App.SetOpenAtLogin(login); err != nil {
-						a.update(func() { a.setToast(err.Error(), true) })
-						return
-					}
-					a.mu.Lock()
-					a.openAtLogin = login
-					a.mu.Unlock()
+					a.setOpenAtLogin(login)
 				}
 			})
 			tray := !p.ShowAtLogin
@@ -154,6 +130,11 @@ func (a *App) generalView(c *ui.Context) {
 				if ui.Segmented(c.Key("close-seg"), &closeIdx, L.CloseHide(), L.CloseQuit()).Changed() {
 					p.CloseQuits = closeIdx == 1
 					a.setPrefs(p)
+				}
+			})
+			r.row(c, "tour", tile(navAbout), setting{title: L.TourAgain(), about: L.TourAgainAbout()}, func() {
+				if ui.Button(c.Key("tour-again"), L.TourAgainShow()).Clicked() {
+					a.openTour()
 				}
 			})
 		})

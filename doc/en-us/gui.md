@@ -136,6 +136,44 @@ when `SCREENSHOT_DIR` is set.
   popover. A form, a list of devices or a key shown once takes a row of its own under the row it
   belongs to. What a correct password grants are tiles that toggle, four to a line (`toggleTile`).
 
+## First run
+
+- A fresh profile's first start is a tour in the main window, without the sidebar (`tourShell`):
+  on the left, on the window's material, the step's illustration (the traffic lights over it on
+  macOS); beside it a pane with the dots of the steps, the language and Skip (the window's buttons
+  on Windows), the step, then Back and Continue. Each step slides in from the way it was reached;
+  every page scrolls; requests and connections still show as cards above the pane. Its layout and
+  drawings follow EasyTier MyGo's tour, and its design draws on Arion's onboarding (ideas only).
+- The steps (`tourSteps`): **Welcome** (what Kyokai does); **Join a network** (Through the server
+  or Direct as a switch the illustration follows, direct off by default and why; the Network
+  page's form to add one, or later); **Connect to a device** (Open as's five kinds, the pane in the
+  illustration following); **Let others in** (this Device ID with Copy and the temporary password
+  with Show, Copy and New password; with the right password or without one; the person here always
+  wins); **AI on this computer** (the key stays here, approvals, input pauses a task, the stop
+  shortcut; Open AI providers when I finish, on by default; no key is typed in the tour);
+  **Privacy permissions**, macOS only (Access's rows, asked here rather than at the first status);
+  **When nobody is at this computer** (the three run modes by what others reach — the desktop;
+  also administrator prompts and the lock screen; also the sign-in screen — chosen here, applied
+  on finishing; Open at login, applied at once); **Keep it awake** (asleep, a computer is offline
+  in every run mode; where the system keeps it awake, Open power settings; on Windows, that the
+  picture needs a monitor or a dummy plug, else Remote Desktop or a virtual display driver);
+  **Ready** (what was chosen; Finish, or Install and finish when the run mode chosen needs the
+  helper: one administrator prompt, a failure shown beside the button until the next try).
+- The illustrations (`tourart.go`) are drawn, not pictures: this computer in perspective, seen from
+  the front left — a Windows Dev Kit, a Mac mini on macOS — with the system's mark lying square on
+  its top (`computerModel`, the marks from `assets/logos`); data as moving dashes, the picture in
+  the accent and the input of someone let in in orange. With Reduce Motion on, nothing moves by
+  itself.
+- Skip asks first; Skip then starts in No privileges with every setting as it was, asking for no
+  macOS permission (Home's Privacy permissions card still shows what is missing).
+- Only a fresh profile — no `gui.json`, engine store or helper marker in its folder — gets the tour:
+  `tour` in `gui.json` is `pending` until it is finished or skipped, then `done`; a profile from
+  before the tour never sees it.
+- Settings › General's Show the tour again (search finds it) shows it as a sheet over the window,
+  as Settings is (`tourSheet`): each step shows the current state, with Open Network settings or
+  Open AI providers in place of the inline changes; Close, Escape or a click outside goes back to
+  Settings and changes nothing; only the last step may switch to the run mode looked at.
+
 ## Structure
 
 - **Home** (`homeView`), no wider than 1120 points (`homeMaxW`): two cards side by side (5 to 7;
@@ -302,7 +340,7 @@ when `SCREENSHOT_DIR` is set.
   button); **Start and close** — open at login, off by default (started at login, Kyokai shows no
   window, only its tray icon; on a Mac as a login item, asked once the app is ready: asked
   earlier, macOS answered no), Start in the tray when opened at login (on by default), and the
-  close button.
+  close button, then Show the tour again ([First run](#first-run)).
 - **Run mode:** No privileges, Follow Kyokai and Background service as three rows, the one in use
   marked and the others with Switch (ⓘ on Follow Kyokai: the one administrator prompt and what
   moves along); switching runs in the background with a loading indicator and a toast

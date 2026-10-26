@@ -149,6 +149,9 @@ and Latin words only where it helps readability.
 | live status / sparkline / Getting its status… | 实时状态 / 走势线 / 正在获取状态… |
 | watch lease (Home's status watch) | 查看租约 |
 | slow pace / usual pace (a status watch's `pace`) | 慢速 / 常速 |
+| first-run tour / Show the tour again / Skip | 首次运行引导 / 重看引导 / 跳过 |
+| Keep it awake (the tour's step) | 保持唤醒 |
+| dummy plug (display emulator) / virtual display driver | 诱骗器（显示器诱骗器、假负载） / 虚拟显示驱动 |
 | dot history / a host's status (its pane) | 点阵历史 / 状态（其小窗） |
 | Open as / AI task (Home's Connect) | 打开为 / AI 任务 |
 | Others in my networks / In your networks | 我的网络中的其他设备 / 在你的网络中 |

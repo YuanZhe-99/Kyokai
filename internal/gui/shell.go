@@ -63,7 +63,12 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 	t := c.Theme()
 	a.mu.Lock()
 	protected := a.protected()
+	firstRun := a.tour != nil && !a.tour.replay
 	a.mu.Unlock()
+	if firstRun {
+		a.tourShell(c, vw)
+		return
+	}
 	if protected {
 		bar := c.TitleBar()
 		ui.Row(c.Key("protected-shell")).Fill().AlignItems(ui.Stretch).Children(func() {
@@ -108,6 +113,7 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 		})
 	})
 	a.settingsSheet(c, vw.win)
+	a.tourSheet(c, vw.win)
 	// Ctrl+K (⌘K) opens search and closes it, unless the keys go to
 	// another computer.
 	if !vw.keysAway(c) && c.Shortcut(ui.Cmd, ui.KeyK) {

@@ -90,6 +90,7 @@ func TestGrouping(t *testing.T) {
 // demoApp is an App with the status a running engine pushes.
 func demoApp(t *testing.T) *App {
 	a := New("", t.TempDir(), filepath.Join(t.TempDir(), "none.sock"))
+	a.tour = nil // a profile from before, past its first run
 	a.connected = true
 	a.status = &localapi.Status{
 		Version: "0.1.0", ABI: 1, DeviceID: "482916735",
