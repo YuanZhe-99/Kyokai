@@ -25,6 +25,11 @@ ignore = [
   { id = "RUSTSEC-2026-0367", reason = "build-time only; PROTOC is set" },
   { id = "RUSTSEC-2026-0368", reason = "build-time only; PROTOC is set" },
   { id = "RUSTSEC-2026-0369", reason = "build-time only; PROTOC is set" },
+  # zstd 0.13 / zstd-safe 7 (zip 8's zstd feature): streaming decompression
+  # flaws. Reached only through the same unused zip build dependency.
+  { id = "RUSTSEC-2026-0391", reason = "build-time only, through zip; PROTOC is set" },
+  { id = "RUSTSEC-2026-0398", reason = "build-time only, through zip; PROTOC is set" },
+  { id = "RUSTSEC-2026-0403", reason = "build-time only, through zip; PROTOC is set" },
   # crypto-bigint 0.5 (through opaque-ke 4.0's elliptic-curve 0.13): timing
   # variability in constant-time operations. Kyokai's OPAQUE suite is
   # Ristretto255 (curve25519-dalek): elliptic-curve's arithmetic never runs.
