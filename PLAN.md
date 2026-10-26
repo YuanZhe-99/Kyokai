@@ -26,6 +26,58 @@ The AI update.
 | AI token efficiency | Claude: prompt caching (the 1-hour cache, which outlasts approvals and pauses); `openai-chat`: old screenshots dropped in batches with a one-line note per older step instead of a rolling newest 3, which changes the cached prefix every turn; OpenAI: `cached_tokens` checked, `truncation: "auto"` (which drops history without saying so) replaced by compaction or a loud failure | the tokens and cost of a fixed task before and after, recorded in platform-notes |
 | Coordinate modes | per model or source: pixels, 0–999, 0–1000, smart-resize 28 or 32, with the matching prompt — an answer on a 0–999 grid passes today's bounds check and clicks elsewhere | a Qwen3-VL-family model and Gemini through `openai-chat` click where they mean, in fixtures and one live run |
 | AI structure | the AI part kept clean: Kyokai owns the action schema, the executor (the only thing that acts), the policy engine (allow / ask / deny with a reason, from the action, its target's facts, the session's grants and the class table), observation (capture and the scope's blackout), the task and lease state, and the history (an event log projected into the task record); the agent loop is replaceable behind the versioned sidecar protocol (Rust today, Pi later); provider adapters only translate; no extensions and no placeholder abstractions. Steps, each shippable: the policy engine with class 0; Claude caching and batched pruning; app and window scope; folder checks; the Pi spike, then sessions and compact; the task history store | each step lands with its docs and tests; architecture.md describes the result |
+| Element list (UIA / AX) | an optional observation beside the screenshot, which stays the only one required (Kyokai's own SSH, Remote Desktop and VNC windows are pixels to UIA and AX): the foreground window's visible elements on the main display, Kyokai's own process left out, password fields reduced to their role, as a compact numbered table (role, name, text, bounds in the screenshot's coordinates), bound to that screenshot's capture id and refused once stale; actions stay coordinates (an element number resolves to its centre, then today's bounds check, guards and injection). On by default only for `openai-chat` sources, an experiment for Claude and OpenAI. A second layer for surfaces without a tree and weak models: the system OCR (Windows.Media.Ocr, Apple Vision) before OmniParser or Set-of-Mark | success, tokens and latency with and without it on Kyokai's own task set |
+| Kyokai's own task set | the public benchmarks are Ubuntu-first and saturated (OSWorld-Verified), WindowsAgentArena has no maintained board and macOSWorld is small, so Kyokai measures itself: a fixed set of tasks on Windows and macOS through its two-machine test bench, also used for the token and coordinate rows and for the Auto mode's classes (including injection attempts on screen) | the set runs on both platforms with each provider, results recorded in platform-notes |
+
+### Research behind 0.7.0 (2026-10-23)
+
+Two research rounds (agent backend and computer-use options; approvals, tokens and window scope)
+lead to the rows above. What they found that the rows rely on:
+
+- **The boundary matters more than the backend.** As long as Kyokai owns the action schema, the
+  sidecar protocol and the task record, Pi is a replaceable loop and the trust boundary (the Rust
+  executor, the lease, approvals, take-over) does not move; Pi having no permission system is an
+  advantage, while OpenCode's approvals, resumption and configuration would each have to be torn
+  out. Neither speaks the providers' native computer-use dialects (Pi's `Tool` is name,
+  description and parameters; its Responses parser ignores `computer_call`; no
+  `context_management` for Claude), so the spike's question is whether Pi can carry the native
+  protocols, not whether it runs. Without them OpenAI's Flagged policy would keep only the
+  Windows/Command shortcut.
+- **Coordinate modes first.** Answers on a 0–999 grid (Qwen3-VL's reference agent, Gemini) used
+  as pixels land at about 73 % horizontally and 130 % vertically of the real point and pass the
+  bounds check unless the target is near the bottom: the cheapest fix, before the Pi move.
+- **amontlabs/lcu: not adopted.** It wraps the closed computer-use runtime shipped inside the
+  ChatGPT/Codex desktop app (that app must be installed) for other harnesses; the model writes
+  JavaScript in a REPL; Linux X11 and Apple-silicon macOS only (Windows a candidate, Intel Mac not
+  supported); one main author and breakage on ChatGPT updates. Adopting it would move execution
+  out of Kyokai's executor, run model-written code and miss Kyokai's platforms. Ideas taken:
+  per-app policy (terminals refused, the agent's own host app never approved, browsers and
+  password managers high risk) — in the Auto classes; the owner present (Touch ID / Windows Hello)
+  for anything that would persist, should such a grant ever exist; product messages never enter
+  the model's context; an input test matrix (typing by keyboard layout drops Korean syllables,
+  emoji and AZERTY `ñ` — Kyokai's `type` gets those cases).
+- **Other options and what Kyokai takes:** the providers' native tools stay first choice (Claude
+  `computer_toolset_20260801`, OpenAI's GA `computer` tool on general models; Gemini
+  `computer_use` gets a native adapter once GA); open weights (Qwen3.8-27B, Holo3-35B-A3B, both
+  Apache-2.0) through `openai-chat` once coordinate modes exist (Holo4 is non-commercial); UFO²'s
+  control allow-list and the merging of UIA with visual detection, not its picture-in-picture
+  session or COM/API actions; Cua's capture id, UIA techniques and read-back checks, Lume for test
+  infrastructure, not private SPIs or background delivery; Agent S3's planner/grounder split and
+  behaviour narrative, not `exec` or best-of-N rollouts; Windows-MCP's and Peekaboo's snapshot
+  schema and "act on the latest snapshot" rule, not embedding them; no code-executing harness.
+- **Five ideas for approvals and scope** (from the open-source survey): classify each action's
+  concrete target deterministically; fuse risk signals by the worst case and fail closed; policy
+  tiers per app (allow / ask / hand off / block) the model cannot change and approvals only
+  tighten; prune screenshots in a cache-friendly way with compaction and batching; hold the scope
+  on both capture and input, re-checked whenever a new window appears.
+- **The AI in one window while the user works in another** (the open question in AI scope) is
+  only partly possible with public APIs: UIA patterns and AX actions operate many standard
+  controls without moving the pointer; posted messages and `CGEventPostToPid` are unreliable;
+  full coverage needs private APIs (Cua's SkyLight SPIs on macOS) or a foreground swap on Windows.
+  It is best effort and macOS-leaning, and it redefines "local input takes over at once". Real
+  separation (Windows' agent workspace, session containers, Windows Sandbox, RDP loopback, VMs)
+  moves the AI off the user's live desktop — the only way folder limits could be enforced, but
+  not a way to operate the user's open windows.
 
 ## Left
 
