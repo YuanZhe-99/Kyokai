@@ -482,7 +482,7 @@ mod mac_impl {
 
     /// How a viewer window's grab stands now (`Standing`).
     /// Side effects: reads the session's Secure Event Input holder and, last,
-    /// the on-screen window list.
+    /// the frontmost application.
     pub fn state(window: usize) -> Standing {
         let secure = crate::mac::secure_input_holder();
         let (grabbed, running, front, reader) = {
@@ -505,7 +505,7 @@ mod mac_impl {
             secure,
             front,
             reader,
-            || match crate::mac::window_owner(None) {
+            || match crate::mac::front_app() {
                 Some(pid) if pid as i64 == std::process::id() as i64 => None,
                 Some(pid) => Some(crate::mac::process_name(pid)),
                 None => Some(String::new()),
@@ -652,16 +652,19 @@ mod mac_impl {
         }
     }
 
-    /// Whether Kyokai owns the frontmost window. Tests route events as if
-    /// it did.
+    /// Whether Kyokai is the frontmost application (`mac::front_app`).
+    /// Tests route events as if it were.
     /// Notes: which viewer gets the keys is the GUI's to say (it grabs while
-    /// the pointer is over the picture). Regression: a check here that the
+    /// the pointer is over the picture). Regressions: a check here that the
     /// window at the pointer was Kyokai's read the whole window list, whose
     /// invisible windows of other programs (and the system's) cover
     /// Kyokai's; the tap let every key pass while the viewer took itself for
-    /// grabbing, and a Mac sent no Enter, Tab, Delete, Shift or Command.
+    /// grabbing, and a Mac sent no Enter, Tab, Delete, Shift or Command. Up to
+    /// 0.6.5 the frontmost normal window of that list stood for the front;
+    /// with Kyokai's window tiled to half the screen the second dot turned
+    /// amber and keys passed.
     fn front_is_ours(ours: i64) -> bool {
-        cfg!(test) || crate::mac::window_owner(None).is_some_and(|pid| pid as i64 == ours)
+        cfg!(test) || crate::mac::front_app().is_some_and(|pid| pid as i64 == ours)
     }
 
     /// Handles one key event in the tap.

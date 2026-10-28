@@ -1021,6 +1021,28 @@ fn post(event: Option<CFRetained<CGEvent>>) {
     CGEvent::post(CGEventTapLocation::HIDEventTap, Some(&event));
 }
 
+/// The process of the frontmost application, the one macOS sends the keys
+/// to (NSWorkspace's `frontmostApplication`); None outside an app (AppKit
+/// not loaded) or with none in front.
+/// Notes: the keyboard grab asks this rather than the window list
+/// (`window_owner(None)`): with Kyokai's window tiled to half the screen
+/// the grab let keys pass while Kyokai was in front (filling the screen did
+/// not), most likely because the list's first normal window was then
+/// another program's; the window list is not what decides where keys go.
+pub(crate) fn front_app() -> Option<i32> {
+    let class = objc2::runtime::AnyClass::get(c"NSWorkspace")?;
+    objc2::rc::autoreleasepool(|_| {
+        // SAFETY: class and instance methods of NSWorkspace and
+        // NSRunningApplication without arguments; both may answer nil.
+        unsafe {
+            let ws: Option<Retained<NSObject>> = msg_send![class, sharedWorkspace];
+            let app: Option<Retained<NSObject>> = msg_send![&*ws?, frontmostApplication];
+            let pid: i32 = msg_send![&*app?, processIdentifier];
+            Some(pid)
+        }
+    })
+}
+
 /// The owner of the frontmost on-screen window at `at` (points), or of the
 /// frontmost normal window (the focused application's) when None.
 pub(crate) fn window_owner(at: Option<CGPoint>) -> Option<i32> {

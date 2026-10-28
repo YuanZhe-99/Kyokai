@@ -14,6 +14,27 @@ this file when the plan is complete.
 - macOS builds are signed with the maintainer's Apple Development certificate (Team ID); the helper
   verifies its own updates (bundle signature on Windows, code signature on macOS).
 
+## 0.6.6
+
+The official EasyTier core as an option beside Kyokai Network (decided 2026-10-28: no TUN, the
+secret only in a runtime file, every run mode).
+
+| Item | Scope | Done when |
+|---|---|---|
+| Cores | the engine lists EasyTier's GitHub releases (stable 2.6.4, prerelease 2.7.0), downloads the asset for its system and architecture, checks it against the release's SHA-256 digest (refused without one), unpacks `easytier-core` and `easytier-cli` into the state directory (`cores/<tag>/`; in the helper modes the helper's protected folder) and removes ones no longer chosen; nothing runs before the check | table tests of asset choice and digest refusal; a download on Windows and macOS |
+| Backend | Settings › Network chooses Kyokai Network (the default) or EasyTier with a core; the core runs one official `easytier-core` per joined network with `no_tun`, a SOCKS5 portal and an RPC portal on free loopback ports and Kyokai's own keys (hostname `Kyokai-<id>`, `tcp_whitelist` holding 47310, instance name and id) forced over the person's TOML; the config with the secret is written only to an owner-only runtime file in the state directory while the core runs and deleted at stop and at the next start; controllers dial `vip:47310` through the SOCKS5 portal, hosts accept the core's connections on `127.0.0.1:47310`; peers, routes and latency come from `easytier-cli -o json` (`route`, `peer`); one external network's sessions count as that network's | two engines on official 2.6.4 and 2.7.0 cores connect, `ctl status` shows both online and each other, a session runs, on Windows and macOS; nothing written outside the state directory |
+| TOML | with EasyTier chosen each network gains the core's options (listeners, latency first, P2P, KCP and QUIC proxy, MTU, relay whitelist) and its TOML in an editor; the secret shows masked and stays in the credential store; Kyokai's own keys are refused in the TOML with a reason; edits are validated by the core's own `--check-config` before they apply | form ⇄ TOML round trips in table tests; a refused key and an invalid TOML keep the running network |
+| Switching | a network whose TOML is no more than what Kyokai Network's fields make switches both ways without a word; one with EasyTier-only options warns, before switching back, which options will be removed, and removes them only on confirmation | table tests of "changed" and the warning's list; switching back and forth unchanged shows nothing |
+
+The spike (2026-10-28, two cores on one Windows computer, no TUN): with 2.6.4 and 2.7.0, a SOCKS5
+connect through one core's portal to the other's virtual IP on a whitelisted port reached a plain
+listener on the other's `127.0.0.1` (EasyTier rewrites its own virtual IP to loopback in
+`tcp_proxy_service`); a port outside `tcp_whitelist` was dropped; the route list carries the
+`Kyokai-<id>` hostnames. Peer links refuse loopback addresses (error 10049), so the integration
+test listens on a LAN address. **easytier-mini 2.7.0 cannot carry Kyokai sessions without TUN**: it
+has no SOCKS5 portal and does not forward a connection to its own virtual IP, so it is left out
+until TUN is decided.
+
 ## 0.7.0
 
 The AI update.
