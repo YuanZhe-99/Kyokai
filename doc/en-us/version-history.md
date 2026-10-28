@@ -1,5 +1,20 @@
 # Version history
 
+## 0.6.5 (2026-10-28)
+
+- On a Mac, Kyokai opened at login came up with its window although Start in the tray when opened at
+  login was on: MyGo reads the launch's Apple Event, which says the app opens as a login item, in
+  `applicationWillFinishLaunching:`, before AppKit dispatches it, so it always answered no. Kyokai
+  now reads that event itself while AppKit handles it, in `applicationDidFinishLaunching:`, where
+  its start-up runs. Not yet confirmed by a login on a Mac.
+- About & updates, Install updates automatically: Never (the default), When the computer is idle
+  (nobody has used it for 15 minutes) or Every day at a chosen hour (03:00 by default). It installs
+  a found update only while no session, connection request, AI task or live pane is open, tries a
+  failed version again only at the next start, and relaunches into the tray when the window was
+  hidden.
+- Upstream: MyGo v0.7.1, no UI migration. Checked, unchanged: EasyTier v2.7.0, RustDesk 1.5.0
+  (vendored code), vcpkg 2026.10.16, Rust 1.99.1. ABI 7, protocol 10 and local API 2, unchanged.
+
 ## 0.6.4 (2026-10-25)
 
 - A first-run tour: a fresh profile's first start shows, step by step, joining a network, connecting,

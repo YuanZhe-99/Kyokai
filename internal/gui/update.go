@@ -2,6 +2,8 @@ package gui
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -14,8 +16,19 @@ import (
 // appCheckEvery is how often the automatic app update check runs.
 const appCheckEvery = 24 * time.Hour
 
-// appUpdateLoop runs the daily app update check while the GUI runs: the
-// first one shortly after launch, when one is due.
+// autoIdleAfter is how long the computer goes unused before autoIdle
+// installs.
+const autoIdleAfter = 15 * time.Minute
+
+// Prefs.AutoInstall's modes.
+const (
+	autoIdle  = "idle"
+	autoDaily = "daily"
+)
+
+// appUpdateLoop runs the daily app update check while the GUI runs (the
+// first one shortly after launch, when one is due; a failed one again an
+// hour later) and, each minute, the automatic install (autoInstall).
 func (a *App) appUpdateLoop() {
 	if !mygo.Updater.Enabled() {
 		return // a development build, or an install location we cannot write
@@ -25,18 +38,88 @@ func (a *App) appUpdateLoop() {
 		return
 	case <-time.After(10 * time.Second):
 	}
+	var tried time.Time
 	for {
 		a.mu.Lock()
-		due := a.prefs.CheckAppUpdates && time.Since(a.prefs.LastAppCheck) >= appCheckEvery
+		p := a.prefs
 		a.mu.Unlock()
-		if due {
+		if (p.CheckAppUpdates || p.AutoInstall != "") && time.Since(p.LastAppCheck) >= appCheckEvery && time.Since(tried) >= time.Hour {
+			tried = time.Now()
 			a.checkApp(false)
 		}
+		a.autoInstall()
 		select {
 		case <-a.ctx.Done():
 			return
-		case <-time.After(time.Hour):
+		case <-time.After(time.Minute):
 		}
+	}
+}
+
+// autoFacts are what decides whether an automatic install starts now
+// (autoInstallNow).
+type autoFacts struct {
+	// mode and hour are Prefs.AutoInstall and Prefs.AutoInstallHour.
+	mode string
+	hour int
+	now  time.Time
+	// idle is how long the computer has gone unused (asked only for
+	// autoIdle).
+	idle time.Duration
+	// found: an update is known that has not failed to install in this run.
+	found bool
+	// live: a session, a connection request, an AI task, a live tab or
+	// another update is under way, or the engine's state is not known.
+	live bool
+}
+
+// autoInstallNow reports whether an automatic install starts: never while
+// anything is live; autoIdle once the computer has gone unused for
+// autoIdleAfter, autoDaily within the chosen hour.
+func autoInstallNow(f autoFacts) bool {
+	if !f.found || f.live {
+		return false
+	}
+	switch f.mode {
+	case autoIdle:
+		return f.idle >= autoIdleAfter
+	case autoDaily:
+		return f.now.Hour() == f.hour
+	}
+	return false
+}
+
+// autoInstall installs a found update without asking when autoInstallNow
+// says so.
+// Side effects: may stop the engine, replace the app and relaunch it
+// (installApp).
+func (a *App) autoInstall() {
+	a.mu.Lock()
+	p, up, st := a.prefs, a.appUpdate, a.status
+	f := autoFacts{mode: p.AutoInstall, hour: p.AutoInstallHour, now: time.Now(),
+		found: up != nil && up.Version != a.autoFailed,
+		live:  a.updating || a.busy["app-update"] || st == nil || st.AI != nil || len(st.Requests) > 0}
+	if st != nil {
+		for _, s := range st.Sessions {
+			if s.State != "closed" && s.State != "failed" {
+				f.live = true
+			}
+		}
+	}
+	a.mu.Unlock()
+	if f.mode == "" || !f.found || f.live {
+		return
+	}
+	for _, t := range a.allTabs() {
+		if t.live() {
+			return
+		}
+	}
+	if f.mode == autoIdle {
+		f.idle = mygo.Power.IdleTime()
+	}
+	if autoInstallNow(f) {
+		a.installApp(true)
 	}
 }
 
@@ -77,9 +160,11 @@ func (a *App) checkApp(manual bool) {
 
 // installApp downloads the found version, checks its signature, replaces
 // the app and relaunches into it.
+// Inputs: auto is an automatic install (autoInstall): a failure is not
+// retried in this run, and a hidden window stays hidden after the relaunch.
 // Side effects: the engine stops first, because Windows cannot replace
 // files a running process uses; on failure it starts again.
-func (a *App) installApp() {
+func (a *App) installApp(auto bool) {
 	a.mu.Lock()
 	up := a.appUpdate
 	a.mu.Unlock()
@@ -100,9 +185,19 @@ func (a *App) installApp() {
 			a.update(func() {
 				delete(a.busy, "app-update")
 				a.updating = false
+				if auto {
+					a.autoFailed = up.Version
+				}
 				a.setToast(L.AppUpdateInstallFailed(), true)
 			})
 			return // connectLoop starts the engine again
+		}
+		if auto {
+			a.mu.Lock()
+			p := a.prefs
+			p.ResumeInTray = !a.visible
+			a.mu.Unlock()
+			_ = a.setPrefs(p)
 		}
 		a.relaunch()
 	}()
@@ -129,7 +224,7 @@ func (a *App) updateSection(c *ui.Context) {
 		case up != nil:
 			r.row(c, "update", tile(rowDownload), setting{title: L.AppUpdateAvailable(up.Version), about: L.AppUpdateInstalled(version.Version), col: t.Accent}, func() {
 				if ui.PrimaryButton(c.Key("install-update"), L.ActionInstallUpdate()).Disabled(busy).Clicked() {
-					a.installApp()
+					a.installApp(false)
 				}
 			})
 		default:
@@ -143,6 +238,27 @@ func (a *App) updateSection(c *ui.Context) {
 			if ui.Switch(c.Key("app-auto-sw"), &p.CheckAppUpdates).Label(L.SettingsCheckAppUpdates()).Changed() {
 				a.setPrefs(p)
 			}
+		})
+		modes, labels := []string{"", autoIdle, autoDaily}, []string{L.AutoInstallOff(), L.AutoInstallIdle(), L.AutoInstallDaily()}
+		mode := labels[max(slices.Index(modes, p.AutoInstall), 0)]
+		r.row(c, "auto-install", tile(rowDownload), setting{title: L.SettingsAutoInstall(), about: L.SettingsAutoInstallHint()}, func() {
+			ui.Row(c.Key("auto-install-ctl")).Gap(8).AlignItems(ui.Center).Children(func() {
+				if ui.Select(c.Key("auto-install-sel"), &mode, labels).Width(240).Changed() {
+					p.AutoInstall = modes[slices.Index(labels, mode)]
+					a.setPrefs(p)
+				}
+				if p.AutoInstall == autoDaily {
+					hours := make([]string, 24)
+					for h := range hours {
+						hours[h] = fmt.Sprintf("%02d:00", h)
+					}
+					hour := hours[min(max(p.AutoInstallHour, 0), 23)]
+					if ui.Select(c.Key("auto-install-hour"), &hour, hours).Width(96).Changed() {
+						p.AutoInstallHour = slices.Index(hours, hour)
+						a.setPrefs(p)
+					}
+				}
+			})
 		})
 	})
 }

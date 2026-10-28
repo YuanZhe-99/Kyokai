@@ -39,6 +39,14 @@ type Prefs struct {
 	CheckAppUpdates bool      `json:"check_app_updates"`
 	LastAppCheck    time.Time `json:"last_app_check,omitzero"`
 	AnnouncedApp    string    `json:"announced_app,omitempty"`
+	// AutoInstall installs a found app update without asking: "" (off),
+	// autoIdle or autoDaily at AutoInstallHour (0–23, local time); either
+	// waits while anything is live (autoInstallNow).
+	AutoInstall     string `json:"auto_install,omitempty"`
+	AutoInstallHour int    `json:"auto_install_hour"`
+	// ResumeInTray: an automatic install relaunched Kyokai while its window
+	// was hidden, so the next start stays in the tray; that start clears it.
+	ResumeInTray bool `json:"resume_in_tray,omitempty"`
 	// KeyboardMode is the viewers' keyboard mode: "map" (also when empty),
 	// "translate" or "legacy".
 	KeyboardMode string `json:"keyboard_mode,omitempty"`
@@ -130,7 +138,7 @@ type ViewerPrefs struct {
 	NoClipboard bool `json:"no_clipboard,omitempty"`
 }
 
-func defaultPrefs() Prefs { return Prefs{Theme: "system", CheckAppUpdates: true} }
+func defaultPrefs() Prefs { return Prefs{Theme: "system", CheckAppUpdates: true, AutoInstallHour: 3} }
 
 func prefsPath(stateDir string) string { return filepath.Join(stateDir, "gui.json") }
 
@@ -161,6 +169,22 @@ func (a *App) StartHidden() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return !a.prefs.ShowAtLogin
+}
+
+// TakeResumeInTray reports whether an automatic install relaunched Kyokai
+// from the tray (Prefs.ResumeInTray), and clears it.
+// Side effects: writes gui.json when it was set.
+func (a *App) TakeResumeInTray() bool {
+	a.mu.Lock()
+	p := a.prefs
+	a.prefs.ResumeInTray = false
+	a.mu.Unlock()
+	if p.ResumeInTray {
+		p.ResumeInTray = false
+		_ = savePrefs(a.stateDir, p)
+		return true
+	}
+	return false
 }
 
 // LanguagePref is the remembered interface language ("" follows the system).

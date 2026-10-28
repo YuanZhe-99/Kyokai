@@ -546,7 +546,8 @@ func settingsHits() []settingsHit {
 		{pageAbout, L.SettingsDiagnostics(), join(L.DiagLogs(), L.ActionSaveLogs(), L.StorageLocation())},
 	}
 	if mygo.Updater.Enabled() {
-		hits = append(hits, settingsHit{pageAbout, L.SettingsCheckAppUpdates(), join(L.ActionCheckAppUpdate(), L.SectionUpdates())})
+		hits = append(hits, settingsHit{pageAbout, L.SettingsCheckAppUpdates(), join(L.ActionCheckAppUpdate(), L.SectionUpdates())},
+			settingsHit{pageAbout, L.SettingsAutoInstall(), join(L.AutoInstallIdle(), L.AutoInstallDaily())})
 	}
 	if runtime.GOOS == "darwin" {
 		hits = append(hits, settingsHit{pageAccess, L.PermissionsTitle(),

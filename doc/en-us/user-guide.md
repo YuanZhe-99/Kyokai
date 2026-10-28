@@ -11,7 +11,9 @@ Kyokai starts with its window and an icon in the notification area; closing the 
 running there (**General** can make the close button quit instead). Kyokai does not start
 with Windows unless you switch on "Open at login"; started at login, it opens no window and waits
 in the notification area (the menu bar on a Mac), unless you switch off "Start in the tray when opened
-at login".
+at login". **About & updates** can install updates on its own — when the computer is idle, or every
+day at an hour you choose — but only while nothing is connected, no request waits and no AI task
+runs; Kyokai restarts into the new version as it was, in the tray if it was there.
 
 The first time Kyokai starts, a short tour shows what it does, step by step: networks, connecting,
 letting others in, AI, how far others reach while nobody is at the computer, and keeping it awake

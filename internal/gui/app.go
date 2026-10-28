@@ -174,6 +174,9 @@ type App struct {
 	appUpdate      *mygo.Update
 	updating       bool
 	updateProgress float64
+	// autoFailed is the version an automatic install failed for in this
+	// run; it is not tried again until the next start.
+	autoFailed string
 }
 
 // New creates the GUI for a profile ("" outside development).

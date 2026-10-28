@@ -5641,6 +5641,56 @@ func (msgs Messages) SettingsCheckAppUpdatesHint() string {
 	return Catalog.Format(msgs.locale, "SettingsCheckAppUpdatesHint", nil)
 }
 
+// AutoInstallOff says "Never"
+// in the language the app shows.
+func AutoInstallOff() string { return In(i18n.Locale()).AutoInstallOff() }
+
+// AutoInstallOff says "Never"
+// in the language of msgs.
+func (msgs Messages) AutoInstallOff() string {
+	return Catalog.Format(msgs.locale, "AutoInstallOff", nil)
+}
+
+// AutoInstallIdle says "When the computer is idle"
+// in the language the app shows.
+func AutoInstallIdle() string { return In(i18n.Locale()).AutoInstallIdle() }
+
+// AutoInstallIdle says "When the computer is idle"
+// in the language of msgs.
+func (msgs Messages) AutoInstallIdle() string {
+	return Catalog.Format(msgs.locale, "AutoInstallIdle", nil)
+}
+
+// AutoInstallDaily says "Every day at"
+// in the language the app shows.
+func AutoInstallDaily() string { return In(i18n.Locale()).AutoInstallDaily() }
+
+// AutoInstallDaily says "Every day at"
+// in the language of msgs.
+func (msgs Messages) AutoInstallDaily() string {
+	return Catalog.Format(msgs.locale, "AutoInstallDaily", nil)
+}
+
+// SettingsAutoInstall says "Install updates automatically"
+// in the language the app shows.
+func SettingsAutoInstall() string { return In(i18n.Locale()).SettingsAutoInstall() }
+
+// SettingsAutoInstall says "Install updates automatically"
+// in the language of msgs.
+func (msgs Messages) SettingsAutoInstall() string {
+	return Catalog.Format(msgs.locale, "SettingsAutoInstall", nil)
+}
+
+// SettingsAutoInstallHint says "Kyokai restarts into a new version only while nothing is connected, no request waits and no AI task runs. Idle: nobod…"
+// in the language the app shows.
+func SettingsAutoInstallHint() string { return In(i18n.Locale()).SettingsAutoInstallHint() }
+
+// SettingsAutoInstallHint says "Kyokai restarts into a new version only while nothing is connected, no request waits and no AI task runs. Idle: nobod…"
+// in the language of msgs.
+func (msgs Messages) SettingsAutoInstallHint() string {
+	return Catalog.Format(msgs.locale, "SettingsAutoInstallHint", nil)
+}
+
 // SettingsCloseButton says "Close button"
 // in the language the app shows.
 func SettingsCloseButton() string { return In(i18n.Locale()).SettingsCloseButton() }

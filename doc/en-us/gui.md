@@ -338,8 +338,9 @@ when `SCREENSHOT_DIR` is set.
   mode (only with a permanent password, after a confirmation).
 - **General:** **Language and look** — the language, and the appearance (also the sidebar's
   button); **Start and close** — open at login, off by default (started at login, Kyokai shows no
-  window, only its tray icon; on a Mac as a login item, asked once the app is ready: asked
-  earlier, macOS answered no), Start in the tray when opened at login (on by default), and the
+  window, only its tray icon; on a Mac as a login item, read from the launch's Apple Event while
+  AppKit handles it, inside `applicationDidFinishLaunching:` (`LaunchedAsLoginItem`): MyGo's own
+  check reads it earlier and always answers no), Start in the tray when opened at login (on by default), and the
   close button, then Show the tour again ([First run](#first-run)).
 - **Run mode:** No privileges, Follow Kyokai and Background service as three rows, the one in use
   marked and the others with Switch (ⓘ on Follow Kyokai: the one administrator prompt and what
@@ -349,7 +350,8 @@ when `SCREENSHOT_DIR` is set.
   is gone), every page shows a card to install the helper again or start over here.
 - **About & updates:** **Kyokai** — the version with Source code, and the license with Show for the
   open source notices it ships; **Updates** — a new version with Install and restart, installing's
-  progress, or the version installed with Check for updates, and the daily check; **Diagnostics**
+  progress, or the version installed with Check for updates, the daily check, and Install updates
+  automatically (Never, When the computer is idle, or Every day at an hour); **Diagnostics**
   — version and ABI, engine start time, run mode, data folder with Open folder, logs folder with
   Open folder and **Save logs…** (the engine's logs through `logs.read`, the helper's and its
   agent's in the helper modes, which only administrators open, and this GUI's own, into one text
@@ -365,7 +367,13 @@ when `SCREENSHOT_DIR` is set.
   Helper and Start over here.
 - **App updates (About & updates):** a daily check (switchable) and "Check for updates" read the signed
   update of the latest GitHub release; "Install and restart" stops the engine, installs in place
-  and relaunches. Development builds say they cannot update themselves.
+  and relaunches. Development builds say they cannot update themselves. Install updates
+  automatically (off by default) installs a found update without asking, checked each minute
+  (`autoInstallNow`): when the computer is idle (nobody has used it for 15 minutes) or within the
+  chosen hour of every day (03:00 by default), and only while no session, connection request, AI
+  task or live pane is open; the daily check then runs even with its own switch off. A failed
+  automatic install is not tried again until the next start; a relaunch from the tray comes back in
+  the tray (`Prefs.ResumeInTray`).
 
 ## Connections
 

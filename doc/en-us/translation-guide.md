@@ -105,6 +105,7 @@ and Latin words only where it helps readability.
 | parameter set (H.264, HEVC) | 参数集 |
 | media engine (Apple silicon) | 媒体引擎 |
 | General / Access / Security & privacy / Run mode / About & updates (Settings pages) | 通用 / 访问 / 安全与隐私 / 运行方式 / 关于与更新（设置的页面） |
+| Install updates automatically / Never / When the computer is idle / Every day at (About & updates) | 自动安装更新 / 从不 / 电脑空闲时 / 每天定时 |
 | Fit / Original size (the viewer) | 适应窗口 / 原始大小 |
 | clipboard history / Share the clipboard with this device | 剪贴板历史 / 与这台设备共享剪贴板 |
 | (the pane) in front | （小窗）位于前台 |

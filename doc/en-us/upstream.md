@@ -59,7 +59,11 @@ when they run; anything not listed here is not assumed.
 - **App services.** Tray (menu, icon), notifications (balloons on Windows), clipboard (text,
   HTML, PNG image; no change event), dialogs, shell open, a single-instance lock keyed by the app
   name, open at login, power events (lock/unlock, idle time), `App.Path` kinds (no separate
-  config kind), `Relaunch`, cancelable quit hooks.
+  config kind), `Relaunch`, cancelable quit hooks. On macOS `App.WasOpenedAtLogin` (v0.7.1 and
+  before) reads the launch's Apple Event in `applicationWillFinishLaunching:`, before AppKit
+  dispatches it, so a login item always reads no; the event is current only while
+  `applicationDidFinishLaunching:` runs, where `WhenReady`'s functions run too, so Kyokai reads
+  it there itself (`gui.LaunchedAsLoginItem`).
 - **Updater.** `go tool mygo keygen` writes an Ed25519 pair (base64 of the 64-byte private key and
   of the 32-byte public key) into `-o DIR`, by default a per-user folder shared by every MyGo
   project; it refuses to overwrite without `-force`. With `MYGO_UPDATER_PRIVATE_KEY` set,
