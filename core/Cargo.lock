@@ -2817,6 +2817,7 @@ dependencies = [
  "snow",
  "socket2",
  "tokio",
+ "toml_edit 0.25.17+spec-1.1.0",
  "uuid",
  "windows 0.62.2",
  "windows-sys 0.61.2",
@@ -5135,6 +5136,7 @@ dependencies = [
  "indexmap",
  "toml_datetime 1.1.2+spec-1.1.0",
  "toml_parser",
+ "toml_writer",
  "winnow 1.0.4",
 ]
 

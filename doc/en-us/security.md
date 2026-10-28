@@ -187,6 +187,14 @@ unlocked desktop, and a compromised provider.
 
 ## Known limitations
 
+- With an official EasyTier core ([networking.md](networking.md#official-easytier-core)) the
+  network secret is written to an owner-only runtime file in the state directory while the core
+  starts, removed once it answers (and at the next start after a crash): the one place a secret
+  touches the disk unencrypted, decided on 2026-10-28. The core runs downloaded code, checked
+  against the SHA-256 digest GitHub publishes for the release (no signature of EasyTier's), as root
+  or SYSTEM in the helper modes. Every session through it comes from loopback, so the login limits
+  count them together and one device in the network can slow logins for the others.
+
 - On a machine without a working credential store (or with it locked) the identity is not
   persisted.
 - The temporary password can be shown and copied by anyone at the unlocked desktop; the tray never

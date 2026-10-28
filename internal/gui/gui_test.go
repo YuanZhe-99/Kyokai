@@ -121,6 +121,15 @@ func TestViewsRender(t *testing.T) {
 		"about-licenses":      func(a *App) { a.page, a.showLicenses = pageAbout, true },
 		"network-none":        func(a *App) { a.page, a.net = pageNetwork, netState{loaded: true} },
 		"network-add":         func(a *App) { a.page, a.net = pageNetwork, netState{loaded: true, form: &netForm{}} },
+		"network-easytier": func(a *App) {
+			p := localapi.NetworkProfile{ID: "a1", Name: "home", Servers: []string{"tcp://public.easytier.cn:11010"}, HasSecret: true, Joined: true,
+				TOML: "mtu = 1300\n[flags]\nenable_kcp_proxy = true\n", Options: []string{"mtu", "flags.enable_kcp_proxy"}}
+			a.page, a.net = pageNetwork, netState{loaded: true, coresAsked: true, easytier: "v2.7.0", profiles: []localapi.NetworkProfile{p},
+				cores: &localapi.Cores{Installed: []string{"v2.7.0"}, Releases: []localapi.CoreRelease{{Tag: "v2.7.0", Prerelease: true}, {Tag: "v2.6.4"}}},
+				form:  &netForm{id: "a1", name: "home", servers: p.Servers[0], hasSecret: true, toml: p.TOML}}
+			a.status.Network.Networks = []localapi.NetworkState{{ID: "a1", Label: "home", Joined: true,
+				NetworkNode: localapi.NetworkNode{State: "online", Address: "10.126.126.1", Unreachable: "port 47310 taken"}}}
+		},
 		"home-connect": func(a *App) {
 			a.status.Network.State = "online"
 			a.connect = connectForm{target: "657 365 333"}

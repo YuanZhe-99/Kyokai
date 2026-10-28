@@ -95,7 +95,10 @@ library path. On macOS the tests that start a real core (`cargo test`, the ABI s
 and delete it when they finish; the Rust and Go tests fail if theirs remains. `ctl network-set` (the first network) and `ctl network-profile` (add one, or change
 the one `--network` names) take the network secret from `KYOKAI_NETWORK_SECRET`, never from the
 command line; `ctl network` and `ctl networks` show the settings without it, `ctl network-remove`
-forgets one and `ctl network-direct` sets direct paths for all of them. Two engines with different
+forgets one and `ctl network-direct` sets direct paths for all of them. `ctl cores` lists the
+official EasyTier cores downloaded and downloadable, `ctl core-install --tag <tag>` downloads one,
+`ctl network-backend --easytier <tag>` runs the networks on it (no `--easytier`: Kyokai Network) and
+`ctl network-profile --toml-file <file>` sets a network's EasyTier options. Two engines with different
 profiles, state directories and sockets on one machine see each other through the same network:
 with no outside server, one engine with direct paths on lists a server that answers nowhere
 (`tcp://127.0.0.1:9`) and the other lists that engine's listen port at this machine's own address

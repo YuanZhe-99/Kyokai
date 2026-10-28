@@ -65,6 +65,14 @@ who a device is gets proven when you connect. Connecting by Device ID tries ever
 that lists the device, direct paths first. **Edit** changes a network; **Remove** leaves it and
 forgets its settings.
 
+**Runs on** chooses what your networks run on: **Kyokai Network**, built in, or an official
+EasyTier release, which Kyokai downloads from EasyTier's GitHub releases and checks when you
+choose it. With EasyTier, each network's **Edit** also shows **EasyTier options**, TOML for that
+core (listeners, MTU, its `[flags]`); the servers, name and secret stay in their own fields.
+Switching back to Kyokai Network asks first only when a network has such options, and removes
+them; without any, you can switch back and forth freely. Other devices reach this one through
+EasyTier only while no other program here uses port 47310 (the network then says so).
+
 Connections go through the server unless you switch on **Try direct connections** (under Advanced in Network; it applies
 at once), which is faster where both networks allow it; Windows may then ask to let Kyokai through
 its firewall, and a Mac to let it find devices on the local network. On one network it is enough on

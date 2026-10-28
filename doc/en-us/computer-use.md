@@ -280,7 +280,7 @@ Accessibility permission on the controlling Mac, and without it the viewer works
 says so). A Mac's tap takes the keys going to Kyokai while a viewer grabs, by their Mac key codes
 turned into the PC scan codes the host maps back (Command is the Windows key); keys no scan code
 names (Fn, the media keys) stay the Mac's, and Caps Lock, which a Mac reports only as it toggles,
-goes as a press and a release. The tap takes keys only while Kyokai owns the frontmost window and
+goes as a press and a release. The tap takes keys only while Kyokai is the frontmost application and
 the viewer reads them (it lets every key pass when either stops), a viewer whose pane is hidden or
 whose connection ended releases its grab, and the tap is switched off and invalidated with its
 thread (left installed, it froze every program's keyboard until Kyokai quit). Each tap turns itself
@@ -302,8 +302,10 @@ dismissed), and the grab comes back with the choice or the next pointer movement
 The core takes the keys only while Kyokai's window is in front; on Windows
 also only while it is the topmost window at the pointer (the root of `WindowFromPoint` is the
 foreground window), so another program's window over the pointer takes them back, and keys the
-grab sent down are released on the host. A Mac's tap asks only for the frontmost window and leaves
-the pointer to the viewer's grab (0.5.4 also asked that Kyokai own the window at the event's
+grab sent down are released on the host. A Mac's tap asks only that Kyokai be the frontmost
+application (NSWorkspace's, the one macOS sends the keys to; up to 0.6.5 the frontmost normal
+window of the on-screen window list stood for it, and with Kyokai's window tiled to half the screen
+the second dot turned amber and keys passed) and leaves the pointer to the viewer's grab (0.5.4 also asked that Kyokai own the window at the event's
 location, read from the whole on-screen window list, where invisible windows of other programs and
 of the system cover Kyokai's: the tap let every key pass while the viewer took itself for grabbing,
 so a Mac sent no Enter, Tab, Delete, Shift or Command — letters and digits still arrived as text —

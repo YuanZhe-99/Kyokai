@@ -2,6 +2,7 @@ package gui
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -21,6 +22,17 @@ type netState struct {
 	latencyFirst bool
 	profiles     []localapi.NetworkProfile
 	form         *netForm
+	// easytier is the official EasyTier core the networks run on (its
+	// tag), empty for Kyokai Network; cores are the ones downloaded and
+	// downloadable, once asked (coresAsked).
+	easytier   string
+	cores      *localapi.Cores
+	coresAsked bool
+}
+
+// take keeps what the engine answered of the networks.
+func (s *netState) take(n *localapi.NetworkProfiles) {
+	s.direct, s.latencyFirst, s.profiles, s.easytier = n.Direct, n.LatencyFirst, n.Profiles, n.EasyTier
 }
 
 // netForm is one network's editable settings. The secret field is
@@ -30,6 +42,8 @@ type netForm struct {
 	label, servers, name  string // servers: one URL per line
 	secret                string
 	hasSecret, weakSecret bool
+	// toml is the official core's own options (EasyTier chosen).
+	toml string
 }
 
 // maxNetworks is how many networks the engine keeps.
@@ -50,6 +64,7 @@ func (a *App) networkView(c *ui.Context) {
 			a.loadNetworks()
 		}
 		a.networkSummary(c)
+		a.engineSection(c)
 		a.networksSection(c)
 		a.section(c, "ways-in", L.SectionOtherWays(), nil, func(r *rows) { a.byAddressRows(c, r) })
 		a.advancedSection(c)
@@ -207,6 +222,9 @@ func (a *App) networkRows(c *ui.Context, r *rows, p localapi.NetworkProfile, s l
 		if s.ListenPort != 0 {
 			parts = append(parts, L.NetworkListenPort(strconv.Itoa(s.ListenPort)))
 		}
+		if s.Unreachable != "" {
+			parts, col = append(parts, L.NetworkUnreachable()), t.Warning
+		}
 	case "connecting":
 		parts = append(parts, L.NetworkConnecting())
 	case "error":
@@ -233,7 +251,7 @@ func (a *App) networkRows(c *ui.Context, r *rows, p localapi.NetworkProfile, s l
 			if m.Item(L.ActionEdit()).Chosen() {
 				a.mu.Lock()
 				a.net.form = &netForm{id: p.ID, label: p.Label, servers: strings.Join(p.Servers, "\n"), name: p.Name,
-					hasSecret: p.HasSecret, weakSecret: p.WeakSecret}
+					hasSecret: p.HasSecret, weakSecret: p.WeakSecret, toml: p.TOML}
 				a.mu.Unlock()
 			}
 			if m.Item(L.ActionRemove()).Chosen() {
@@ -273,6 +291,9 @@ func (a *App) networkRows(c *ui.Context, r *rows, p localapi.NetworkProfile, s l
 // Save needs a server and a network name.
 func (a *App) networkForm(c *ui.Context, f netForm, busy bool) {
 	t := c.Theme()
+	a.mu.Lock()
+	easytier := a.net.easytier != ""
+	a.mu.Unlock()
 	key := "net-form-" + f.id
 	edit := func(e ui.Element) {
 		if e.Changed() {
@@ -315,6 +336,11 @@ func (a *App) networkForm(c *ui.Context, f netForm, busy bool) {
 		if f.weakSecret {
 			ui.Text(c, L.NetworkSecretWeak()).FontSize(sizeSmall).TextColor(textTone(t, t.Warning))
 		}
+		if easytier {
+			field("toml", L.NetworkOptions(), L.NetworkOptionsHint(), func() {
+				edit(ui.TextArea(c.Key(key+"-toml-in"), &f.toml).FillWidth().MinHeight(tomlAreaH).Disabled(busy))
+			})
+		}
 		ready := len(lines(f.servers)) > 0 && strings.TrimSpace(f.name) != ""
 		ui.Row(c).Gap(gap).Children(func() {
 			if ui.PrimaryButton(c.Key(key+"-save"), L.ActionSave()).Disabled(busy || !ready).Clicked() {
@@ -352,7 +378,7 @@ func (a *App) loadNetworks() {
 				a.setToast(L.EngineDown(), true)
 				return
 			}
-			a.net.direct, a.net.latencyFirst, a.net.profiles = resp.Networks.Direct, resp.Networks.LatencyFirst, resp.Networks.Profiles
+			a.net.take(resp.Networks)
 		})
 	}()
 }
@@ -379,7 +405,7 @@ func (a *App) changeNetworks(req localapi.Request, done func()) {
 				a.setToast(L.EngineDown(), true)
 				a.net.loaded = false
 			default:
-				a.net.direct, a.net.latencyFirst, a.net.profiles = resp.Networks.Direct, resp.Networks.LatencyFirst, resp.Networks.Profiles
+				a.net.take(resp.Networks)
 				if done != nil {
 					done()
 				}
@@ -397,6 +423,11 @@ func (a *App) saveNetwork(f netForm) {
 	if f.secret != "" {
 		change.Secret = &f.secret
 	}
+	a.mu.Lock()
+	if a.net.easytier != "" {
+		change.TOML = &f.toml
+	}
+	a.mu.Unlock()
 	a.changeNetworks(localapi.Request{Type: localapi.RequestNetworkProfileSet, Profile: change}, func() {
 		a.net.form = nil
 		a.setToast(L.NetworkSaved(), false)
@@ -466,4 +497,152 @@ func natLabel(nat string) string {
 		return L.NatSymmetric()
 	}
 	return L.NatUnknown()
+}
+
+// engineChoice is one entry of the Runs on menu: Kyokai Network (tag "")
+// or an official EasyTier core, downloaded or to download.
+type engineChoice struct {
+	tag            string
+	pre, installed bool
+}
+
+// engineChoices are the Runs on menu's entries: Kyokai Network, then the
+// official cores this system can run, newest first, each once (one only
+// downloaded, no longer listed, after them); the one in use is always among
+// them.
+func engineChoices(cur string, cores *localapi.Cores) []engineChoice {
+	out := []engineChoice{{installed: true}}
+	has := func(tag string) bool {
+		return slices.ContainsFunc(out, func(e engineChoice) bool { return e.tag == tag })
+	}
+	var installed []string
+	if cores != nil {
+		installed = cores.Installed
+		for _, r := range cores.Releases {
+			out = append(out, engineChoice{tag: r.Tag, pre: r.Prerelease, installed: slices.Contains(installed, r.Tag)})
+		}
+	}
+	for _, tag := range append(installed, cur) {
+		if tag != "" && !has(tag) {
+			out = append(out, engineChoice{tag: tag, installed: true})
+		}
+	}
+	return out
+}
+
+// label words an entry of the Runs on menu.
+func (e engineChoice) label() string {
+	if e.tag == "" {
+		return L.NetworkEngineKyokai()
+	}
+	version := strings.TrimPrefix(e.tag, "v")
+	s := L.NetworkEngineEasyTier(version)
+	if e.pre {
+		s = L.NetworkEngineEasyTierPreview(version)
+	}
+	if !e.installed {
+		s = L.NetworkEngineToDownload(s)
+	}
+	return s
+}
+
+// optionsLost lists, one line a network, the EasyTier options that
+// switching back to Kyokai Network removes; none when no network sets any
+// (a TOML of comments only sets none), so switching back and forth without
+// changing anything asks nothing.
+func optionsLost(profiles []localapi.NetworkProfile) []string {
+	var out []string
+	for _, p := range profiles {
+		if len(p.Options) > 0 {
+			out = append(out, networkLabel(p)+": "+strings.Join(p.Options, ", "))
+		}
+	}
+	return out
+}
+
+// engineSection is Runs on: Kyokai Network, built in, or an official
+// EasyTier core, downloaded as it is chosen. The list of cores is asked
+// once the networks are loaded.
+func (a *App) engineSection(c *ui.Context) {
+	a.mu.Lock()
+	st, busy, downloading := a.net, a.busy["network"] || a.busy["cores"], a.busy["cores"]
+	a.mu.Unlock()
+	if st.loaded && !st.coresAsked {
+		a.loadCores()
+	}
+	choices := engineChoices(st.easytier, st.cores)
+	labels := make([]string, len(choices))
+	cur := ""
+	for i, e := range choices {
+		labels[i] = e.label()
+		if e.tag == st.easytier {
+			cur = labels[i]
+		}
+	}
+	ui.Box(c).Height(18).Shrink(0)
+	a.list(c, "engine", func(r *rows) {
+		r.row(c, "net-engine", tile(navNetwork), setting{title: L.NetworkEngine(), about: L.NetworkEngineAbout(), more: L.NetworkEngineHint()}, func() {
+			if downloading {
+				busyMark(c, L.NetworkEngineDownloading(), busySize)
+			}
+			if ui.Select(c.Key("net-engine-sel"), &cur, labels).Width(engineSelectW).Disabled(busy || !st.loaded).Changed() {
+				if i := slices.Index(labels, cur); i >= 0 {
+					go a.setEngine(choices[i])
+				}
+			}
+		})
+	})
+}
+
+// loadCores asks which official cores are downloaded and downloadable (a
+// request to GitHub through the engine).
+func (a *App) loadCores() {
+	a.mu.Lock()
+	a.net.coresAsked = true
+	a.mu.Unlock()
+	go func() {
+		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestCores})
+		a.update(func() {
+			if err == nil && resp.Cores != nil {
+				a.net.cores = resp.Cores
+			}
+		})
+	}()
+}
+
+// setEngine runs the networks on what was chosen: back to Kyokai Network
+// after a warning only when some network sets EasyTier options (which are
+// removed); to a core not downloaded yet after downloading it.
+// Notes: runs off the main thread (the warning is a dialog).
+func (a *App) setEngine(e engineChoice) {
+	a.mu.Lock()
+	st := a.net
+	a.mu.Unlock()
+	if e.tag == st.easytier {
+		return
+	}
+	redraw := func() { a.update(func() {}) } // the menu shows what is in use again
+	if lost := optionsLost(st.profiles); e.tag == "" && len(lost) > 0 &&
+		!a.confirm(L.NetworkEngineBackConfirm(strings.Join(lost, "\n")), L.NetworkEngineBack()) {
+		redraw()
+		return
+	}
+	if !e.installed {
+		a.update(func() { a.busy["cores"] = true })
+		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestCoreInstall, Tag: e.tag})
+		a.update(func() {
+			delete(a.busy, "cores")
+			if err == nil && resp.Cores != nil && a.net.cores != nil {
+				a.net.cores.Installed = resp.Cores.Installed
+			}
+		})
+		if err != nil {
+			a.update(func() { a.setToast(L.NetworkEngineDownloadFailed(), true) })
+			return
+		}
+	}
+	tag := e.tag
+	a.changeNetworks(localapi.Request{Type: localapi.RequestNetworkBackend, EasyTier: &tag}, func() {
+		a.setToast(L.NetworkSaved(), false)
+	})
 }

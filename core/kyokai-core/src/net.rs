@@ -6,6 +6,7 @@
 //! hints for finding a device, never proof of who it is.
 
 use crate::access::{Permission, Source};
+use crate::external::{self, External};
 use crate::session::{self, Ctx};
 use crate::store::Secrets;
 use easytier::instance::factory::{NativeCoreInstance, create_native_instance};
@@ -14,6 +15,7 @@ use easytier_core::config::toml::TomlConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::task::JoinHandle;
@@ -33,6 +35,10 @@ const MAX_LABEL: usize = 64;
 /// whitelists drop everything else. A host that accepts connections by
 /// address listens on it (TCP) on this computer's own addresses too.
 pub const KYOKAI_PORT: u16 = 47_310;
+
+/// The number the login limits count sessions through an official core
+/// under: every one comes from loopback, whichever network it crossed.
+const EXTERNAL_NETWORK: u64 = u64::MAX;
 /// The worker threads of the runtime the nodes and sessions share: half the
 /// logical processors, at least 2 and at most 4.
 fn net_workers() -> usize {
@@ -85,6 +91,10 @@ pub struct Profile {
     /// Whether this device joins it now.
     #[serde(default)]
     pub joined: bool,
+    /// The official core's own options for this network, as TOML (none of
+    /// `external::OWNED`); used only while EasyTier is chosen.
+    #[serde(default)]
+    pub toml: String,
 }
 
 impl Profile {
@@ -100,7 +110,8 @@ impl Profile {
     /// Whether a node of `self` would be a node of `other`: the same servers,
     /// network name and secret (the label changes nothing).
     fn same_node(&self, other: &Profile) -> bool {
-        (&self.servers, &self.name, &self.secret) == (&other.servers, &other.name, &other.secret)
+        (&self.servers, &self.name, &self.secret, &self.toml)
+            == (&other.servers, &other.name, &other.secret, &other.toml)
     }
 
     /// The number the login limits count this network's addresses under
@@ -122,6 +133,11 @@ struct Stored {
     latency_first: bool,
     #[serde(default)]
     profiles: Vec<Profile>,
+    /// The official EasyTier core every network runs on, by its tag (a
+    /// folder of `external::CORES_DIR`); None (as before 0.6.6) runs the
+    /// embedded node: Kyokai Network.
+    #[serde(default)]
+    easytier: Option<String>,
 }
 
 /// The one network 0.3.1 and earlier kept, as stored.
@@ -170,6 +186,9 @@ pub struct ProfileUpdate {
     secret: Option<String>,
     #[serde(default)]
     joined: Option<bool>,
+    /// The official core's options as TOML, replacing them.
+    #[serde(default)]
+    toml: Option<String>,
 }
 
 /// A joined network's node, or why it could not start.
@@ -177,7 +196,7 @@ struct Node {
     /// The profile it is for.
     id: String,
     /// None when the node could not be made from the settings.
-    node: Option<Arc<NativeCoreInstance>>,
+    node: Option<Core>,
     /// Starts the node, then accepts sessions; aborted when it stops.
     serving: Option<JoinHandle<()>>,
     /// Why it stopped, safe to show; None while it runs.
@@ -190,7 +209,7 @@ struct Node {
 /// and the port it listens on.
 struct NodeView {
     id: String,
-    node: Option<Arc<NativeCoreInstance>>,
+    node: Option<Core>,
     failed: Option<String>,
     listen: Option<u16>,
 }
@@ -198,6 +217,117 @@ struct NodeView {
 /// The joined networks' nodes, shared with the connections, which dial
 /// through the ones running when they dial (a resumed session too).
 type Nodes = Arc<Mutex<Vec<Node>>>;
+
+/// A network's node: the embedded one, or an official core run as a
+/// process of its own (`external`), set once it has started.
+#[derive(Clone)]
+enum Core {
+    Native(Arc<NativeCoreInstance>),
+    External(Arc<std::sync::OnceLock<External>>),
+}
+
+/// What a node knows of its network now: its own address and NAT, whether
+/// it reaches anyone, and every other node by hostname with its address,
+/// path and latency.
+struct Seen {
+    address: Option<Ipv4Addr>,
+    nat: &'static str,
+    reached: bool,
+    peers: Vec<SeenPeer>,
+}
+
+/// Another node of the network as `Seen` lists it.
+struct SeenPeer {
+    hostname: String,
+    ip: Option<Ipv4Addr>,
+    direct: bool,
+    latency: i32,
+}
+
+impl Core {
+    /// What the node knows of its network; None while an official core
+    /// starts or does not answer.
+    async fn seen(&self) -> Option<Seen> {
+        match self {
+            Core::Native(n) => {
+                let (me, peers, routes, my_peer) = (
+                    n.node_snapshot().await,
+                    n.peer_snapshots().await,
+                    n.route_snapshots().await,
+                    n.peer_id(),
+                );
+                let reached = peers.iter().any(|p| p.conns.iter().any(|c| !c.is_closed));
+                let others = routes
+                    .into_iter()
+                    .filter(|r| r.peer_id != my_peer)
+                    .map(|r| SeenPeer {
+                        direct: peers.iter().any(|p| {
+                            p.peer_id == r.peer_id && !p.directly_connected_conns.is_empty()
+                        }),
+                        ip: r.ipv4_addr.and_then(|a| a.address).map(Ipv4Addr::from),
+                        hostname: r.hostname,
+                        latency: r.path_latency,
+                    })
+                    .collect();
+                Some(Seen {
+                    address: me.ipv4_addr.map(|a| a.address()),
+                    nat: nat_name(me.stun_info.udp_nat_type),
+                    reached,
+                    peers: others,
+                })
+            }
+            Core::External(slot) => {
+                let rows = slot.get()?.peers().await?;
+                let me = rows.iter().find(|r| r.local());
+                Some(Seen {
+                    address: me.and_then(|r| r.ip()),
+                    nat: nat_name(
+                        me.and_then(|r| NatType::from_str_name(&r.nat_type))
+                            .unwrap_or(NatType::Unknown) as i32,
+                    ),
+                    reached: rows.iter().any(|r| !r.local()),
+                    peers: rows
+                        .iter()
+                        .filter(|r| !r.local())
+                        .map(|r| SeenPeer {
+                            hostname: r.hostname.clone(),
+                            ip: r.ip(),
+                            direct: r.direct(),
+                            latency: r.latency(),
+                        })
+                        .collect(),
+                })
+            }
+        }
+    }
+
+    /// Opens a connection to Kyokai's port at `ip` in the network.
+    async fn connect(&self, ip: Ipv4Addr) -> Option<Box<dyn Io>> {
+        match self {
+            Core::Native(n) => {
+                let addr = SocketAddr::new(ip.into(), KYOKAI_PORT);
+                let stream = n.data_plane_tcp_connect(addr, DIAL_TIMEOUT).await.ok()?;
+                Some(Box::new(stream))
+            }
+            Core::External(slot) => {
+                let stream = slot.get()?.connect(ip, KYOKAI_PORT, DIAL_TIMEOUT).await?;
+                Some(Box::new(stream))
+            }
+        }
+    }
+
+    /// Stops the node.
+    async fn stop(&self) {
+        match self {
+            Core::Native(n) => n.stop().await,
+            Core::External(slot) => {
+                if let Some(e) = slot.get() {
+                    e.stop().await;
+                }
+            }
+        }
+    }
+}
 
 /// The running nodes and their runtime.
 pub struct Network {
@@ -214,6 +344,15 @@ pub struct Network {
     by_address_error: Option<String>,
     /// The latest looks at known hosts' addresses (memory only).
     probes: Arc<Probes>,
+    /// Where the official cores and their runtime files are.
+    state_dir: PathBuf,
+    /// Accepts the official cores' connections on loopback while one runs
+    /// and accepting by address (which takes them then) is off.
+    local: Option<JoinHandle<()>>,
+    /// Why the cores' connections cannot be accepted (the port taken, by
+    /// another program or another Kyokai): other devices cannot reach this
+    /// one, while it still reaches them. Safe to show.
+    local_error: Option<String>,
 }
 
 impl Network {
@@ -222,7 +361,14 @@ impl Network {
     /// Side effects: starts a tokio runtime; connects to the servers.
     /// Inputs: `always_direct`, set in the helper, whose installer allowed
     /// its own executable through the firewall.
-    pub fn start(secrets: &Secrets, ctx: Arc<Ctx>, always_direct: bool) -> Result<Self, String> {
+    pub fn start(
+        secrets: &Secrets,
+        ctx: Arc<Ctx>,
+        always_direct: bool,
+        state_dir: &Path,
+    ) -> Result<Self, String> {
+        // A core that ended with Kyokai may have left its runtime file.
+        external::clean(state_dir);
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(net_workers())
             .thread_name("kyokai-net")
@@ -239,6 +385,9 @@ impl Network {
             by_address: None,
             by_address_error: None,
             probes: Arc::default(),
+            state_dir: state_dir.to_owned(),
+            local: None,
+            local_error: None,
         };
         let joined: Vec<Profile> = net
             .stored
@@ -289,10 +438,46 @@ impl Network {
                     "has_secret": !p.secret.is_empty(),
                     "weak_secret": is_weak(&p.secret),
                     "joined": p.joined,
+                    "toml": p.toml,
+                    // What switching back to Kyokai Network would remove.
+                    "options": external::parse(&p.toml).map(|d| external::keys(&d)).unwrap_or_default(),
                 })
             })
             .collect();
-        json!({"direct": self.direct(), "latency_first": self.stored.latency_first, "profiles": profiles})
+        json!({
+            "direct": self.direct(),
+            "latency_first": self.stored.latency_first,
+            "easytier": self.stored.easytier,
+            "profiles": profiles,
+        })
+    }
+
+    /// Runs every network on an official EasyTier core (its tag, a folder
+    /// of `external::CORES_DIR`) or on the embedded node (None):
+    /// `network.backend`. Back on the embedded node, the networks' own
+    /// options are removed (the GUI warned about any first).
+    /// Side effects: rewrites the secrets store; restarts every node.
+    pub fn set_backend(
+        &mut self,
+        secrets: &Secrets,
+        easytier: Option<String>,
+    ) -> Result<(), String> {
+        if let Some(tag) = &easytier
+            && external::programs(&self.state_dir, tag).is_none()
+        {
+            return Err(format!("EasyTier {tag} is not downloaded"));
+        }
+        let mut stored = self.stored.clone();
+        if easytier.is_none() {
+            for p in &mut stored.profiles {
+                p.toml.clear();
+            }
+        }
+        stored.easytier = easytier;
+        self.apply(secrets, stored)?;
+        // The by-address listener hands loopback to the cores or not.
+        self.accept_by_address();
+        Ok(())
     }
 
     /// Sets the first network as an older GUI or `ctl network-set` does
@@ -319,6 +504,7 @@ impl Network {
                 label: first.as_ref().map(|p| p.label.clone()).unwrap_or_default(),
                 servers,
                 name,
+                toml: first.as_ref().map(|p| p.toml.clone()).unwrap_or_default(),
                 secret: update
                     .secret
                     .unwrap_or_else(|| first.map(|p| p.secret).unwrap_or_default()),
@@ -376,8 +562,9 @@ impl Network {
     fn apply(&mut self, secrets: &Secrets, stored: Stored) -> Result<(), String> {
         save(secrets, &stored)?;
         let old = std::mem::replace(&mut self.stored, stored);
-        let restart_all =
-            old.direct != self.stored.direct || old.latency_first != self.stored.latency_first;
+        let restart_all = old.direct != self.stored.direct
+            || old.latency_first != self.stored.latency_first
+            || old.easytier != self.stored.easytier;
         let running: Vec<String> = self
             .nodes
             .lock()
@@ -406,6 +593,7 @@ impl Network {
         for p in &start {
             self.start_node(p);
         }
+        self.accept_local();
         Ok(())
     }
 
@@ -438,12 +626,7 @@ impl Network {
             let mut out = Vec::new();
             for NodeView { node, .. } in &nodes {
                 out.push(match node {
-                    Some(n) => Some((
-                        n.node_snapshot().await,
-                        n.peer_snapshots().await,
-                        n.route_snapshots().await,
-                        n.peer_id(),
-                    )),
+                    Some(n) => n.seen().await,
                     None => None,
                 });
             }
@@ -459,29 +642,23 @@ impl Network {
                     None => json!({"state": "off"}),
                     Some(i) => match (&nodes[i].failed, &snapshots[i]) {
                         (Some(error), _) => json!({"state": "error", "error": error}),
-                        (None, Some((me, peers, routes, my_peer))) => {
-                            let reached =
-                                peers.iter().any(|p| p.conns.iter().any(|c| !c.is_closed));
-                            let devices: Vec<Value> = routes
+                        (None, Some(seen)) => {
+                            let devices: Vec<Value> = seen
+                                .peers
                                 .iter()
-                                .filter(|r| r.peer_id != *my_peer)
                                 .filter_map(|r| {
                                     let id = r.hostname.strip_prefix("Kyokai-")?;
-                                    let direct = peers.iter().any(|p| {
-                                        p.peer_id == r.peer_id
-                                            && !p.directly_connected_conns.is_empty()
-                                    });
                                     Some(json!({
                                         "device_id": id,
-                                        "path": if direct { "direct" } else { "relay" },
-                                        "latency_ms": r.path_latency.max(0),
+                                        "path": if r.direct { "direct" } else { "relay" },
+                                        "latency_ms": r.latency.max(0),
                                     }))
                                 })
                                 .collect();
                             json!({
-                                "state": if reached { "online" } else { "connecting" },
-                                "address": me.ipv4_addr.map(|a| a.address().to_string()),
-                                "nat": nat_name(me.stun_info.udp_nat_type),
+                                "state": if seen.reached { "online" } else { "connecting" },
+                                "address": seen.address.map(|a| a.to_string()),
+                                "nat": seen.nat,
                                 "listen_port": nodes[i].listen,
                                 "devices": devices,
                             })
@@ -489,6 +666,13 @@ impl Network {
                         (None, None) => json!({"state": "connecting"}),
                     },
                 };
+                // Reaching others still works without the loopback port.
+                if entry["state"] != "error"
+                    && entry["state"] != "off"
+                    && let Some(e) = &self.local_error
+                {
+                    entry["unreachable"] = json!(e);
+                }
                 entry["id"] = json!(p.id);
                 entry["label"] = json!(p.shown());
                 entry["joined"] = json!(p.joined);
@@ -519,6 +703,29 @@ impl Network {
             failed: failed.clone(),
             listen,
         };
+        if let Some(tag) = self.stored.easytier.clone() {
+            let slot = Arc::new(std::sync::OnceLock::new());
+            let base = zeroize::Zeroizing::new(config_text(
+                p,
+                &self.device_id,
+                direct,
+                self.stored.latency_first,
+                listen,
+            ));
+            node.serving = Some(self.rt.spawn(serve_external(
+                slot.clone(),
+                self.state_dir.clone(),
+                tag,
+                p.clone(),
+                base,
+                failed,
+            )));
+            node.node = Some(Core::External(slot));
+            if let Ok(mut n) = self.nodes.lock() {
+                n.push(node);
+            }
+            return;
+        }
         match config(
             p,
             &self.device_id,
@@ -535,7 +742,7 @@ impl Network {
                     p.network(),
                     failed,
                 )));
-                node.node = Some(instance);
+                node.node = Some(Core::Native(instance));
             }
             Err(e) => {
                 if let Ok(mut f) = failed.lock() {
@@ -566,6 +773,9 @@ impl Network {
             if let Some(serving) = n.serving {
                 serving.abort();
             }
+            // An official core stopped as it started may have left its
+            // runtime file.
+            let _ = std::fs::remove_file(external::run_file(&self.state_dir, &n.id));
             instances.extend(n.node);
         }
         if instances.is_empty() {
@@ -633,6 +843,7 @@ impl Network {
         self.by_address_error = None;
         let by = self.ctx.access.by_address();
         if !by.on {
+            self.accept_local();
             return;
         }
         let _rt = self.rt.enter();
@@ -647,6 +858,7 @@ impl Network {
             }
         };
         let ctx = self.ctx.clone();
+        let external = self.stored.easytier.is_some();
         self.by_address = Some(self.rt.spawn(async move {
             loop {
                 let accepted = match &v6 {
@@ -661,18 +873,66 @@ impl Network {
                     tokio::time::sleep(BIND_RETRY).await;
                     continue;
                 };
-                if !by.admits(from.ip()) {
+                let ip = from.ip().to_canonical();
+                // With an official core, loopback is how it hands over the
+                // network's connections (`accept_local` otherwise).
+                let network = if external && ip.is_loopback() {
+                    EXTERNAL_NETWORK
+                } else if by.admits(ip) {
+                    0
+                } else {
                     continue; // dropped: closed without a word
-                }
+                };
                 let _ = stream.set_nodelay(true);
-                tokio::spawn(session::serve(
-                    ctx.clone(),
-                    stream,
-                    Source {
-                        network: 0,
-                        ip: from.ip().to_canonical(),
-                    },
-                ));
+                tokio::spawn(session::serve(ctx.clone(), stream, Source { network, ip }));
+            }
+        }));
+        self.accept_local();
+    }
+
+    /// Starts or stops accepting an official core's connections on
+    /// loopback: while EasyTier is chosen and accepting by address, whose
+    /// listener takes them then, is off.
+    /// Side effects: binds or closes `127.0.0.1:KYOKAI_PORT`; a port taken
+    /// fails every official core's network, saying so.
+    fn accept_local(&mut self) {
+        let want = self.stored.easytier.is_some() && self.by_address.is_none();
+        if !want {
+            self.local_error = None;
+        }
+        if want == self.local.is_some() {
+            return;
+        }
+        if let Some(task) = self.local.take() {
+            task.abort();
+            let _ = self.rt.block_on(task);
+            return;
+        }
+        let _rt = self.rt.enter();
+        let listener = match std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, KYOKAI_PORT))
+            .and_then(|l| l.set_nonblocking(true).map(|()| l))
+            .and_then(tokio::net::TcpListener::from_std)
+        {
+            Ok(l) => l,
+            Err(e) => {
+                self.local_error = Some(format!("port {KYOKAI_PORT}: {e}"));
+                return;
+            }
+        };
+        self.local_error = None;
+        let ctx = self.ctx.clone();
+        self.local = Some(self.rt.spawn(async move {
+            loop {
+                let Ok((stream, from)) = listener.accept().await else {
+                    tokio::time::sleep(BIND_RETRY).await;
+                    continue;
+                };
+                let _ = stream.set_nodelay(true);
+                let source = Source {
+                    network: EXTERNAL_NETWORK,
+                    ip: from.ip(),
+                };
+                tokio::spawn(session::serve(ctx.clone(), stream, source));
             }
         }));
     }
@@ -698,7 +958,10 @@ impl Network {
 
 impl Drop for Network {
     fn drop(&mut self) {
-        if let Some(task) = self.by_address.take() {
+        for task in [self.by_address.take(), self.local.take()]
+            .into_iter()
+            .flatten()
+        {
             task.abort();
         }
         let all: Vec<String> = self
@@ -759,8 +1022,40 @@ async fn serve_node(
     }
 }
 
+/// Starts a network's official core, then watches it: a core that
+/// stops leaves the network failed, with why.
+/// Side effects: records why the core could not start in `failed`.
+async fn serve_external(
+    slot: Arc<std::sync::OnceLock<External>>,
+    state_dir: PathBuf,
+    tag: String,
+    p: Profile,
+    base: zeroize::Zeroizing<String>,
+    failed: Arc<Mutex<Option<String>>>,
+) {
+    let fail = |why: String| {
+        if let Ok(mut f) = failed.lock() {
+            *f = Some(why);
+        }
+    };
+    let started = match external::parse(&p.toml) {
+        Ok(person) => External::start(&state_dir, &tag, &p.id, &base, &person, &p.secret).await,
+        Err(e) => Err(e),
+    };
+    let core = match started {
+        Ok(core) => slot.get_or_init(|| core),
+        Err(e) => return fail(e),
+    };
+    loop {
+        tokio::time::sleep(BIND_RETRY).await;
+        if !core.alive().await {
+            return fail(format!("EasyTier {tag} stopped"));
+        }
+    }
+}
+
 /// The nodes running now (not those that failed to start).
-fn running(nodes: &Nodes) -> Vec<Arc<NativeCoreInstance>> {
+fn running(nodes: &Nodes) -> Vec<Core> {
     nodes
         .lock()
         .map(|n| n.iter().filter_map(|n| n.node.clone()).collect())
@@ -803,12 +1098,14 @@ fn migrate(old: OldSettings) -> Stored {
             name: old.name,
             secret: old.secret,
             joined: true,
+            toml: String::new(),
         }]
     };
     Stored {
         direct: old.direct,
         latency_first: false,
         profiles,
+        easytier: None,
     }
 }
 
@@ -851,6 +1148,7 @@ fn patched(stored: &Stored, u: ProfileUpdate) -> Result<Stored, String> {
                 name: u.name.unwrap_or_default().trim().to_owned(),
                 secret: u.secret.unwrap_or_default(),
                 joined: u.joined.unwrap_or(true),
+                toml: u.toml.unwrap_or_default(),
             });
             stored.profiles.len() - 1
         }
@@ -876,6 +1174,9 @@ fn patched(stored: &Stored, u: ProfileUpdate) -> Result<Stored, String> {
             if let Some(joined) = u.joined {
                 p.joined = joined;
             }
+            if let Some(toml) = u.toml {
+                p.toml = toml;
+            }
             i
         }
     };
@@ -894,6 +1195,14 @@ fn trimmed(servers: Vec<String>) -> Vec<String> {
 fn check(stored: &Stored, i: usize) -> Result<(), String> {
     let p = &stored.profiles[i];
     validate(p)?;
+    let doc = external::parse(&p.toml)?;
+    if stored.easytier.is_none() && !external::keys(&doc).is_empty() {
+        return Err("EasyTier's own options need the official EasyTier core".into());
+    }
+    let owned = external::owned_in(&doc);
+    if !owned.is_empty() {
+        return Err(format!("Kyokai sets these itself: {}", owned.join(", ")));
+    }
     if p.joined
         && let Some(other) = stored
             .profiles
@@ -1130,17 +1439,9 @@ trait Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send {}
 impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> Io for T {}
 
 /// Opens a connection over one target.
-async fn open(target: Target, nodes: Vec<Arc<NativeCoreInstance>>) -> Option<Box<dyn Io>> {
+async fn open(target: Target, nodes: Vec<Core>) -> Option<Box<dyn Io>> {
     match target {
-        Target::Net(c) => {
-            let addr = SocketAddr::new(c.ip.into(), KYOKAI_PORT);
-            let stream = nodes
-                .get(c.node)?
-                .data_plane_tcp_connect(addr, DIAL_TIMEOUT)
-                .await
-                .ok()?;
-            Some(Box::new(stream))
-        }
+        Target::Net(c) => nodes.get(c.node)?.connect(c.ip).await,
         Target::Addr(a) => {
             let (stream, _) = connect_address(&a, DIAL_TIMEOUT).await.ok()?;
             Some(Box::new(stream))
@@ -1154,7 +1455,7 @@ async fn open(target: Target, nodes: Vec<Arc<NativeCoreInstance>>) -> Option<Box
 /// targets whose connection failed before it are `failed`.
 async fn race(
     targets: &[Target],
-    nodes: &[Arc<NativeCoreInstance>],
+    nodes: &[Core],
     failed: &mut Vec<usize>,
 ) -> Option<(usize, Box<dyn Io>)> {
     let mut set = tokio::task::JoinSet::new();
@@ -1420,12 +1721,7 @@ impl Dialer {
     /// chosen; under Auto every kept address is looked at first
     /// (`probe_address`, all at once) and the routes ranked
     /// (`rank_routes`).
-    async fn targets(
-        &self,
-        nodes: &[Arc<NativeCoreInstance>],
-        device_id: &str,
-        route: &Choice,
-    ) -> Vec<Target> {
+    async fn targets(&self, nodes: &[Core], device_id: &str, route: &Choice) -> Vec<Target> {
         match route {
             Choice::Network => candidates(nodes, device_id)
                 .await
@@ -1514,7 +1810,7 @@ async fn dial(
     ctx: &Arc<Ctx>,
     id: u64,
     stop: &Arc<tokio::sync::Notify>,
-    nodes: &[Arc<NativeCoreInstance>],
+    nodes: &[Core],
     targets: &[Target],
     device_id: &str,
     password: &zeroize::Zeroizing<String>,
@@ -1586,26 +1882,23 @@ fn order(candidates: &mut [Candidate]) {
 
 /// The routes that announce `device_id` in every joined network (at most
 /// MAX_CANDIDATES in each), in `order`.
-async fn candidates(nodes: &[Arc<NativeCoreInstance>], device_id: &str) -> Vec<Candidate> {
+async fn candidates(nodes: &[Core], device_id: &str) -> Vec<Candidate> {
     let hostname = format!("Kyokai-{device_id}");
     let mut candidates = Vec::new();
     for (n, node) in nodes.iter().enumerate() {
-        let peers = node.peer_snapshots().await;
+        let Some(seen) = node.seen().await else {
+            continue;
+        };
         candidates.extend(
-            node.route_snapshots()
-                .await
+            seen.peers
                 .into_iter()
                 .filter(|r| r.hostname == hostname)
                 .filter_map(|r| {
-                    let ip = r.ipv4_addr.and_then(|a| a.address).map(Ipv4Addr::from)?;
-                    let direct = peers
-                        .iter()
-                        .any(|p| p.peer_id == r.peer_id && !p.directly_connected_conns.is_empty());
                     Some(Candidate {
                         node: n,
-                        ip,
-                        direct,
-                        latency: r.path_latency,
+                        ip: r.ip?,
+                        direct: r.direct,
+                        latency: r.latency,
                     })
                 })
                 .take(MAX_CANDIDATES),
@@ -1645,6 +1938,8 @@ fn free_port(taken: &[u16]) -> Option<u16> {
 /// only by the port whitelist) and peers of other networks at its listener
 /// (`private_mode`: no relaying of foreign networks); Kyokai's sessions
 /// never use those proxies.
+/// Notes: an official core runs this same configuration, with the
+/// network's own options over it (`external::merged`).
 fn config(
     s: &Profile,
     device_id: &str,
@@ -1652,6 +1947,17 @@ fn config(
     latency_first: bool,
     listen: Option<u16>,
 ) -> anyhow::Result<TomlConfig> {
+    TomlConfig::new_from_str(&config_text(s, device_id, direct, latency_first, listen))
+}
+
+/// The text of a network's node configuration (`config`).
+fn config_text(
+    s: &Profile,
+    device_id: &str,
+    direct: bool,
+    latency_first: bool,
+    listen: Option<u16>,
+) -> String {
     // JSON string literals are valid TOML basic strings, which keeps user
     // input from changing the document's structure.
     let q = |v: &str| serde_json::to_string(v).unwrap_or_default();
@@ -1707,7 +2013,7 @@ stun_servers_v6 = []
         name = q(&s.name),
         secret = q(&s.secret),
     );
-    TomlConfig::new_from_str(&toml)
+    toml
 }
 
 /// Checks a network's settings at the local API boundary.
@@ -1856,6 +2162,7 @@ mod tests {
             name: name.into(),
             secret: secret.into(),
             joined: true,
+            toml: String::new(),
         }
     }
 
@@ -2211,6 +2518,43 @@ mod tests {
         let after = free_port(&[]);
         assert_ne!(after, Some(first), "a port another program holds");
         assert!(after.is_none_or(|p| LISTEN_PORTS.contains(&p)));
+    }
+
+    /// A network's EasyTier options need the official core, never hold a
+    /// key Kyokai sets itself, and are kept as typed otherwise.
+    #[test]
+    fn easytier_options_are_checked() {
+        let mut stored = Stored {
+            profiles: vec![profile(&["tcp://a:1"], "n", "0123456789abcdef")],
+            ..Stored::default()
+        };
+        let set = |stored: &Stored, toml: &str| {
+            patched(
+                stored,
+                ProfileUpdate {
+                    id: Some("00000000000000a1".into()),
+                    toml: Some(toml.into()),
+                    ..ProfileUpdate::default()
+                },
+            )
+        };
+        assert!(
+            set(&stored, "mtu = 1300").is_err(),
+            "options without the core"
+        );
+        // Comments only set nothing, which Kyokai Network takes too.
+        assert!(set(&stored, "# none\n").is_ok());
+        stored.easytier = Some("v2.7.0".into());
+        let refused = set(&stored, "hostname = \"x\"\n[flags]\nno_tun = false\n")
+            .err()
+            .unwrap();
+        assert!(
+            refused.contains("hostname") && refused.contains("flags.no_tun"),
+            "{refused}"
+        );
+        assert!(set(&stored, "mtu = ").is_err(), "invalid TOML");
+        let kept = set(&stored, "mtu = 1300\n").unwrap();
+        assert_eq!(kept.profiles[0].toml, "mtu = 1300\n");
     }
 
     #[test]

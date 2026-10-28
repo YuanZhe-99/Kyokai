@@ -3231,6 +3231,154 @@ func (msgs Messages) NetworkListenPort(port string) string {
 	return Catalog.Format(msgs.locale, "NetworkListenPort", map[string]any{"port": port})
 }
 
+// NetworkEngine says "Runs on"
+// in the language the app shows.
+func NetworkEngine() string { return In(i18n.Locale()).NetworkEngine() }
+
+// NetworkEngine says "Runs on"
+// in the language of msgs.
+func (msgs Messages) NetworkEngine() string {
+	return Catalog.Format(msgs.locale, "NetworkEngine", nil)
+}
+
+// NetworkEngineAbout says "Kyokai Network is built in. The official EasyTier core gives every network its own options."
+// in the language the app shows.
+func NetworkEngineAbout() string { return In(i18n.Locale()).NetworkEngineAbout() }
+
+// NetworkEngineAbout says "Kyokai Network is built in. The official EasyTier core gives every network its own options."
+// in the language of msgs.
+func (msgs Messages) NetworkEngineAbout() string {
+	return Catalog.Format(msgs.locale, "NetworkEngineAbout", nil)
+}
+
+// NetworkEngineHint says "EasyTier runs as a program of its own, without a virtual network adapter. It is downloaded from EasyTier's GitHub rel…"
+// in the language the app shows.
+func NetworkEngineHint() string { return In(i18n.Locale()).NetworkEngineHint() }
+
+// NetworkEngineHint says "EasyTier runs as a program of its own, without a virtual network adapter. It is downloaded from EasyTier's GitHub rel…"
+// in the language of msgs.
+func (msgs Messages) NetworkEngineHint() string {
+	return Catalog.Format(msgs.locale, "NetworkEngineHint", nil)
+}
+
+// NetworkEngineKyokai says "Kyokai Network (built in)"
+// in the language the app shows.
+func NetworkEngineKyokai() string { return In(i18n.Locale()).NetworkEngineKyokai() }
+
+// NetworkEngineKyokai says "Kyokai Network (built in)"
+// in the language of msgs.
+func (msgs Messages) NetworkEngineKyokai() string {
+	return Catalog.Format(msgs.locale, "NetworkEngineKyokai", nil)
+}
+
+// NetworkEngineEasyTier says "EasyTier {version}"
+// in the language the app shows.
+func NetworkEngineEasyTier(version string) string {
+	return In(i18n.Locale()).NetworkEngineEasyTier(version)
+}
+
+// NetworkEngineEasyTier says "EasyTier {version}"
+// in the language of msgs.
+func (msgs Messages) NetworkEngineEasyTier(version string) string {
+	return Catalog.Format(msgs.locale, "NetworkEngineEasyTier", map[string]any{"version": version})
+}
+
+// NetworkEngineEasyTierPreview says "EasyTier {version} (preview)"
+// in the language the app shows.
+func NetworkEngineEasyTierPreview(version string) string {
+	return In(i18n.Locale()).NetworkEngineEasyTierPreview(version)
+}
+
+// NetworkEngineEasyTierPreview says "EasyTier {version} (preview)"
+// in the language of msgs.
+func (msgs Messages) NetworkEngineEasyTierPreview(version string) string {
+	return Catalog.Format(msgs.locale, "NetworkEngineEasyTierPreview", map[string]any{"version": version})
+}
+
+// NetworkEngineToDownload says "{name} — download"
+// in the language the app shows.
+func NetworkEngineToDownload(name string) string {
+	return In(i18n.Locale()).NetworkEngineToDownload(name)
+}
+
+// NetworkEngineToDownload says "{name} — download"
+// in the language of msgs.
+func (msgs Messages) NetworkEngineToDownload(name string) string {
+	return Catalog.Format(msgs.locale, "NetworkEngineToDownload", map[string]any{"name": name})
+}
+
+// NetworkEngineDownloading says "Downloading EasyTier…"
+// in the language the app shows.
+func NetworkEngineDownloading() string { return In(i18n.Locale()).NetworkEngineDownloading() }
+
+// NetworkEngineDownloading says "Downloading EasyTier…"
+// in the language of msgs.
+func (msgs Messages) NetworkEngineDownloading() string {
+	return Catalog.Format(msgs.locale, "NetworkEngineDownloading", nil)
+}
+
+// NetworkEngineDownloadFailed says "EasyTier could not be downloaded."
+// in the language the app shows.
+func NetworkEngineDownloadFailed() string { return In(i18n.Locale()).NetworkEngineDownloadFailed() }
+
+// NetworkEngineDownloadFailed says "EasyTier could not be downloaded."
+// in the language of msgs.
+func (msgs Messages) NetworkEngineDownloadFailed() string {
+	return Catalog.Format(msgs.locale, "NetworkEngineDownloadFailed", nil)
+}
+
+// NetworkEngineBack says "Switch to Kyokai Network"
+// in the language the app shows.
+func NetworkEngineBack() string { return In(i18n.Locale()).NetworkEngineBack() }
+
+// NetworkEngineBack says "Switch to Kyokai Network"
+// in the language of msgs.
+func (msgs Messages) NetworkEngineBack() string {
+	return Catalog.Format(msgs.locale, "NetworkEngineBack", nil)
+}
+
+// NetworkEngineBackConfirm says "Kyokai Network cannot use these EasyTier options. They will be removed:\n\n{options}"
+// in the language the app shows.
+func NetworkEngineBackConfirm(options string) string {
+	return In(i18n.Locale()).NetworkEngineBackConfirm(options)
+}
+
+// NetworkEngineBackConfirm says "Kyokai Network cannot use these EasyTier options. They will be removed:\n\n{options}"
+// in the language of msgs.
+func (msgs Messages) NetworkEngineBackConfirm(options string) string {
+	return Catalog.Format(msgs.locale, "NetworkEngineBackConfirm", map[string]any{"options": options})
+}
+
+// NetworkOptions says "EasyTier options"
+// in the language the app shows.
+func NetworkOptions() string { return In(i18n.Locale()).NetworkOptions() }
+
+// NetworkOptions says "EasyTier options"
+// in the language of msgs.
+func (msgs Messages) NetworkOptions() string {
+	return Catalog.Format(msgs.locale, "NetworkOptions", nil)
+}
+
+// NetworkOptionsHint says "TOML for the official core, for example listeners = [\"tcp://0.0.0.0:11010\"], or under [flags] enable_kcp_proxy = true…"
+// in the language the app shows.
+func NetworkOptionsHint() string { return In(i18n.Locale()).NetworkOptionsHint() }
+
+// NetworkOptionsHint says "TOML for the official core, for example listeners = [\"tcp://0.0.0.0:11010\"], or under [flags] enable_kcp_proxy = true…"
+// in the language of msgs.
+func (msgs Messages) NetworkOptionsHint() string {
+	return Catalog.Format(msgs.locale, "NetworkOptionsHint", nil)
+}
+
+// NetworkUnreachable says "other devices can't reach this one"
+// in the language the app shows.
+func NetworkUnreachable() string { return In(i18n.Locale()).NetworkUnreachable() }
+
+// NetworkUnreachable says "other devices can't reach this one"
+// in the language of msgs.
+func (msgs Messages) NetworkUnreachable() string {
+	return Catalog.Format(msgs.locale, "NetworkUnreachable", nil)
+}
+
 // NetworkName says "Network name"
 // in the language the app shows.
 func NetworkName() string { return In(i18n.Locale()).NetworkName() }

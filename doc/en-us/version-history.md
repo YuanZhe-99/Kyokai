@@ -1,5 +1,23 @@
 # Version history
 
+## 0.6.6 (2026-10-28)
+
+- Settings › Network › Runs on: besides Kyokai Network, built in, the networks can run on an
+  official EasyTier core (2.6.4, 2.7.0), downloaded from EasyTier's GitHub releases when chosen and
+  checked against the release's SHA-256 digest. Each network runs one `easytier-core` without TUN:
+  Kyokai dials through its SOCKS5 portal and is reached through the core's loopback hand-over on
+  port 47310; peers come from `easytier-cli`. With EasyTier each network gains EasyTier options, a
+  TOML field (Kyokai's own keys refused); switching back to Kyokai Network warns, naming them, only
+  when a network sets options, and removes them. The secret stays in the credential store and is
+  written only to an owner-only runtime file while the core starts. easytier-mini is not offered:
+  without TUN it cannot carry sessions. `ctl cores`, `core-install` and `network-backend`; local API
+  requests `network.backend`, `cores.list` and `cores.install` (local API 2, additions only).
+- A Mac's keyboard grab let keys pass with Kyokai's window tiled to the left half of the screen (the
+  second dot amber): it took the frontmost normal window of the on-screen window list for the
+  front, and now asks for the frontmost application. Not yet confirmed on a Mac.
+- Upstream checked, unchanged: MyGo v0.7.1, EasyTier v2.7.0, RustDesk 1.5.0 (vendored code), vcpkg
+  2026.10.16, Rust 1.99.1. ABI 7 and protocol 10 unchanged.
+
 ## 0.6.5 (2026-10-28)
 
 - On a Mac, Kyokai opened at login came up with its window although Start in the tray when opened at

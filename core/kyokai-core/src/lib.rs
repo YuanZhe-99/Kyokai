@@ -16,6 +16,7 @@ mod auth;
 mod backup;
 mod clipboard;
 mod decode;
+mod external;
 mod files;
 mod identity;
 mod input;
@@ -778,7 +779,7 @@ fn build_on(
     if let Some(agent) = &cfg.agent {
         agent::start_helper(agent.clone());
     }
-    let network = net::Network::start(&secrets, ctx.clone(), cfg.agent.is_some())?;
+    let network = net::Network::start(&secrets, ctx.clone(), cfg.agent.is_some(), &cfg.state_dir)?;
     let suspend = power::Suspend::watch(&ctx.ai);
     let mut core = Core {
         state_dir: cfg.state_dir.clone(),
@@ -1033,6 +1034,17 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 .ok_or("bad latency choice")?;
             try_core(|c| {
                 c.network.set_latency_first(c.ctx.access.secrets(), on)?;
+                Ok(c.network.profiles())
+            })
+        }
+        "network.backend" => {
+            let easytier = match &req.params["easytier"] {
+                Value::Null => None,
+                Value::String(tag) => Some(tag.clone()),
+                _ => return Err("bad network backend".into()),
+            };
+            try_core(|c| {
+                c.network.set_backend(c.ctx.access.secrets(), easytier)?;
                 Ok(c.network.profiles())
             })
         }

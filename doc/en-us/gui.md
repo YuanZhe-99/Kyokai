@@ -290,7 +290,13 @@ when `SCREENSHOT_DIR` is set.
   per line, with Save and Cancel; the row warns when it cannot listen. Last, **Advanced**: Try
   direct connections (off by default; on and fixed in the helper modes; applied as it is switched,
   [networking.md](networking.md)), its ⓘ warning that it makes this device listen and easier to
-  find, which a protocol choice does not; and Latency-first routing.
+  find, which a protocol choice does not; and Latency-first routing. Between the summary and the
+  networks, **Runs on** (`engineSection`): Kyokai Network (built in), then the official EasyTier
+  cores this system can run, newest first, marked preview or "download"; choosing one not
+  downloaded downloads it with a loading indicator, and choosing Kyokai Network asks first, naming
+  each network's EasyTier options, only when some network sets any (`optionsLost`). With EasyTier
+  chosen the network form adds **EasyTier options**, a TOML field, and a network whose loopback
+  port is taken says "other devices can't reach this one".
 - **Device names:** wherever a device appears (a confirmation, Home's devices, the panes and the sidebar, trusted
   devices, the viewer's title, the Network page) its name — the one this device's user gave it
   (`gui.json` `aliases`, never sent anywhere), else the friendly name it gives itself — goes beside

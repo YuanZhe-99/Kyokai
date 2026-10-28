@@ -3,7 +3,8 @@
 Kyokai devices reach each other through EasyTier nodes embedded in the engine (`net.rs` in the
 core): one for each network the user joined, every one announcing this device's Device ID. A node
 joins its EasyTier network through standard EasyTier servers; there is no TUN device, no
-administrator right and no custom coordination server.
+administrator right and no custom coordination server. Settings can run the networks on an official
+EasyTier core instead ([Official EasyTier core](#official-easytier-core)).
 
 ## The node
 
@@ -149,9 +150,51 @@ together, as older GUIs, Home and the viewer read it; its `networks` lists each:
 | `listen_port` | the port other devices' nodes connect to directly, when it listens (direct connections on; together: the first online network's) |
 | `devices` | other Kyokai devices the network routes to: announced Device ID, `direct` or `relay` path, latency in ms; together, each device once, by its best path (direct first, then the lowest latency) |
 | `networks` | each network kept, in the order added: its `id`, `label` (the name it is shown by), `joined` and the fields above (`off` while it is not joined) |
+| `unreachable` | with an official EasyTier core, why other devices cannot reach this one (its loopback port taken) while it still reaches them |
 
 Sessions attached to the local API receive a new status whenever it changes (re-read every
 2 seconds).
+
+## Official EasyTier core
+
+Settings › Network › **Runs on** chooses what every network runs on: **Kyokai Network**, the
+embedded node above (the default), or an official EasyTier core (`network.backend`, the core's tag
+in `easytier`; `ctl network-backend --easytier <tag>`). The engine lists EasyTier's GitHub
+releases of the 2.6 and 2.7 lines (`cores.list`, never `nightly`) for which this system has an
+asset and the release a SHA-256 digest, and downloads one when it is chosen (`cores.install`,
+`internal/cores`): the zip is checked against the digest before anything is unpacked, then
+`easytier-core`, `easytier-cli` and their libraries go into `<state>/cores/<tag>/` (the helper's
+state directory in the helper modes, written by the helper). easytier-mini is not offered: without
+TUN it has no SOCKS5 portal and does not forward a connection to its own virtual address, so it
+cannot carry Kyokai's sessions (a spike with two cores on one computer, 2026-10-28).
+
+Each joined network then runs one `easytier-core` process (`core/kyokai-core/src/external.rs`),
+without a window and with its output discarded (it prints its configuration, secret included):
+
+- **Configuration.** Kyokai's own, as for the embedded node, with the network's **EasyTier
+  options** (its `toml`, TOML) over it, tables key by key, and a SOCKS5 portal on a free loopback
+  port. The options may not set what Kyokai sets itself (`external::OWNED`: the instance name, id
+  and hostname, `network_identity`, `peer`, the portals, `tcp_whitelist`, `udp_whitelist`,
+  `flags.no_tun`, `flags.disable_quic_input`, `flags.disable_kcp_input`, `flags.private_mode`);
+  such keys and invalid TOML are refused with the reason. The servers, network name and secret
+  stay the network's own fields, the secret in the secrets store. The whole configuration is
+  written to `<state>/cores/run/<id>.toml`, owner-only, checked with the core's own
+  `--check-config`, read by the core as it starts and removed once its RPC portal answers (or it
+  fails); a run folder left by a crash is removed at the next start.
+- **Reaching others.** Kyokai dials `<virtual address>:47310` through the core's SOCKS5 portal.
+- **Being reached.** The core hands a connection to its own virtual address to
+  `127.0.0.1:<port>`, only for ports `tcp_whitelist` admits (47310). Kyokai accepts there, or, with
+  connections by address on, on that listener, taking loopback as the official core's. Every such
+  session comes from `127.0.0.1`, so the login limits count all of them together, whichever
+  device or network they came from. Only one program on a computer can hold that port: with
+  another Kyokai (an installed helper accepting by address) or another program on it, other devices
+  cannot reach this one (`unreachable`), while it still reaches them.
+- **What it knows.** Peers, addresses, paths and latency come from `easytier-cli -o json peer`
+  (the same in 2.6 and 2.7), never `node`, whose answer holds the network secret.
+
+A network whose options set nothing (no keys; comments do not count) is the same on either: Runs
+on switches both ways without a word. Back on Kyokai Network every network's options are removed,
+after a warning naming them when any network sets one. Changing Runs on restarts every network.
 
 ## Trust
 

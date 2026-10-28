@@ -1,5 +1,17 @@
 # 版本历史
 
+## 0.6.6（2026-10-28）
+
+- 设置 › 网络 › 运行于：除了内置的 Kyokai 网络，网络还可以运行在官方 EasyTier 核心（2.6.4、2.7.0）上，选中时从 EasyTier 的
+  GitHub 发布下载，并用该发布的 SHA-256 摘要校验。每个网络运行一个不带 TUN 的 `easytier-core`：Kyokai 经它的 SOCKS5 入口拨号，
+  并通过核心在端口 47310 上的回环交接被连到；对端信息来自 `easytier-cli`。使用 EasyTier 时每个网络多出 EasyTier 选项这一 TOML
+  字段（拒绝 Kyokai 自己的键）；切回 Kyokai 网络时，只有网络设置了选项才会警告并列出它们，然后移除。密钥仍在凭据存储中，只在核心
+  启动期间写入仅所有者可读的运行文件。不提供 easytier-mini：没有 TUN 时它无法承载会话。新增 `ctl cores`、`core-install` 与
+  `network-backend`；本地 API 请求 `network.backend`、`cores.list` 与 `cores.install`（本地 API 2，只有新增）。
+- Kyokai 窗口平铺到屏幕左半边时，Mac 的键盘抓取会放行按键（第二个圆点为琥珀色）：它把屏幕窗口列表中最前面的普通窗口当作最前面，
+  现在改为询问最前面的应用。尚未在 Mac 上确认。
+- 上游已检查，未变：MyGo v0.7.1、EasyTier v2.7.0、RustDesk 1.5.0（复用代码）、vcpkg 2026.10.16、Rust 1.99.1。ABI 7 与协议 10 不变。
+
 ## 0.6.5（2026-10-28）
 
 - Mac 上登录时打开的 Kyokai 即使打开了“登录时启动后隐藏到托盘”也会显示窗口：MyGo 在

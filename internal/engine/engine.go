@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/core"
+	"github.com/YuanZhe-99/Kyokai/internal/cores"
 	"github.com/YuanZhe-99/Kyokai/internal/fsutil"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	"github.com/YuanZhe-99/Kyokai/internal/version"
@@ -305,6 +306,38 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 			return localapi.Fail(localapi.CodeInvalid, "latency choice missing")
 		}
 		return h.networks("network.latency_first", map[string]bool{"latency_first": *req.LatencyFirst})
+	case localapi.RequestNetworkBackend:
+		if req.EasyTier == nil {
+			return localapi.Fail(localapi.CodeInvalid, "backend missing")
+		}
+		var tag any // null: Kyokai Network
+		if *req.EasyTier != "" {
+			tag = *req.EasyTier
+		}
+		return h.networks("network.backend", map[string]any{"easytier": tag})
+	case localapi.RequestCores:
+		out := localapi.Cores{Installed: cores.Installed(h.stateDir)}
+		releases, err := cores.Releases(ctx)
+		if err != nil {
+			out.Error = err.Error()
+		}
+		for _, r := range releases {
+			out.Releases = append(out.Releases, localapi.CoreRelease{Tag: r.Tag, Prerelease: r.Pre})
+		}
+		return localapi.Response{OK: true, Cores: &out}
+	case localapi.RequestCoreInstall:
+		releases, err := cores.Releases(ctx)
+		if err != nil {
+			return localapi.Fail(localapi.CodeInternal, "%v", err)
+		}
+		i := slices.IndexFunc(releases, func(r cores.Release) bool { return r.Tag == req.Tag })
+		if i < 0 {
+			return localapi.Fail(localapi.CodeInvalid, "EasyTier %s cannot be downloaded for this computer", req.Tag)
+		}
+		if err := cores.Install(ctx, h.stateDir, releases[i]); err != nil {
+			return localapi.Fail(localapi.CodeInternal, "%v", err)
+		}
+		return localapi.Response{OK: true, Cores: &localapi.Cores{Installed: cores.Installed(h.stateDir)}}
 	case localapi.RequestNameSet:
 		if req.Name == nil {
 			return localapi.Fail(localapi.CodeInvalid, "name missing")

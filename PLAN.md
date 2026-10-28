@@ -17,14 +17,16 @@ this file when the plan is complete.
 ## 0.6.6
 
 The official EasyTier core as an option beside Kyokai Network (decided 2026-10-28: no TUN, the
-secret only in a runtime file, every run mode).
+secret only in a runtime file, every run mode). Built and documented
+([networking.md](doc/en-us/networking.md#official-easytier-core)); what is left:
 
 | Item | Scope | Done when |
 |---|---|---|
-| Cores | the engine lists EasyTier's GitHub releases (stable 2.6.4, prerelease 2.7.0), downloads the asset for its system and architecture, checks it against the release's SHA-256 digest (refused without one), unpacks `easytier-core` and `easytier-cli` into the state directory (`cores/<tag>/`; in the helper modes the helper's protected folder) and removes ones no longer chosen; nothing runs before the check | table tests of asset choice and digest refusal; a download on Windows and macOS |
-| Backend | Settings › Network chooses Kyokai Network (the default) or EasyTier with a core; the core runs one official `easytier-core` per joined network with `no_tun`, a SOCKS5 portal and an RPC portal on free loopback ports and Kyokai's own keys (hostname `Kyokai-<id>`, `tcp_whitelist` holding 47310, instance name and id) forced over the person's TOML; the config with the secret is written only to an owner-only runtime file in the state directory while the core runs and deleted at stop and at the next start; controllers dial `vip:47310` through the SOCKS5 portal, hosts accept the core's connections on `127.0.0.1:47310`; peers, routes and latency come from `easytier-cli -o json` (`route`, `peer`); one external network's sessions count as that network's | two engines on official 2.6.4 and 2.7.0 cores connect, `ctl status` shows both online and each other, a session runs, on Windows and macOS; nothing written outside the state directory |
-| TOML | with EasyTier chosen each network gains the core's options (listeners, latency first, P2P, KCP and QUIC proxy, MTU, relay whitelist) and its TOML in an editor; the secret shows masked and stays in the credential store; Kyokai's own keys are refused in the TOML with a reason; edits are validated by the core's own `--check-config` before they apply | form ⇄ TOML round trips in table tests; a refused key and an invalid TOML keep the running network |
-| Switching | a network whose TOML is no more than what Kyokai Network's fields make switches both ways without a word; one with EasyTier-only options warns, before switching back, which options will be removed, and removes them only on confirmation | table tests of "changed" and the warning's list; switching back and forth unchanged shows nothing |
+| A whole session through official cores | the dial reached the other core's loopback hand-over, but this computer's installed helper holds port 47310 (platform-notes) | a session runs between two devices on official 2.6.4 and 2.7.0 cores, on Windows and macOS, each on a computer whose port 47310 is free; recorded in platform-notes |
+| Seen on the Mac | the cores download and run there (no Gatekeeper prompt for a binary fetched by the engine), the Runs on menu and the TOML field; the keyboard grab with the window tiled to half the screen (frontmost application) | on the maintainer's Mac, recorded in platform-notes |
+| Options checked before they apply | the TOML is parsed and Kyokai's own keys refused as it is saved, but the core's `--check-config` runs only as the network restarts, so options EasyTier itself refuses leave the network failed with its reason | saving runs `--check-config` first and keeps the running network on a refusal |
+| A form for common options | listeners, MTU and the common `[flags]` as fields over the TOML, as EasyTier MyGo has (`configdoc`, same author, GPL-3.0: relicensed for Kyokai) | form ⇄ TOML round trips in table tests |
+| Run-mode switches | a store moved into or out of the helper keeps `easytier` but not the downloaded cores, so its networks fail until the core is chosen again | the core moves with the store, or the GUI downloads it again on its own |
 
 The spike (2026-10-28, two cores on one Windows computer, no TUN): with 2.6.4 and 2.7.0, a SOCKS5
 connect through one core's portal to the other's virtual IP on a whitelisted port reached a plain

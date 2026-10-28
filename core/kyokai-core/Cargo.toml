@@ -42,9 +42,10 @@ snow = "0.10.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
-tokio = { version = "1.53", features = ["rt-multi-thread", "time", "io-util", "sync", "macros", "net"] }
+tokio = { version = "1.53", features = ["rt-multi-thread", "time", "io-util", "sync", "macros", "net", "process"] }
 # Listeners for connections by address: IPv6 beside IPv4 (only_v6).
 socket2 = "0.6.5"
+toml_edit = "0.25.17"
 uuid = { version = "1.26", features = ["v5"] }
 zeroize = "1.9.1"
 png = "0.18.1"

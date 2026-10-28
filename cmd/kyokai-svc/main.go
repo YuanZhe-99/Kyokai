@@ -8,6 +8,7 @@
 //	kyokai-svc ctl status | password | regenerate | shutdown | network | trusted [--socket P]
 //	kyokai-svc ctl network-set --server URL [--server URL…] --name N [--direct=true|false]   (the first network)
 //	kyokai-svc ctl networks | network-direct [--on]   (every network kept; try direct paths in all of them)
+//	kyokai-svc ctl cores | core-install --tag T | network-backend [--easytier T]   (official EasyTier cores; run the networks on one, or on Kyokai Network)
 //	kyokai-svc ctl network-profile [--network ID] [--label L] [--server URL…] [--name N] [--joined=true|false]   (no ID adds one)
 //	kyokai-svc ctl network-remove --network ID
 //	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
@@ -184,6 +185,9 @@ func ctl(args []string) error {
 	network := fs.String("network", "", "network-profile, network-remove: the network's id (network-profile: none adds one)")
 	label := fs.String("label", "", "network-profile: the name the network is shown by (empty: its network name)")
 	joined := fs.String("joined", "", "network-profile: join the network or leave it (true, false)")
+	tomlFile := fs.String("toml-file", "", "network-profile: a file with the official core's own options for the network (EasyTier chosen)")
+	easytier := fs.String("easytier", "", "network-backend: the official EasyTier core's tag (empty: Kyokai Network)")
+	tag := fs.String("tag", "", "core-install: the EasyTier release to download")
 	device := fs.String("device", "", "connect, forget, remove: the Device ID")
 	want := fs.String("want", localapi.PermViewScreen+","+localapi.PermControlInput, "connect: the permissions to ask for")
 	grant := fs.String("grant", "", "allow: the permissions to grant (default: all asked for); password-grants: what a correct password grants without asking (empty: none)")
@@ -243,7 +247,7 @@ func ctl(args []string) error {
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
 		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet,
-		"networks": localapi.RequestNetworkProfiles, "network-profile": localapi.RequestNetworkProfileSet, "network-remove": localapi.RequestNetworkProfileRemove, "network-direct": localapi.RequestNetworkDirect, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "capture-show": localapi.RequestCaptureShow, "no-logs": localapi.RequestLogs, "protect": localapi.RequestProtect, "helper-update": localapi.RequestHelperUpdate,
+		"networks": localapi.RequestNetworkProfiles, "network-profile": localapi.RequestNetworkProfileSet, "network-remove": localapi.RequestNetworkProfileRemove, "network-direct": localapi.RequestNetworkDirect, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "capture-show": localapi.RequestCaptureShow, "no-logs": localapi.RequestLogs, "protect": localapi.RequestProtect, "helper-update": localapi.RequestHelperUpdate, "network-backend": localapi.RequestNetworkBackend, "cores": localapi.RequestCores, "core-install": localapi.RequestCoreInstall,
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
@@ -301,6 +305,18 @@ func ctl(args []string) error {
 		if s, ok := os.LookupEnv(networkSecretEnv); ok {
 			req.Profile.Secret = &s
 		}
+		if *tomlFile != "" {
+			b, err := os.ReadFile(*tomlFile)
+			if err != nil {
+				return err
+			}
+			t := string(b)
+			req.Profile.TOML = &t
+		}
+	case "network-backend":
+		req.EasyTier = easytier
+	case "core-install":
+		req.Tag = *tag
 	case "no-logs":
 		req.LogsOff = on
 	case "protect":
@@ -415,10 +431,25 @@ func ctl(args []string) error {
 		fmt.Printf("servers %s\nname %q\nsecret set: %v (weak: %v)\ndirect paths: %v\n",
 			strings.Join(n.Servers, ", "), n.Name, n.HasSecret, n.WeakSecret, n.Direct != nil && *n.Direct)
 	case resp.Networks != nil:
-		fmt.Printf("direct paths: %v\n", resp.Networks.Direct)
+		backend := "Kyokai Network"
+		if resp.Networks.EasyTier != "" {
+			backend = "EasyTier " + resp.Networks.EasyTier
+		}
+		fmt.Printf("direct paths: %v\nrunning on: %s\n", resp.Networks.Direct, backend)
 		for _, p := range resp.Networks.Profiles {
 			fmt.Printf("network %s %q: name %q, servers %s, secret set: %v (weak: %v), joined: %v\n",
 				p.ID, p.Label, p.Name, strings.Join(p.Servers, ", "), p.HasSecret, p.WeakSecret, p.Joined)
+			if len(p.Options) > 0 {
+				fmt.Printf("  EasyTier options: %s\n", strings.Join(p.Options, ", "))
+			}
+		}
+	case resp.Cores != nil:
+		fmt.Printf("downloaded: %s\n", strings.Join(resp.Cores.Installed, ", "))
+		for _, r := range resp.Cores.Releases {
+			fmt.Printf("available: %s (prerelease: %v)\n", r.Tag, r.Prerelease)
+		}
+		if resp.Cores.Error != "" {
+			fmt.Println("releases not listed:", resp.Cores.Error)
 		}
 	case resp.DeviceID != "":
 		fmt.Println("device", resp.DeviceID)
@@ -537,6 +568,9 @@ func printStatus(s *localapi.Status) {
 			fmt.Printf(", listening on %d", each.ListenPort)
 		}
 		fmt.Printf(", %d devices\n", len(each.Devices))
+		if each.Unreachable != "" {
+			fmt.Printf("    other devices cannot reach this one: %s\n", each.Unreachable)
+		}
 	}
 	if s.LogsOff {
 		fmt.Println("no logs")

@@ -6715,8 +6715,13 @@ mod tests {
             return eprintln!("skipped: port 47310 is taken on this computer");
         }
         let host = device("0.3.0");
-        let mut net =
-            crate::net::Network::start(host.access.secrets(), host.clone(), false).unwrap();
+        let mut net = crate::net::Network::start(
+            host.access.secrets(),
+            host.clone(),
+            false,
+            &std::env::temp_dir().join("kyokai-net-test"),
+        )
+        .unwrap();
         let on = |ranges: &[&str]| ByAddress {
             on: true,
             ranges: ranges.iter().map(|r| r.to_string()).collect(),
@@ -7594,7 +7599,13 @@ mod route_tests {
     #[test]
     fn auto_takes_the_route_that_is_the_device() {
         let (host, squatter, controller) = (host(), self::host(), device("1.0.0"));
-        let net = Network::start(controller.access.secrets(), controller.clone(), false).unwrap();
+        let net = Network::start(
+            controller.access.secrets(),
+            controller.clone(),
+            false,
+            &std::env::temp_dir().join("kyokai-net-test"),
+        )
+        .unwrap();
         let rt = net.handle();
         let (good, other) =
             rt.block_on(async { (listen(host.clone()).await, listen(squatter).await) });

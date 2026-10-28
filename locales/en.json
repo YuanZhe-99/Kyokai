@@ -657,6 +657,48 @@
   "NetworkLatencyFirst": "Latency-first routing",
   "NetworkLatencyFirstHint": "Prefer the route with the lowest delay over the one with the fewest hops, in every network.",
   "NetworkListenPort": "port {port}",
+  "NetworkEngine": "Runs on",
+  "NetworkEngineAbout": "Kyokai Network is built in. The official EasyTier core gives every network its own options.",
+  "NetworkEngineHint": "EasyTier runs as a program of its own, without a virtual network adapter. It is downloaded from EasyTier's GitHub releases and checked before it runs. Other devices reach this one through it only while no other program uses port 47310 here. easytier-mini is not offered: without a virtual adapter it cannot carry Kyokai's connections.",
+  "NetworkEngineKyokai": "Kyokai Network (built in)",
+  "NetworkEngineEasyTier": "EasyTier {version}",
+  "@NetworkEngineEasyTier": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "NetworkEngineEasyTierPreview": "EasyTier {version} (preview)",
+  "@NetworkEngineEasyTierPreview": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "NetworkEngineToDownload": "{name} — download",
+  "@NetworkEngineToDownload": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "NetworkEngineDownloading": "Downloading EasyTier…",
+  "NetworkEngineDownloadFailed": "EasyTier could not be downloaded.",
+  "NetworkEngineBack": "Switch to Kyokai Network",
+  "NetworkEngineBackConfirm": "Kyokai Network cannot use these EasyTier options. They will be removed:\n\n{options}",
+  "@NetworkEngineBackConfirm": {
+    "placeholders": {
+      "options": {
+        "type": "String"
+      }
+    }
+  },
+  "NetworkOptions": "EasyTier options",
+  "NetworkOptionsHint": "TOML for the official core, for example listeners = [\"tcp://0.0.0.0:11010\"], or under [flags] enable_kcp_proxy = true. Kyokai sets the servers, network name and secret above, and its own keys, itself.",
+  "NetworkUnreachable": "other devices can't reach this one",
   "@NetworkListenPort": {
     "placeholders": {
       "port": {

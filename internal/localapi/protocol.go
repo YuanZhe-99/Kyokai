@@ -121,6 +121,9 @@ const (
 	RequestRoutesProbe          RequestType = "routes.probe"               // look at these known hosts' addresses in the background (Request.Probe); the status shows what was found
 	RequestTunnelOpen           RequestType = "tunnel.open"                // a tunnel to a device's own service (Request.Tunnel); the connection then carries its bytes
 	RequestNetworkLatencyFirst  RequestType = "network.latency_first"      // prefer the lowest-latency route in every network (Request.LatencyFirst)
+	RequestNetworkBackend       RequestType = "network.backend"            // run every network on an official EasyTier core, or Kyokai Network (Request.EasyTier)
+	RequestCores                RequestType = "cores.list"                 // the official EasyTier cores downloaded and downloadable
+	RequestCoreInstall          RequestType = "cores.install"              // download an official EasyTier core (Request.Tag)
 	RequestStoreForgetMove      RequestType = "store.forget_move"          // a parked engine (its store moved out) starts over with a new identity
 	RequestCloseControllers     RequestType = "sessions.close_controllers" // end this engine's controller sessions (a GUI that quits)
 	RequestShutdown             RequestType = "shutdown"
@@ -229,6 +232,10 @@ type Request struct {
 	Tunnel *TunnelRequest `json:"tunnel,omitempty"`
 	// LatencyFirst is RequestNetworkLatencyFirst's.
 	LatencyFirst *bool `json:"latency_first,omitempty"`
+	// EasyTier is RequestNetworkBackend's: the official core's tag, or
+	// empty for Kyokai Network; Tag is RequestCoreInstall's.
+	EasyTier *string `json:"easytier,omitempty"`
+	Tag      string  `json:"tag,omitempty"`
 	// Replace lets RequestStoreImport replace an identity that has history.
 	Replace bool `json:"replace,omitempty"`
 	// MovedTo is where RequestStoreClear's store went ("helper" or "user").
@@ -508,6 +515,8 @@ type Response struct {
 	Network *NetworkSettings `json:"network,omitempty"`
 	// Networks answers the requests about the networks kept.
 	Networks *NetworkProfiles `json:"networks,omitempty"`
+	// Cores answers RequestCores and RequestCoreInstall.
+	Cores *Cores `json:"cores,omitempty"`
 	// ID answers RequestConnect: the new session's id.
 	ID uint64 `json:"id,omitempty"`
 	// DeviceID answers RequestIdentify: the device at the address, else
@@ -664,6 +673,9 @@ type NetworkProfiles struct {
 	// LatencyFirst prefers the lowest-latency route over the fewest hops.
 	LatencyFirst bool             `json:"latency_first,omitempty"`
 	Profiles     []NetworkProfile `json:"profiles"`
+	// EasyTier is the official EasyTier core every network runs on, by its
+	// tag; empty runs Kyokai Network, the embedded node.
+	EasyTier string `json:"easytier,omitempty"`
 }
 
 // NetworkProfile is one network kept: its ID, the name shown for it (empty:
@@ -677,6 +689,11 @@ type NetworkProfile struct {
 	HasSecret  bool     `json:"has_secret"`
 	WeakSecret bool     `json:"weak_secret"`
 	Joined     bool     `json:"joined"`
+	// TOML is the official core's own options for this network (never
+	// its servers, name or secret); Options are the keys it sets, which
+	// switching back to Kyokai Network removes.
+	TOML    string   `json:"toml,omitempty"`
+	Options []string `json:"options,omitempty"`
 }
 
 // NetworkChange adds a network (no ID: Servers and Name needed, joined
@@ -690,6 +707,23 @@ type NetworkChange struct {
 	// Secret travels only towards the engine.
 	Secret *string `json:"secret,omitempty"`
 	Joined *bool   `json:"joined,omitempty"`
+	// TOML replaces the official core's options (EasyTier chosen only).
+	TOML *string `json:"toml,omitempty"`
+}
+
+// Cores are the official EasyTier cores: those downloaded, and those
+// that can be for this system (empty, with Error, when GitHub did not
+// answer).
+type Cores struct {
+	Installed []string      `json:"installed"`
+	Releases  []CoreRelease `json:"releases,omitempty"`
+	Error     string        `json:"error,omitempty"`
+}
+
+// CoreRelease is an official core that can be downloaded.
+type CoreRelease struct {
+	Tag        string `json:"tag"`
+	Prerelease bool   `json:"prerelease,omitempty"`
 }
 
 // NetworkNode is how EasyTier nodes are doing: all of them together, or one
@@ -707,6 +741,10 @@ type NetworkNode struct {
 	// directly (direct connections on), 0 when it does not listen.
 	ListenPort int             `json:"listen_port,omitempty"`
 	Devices    []NetworkDevice `json:"devices,omitempty"`
+	// Unreachable says why other devices cannot reach this one through an
+	// official EasyTier core (its loopback port taken), while it still
+	// reaches them.
+	Unreachable string `json:"unreachable,omitempty"`
 }
 
 // NetworkStatus is the engine's EasyTier nodes as they are now: all of

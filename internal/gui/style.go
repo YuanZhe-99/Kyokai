@@ -380,6 +380,8 @@ const (
 	cardPad         float32 = 16
 	gap             float32 = 12
 	inputAreaH      float32 = 72  // a multi-line input of about three lines
+	tomlAreaH       float32 = 160 // a network's EasyTier options, about eight lines
+	engineSelectW   float32 = 260 // the Runs on menu
 	aiColumnW       float32 = 720 // an AI session's conversation and box
 	aiNewW          float32 = 680 // a new session's column
 	aiMarkSize      float32 = 48  // the AI's round mark over it
