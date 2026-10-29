@@ -59,8 +59,8 @@ when they run; anything not listed here is not assumed.
 - **App services.** Tray (menu, icon), notifications (balloons on Windows), clipboard (text,
   HTML, PNG image; no change event), dialogs, shell open, a single-instance lock keyed by the app
   name, open at login, power events (lock/unlock, idle time), `App.Path` kinds (no separate
-  config kind), `Relaunch`, cancelable quit hooks. On macOS `App.WasOpenedAtLogin` (v0.7.1 and
-  before) reads the launch's Apple Event in `applicationWillFinishLaunching:`, before AppKit
+  config kind), `Relaunch`, cancelable quit hooks. On macOS `App.WasOpenedAtLogin` (through
+  v0.7.3) reads the launch's Apple Event in `applicationWillFinishLaunching:`, before AppKit
   dispatches it, so a login item always reads no; the event is current only while
   `applicationDidFinishLaunching:` runs, where `WhenReady`'s functions run too, so Kyokai reads
   it there itself (`gui.LaunchedAsLoginItem`).

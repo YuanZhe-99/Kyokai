@@ -44,8 +44,7 @@ Rust core and the Go engine already build and test on Linux with stubs (`cfg(not
 target_os = "macos")))`, `*_other.go`): no capture, no input, no keyboard grab, no credential store
 (so nothing secret persists), no peer credentials on the local API, no helper, no service. MyGo
 has a Linux backend (GTK 3, WebKitGTK 4.1, AppIndicator tray, Debian packages and an install
-script), but its `SetContentProtection` does nothing there. Before any code: MyGo v0.7.1 → v0.7.3
-(`tools/deps` reports it), following ci-cd.md.
+script), but its `SetContentProtection` does nothing there (still so in v0.7.3).
 
 Targets: x86_64 and arm64; glibc distributions from Debian
 13 / Ubuntu 24.04; GNOME and KDE Plasma on Wayland, and X11 sessions.
@@ -66,7 +65,7 @@ Targets: x86_64 and arm64; glibc distributions from Debian
 | Packaging and CI | `.deb` for amd64 and arm64 through MyGo's packager, the install script for other distributions, and an AppImage per architecture (updated in place by the signed update channel, the helper installed from it like from the others); signed app updates on Linux; CI's Rust and Go jobs gain `ubuntu-24.04` and `ubuntu-24.04-arm`; release.yml builds and attaches the packages; scripts/build.sh and smoke.sh learn Linux | a tagged build installs and updates on Debian 13 and Ubuntu 24.04, as `.deb`, through the script and as AppImage |
 | Docs | platform-notes gains a Linux section; architecture, run-modes, computer-use, security, packaging, ci-cd, development, user-guide, gui and third-party (new libraries and their licenses) in en-us and zh-cn; README and the "Decisions in force" platform line | `go run ./tools/checkdocs` passes; each doc names Linux where it names the other two |
 
-Order: the MyGo update; the engine, the local API and the credential store; capture and input on
+Order: the engine, the local API and the credential store; capture and input on
 X11 (the quickest to verify), then Wayland; codecs; the GUI; the helper; packaging and CI. The
 version moves to 0.6.7 when the user releases it.
 

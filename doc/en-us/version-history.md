@@ -1,5 +1,11 @@
 # Version history
 
+## 0.6.7 (not released)
+
+- Upstream: MyGo v0.7.3, no interface migration (its one breaking change, pinch zoom in pages, does
+  not touch Kyokai, which shows no pages). Checked, unchanged: EasyTier v2.7.0, RustDesk 1.5.0
+  (vendored code), vcpkg 2026.10.16, Rust 1.99.1 (checked 2026-10-29).
+
 ## 0.6.6 (2026-10-28)
 
 - Settings › Network › Runs on: besides Kyokai Network, built in, the networks can run on an

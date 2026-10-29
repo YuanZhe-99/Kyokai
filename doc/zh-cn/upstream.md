@@ -43,7 +43,7 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
 - **应用的窗口。** 多窗口、全屏、位置尺寸、置顶、`SetContentProtection`，以及 `NativeHandle()`（HWND / NSWindow）。
 - **应用服务。** 托盘（菜单、图标）、通知（Windows 上为气泡）、剪贴板（文本、HTML、PNG 图片；没有变化事件）、
   对话框、外部打开、按应用名称区分的单实例锁、登录时启动、电源事件（锁定/解锁、空闲时间）、`App.Path`
-  的各种目录（没有单独的 config 类）、`Relaunch`、可取消的退出钩子。macOS 上 `App.WasOpenedAtLogin`（v0.7.1 及之前）
+  的各种目录（没有单独的 config 类）、`Relaunch`、可取消的退出钩子。macOS 上 `App.WasOpenedAtLogin`（截至 v0.7.3）
   在 `applicationWillFinishLaunching:` 中读取启动的 Apple 事件，那时 AppKit 还没有分派它，所以登录项总是读到“否”；
   该事件只在 `applicationDidFinishLaunching:` 运行期间是当前事件，`WhenReady` 的函数也在那里运行，因此 Kyokai
   自己在那里读取（`gui.LaunchedAsLoginItem`）。
