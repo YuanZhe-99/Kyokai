@@ -37,6 +37,43 @@ test listens on a LAN address. **easytier-mini 2.7.0 cannot carry Kyokai session
 has no SOCKS5 portal and does not forward a connection to its own virtual IP, so it is left out
 until TUN is decided.
 
+## 0.6.7: Linux
+
+Linux as a third platform, as host and as controller (planned 2026-10-29). Starting point: the
+Rust core and the Go engine already build and test on Linux with stubs (`cfg(not(any(windows,
+target_os = "macos")))`, `*_other.go`): no capture, no input, no keyboard grab, no credential store
+(so nothing secret persists), no peer credentials on the local API, no helper, no service. MyGo
+has a Linux backend (GTK 3, WebKitGTK 4.1, AppIndicator tray, Debian packages and an install
+script), but its `SetContentProtection` does nothing there. Before any code: MyGo v0.7.1 → v0.7.3
+(`tools/deps` reports it), following ci-cd.md.
+
+Targets: x86_64 and arm64; glibc distributions from Debian
+13 / Ubuntu 24.04; GNOME and KDE Plasma on Wayland, and X11 sessions.
+
+| Item | Scope | Done when |
+|---|---|---|
+| Engine and local API | `SO_PEERCRED` in `peercred_linux.go`; the socket and state paths under `$XDG_RUNTIME_DIR` and `$XDG_STATE_HOME` (paths_unix already shared with macOS); the engine's parent watch; `kyokai-svc` under `systemd --user` for Background service | the local API tests pass on Linux, a peer of another uid is refused; a session runs between the GUI and the engine on Linux |
+| Credential store | the master key in the Secret Service (D-Bus, `org.freedesktop.secrets`: GNOME Keyring, KWallet), through a maintained crate checked with `cargo deny`; without a reachable Secret Service nothing is persisted, as today, and the interface says so | the store's tests against a real Secret Service on the dev machine; a profile survives a restart; with the service stopped, no secret file appears |
+| Capture | X11: XShm (XCB) per output, damage-driven; Wayland: the ScreenCast portal over PipeWire (DMA-BUF or shm frames), its restore token kept (persist mode "until revoked") so the host user is asked once, not per session, unattended hosts relying on it and the docs naming where a compositor drops it; the cursor as metadata; multi-monitor and scaling mapped to Kyokai's display model | a controller sees a Linux host's displays on GNOME Wayland, KDE Wayland and an X11 session, recorded in platform-notes |
+| Input | X11: XTest; Wayland: the RemoteDesktop portal (libei where the portal offers it, the portal's notify calls otherwise), sharing the ScreenCast session so one consent covers both; uinput only in the helper modes (it needs `/dev/uinput`); the local-input watch that revokes the AI lease (XInput2 raw events; on Wayland, input reaching Kyokai's own surface plus the portal session's state, the gap written down) | the input tests' two-machine run with a Linux host; local input takes over the AI lease on X11 and Wayland, recorded in platform-notes |
+| Hide Kyokai from capture | MyGo cannot exclude a window on Linux, so the capture path does it: on X11, Kyokai's own windows (by its `_NET_WM_PID` and the window IDs MyGo reports) blacked out in each frame and remote input inside them dropped; on Wayland, where Kyokai cannot learn where its windows are, they hide to the tray while a remote session controls the host, and requests and approvals come as notifications plus a small window that remote input never reaches (the session is paused while it shows) | the exclusion's table tests (window rectangles to masks); on each session type a live check that no Kyokai window is in the picture or reachable while controlled |
+| Codecs | VP9 and AV1 in software (libvpx, libaom: the vcpkg triplets gain `x64-linux` and `arm64-linux`); H.264 / HEVC through VA-API where present, software decode otherwise; nothing allocates per frame | encode and decode times in the viewer's tooltip on the dev machine; a session Linux ↔ Windows and Linux ↔ macOS in each codec |
+| Keyboard grab, clipboard, audio, power | the grab: X11 `XGrabKeyboard`, Wayland the keyboard-shortcuts-inhibit protocol (what MyGo exposes decides; GNOME asks the user); clipboard text and files through MyGo; audio from the default sink's monitor (PipeWire / PulseAudio); keeping awake through logind's `Inhibit` | each as host and controller on the dev machine, recorded in platform-notes |
+| AI on a Linux host | the desktop facts the executor reads (the foreground window and its process: EWMH on X11; on Wayland only what the portals give, so the AI sees less there and the docs say so); screenshots from the same capture | an AI task with approvals and take-over on a Linux host, on X11 and Wayland |
+| Privileged helper | a systemd system service installed through `pkexec` (one administrator prompt, polkit), the `kyokai` group, protected copies under `/usr/lib/kyokai` or `/opt/kyokai`, the socket under `/run/kyokai`, verifying the bytes it installs (signature over the package, as the update channel signs); uinput for input, no greeter or lock-screen capture (GDM and SDDM on Wayland do not allow it) | install, update and uninstall on the dev machine with the prompt only then; the run-modes tests on Linux |
+| GUI | the tray (AppIndicator, which GNOME shows only with its extension: the first-run tour says so), notifications, autostart for Follow Kyokai (`~/.config/autostart`), the Privacy step's Linux permissions (the portal consent instead of system settings), the views in each language | the native app inspected on GNOME Wayland and KDE (screenshots), `go tool mygo vet` and the view tests in CI on Linux |
+| Official EasyTier core | the Linux release assets of 2.6.4 and 2.7.0 in the core picker; Kyokai Network in-process as on the other systems | a network on each core on Linux |
+| Packaging and CI | `.deb` for amd64 and arm64 through MyGo's packager, the install script for other distributions, and an AppImage per architecture (updated in place by the signed update channel, the helper installed from it like from the others); signed app updates on Linux; CI's Rust and Go jobs gain `ubuntu-24.04` and `ubuntu-24.04-arm`; release.yml builds and attaches the packages; scripts/build.sh and smoke.sh learn Linux | a tagged build installs and updates on Debian 13 and Ubuntu 24.04, as `.deb`, through the script and as AppImage |
+| Docs | platform-notes gains a Linux section; architecture, run-modes, computer-use, security, packaging, ci-cd, development, user-guide, gui and third-party (new libraries and their licenses) in en-us and zh-cn; README and the "Decisions in force" platform line | `go run ./tools/checkdocs` passes; each doc names Linux where it names the other two |
+
+Order: the MyGo update; the engine, the local API and the credential store; capture and input on
+X11 (the quickest to verify), then Wayland; codecs; the GUI; the helper; packaging and CI. The
+version moves to 0.6.7 when the user releases it.
+
+Decided 2026-10-29 (also under Decided): Wayland hides Kyokai to the tray while controlled; the
+portal's restore token is accepted for unattended Wayland hosts; the helper ships in 0.6.7;
+`.deb`, the install script and AppImage.
+
 ## 0.7.0
 
 The AI update.
@@ -121,6 +158,11 @@ lead to the rows above. What they found that the rows rely on:
 
 ## Decided
 
+- Linux (2026-10-29): 0.6.7 brings Linux as host and controller with all three run modes (the
+  privileged helper included); on Wayland Kyokai's windows hide to the tray while a remote session
+  controls the host, requests and approvals as notifications plus a small window remote input never
+  reaches; unattended Wayland hosts rely on the portal's restore token; packages are `.deb`, the
+  install script and AppImage (no RPM, no Flatpak).
 - The first-run tour (2026-10-25): approved as the design canvas draws it — nine steps on macOS, eight on Windows (Keep it awake added, with the Windows display note); the computers as drawn there (front left, no perspective, the mark square on the top); Skip to No privileges; shown again from General; README credits Arion's onboarding (no code). Version 0.6.4.
 
 - The agent backend (2026-10-23): Pi, in a sidecar Kyokai builds on `pi-coding-agent`'s SDK —
