@@ -358,7 +358,7 @@ func codecChoices(offer []string) (names, labels []string) {
 // hardware or software, as it reported.
 func implLabel(i codecImpl) string {
 	name := map[string]string{"videotoolbox": "VideoToolbox", "media-foundation": "Media Foundation",
-		"libvpx": "libvpx", "libaom": "libaom"}[i.name]
+		"va-api": "VA-API", "ffmpeg": "FFmpeg", "libvpx": "libvpx", "libaom": "libaom"}[i.name]
 	switch {
 	case name == "":
 		return L.ViewerImplUnknown()

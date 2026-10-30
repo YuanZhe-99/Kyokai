@@ -34,7 +34,7 @@
 | `internal/core` | 通过 purego 绑定 Rust 核心 |
 | `internal/fsutil` | 原子写入与 JSON 文档 |
 | `internal/version` | 唯一的产品版本 |
-| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`）、屏幕采集与编解码器（`video`；Media Foundation 为 `mf`，VideoToolbox 为 `vt`，libvpx 与 libaom 为 `soft`，H.264 与 HEVC 的封装格式为 `annexb`）、被控端的声音（`audio`、`opus`）、输入服务（`input`）、查看窗口的键盘抓取（`keyboard`）、NanoKVM USB（`kvm`：它的采集卡、经串口的键盘和鼠标）、AI 任务（`ai`：服务商、任务运行时及其驱动的桌面）、登录密钥（`keys`）、通往被控端自身服务的隧道（`tunnel`）、被控端的状态（`system`）及其查看者（`watch`） |
+| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`）、屏幕采集与编解码器（`video`；Media Foundation 为 `mf`，VideoToolbox 为 `vt`，VA-API 的 H.264 与 HEVC 为 `va`，系统的 FFmpeg 为 `ff`，libvpx 与 libaom 为 `soft`，H.264 与 HEVC 的封装格式为 `annexb`）、被控端的声音（`audio`、`opus`）、输入服务（`input`）、查看窗口的键盘抓取（`keyboard`）、NanoKVM USB（`kvm`：它的采集卡、经串口的键盘和鼠标）、AI 任务（`ai`：服务商、任务运行时及其驱动的桌面）、登录密钥（`keys`）、通往被控端自身服务的隧道（`tunnel`）、被控端的状态（`system`）及其查看者（`watch`） |
 | `core/third_party/rustdesk-codec` | 复用的 RustDesk libvpx 与 libaom 编解码器，以及 vcpkg 构建的静态库（[computer-use.md](computer-use.md)） |
 | `core/third_party/rustdesk-dxgi` | 复用的 RustDesk DXGI 与 GDI 屏幕采集（[computer-use.md](computer-use.md)） |
 | `core/third_party/rustdesk-qos` | 复用的 RustDesk 视频 QoS |

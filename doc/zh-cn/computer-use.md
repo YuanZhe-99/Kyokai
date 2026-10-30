@@ -13,7 +13,7 @@
 | 编码（软件） | 被控端引擎 | 通过 libvpx 编码 VP9（`vp9-sw`）与 VP8，通过 libaom 编码 AV1——使用 RustDesk 的封装（`core/third_party/rustdesk-codec`）与设置：实时模式、按基础码率的 RustDesk 画质系数进行 CBR、每 4 秒及按需生成关键帧；VP9 profile 1 与 AV1 profile 1 承载 4:4:4 |
 | 传输 | 会话 | 媒体分片在 Noise 通道中传输（[protocol.md](protocol.md)）；最多只有一帧等待会话：采集循环只在会话有空位容纳下一帧时才取画面——空位由确认腾出，会话把它告诉采集（助手则连同帧率与码率告诉其代理）——因此发出的是最新的画面，而不是在网络后面或为确认等过的画面。被控端最多领先控制端的确认 3 帧（`received`，在每帧最后一个分片到达时发送），因此在慢速路径上（每秒只能传几百 kbit 的中继），帧在采集处等待，而不是在传输的缓冲区中堆积，画面与延迟探测只落后一个往返时间，而不是几秒。每个控制端都通过有序、可靠的流确认每一帧，因此确认迟到意味着路径慢，从不意味着帧丢失：被控端无论多久都等待确认（断开的连接会在 15 秒的空闲时限时结束），并在 5 秒后记录一次“路径慢”（像 RustDesk 的有界等待那样在 3 秒后把帧视为丢失，会每 3 秒再往一条还没送达上几帧的路径上发送三帧与一个新的关键帧；在每秒几百 kbit 的路径上，积压无限增长，延迟达到数秒，画面冻结，输入暂停，会话大约每 25 秒断开并恢复一次）。会话把分片交给它自己的写入器，写入器把输入、确认、声音与会话的其他消息排在等待中的视频分片之前发送（[protocol.md](protocol.md) 的“会话消息”）。助手会话代理的帧按其采集速度到达，得到与被控端领先帧数一样多的位置；找不到位置的帧会被丢弃，其后的帧也一直丢弃到下一个关键帧，并请代理发送关键帧，在丢弃期间每 250 毫秒再请求一次（找不到位置的关键帧也算） |
 | 转发 | 控制端引擎 | 会话的媒体队列 → 本地 API 的 `session.media`；落后 3 帧的界面会丢弃正在等待的帧（其中最新的关键帧除外）以及其后直到下一个关键帧的帧（缺少前面的帧就无法解码），控制端会向被控端请求关键帧，在它到达之前每秒再请求一次，用它自己的计时器（静止的屏幕不发送任何可等的东西） |
-| 解码 | 界面 | 界面自己加载的核心（`kyokai_decoder_*`）：`h264`、`hevc` 与 `vp9` 用低延迟模式下 Media Foundation 的解码器（H.264 用 Microsoft 的，HEVC 与 VP9 用应用商店的视频扩展；HEVC 以及 GPU 有 H.264 解码器时的 H.264 经 Direct3D 11 在 GPU 上解码，与 Mac 用 VideoToolbox 解码两者一样），NV12 转为 RGBA，并裁剪为视频流的尺寸，像读取 VideoToolbox 的像素缓冲一样直接在解码器的缓冲区中读取（GPU 表面按其自身的行距映射）；在 macOS 上 `h264` 与 `hevc` 用 VideoToolbox；`vp9-sw`、`vp8` 与 `av1` 用 libvpx 或 libaom，I420 或 I444 转为 RGBA；`mjpeg`（NanoKVM 自己的画面，[remote-services.md](remote-services.md)，“NanoKVM USB”）用 zune-jpeg 直接转为 RGBA。经 Media Foundation 的 VP9 用软件解码（它没有 Direct3D 设备）；每个解码器都会说明它是哪一个、是否用硬件运行（`kyokai_decoder_info`） |
+| 解码 | 界面 | 界面自己加载的核心（`kyokai_decoder_*`）：`h264`、`hevc` 与 `vp9` 用低延迟模式下 Media Foundation 的解码器（H.264 用 Microsoft 的，HEVC 与 VP9 用应用商店的视频扩展；HEVC 以及 GPU 有 H.264 解码器时的 H.264 经 Direct3D 11 在 GPU 上解码，与 Mac 用 VideoToolbox 解码两者一样），NV12 转为 RGBA，并裁剪为视频流的尺寸，像读取 VideoToolbox 的像素缓冲一样直接在解码器的缓冲区中读取（GPU 表面按其自身的行距映射）；在 macOS 上 `h264` 与 `hevc` 用 VideoToolbox；`vp9-sw`、`vp8` 与 `av1` 用 libvpx 或 libaom，I420 或 I444 转为 RGBA；在 Linux 上 `h264` 与 `hevc` 用系统的 FFmpeg；`mjpeg`（NanoKVM 自己的画面，[remote-services.md](remote-services.md)，“NanoKVM USB”）用 zune-jpeg 直接转为 RGBA。经 Media Foundation 的 VP9 用软件解码（它没有 Direct3D 设备）；每个解码器都会说明它是哪一个、是否用硬件运行（`kyokai_decoder_info`） |
 | 显示 | 界面 | 查看窗口的位图来自三幅画面：正在显示的、等待主线程的最新解码画面，以及下一帧要解码进去的；解码从不等待绘制，尚未绘制的画面会让位给更新的画面，新视频流的画面在其第一帧到达之前就已准备好 |
 
 有帧滞留在编码器中时，被控端会重复上一幅画面，使其在屏幕静止时也能输出。请求的关键帧会一直保持请求状态，直到真的输出一个：
@@ -49,10 +49,10 @@ GDI 采集，会在新桌面上重新打开。新的桌面复制若一秒内交�
 会话开始时，控制端会说明它能解码哪些编解码器、其中哪些能以全彩解码，被控端在开始视频之前最多等待一秒，只等一次：之后每次打开视频（恢复步骤、
 换显示器）都沿用控制端的编解码器（0.6.2 及以前，等待到期后，每当恢复步骤关闭视频它就再次生效，视频随之像对不说明编解码器的控制端那样在主显示器上
 打开——在 Mac 被控端上就是“没有共同的编解码器”占位画面，再也不变）。它依次尝试经 Media
-Foundation 的 H.264、HEVC 与 VP9（Windows 被控端）或经 VideoToolbox 的 H.264 与 HEVC（macOS 被控端），然后是软件的 VP9、AV1
+Foundation 的 H.264、HEVC 与 VP9（Windows 被控端）、经 VideoToolbox 的 H.264 与 HEVC（macOS 被控端）或 GPU 驱动支持时经 VA-API 的 H.264 与 HEVC（Linux 被控端），然后是软件的 VP9、AV1
 与 VP8，使用控制端能解码且编码器能打开的第一个——因此没有系统编解码器的被控端或控制端（Windows N）会退回到软件 VP9。控制端的
 编解码器到达时，如果被控端有空闲的硬件 HEVC 编码器，HEVC 排在 H.264 之前（Media Foundation 的在引擎进程中检查并在整个会话中保留，
-或 Mac 的媒体引擎；之后未通过试编码的 Windows 编码器退回到软件 HEVC 编码器）。Mac 控制端经 VideoToolbox 解码 H.264，以及其媒体引擎
+、Mac 的媒体引擎，或 Linux 上 VA-API 的；之后未通过试编码的 Windows 编码器退回到软件 HEVC 编码器）。Mac 控制端经 VideoToolbox 解码 H.264，以及其媒体引擎
 支持时的 HEVC；两个平台的码流都是 Annex B，所以 Mac 能解码 Windows 被控端的码流，反之亦然。
 Media Foundation 的 HEVC 与 VP9 编码器和解码器来自 GPU 或应用商店的视频扩展。控制端只在 GPU 上解码 HEVC（Direct3D 11），
 并且只在其 GPU 有 HEVC 解码器时才提供 HEVC：Qualcomm 的硬件 HEVC 编码器会把宽于 1024 像素的画面分成宽度不等的图块列，
@@ -424,7 +424,8 @@ Ctrl+Alt+Shift+Esc（紧急停止，任务运行期间有效）、托盘中的�
 | 显示器 | X11：RandR 的显示器，主显示器在前（没有标记时取最左边的），没有 RandR 时整个屏幕算一个；Wayland：门户的各个流，使用其逻辑坐标，第一个视为主显示器 |
 | 采集（Wayland） | 门户远端上该显示器的 PipeWire 流，共享内存中的 BGRx、BGRA、RGBx 或 RGBA（RGB 转为 BGR），紧凑复制；合成器只在屏幕变化时发送画面。Wayland 不告诉任何程序其他程序的窗口在哪里，因此 Kyokai 的窗口既不能涂黑，也不能让输入避开：被控端受控时界面隐藏这些窗口，仍有窗口显示时告诉引擎（`kyokai.shown`），在此期间画面保持不动，不注入任何远程或 AI 输入（松开仍会注入），除非关闭了“对采集隐藏 Kyokai” |
 | 采集 | 通过 MIT-SHM 把根窗口中该显示器的矩形读入一个 System V 共享内存段（只有本用户可读，X 服务器挂接后立即删除其名称），按显示器像素大小的 BGRA，不含指针；与上一幅相同的画面不算画面（静止屏幕），每秒最多查看 60 次；位置或大小改变的显示器视为丢失并重新打开。“对采集隐藏 Kyokai”开启时，画面离开采集前会把屏幕上可见的 Kyokai 窗口部分涂黑（每个 Kyokai 窗口减去其上方其他程序的窗口，取自窗口管理器的堆叠列表，没有时取根窗口的子窗口，每 250 毫秒读取一次）；窗口所属进程来自 X-Resource 扩展，没有时取 `_NET_WM_PID`，与其他系统一样按可执行文件判断是否为 Kyokai |
-| 编码 | 软件编解码器（`vp9-sw`、`av1`、`vp8`） |
+| 编码 | GPU 驱动能编码时经 VA-API 编码（`core/kyokai-core/src/va.rs`；每个进程探测一次），两者都是低延迟（只有 P 帧，一个参考帧）、恒定码率，量化参数上限为 38（不设上限时，Intel 的驱动把内容繁杂的屏幕的关键帧压进只够几帧的比特里，发出的是噪点；设了上限，关键帧会短暂超出码率）、每 4 秒及按需生成关键帧，Annex B，每个关键帧带参数集。**H.264** 用 `cros-codecs` 的无状态编码器（先 High，再 Main，再 Constrained Baseline；先用完整入口点，再用低功耗入口点）；按需的关键帧会重新打开编码器（1080p 约 9 毫秒），因为 `cros-codecs` 0.0.6 对强制关键帧给出的是不是 IDR 的 I 帧；每帧画面复制进驱动新建的表面（编码器拿走给它的每个表面，编码后销毁）。**HEVC** Main 直接基于 libva（`va/hevc.rs`），因为 `cros-codecs` 没有 HEVC 编码器，而 `cros-libva` 不能传递 Intel 驱动需要的打包头：Kyokai 自己写 VPS、SPS、PPS 和每个切片头（采用 FFmpeg `hevc_vaapi` 的选择：编码树块 32，编码块从 8 起，变换 4 到 32，AMP，不用 SAO 和时域运动矢量预测，图像顺序计数 12 位，每个切片带自己的单帧参考集；驱动报告块尺寸和特性属性时按它们来），切片由驱动编码；一个输入表面和两个重建表面只创建一次，编码缓冲区为 3 × 宽 × 高 + 64 KB（FFmpeg 的大小）。画面先转换成自己的 NV12。驱动支持 HEVC 时 HEVC 排在 H.264 之前。然后是软件编解码器（`vp9-sw`、`av1`、`vp8`） |
+| 解码 | H.264 与 HEVC 经系统的 FFmpeg 解码（`core/kyokai-core/src/ff.rs`：libavcodec 58 到 62，像 Firefox 一样在运行时加载，单线程、低延迟，4:2:0 转为 RGBA），只有能加载且带该解码器时才提供；软件编解码器始终可用。不用 GPU：`cros-codecs` 解码进 GBM 缓冲区，而 Mesa 不能经 GBM 分配 NV12 缓冲区；Kyokai 自己的缓冲区拿回来的是驱动的平铺布局（Intel，2026-10-30） |
 | 输入 | XTest：在根窗口上移动指针与按键，滚轮按整格作为按钮 4–7，命名按键与扫描码经 evdev 码（X 键码为 evdev 码加 8，因此按键输入什么由被控端的布局决定，符合映射模式的要求），Caps Lock 与 Num Lock 在其影响的按键之前跟随控制端；文字经空闲键码（没有 keysym 的键码）输入，每段字符一次性映射，每个字符一个键码，在其按键之前以及键码再次改变之前各留 50 毫秒（X 程序只在下次查键时才读取改变后的映射）。与其他系统一样，保护机制丢弃落在 Kyokai 窗口上的按下（指针处最上层的窗口，按键为活动窗口） |
 | 输入（Wayland） | 在门户线程上经 RemoteDesktop 门户：在显示器的流上做绝对移动，evdev 按钮与按键（扫描码按位置；锁定状态由合成器自己保持），滚轮按整格，文字作为 keysym |
 | 本地输入 | X11：主设备的 XInput 2 原始按键、按钮与移动事件，不含 XTest 的虚拟设备（Kyokai 自己的输入）；Wayland：输入设备本身（`/dev/input/event*`；Kyokai 的输入经合成器，不会出现在那里），只有 Kyokai Helper 或 `input` 组成员可以读取，因此没有它们时 Wayland 上不启动 AI 任务；两者都以 Ctrl+Alt+Shift+Esc 为紧急停止 |

@@ -125,11 +125,11 @@ jobs:
       - name: Pinned protoc
         shell: bash
         run: echo "PROTOC=$(scripts/protoc.sh)" >> "$GITHUB_ENV"
-      # The core links with libpipewire, whose bindings are generated as it
-      # builds (libclang).
+      # The core links with libpipewire and libva, whose bindings are
+      # generated as it builds (libclang); cros-codecs links libgbm.
       - name: Linux libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-dev libclang-dev nasm
+        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-dev libva-dev libgbm-dev libclang-dev nasm
       - name: Clang (Windows ARM64)
         if: matrix.os == 'windows-11-arm'
         shell: pwsh
@@ -202,11 +202,11 @@ jobs:
         shell: bash
         run: echo "PROTOC=$(scripts/protoc.sh)" >> "$GITHUB_ENV"
       # ring (EasyTier's QUIC and WireGuard) needs clang on Windows ARM64.
-      # The core links with libpipewire, whose bindings are generated as it
-      # builds (libclang).
+      # The core links with libpipewire and libva, whose bindings are
+      # generated as it builds (libclang); cros-codecs links libgbm.
       - name: Linux libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-dev libclang-dev nasm
+        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-dev libva-dev libgbm-dev libclang-dev nasm
       - name: Clang (Windows ARM64)
         if: matrix.os == 'windows-11-arm'
         shell: pwsh

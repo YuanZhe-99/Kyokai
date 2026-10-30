@@ -115,7 +115,7 @@ checksum. Then follow the [user guide](doc/en-us/user-guide.md). To build it you
 
 Requirements: Go 1.27.2, Rust 1.99.1 (`rust-toolchain.toml`), and on Windows Visual Studio
 2026 with the C++ tools for your architecture plus the "C++ Clang Compiler for Windows" component;
-on macOS Xcode command line tools; on Linux `libpipewire-0.3-dev`, `libclang-dev` and NASM. Details: [doc/en-us/development.md](doc/en-us/development.md).
+on macOS Xcode command line tools; on Linux `libpipewire-0.3-dev`, `libva-dev`, `libgbm-dev`, `libclang-dev` and NASM. Details: [doc/en-us/development.md](doc/en-us/development.md).
 
 ```bash
 scripts/build.sh               # this platform: Rust core, engine, then `mygo build`

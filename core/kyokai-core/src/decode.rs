@@ -22,6 +22,9 @@ enum Decoder {
     /// VideoToolbox's H.264 and HEVC.
     #[cfg(target_os = "macos")]
     Vt(crate::vt::Decoder),
+    /// The system's FFmpeg's H.264 and HEVC (Linux).
+    #[cfg(target_os = "linux")]
+    Ff(crate::ff::Decoder),
     /// A NanoKVM's own pictures (Raw), each a JPEG.
     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     Jpeg(crate::kvm::JpegDecoder),
@@ -32,7 +35,8 @@ struct Kept(Decoder);
 
 // SAFETY: the Media Foundation decoder is created in the multithreaded
 // apartment, whose objects may be called from any of its threads; libvpx
-// and libaom decoders and VideoToolbox sessions keep no thread affinity; the GUI
+// and libaom decoders, FFmpeg's contexts and VideoToolbox sessions keep no
+// thread affinity; the GUI
 // drives each decoder from one goroutine at a time (locked to an OS thread
 // it initialized), and the map's lock serializes every call.
 unsafe impl Send for Kept {}
@@ -72,6 +76,8 @@ pub fn open(start: &[u8]) -> Result<u64, String> {
         name if crate::vt::Codec::from_name(name).is_some() => Decoder::Vt(
             crate::vt::Decoder::new(crate::vt::Codec::from_name(name).expect("checked")),
         ),
+        #[cfg(target_os = "linux")]
+        name @ ("h264" | "hevc") => Decoder::Ff(crate::ff::Decoder::new(name)?),
         other => return Err(format!("no decoder for {other}")),
     };
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
@@ -106,13 +112,15 @@ pub fn decode(id: u64, frame: &[u8], rgba: &mut Vec<u8>) -> Result<Option<(u32, 
         Decoder::Mf { dec, width, height } => dec.decode(frame, *width, *height, rgba),
         #[cfg(target_os = "macos")]
         Decoder::Vt(dec) => dec.decode(frame, rgba),
+        #[cfg(target_os = "linux")]
+        Decoder::Ff(dec) => dec.decode(frame, rgba),
         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
         Decoder::Jpeg(dec) => dec.decode(frame, rgba),
     }
 }
 
 /// Which decoder a handle is, by name (`videotoolbox`, `media-foundation`,
-/// `libvpx`, `libaom`, `jpeg`; empty for the test pattern), and whether it decodes
+/// `ffmpeg`, `libvpx`, `libaom`, `jpeg`; empty for the test pattern), and whether it decodes
 /// in hardware, as it reports.
 /// Returns: None for an unknown handle.
 pub fn info(id: u64) -> Option<(&'static str, bool)> {
@@ -124,6 +132,8 @@ pub fn info(id: u64) -> Option<(&'static str, bool)> {
         Decoder::Mf { dec, .. } => ("media-foundation", dec.hardware()),
         #[cfg(target_os = "macos")]
         Decoder::Vt(dec) => ("videotoolbox", dec.hardware()),
+        #[cfg(target_os = "linux")]
+        Decoder::Ff(_) => ("ffmpeg", false),
         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
         Decoder::Jpeg(_) => ("jpeg", false),
     })

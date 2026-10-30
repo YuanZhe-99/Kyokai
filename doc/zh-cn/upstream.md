@@ -220,6 +220,40 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   答复固件版本（`0x30` 加上 1.0 之上的十分位）、被控机的 USB 是否已连接以及指示灯（位 0 Num、1 Caps、2 Scroll）；键盘（`0x02`）接受 8 字节
   的引导报告；绝对指针（`0x04`）接受 `02`、按键、小端的 x 与 y（0–4095）以及滚轮；设备对每条命令都有应答（`0x80` | 命令），官方应用从不等待它。
 
+## VA-API（cros-codecs 0.0.6）
+
+在这台 Debian 电脑的 Intel GPU 上核对（2026-10-30，`intel-media-va-driver-non-free` 25.2.3）：
+
+- `cros-codecs` 是为 ChromeOS 写的：它的帧用 minigbm 的视频用途标志从 GBM 分配，而 Mesa 的 GBM
+  无论用什么标志都不分配 NV12 缓冲区，所以它的 `GbmVideoFrame` 和解码器（只解码进这样的帧，其表面不公开）
+  在桌面上都不能用。Kyokai 的编码器给它一种自己的帧类型，表面由驱动分配。
+- 它的 H.264 编码器唯一公开的构造函数接受 `VideoFrame` 输入；每个输入变成一个表面，编码器用后销毁。
+- 带 `force_keyframe` 的帧给出的是不是 IDR 的 I 帧（低延迟预测器只在周期开始时传 “IDR”），解码器
+  无法从那里开始。
+- 用新的码率控制调用 `tune` 会开始新的序列：下一个 P 帧再次带上参数集；别的不变。
+- 恒定码率下量化参数由驱动决定，最高到 51，除非 `max_quality` 给它设上限；在这里低功耗入口点拒绝
+  恒定码率。
+- `cros-libva` 有 HEVC 编码参数类型，但没有打包头缓冲区，且显示句柄不公开，所以 Kyokai 的 HEVC 编码器
+  在自己的显示上使用它的原始绑定（`vaCreateBuffer` 等）。Intel 的驱动要有 VPS、SPS、PPS 的打包头（类型 1）
+  和每个切片的打包头（类型 3）才编码 HEVC 切片；打包头的类型是 `VAEncPackedHeaderTypeHEVC`，不是配置里的
+  `VA_ENC_PACKED_HEADER_*` 位（切片的位是 4，而类型 4 是原始数据）：没有切片头时视频引擎会卡死，编码
+  缓冲区报告编码错误。
+- 在这块 Gen 9 GPU 上驱动既不报告 HEVC 块尺寸也不报告特性；FFmpeg 的选择可用：编码树块 32 到 8，变换
+  4 到 32、深度 3，开启 AMP，不用 SAO 和时域运动矢量预测，P 切片的参考帧标记为 `RPS_ST_CURR_BEFORE`，
+  同位索引 255；FFmpeg 的编码缓冲区大小为 3 × 宽 × 高 + 64 KB。
+- 解码进 Kyokai 自己的内存（`USER_PTR` 表面）：驱动接受，但不管要求的线性行距，写入的都是它的 Y 平铺布局。
+
+## FFmpeg（libavcodec）
+
+系统的 libavcodec，在 Linux 上运行时加载（`ff.rs`；按 FFmpeg 7.1 的头文件核对，2026-10-30）：
+
+- `AVFrame` 以 `data[8]`、`linesize[8]`、`extended_data`、`width`、`height`、`nb_samples`、`format`
+  开头（64 位上偏移为 0、64、96、104、108、112、116），`AVPacket` 以 `buf`、`pts`、`dts`、`data`、`size`
+  开头（`data` 在 24，`size` 在 32），自 FFmpeg 2 起未变，所以同一布局适用于 libavcodec 58 到 62。
+- `AV_CODEC_ID_H264` 为 27，`AV_CODEC_ID_HEVC` 为 173，`AV_PIX_FMT_YUV420P` 为 0，`YUVJ420P` 为 12；
+  数据包的数据之后需要 64 个零字节；在 libavcodec 的句柄上 `dlsym` 也能找到 libavutil 的函数。
+- 上下文默认单线程（没有帧延迟）；`flags=+low_delay` 让 H.264 每进一帧就出一帧。
+
 ## 操作系统
 
 - **macOS：** 自 Sequoia 起，不经系统选择器采集屏幕的应用每月需要重新确认；可以免除此事的

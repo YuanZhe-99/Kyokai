@@ -57,7 +57,7 @@ Targets: x86_64 and arm64; glibc distributions from Debian
 | Capture | X11 done (MIT-SHM, computer-use.md "Linux"; left: a real two-display X11 desktop, HiDPI scaling); Wayland done in the engine (portal + PipeWire shm, restore token kept, seen on headless sway; left: GNOME and KDE, the consent dialog and the token on a real desktop, HiDPI); the cursor as metadata; multi-monitor and scaling mapped to Kyokai's display model | a controller sees a Linux host's displays on GNOME Wayland, KDE Wayland and an X11 session, recorded in platform-notes |
 | Input | X11 done (XTest, XInput 2 raw events; left: a person's own input stopping an AI task, on a real X11 desktop); Wayland done in the engine (the RemoteDesktop portal's notify calls on the ScreenCast session; the local watch from `/dev/input`, so AI tasks need the helper or the `input` group; left: a run on GNOME and KDE); uinput only in the helper modes (it needs `/dev/uinput`) | the input tests' two-machine run with a Linux host; local input takes over the AI lease on X11 and Wayland, recorded in platform-notes |
 | Hide Kyokai from capture | MyGo cannot exclude a window on Linux, so the capture path does it: on X11 done (Kyokai's windows blacked out and refused, seen on Xvfb; left: the real GUI's windows); on Wayland (engine done: `kyokai.shown` holds the picture and input; GUI left), where Kyokai cannot learn where its windows are, they hide to the tray while a remote session controls the host, and requests and approvals come as notifications plus a small window that remote input never reaches (the session is paused while it shows) | the exclusion's table tests (window rectangles to masks); on each session type a live check that no Kyokai window is in the picture or reachable while controlled |
-| Codecs | VP9 and AV1 in software (libvpx, libaom: the `x64-linux` triplet builds and its tests pass; `arm64-linux` is written but not built, and `scripts/protoc.sh` has no `linux-aarch_64` yet); H.264 / HEVC through VA-API where present, software decode otherwise; nothing allocates per frame | encode and decode times in the viewer's tooltip on the dev machine; a session Linux ↔ Windows and Linux ↔ macOS in each codec |
+| Codecs | VP9 and AV1 in software (libvpx, libaom: the `x64-linux` triplet builds and its tests pass; `arm64-linux` is written but not built, and `scripts/protoc.sh` has no `linux-aarch_64` yet); H.264 / HEVC: VA-API on hosts, FFmpeg in the viewer (0.6.10); nothing allocates per frame | encode and decode times in the viewer's tooltip on the dev machine; a session Linux ↔ Windows and Linux ↔ macOS in each codec |
 | Keyboard grab, clipboard | audio and keeping awake done (PipeWire; logind and the screen saver's inhibitors; the sleep watch). The grab: X11 `XGrabKeyboard` (Translate must let typing keys reach GTK: re-sent to the viewer's window, or Translate falls back to Legacy on Linux), Wayland the keyboard-shortcuts-inhibit protocol (what MyGo exposes decides; GNOME asks the user); clipboard text and files through MyGo and arboard (X11 and Wayland data control) | each as host and controller on the dev machine, recorded in platform-notes |
 | AI on a Linux host | the desktop facts the executor reads (the foreground window and its process: EWMH on X11; on Wayland only what the portals give, so the AI sees less there and the docs say so); screenshots from the same capture | an AI task with approvals and take-over on a Linux host, on X11 and Wayland |
 | Privileged helper | implemented and run installed (platform-notes: install, authorization, sealed key, a session through the agent, removal). Left: the GUI's switch with pkexec and the store move, self-disable, the signed update, the evdev watch from the helper for AI on Wayland, uinput | install, update and uninstall on the dev machine with the prompt only then; the run-modes tests on Linux |
@@ -73,6 +73,15 @@ version moves to 0.6.7 when the user releases it.
 Decided 2026-10-29 (also under Decided): Wayland hides Kyokai to the tray while controlled; the
 portal's restore token is accepted for unattended Wayland hosts; the helper ships in 0.6.7;
 `.deb`, the install script and AppImage.
+
+## 0.6.10: H.264 and HEVC on Linux
+
+Done: a Linux host encodes H.264 and HEVC through VA-API, a Linux viewer decodes them through the
+system's FFmpeg ([computer-use.md](doc/en-us/computer-use.md), "Linux"). Left:
+
+| Item | Scope | Done when |
+|---|---|---|
+| Seen across platforms | a Linux host's NanoKVM and screen in H.264 and HEVC to a Windows and a Mac controller; a Linux controller of a Windows and a Mac host; AMD (Mesa) and NVIDIA drivers | in platform-notes, with encode time and CPU against software VP9 |
 
 ## 0.7.0
 

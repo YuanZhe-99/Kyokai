@@ -14,6 +14,8 @@ Kyokai 采用 AGPL-3.0-only 许可。本清单列出它复用或内嵌的每个�
 | EasyTier | `EasyTier/EasyTier` v2.7.0，提交 `8b7f1f0` | P2P 网络，内嵌于引擎的核心库 | LGPL-3.0 | 无；其构建依赖 `thunk-rs` 被一个空操作 crate 取代 | 随附 LGPL 与 GPL 文本及源码位置；Kyokai 自身源码公开，用户可以重新链接 |
 | EasyTier 发布版本 | `EasyTier/EasyTier` 2.6 与 2.7 发布（`easytier-core`、`easytier-cli` 及其库） | 网络可运行的官方核心，选中时由引擎从 GitHub 下载，从不随 Kyokai 分发 | LGPL-3.0 | 无 | 对 Kyokai 无：它们不随 Kyokai 分发；EasyTier 自己的声明随每个发布提供 |
 | arboard | `1Password/arboard` 3.7.0 | 剪贴板（文本与图片，借助 `image` crate） | MIT OR Apache-2.0；其 Windows 依赖 `clipboard-win` 与 `error-code` 为 BSL-1.0 | 无 | 其声明随 `RUST_LICENSES.txt` 提供 |
+| cros-codecs、cros-libva | `chromeos/cros-codecs` 0.0.6、`chromeos/cros-libva` 0.0.12 | Linux 被控端的 VA-API：`cros-codecs` 的 H.264 编码器，以及 `cros-libva` 的 libva 绑定（核心构建时生成），HEVC 编码器直接调用它；链接进核心；libva 本身（MIT，Intel）用系统的，随核心加载 | BSD-3-Clause | 无 | 其声明随 `RUST_LICENSES.txt` 提供 |
+| FFmpeg | 系统的 `libavcodec`（58 到 62），不随应用提供 | Linux 查看窗口中的 H.264 与 HEVC 解码，运行时加载；参照 FFmpeg 的 `hevc_vaapi` 设计，未复制代码：HEVC 的编码选择、编码缓冲区的大小 | LGPL-2.1+ 或 GPL，取决于系统的构建 | 无 | 无：Kyokai 不提供也不链接 FFmpeg 的代码 |
 | libvpx | `webmproject/libvpx` 1.16.0，由 vcpkg 构建（`microsoft/vcpkg` 2026.10.16，提交 `5d4a3dc`，启用其 `realtime` 特性） | 软件 VP8 与 VP9，静态链接进核心 | BSD-3-Clause，附 Google 的额外专利授权 | 无 | 随附 `libvpx-LICENSE.txt` 与 `libvpx-PATENTS.txt`（`third_party/licenses`） |
 | Opus | `xiph/opus` 1.6.1，由 vcpkg 构建（同一提交） | 被控端的声音（48 kHz 立体声，20 毫秒一包），静态链接进核心 | BSD-3-Clause | 无（vcpkg 移植） | 随附 `opus-LICENSE.txt`（`third_party/licenses`）；Opus 另有其贡献者提供的免版税专利许可 |
 | libaom | `aomedia/aom` 3.15.2，由 vcpkg 构建（同一提交） | 软件 AV1，静态链接进核心 | BSD-2-Clause，附 Alliance for Open Media Patent License 1.0 | 无（vcpkg 移植自带的补丁） | 随附 `libaom-LICENSE.txt` 与 `libaom-PATENTS.txt`（`third_party/licenses`）；对就 AV1 提出专利主张的被许可人，专利许可终止 |

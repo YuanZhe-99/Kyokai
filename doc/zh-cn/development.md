@@ -8,7 +8,7 @@
   “C++ Clang Compiler for Windows” 组件——`ring` 在 `aarch64-pc-windows-msvc` 上需要 clang；请把 VS 安装中的 `VC\Tools\Llvm\ARM64\bin`
   加入 `PATH`（该组件不会自动加入）。Git for Windows 提供 bash 与 OpenSSL。
 - Linux（Debian 13 / Ubuntu 24.04，x86_64）：Go 与 rustup、`build-essential`、`cmake`、`ninja-build`、`pkg-config`、`nasm`
-  （x64 上的 libvpx 与 aom）、`curl`、`zip` 与 `unzip`（vcpkg），`libpipewire-0.3-dev` 与 `libclang-dev`（核心构建时生成 PipeWire 绑定；之后核心运行时需要 `libpipewire-0.3`），以及一个 Secret Service（GNOME Keyring 或 KWallet），存储才会
+  （x64 上的 libvpx 与 aom）、`curl`、`zip` 与 `unzip`（vcpkg），`libpipewire-0.3-dev`、`libva-dev`、`libgbm-dev` 与 `libclang-dev`（核心构建时生成 PipeWire 与 libva 绑定；之后核心运行时需要 `libpipewire-0.3`、`libva` 与 `libva-drm`，有 FFmpeg 的 libavcodec 时会加载它），以及一个 Secret Service（GNOME Keyring 或 KWallet），存储才会
   持久保存。不影响桌面地试验 X11 被控：`Xvfb :99` 加上 `DISPLAY=:99` 的引擎；Wayland：在自己的总线上（`dbus-run-session`）运行无头 sway（`WLR_BACKENDS=headless`，用 GL 渲染器而非 pixman）以及 `xdg-desktop-portal` 与 `xdg-desktop-portal-wlr`（`chooser_type=none`），它不询问即共享屏幕，但没有 RemoteDesktop。系统不带 vcpkg：把固定的提交（`third_party/upstream.json`）克隆到 `build/tools/vcpkg`，运行其
   `bootstrap-vcpkg.sh -disableMetrics`，并让 `VCPKG_ROOT` 指向它。Linux 移植进行中（`PLAN.md`）：核心、引擎与本地 API
   可以构建并通过测试；采集与输入尚不存在。

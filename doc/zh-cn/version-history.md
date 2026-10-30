@@ -1,5 +1,13 @@
 # 版本历史
 
+## 0.6.10（2026-10-30）
+
+- Linux 被控端在 GPU 驱动支持时经 VA-API 发送 H.264 与 HEVC，HEVC 优先，NanoKVM USB 也一样；Linux
+  查看窗口经系统的 FFmpeg 解码 H.264 与 HEVC（Debian 包现在依赖 libva 与 libavcodec）。HEVC 编码器像
+  FFmpeg 的 `hevc_vaapi` 一样，在 libva 上自己写参数集和切片头。
+- 已检查上游，未变：MyGo v0.7.3、EasyTier v2.7.0（`8b7f1f0`）、RustDesk 1.5.0、vcpkg 2026.10.16、
+  Rust 1.99.1。新增：`cros-codecs` 0.0.6、`cros-libva` 0.0.12。
+
 ## 0.6.9（2026-10-30）
 
 - 提供 NanoKVM USB 即让正确的密码或登录密钥无需询问即可进入；设备卡片的 ⋯ 菜单列出其状态表明提供的服务，包括 NanoKVM USB；NanoKVM 小窗提供“交换 Ctrl 与 Cmd”。

@@ -1,5 +1,14 @@
 # Version history
 
+## 0.6.10 (2026-10-30)
+
+- Linux hosts send H.264 and HEVC through the GPU (VA-API) where its driver has them, HEVC first, the
+  NanoKVM USB too; Linux viewers decode H.264 and HEVC through the system's FFmpeg (the Debian
+  package now depends on libva and libavcodec). The HEVC encoder writes its own parameter sets and
+  slice headers on libva, as FFmpeg's `hevc_vaapi` does.
+- Upstreams checked, unchanged: MyGo v0.7.3, EasyTier v2.7.0 (`8b7f1f0`), RustDesk 1.5.0, vcpkg
+  2026.10.16, Rust 1.99.1. New: `cros-codecs` 0.0.6, `cros-libva` 0.0.12.
+
 ## 0.6.9 (2026-10-30)
 
 - Offering the NanoKVM USB lets a correct password or a sign-in key in without asking; the ⋯ menu of a

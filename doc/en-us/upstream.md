@@ -293,6 +293,50 @@ Checked on the USB2 model (2026-10-30) against `sipeed/NanoKVM-USB` `1d1dd5e`:
   0–4095 and the wheel; the device acknowledges each command (`0x80` | command), which the
   official apps never wait for.
 
+## VA-API (cros-codecs 0.0.6)
+
+Checked on the Debian computer's Intel GPU (2026-10-30, `intel-media-va-driver-non-free` 25.2.3):
+
+- `cros-codecs` is written for ChromeOS: its frames come from GBM with minigbm's video usage
+  flags, and Mesa's GBM allocates no NV12 buffer with any flags, so neither its `GbmVideoFrame` nor
+  its decoders (which decode only into such frames, their surfaces private) work on a desktop.
+  Kyokai's encoder gives it a frame type of its own whose surface the driver allocates.
+- Its H.264 encoder's only public constructor takes `VideoFrame` inputs; each input becomes a
+  surface the encoder destroys after use.
+- A frame with `force_keyframe` comes out as an I frame that is not an IDR (the low-delay
+  predictor passes "IDR" only at the start of its period), so a decoder cannot start there.
+- `tune` with new rate control starts a new sequence: the next P frame carries the parameter
+  sets again; nothing else changes.
+- Constant bitrate leaves the quantizer to the driver up to 51 unless `max_quality` caps it; the
+  low-power entry point refused constant bitrate here.
+- `cros-libva` has HEVC encode parameter types but no packed header buffers, and keeps the display
+  handle private, so Kyokai's HEVC encoder uses its raw bindings (`vaCreateBuffer` and the rest) on a
+  display of its own. Intel's driver codes HEVC slices only after packed headers of the VPS, SPS and
+  PPS (type 1) and of each slice (type 3); a packed header's type is `VAEncPackedHeaderTypeHEVC`,
+  not the config's `VA_ENC_PACKED_HEADER_*` bit (the slice's bit is 4, the type 4 is raw data):
+  without a slice header the video engine hangs and the coded buffer reports an encoding error.
+- On this Gen 9 GPU the driver reports neither HEVC block sizes nor features; FFmpeg's choices work:
+  coding tree blocks of 32 down to 8, transforms 4 to 32 at depth 3, AMP on, no SAO or temporal
+  motion vector prediction, P slices with the reference flagged `RPS_ST_CURR_BEFORE`, collocated
+  index 255; FFmpeg sizes the coded buffer 3 × width × height + 64 KB.
+- Decoding into Kyokai's own memory (`USER_PTR` surfaces): the driver accepts them but writes its
+  Y-tiled layout regardless of the linear pitch asked for.
+
+## FFmpeg (libavcodec)
+
+The system's libavcodec, loaded at run time on Linux (`ff.rs`; checked against FFmpeg 7.1's headers,
+2026-10-30):
+
+- `AVFrame` starts with `data[8]`, `linesize[8]`, `extended_data`, `width`, `height`, `nb_samples`,
+  `format` (offsets 0, 64, 96, 104, 108, 112, 116 on 64-bit) and `AVPacket` with `buf`, `pts`, `dts`,
+  `data`, `size` (`data` at 24, `size` at 32), unchanged since FFmpeg 2, so one layout serves
+  libavcodec 58 to 62.
+- `AV_CODEC_ID_H264` is 27, `AV_CODEC_ID_HEVC` 173, `AV_PIX_FMT_YUV420P` 0 and `YUVJ420P` 12; a
+  packet needs 64 zero bytes after its data; `dlsym` on libavcodec's handle finds libavutil's
+  functions too.
+- A context is single-threaded by default (no frame delay); `flags=+low_delay` makes H.264 output
+  each frame as it goes in.
+
 ## Operating systems
 
 - **macOS:** since Sequoia, apps that capture the screen without the system picker are asked to

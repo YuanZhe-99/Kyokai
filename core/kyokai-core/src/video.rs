@@ -408,14 +408,15 @@ impl Choice {
 }
 
 /// The codecs a host tries, best first: the system's (Media Foundation on
-/// Windows, VideoToolbox on macOS) before the software ones; H.264 first
+/// Windows, VideoToolbox on macOS, VA-API on Linux) before the
+/// software ones; H.264 first
 /// unless `choose` is told the host has a free hardware HEVC encoder.
 #[cfg(windows)]
 const ORDER: [&str; 6] = ["h264", "hevc", "vp9", "vp9-sw", "av1", "vp8"];
 #[cfg(target_os = "macos")]
 const ORDER: [&str; 5] = ["h264", "hevc", "vp9-sw", "av1", "vp8"];
 #[cfg(not(any(windows, target_os = "macos")))]
-const ORDER: [&str; 3] = ["vp9-sw", "av1", "vp8"];
+const ORDER: [&str; 5] = ["h264", "hevc", "vp9-sw", "av1", "vp8"];
 
 /// The ways a host tries to send, best first, from what the controller
 /// decodes (`decode`) and decodes in full colour (`i444`).
@@ -467,13 +468,16 @@ pub fn choose(
 }
 
 /// The codecs this host encodes, by name: the system's (the encoders Media
-/// Foundation has registered, VideoToolbox's) and the software ones.
+/// Foundation has registered, VideoToolbox's, VA-API's H.264 and HEVC where
+/// the GPU has them) and the software ones.
 pub fn encodable() -> Vec<&'static str> {
     #[cfg(windows)]
     let mut list: Vec<&'static str> = crate::mf::encodable().iter().map(|c| c.name()).collect();
     #[cfg(target_os = "macos")]
     let mut list: Vec<&'static str> = crate::vt::encodable().iter().map(|c| c.name()).collect();
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    let mut list = crate::va::encodable();
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     let mut list = Vec::new();
     list.extend(crate::soft::Codec::ALL.iter().map(|c| c.name()));
     list
@@ -511,15 +515,19 @@ pub fn hevc_hardware() -> bool {
     {
         crate::vt::hevc_hardware()
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    {
+        crate::va::hevc::available()
+    }
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         false
     }
 }
 
 /// The codecs this controller decodes, by name, and those it decodes in
-/// full colour: the system's (Media Foundation, checked once; VideoToolbox)
-/// and the software ones (always).
+/// full colour: the system's (Media Foundation, checked once; VideoToolbox;
+/// the system's FFmpeg on Linux) and the software ones (always).
 pub fn decodable() -> (Vec<String>, Vec<String>) {
     #[cfg(windows)]
     let mut decode: Vec<String> = crate::mf::decodable()
@@ -531,7 +539,12 @@ pub fn decodable() -> (Vec<String>, Vec<String>) {
         .iter()
         .map(|c| c.name().to_string())
         .collect();
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    let mut decode: Vec<String> = crate::ff::decodable()
+        .into_iter()
+        .map(String::from)
+        .collect();
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     let mut decode = Vec::new();
     let soft = crate::soft::Codec::ALL;
     decode.extend(soft.iter().map(|c| c.name().to_string()));
@@ -1005,6 +1018,10 @@ pub(crate) mod capture {
         /// VideoToolbox, fed NV12 in buffers of its own.
         #[cfg(target_os = "macos")]
         Vt(crate::vt::Encoder),
+        /// VA-API's H.264 or HEVC, fed NV12 in surfaces of the driver's
+        /// (boxed, as `Soft`).
+        #[cfg(target_os = "linux")]
+        Va(Box<crate::va::Encoder>),
         /// For the tests: an encoder that takes pictures and gives nothing
         /// while `silent` (as a GPU's encoder did in the dark), else a key
         /// frame per picture. `mute-once` is silent on its first open only,
@@ -1050,7 +1067,8 @@ pub(crate) mod capture {
             #[cfg(target_os = "linux")]
             {
                 let _ = hardware;
-                Err(format!("no {} encoder on Linux", choice.codec))
+                crate::va::Encoder::new(choice.codec, width, height, FPS, BITRATE)
+                    .map(|e| Encoder::Va(Box::new(e)))
             }
         }
 
@@ -1063,6 +1081,8 @@ pub(crate) mod capture {
                 Encoder::Soft(e) => (e.library(), false),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => ("videotoolbox", e.hardware()),
+                #[cfg(target_os = "linux")]
+                Encoder::Va(_) => ("va-api", true),
                 #[cfg(test)]
                 Encoder::Mute { .. } => ("test", false),
             }
@@ -1096,6 +1116,8 @@ pub(crate) mod capture {
                 Encoder::Soft(e) => e.picture(bgra, width, height, stride),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.picture(bgra, width, height, stride),
+                #[cfg(target_os = "linux")]
+                Encoder::Va(e) => e.picture(bgra, width, height, stride),
                 #[cfg(test)]
                 Encoder::Mute { picture, .. } => *picture = true,
             }
@@ -1109,6 +1131,8 @@ pub(crate) mod capture {
                 Encoder::Soft(e) => e.has_picture(),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.has_picture(),
+                #[cfg(target_os = "linux")]
+                Encoder::Va(e) => e.has_picture(),
                 #[cfg(test)]
                 Encoder::Mute { picture, .. } => *picture,
             }
@@ -1122,6 +1146,8 @@ pub(crate) mod capture {
                 Encoder::Soft(e) => e.encode(key),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.encode(key),
+                #[cfg(target_os = "linux")]
+                Encoder::Va(e) => e.encode(key),
                 #[cfg(test)]
                 Encoder::Mute { silent, picture } => Ok(if *silent || !*picture {
                     Vec::new()
@@ -1139,6 +1165,8 @@ pub(crate) mod capture {
                 Encoder::Soft(e) => e.set_bitrate(bitrate),
                 #[cfg(target_os = "macos")]
                 Encoder::Vt(e) => e.set_bitrate(bitrate),
+                #[cfg(target_os = "linux")]
+                Encoder::Va(e) => e.set_bitrate(bitrate),
                 #[cfg(test)]
                 Encoder::Mute { .. } => {}
             }
@@ -1867,16 +1895,32 @@ mod tests {
             // Media Foundation's VP9 is not a Mac's.
             (&["vp9", "vp8"], &[], false, &["vp8"]),
         ];
+        // VA-API's H.264 and HEVC first; Media Foundation's VP9 is not
+        // Linux's.
         #[cfg(not(any(windows, target_os = "macos")))]
         let cases: &[Case] = &[
-            (&all, &full, false, &["vp9-sw", "av1", "vp8"]),
+            (
+                &all,
+                &full,
+                false,
+                &["h264", "hevc", "vp9-sw", "av1", "vp8"],
+            ),
             (
                 &all,
                 &full,
                 true,
-                &["vp9-sw+444", "av1+444", "vp9-sw", "av1", "vp8"],
+                &[
+                    "vp9-sw+444",
+                    "av1+444",
+                    "h264",
+                    "hevc",
+                    "vp9-sw",
+                    "av1",
+                    "vp8",
+                ],
             ),
-            (&["h264"], &[], false, &[]),
+            (&["h264"], &[], false, &["h264"]),
+            (&["hevc", "vp9"], &[], false, &["hevc"]),
         ];
         for (decode, i444, want, expected) in cases {
             assert_eq!(
@@ -1936,6 +1980,16 @@ mod tests {
             ),
             (&["h264", "vp9"], &[], false, &["h264", "vp9"]),
             (&[], &[], false, &["h264"]),
+        ];
+        #[cfg(not(any(windows, target_os = "macos")))]
+        let cases: &[Case] = &[
+            (
+                &all,
+                &full,
+                false,
+                &["hevc", "h264", "vp9-sw", "av1", "vp8"],
+            ),
+            (&["h264", "vp8"], &[], false, &["h264", "vp8"]),
         ];
         for (decode, i444, want, expected) in cases {
             assert_eq!(

@@ -17,6 +17,8 @@ mod backup;
 mod clipboard;
 mod decode;
 mod external;
+#[cfg(target_os = "linux")]
+mod ff;
 mod files;
 mod identity;
 mod input;
@@ -42,6 +44,8 @@ mod soft;
 mod store;
 mod system;
 mod tunnel;
+#[cfg(target_os = "linux")]
+mod va;
 mod video;
 #[cfg(target_os = "macos")]
 mod vt;

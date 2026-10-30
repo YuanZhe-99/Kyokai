@@ -188,7 +188,7 @@ jobs:
           path: dist/*
 
   # Each Linux architecture builds on its own runner (the core links with
-  # libpipewire, whose bindings are generated as it builds).
+  # libpipewire and libva, whose bindings are generated as it builds).
   linux:
     name: Linux packages (${{ matrix.arch }})
     strategy:
@@ -206,7 +206,7 @@ jobs:
         with:
           toolchain: "1.99.1"
       - name: Linux libraries
-        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-dev libclang-dev nasm
+        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-dev libva-dev libgbm-dev libclang-dev nasm
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-about

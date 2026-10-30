@@ -1397,6 +1397,70 @@ mod tests {
         assert!(info().is_some());
     }
 
+    /// The card's pictures through the GPU's H.264 and HEVC (VA-API), as a
+    /// Linux host sends them to a controller that decodes them: a key frame
+    /// first, then P frames, each decoding to the card's size through the
+    /// system's FFmpeg. With KYOKAI_TEST_NANOKVM; a codec the GPU or FFmpeg
+    /// lacks is skipped.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn live_nanokvm_through_va_api() {
+        if std::env::var_os("KYOKAI_TEST_NANOKVM").is_none() {
+            return;
+        }
+        let pair = devices().suggested.expect("a NanoKVM pair");
+        let decodes = crate::ff::decodable();
+        for codec in crate::va::encodable() {
+            if !decodes.contains(&codec) {
+                println!("{codec}: no FFmpeg decoder here");
+                continue;
+            }
+            let (tx, mut rx) = mpsc::channel(8);
+            let stop = Arc::new(AtomicBool::new(false));
+            let choice = Choice { codec, i444: false };
+            let key = Arc::new(AtomicBool::new(true));
+            let (start, thread) = super::start(
+                pair.video.clone(),
+                choice,
+                tx,
+                key,
+                stop.clone(),
+                Arc::new(Targets::default()),
+            )
+            .unwrap();
+            assert_eq!((start.encoder.as_str(), start.hardware), ("va-api", true));
+            let mut dec = crate::ff::Decoder::new(codec).unwrap();
+            let (mut keys, mut took, mut bytes) = (Vec::new(), 0u64, 0usize);
+            let mut rgba = Vec::new();
+            let t0 = Instant::now();
+            while t0.elapsed() < Duration::from_secs(4) {
+                if let Ok(e) = rx.try_recv() {
+                    took += u64::from(e.took_us);
+                    bytes += e.data.len();
+                    keys.push(e.flags & crate::media::KEY_FRAME != 0);
+                    let size = dec.decode(&e.data, &mut rgba).unwrap();
+                    assert_eq!(size, Some((start.width, start.height)), "{codec}");
+                } else {
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+            }
+            stop.store(true, Ordering::Relaxed);
+            drop(rx);
+            let _ = thread.join();
+            let n = keys.len();
+            println!(
+                "{codec}: {n} frames at {}x{} in 4 s, {:.2} Mbit/s, {:.1} ms from picture to frame",
+                start.width,
+                start.height,
+                bytes as f64 * 8.0 / 4.0 / 1e6,
+                took as f64 / n.max(1) as f64 / 1000.0
+            );
+            assert!(n > 1, "{codec}: frames came");
+            assert!(keys[0], "{codec}: a key frame first");
+            assert!(!keys[1..].iter().all(|&k| k), "{codec}: P frames after it");
+        }
+    }
+
     /// An 8×8 red baseline JPEG.
     const TINY_JPEG: &[u8] = include_bytes!("kvm/red8.jpg");
 }

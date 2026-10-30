@@ -340,7 +340,7 @@ func (d *Decoder) Decode(frame, out []byte) (int, int, bool, error) {
 }
 
 // Info says which decoder this is ("videotoolbox", "media-foundation",
-// "libvpx", "libaom"; "" for the test pattern) and whether it decodes in
+// "ffmpeg", "libvpx", "libaom", "jpeg"; "" for the test pattern) and whether it decodes in
 // hardware, as the decoder reports. A VideoToolbox decoder knows once its
 // first key frame opened it.
 func (d *Decoder) Info() (name string, hardware bool, err error) {

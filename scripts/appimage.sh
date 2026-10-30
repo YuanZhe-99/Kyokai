@@ -7,8 +7,9 @@
 #   scripts/appimage.sh            this machine's architecture
 #   scripts/appimage.sh arm64
 #
-# The AppImage needs GTK 3, the AppIndicator library and PipeWire on the
-# system, as the Debian package does (doc/en-us/packaging.md). It does not
+# The AppImage needs GTK 3, the AppIndicator library, PipeWire and libva on
+# the system, and FFmpeg's libavcodec for H.264 and HEVC in the viewer, as
+# the Debian package does (doc/en-us/packaging.md). It does not
 # update itself: a new release is a new file.
 set -euo pipefail
 cd "$(dirname "$0")/.."

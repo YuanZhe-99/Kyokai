@@ -7762,9 +7762,17 @@ mod nanokvm_tests {
         control
             .try_send(json!({"type": "quality", "preset": "balanced", "fps": 60, "i444": false}))
             .unwrap();
-        let (start, fps, mbps, _) = measure(queue.clone(), "vp9-sw").await.unwrap();
+        // Auto: the first codec both sides have (the GPU's where there is
+        // one), as the host chooses.
+        let (decode, _) = video::decodable();
+        let encodes = video::encodable();
+        let auto = video::choose(&decode, &[], false, video::hevc_hardware())
+            .into_iter()
+            .find(|c| encodes.contains(&c.codec))
+            .map_or("vp9-sw", |c| c.codec);
+        let (start, fps, mbps, _) = measure(queue.clone(), auto).await.unwrap();
         println!("encoded: {start} at {fps:.1} fps, {mbps:.1} Mbit/s");
-        assert_eq!(start["codec"], "vp9-sw", "{start}");
+        assert_eq!(start["codec"], auto, "{start}");
         assert!(fps > 1.0);
         control
             .try_send(json!({"type": "input", "event": {"kind": "pointer", "action": "move", "x": 0.5, "y": 0.5}}))

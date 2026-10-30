@@ -11,8 +11,9 @@
   `PATH` (the component does not). Git for Windows provides bash and OpenSSL.
 - Linux (Debian 13 / Ubuntu 24.04, x86_64): Go and rustup, `build-essential`, `cmake`, `ninja-build`,
   `pkg-config`, `nasm` (libvpx and aom on x64), `curl`, `zip` and `unzip` (vcpkg),
-  `libpipewire-0.3-dev` and `libclang-dev` (the PipeWire bindings are generated as the core builds;
-  the core then needs `libpipewire-0.3` at run time), and a Secret Service (GNOME Keyring or
+  `libpipewire-0.3-dev`, `libva-dev`, `libgbm-dev` and `libclang-dev` (the PipeWire and libva
+  bindings are generated as the core builds; the core then needs `libpipewire-0.3`, `libva` and
+  `libva-drm` at run time, and loads FFmpeg's libavcodec where there is one), and a Secret Service (GNOME Keyring or
   KWallet) for a store that persists. To try X11 hosting without touching the desktop: `Xvfb :99`
   and an engine with `DISPLAY=:99`; Wayland: a headless sway (`WLR_BACKENDS=headless`, the GL
   renderer, not pixman) with `xdg-desktop-portal` and `xdg-desktop-portal-wlr` (`chooser_type=none`)

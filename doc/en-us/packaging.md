@@ -7,7 +7,7 @@ linked statically into the core), the Rust core (`cargo build --release`) and th
 `go tool mygo build`.
 Windows targets need a Windows host (the core links with MSVC; an ARM64 machine also builds x64);
 macOS targets need a Mac; Linux targets need a Linux host of that architecture with
-`libpipewire-0.3-dev` and `libclang-dev`. `scripts/appimage.sh [arch]` then makes the AppImage from
+`libpipewire-0.3-dev`, `libva-dev`, `libgbm-dev` and `libclang-dev`. `scripts/appimage.sh [arch]` then makes the AppImage from
 the Linux build with the pinned `appimagetool` (1.9.1, checked against its SHA-256). `CORE_PREBUILT=1` uses core libraries already placed in the resources
 (the release workflow), and `MYGO_SIGN` passes a signing identity to `mygo build -sign`.
 
@@ -17,7 +17,7 @@ the Linux build with the pinned `appimagetool` (1.9.1, checked against its SHA-2
 |---|---|
 | Windows (x64, ARM64) | `Kyokai.exe` with `bin/kyokai-svc.exe`, `bin/kyokai_core.dll` and `licenses/`; a per-user NSIS installer (`%LOCALAPPDATA%\Programs\Kyokai`, no administrator rights); a portable zip |
 | macOS (Apple silicon, Intel) | `Kyokai.app` with `Contents/Resources/bin/kyokai-svc` (the app's engine) and `bin/Kyokai Helper.app` (the core library and the helper's own engine, [run-modes.md](run-modes.md)), and a `.dmg` |
-| Linux (x64, ARM64) | `kyokai` with `bin/kyokai-svc`, `bin/libkyokai_core.so` and `licenses/`; a Debian package into `/opt/kyokai` (depends on GTK 3, `libayatana-appindicator3-1` and `libpipewire-0.3-0t64`; updated by the package manager), an archive with `install.sh` (into `~/.local`, no root, updating itself), and an AppImage (the same files; not updating itself, and a helper installed from it watches no app folder, [run-modes.md](run-modes.md)) |
+| Linux (x64, ARM64) | `kyokai` with `bin/kyokai-svc`, `bin/libkyokai_core.so` and `licenses/`; a Debian package into `/opt/kyokai` (depends on GTK 3, `libayatana-appindicator3-1`, `libpipewire-0.3-0t64`, `libva2`, `libva-drm2` and libavcodec 62, 61 or 60; updated by the package manager), an archive with `install.sh` (into `~/.local`, no root, updating itself), and an AppImage (the same files; not updating itself, and a helper installed from it watches no app folder, [run-modes.md](run-modes.md)) |
 | All | with `MYGO_UPDATER_PRIVATE_KEY`: the signed update archive, deltas and `update-<target>.json` |
 
 Built files under `resources/<goos>-<goarch>/` and `resources/licenses/` are not committed.
