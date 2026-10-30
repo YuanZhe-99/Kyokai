@@ -259,13 +259,16 @@ jobs:
         shell: bash
         run: scripts/smoke.sh user
       # A runner has no Secret Service: the smoke test (the same Device ID
-      # after a restart) runs on a session bus of its own with an unlocked
-      # gnome-keyring.
+      # after a restart) runs on a session bus of its own with gnome-keyring
+      # and an unencrypted default keyring (--unlock with an empty password
+      # makes no default collection, and creating one would ask a person).
       - name: Engine smoke test (Linux)
         if: matrix.full && runner.os == 'Linux'
         run: |
           sudo apt-get install -y gnome-keyring dbus-x11 libsecret-tools
-          dbus-run-session -- bash -c 'echo -n "" | gnome-keyring-daemon --unlock --components=secrets >/dev/null && scripts/smoke.sh user'
+          k=~/.local/share/keyrings && mkdir -p $k && echo ci > $k/default
+          printf '[keyring]\ndisplay-name=ci\nctime=0\nmtime=0\nlock-on-idle=false\nlock-after=false\n' > $k/ci.keyring
+          dbus-run-session -- bash -c 'gnome-keyring-daemon --start --components=secrets >/dev/null && scripts/smoke.sh user'
 
       # Packages ship every Rust crate's license text (scripts/build.sh).
       - uses: taiki-e/install-action@v2

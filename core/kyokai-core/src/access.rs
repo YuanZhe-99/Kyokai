@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::net::IpAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
 
@@ -586,6 +586,10 @@ pub struct Access {
     /// The connection history while it is kept in memory only (No logs),
     /// by store name; None keeps it in the secrets store.
     memory: Mutex<Option<HashMap<&'static str, zeroize::Zeroizing<String>>>>,
+    /// Held across each read, change and write of the history, so that two
+    /// changes at once (a session noting its route while the person adds
+    /// one) do not drop one of them.
+    editing: Mutex<()>,
 }
 
 impl Access {
@@ -601,6 +605,7 @@ impl Access {
             resumes: Mutex::default(),
             serve: Mutex::default(),
             memory: Mutex::new(memory),
+            editing: Mutex::default(),
         };
         access.roll_grants_forward()?;
         Ok(access)
@@ -639,6 +644,7 @@ impl Access {
     /// Side effects: moves the history out of the store (dropping it from
     /// there) or back into it.
     pub fn keep_history(&self, keep: bool) -> Result<(), String> {
+        let _editing = self.edit()?;
         let mut memory = self.memory.lock().map_err(|_| "access state poisoned")?;
         match (keep, memory.take()) {
             (false, None) => {
@@ -673,6 +679,13 @@ impl Access {
                 .collect(),
             _ => Vec::new(),
         }
+    }
+
+    /// Holds the history for one read, change and write (`editing`).
+    fn edit(&self) -> Result<MutexGuard<'_, ()>, String> {
+        self.editing
+            .lock()
+            .map_err(|_| "access state poisoned".into())
     }
 
     /// A history entry, from memory while No logs is on.
@@ -1045,6 +1058,7 @@ impl Access {
         about: &About,
     ) -> Result<(), String> {
         let now = unix_now();
+        let _editing = self.edit()?;
         let mut all = self.trusted();
         let entry = all.entry(key.to_owned()).or_insert(Trusted {
             device_id: device_id.to_owned(),
@@ -1062,6 +1076,7 @@ impl Access {
 
     /// Forgets a trusted device.
     pub fn untrust(&self, key: &str) -> Result<(), String> {
+        let _editing = self.edit()?;
         let mut all = self.trusted();
         all.remove(key).ok_or("not a trusted device")?;
         // A revoked device cannot slip back in through a resume.
@@ -1232,6 +1247,7 @@ impl Access {
         address: &str,
         features: &[String],
     ) -> Result<(), String> {
+        let _editing = self.edit()?;
         let mut all = self.known_hosts();
         let host = all
             .entry(device_id.to_owned())
@@ -1267,6 +1283,7 @@ impl Access {
         address: &str,
         outcome: Option<(u32, u32)>,
     ) -> Result<(), String> {
+        let _editing = self.edit()?;
         let mut all = self.known_hosts();
         let Some(stats) = all.get_mut(device_id).and_then(|h| h.stats_mut(address)) else {
             return Ok(());
@@ -1289,6 +1306,7 @@ impl Access {
         remove: Option<&str>,
         prefer: Option<&str>,
     ) -> Result<KnownHost, String> {
+        let _editing = self.edit()?;
         let mut all = self.known_hosts();
         let host = all.get_mut(device_id).ok_or("not a known host")?;
         if let Some(a) = add {
@@ -1320,6 +1338,7 @@ impl Access {
     /// Notes what a known host announced (a status watch), leaving when it
     /// was last connected to as it was.
     pub fn note_features(&self, device_id: &str, features: &[String]) -> Result<(), String> {
+        let _editing = self.edit()?;
         let mut all = self.known_hosts();
         match all.get_mut(device_id) {
             Some(h) if h.features != features => h.features = features.to_vec(),
@@ -1338,6 +1357,7 @@ impl Access {
 
     /// Forgets a pinned host key, so the next session pins anew.
     pub fn forget_host(&self, device_id: &str) -> Result<(), String> {
+        let _editing = self.edit()?;
         let mut all = self.known_hosts();
         all.remove(device_id).ok_or("not a known host")?;
         self.store_history(KNOWN_HOSTS_NAME, &all)
@@ -1374,6 +1394,27 @@ mod tests {
 
     fn access() -> Access {
         Access::load(Arc::new(Secrets::memory())).unwrap()
+    }
+
+    /// Changes to the history at the same moment all land; regression: a
+    /// session noting how its route went dropped the route the person
+    /// added meanwhile.
+    #[test]
+    fn concurrent_history_changes_all_land() {
+        let a = access();
+        a.pin_host("123456789", "k", &About::default(), "", &[])
+            .unwrap();
+        std::thread::scope(|s| {
+            for i in 0..8 {
+                let a = &a;
+                s.spawn(move || {
+                    a.set_routes("123456789", Some(&format!("10.0.0.{i}")), None, None)
+                        .unwrap();
+                    a.note_route("123456789", "", Some((1, 1))).unwrap();
+                });
+            }
+        });
+        assert_eq!(a.known("123456789").unwrap().routes.len(), 8);
     }
 
     /// A host kept before 0.5.0 with one address keeps it as a route; a

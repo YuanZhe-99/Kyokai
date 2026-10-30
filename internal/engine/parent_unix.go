@@ -7,6 +7,8 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // watchParent returns when process pid is gone (or we were re-parented).
@@ -28,7 +30,7 @@ func watchParent(ctx context.Context, pid int) {
 // and the core writes its panics and log lines there.
 func quietStderr() {
 	if null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0); err == nil {
-		_ = syscall.Dup2(int(null.Fd()), 2)
+		_ = unix.Dup2(int(null.Fd()), 2)
 		_ = null.Close()
 	}
 }
@@ -37,5 +39,5 @@ func quietStderr() {
 // panics and log lines and a Go crash trace are kept there.
 // Returns: whether it could.
 func logStderr(f *os.File) bool {
-	return syscall.Dup2(int(f.Fd()), 2) == nil
+	return unix.Dup2(int(f.Fd()), 2) == nil
 }

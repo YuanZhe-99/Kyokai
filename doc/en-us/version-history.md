@@ -36,6 +36,8 @@
   listened nowhere for about a minute on Linux and macOS: the listener now reuses the address there.
 - A host that cannot capture on its system (`cannot-capture`) shows the placeholder for good, as
   documented, instead of reopening the video at once and counting recovery steps.
+- Two changes at once to the known hosts or the trusted devices (a session noting how its route
+  went while the person added a route) could drop one of them: each change now waits for the other.
 - Upstream: MyGo v0.7.3, no interface migration (its one breaking change, pinch zoom in pages, does
   not touch Kyokai, which shows no pages). Checked, unchanged: EasyTier v2.7.0, RustDesk 1.5.0
   (vendored code), vcpkg 2026.10.16, Rust 1.99.1 (checked 2026-10-29). ABI 7 and protocol 10

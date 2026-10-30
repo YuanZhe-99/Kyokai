@@ -2,7 +2,11 @@
 
 package engine
 
-import "syscall"
+import (
+	"syscall"
+
+	"golang.org/x/sys/unix"
+)
 
 // keepStderr returns a function that puts this process's stderr back as it
 // is now: opening the log moves it there.
@@ -12,7 +16,7 @@ func keepStderr() func() {
 		return func() {}
 	}
 	return func() {
-		_ = syscall.Dup2(saved, 2)
+		_ = unix.Dup2(saved, 2)
 		_ = syscall.Close(saved)
 	}
 }
