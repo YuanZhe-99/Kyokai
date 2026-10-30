@@ -6,8 +6,8 @@ work here. Everything describing what the code *is* or *does* lives in `doc/en-u
 
 Kyokai is an AI Computer Use application: a person or an AI agent operates another computer over an
 embedded EasyTier P2P network, and AI tasks always run on the computer being operated. It is a Go +
-MyGo GUI, a headless engine (`kyokai-svc`) and a Rust core library that both load; Windows and macOS
-only for now. Treat the user's message as the change request: plan, implement, verify, report.
+MyGo GUI, a headless engine (`kyokai-svc`) and a Rust core library that both load; Windows, macOS and
+Linux. Treat the user's message as the change request: plan, implement, verify, report.
 
 ## Reading order
 

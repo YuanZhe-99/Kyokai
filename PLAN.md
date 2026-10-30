@@ -7,7 +7,7 @@ this file when the plan is complete.
 
 ## Decisions in force
 
-- Platforms: Windows x64 + ARM64, macOS arm64 + x64 (macOS 14+). Linux is not supported yet.
+- Platforms: Windows x64 + ARM64, macOS arm64 + x64 (macOS 14+), Linux x64 + arm64 (since 0.6.7).
 - AI runs only on the host; providers from templates (Claude, OpenAI and OpenAI-compatible).
 - EasyTier v2.7 line (in-process data plane), pinned by commit, minimal feature subset, following
   every upstream release; direct paths off in No privileges unless the person turns them on.

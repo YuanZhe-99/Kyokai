@@ -6,9 +6,10 @@ Kyokai is a cross-platform Computer Use application that enables people and AI a
 with computers across devices. It combines secure peer-to-peer connectivity, direct human control,
 and host-side AI execution in one unified experience.
 
-> **Status:** 0.5.3: Windows (x64, ARM64) and macOS (Apple silicon, Intel). The app, its engine,
-> connections, manual control, AI tasks, SSH / Remote Desktop / VNC through Kyokai and the optional
-> privileged helper work on both; some macOS checks and viewer controls remain. See
+> **Status:** 0.6.7: Windows (x64, ARM64), macOS (Apple silicon, Intel) and, new in 0.6.7, Linux
+> (x64, ARM64; X11 and Wayland). The app, its engine, connections, manual control, AI tasks, SSH /
+> Remote Desktop / VNC through Kyokai and the optional privileged helper work on each; some macOS
+> checks, viewer controls and Linux's keyboard grab and Wayland input on GNOME and KDE remain. See
 > [PLAN.md](PLAN.md), the [platform notes](doc/en-us/platform-notes.md) (what was verified where)
 > and the [user guide](doc/en-us/user-guide.md).
 
@@ -104,7 +105,9 @@ tasks use. Controllers only see the model name.
 Download the installer for your computer from the
 [latest release](https://github.com/YuanZhe-99/Kyokai/releases/latest): `Kyokai.Setup.<version>.amd64.exe`
 or `.arm64.exe` for Windows, `Kyokai.<version>.arm64.dmg` (Apple silicon) or `.amd64.dmg` (Intel)
-for macOS; the `.zip` files are portable Windows builds. `SHA256SUMS.txt` lists every file's
+for macOS, `kyokai_<version>_amd64.deb` or `_arm64.deb`, `Kyokai-<version>-x86_64.AppImage` or
+`-aarch64.AppImage`, or `install.sh` (installs for your user and keeps Kyokai up to date) for
+Linux; the `.zip` files are portable Windows builds. `SHA256SUMS.txt` lists every file's
 checksum. Then follow the [user guide](doc/en-us/user-guide.md). To build it yourself, see
 [Building from Source](#building-from-source).
 
@@ -112,7 +115,7 @@ checksum. Then follow the [user guide](doc/en-us/user-guide.md). To build it you
 
 Requirements: Go 1.27.2, Rust 1.99.1 (`rust-toolchain.toml`), and on Windows Visual Studio
 2026 with the C++ tools for your architecture plus the "C++ Clang Compiler for Windows" component;
-on macOS Xcode command line tools. Details: [doc/en-us/development.md](doc/en-us/development.md).
+on macOS Xcode command line tools; on Linux `libpipewire-0.3-dev`, `libclang-dev` and NASM. Details: [doc/en-us/development.md](doc/en-us/development.md).
 
 ```bash
 scripts/build.sh               # this platform: Rust core, engine, then `mygo build`

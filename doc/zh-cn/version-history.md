@@ -1,18 +1,20 @@
 # 版本历史
 
-## 0.6.7（未发布）
+## 0.6.7（2026-10-29）
 
-- Linux 第一步（`PLAN.md`）：Rust 核心、引擎与本地 API 可在 Linux 上构建并通过测试。存储的主密钥保存在 Secret Service（GNOME Keyring、KWallet）中；本地 API 通过 `SO_PEERCRED` 与 `SO_PEERGROUPS` 识别调用方，其套接字位于 `$XDG_RUNTIME_DIR` 下；编解码库以 vcpkg 的 `x64-linux` 与 `arm64-linux` triplet 构建；系统采样来自 procfs。尚无采集与输入：Linux 被控端显示测试图案。
+- Linux（x64、ARM64）成为第三个平台，作为被控端与控制端，支持所有运行方式。Rust 核心、引擎与本地 API 可在 Linux 上构建并通过测试。存储的主密钥保存在 Secret Service（GNOME Keyring、KWallet）中；本地 API 通过 `SO_PEERCRED` 与 `SO_PEERGROUPS` 识别调用方，其套接字位于 `$XDG_RUNTIME_DIR` 下；编解码库以 vcpkg 的 `x64-linux` 与 `arm64-linux` triplet 构建；系统采样来自 procfs。
 - X11 上的 Linux：经 MIT-SHM 采集并把 Kyokai 窗口涂黑，经 XTest 输入且永不到达这些窗口（文字经空闲键码），指针，经 XInput 2 的本地输入监视及 Ctrl+Alt+Shift+Esc，DPMS，以及在同一桌面上的 AI 任务。
 - Wayland 上的 Linux：经 ScreenCast 门户与 PipeWire 采集屏幕，经 RemoteDesktop 门户输入，整个引擎一个门户会话并保留其恢复令牌，被控端用户自己的输入来自输入设备（Kyokai Helper 或 `input` 组；没有时不启动 AI 任务），以及 `kyokai.shown`（本地 API 2，新增）：Kyokai 的某个窗口显示在 Wayland 上时，画面保持不动，输入等待。
 - Linux 上经 PipeWire 的声音（默认输出播放的内容或某个输入），有人连接期间经 logind 与桌面的抑制器保持唤醒，以及 AI 任务在 logind 的 PrepareForSleep 时暂停。
 - Linux 上的界面：自己的窗口按钮（GTK 的会盖住小窗的控件），导览中的 Linux 电脑（Tux，取自 Simple Icons）与四种语言的 Linux 措辞，Linux 设备显示 Tux，以及 Wayland 上本机受控时最小化 Kyokai 的窗口。
 - Linux 的助手：通过一次 polkit 提示安装的 systemd 服务实现“跟随 Kyokai”与“后台服务”，会话代理为 systemd 用户服务，存储的密钥由 `systemd-creds` 封存；已在一台 Debian 电脑上安装运行。
 - Linux 安装包：x64 与 ARM64 的 Debian 包、带 `install.sh` 的归档与 AppImage，由 CI 与发布工作流在 Ubuntu 24.04 运行器上构建。
+- Linux 的剪贴板经 X11，或 Wayland 的 data-control 协议（KDE、wlroots）；“设置 › 网络 › 运行于”中可选官方 EasyTier 核心的 Linux 发布。
+- Linux 上尚未完成：键盘独占（查看窗口使用 Legacy 模式）、GNOME 与 KDE 上的 Wayland 输入（已实现，未运行）、界面中经助手的运行方式切换。
 - Secret Service 最多等一分钟：无人回答的密钥环提示不再阻挡引擎启动（存储视为已拒绝，与关闭提示相同）。
 - 会话结束后立即重新启动的被控端（旧连接在端口 47310 上处于 TIME-WAIT）在 Linux 与 macOS 上约一分钟内不监听任何地址：现在监听器在这些系统上复用地址。
 - 在其系统上无法采集的被控端（`cannot-capture`）按文档所述一直显示占位画面，不再立即重新打开视频并计入恢复步骤。
-- 上游：MyGo v0.7.3，无需界面迁移（其唯一的不兼容变更是网页的双指缩放，Kyokai 不显示网页，不受影响）。已检查，未变：EasyTier v2.7.0、RustDesk 1.5.0（复用代码）、vcpkg 2026.10.16、Rust 1.99.1（检查于 2026-10-29）。
+- 上游：MyGo v0.7.3，无需界面迁移（其唯一的不兼容变更是网页的双指缩放，Kyokai 不显示网页，不受影响）。已检查，未变：EasyTier v2.7.0、RustDesk 1.5.0（复用代码）、vcpkg 2026.10.16、Rust 1.99.1（检查于 2026-10-29）。ABI 7 与协议 10 不变；本地 API 2 新增 `kyokai.shown`。
 
 ## 0.6.6（2026-10-28）
 

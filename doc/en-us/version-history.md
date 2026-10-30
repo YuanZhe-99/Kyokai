@@ -1,12 +1,12 @@
 # Version history
 
-## 0.6.7 (not released)
+## 0.6.7 (2026-10-29)
 
-- Linux, first step (`PLAN.md`): the Rust core, the engine and the local API build and pass on Linux.
-  The store's master key is kept in the Secret Service (GNOME Keyring, KWallet); the local API reads
+- Linux (x64, ARM64) as a third platform, host and controller, in every run mode. The Rust core, the
+  engine and the local API build and pass on Linux. The store's master key is kept in the Secret Service (GNOME Keyring, KWallet); the local API reads
   the caller from `SO_PEERCRED` and `SO_PEERGROUPS` and its socket lives under `$XDG_RUNTIME_DIR`;
   the codecs build with vcpkg's `x64-linux` and `arm64-linux` triplets; the system sample comes from
-  procfs. No capture or input yet: a Linux host shows the test pattern.
+  procfs.
 - Linux on X11: capture through MIT-SHM with Kyokai's windows blacked out, XTest input that never
   reaches them (text through spare keycodes), the pointer, the local-input watch through XInput 2
   with Ctrl+Alt+Shift+Esc, DPMS, and AI tasks on the same desktop.
@@ -26,6 +26,10 @@
   `systemd-creds`; installed and run on a Debian computer.
 - Linux packages: a Debian package, an archive with `install.sh`, and an AppImage, for x64 and ARM64,
   built in CI and the release workflow on Ubuntu 24.04 runners.
+- Linux's clipboard through X11, or Wayland's data-control protocol (KDE, wlroots); the official
+  EasyTier cores' Linux releases in Settings › Network › Runs on.
+- Not yet on Linux: the keyboard grab (viewers use Legacy mode), Wayland input on GNOME and KDE
+  (written, not run), the helper's run-mode switch from the GUI.
 - The Secret Service gets a minute: a keyring prompt nobody answers no longer holds the engine's
   start (the store counts as refused, as a dismissed prompt does).
 - A host started again right after a session (the old connection in TIME-WAIT on port 47310)
@@ -34,7 +38,8 @@
   documented, instead of reopening the video at once and counting recovery steps.
 - Upstream: MyGo v0.7.3, no interface migration (its one breaking change, pinch zoom in pages, does
   not touch Kyokai, which shows no pages). Checked, unchanged: EasyTier v2.7.0, RustDesk 1.5.0
-  (vendored code), vcpkg 2026.10.16, Rust 1.99.1 (checked 2026-10-29).
+  (vendored code), vcpkg 2026.10.16, Rust 1.99.1 (checked 2026-10-29). ABI 7 and protocol 10
+  unchanged; local API 2 gains `kyokai.shown`.
 
 ## 0.6.6 (2026-10-28)
 
