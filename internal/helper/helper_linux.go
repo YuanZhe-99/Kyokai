@@ -150,7 +150,7 @@ func Install(o InstallOptions) error {
 		return err
 	}
 	uid := o.OperatorUID
-	if err := fsutil.WriteJSON(filepath.Join(StateDir, "helper.json"), Settings{OperatorUID: &uid, AppDir: o.From}); err != nil {
+	if err := fsutil.WriteJSON(filepath.Join(StateDir, "helper.json"), Settings{OperatorUID: &uid, AppDir: o.AppDir}); err != nil {
 		return err
 	}
 	if err := fsutil.WriteFileAtomic(serviceFile(), []byte(serviceUnit()), 0o644); err != nil {

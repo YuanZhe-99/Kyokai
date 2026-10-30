@@ -104,7 +104,7 @@ func Install(o InstallOptions) error {
 		"*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-32-545:RX").CombinedOutput(); err != nil {
 		return fmt.Errorf("icacls: %v: %s", err, out)
 	}
-	if err := fsutil.WriteJSON(filepath.Join(StateDir, "helper.json"), Settings{OperatorSID: o.OperatorSID, AppDir: o.From}); err != nil {
+	if err := fsutil.WriteJSON(filepath.Join(StateDir, "helper.json"), Settings{OperatorSID: o.OperatorSID, AppDir: o.AppDir}); err != nil {
 		return err
 	}
 	// The helper always tries direct paths, whose UDP sockets Windows

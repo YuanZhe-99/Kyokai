@@ -127,7 +127,9 @@ the TPM where there is one), since root has no Secret Service. Its socket `/run/
 can be opened by every local user; the helper serves only root, the operator and members of a
 local `kyokai` group, by uid and gid ([security.md](security.md)). Updates use the signed bundle
 Windows uses (`bundle.json` and `bundle.sig` beside the app's `kyokai-svc`), and self-disable
-stops the units and deletes everything, the service last.
+stops the units and deletes everything, the service last. An AppImage's folder is a mount that goes
+when it quits, so a helper installed from one is given no app folder (`--app-dir=`) and never
+removes itself: switching back to No privileges removes it.
 
 ## The session agent
 

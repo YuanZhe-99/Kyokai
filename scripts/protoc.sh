@@ -10,6 +10,7 @@ case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) asset=osx-aarch_64; sha=9cd98a532c5c5e0c4161314de0225de27e4c8a323917b6ea7b1b714d3ae23466; exe=protoc ;;
   Darwin-x86_64) asset=osx-x86_64; sha=228cc7add4616cc14ca5e80dee83209d44449a7aee95a914ae748fa374efb078; exe=protoc ;;
   Linux-x86_64) asset=linux-x86_64; sha=121f6c7afe1d4d0e3ea6aab9432038599250134cbf4474cb1167d2c7decd4278; exe=protoc ;;
+  Linux-aarch64) asset=linux-aarch_64; sha=8b8f18bd2b30346efbc698dd5a73dd7c805f3ef8380f6dfc95c768f3f1852f6a; exe=protoc ;;
   *) echo "protoc.sh: no pinned protoc for $(uname -s)-$(uname -m)" >&2; exit 1 ;;
 esac
 

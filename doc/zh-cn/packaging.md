@@ -4,7 +4,7 @@
 再把 Rust 核心（`cargo build --release`）与引擎（`kyokai-svc`，`CGO_ENABLED=0`）构建到
 `resources/<goos>-<goarch>/bin`，把 `LICENSE`、`THIRD_PARTY_NOTICES.md` 与 `third_party/licenses` 复制到
 `resources/licenses`，再运行 `go tool mygo build`。Windows 目标需要 Windows 主机（核心用 MSVC 链接；ARM64 机器也能构建
-x64）；macOS 目标需要 Mac。`CORE_PREBUILT=1` 使用已放入 resources 的核心库（发布工作流），`MYGO_SIGN` 把签名身份传给
+x64）；macOS 目标需要 Mac；Linux 目标需要同架构的 Linux 主机，并装有 `libpipewire-0.3-dev` 与 `libclang-dev`。之后 `scripts/appimage.sh [arch]` 用固定版本的 `appimagetool`（1.9.1，核对 SHA-256）从 Linux 构建生成 AppImage。`CORE_PREBUILT=1` 使用已放入 resources 的核心库（发布工作流），`MYGO_SIGN` 把签名身份传给
 `mygo build -sign`。
 
 ## 产物
@@ -13,7 +13,8 @@ x64）；macOS 目标需要 Mac。`CORE_PREBUILT=1` 使用已放入 resources �
 |---|---|
 | Windows（x64、ARM64） | `Kyokai.exe` 与 `bin/kyokai-svc.exe`、`bin/kyokai_core.dll`、`licenses/`；按用户安装的 NSIS 安装包（`%LOCALAPPDATA%\Programs\Kyokai`，无需管理员权限）；便携 zip |
 | macOS（Apple 芯片、Intel） | `Kyokai.app`，其中有 `Contents/Resources/bin/kyokai-svc`（应用的引擎）与 `bin/Kyokai Helper.app`（核心库与助手自己的引擎，[run-modes.md](run-modes.md)），以及 `.dmg` |
-| 两者 | 设置 `MYGO_UPDATER_PRIVATE_KEY` 时：签名的更新归档、增量包与 `update-<target>.json` |
+| Linux（x64、ARM64） | `kyokai`，其中有 `bin/kyokai-svc`、`bin/libkyokai_core.so` 与 `licenses/`；安装到 `/opt/kyokai` 的 Debian 包（依赖 GTK 3、`libayatana-appindicator3-1` 与 `libpipewire-0.3-0t64`；由包管理器更新）、带 `install.sh` 的归档（安装到 `~/.local`，无需 root，自动更新），以及 AppImage（相同的文件；不自动更新，从它安装的助手不监视应用文件夹，[run-modes.md](run-modes.md)） |
+| 全部 | 设置 `MYGO_UPDATER_PRIVATE_KEY` 时：签名的更新归档、增量包与 `update-<target>.json` |
 
 `resources/<goos>-<goarch>/` 与 `resources/licenses/` 下的构建产物不提交。
 

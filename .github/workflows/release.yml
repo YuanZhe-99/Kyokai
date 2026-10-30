@@ -187,12 +187,59 @@ jobs:
           name: macos
           path: dist/*
 
+  # Each Linux architecture builds on its own runner (the core links with
+  # libpipewire, whose bindings are generated as it builds).
+  linux:
+    name: Linux packages (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-24.04, arch: amd64 }
+          - { os: ubuntu-24.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.99.1"
+      - name: Linux libraries
+        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-dev libclang-dev nasm
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about
+      # libvpx, libaom and Opus, linked statically into the core.
+      - uses: ./.github/actions/codecs
+        with:
+          targets: linux/${{ matrix.arch }}
+      - name: Build
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          KYOKAI_SIGNING_KEY: ${{ secrets.KYOKAI_SIGNING_KEY }}
+        run: scripts/build.sh linux/${{ matrix.arch }}
+      - name: AppImage
+        run: scripts/appimage.sh ${{ matrix.arch }}
+      - name: Collect the downloads
+        run: |
+          mkdir -p dist
+          find build -maxdepth 2 -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.tar.gz' -o -name '*.delta' -o -name 'update-*.json' \) -exec cp {} dist/ \;
+          # install.sh is the same script for every system: the amd64 job
+          # publishes it.
+          if [ "${{ matrix.arch }}" = amd64 ]; then cp build/linux-amd64/install.sh dist/; fi
+          ls -l dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*
+
   # Only a tag publishes. Started by hand, the workflow builds every package
   # and stops, leaving them as run artifacts.
   release:
     name: Publish
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -206,7 +253,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
-          pattern: "{windows,macos}"
+          pattern: "{windows,macos,linux-*}"
           merge-multiple: true
       - name: Checksums
         working-directory: dist

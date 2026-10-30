@@ -7,6 +7,9 @@ for the people using it; how it works is in the other pages of this folder.
 ## Install and start
 
 On Windows, run the installer: it installs for your user only and asks for no administrator rights.
+On Linux, install the Debian package, or run `install.sh`, which installs Kyokai for your user in
+`~/.local` and keeps it up to date, or start the AppImage; GNOME shows the tray icon only with its
+AppIndicator extension.
 Kyokai starts with its window and an icon in the notification area; closing the window keeps it
 running there (**General** can make the close button quit instead). Kyokai does not start
 with Windows unless you switch on "Open at login"; started at login, it opens no window and waits

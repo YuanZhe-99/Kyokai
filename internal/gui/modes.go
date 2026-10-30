@@ -384,8 +384,12 @@ func waitFor(ctx context.Context, c *localapi.Client) error {
 
 // operatorArgs name this user as the helper's operator: by SID on
 // Windows, by uid on macOS and Linux (where the installer itself runs as
-// root).
+// root). An AppImage, whose folder is a mount that goes when it quits,
+// gives the helper no app folder to watch (run-modes.md, "Self-disable").
 func operatorArgs() []string {
+	if runtime.GOOS == "linux" && os.Getenv("APPIMAGE") != "" {
+		return []string{"--operator-uid", strconv.Itoa(os.Getuid()), "--app-dir="}
+	}
 	if runtime.GOOS != "windows" {
 		return []string{"--operator-uid", strconv.Itoa(os.Getuid())}
 	}

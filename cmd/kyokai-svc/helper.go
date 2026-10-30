@@ -19,7 +19,7 @@ import (
 // helperCmd installs, removes or reports the privileged helper
 // (doc/en-us/run-modes.md).
 //
-//	kyokai-svc helper install [--from DIR] [--operator-sid SID | --operator-uid N]   (administrator)
+//	kyokai-svc helper install [--from DIR] [--app-dir DIR] [--operator-sid SID | --operator-uid N]   (administrator)
 //	kyokai-svc helper uninstall [--purge]                          (administrator)
 //	kyokai-svc helper status
 func helperCmd(args []string) error {
@@ -34,11 +34,17 @@ func helperCmd(args []string) error {
 	from := fs.String("from", filepath.Dir(exe), "install: the folder holding kyokai-svc and the core library")
 	operator := fs.String("operator-sid", localapi.CurrentSID(), "install: the user who may use the helper (Windows)")
 	operatorUID := fs.Uint("operator-uid", uint(os.Getuid()), "install: the user who may use the helper (macOS, Linux)")
+	appDir := fs.String("app-dir", "", "install: the app's folder the helper removes itself without (default: --from; empty for an AppImage, which has none)")
 	purge := fs.Bool("purge", false, "uninstall: also delete the helper's identity and trusted devices")
 	fs.Parse(args[1:])
+	given := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	if !given["app-dir"] {
+		*appDir = *from
+	}
 	switch args[0] {
 	case "install":
-		if err := helper.Install(helper.InstallOptions{From: *from, OperatorSID: *operator, OperatorUID: uint32(*operatorUID)}); err != nil {
+		if err := helper.Install(helper.InstallOptions{From: *from, AppDir: *appDir, OperatorSID: *operator, OperatorUID: uint32(*operatorUID)}); err != nil {
 			return err
 		}
 		fmt.Println("helper installed")

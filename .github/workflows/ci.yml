@@ -61,9 +61,10 @@ jobs:
             echo "gofmt needed:"; echo "$unformatted"; exit 1
           fi
 
-      # The app targets Windows and macOS only.
+      # The app targets Windows, macOS and Linux.
       - run: GOOS=windows go vet ./...
       - run: GOOS=darwin go vet ./...
+      - run: GOOS=linux go vet ./...
       - name: Interface catalogs
         run: go tool mygo i18n check
       - name: Documentation mirror
@@ -98,6 +99,7 @@ jobs:
         include:
           - { os: windows-11-arm, target: windows/arm64 }
           - { os: macos-latest, target: darwin/arm64 }
+          - { os: ubuntu-24.04, target: linux/amd64 }
     runs-on: ${{ matrix.os }}
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
@@ -123,6 +125,11 @@ jobs:
       - name: Pinned protoc
         shell: bash
         run: echo "PROTOC=$(scripts/protoc.sh)" >> "$GITHUB_ENV"
+      # The core links with libpipewire, whose bindings are generated as it
+      # builds (libclang).
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-dev libclang-dev nasm
       - name: Clang (Windows ARM64)
         if: matrix.os == 'windows-11-arm'
         shell: pwsh
@@ -151,6 +158,8 @@ jobs:
           # x64 is packaged too: the remote test VM installs it.
           - { os: windows-latest, target: windows/amd64, full: false, package: true }
           - { os: macos-15-intel, target: darwin/amd64, full: false, package: false }
+          - { os: ubuntu-24.04, target: linux/amd64, full: true, package: true }
+          - { os: ubuntu-24.04-arm, target: linux/arm64, full: false, package: true }
     runs-on: ${{ matrix.os }}
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
@@ -193,6 +202,11 @@ jobs:
         shell: bash
         run: echo "PROTOC=$(scripts/protoc.sh)" >> "$GITHUB_ENV"
       # ring (EasyTier's QUIC and WireGuard) needs clang on Windows ARM64.
+      # The core links with libpipewire, whose bindings are generated as it
+      # builds (libclang).
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpipewire-0.3-dev libclang-dev nasm
       - name: Clang (Windows ARM64)
         if: matrix.os == 'windows-11-arm'
         shell: pwsh
@@ -232,6 +246,7 @@ jobs:
         run: |
           lib=$CORE_RELEASE/kyokai_core.dll
           [ "$RUNNER_OS" = macOS ] && lib=$CORE_RELEASE/libkyokai_core.dylib
+          [ "$RUNNER_OS" = Linux ] && lib=$CORE_RELEASE/libkyokai_core.so
           path="$PWD/$lib"
           [ "$RUNNER_OS" = Windows ] && path=$(cygpath -w "$path")
           KYOKAI_CORE_LIB="$path" go test -timeout 3m ./...
@@ -240,9 +255,17 @@ jobs:
         if: matrix.full
         run: go tool mygo vet .
       - name: Engine smoke test
-        if: matrix.full
+        if: matrix.full && runner.os != 'Linux'
         shell: bash
         run: scripts/smoke.sh user
+      # A runner has no Secret Service: the smoke test (the same Device ID
+      # after a restart) runs on a session bus of its own with an unlocked
+      # gnome-keyring.
+      - name: Engine smoke test (Linux)
+        if: matrix.full && runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y gnome-keyring dbus-x11 libsecret-tools
+          dbus-run-session -- bash -c 'echo -n "" | gnome-keyring-daemon --unlock --components=secrets >/dev/null && scripts/smoke.sh user'
 
       # Packages ship every Rust crate's license text (scripts/build.sh).
       - uses: taiki-e/install-action@v2
@@ -260,6 +283,7 @@ jobs:
         run: |
           t=${{ matrix.target }} dir=resources/${t/\//-}/bin lib=kyokai_core.dll
           if [ "$RUNNER_OS" = macOS ]; then dir="$dir/Kyokai Helper.app/Contents/MacOS" lib=libkyokai_core.dylib; fi
+          if [ "$RUNNER_OS" = Linux ]; then lib=libkyokai_core.so; fi
           mkdir -p "$dir" && cp "$CORE_RELEASE/$lib" "$dir/"
           scripts/build.sh
 
@@ -270,4 +294,5 @@ jobs:
           path: |
             build/*/*.exe
             build/*/*.dmg
+            build/*/*.deb
           if-no-files-found: error

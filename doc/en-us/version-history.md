@@ -24,6 +24,8 @@
 - The Linux helper: Follow Kyokai and Background service through a systemd service installed with
   one polkit prompt, a session agent as a systemd user service, the store's key sealed by
   `systemd-creds`; not yet installed on a machine.
+- Linux packages: a Debian package, an archive with `install.sh`, and an AppImage, for x64 and ARM64,
+  built in CI and the release workflow on Ubuntu 24.04 runners.
 - The Secret Service gets a minute: a keyring prompt nobody answers no longer holds the engine's
   start (the store counts as refused, as a dismissed prompt does).
 - A host started again right after a session (the old connection in TIME-WAIT on port 47310)

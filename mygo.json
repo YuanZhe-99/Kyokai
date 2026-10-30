@@ -26,5 +26,19 @@
       "NSLocalNetworkUsageDescription": "Kyokai connects directly to your other devices on this network.",
       "NSMicrophoneUsageDescription": "Kyokai shares the sound of the input you choose with the devices that control this Mac."
     }
+  },
+  "linux": {
+    "maintainer": "YuanZhe <yuanzhe1999@outlook.com>",
+    "comment": "AI Computer Use across devices",
+    "categories": [
+      "Network",
+      "RemoteAccess"
+    ],
+    "depends": [
+      "libayatana-appindicator3-1",
+      "libpipewire-0.3-0t64"
+    ],
+    "webview": false,
+    "command": "kyokai"
   }
 }

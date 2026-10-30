@@ -8,7 +8,9 @@
 # the Rust core (cargo, --release) and the engine (kyokai-svc,
 # CGO_ENABLED=0) into resources/<goos>-<goarch>/bin, which `mygo build`
 # ships with the app, and copies the license texts into resources/licenses. macOS targets need a macOS host; Windows targets need
-# Windows (the core links with MSVC).
+# Windows (the core links with MSVC); Linux targets need a Linux host of that
+# architecture (the core links with libpipewire, whose bindings are
+# generated as it builds).
 #
 # CORE_PREBUILT=1 skips cargo and uses the core libraries already present in
 # resources/<goos>-<goarch>/bin (the release workflow builds them on native
@@ -28,6 +30,8 @@ rust_target() {
 	windows/arm64) echo aarch64-pc-windows-msvc ;;
 	darwin/amd64) echo x86_64-apple-darwin ;;
 	darwin/arm64) echo aarch64-apple-darwin ;;
+	linux/amd64) echo x86_64-unknown-linux-gnu ;;
+	linux/arm64) echo aarch64-unknown-linux-gnu ;;
 	*) echo "unsupported target $1" >&2; exit 1 ;;
 	esac
 }
@@ -87,6 +91,7 @@ for t in "${targets[@]}"; do
 	# On macOS the engine and core live in a bundle of their own, which the
 	# app starts and the helper copies (doc/en-us/run-modes.md).
 	darwin) lib=libkyokai_core.dylib ext="" ;;
+	linux) lib=libkyokai_core.so ext="" ;;
 	esac
 	mkdir -p "$bin"
 	# On macOS the core lives in Kyokai Helper.app beside the engine, with
@@ -121,7 +126,7 @@ for t in "${targets[@]}"; do
 	fi
 	# Release builds sign the helper's files, so an installed helper updates
 	# itself without a prompt (doc/en-us/run-modes.md, "Updates").
-	if [ "$goos" = windows ] && [ -n "${KYOKAI_SIGNING_KEY:-}" ]; then
+	if [ "$goos" != darwin ] && [ -n "${KYOKAI_SIGNING_KEY:-}" ]; then
 		go run ./tools/sign bundle -dir "$bin" -version "$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)"
 	fi
 done

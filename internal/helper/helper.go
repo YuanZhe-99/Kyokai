@@ -45,6 +45,11 @@ type Status struct {
 type InstallOptions struct {
 	// From is the directory holding the app's kyokai-svc and core library.
 	From string
+	// AppDir is the app's folder the helper watches for self-disable
+	// (usually From); empty for an app that has no lasting folder (an
+	// AppImage's is a mount that goes when it quits), which the helper then
+	// never takes for removed.
+	AppDir string
 	// OperatorSID (Windows) and OperatorUID (macOS) are the user who
 	// installs it, who may then use the helper.
 	OperatorSID string
