@@ -239,4 +239,4 @@ The signed self-update and the self-disable are implemented and their rules test
 swapped after the check is not installed); none of this has run as a service yet. A helper
 installed with `kyokai-svc helper install` alone runs an engine of its own with a separate Device ID
 until a store is moved into it. On Linux the helper, its units, the agent's link and the sealed key
-are implemented and the link's peer checks tested; it has not been installed on a machine yet.
+are implemented and ran installed on a Debian computer ([platform-notes.md](platform-notes.md), "Linux"): install, authorization, the sealed key across a restart, a session in Background service through the agent, and removal; the GUI's switch, pkexec and self-disable have not run yet.

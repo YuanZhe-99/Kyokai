@@ -23,7 +23,7 @@
   devices, and on Wayland Kyokai's windows minimized while this computer is controlled.
 - The Linux helper: Follow Kyokai and Background service through a systemd service installed with
   one polkit prompt, a session agent as a systemd user service, the store's key sealed by
-  `systemd-creds`; not yet installed on a machine.
+  `systemd-creds`; installed and run on a Debian computer.
 - Linux packages: a Debian package, an archive with `install.sh`, and an AppImage, for x64 and ARM64,
   built in CI and the release workflow on Ubuntu 24.04 runners.
 - The Secret Service gets a minute: a keyring prompt nobody answers no longer holds the engine's
