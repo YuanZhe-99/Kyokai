@@ -50,7 +50,15 @@ func TestRealLibrary(t *testing.T) {
 			t.Fatalf("keyboard state: %v %+v, want one of %v", err, ks, want)
 		}
 	}
-	state("none")
+	// A system without a grab (Linux) says so for its state and a grab
+	// alike, and its viewers use Legacy mode.
+	if _, err := l.KeyboardState(0x1234); errors.Is(err, ErrNoKeyboard) {
+		if err := l.KeyboardGrab(0x1234, "map"); !errors.Is(err, ErrNoKeyboard) {
+			t.Fatalf("grab without a grab here: %v", err)
+		}
+	} else {
+		state("none")
+	}
 	switch err := l.KeyboardGrab(0x1234, "map"); {
 	case err == nil:
 		_, _, _ = l.Keyboard().Read(10 * time.Millisecond) // the GUI's reader asks
