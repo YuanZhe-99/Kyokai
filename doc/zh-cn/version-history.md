@@ -7,6 +7,7 @@
 - Wayland 上的 Linux：经 ScreenCast 门户与 PipeWire 采集屏幕，经 RemoteDesktop 门户输入，整个引擎一个门户会话并保留其恢复令牌，被控端用户自己的输入来自输入设备（Kyokai Helper 或 `input` 组；没有时不启动 AI 任务），以及 `kyokai.shown`（本地 API 2，新增）：Kyokai 的某个窗口显示在 Wayland 上时，画面保持不动，输入等待。
 - Linux 上经 PipeWire 的声音（默认输出播放的内容或某个输入），有人连接期间经 logind 与桌面的抑制器保持唤醒，以及 AI 任务在 logind 的 PrepareForSleep 时暂停。
 - Linux 上的界面：自己的窗口按钮（GTK 的会盖住小窗的控件），导览中的 Linux 电脑（Tux，取自 Simple Icons）与四种语言的 Linux 措辞，Linux 设备显示 Tux，以及 Wayland 上本机受控时最小化 Kyokai 的窗口。
+- Linux 的助手：通过一次 polkit 提示安装的 systemd 服务实现“跟随 Kyokai”与“后台服务”，会话代理为 systemd 用户服务，存储的密钥由 `systemd-creds` 封存；尚未在机器上安装过。
 - Secret Service 最多等一分钟：无人回答的密钥环提示不再阻挡引擎启动（存储视为已拒绝，与关闭提示相同）。
 - 会话结束后立即重新启动的被控端（旧连接在端口 47310 上处于 TIME-WAIT）在 Linux 与 macOS 上约一分钟内不监听任何地址：现在监听器在这些系统上复用地址。
 - 在其系统上无法采集的被控端（`cannot-capture`）按文档所述一直显示占位画面，不再立即重新打开视频并计入恢复步骤。

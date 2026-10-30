@@ -12,7 +12,7 @@
 | `internal/localapi` | 本地 API 协议、服务端、客户端、授权 | `ProtocolVersion`、`Request`、`Status`、`ByAddress`、`AISettings`、`AITask`、`NetworkSettings`、`NetworkProfiles`、`NetworkChange`、`NetworkStatus`、`NetworkState`、`SessionInfo`、`HostRequest`、`Client.Attach`、`Authorizer.Allows`、`Authorizer.Owner`、`IsOwner`、`Client.Tunnel`、`MoveStore` |
 | `internal/core` | 通过 purego 绑定 Rust 核心 | `Load`、`Lib.Start`、`Lib.Call` |
 | `internal/version` | 产品版本与构建 | `Version`、`Older`、`Build` |
-| `internal/helper` | 安装、移除与查看特权助手（Windows 服务；macOS 的 LaunchDaemon 与 LaunchAgent） | `Install`、`Uninstall`、`Installed`、`Inspect`、`ReadSettings`、`GroupSID`、`GroupGID`、`SocketPath`、`AgentSocket`、`SelfUpdate`、`Retire`、`Settings.AppGone` |
+| `internal/helper` | 安装、移除与查看特权助手（Windows 服务；macOS 的 LaunchDaemon 与 LaunchAgent；Linux 的 systemd 系统服务与用户服务） | `Install`、`Uninstall`、`Installed`、`Inspect`、`ReadSettings`、`GroupSID`、`GroupGID`、`SocketPath`、`AgentSocket`、`SelfUpdate`、`Retire`、`Settings.AppGone` |
 | `internal/fsutil` | 原子写入与 JSON 文档 | `WriteFileAtomic`、`WriteJSON`、`ReadJSON` |
 | `internal/cores` | 官方 EasyTier 核心：发布列表、经摘要校验的下载、核心文件夹 | `Releases`、`Install`、`Installed`、`AssetName` |
 | `internal/rdp` | 远程桌面客户端，复用代码（只有客户端，使用给定的 `Conn`） | `Dial`、`Options`、`Events`、`Client.Run`、`Client.SendScancode`、`Client.SendPointer` |

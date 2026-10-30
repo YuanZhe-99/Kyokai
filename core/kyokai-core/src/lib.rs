@@ -781,7 +781,6 @@ fn build_on(
         version: cfg.version.clone(),
         about: std::sync::Mutex::new(about::Local::load(&cfg.state_dir)),
     });
-    #[cfg(any(windows, target_os = "macos"))]
     if let Some(agent) = &cfg.agent {
         agent::start_helper(agent.clone());
     }
@@ -887,7 +886,7 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 _ => Err("bad agent request".into()),
             }
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(unix)]
         "agent.serve" => match req.params["socket"].as_str() {
             Some(socket) => agent::run_agent_socket(socket).map(|()| json!({})),
             None => Err("bad agent request".into()),

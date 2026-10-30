@@ -62,7 +62,7 @@ func (a *App) runModeSection(c *ui.Context) {
 	busy := a.busy["mode"]
 	a.mu.Unlock()
 	cur := a.currentMode()
-	available := runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+	available := runtime.GOOS == "windows" || runtime.GOOS == "darwin" || runtime.GOOS == "linux"
 	a.section(c, "run-mode", L.RunModeWhere(), nil, func(r *rows) {
 		for mode, m := range []struct {
 			icon         *ui.SVG
@@ -383,9 +383,10 @@ func waitFor(ctx context.Context, c *localapi.Client) error {
 }
 
 // operatorArgs name this user as the helper's operator: by SID on
-// Windows, by uid on macOS (where the installer itself runs as root).
+// Windows, by uid on macOS and Linux (where the installer itself runs as
+// root).
 func operatorArgs() []string {
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS != "windows" {
 		return []string{"--operator-uid", strconv.Itoa(os.Getuid())}
 	}
 	return []string{"--operator-sid", localapi.CurrentSID()}
@@ -393,7 +394,7 @@ func operatorArgs() []string {
 
 // runPrivileged runs `kyokai-svc helper <args>` with administrator rights:
 // the one prompt of a run-mode change (UAC on Windows, the administrator
-// password on macOS).
+// password on macOS, polkit's on Linux).
 func runPrivileged(args ...string) error {
 	svc, err := engineBinary()
 	if err != nil {
@@ -402,6 +403,8 @@ func runPrivileged(args ...string) error {
 	switch runtime.GOOS {
 	case "darwin":
 		return runAsAdmin(svc, args)
+	case "linux":
+		return runPkexec(svc, args)
 	case "windows":
 	default:
 		return helper.ErrUnsupported
@@ -451,6 +454,25 @@ func runAsAdmin(svc string, args []string) error {
 		return errors.New(msg)
 	}
 	return nil
+}
+
+// runPkexec runs `svc helper <args>` as root through pkexec, which asks
+// through the desktop's polkit agent.
+// Notes: pkexec exits 126 when the person dismissed the prompt and 127
+// when they could not authenticate.
+func runPkexec(svc string, args []string) error {
+	out, err := exec.Command("pkexec", append([]string{svc, "helper"}, args...)...).CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && (exit.ExitCode() == 126 || exit.ExitCode() == 127) {
+		return errors.New(L.RunModeCancelled())
+	}
+	if msg := strings.TrimSpace(string(out)); msg != "" {
+		return errors.New(msg)
+	}
+	return err
 }
 
 // shellQuote quotes s for a POSIX shell.

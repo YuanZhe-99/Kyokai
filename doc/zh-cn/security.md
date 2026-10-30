@@ -7,7 +7,7 @@
 - 32 字节主密钥来自操作系统：Windows 上为当前用户的 DPAPI 数据块（`master.key`），macOS 上为登录钥匙串中的通用密码
   （服务 `com.yuanzhe.kyokai`，账户 `master-key` 或 `master-key.<profile>`；macOS 的助手以 root 身份放在系统钥匙串中，随其状态一同删除），Linux 上为 Secret Service
   默认集合中的一个项目（GNOME Keyring、KWallet；属性 `service` 为 `com.yuanzhe.kyokai`，`account` 与 macOS 相同），经会话
-  D-Bus 以加密会话访问；关闭密钥环的解锁提示视为拒绝，与钥匙串拒绝访问相同。
+  D-Bus 以加密会话访问；关闭密钥环的解锁提示视为拒绝，与钥匙串拒绝访问相同；Linux 的助手以 root 运行，没有 Secret Service，用 `systemd-creds` 把密钥封存在其状态文件夹中（`master.cred`）。
 - 系统凭据存储不可用时不持久化任何内容：机密只在本次运行的内存中，界面会说明设备 ID 将改变。已存在但无法解密的存储
   从不被覆盖；本次运行使用临时身份并说明这一点，“重新开始”会把它移到一旁（`secrets.bin.unreadable-<time>`，保留），换成一个此后一直保存的新存储与新身份。在 macOS 上只在钥匙串项目不存在时才新建：用户拒绝访问已有项目时不替换任何内容，
   本次运行把机密保存在内存中（持久化状态 `denied`），权限卡片上钥匙串一行的“允许”会再次打开存储——macOS 会再次询问——并在其上重建核心。

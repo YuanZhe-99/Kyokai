@@ -370,7 +370,10 @@ mod os {
 #[cfg(target_os = "linux")]
 mod os {
     //! The master key as an item in the Secret Service's default collection
-    //! (GNOME Keyring, KWallet), found by its service and account attributes.
+    //! (GNOME Keyring, KWallet), found by its service and account attributes;
+    //! for root (the helper), which has no Secret Service, sealed by
+    //! `systemd-creds` (the host's key, and the TPM where there is one) in
+    //! the state folder.
     use super::{Persistence, new_key};
     use base64::Engine;
     use base64::engine::general_purpose::STANDARD;
@@ -390,10 +393,11 @@ mod os {
     /// item is never replaced.
     /// Side effects: the desktop may ask the user to unlock the keyring
     /// (WAIT at most; no answer in time is `Denied`).
-    pub fn master_key(
-        _state_dir: &Path,
-        profile: &str,
-    ) -> Result<Zeroizing<[u8; 32]>, Persistence> {
+    pub fn master_key(state_dir: &Path, profile: &str) -> Result<Zeroizing<[u8; 32]>, Persistence> {
+        // SAFETY: geteuid has no preconditions.
+        if unsafe { libc::geteuid() } == 0 {
+            return sealed_key(state_dir);
+        }
         let account = account(profile);
         run(async move {
             let ss = SecretService::connect(EncryptionType::Dh)
@@ -428,6 +432,64 @@ mod os {
         })
         // No answer in time counts as refused: opening again asks again.
         .unwrap_or(Err(Persistence::Denied))
+    }
+
+    /// The sealed key's file and the name it is sealed under.
+    const SEALED: &str = "master.cred";
+    const CRED_NAME: &str = "kyokai-master";
+
+    /// Reads root's master key from `master.cred`, or seals a new one there.
+    /// Returns: the key; `Unreadable` when the file does not open (the host
+    /// key or TPM changed), `MemoryOnly` without `systemd-creds`.
+    /// Notes: the key crosses the pipe to `systemd-creds` base64-encoded,
+    /// never through a file or an argument.
+    fn sealed_key(state_dir: &Path) -> Result<Zeroizing<[u8; 32]>, Persistence> {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+        let path = state_dir.join(SEALED);
+        if path.exists() {
+            let out = Command::new("systemd-creds")
+                .args(["decrypt", &format!("--name={CRED_NAME}")])
+                .arg(&path)
+                .arg("-")
+                .stderr(Stdio::null())
+                .output()
+                .map_err(|_| Persistence::MemoryOnly)?;
+            if !out.status.success() {
+                return Err(Persistence::Unreadable);
+            }
+            let text = Zeroizing::new(out.stdout);
+            let raw = Zeroizing::new(
+                STANDARD
+                    .decode(text.trim_ascii())
+                    .map_err(|_| Persistence::Unreadable)?,
+            );
+            return Ok(Zeroizing::new(
+                raw.as_slice()
+                    .try_into()
+                    .map_err(|_| Persistence::Unreadable)?,
+            ));
+        }
+        let key = new_key().ok_or(Persistence::MemoryOnly)?;
+        let mut child = Command::new("systemd-creds")
+            .args(["encrypt", &format!("--name={CRED_NAME}"), "-"])
+            .arg(&path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| Persistence::MemoryOnly)?;
+        let text = Zeroizing::new(STANDARD.encode(key.as_ref()));
+        let wrote = child
+            .stdin
+            .take()
+            .is_some_and(|mut i| i.write_all(text.as_bytes()).is_ok());
+        let sealed = child.wait().is_ok_and(|s| s.success());
+        if !(wrote && sealed) {
+            let _ = std::fs::remove_file(&path);
+            return Err(Persistence::MemoryOnly);
+        }
+        Ok(key)
     }
 
     /// The default collection, unlocked.

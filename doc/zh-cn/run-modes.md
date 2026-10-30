@@ -57,6 +57,12 @@ Kyokai 沿用 Easytier-MyGo 的做法：管理员授权只在安装特权助手�
 
 助手把身份保存在 `state` 中，存储的密钥在系统钥匙串里。它的套接字 `ctl.sock` 所有本地用户都能打开；助手只按 uid 与 gid 服务 root、操作者以及本地 `kyokai` 组的成员（[security.md](security.md)）。
 
+## 助手（Linux）
+
+`kyokai-svc helper install --from BIN --operator-uid N`（root 身份，经 `pkexec`，由桌面的 polkit 代理询问：唯一一次管理员提示）把应用的 `kyokai-svc` 与 `libkyokai_core.so` 复制到只有 root 可写的 `/usr/local/lib/kyokai/helper`，把操作者的 uid 与应用的文件夹记录在 `/var/lib/kyokai/helper.json`（仅 root），并写入两个 systemd 单元：系统服务 `kyokai-helper.service`（以 root 运行 `run --host helper`，开机即运行，结束后重新启动；systemd 为它的套接字创建所有本地用户都能进入的 `/run/kyokai`，以及仅 root 可用的 `/var/lib/kyokai`），以及 `/etc/systemd/user` 中的用户服务 `kyokai-agent.service`（`agent --socket /run/kyokai/agent.sock`，属于 `graphical-session.target`，以 `systemctl --global` 为所有用户启用，并立即在每个运行中的用户管理器里启动），它像 macOS 的代理一样在用户的图形会话中采集与注入。代理的链路与 macOS 相同：助手只接受由第一个座席上活动会话的用户（logind 的 `/run/systemd/seats/seat0`）运行的自己的 `kyokai-svc`（`SO_PEERCRED`、`/proc/<pid>/exe`）的连接，代理只连接由 root 持有的套接字。登录界面上没有代理：GDM 与 SDDM 不允许任何程序采集它。`helper uninstall` 停止并停用两个单元，删除文件与套接字（`--purge`：还删除状态）。
+
+助手把身份保存在 `/var/lib/kyokai` 中，存储的密钥由 `systemd-creds` 封存（`master.cred`：主机的凭据密钥，电脑没有时由第一次封存创建，有 TPM 时同时使用 TPM），因为 root 没有 Secret Service。它的套接字 `/run/kyokai/ctl.sock` 所有本地用户都能打开；助手只为 root、操作者与本地 `kyokai` 组的成员服务，按 uid 与 gid 判断（[security.md](security.md)）。更新使用与 Windows 相同的签名包（应用的 `kyokai-svc` 旁边的 `bundle.json` 与 `bundle.sig`），自我停用会停止单元并删除一切，服务最后。
+
 ## 会话代理
 
 助手以 SYSTEM 身份运行在没有桌面的会话 0 中。它在当前的控制台会话里以 SYSTEM 身份保持运行一个自身的副本（`kyokai-svc agent`，用移到该会话的
@@ -106,4 +112,4 @@ macOS 的代理所用的用户无法写入助手的文件夹，因此它经链�
 Windows 上已实现助手的安装、卸载与状态命令、服务本身、它的授权以及会话代理（链路、在控制台会话中启动与跟随桌面）；链路已在进程内测试，服务与代理尚未在机器上测试。
 在 macOS 上，助手已在一台 macOS 27 的 MacBook Pro 上运行（[platform-notes.md](platform-notes.md) 的“macOS”）：一次提示完成安装、双向的存储迁移、代理传来的视频与一次点击、签名自更新（临时签名的包被拒绝）以及无需提示的移除；后台服务、登录窗口与自我停用尚未在那里运行。助手已在 Windows ARM64 上以服务方式运行（[platform-notes.md](platform-notes.md) 的“助手”）：安装、授权、代理及其对安全桌面的采集、
 双向的存储迁移、无人值守访问与卸载。界面中的运行方式切换与签名更新尚未在那里运行。签名自更新与自我停用已实现，其规则已经测试（检查之后被替换的文件不会被安装）；这些都尚未以服务方式运行过。只用 `kyokai-svc helper install`
-安装的助手会运行一个自己的引擎，拥有单独的设备 ID，直到有存储迁入为止。
+安装的助手会运行一个自己的引擎，拥有单独的设备 ID，直到有存储迁入为止。Linux 上的助手、它的单元、代理链路与封存的密钥已实现，链路的对端检查已测试；尚未在机器上安装过。

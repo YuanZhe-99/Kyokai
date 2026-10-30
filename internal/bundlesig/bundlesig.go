@@ -29,8 +29,9 @@ import (
 //go:embed release.pub
 var releasePub string
 
-// Files a bundle manifest covers (those present in the folder).
-var Files = []string{"kyokai-svc.exe", "kyokai_core.dll"}
+// Files a bundle manifest covers (those present in the folder: Windows'
+// and Linux's).
+var Files = []string{"kyokai-svc.exe", "kyokai_core.dll", "kyokai-svc", "libkyokai_core.so"}
 
 // ErrNoKey reports a build without a release public key (development).
 var ErrNoKey = errors.New("this build has no release key; bundles cannot be verified")

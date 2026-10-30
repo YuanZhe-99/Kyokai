@@ -103,6 +103,32 @@ The helper keeps its identity in `state` with the store's key in the System keyc
 socket `ctl.sock` can be opened by every local user; the helper serves only root, the operator
 and members of a local `kyokai` group, by uid and gid ([security.md](security.md)).
 
+## The helper (Linux)
+
+`kyokai-svc helper install --from BIN --operator-uid N` (root, through `pkexec`, which asks through
+the desktop's polkit agent: the one administrator prompt) copies the app's `kyokai-svc` and
+`libkyokai_core.so` into `/usr/local/lib/kyokai/helper`, writable by root only, records the
+operator's uid and the app's folder in `/var/lib/kyokai/helper.json` (root only), and writes two
+systemd units: the system service `kyokai-helper.service` (`run --host helper` as root, from
+boot, started again when it ends; systemd makes `/run/kyokai` for its sockets, which every local
+user may enter, and `/var/lib/kyokai`, root only) and the user service `kyokai-agent.service` in
+`/etc/systemd/user` (`agent --socket /run/kyokai/agent.sock`, part of `graphical-session.target`,
+enabled for every user with `systemctl --global` and started at once in every running user
+manager), which captures and injects in the user's graphical session as the macOS agent does. The
+agent's link is the macOS one: the helper takes a connection only from its own `kyokai-svc`
+(`SO_PEERCRED`, `/proc/<pid>/exe`) run by the user of the active session on the first seat
+(logind's `/run/systemd/seats/seat0`), and the agent connects only to a socket held by root. There
+is no agent at the sign-in screen: GDM and SDDM let no program capture it. `helper uninstall`
+stops and disables both units and deletes the files and sockets (`--purge`: also the state).
+
+The helper keeps its identity in `/var/lib/kyokai` with the store's key sealed by `systemd-creds`
+(`master.cred`: the host's credential key, made by the first seal when the computer has none, and
+the TPM where there is one), since root has no Secret Service. Its socket `/run/kyokai/ctl.sock`
+can be opened by every local user; the helper serves only root, the operator and members of a
+local `kyokai` group, by uid and gid ([security.md](security.md)). Updates use the signed bundle
+Windows uses (`bundle.json` and `bundle.sig` beside the app's `kyokai-svc`), and self-disable
+stops the units and deletes everything, the service last.
+
 ## The session agent
 
 The helper runs as SYSTEM in session 0, which has no desktop. It keeps a copy of itself running as
@@ -210,4 +236,5 @@ the GUI and the signed update have not run there yet.
 The signed self-update and the self-disable are implemented and their rules tested (a file
 swapped after the check is not installed); none of this has run as a service yet. A helper
 installed with `kyokai-svc helper install` alone runs an engine of its own with a separate Device ID
-until a store is moved into it.
+until a store is moved into it. On Linux the helper, its units, the agent's link and the sealed key
+are implemented and the link's peer checks tested; it has not been installed on a machine yet.

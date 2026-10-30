@@ -698,7 +698,7 @@ pub fn serve(input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
     let out = Arc::new(Mutex::new(BufWriter::new(out)));
     // Log lines go out on a thread of their own: a line logged while this
     // thread holds `out` must not wait for it.
-    #[cfg(target_os = "macos")]
+    #[cfg(unix)]
     {
         let (tx, lines) = std_mpsc::channel::<String>();
         if LOG_TO_HELPER.set(tx).is_ok() {
@@ -760,13 +760,13 @@ struct Agent {
 #[cfg(windows)]
 type Injector = crate::input::Injector;
 
-/// The agent's input on macOS: injection only; blocking the user's input,
-/// privacy mode and locking are not offered there.
-#[cfg(target_os = "macos")]
+/// The agent's input on macOS and Linux: injection only; blocking the
+/// user's input, privacy mode and locking are not offered there.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[derive(Default)]
 struct Injector(crate::input::Injector);
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 impl Injector {
     fn set_area(&mut self, area: Option<Area>) {
         self.0.set_area(area);
@@ -795,11 +795,11 @@ impl Injector {
 }
 
 /// Elsewhere there is nothing to inject into yet.
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 #[derive(Default)]
 struct Injector {}
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 impl Injector {
     fn set_area(&mut self, _: Option<Area>) {}
     fn inject(&mut self, _: &Event, _: bool) -> bool {
@@ -1089,8 +1089,8 @@ impl Agent {
     }
 }
 
-#[cfg(target_os = "macos")]
-pub use mac_impl::{run_agent_socket, start_helper};
+#[cfg(unix)]
+pub use unix_impl::{run_agent_socket, start_helper};
 
 /// Moves this thread to the desktop that receives input now (the user's,
 /// the UAC secure desktop or the lock screen), when this process is the
@@ -1623,15 +1623,15 @@ mod windows_impl {
     }
 }
 
-#[cfg(target_os = "macos")]
-mod mac_impl {
-    //! The link over a Unix socket (doc/en-us/run-modes.md, "The session
-    //! agent"): the helper listens in its root-owned folder and takes a
-    //! connection only from its own engine binary, run by the user at the
-    //! screen or at the login window; the agent connects only to a socket
-    //! held by root. The newest agent replaces an older one.
+#[cfg(unix)]
+mod unix_impl {
+    //! The link over a Unix socket on macOS and Linux (doc/en-us/run-modes.md,
+    //! "The session agent"): the helper listens in its root-owned folder and
+    //! takes a connection only from its own engine binary, run by the user
+    //! at the screen (or, on macOS, by root at the login window); the agent
+    //! connects only to a socket held by root. The newest agent replaces an
+    //! older one.
     use super::{LINK, Link, serve};
-    use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::io::AsRawFd;
     use std::os::unix::net::{UnixListener, UnixStream};
@@ -1677,13 +1677,24 @@ mod mac_impl {
     }
 
     /// Whether the peer runs this engine's own binary as the user at the
-    /// screen, or as root at the login window.
+    /// screen, or as root (macOS's login window).
     fn is_own_agent(stream: &UnixStream, own: &Path) -> bool {
+        let Some((uid, path)) = peer(stream) else {
+            return false;
+        };
+        path == own && (uid == 0 || Some(uid) == console_uid())
+    }
+
+    /// The peer's uid and executable (macOS: getpeereid, LOCAL_PEERPID and
+    /// proc_pidpath).
+    #[cfg(target_os = "macos")]
+    fn peer(stream: &UnixStream) -> Option<(u32, PathBuf)> {
+        use std::os::unix::ffi::OsStrExt;
         let fd = stream.as_raw_fd();
         let (mut uid, mut gid) = (0, 0);
         // SAFETY: getpeereid writes two ids for a connected socket.
         if unsafe { libc::getpeereid(fd, &mut uid, &mut gid) } != 0 {
-            return false;
+            return None;
         }
         let mut pid: libc::pid_t = 0;
         let mut len = std::mem::size_of::<libc::pid_t>() as libc::socklen_t;
@@ -1699,26 +1710,70 @@ mod mac_impl {
             )
         } == 0;
         if !ok || pid <= 0 {
-            return false;
+            return None;
         }
         let mut buf = [0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
         // SAFETY: proc_pidpath writes at most `buf.len()` bytes of the
         // pid's executable path.
         let n = unsafe { libc::proc_pidpath(pid, buf.as_mut_ptr().cast(), buf.len() as u32) };
         if n <= 0 {
-            return false;
+            return None;
         }
-        let path = Path::new(std::ffi::OsStr::from_bytes(&buf[..n as usize]));
-        let console = console_uid();
-        path == own && (uid == 0 || Some(uid) == console)
+        Some((
+            uid,
+            PathBuf::from(std::ffi::OsStr::from_bytes(&buf[..n as usize])),
+        ))
     }
 
-    /// The user signed in at the screen (the owner of /dev/console).
+    /// The peer's uid and executable (Linux: SO_PEERCRED and /proc).
+    #[cfg(target_os = "linux")]
+    fn peer(stream: &UnixStream) -> Option<(u32, PathBuf)> {
+        let mut cred = libc::ucred {
+            pid: 0,
+            uid: 0,
+            gid: 0,
+        };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        // SAFETY: SO_PEERCRED writes one ucred, whose size `len` gives.
+        let ok = unsafe {
+            libc::getsockopt(
+                stream.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                (&mut cred as *mut libc::ucred).cast(),
+                &mut len,
+            )
+        } == 0;
+        if !ok || cred.pid <= 0 {
+            return None;
+        }
+        let path = std::fs::read_link(format!("/proc/{}/exe", cred.pid)).ok()?;
+        Some((cred.uid, path))
+    }
+
+    /// The user signed in at the screen (macOS: the owner of /dev/console).
+    #[cfg(target_os = "macos")]
     fn console_uid() -> Option<u32> {
         use std::os::unix::fs::MetadataExt;
         std::fs::metadata("/dev/console")
             .ok()
             .map(|m| m.uid())
+            .filter(|&u| u != 0)
+    }
+
+    /// The user of the active session on the first seat (logind's
+    /// /run/systemd/seats/seat0).
+    #[cfg(target_os = "linux")]
+    fn console_uid() -> Option<u32> {
+        seat_uid(&std::fs::read_to_string("/run/systemd/seats/seat0").ok()?)
+    }
+
+    /// `ACTIVE_UID` of a logind seat file, when not root.
+    #[cfg(target_os = "linux")]
+    pub(super) fn seat_uid(text: &str) -> Option<u32> {
+        text.lines()
+            .find_map(|l| l.strip_prefix("ACTIVE_UID="))
+            .and_then(|v| v.trim().parse().ok())
             .filter(|&u| u != 0)
     }
 
@@ -1737,9 +1792,56 @@ mod mac_impl {
     }
 
     fn held_by_root(stream: &UnixStream) -> bool {
-        let (mut uid, mut gid) = (1, 1);
-        // SAFETY: getpeereid writes two ids for a connected socket.
-        unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) == 0 && uid == 0 }
+        #[cfg(target_os = "macos")]
+        {
+            let (mut uid, mut gid) = (1, 1);
+            // SAFETY: getpeereid writes two ids for a connected socket.
+            unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) == 0 && uid == 0 }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let mut cred = libc::ucred {
+                pid: 0,
+                uid: 1,
+                gid: 1,
+            };
+            let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+            // SAFETY: SO_PEERCRED writes one ucred, whose size `len` gives.
+            let ok = unsafe {
+                libc::getsockopt(
+                    stream.as_raw_fd(),
+                    libc::SOL_SOCKET,
+                    libc::SO_PEERCRED,
+                    (&mut cred as *mut libc::ucred).cast(),
+                    &mut len,
+                )
+            } == 0;
+            ok && cred.uid == 0
+        }
+    }
+
+    #[cfg(all(test, target_os = "linux"))]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn the_seat_s_active_user_is_read() {
+            let seat = "# This is private data. Do not parse.\nIS_SEAT0=1\nCAN_GRAPHICAL=1\nACTIVE=2\nACTIVE_UID=1000\nSESSIONS=2 c1\nUIDS=1000 120\n";
+            assert_eq!(seat_uid(seat), Some(1000));
+            assert_eq!(seat_uid("ACTIVE_UID=0\n"), None, "root (a greeter)");
+            assert_eq!(seat_uid("IS_SEAT0=1\n"), None, "nobody signed in");
+        }
+
+        /// A connection from this test binary is its own executable, by
+        /// this user.
+        #[test]
+        fn a_peer_is_told_by_its_executable_and_user() {
+            let (a, _b) = UnixStream::pair().unwrap();
+            let (uid, path) = peer(&a).unwrap();
+            // SAFETY: getuid has no preconditions.
+            assert_eq!(uid, unsafe { libc::getuid() });
+            assert_eq!(path, std::env::current_exe().unwrap());
+        }
     }
 }
 

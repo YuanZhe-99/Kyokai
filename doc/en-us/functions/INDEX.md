@@ -13,7 +13,7 @@ returns, side effects and notes where non-trivial).
 | `internal/localapi` | Local API protocol, server, client, authorization | `ProtocolVersion`, `Request`, `Status`, `ByAddress`, `AISettings`, `AITask`, `NetworkSettings`, `NetworkProfiles`, `NetworkChange`, `NetworkStatus`, `NetworkState`, `SessionInfo`, `HostRequest`, `Client.Attach`, `Authorizer.Allows`, `Authorizer.Owner`, `IsOwner`, `Client.Tunnel`, `MoveStore` |
 | `internal/core` | purego binding to the Rust core | `Load`, `Lib.Start`, `Lib.Call` |
 | `internal/version` | Product version and build | `Version`, `Older`, `Build` |
-| `internal/helper` | Installs, removes and inspects the privileged helper (Windows service; macOS LaunchDaemon and LaunchAgent) | `Install`, `Uninstall`, `Installed`, `Inspect`, `ReadSettings`, `GroupSID`, `GroupGID`, `SocketPath`, `AgentSocket`, `SelfUpdate`, `Retire`, `Settings.AppGone` |
+| `internal/helper` | Installs, removes and inspects the privileged helper (Windows service; macOS LaunchDaemon and LaunchAgent; Linux systemd system and user services) | `Install`, `Uninstall`, `Installed`, `Inspect`, `ReadSettings`, `GroupSID`, `GroupGID`, `SocketPath`, `AgentSocket`, `SelfUpdate`, `Retire`, `Settings.AppGone` |
 | `internal/fsutil` | Atomic writes and JSON documents | `WriteFileAtomic`, `WriteJSON`, `ReadJSON` |
 | `internal/cores` | Official EasyTier cores: releases, digest-checked downloads, the cores folder | `Releases`, `Install`, `Installed`, `AssetName` |
 | `internal/rdp` | Remote Desktop client, vendored (client side, over a given `Conn`) | `Dial`, `Options`, `Events`, `Client.Run`, `Client.SendScancode`, `Client.SendPointer` |

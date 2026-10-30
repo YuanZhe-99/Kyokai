@@ -33,7 +33,7 @@ func helperCmd(args []string) error {
 	}
 	from := fs.String("from", filepath.Dir(exe), "install: the folder holding kyokai-svc and the core library")
 	operator := fs.String("operator-sid", localapi.CurrentSID(), "install: the user who may use the helper (Windows)")
-	operatorUID := fs.Uint("operator-uid", uint(os.Getuid()), "install: the user who may use the helper (macOS)")
+	operatorUID := fs.Uint("operator-uid", uint(os.Getuid()), "install: the user who may use the helper (macOS, Linux)")
 	purge := fs.Bool("purge", false, "uninstall: also delete the helper's identity and trusted devices")
 	fs.Parse(args[1:])
 	switch args[0] {
@@ -76,7 +76,7 @@ func runHelper(ctx context.Context, opts engine.Options) error {
 	}
 	opts.Logf = engine.Logger(filepath.Join(opts.StateDir, "logs", "engine.log"))
 	opts.Update = func(from string) error { return helper.SelfUpdate(from, version.Version) }
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 		opts.AgentSocket = helper.AgentSocket
 	}
 	// Removing privileges needs no administrator: the helper, SYSTEM or
