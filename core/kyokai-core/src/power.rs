@@ -50,10 +50,7 @@ pub fn wake_display() {
     if let Some(link) = crate::agent::link() {
         link.wake_display();
     } else {
-        #[cfg(any(windows, target_os = "macos"))]
         imp::wake();
-        #[cfg(target_os = "linux")]
-        crate::linux::wake_display();
     }
 }
 
@@ -81,21 +78,24 @@ use windows_impl as imp;
 #[cfg(target_os = "macos")]
 use mac_impl as imp;
 
+#[cfg(target_os = "linux")]
+use linux_impl as imp;
+
 /// Keeps the computer and its displays awake while held; every holder
 /// shares one power request.
 pub struct Awake(());
 
 /// The shared power request and how many hold it.
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 static AWAKE: std::sync::Mutex<(usize, Option<imp::Request>)> = std::sync::Mutex::new((0, None));
 
 /// Keeps the computer awake until the guard is dropped.
 /// Side effects: the first guard sets a system and a display power request
 /// ("Kyokai: someone is connected", shown by `powercfg /requests` on
-/// Windows and `pmset -g assertions` on macOS); dropping the last one
-/// releases it.
+/// Windows, `pmset -g assertions` on macOS and `systemd-inhibit --list` on
+/// Linux); dropping the last one releases it.
 pub fn keep_awake() -> Awake {
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     {
         let mut awake = AWAKE.lock().expect("power request");
         if awake.0 == 0 {
@@ -108,7 +108,7 @@ pub fn keep_awake() -> Awake {
 
 impl Drop for Awake {
     fn drop(&mut self) {
-        #[cfg(any(windows, target_os = "macos"))]
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
         {
             let mut awake = AWAKE.lock().expect("power request");
             awake.0 -= 1;
@@ -122,7 +122,7 @@ impl Drop for Awake {
 }
 
 /// Whether a power request is held now (for tests).
-#[cfg(all(test, any(windows, target_os = "macos")))]
+#[cfg(all(test, any(windows, target_os = "macos", target_os = "linux")))]
 fn awake() -> bool {
     AWAKE.lock().expect("power request").1.is_some()
 }
@@ -132,11 +132,14 @@ fn awake() -> bool {
 pub struct Suspend {
     #[cfg(windows)]
     _registration: Option<windows_impl::Registration>,
+    /// Ends the watch's thread (logind's PrepareForSleep).
+    #[cfg(target_os = "linux")]
+    _watch: linux_impl::SleepWatch,
 }
 
 impl Suspend {
     /// Starts watching for sleep on behalf of `ai`.
-    /// Notes: off Windows nothing is watched yet (the Mac pass).
+    /// Notes: macOS watches nothing yet (the Mac pass).
     pub fn watch(ai: &Arc<crate::ai::Ai>) -> Suspend {
         #[cfg(windows)]
         {
@@ -144,7 +147,13 @@ impl Suspend {
                 _registration: windows_impl::Registration::new(Arc::downgrade(ai)),
             }
         }
-        #[cfg(not(windows))]
+        #[cfg(target_os = "linux")]
+        {
+            Suspend {
+                _watch: linux_impl::SleepWatch::start(Arc::downgrade(ai)),
+            }
+        }
+        #[cfg(target_os = "macos")]
         {
             let _ = ai;
             Suspend {}
@@ -153,10 +162,161 @@ impl Suspend {
 }
 
 /// What the sleep notification calls: the AI pauses, if it still exists.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub(crate) fn going_to_sleep(ai: &Weak<crate::ai::Ai>) {
     if let Some(ai) = ai.upgrade() {
         ai.pause_current(crate::ai::Pause::Sleep);
+    }
+}
+
+/// Linux: logind's inhibitor and the desktop's screen saver for the hold,
+/// logind's PrepareForSleep for the sleep watch, all over D-Bus on threads
+/// of their own.
+#[cfg(target_os = "linux")]
+mod linux_impl {
+    use super::*;
+    use futures_util::StreamExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// Why the hold is there, as `systemd-inhibit --list` and the desktop
+    /// show it.
+    const WHO: &str = "Kyokai";
+    const WHY: &str = "Someone is connected";
+
+    /// The held inhibitors: dropped, their thread lets them go.
+    pub struct Request(Option<tokio::sync::oneshot::Sender<()>>);
+
+    /// Takes logind's sleep and idle inhibitor (the system bus) and the
+    /// desktop's screen-saver inhibitor (the session bus) on a thread of
+    /// their own.
+    /// Returns: the hold, even when neither bus answers (nothing held then).
+    pub fn request() -> Option<Request> {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        std::thread::spawn(move || {
+            let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            else {
+                return;
+            };
+            rt.block_on(async move {
+                let logind = async {
+                    let c = zbus::Connection::system().await.ok()?;
+                    let reply = c
+                        .call_method(
+                            Some("org.freedesktop.login1"),
+                            "/org/freedesktop/login1",
+                            Some("org.freedesktop.login1.Manager"),
+                            "Inhibit",
+                            &("sleep:idle", WHO, WHY, "block"),
+                        )
+                        .await
+                        .ok()?;
+                    reply.body().deserialize::<zbus::zvariant::OwnedFd>().ok()
+                };
+                let saver = async {
+                    let c = zbus::Connection::session().await.ok()?;
+                    let reply = c
+                        .call_method(
+                            Some("org.freedesktop.ScreenSaver"),
+                            "/org/freedesktop/ScreenSaver",
+                            Some("org.freedesktop.ScreenSaver"),
+                            "Inhibit",
+                            &(WHO, WHY),
+                        )
+                        .await
+                        .ok()?;
+                    let cookie: u32 = reply.body().deserialize().ok()?;
+                    Some((c, cookie))
+                };
+                let (fd, saver) = tokio::join!(logind, saver);
+                if fd.is_none() && saver.is_none() {
+                    log::info!("power: neither logind nor the desktop keeps the computer awake");
+                }
+                let _ = rx.await;
+                if let Some((c, cookie)) = saver {
+                    let _ = c
+                        .call_method(
+                            Some("org.freedesktop.ScreenSaver"),
+                            "/org/freedesktop/ScreenSaver",
+                            Some("org.freedesktop.ScreenSaver"),
+                            "UnInhibit",
+                            &(cookie,),
+                        )
+                        .await;
+                }
+                // logind's inhibitor ends with its descriptor.
+                drop(fd);
+            });
+        });
+        Some(Request(Some(tx)))
+    }
+
+    pub fn release(mut r: Request) {
+        if let Some(tx) = r.0.take() {
+            let _ = tx.send(());
+        }
+    }
+
+    /// Wakes the display (X11's DPMS; the desktop wakes it on Wayland when
+    /// input comes).
+    pub fn wake() {
+        crate::linux::wake_display();
+    }
+
+    /// Watches logind's PrepareForSleep until dropped.
+    pub struct SleepWatch(Arc<AtomicBool>);
+
+    impl SleepWatch {
+        pub fn start(ai: Weak<crate::ai::Ai>) -> SleepWatch {
+            let ended = Arc::new(AtomicBool::new(false));
+            let stop = ended.clone();
+            std::thread::spawn(move || {
+                let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                else {
+                    return;
+                };
+                rt.block_on(async move {
+                    let Ok(c) = zbus::Connection::system().await else {
+                        return;
+                    };
+                    let Ok(rule) = zbus::MatchRule::builder()
+                        .msg_type(zbus::message::Type::Signal)
+                        .interface("org.freedesktop.login1.Manager")
+                        .and_then(|b| b.member("PrepareForSleep"))
+                        .map(|b| b.build())
+                    else {
+                        return;
+                    };
+                    let Ok(mut signals) = zbus::MessageStream::for_match_rule(rule, &c, None).await
+                    else {
+                        return;
+                    };
+                    while !stop.load(Ordering::Relaxed) {
+                        let next =
+                            tokio::time::timeout(Duration::from_secs(1), signals.next()).await;
+                        match next {
+                            Ok(Some(Ok(m))) => {
+                                if m.body().deserialize::<bool>().unwrap_or(false) {
+                                    going_to_sleep(&ai);
+                                }
+                            }
+                            Ok(_) => return,
+                            Err(_) => {}
+                        }
+                    }
+                });
+            });
+            SleepWatch(ended)
+        }
+    }
+
+    impl Drop for SleepWatch {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Relaxed);
+        }
     }
 }
 
@@ -477,7 +637,7 @@ mod wake_tests {
     }
 }
 
-#[cfg(all(test, any(windows, target_os = "macos")))]
+#[cfg(all(test, any(windows, target_os = "macos", target_os = "linux")))]
 mod tests {
     use super::*;
 

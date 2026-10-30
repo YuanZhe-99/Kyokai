@@ -1,9 +1,13 @@
 //! The host's sound (doc/en-us/computer-use.md, "Sound"): what the
 //! computer plays, captured (ScreenCaptureKit on macOS, WASAPI loopback on
-//! Windows), turned into 48 kHz stereo and sent as 10 ms Opus packets, none
+//! Windows, the default output's monitor through PipeWire on Linux), turned
+//! into 48 kHz stereo and sent as 10 ms Opus packets, none
 //! while it is silent. In
 //! the helper's modes the session agent captures it on the user's desktop.
-#![cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+#![cfg_attr(
+    not(any(windows, target_os = "macos", target_os = "linux")),
+    allow(dead_code)
+)]
 
 use crate::opus;
 use std::collections::VecDeque;
@@ -201,10 +205,6 @@ impl Source {
                 if now != generation || (ended && tried.elapsed() >= RESTART) {
                     generation = now;
                     tried = Instant::now();
-                    #[cfg_attr(
-                        not(any(windows, target_os = "macos")),
-                        allow(clippy::drop_non_drop)
-                    )]
                     drop(capture.take());
                     capture = match Capture::start(pcm.clone(), &source) {
                         Ok(c) => Some(c),
@@ -269,6 +269,8 @@ pub fn devices() -> Vec<Device> {
     return input::devices();
     #[cfg(windows)]
     return loopback::devices();
+    #[cfg(target_os = "linux")]
+    return pipe::devices();
     #[allow(unreachable_code)]
     Vec::new()
 }
@@ -284,6 +286,9 @@ enum Capture {
     /// What the computer plays, or an input device, through WASAPI.
     #[cfg(windows)]
     Wasapi(#[allow(dead_code)] loopback::Loopback),
+    /// What the computer plays, or an input device, through PipeWire.
+    #[cfg(target_os = "linux")]
+    Pipe(pipe::Pipe),
 }
 
 impl Capture {
@@ -298,6 +303,8 @@ impl Capture {
         };
         #[cfg(windows)]
         return loopback::Loopback::start(pcm, source).map(Capture::Wasapi);
+        #[cfg(target_os = "linux")]
+        return pipe::Pipe::start(pcm, source).map(Capture::Pipe);
         #[allow(unreachable_code)]
         {
             let _ = (pcm, source);
@@ -310,6 +317,8 @@ impl Capture {
         match self {
             #[cfg(target_os = "macos")]
             Capture::System(c) => c.stopped(),
+            #[cfg(target_os = "linux")]
+            Capture::Pipe(c) => c.stopped(),
             #[allow(unreachable_patterns)]
             _ => false,
         }
@@ -640,6 +649,210 @@ mod input {
     }
 }
 
+/// What the default output plays (its monitor), or an input device, through
+/// PipeWire, as 48 kHz stereo floats.
+#[cfg(target_os = "linux")]
+mod pipe {
+    use super::{Device, Pcm};
+    use pipewire as pw;
+    use pw::spa;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// The capture thread, stopped when this is dropped.
+    pub struct Pipe {
+        quit: pw::channel::Sender<()>,
+        thread: Option<std::thread::JoinHandle<()>>,
+        stopped: Arc<AtomicBool>,
+    }
+
+    impl Pipe {
+        /// Captures `source` ("" for what the default output plays, else an
+        /// input node's name) into `pcm`.
+        /// Returns: why not (no PipeWire).
+        pub fn start(pcm: Arc<Pcm>, source: &str) -> Result<Pipe, String> {
+            let (quit, quit_rx) = pw::channel::channel();
+            let (ready_tx, ready) = std::sync::mpsc::channel();
+            let stopped = Arc::new(AtomicBool::new(false));
+            let ended = stopped.clone();
+            let source = source.to_owned();
+            let thread = std::thread::spawn(move || {
+                if let Err(e) = run(&pcm, &source, quit_rx, &ready_tx) {
+                    let _ = ready_tx.send(Err(e));
+                }
+                ended.store(true, Ordering::Relaxed);
+            });
+            ready
+                .recv()
+                .map_err(|_| "the sound capture did not start".to_string())??;
+            Ok(Pipe {
+                quit,
+                thread: Some(thread),
+                stopped,
+            })
+        }
+
+        /// Whether the stream ended by itself (PipeWire went away).
+        pub fn stopped(&self) -> bool {
+            self.stopped.load(Ordering::Relaxed)
+        }
+    }
+
+    impl Drop for Pipe {
+        fn drop(&mut self) {
+            let _ = self.quit.send(());
+            if let Some(t) = self.thread.take() {
+                let _ = t.join();
+            }
+        }
+    }
+
+    /// The stream's thread: connects, says so, and runs until `quit`.
+    fn run(
+        pcm: &Arc<Pcm>,
+        source: &str,
+        quit: pw::channel::Receiver<()>,
+        ready: &std::sync::mpsc::Sender<Result<(), String>>,
+    ) -> Result<(), String> {
+        pw::init();
+        let mainloop = pw::main_loop::MainLoopRc::new(None).map_err(|e| e.to_string())?;
+        let context = pw::context::ContextRc::new(&mainloop, None).map_err(|e| e.to_string())?;
+        let core = context
+            .connect_rc(None)
+            .map_err(|e| format!("PipeWire: {e}"))?;
+        let mut props = pw::properties::properties! {
+            *pw::keys::MEDIA_TYPE => "Audio",
+            *pw::keys::MEDIA_CATEGORY => "Capture",
+            *pw::keys::MEDIA_ROLE => "Music",
+            *pw::keys::NODE_NAME => "kyokai-sound",
+        };
+        if source.is_empty() {
+            // The default output's monitor: what the computer plays.
+            props.insert("stream.capture.sink", "true");
+        } else {
+            props.insert("target.object", source);
+        }
+        let stream =
+            pw::stream::StreamBox::new(&core, "kyokai-sound", props).map_err(|e| e.to_string())?;
+        let ended = mainloop.clone();
+        let _quit = quit.attach(mainloop.loop_(), move |()| ended.quit());
+        let failed = mainloop.clone();
+        let into = pcm.clone();
+        let _listener = stream
+            .add_local_listener::<()>()
+            .state_changed(move |_, _, _, new| {
+                if matches!(new, pw::stream::StreamState::Error(_)) {
+                    failed.quit();
+                }
+            })
+            .process(move |stream, _| {
+                let Some(mut buffer) = stream.dequeue_buffer() else {
+                    return;
+                };
+                let Some(data) = buffer.datas_mut().first_mut() else {
+                    return;
+                };
+                let size = data.chunk().size() as usize;
+                let Some(bytes) = data.data() else {
+                    return;
+                };
+                let samples: Vec<f32> = bytes[..size.min(bytes.len())]
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|b| f32::from_le_bytes(*b))
+                    .collect();
+                into.push(&samples, CHANNELS, RATE);
+            })
+            .register()
+            .map_err(|e| e.to_string())?;
+        let mut info = spa::param::audio::AudioInfoRaw::new();
+        info.set_format(spa::param::audio::AudioFormat::F32LE);
+        info.set_rate(RATE);
+        info.set_channels(CHANNELS as u32);
+        let obj = spa::pod::Object {
+            type_: spa::utils::SpaTypes::ObjectParamFormat.as_raw(),
+            id: spa::param::ParamType::EnumFormat.as_raw(),
+            properties: info.into(),
+        };
+        let values: Vec<u8> = spa::pod::serialize::PodSerializer::serialize(
+            std::io::Cursor::new(Vec::new()),
+            &spa::pod::Value::Object(obj),
+        )
+        .map_err(|e| format!("{e:?}"))?
+        .0
+        .into_inner();
+        let mut params = [spa::pod::Pod::from_bytes(&values).ok_or("bad format")?];
+        stream
+            .connect(
+                spa::utils::Direction::Input,
+                None,
+                pw::stream::StreamFlags::AUTOCONNECT
+                    | pw::stream::StreamFlags::MAP_BUFFERS
+                    | pw::stream::StreamFlags::RT_PROCESS,
+                &mut params,
+            )
+            .map_err(|e| e.to_string())?;
+        let _ = ready.send(Ok(()));
+        mainloop.run();
+        Ok(())
+    }
+
+    /// What the stream asks for: PipeWire converts to it.
+    const RATE: u32 = 48_000;
+    const CHANNELS: usize = 2;
+
+    /// The input devices (PipeWire's `Audio/Source` nodes), by node name.
+    pub fn devices() -> Vec<Device> {
+        list().unwrap_or_default()
+    }
+
+    fn list() -> Result<Vec<Device>, pw::Error> {
+        use std::cell::{Cell, RefCell};
+        use std::rc::Rc;
+        pw::init();
+        let mainloop = pw::main_loop::MainLoopRc::new(None)?;
+        let context = pw::context::ContextRc::new(&mainloop, None)?;
+        let core = context.connect_rc(None)?;
+        let registry = core.get_registry()?;
+        let found = Rc::new(RefCell::new(Vec::new()));
+        let done = Rc::new(Cell::new(false));
+        let pending = core.sync(0)?;
+        let (seen, finished, stop) = (found.clone(), done.clone(), mainloop.clone());
+        let _core = core
+            .add_listener_local()
+            .done(move |id, seq| {
+                if id == pw::core::PW_ID_CORE && seq == pending {
+                    finished.set(true);
+                    stop.quit();
+                }
+            })
+            .register();
+        let _registry = registry
+            .add_listener_local()
+            .global(move |g| {
+                let Some(props) = g.props else {
+                    return;
+                };
+                if props.get("media.class") != Some("Audio/Source") {
+                    return;
+                }
+                if let Some(id) = props.get("node.name") {
+                    let name = props.get("node.description").unwrap_or(id);
+                    seen.borrow_mut().push(Device {
+                        id: id.to_owned(),
+                        name: name.to_owned(),
+                    });
+                }
+            })
+            .register();
+        while !done.get() {
+            mainloop.run();
+        }
+        Ok(found.take())
+    }
+}
+
 /// What the default output device plays (WASAPI loopback), or an input
 /// device, through WASAPI.
 #[cfg(windows)]
@@ -849,6 +1062,18 @@ mod loopback {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Where PipeWire runs, the capture of what the computer plays connects
+    /// and keeps running (nothing is played: it may be a person's computer).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn pipewire_captures_what_the_computer_plays() {
+        let Ok(pipe) = pipe::Pipe::start(Arc::new(Pcm::default()), "") else {
+            return; // no PipeWire here (a build machine)
+        };
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(!pipe.stopped());
+    }
 
     /// The input devices come with their system ids (a computer may have
     /// none, as a build machine).

@@ -2940,6 +2940,7 @@ dependencies = [
  "easytier",
  "easytier-core",
  "ed25519-dalek 3.0.0",
+ "futures-util",
  "getrandom 0.4.3",
  "libc",
  "log",
@@ -2976,6 +2977,7 @@ dependencies = [
  "windows 0.62.2",
  "windows-sys 0.61.2",
  "x11rb",
+ "zbus",
  "zeroize",
 ]
 

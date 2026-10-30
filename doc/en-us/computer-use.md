@@ -189,13 +189,16 @@ as its stream starts, and a resumed controller asks again). What it shares is th
 in Access, **Sound to share** (the GUI's `sound_source`, sent to the engine as it attaches and when
 it changes, `sound.source`; the helper passes it to its agent; a running stream switches at once):
 what the computer plays, or one input device (`sound.devices` lists them: Core Audio's devices with
-inputs on macOS, the active capture endpoints on Windows). `audio.rs` captures what the computer
+inputs on macOS, the active capture endpoints on Windows, PipeWire's `Audio/Source` nodes by node
+name on Linux). `audio.rs` captures what the computer
 plays on macOS through a ScreenCaptureKit stream of the main display that carries only sound
 (Kyokai's own left out; the Screen Recording permission covers it; a display sleep ends that stream,
 and a stream that stopped or could not start is started again every 2 seconds) and an input through an audio
 queue (the Microphone permission: both apps carry its usage text and the `audio-input`
 entitlement, and choosing an input asks for it); on Windows through WASAPI, loopback of the default
-output device or the input device, in their own format. It turns the sound into 48 kHz stereo
+output device or the input device, in their own format; on Linux through a PipeWire stream of the
+default output's monitor (`stream.capture.sink`) or of the input node (`target.object`), which
+PipeWire converts to 48 kHz stereo floats. It turns the sound into 48 kHz stereo
 (resampling linearly at another rate, doubling mono) and encodes 10 ms Opus packets in Opus'
 low-delay mode at 96 kbit/s (`opus.rs`, libopus built by vcpkg; as RustDesk's), and sends none after
 half a second of silence until sound returns (RustDesk's zero gate). In the helper's modes the
@@ -391,10 +394,11 @@ mode is on; the viewer's switches show that report, not the request.
 
 While a session is connected the host keeps the computer and its displays awake (on Windows a
 power request, on macOS an idle system sleep and an idle display sleep power assertion, both named
-"Kyokai: someone is connected"; taken when the first session connects and released with the
+"Kyokai: someone is connected"; on Linux logind's `sleep:idle` inhibitor and the desktop's
+`org.freedesktop.ScreenSaver` inhibitor, named "Kyokai: Someone is connected", over D-Bus; taken when the first session connects and released with the
 last; in the helper modes the session agent, in the user's session, holds one for the displays
 while it streams video, since Windows ignores a display request from session 0), so the idle
-timer neither cuts the session nor darkens the captured display. When the computer goes to sleep anyway, the AI task in progress pauses
+timer neither cuts the session nor darkens the captured display. When the computer goes to sleep anyway (on Linux, logind's `PrepareForSleep`), the AI task in progress pauses
 ("the computer went to sleep") and waits for a person to resume it; after waking, sessions
 resume through the network as after any drop.
 

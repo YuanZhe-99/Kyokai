@@ -15,6 +15,9 @@
   user's own input from the input devices (Kyokai Helper or the `input` group; without them no AI
   task starts), and `kyokai.shown` (local API 2, an addition): while one of Kyokai's windows shows on
   Wayland the picture holds and input waits.
+- Linux sound through PipeWire (what the default output plays, or an input), keeping awake through
+  logind's and the desktop's inhibitors while someone is connected, and AI tasks pausing at
+  logind's PrepareForSleep.
 - The Secret Service gets a minute: a keyring prompt nobody answers no longer holds the engine's
   start (the store counts as refused, as a dismissed prompt does).
 - A host started again right after a session (the old connection in TIME-WAIT on port 47310)
