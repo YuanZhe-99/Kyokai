@@ -31,7 +31,7 @@ impl Serial {
         // termios for an open terminal; cfmakeraw and cfset*speed change
         // only that structure; tcsetattr reads it.
         let ok = unsafe {
-            libc::ioctl(fd.as_raw_fd(), libc::TIOCEXCL);
+            libc::ioctl(fd.as_raw_fd(), libc::TIOCEXCL as _);
             let mut t: libc::termios = std::mem::zeroed();
             if libc::tcgetattr(fd.as_raw_fd(), &mut t) != 0 {
                 false
