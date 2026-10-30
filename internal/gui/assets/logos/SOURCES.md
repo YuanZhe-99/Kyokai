@@ -3,10 +3,10 @@
 Monochrome vendor marks that Kyokai draws in a device's avatar when what the device says about
 itself (its maker, model, friendly name or system) names a known maker, product line or operating
 system (see `internal/gui/vendorlogo.go`). They come from EasyTier MyGo's set, which has the same
-author: only PC makers and the two systems Kyokai runs on, and only files with a recorded
+author (Linux's added from Simple Icons 16.36.0): only PC makers and the systems Kyokai runs on, and only files with a recorded
 license. How to add or update a logo is described in `doc/en-us/packaging.md`, "Vendor logos".
 
-- **18** files are [Simple Icons](https://simpleicons.org/) SVGs (CC0 1.0), byte-identical in path
+- **19** files are [Simple Icons](https://simpleicons.org/) SVGs (CC0 1.0), byte-identical in path
   data with the `simple-icons` package.
 - **1** file is a public-domain logo SVG from Wikimedia Commons (a simple-geometry logo not eligible
   for copyright).
@@ -29,6 +29,7 @@ These files are not part of Kyokai's AGPL-3.0 source.
 | `intel.svg` | Intel | [Simple Icons](https://simpleicons.org/?q=intel) (`icons/intel.svg`) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Intel |
 | `lenovo.svg` | Lenovo | [Simple Icons](https://simpleicons.org/?q=lenovo) (`icons/lenovo.svg`) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Lenovo |
 | `lg.svg` | LG | [Simple Icons](https://simpleicons.org/?q=lg) (`icons/lg.svg`) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | LG |
+| `linux.svg` | Linux | [Simple Icons](https://simpleicons.org/?q=linux) (`icons/linux.svg`, 16.36.0) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Linus Torvalds |
 | `macos.svg` | macOS | [Simple Icons](https://simpleicons.org/?q=macos) (`icons/macos.svg`) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | macOS |
 | `oracle.svg` | oracle | [Simple Icons](https://simpleicons.org/?q=oracle) (`icons/oracle.svg`) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | oracle |
 | `qualcomm.svg` | Qualcomm | [Simple Icons](https://simpleicons.org/?q=qualcomm) (`icons/qualcomm.svg`) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Qualcomm |

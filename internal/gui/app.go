@@ -423,7 +423,8 @@ func (a *App) syncDock() {
 }
 
 // Start connects to the engine (starting it when needed), begins the daily
-// update check and watches the main thread (watchMain).
+// update check, watches the main thread (watchMain) and, on Wayland, keeps
+// Kyokai's windows out of a controlled desktop (guardWayland).
 func (a *App) Start() {
 	// Asked without the lock: MyGo answers it on the main thread.
 	openAtLogin := mygo.App.OpenAtLogin()
@@ -434,6 +435,7 @@ func (a *App) Start() {
 	go a.appUpdateLoop()
 	go a.watchMain()
 	go a.watchLoop()
+	go a.guardWayland()
 }
 
 // How often the GUI makes sure its main thread still answers, and how long

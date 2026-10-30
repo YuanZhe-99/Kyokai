@@ -694,6 +694,7 @@ func TestDeviceLogoName(t *testing.T) {
 		// No maker the table knows: the name, then the system.
 		{localapi.About{Maker: "QEMU", Name: "My ThinkPad", OS: "windows"}, "lenovo"},
 		{localapi.About{Maker: "QEMU", Model: "Standard PC (Q35 + ICH9, 2009)", OS: "windows"}, "windows"},
+		{localapi.About{Maker: "QEMU", Model: "Standard PC (Q35 + ICH9, 2009)", OS: "linux"}, "linux"},
 		{localapi.About{Maker: "Micro-Star International", Name: "php-dev", OS: ""}, ""},
 		{localapi.About{}, ""},
 	} {

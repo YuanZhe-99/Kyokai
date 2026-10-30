@@ -57,7 +57,7 @@ terminal's emulator (MyGo's terminal plugin names its builds and their SHA-256 i
 
 The device avatars' vendor logos ([gui.md](gui.md), "Device names") are SVG files in
 `internal/gui/assets/logos/`, embedded into the GUI at build time; the app never downloads them.
-They come from EasyTier MyGo's set: 18 Simple Icons files (CC0 1.0) and one public-domain file, each
+They come from EasyTier MyGo's set, with Linux's added: 19 Simple Icons files (CC0 1.0) and one public-domain file, each
 listed with its source, license and trademark owner in `SOURCES.md`; files without a recorded
 source were left out. To add one, take a CC0 or public-domain SVG, save it as `<slug>.svg`, add its
 row to `SOURCES.md`, its words to `vendorKeywords` in `internal/gui/vendorlogo.go` and a case to

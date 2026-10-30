@@ -47,6 +47,7 @@ var vendorKeywords = []struct {
 	{"oracle", []string{"oracle", "innotek", "virtualbox"}},
 	{"windows", []string{"windows", "win"}},
 	{"macos", []string{"macos", "osx"}},
+	{"linux", []string{"linux"}},
 }
 
 // logoCache holds parsed logos by file name; a nil entry records a file that

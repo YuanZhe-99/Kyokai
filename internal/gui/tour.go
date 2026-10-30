@@ -538,8 +538,11 @@ func (a *App) tourNetworkStep(c *ui.Context, tr tour) {
 	})
 	if tr.direct {
 		ask := L.TourDirectAskWin()
-		if artPlatform == "darwin" {
+		switch artPlatform {
+		case "darwin":
 			ask = L.TourDirectAskMac()
+		case "linux":
+			ask = L.TourDirectAskLinux()
 		}
 		tourFact(c, 1, L.TourDirectYes())
 		tourFact(c, -1, L.TourDirectListens()+" "+ask)
@@ -827,13 +830,17 @@ func (a *App) tourAwayStep(c *ui.Context, tr tour, cur int, busy bool) {
 // tourAwakeStep: sleep takes this computer offline in every run mode, and
 // where this system keeps it awake; on Windows, that the picture needs a
 // display (a monitor or a dummy plug), else Remote Desktop or a virtual
-// display driver. A Mac shares its screen without one.
+// display driver; on Linux, that the picture is the desktop someone is
+// signed in to. A Mac shares its screen without one.
 func tourAwakeStep(c *ui.Context) {
 	t := c.Theme()
 	tourHeading(c, L.TourAwakeTitle(), L.TourAwakeBody())
 	tips := []string{L.TourAwakeWin1(), L.TourAwakeWin2()}
-	if artPlatform == "darwin" {
+	switch artPlatform {
+	case "darwin":
 		tips = []string{L.TourAwakeMac1(), L.TourAwakeMac2()}
+	case "linux":
+		tips = []string{L.TourAwakeLinux1(), L.TourAwakeLinux2()}
 	}
 	for i, tip := range tips {
 		ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Start).Margin(12, 0, 0, 0).Children(func() {
@@ -843,11 +850,13 @@ func tourAwakeStep(c *ui.Context) {
 			ui.Text(c, tip).Grow(1).MinWidth(0)
 		})
 	}
-	ui.Row(c).Margin(16, 0, 0, 0).Children(func() {
-		if ui.Button(c.Key("tour-power"), L.TourOpenPower()).Clicked() {
-			go func() { _ = mygo.Shell.OpenExternal(powerSettingsURL(artPlatform)) }()
-		}
-	})
+	if url := powerSettingsURL(artPlatform); url != "" {
+		ui.Row(c).Margin(16, 0, 0, 0).Children(func() {
+			if ui.Button(c.Key("tour-power"), L.TourOpenPower()).Clicked() {
+				go func() { _ = mygo.Shell.OpenExternal(url) }()
+			}
+		})
+	}
 	if artPlatform == "darwin" {
 		return
 	}
@@ -856,17 +865,25 @@ func tourAwakeStep(c *ui.Context) {
 		Background(t.Warning.Alpha(0.12)).Border(1, t.Warning.Alpha(0.3)).Margin(18, 0, 0, 0).Children(func() {
 		ui.Icon(c, kindDesktop).Size(16, 16).TextColor(warn).Margin(1, 0, 0, 0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
-			ui.Text(c, L.TourDisplayTitle()).Bold()
-			ui.Text(c, L.TourDisplayBody()).FontSize(sizeSmall + 1)
+			title, body := L.TourDisplayTitle(), L.TourDisplayBody()
+			if artPlatform == "linux" {
+				title, body = L.TourDisplayTitleLinux(), L.TourDisplayBodyLinux()
+			}
+			ui.Text(c, title).Bold()
+			ui.Text(c, body).FontSize(sizeSmall + 1)
 		})
 	})
 }
 
 // powerSettingsURL opens the system's power settings: Windows' Power &
-// sleep, macOS's Energy.
+// sleep, macOS's Energy; "" on Linux, whose desktops share no address
+// for them.
 func powerSettingsURL(goos string) string {
-	if goos == "darwin" {
+	switch goos {
+	case "darwin":
 		return "x-apple.systempreferences:com.apple.Energy-Settings.extension"
+	case "linux":
+		return ""
 	}
 	return "ms-settings:powersleep"
 }
@@ -887,6 +904,8 @@ func (a *App) tourReadyStep(c *ui.Context, tr tour, cur int, busy bool) {
 		tourHeading(c, L.TourReadyTitle(), L.TourReadyUser())
 	case artPlatform == "darwin":
 		tourHeading(c, L.TourReadyTitle(), L.TourReadyAuthMac())
+	case artPlatform == "linux":
+		tourHeading(c, L.TourReadyTitle(), L.TourReadyAuthLinux())
 	default:
 		tourHeading(c, L.TourReadyTitle(), L.TourReadyAuthWin())
 	}

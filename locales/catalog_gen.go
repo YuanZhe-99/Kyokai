@@ -7233,6 +7233,26 @@ func (msgs Messages) TourAwakeBody() string {
 	return Catalog.Format(msgs.locale, "TourAwakeBody", nil)
 }
 
+// TourAwakeLinux1 says "In your desktop's power settings, set the computer to never suspend while plugged in."
+// in the language the app shows.
+func TourAwakeLinux1() string { return In(i18n.Locale()).TourAwakeLinux1() }
+
+// TourAwakeLinux1 says "In your desktop's power settings, set the computer to never suspend while plugged in."
+// in the language of msgs.
+func (msgs Messages) TourAwakeLinux1() string {
+	return Catalog.Format(msgs.locale, "TourAwakeLinux1", nil)
+}
+
+// TourAwakeLinux2 says "The screen may turn off or lock: someone connecting turns it on."
+// in the language the app shows.
+func TourAwakeLinux2() string { return In(i18n.Locale()).TourAwakeLinux2() }
+
+// TourAwakeLinux2 says "The screen may turn off or lock: someone connecting turns it on."
+// in the language of msgs.
+func (msgs Messages) TourAwakeLinux2() string {
+	return Catalog.Format(msgs.locale, "TourAwakeLinux2", nil)
+}
+
 // TourAwakeMac1 says "In System Settings › Energy, turn on Prevent automatic sleeping when the display is off (on a MacBook: Battery › …"
 // in the language the app shows.
 func TourAwakeMac1() string { return In(i18n.Locale()).TourAwakeMac1() }
@@ -7393,6 +7413,16 @@ func (msgs Messages) TourDirect() string {
 	return Catalog.Format(msgs.locale, "TourDirect", nil)
 }
 
+// TourDirectAskLinux says "A firewall (ufw, firewalld) may need its port opened."
+// in the language the app shows.
+func TourDirectAskLinux() string { return In(i18n.Locale()).TourDirectAskLinux() }
+
+// TourDirectAskLinux says "A firewall (ufw, firewalld) may need its port opened."
+// in the language of msgs.
+func (msgs Messages) TourDirectAskLinux() string {
+	return Catalog.Format(msgs.locale, "TourDirectAskLinux", nil)
+}
+
 // TourDirectAskMac says "macOS may ask to let Kyokai find devices on the local network."
 // in the language the app shows.
 func TourDirectAskMac() string { return In(i18n.Locale()).TourDirectAskMac() }
@@ -7453,6 +7483,16 @@ func (msgs Messages) TourDisplayBody() string {
 	return Catalog.Format(msgs.locale, "TourDisplayBody", nil)
 }
 
+// TourDisplayBodyLinux says "At the sign-in screen there is no desktop to share yet. Stay signed in and lock the screen, or turn on automatic sign…"
+// in the language the app shows.
+func TourDisplayBodyLinux() string { return In(i18n.Locale()).TourDisplayBodyLinux() }
+
+// TourDisplayBodyLinux says "At the sign-in screen there is no desktop to share yet. Stay signed in and lock the screen, or turn on automatic sign…"
+// in the language of msgs.
+func (msgs Messages) TourDisplayBodyLinux() string {
+	return Catalog.Format(msgs.locale, "TourDisplayBodyLinux", nil)
+}
+
 // TourDisplayTitle says "Windows needs a display to share"
 // in the language the app shows.
 func TourDisplayTitle() string { return In(i18n.Locale()).TourDisplayTitle() }
@@ -7461,6 +7501,16 @@ func TourDisplayTitle() string { return In(i18n.Locale()).TourDisplayTitle() }
 // in the language of msgs.
 func (msgs Messages) TourDisplayTitle() string {
 	return Catalog.Format(msgs.locale, "TourDisplayTitle", nil)
+}
+
+// TourDisplayTitleLinux says "Linux shares the desktop someone is signed in to"
+// in the language the app shows.
+func TourDisplayTitleLinux() string { return In(i18n.Locale()).TourDisplayTitleLinux() }
+
+// TourDisplayTitleLinux says "Linux shares the desktop someone is signed in to"
+// in the language of msgs.
+func (msgs Messages) TourDisplayTitleLinux() string {
+	return Catalog.Format(msgs.locale, "TourDisplayTitleLinux", nil)
 }
 
 // TourDone says "Done"
@@ -7771,6 +7821,16 @@ func TourPrivacyTitle() string { return In(i18n.Locale()).TourPrivacyTitle() }
 // in the language of msgs.
 func (msgs Messages) TourPrivacyTitle() string {
 	return Catalog.Format(msgs.locale, "TourPrivacyTitle", nil)
+}
+
+// TourReadyAuthLinux says "Here's what you chose. Linux asks once for an administrator's password to install Kyokai Helper."
+// in the language the app shows.
+func TourReadyAuthLinux() string { return In(i18n.Locale()).TourReadyAuthLinux() }
+
+// TourReadyAuthLinux says "Here's what you chose. Linux asks once for an administrator's password to install Kyokai Helper."
+// in the language of msgs.
+func (msgs Messages) TourReadyAuthLinux() string {
+	return Catalog.Format(msgs.locale, "TourReadyAuthLinux", nil)
 }
 
 // TourReadyAuthMac says "Here's what you chose. macOS asks once for an administrator's password to install Kyokai Helper."

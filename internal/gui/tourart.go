@@ -580,7 +580,7 @@ func (d artPainter) awakeScene() {
 	d.computer(160, 340+d.bob(), asleep)
 	d.text(160, 450, L.TourArtAwake(), 13, 600, textToneOn(c.good, c.text).Alpha(awake), 1, 280)
 	d.text(160, 450, L.TourArtAsleep(), 13, 600, c.muted.Alpha(asleep), 1, 280)
-	if artPlatform != "darwin" {
+	if artPlatform == "windows" {
 		d.chip(160, 520, kindDesktop, L.TourArtDisplay(), c.card, c.text)
 	}
 }
@@ -637,13 +637,17 @@ var (
 )
 
 // computerModel is the computer the illustrations show for a system: a Mac
-// mini on macOS, a Windows Dev Kit elsewhere. The system's mark lies square
-// on its top, its top edge toward the back, as on the real thing.
+// mini on macOS, a small dark box with Tux on Linux, a Windows Dev Kit
+// elsewhere. The system's mark lies square on its top, its top edge toward
+// the back, as on the real thing.
 func computerModel(goos string) projectedBox {
 	m := boxModel{w: 150, d: 110, h: 12, r: 10, zoom: 1.25,
 		top: [2]ui.Color{ui.Hex("#6E6E72"), ui.Hex("#3A3A3D")}, side: ui.RGB(58, 58, 61), edge: ui.RGBA(255, 255, 255, 0.18),
 		logo: "windows", logoColor: ui.RGBA(18, 18, 20, 0.5), logoSize: 20}
 	led := [2]float64{55, -6} // the light, on the front face: x and height
+	if goos == "linux" {
+		m.logo, m.logoSize = "linux", 26
+	}
 	if goos == "darwin" {
 		m = boxModel{w: 110, d: 110, h: 34, r: 20, zoom: 1.25,
 			top: [2]ui.Color{ui.Hex("#FBFBFC"), ui.Hex("#D2D2D6")}, side: ui.RGB(230, 230, 234), edge: ui.RGBA(0, 0, 0, 0.1),

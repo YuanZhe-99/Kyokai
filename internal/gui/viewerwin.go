@@ -146,12 +146,13 @@ func TitleBarOptions(o mygo.WindowOptions, lightsX int) mygo.WindowOptions {
 }
 
 // ownWindowButtons tells whether the view draws its windows' buttons
-// (windowButtons): on Windows, where the system's would sit on the window's
-// corner rather than on a pane; macOS keeps its traffic lights.
-var ownWindowButtons = runtime.GOOS == "windows"
+// (windowButtons): on Windows and Linux, where the system's would sit on
+// the window's corner, over a pane's own controls, rather than on a pane;
+// macOS keeps its traffic lights.
+var ownWindowButtons = runtime.GOOS == "windows" || runtime.GOOS == "linux"
 
 // windowButtons are the window's minimize, maximize or restore, and close
-// on Windows (ownWindowButtons), after a separator at the end of the
+// on Windows and Linux (ownWindowButtons), after a separator at the end of the
 // top-right pane's header. While the Settings sheet covers the panes they
 // stay in that place, above the dimmed window and apart from the sheet's ×
 // (onScrim: no separator, light glyphs). The maximize button brings

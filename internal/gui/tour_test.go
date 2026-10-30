@@ -197,8 +197,8 @@ func TestTourRenders(t *testing.T) {
 	}
 	for _, lang := range []string{"en", "zh-Hans", "zh-Hant", "ja"} {
 		i18n.SetLocaleFunc(func() string { return lang })
-		for _, goos := range []string{"windows", "darwin"} {
-			artPlatform, ownWindowButtons = goos, goos == "windows"
+		for _, goos := range []string{"windows", "darwin", "linux"} {
+			artPlatform, ownWindowButtons = goos, goos != "darwin"
 			for _, dark := range []bool{false, true} {
 				if dark && lang != "en" {
 					continue

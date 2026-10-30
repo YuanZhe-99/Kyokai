@@ -107,7 +107,8 @@ when `SCREENSHOT_DIR` is set.
   share one centre line, and protected mode keeps a strip as wide for them beside its pane. In a
   window of its own they sit on its pane's header, 18 points from the edge (MyGo places them only
   as a window opens: `TitleBarOptions`). On Windows the system's
-  buttons would sit on the window's corner, half outside the pane, so the window hides them
+  buttons would sit on the window's corner, half outside the pane, and on Linux GTK draws them
+  over the pane's own controls, so on both the window hides them
   (`HideWindowButtons`) and the view draws minimize, maximize or restore, and close after a
   separator at the end of the top-right pane's header (`windowButtons`), maximize with Windows
   11's snap layouts; while Settings covers the panes they stay in that place, light over the
@@ -156,11 +157,13 @@ when `SCREENSHOT_DIR` is set.
   also administrator prompts and the lock screen; also the sign-in screen — chosen here, applied
   on finishing; Open at login, applied at once); **Keep it awake** (asleep, a computer is offline
   in every run mode; where the system keeps it awake, Open power settings; on Windows, that the
-  picture needs a monitor or a dummy plug, else Remote Desktop or a virtual display driver);
+  picture needs a monitor or a dummy plug, else Remote Desktop or a virtual display driver; on
+  Linux, that the picture is the desktop someone is signed in to and that Wayland asks once, with
+  no Open power settings, since Linux desktops share no address for them);
   **Ready** (what was chosen; Finish, or Install and finish when the run mode chosen needs the
   helper: one administrator prompt, a failure shown beside the button until the next try).
 - The illustrations (`tourart.go`) are drawn, not pictures: this computer in perspective, seen from
-  the front left — a Windows Dev Kit, a Mac mini on macOS — with the system's mark lying square on
+  the front left — a Windows Dev Kit, a Mac mini on macOS, a small dark box with Tux on Linux — with the system's mark lying square on
   its top (`computerModel`, the marks from `assets/logos`); data as moving dashes, the picture in
   the accent and the input of someone let in in orange. With Reduce Motion on, nothing moves by
   itself.
@@ -568,7 +571,11 @@ when `SCREENSHOT_DIR` is set.
   Kyokai, Quit Kyokai. It never shows the password.
 - Kyokai's windows are excluded from screen capture, so neither a viewer nor an AI task sees them,
   and remote input never reaches them, unless Security's Hide Kyokai from capture is off (the AI
-  never reaches them).
+  never reaches them). On a Wayland desktop, which cannot leave a window out of the picture,
+  Kyokai minimizes its windows when this computer starts being controlled (a connected session
+  with control-input) or its AI starts a task, and tells the engine every half second whether one
+  shows anyway (`guardWayland`, `kyokai.shown`); while one does, the picture holds still and no
+  remote or AI input arrives.
 - The main window exists only while it is shown: started in the tray Kyokai makes none, and
   closing it to the tray ends it (its place and size are kept for the next one); Show Kyokai, a
   second launch, a connection request, a connection's pane or the Dock make it anew. A hidden

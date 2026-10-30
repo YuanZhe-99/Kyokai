@@ -39,7 +39,7 @@ Open Media Patent License 1.0），以及 `opus-LICENSE.txt`（BSD-3-Clause）�
 ## 厂商标志
 
 设备头像中的厂商标志（[gui.md](gui.md) 的“设备名称”）是 `internal/gui/assets/logos/` 中的 SVG 文件，在构建时嵌入界面；应用从不下载它们。
-它们取自 EasyTier MyGo 的标志集：18 个 Simple Icons 文件（CC0 1.0）和 1 个公有领域文件，每个文件的来源、许可证与商标所有者都列在
+它们取自 EasyTier MyGo 的标志集，另加 Linux 的：19 个 Simple Icons 文件（CC0 1.0）和 1 个公有领域文件，每个文件的来源、许可证与商标所有者都列在
 `SOURCES.md` 中；没有记录来源的文件没有采用。添加标志时，取一个 CC0 或公有领域的 SVG，保存为 `<slug>.svg`，在 `SOURCES.md` 中加一行，
 在 `internal/gui/vendorlogo.go` 的 `vendorKeywords` 中加入它的单词，并在 `TestDeviceLogoName` 中加一个用例；文件无法解析或某个关键词的标志缺失时，
 `TestVendorLogosParse` 会失败。

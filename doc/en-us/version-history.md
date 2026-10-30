@@ -18,6 +18,9 @@
 - Linux sound through PipeWire (what the default output plays, or an input), keeping awake through
   logind's and the desktop's inhibitors while someone is connected, and AI tasks pausing at
   logind's PrepareForSleep.
+- The GUI on Linux: its own window buttons (GTK's would cover the pane's controls), the tour's
+  Linux computer (Tux, from Simple Icons) and Linux wording in the four languages, Tux for Linux
+  devices, and on Wayland Kyokai's windows minimized while this computer is controlled.
 - The Secret Service gets a minute: a keyring prompt nobody answers no longer holds the engine's
   start (the store counts as refused, as a dismissed prompt does).
 - A host started again right after a session (the old connection in TIME-WAIT on port 47310)
