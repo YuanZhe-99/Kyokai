@@ -107,3 +107,22 @@ func TestTextPieces(t *testing.T) {
 		t.Error("nothing to type: no pieces")
 	}
 }
+
+// A NanoKVM pane swaps Ctrl and Cmd only when chosen there: the host's
+// system says nothing of the wired computer's.
+func TestNanokvmSwapOnlyWhenChosen(t *testing.T) {
+	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
+	kvm := a.newViewer("482916735", localapi.About{}, []string{localapi.PermUseNanokvm}, true)
+	kvm.phase.Peer.OS = "windows"
+	if kvm.swapping() {
+		t.Error("swapped without a choice")
+	}
+	kvm.setSwap(true)
+	again := a.newViewer("482916735", localapi.About{}, []string{localapi.PermUseNanokvm}, true)
+	if !again.swapping() {
+		t.Error("the choice was not kept for the pane")
+	}
+	if desk := a.newViewer("482916735", localapi.About{}, nil, false); desk.swap != nil {
+		t.Error("the desktop took the NanoKVM pane's choice")
+	}
+}

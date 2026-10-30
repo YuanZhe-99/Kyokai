@@ -198,8 +198,9 @@ Auto; a working one is never moved. The viewer's path badge shows the route in u
 
 A device running Kyokai 0.4.1 or later lets you reach its own SSH, Remote Desktop or VNC (Screen
 Sharing on a Mac) through Kyokai, with no port opened to the network. Its card on Home shows
-**SSH**, **Remote Desktop** or **VNC** for the services it has switched on, and its ⋯ menu always
-offers them. Each opens as a pane like a desktop's; SSH opens a new pane each time, so you can
+**SSH**, **Remote Desktop** or **VNC** for the services it has switched on and lets you use
+without asking, and its ⋯ menu offers every service it has switched on (its NanoKVM USB too), even
+those its user must allow first. Each opens as a pane like a desktop's; SSH opens a new pane each time, so you can
 have several shells on one device (SSH 2, SSH 3). Its user allows each one like any other
 permission (Access, **With a correct password**, has a tile for each, off by default).
 The first time, Kyokai asks how to sign in before it connects: for SSH with **Key** (your keys, see
@@ -230,7 +231,8 @@ default). It opens as a pane beside the device's own desktop, one at a time; if 
 while someone uses it, **Take over** ends their session. In **Quality**,
 **Codec**, **Raw (MJPEG)** sends the capture card's pictures as they are: sharper and lighter on
 that device, but heavy on the network (up to about 100 Mbit/s), so for a local network. Text you
-type goes as a US keyboard types it. On Linux, that device's user must be in the `video` and
+type goes as a US keyboard types it; **Keyboard**, **Swap Ctrl and Cmd** makes your Ctrl the wired
+Mac's Command (or the other way round), remembered for that pane. On Linux, that device's user must be in the `video` and
 `dialout` groups; a Mac asks for the Camera the first time.
 
 ### Status on Home

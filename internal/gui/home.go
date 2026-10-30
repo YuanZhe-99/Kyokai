@@ -614,7 +614,7 @@ func (a *App) deviceCard(c *ui.Context, r deviceRow, path localapi.NetworkDevice
 	actions := cardActions(sample, tunnels, uses)
 	ui.Column(c.Key("device-"+r.id)).MinWidth(0).Height(homeCardH).Padding(14, 14, 14, 16).Gap(8).Radius(cardRadius).
 		Background(t.Surface).Border(1, t.Border).Children(func() {
-		a.cardHeader(c, r, online, live, connected, tunnels)
+		a.cardHeader(c, r, online, live, connected, menuServices(sample, r.features))
 		a.cardPath(c, r, path, online, onNetwork, live)
 		a.cardFigures(c, r, w, rings, fresh, now)
 		ui.Box(c).Grow(1)
@@ -716,7 +716,7 @@ func (r deviceRow) name() string {
 
 // cardHeader is a device card's top: avatar, name, Device ID and system,
 // its state as a pill, and the ⋯ menu.
-func (a *App) cardHeader(c *ui.Context, r deviceRow, online, live, connected, tunnels bool) {
+func (a *App) cardHeader(c *ui.Context, r deviceRow, online, live, connected bool, services []string) {
 	t := c.Theme()
 	ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
 		deviceAvatar(c, r.about)
@@ -743,7 +743,7 @@ func (a *App) cardHeader(c *ui.Context, r deviceRow, online, live, connected, tu
 			text, col = L.CardOnline(), t.Success
 		}
 		statePill(c, text, col)
-		a.deviceMenu(c, r, tunnels)
+		a.deviceMenu(c, r, services)
 	})
 }
 
@@ -923,8 +923,27 @@ func (a *App) othersSection(c *ui.Context, others []networkOther, tracks []ui.Tr
 	})
 }
 
-// deviceMenu is a device card's ⋯ menu.
-func (a *App) deviceMenu(c *ui.Context, r deviceRow, tunnels bool) {
+// menuServices are the services a device card's ⋯ menu opens, Remote
+// Desktop, SSH, VNC, then NanoKVM USB: with a current status, those the
+// host says answer and the NanoKVM it offers (granted without asking or
+// not: the menu may ask the host's user); without one, what the host's
+// version does (`tunnel`, `nanokvm`).
+func menuServices(s *localapi.SystemSample, features []string) []string {
+	var out []string
+	for _, svc := range []string{serviceRDP, serviceSSH, serviceVNC} {
+		if s != nil && slices.Contains(s.Services, svc) || s == nil && slices.Contains(features, "tunnel") {
+			out = append(out, svc)
+		}
+	}
+	if s != nil && s.Nanokvm || s == nil && slices.Contains(features, "nanokvm") {
+		out = append(out, serviceNanokvm)
+	}
+	return out
+}
+
+// deviceMenu is a device card's ⋯ menu: Connect, Connect with AI, the
+// services it opens (menuServices), then the device's own entries.
+func (a *App) deviceMenu(c *ui.Context, r deviceRow, services []string) {
 	keyChanged := r.session != nil && r.session.State == "failed" && string(r.session.Failure) == `"key-changed"`
 	more := iconButtonBase(c, "device-menu-"+r.id, rowMore, L.ActionMore())
 	more.Menu(func(m *ui.Menu) {
@@ -934,8 +953,8 @@ func (a *App) deviceMenu(c *ui.Context, r deviceRow, tunnels bool) {
 		if m.Item(L.ActionConnectAI()).Chosen() {
 			a.runAction(r, actionAI)
 		}
-		for _, s := range []string{serviceRDP, serviceSSH, serviceVNC} {
-			if m.Item(L.CardOpenService(serviceName(s))).Disabled(!tunnels).Chosen() {
+		for _, s := range services {
+			if m.Item(L.CardOpenService(serviceName(s))).Chosen() {
 				a.runAction(r, s)
 			}
 		}

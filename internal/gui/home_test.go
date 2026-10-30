@@ -425,3 +425,24 @@ func TestBestRoute(t *testing.T) {
 		t.Errorf("another device: %q", routeText(v[2]))
 	}
 }
+
+// The ⋯ menu opens what the host's status says it offers — the services
+// that answer and its NanoKVM, granted or not — and, without a status,
+// what the host's version does.
+func TestMenuServices(t *testing.T) {
+	for _, c := range []struct {
+		name     string
+		sample   *localapi.SystemSample
+		features []string
+		want     []string
+	}{
+		{"nothing answers", &localapi.SystemSample{}, []string{"tunnel", "nanokvm"}, nil},
+		{"SSH and the NanoKVM", &localapi.SystemSample{Services: []string{"ssh"}, Nanokvm: true}, []string{"tunnel"}, []string{"ssh", "nanokvm"}},
+		{"no status, 0.6.8", nil, []string{"tunnel", "nanokvm"}, []string{"rdp", "ssh", "vnc", "nanokvm"}},
+		{"no status, no tunnels", nil, nil, nil},
+	} {
+		if got := menuServices(c.sample, c.features); !slices.Equal(got, c.want) {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}

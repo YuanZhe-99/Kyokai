@@ -198,8 +198,10 @@ clipboard or AI reaches it.
   most, else `service-down`); while it is open or opening, controllers asking for it are `busy`.
   Home's This device card (Open), Access (Open), the + picker's This computer row and search open
   it, as a pane named This computer.
-- **Admission.** Its permission is `use-nanokvm`, asked for alone like a service's (off by
-  default under "With a correct password"). A host that does not offer it refuses as
+- **Admission.** Its permission is `use-nanokvm`, asked for alone like a service's. Offering it is
+  letting a correct password or an authorized sign-in key use it: turning the offer on adds
+  `use-nanokvm` to "With a correct password" (whose tile can still change it on its own), turning it
+  off takes it out (`Access::set_nanokvm`); without a password or key the host's user is asked. A host that does not offer it refuses as
   `service-down` before anyone is asked, and so does one whose serial port does not open (another
   program holds it, no permission); one session at a time (`busy`). Its verdict carries no resume
   token: a dropped session ends and the viewer connects again. The controller names it in its

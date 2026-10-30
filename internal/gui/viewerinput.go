@@ -229,11 +229,15 @@ func (v *viewer) setSwap(on bool) {
 }
 
 // swapping is whether this viewer swaps Ctrl and Cmd now: as chosen, else
-// by the two systems.
+// by the two systems — off for a NanoKVM, whose wired computer's system is
+// not the host's (its own choice is kept per pane).
 // Notes: the caller holds v.mu.
 func (v *viewer) swapping() bool {
 	if v.swap != nil {
 		return *v.swap
+	}
+	if v.kvm {
+		return false
 	}
 	return swapDefault(runtime.GOOS, v.phase.Peer.OS)
 }

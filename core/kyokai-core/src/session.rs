@@ -7595,6 +7595,12 @@ mod nanokvm_tests {
     /// Returns: the controller's session once it settled, and whether the
     /// host's user was asked.
     async fn open(host: &Arc<Ctx>, controller: &Arc<Ctx>) -> (Value, bool) {
+        open_with(host, controller, "k7mq2xpa").await
+    }
+
+    /// `open` with a password, or with "" none: then the controller's
+    /// sign-in keys prove who it is, or it asks.
+    async fn open_with(host: &Arc<Ctx>, controller: &Arc<Ctx>, password: &str) -> (Value, bool) {
         let (a, b) = tokio::io::duplex(1 << 16);
         let from = Source {
             network: 1,
@@ -7609,7 +7615,7 @@ mod nanokvm_tests {
             stop,
             a,
             dialed,
-            zeroize::Zeroizing::new("k7mq2xpa".to_owned()),
+            zeroize::Zeroizing::new(password.to_owned()),
             vec![Permission::UseNanokvm],
             None,
         ));
@@ -7846,6 +7852,66 @@ mod nanokvm_tests {
             json!({"refused": "service-down"})
         );
         assert!(!host.sessions.local_kvm());
+    }
+
+    /// Offering the NanoKVM lets a correct password or a sign-in key in
+    /// without asking (as the host's user expects of "offer"); taking the
+    /// offer back takes the grant with it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn offering_the_nanokvm_grants_it_with_a_password() {
+        let host = host_with(vec![Permission::ViewScreen]);
+        let gone = if cfg!(windows) {
+            "COM250"
+        } else {
+            "/dev/kyokai-no-such-port"
+        };
+        let offer = |on| crate::kvm::Settings {
+            on,
+            video: "card".into(),
+            serial: gone.into(),
+        };
+        host.access.set_nanokvm(offer(true)).unwrap();
+        assert!(
+            host.access
+                .password_grants()
+                .contains(&Permission::UseNanokvm)
+        );
+        // Admitted by the password, nobody asked; the serial port that does
+        // not open then refuses it as down.
+        let controller = device("1.0.1");
+        let (s, asked) = open(&host, &controller).await;
+        assert!(!asked);
+        assert_eq!(s["failure"], json!({"refused": "service-down"}), "{s}");
+        // A sign-in key is admitted the same way, with no password.
+        let kept =
+            crate::keys::add_login(controller.access.secrets(), "", &STANDARD.encode([7u8; 32]))
+                .unwrap();
+        crate::keys::add_authorized(
+            host.access.secrets(),
+            "laptop",
+            kept["public"].as_str().unwrap(),
+        )
+        .unwrap();
+        let (s, asked) = open_with(&host, &controller, "").await;
+        assert!(!asked, "a key asked the host's user: {s}");
+        assert_eq!(s["failure"], json!({"refused": "service-down"}), "{s}");
+        host.access.set_nanokvm(offer(false)).unwrap();
+        // Taken back: it is down again, before anyone is asked, and the
+        // grant is gone with it.
+        let (s, asked) = open_with(&host, &controller, "").await;
+        assert!(!asked);
+        assert_eq!(s["failure"], json!({"refused": "service-down"}), "{s}");
+        assert!(
+            !host
+                .access
+                .password_grants()
+                .contains(&Permission::UseNanokvm)
+        );
+        assert!(
+            host.access
+                .password_grants()
+                .contains(&Permission::ViewScreen)
+        );
     }
 
     /// `use-nanokvm` never reaches a host that did not announce `nanokvm`

@@ -1,5 +1,13 @@
 # Version history
 
+## 0.6.9 (2026-10-30)
+
+- Offering the NanoKVM USB lets a correct password or a sign-in key in without asking; the ⋯ menu of a
+  device card lists the services its status says it offers, NanoKVM USB among them; NanoKVM panes
+  offer Swap Ctrl and Cmd.
+- Upstreams checked, unchanged: MyGo v0.7.3, EasyTier v2.7.0 (`8b7f1f0`), RustDesk 1.5.0, vcpkg
+  2026.10.16, Rust 1.99.1.
+
 ## 0.6.8 (2026-10-30)
 
 - NanoKVM USB: a host offers the computer wired to it through Sipeed's NanoKVM USB, chosen under

@@ -1653,8 +1653,10 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 		}
 	})
 
-	// Ctrl and Cmd matter where a Mac is on either side.
-	swappable := runtime.GOOS == "darwin" || peerOS == "macos"
+	// Ctrl and Cmd matter where a Mac is on either side; behind a NanoKVM
+	// the wired computer's system is not known, so its pane always offers
+	// the swap.
+	swappable := runtime.GOOS == "darwin" || peerOS == "macos" || v.kvm
 	if control && (grabsKeyboard || swappable) {
 		// macOS refuses the keyboard grab without Kyokai's Accessibility
 		// permission: the viewer works in Legacy mode meanwhile, and the

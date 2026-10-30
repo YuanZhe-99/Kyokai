@@ -298,7 +298,7 @@
   "NanokvmMissing": "{id}（未接続）",
   "NanokvmNoneFound": "見つかりません",
   "NanokvmOffer": "ほかのデバイスに提供",
-  "NanokvmOfferAbout": "ほかのデバイスはサービスと同じように開きます。同時に 1 台まで、使用の許可が必要です。",
+  "NanokvmOfferAbout": "正しいパスワードかサインインキーを持つデバイスは、確認なしで開けます（同時に 1 台）。",
   "NanokvmOpening": "NanoKVM USB を開いています…",
   "NanokvmSerial": "シリアルポート",
   "NanokvmSerialAbout": "つないだコンピューターへの NanoKVM のキーボードとマウス。",

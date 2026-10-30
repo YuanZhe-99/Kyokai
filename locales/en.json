@@ -637,7 +637,7 @@
   },
   "NanokvmNoneFound": "None found",
   "NanokvmOffer": "Offer it to other devices",
-  "NanokvmOfferAbout": "Other devices open it like a service, one at a time, with the permission to use it.",
+  "NanokvmOfferAbout": "Devices with a correct password or a sign-in key open it without asking, one at a time.",
   "NanokvmOpening": "Opening the NanoKVM USB…",
   "NanokvmSerial": "Serial port",
   "NanokvmSerialAbout": "The NanoKVM's keyboard and mouse for the wired computer.",

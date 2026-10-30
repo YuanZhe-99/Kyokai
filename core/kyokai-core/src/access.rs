@@ -799,7 +799,10 @@ impl Access {
             .unwrap_or_default()
     }
 
-    /// Sets the NanoKVM USB this host offers.
+    /// Sets the NanoKVM USB this host offers. Offering it is letting a
+    /// correct password or key use it: turning it on adds `use-nanokvm` to
+    /// the password grants, turning it off takes it out (the grant's tile
+    /// may still change it on its own).
     /// Side effects: rewrites the secrets store.
     /// Notes: a session open with it keeps its devices; the next one opens
     /// the new ones.
@@ -808,7 +811,17 @@ impl Access {
         if s.on && (s.video.is_empty() || s.serial.is_empty()) {
             return Err("choose the capture card and the serial port first".into());
         }
-        self.store(NANOKVM_NAME, &s)
+        let was = self.nanokvm().on;
+        self.store(NANOKVM_NAME, &s)?;
+        if s.on != was {
+            let mut grants = self.password_grants();
+            grants.retain(|p| *p != Permission::UseNanokvm);
+            if s.on {
+                grants.push(Permission::UseNanokvm);
+            }
+            self.set_password_grants(grants)?;
+        }
+        Ok(())
     }
 
     /// Whether and from where this host accepts sessions by address (off

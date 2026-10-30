@@ -215,7 +215,9 @@ when `SCREENSHOT_DIR` is set.
   ready, each only when its status says the saved password or key grants it (`offers`); the most
   used for that device first (`Prefs.Uses`, counted on this device only), else in that order.
   Everything else stays in the ⋯ menu, which has Connect, Connect with AI, Open Remote Desktop /
-  SSH / VNC, Addresses… (an editor card of Home's above the devices, like Rename: the device's
+  SSH / VNC / NanoKVM USB for what the host's current status says it offers, granted or not (the
+  services that answer, its NanoKVM; without a status, what its version does: `menuServices`),
+  Addresses… (an editor card of Home's above the devices, like Rename: the device's
   avatar, what routes are and Route — the same choice as the route menu — across from them; every
   route with its latency, when it was last used and the bitrate it reached, Remove for an address,
   a line between each; a field to add one (Enter adds it), and Done; Home looks at the shown
@@ -430,7 +432,7 @@ when `SCREENSHOT_DIR` is set.
   preset, Frame rate with the cap such as "30 fps", Codec with Auto and what both computers do, by
   codec name only, when there is a choice, and Full colour), Keyboard (with `control-input`, on
   Windows and macOS: the keyboard mode Map, Translate or Legacy, remembered for every viewer, and
-  Swap Ctrl and Cmd where a Mac is on either side; on a Mac without Kyokai's Accessibility
+  Swap Ctrl and Cmd where a Mac is on either side and on every NanoKVM pane (off there until chosen: the wired computer's system is not known); on a Mac without Kyokai's Accessibility
   permission the icon takes the warning colour and its tooltip says to allow it; in Map and
   Translate two dots under the icon, the first green while Kyokai holds the keyboard, the second
   green while the keys reach it and amber when they do not, both grey without a grab, the tooltip

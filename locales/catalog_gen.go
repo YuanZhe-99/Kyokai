@@ -3031,11 +3031,11 @@ func (msgs Messages) NanokvmOffer() string {
 	return Catalog.Format(msgs.locale, "NanokvmOffer", nil)
 }
 
-// NanokvmOfferAbout says "Other devices open it like a service, one at a time, with the permission to use it."
+// NanokvmOfferAbout says "Devices with a correct password or a sign-in key open it without asking, one at a time."
 // in the language the app shows.
 func NanokvmOfferAbout() string { return In(i18n.Locale()).NanokvmOfferAbout() }
 
-// NanokvmOfferAbout says "Other devices open it like a service, one at a time, with the permission to use it."
+// NanokvmOfferAbout says "Devices with a correct password or a sign-in key open it without asking, one at a time."
 // in the language of msgs.
 func (msgs Messages) NanokvmOfferAbout() string {
 	return Catalog.Format(msgs.locale, "NanokvmOfferAbout", nil)

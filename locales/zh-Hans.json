@@ -298,7 +298,7 @@
   "NanokvmMissing": "{id}（未连接）",
   "NanokvmNoneFound": "未找到",
   "NanokvmOffer": "提供给其他设备",
-  "NanokvmOfferAbout": "其他设备像服务一样打开它，一次一台，需有使用它的权限。",
+  "NanokvmOfferAbout": "有正确密码或登录密钥的设备无需询问即可打开它，一次一台。",
   "NanokvmOpening": "正在打开 NanoKVM USB…",
   "NanokvmSerial": "串口",
   "NanokvmSerialAbout": "NanoKVM 为那台电脑提供的键盘和鼠标。",

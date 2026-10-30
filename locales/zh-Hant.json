@@ -298,7 +298,7 @@
   "NanokvmMissing": "{id}（未連接）",
   "NanokvmNoneFound": "未找到",
   "NanokvmOffer": "提供給其他裝置",
-  "NanokvmOfferAbout": "其他裝置像服務一樣開啟它，一次一台，需有使用它的權限。",
+  "NanokvmOfferAbout": "有正確密碼或登入金鑰的裝置無需詢問即可開啟它，一次一台。",
   "NanokvmOpening": "正在開啟 NanoKVM USB…",
   "NanokvmSerial": "序列埠",
   "NanokvmSerialAbout": "NanoKVM 為那台電腦提供的鍵盤和滑鼠。",
