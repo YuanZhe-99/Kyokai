@@ -81,7 +81,7 @@ pipewire = "0.10.1"
 arboard = { version = "3.7.0", default-features = false, features = ["image-data", "wayland-data-control"] }
 # logind and the desktop's screen saver over D-Bus (keeping awake, the sleep
 # watch); the same zbus the portals use.
-zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }
+zbus = { version = "6.1.0", default-features = false, features = ["tokio"] }
 futures-util = "0.3.34"
 
 [target.'cfg(target_os = "macos")'.dependencies]
