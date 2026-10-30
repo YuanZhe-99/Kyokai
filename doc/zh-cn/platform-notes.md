@@ -120,6 +120,7 @@ Studio 2026）：
 | 检查 | 结果 |
 |---|---|
 | 核心、引擎与本地 API（2026-10-29） | 在 Debian 13 x86_64（X11 上的 GNOME，gnome-keyring）上：完整检查通过（启用与不启用 cgo 的 Go 测试、`mygo vet`、clippy、226 + 72 个 Rust 测试、`cargo deny`）；编解码库以 vcpkg 的 `x64-linux` triplet 构建；`scripts/smoke.sh user` 通过（状态、密码与重新生成、拒绝第二个引擎、关闭、重启后设备 ID 不变、密钥从 Secret Service 读回，结束后删除冒烟配置的项目）。存储的测试在 gnome-keyring 中重新打开后保留了机密；会话总线不可达时只保存在内存中，未写入任何文件。对端凭据报告本进程的 uid、gid、pid 与各组。未运行：界面、第二台机器、KWallet、Wayland |
+| X11 采集与输入（2026-10-29） | Xvfb 显示（1280×720，MIT-SHM、RandR、X-Resource、XInput 2、XTest）上的被控端引擎与同一台电脑上的控制端引擎，经回环按地址连接：经 libvpx 的软件 VP9，1280×720（调试构建，每帧约 180 毫秒），控制端解码的快照与显示一致；输入的文字与回车准确到达 xterm（`echo Kyokai 鏡界 é ñ`，并执行）；名为 `kyokai-…` 的进程的窗口在控制端画面中为黑色且未收到按下，距离相同的普通窗口收到一次按下与一次松开。采集、指针与输入监视也在本机自己的 GNOME X11 会话上打开（未在其中注入任何内容）。未运行：本人的输入停止 AI 任务、DPMS（Xvfb 没有） |
 
 ## 已知限制
 

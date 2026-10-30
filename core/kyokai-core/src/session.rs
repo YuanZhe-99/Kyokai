@@ -461,7 +461,7 @@ fn area(d: video::Display) -> crate::input::Area {
 /// off), and not while a controller waits for the host user's answer or the
 /// AI for approval, so that nobody answers those in the host user's place
 /// through Kyokai's window. The host's AI never may (its own injector).
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 fn kyokai_reachable(allowed: bool, access: &Access, ai: &crate::ai::Ai) -> bool {
     allowed && !access.asking() && !ai.awaiting_approval()
 }
@@ -2402,12 +2402,18 @@ pub enum Side {
         video: bool,
         sound: bool,
         // Read by the input service of Windows and macOS.
-        #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+        #[cfg_attr(
+            not(any(windows, target_os = "macos", target_os = "linux")),
+            allow(dead_code)
+        )]
         input: bool,
         ai: HostAi,
         /// The host's access state: while a controller waits for the host
         /// user, nobody's input reaches Kyokai's windows (`kyokai_reachable`).
-        #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+        #[cfg_attr(
+            not(any(windows, target_os = "macos", target_os = "linux")),
+            allow(dead_code)
+        )]
         access: Arc<Access>,
     },
     /// The controller: puts media into the queue its GUI drains, and sends
@@ -2763,7 +2769,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // for a controller that names no codecs — none on a Mac).
     let mut codecs_due = wants_video.then(|| tokio::time::Instant::now() + CODECS_WAIT);
     // The host's input service; dropping it releases what it holds.
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     let mut injector = match side {
         Side::Host { input: true, .. } => Some(crate::input::Injector::default()),
         _ => None,
@@ -2976,7 +2982,10 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // The viewer's frame-rate cap, when a person's input last came, and the
     // bitrate last set (kbit/s), for the input boost.
     let mut fps_cap = rustdesk_qos::FPS;
-    #[cfg_attr(not(any(windows, target_os = "macos")), allow(unused_mut))]
+    #[cfg_attr(
+        not(any(windows, target_os = "macos", target_os = "linux")),
+        allow(unused_mut)
+    )]
     let mut input_at: Option<Instant> = None;
     let mut last_kbps = 0u32;
     let mut sent_this_second = 0usize;
@@ -2995,9 +3004,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut host_sends_video = false;
     // The host's record of what this session's input holds on it, and
     // where the pointer was last, for a controller's `sync`.
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     let mut held = crate::input::Held::default();
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     let mut pointer_at = (0.5f32, 0.5f32);
     let mut heard = Instant::now();
     let mut plain = vec![0u8; MAX_FRAME];
@@ -3084,7 +3093,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             if !list.is_empty() {
                 displays = list;
             }
-            #[cfg(any(windows, target_os = "macos"))]
+            #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
             if let Some(inj) = injector.as_mut() {
                 inj.set_area(s.display.map(area));
             }
@@ -3827,7 +3836,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // A controller's `sync` (after a stall or a resume): the
                     // host lets go of whatever else this session holds. It
                     // only releases, so it takes nothing over.
-                    #[cfg(any(windows, target_os = "macos"))]
+                    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
                     Message::Input { event } if event["kind"] == "sync" => {
                         if let (Some(inj), Ok(s), Side::Host { ai, access, .. }) = (injector.as_mut(), serde_json::from_value::<crate::input::Sync>(event), &side)
                             && s.held.valid()
@@ -3838,7 +3847,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             }
                         }
                     }
-                    #[cfg(any(windows, target_os = "macos"))]
+                    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
                     Message::Input { event } => {
                         if let (Some(inj), Ok(e), Side::Host { ai, access, .. }) = (injector.as_mut(), serde_json::from_value::<crate::input::Event>(event), &side) {
                             let hover = matches!(e, crate::input::Event::Pointer { action: crate::input::PointerAction::Move, .. });
@@ -3859,7 +3868,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             }
                         }
                     }
-                    #[cfg(not(any(windows, target_os = "macos")))]
+                    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
                     Message::Input { .. } => {}
                     // A newer controller's action this build does not know.
                     Message::Action { action: SessionAction::Unknown } => {}
@@ -3869,7 +3878,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // on the desktop, so no window guard stands in its way
                     // (regression: Wake it's Shift press was refused while
                     // Kyokai's window had the focus).
-                    #[cfg(any(windows, target_os = "macos"))]
+                    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
                     Message::Action { action: SessionAction::Wake } => {
                         if injector.is_some() {
                             log::info!("host session: the viewer asks to wake the display");

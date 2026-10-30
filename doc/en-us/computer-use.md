@@ -661,6 +661,19 @@ A finished task's conversation stays in memory, so a reply continues it until th
 | Local input | a listen-only event tap (Input Monitoring) notes the host user's presses and moves, skips Kyokai's tagged events and watches for Ctrl+Option+Shift+Esc; the tap is switched off and invalidated with its thread, which ends even when the watch is dropped before its run loop runs |
 | AI tasks | the main display at full resolution through a short ScreenCaptureKit stream per screenshot, the same input and watch |
 
+## Linux
+
+| Part | How |
+|---|---|
+| Session | the environment tells the session: Wayland when `$WAYLAND_DISPLAY` is set or `$XDG_SESSION_TYPE` says so, else X11 when `$DISPLAY` is set, else none; only X11 captures and injects so far (a Wayland host shows the placeholder, the screen not capturable) |
+| Displays | RandR's monitors, the primary first (the leftmost when none is marked), the whole screen as one without RandR |
+| Capture | the display's rectangle of the root window through MIT-SHM into a System V segment that only this user can read and that is removed as soon as the X server attached it, BGRA at the display's pixel size, without the pointer; a picture identical to the last is no picture (still screen), looked at up to 60 times a second; a display that moved or changed size is lost and opened again. While Hide Kyokai from capture is on, the parts of Kyokai's windows the screen shows (each Kyokai window less other programs' windows above it, from the window manager's stacking list, else the root's children, read every 250 ms) are blacked out before the picture leaves the capture; a window's process comes from the X-Resource extension, else `_NET_WM_PID`, and is Kyokai's by its executable as on the other systems |
+| Encode | the software codecs (`vp9-sw`, `av1`, `vp8`) |
+| Input | XTest: pointer moves and buttons on the root window, the wheel as buttons 4–7 by whole notches, named keys and scan codes through evdev codes (the X keycode is the evdev code plus 8, so the host's layout decides what a key types, as Map mode wants), Caps Lock and Num Lock following the controller's before a key they change; text through spare keycodes (those with no keysym), each run of characters mapped at once, one code per character, given 50 ms before its keys and before the codes change again (X programs read a changed mapping only when they next look a key up). The guard drops presses over Kyokai's windows (the topmost window at the point, the active window for keys) as on the other systems |
+| Local input | XInput 2 raw key, button and motion events of the master devices, XTest's virtual devices (Kyokai's own input) left out; Ctrl+Alt+Shift+Esc is the emergency stop |
+| Display power | DPMS tells whether the display is off; waking turns DPMS on and resets the screen saver |
+| AI tasks | the primary display at full resolution through one MIT-SHM picture per screenshot, the same input and watch |
+
 ## Not yet
 
 The session actions on macOS come with the Mac pass (PLAN.md).

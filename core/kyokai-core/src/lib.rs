@@ -22,6 +22,8 @@ mod identity;
 mod input;
 mod keyboard;
 mod keys;
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod mac;
 mod media;

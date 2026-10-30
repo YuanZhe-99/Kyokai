@@ -560,9 +560,9 @@ pub fn displays() -> Vec<Display> {
     {
         crate::mac::displays()
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(target_os = "linux")]
     {
-        Vec::new()
+        crate::linux::displays()
     }
 }
 
@@ -701,7 +701,15 @@ impl Source {
         type Platform = screen::Dxgi;
         #[cfg(target_os = "macos")]
         type Platform = crate::mac::Capture;
-        #[cfg(any(windows, target_os = "macos"))]
+        #[cfg(target_os = "linux")]
+        type Platform = crate::linux::Capture;
+        // A Wayland session has no X11 capture (Xwayland shows only X
+        // programs), and a service or an SSH login has no display at all.
+        #[cfg(target_os = "linux")]
+        if crate::linux::session() != crate::linux::Session::X11 {
+            let _ = (display, choices, tx, frames);
+            return Source::pattern("cannot-capture", "this session's screen cannot be captured");
+        }
         {
             // A sleeping display is missing from macOS's active displays:
             // it is woken and looked for again.
@@ -749,11 +757,6 @@ impl Source {
                 }
             }
             Source::pattern("no-encoder", &why)
-        }
-        #[cfg(not(any(windows, target_os = "macos")))]
-        {
-            let _ = (display, choices, tx, frames);
-            Source::pattern("cannot-capture", "this computer cannot capture its screen")
         }
     }
 
@@ -840,7 +843,7 @@ fn test_pattern(tx: mpsc::Sender<Encoded>, stop: Arc<AtomicBool>) -> VideoStart 
 }
 
 /// What one capture attempt gave.
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 #[derive(Debug, PartialEq)]
 pub(crate) enum Got {
     Picture,
@@ -851,12 +854,12 @@ pub(crate) enum Got {
 }
 
 /// Receives a captured picture: top-down BGRA, width, height, bytes per row.
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 pub(crate) type Take<'a> = dyn FnMut(&[u8], usize, usize, usize) + 'a;
 
 /// A display capturer the encode loop reads: DXGI (or GDI) on Windows,
 /// ScreenCaptureKit on macOS.
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 pub(crate) trait Grab: Sized {
     /// Opens a display.
     /// Returns: the capturer and its pictures' size in pixels.
@@ -873,7 +876,7 @@ pub(crate) trait Grab: Sized {
     }
 }
 
-#[cfg(any(windows, target_os = "macos"))]
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 mod capture {
     //! The capture-and-encode loop shared by the platforms, on one thread
     //! (DXGI and Media Foundation are tied to the thread that made them).
@@ -992,6 +995,11 @@ mod capture {
                 let _ = hardware;
                 let c = crate::vt::Codec::from_name(choice.codec).ok_or("unknown codec")?;
                 crate::vt::Encoder::new(c, width, height, FPS, BITRATE).map(Encoder::Vt)
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let _ = hardware;
+                Err(format!("no {} encoder on Linux", choice.codec))
             }
         }
 
@@ -1946,15 +1954,15 @@ mod tests {
     }
 
     /// Whether a test capturer (`Fake`) is open.
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     static FAKE_OPEN: AtomicBool = AtomicBool::new(false);
 
     /// A capturer for the tests: a still grey picture, let go slowly as a
     /// GPU capturer is.
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     struct Fake;
 
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     impl Grab for Fake {
         fn open(_: Display) -> Result<(Self, u32, u32), String> {
             FAKE_OPEN.store(true, Ordering::SeqCst);
@@ -1968,7 +1976,7 @@ mod tests {
         }
     }
 
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     impl Drop for Fake {
         fn drop(&mut self) {
             std::thread::sleep(Duration::from_millis(100));
@@ -1979,7 +1987,7 @@ mod tests {
     /// A dropped source's capture lets go of its display and its encoder
     /// before the next source opens (regression: the next one opened at once
     /// and found the one hardware encoder still taken).
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     #[test]
     fn the_next_source_waits_for_the_last_one_to_let_go() {
         let (tx, frames) = mpsc::channel(1);
@@ -2028,10 +2036,10 @@ mod tests {
 
     /// A capturer for the tests whose screen stays still after its first
     /// picture.
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     struct Still(bool);
 
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     impl Grab for Still {
         fn open(_: Display) -> Result<(Self, u32, u32), String> {
             Ok((Still(false), 64, 48))
@@ -2048,7 +2056,7 @@ mod tests {
     }
 
     /// Starts a VP8 stream from a test capturer.
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     fn test_stream<G: Grab>(
         targets: Arc<Targets>,
     ) -> (mpsc::Receiver<Encoded>, Arc<AtomicBool>, Arc<AtomicBool>) {
@@ -2056,7 +2064,7 @@ mod tests {
     }
 
     /// Starts a stream in `codec` from a test capturer.
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     fn test_stream_in<G: Grab>(
         targets: Arc<Targets>,
         codec: &'static str,
@@ -2081,7 +2089,7 @@ mod tests {
     /// the stream goes on (regression: a GPU's encoder opened while the
     /// display was off gave no output for good, which looked like a still
     /// screen, and the viewer waited for its picture forever).
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     #[test]
     fn a_silent_encoder_is_opened_again() {
         let (mut frames, _key, stop) =
@@ -2094,7 +2102,7 @@ mod tests {
 
     /// An encoder that stays silent ends the stream, for the session to
     /// open again, instead of keeping it silent forever.
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     #[test]
     fn an_encoder_that_stays_silent_ends_the_stream() {
         let (mut frames, _key, stop) =
@@ -2114,7 +2122,7 @@ mod tests {
     }
 
     /// The next frame within `wait`.
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     fn next_frame(frames: &mut mpsc::Receiver<Encoded>, wait: Duration) -> Option<Encoded> {
         let until = Instant::now() + wait;
         while Instant::now() < until {
@@ -2132,7 +2140,7 @@ mod tests {
     /// The capture takes a picture only while the session has room for its
     /// frame: none while the controller's acknowledgements are behind, the
     /// newest one once there is room again.
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     #[test]
     fn the_capture_takes_pictures_only_with_room() {
         let targets = Arc::new(Targets::default());
@@ -2150,7 +2158,7 @@ mod tests {
     /// A key frame asked for on a still screen comes out: the last picture
     /// is encoded again for it (regression: a still screen never answered,
     /// and a viewer that lost a frame waited for a change on the host).
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     #[test]
     fn a_key_frame_asked_for_comes_out_on_a_still_screen() {
         let (mut frames, key, stop) = test_stream::<Still>(Arc::new(Targets::default()));

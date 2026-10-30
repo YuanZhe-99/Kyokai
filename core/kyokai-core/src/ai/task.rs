@@ -686,7 +686,10 @@ impl Ai {
     /// Whether a task waits for the host user's approval of an action: while
     /// one does, no session's input reaches Kyokai's own windows (only those
     /// allowed to approve answer it, through the session).
-    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+    #[cfg_attr(
+        not(any(windows, target_os = "macos", target_os = "linux")),
+        allow(dead_code)
+    )]
     pub fn awaiting_approval(&self) -> bool {
         let tasks = self.shared.tasks.lock().expect("tasks");
         tasks.iter().any(|t| matches!(t.state, State::Approval))
@@ -995,11 +998,11 @@ pub fn open_screen() -> Result<Box<dyn Desktop>, String> {
     if let Some(link) = crate::agent::link() {
         return Ok(Box::new(link.desktop()?));
     }
-    #[cfg(any(windows, target_os = "macos"))]
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     {
         Ok(Box::new(desktop::Screen::open()?))
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         Err("AI tasks are not available on this system yet".into())
     }

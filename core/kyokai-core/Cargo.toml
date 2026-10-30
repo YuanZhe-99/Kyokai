@@ -65,8 +65,10 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Secur
 # The master key in the Secret Service (GNOME Keyring, KWallet) over D-Bus,
 # pure-Rust session encryption (doc/en-us/security.md).
 secret-service = { version = "5.2.0", default-features = false, features = ["rt-tokio-crypto-rust"] }
-# statvfs for the system sample's disk.
+# statvfs for the system sample's disk; System V shared memory for capture.
 libc = "0.2.190"
+# X11 capture, input, the local-input watch and DPMS (doc/en-us/computer-use.md).
+x11rb = { version = "0.13.2", features = ["shm", "randr", "xtest", "xinput", "res", "dpms"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.7.0"

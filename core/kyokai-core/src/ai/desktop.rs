@@ -1,7 +1,10 @@
 //! The host's desktop as an AI task sees it: screenshots scaled for the
 //! model, and actions turned into input events
 //! (doc/en-us/computer-use.md, "AI tasks").
-#![cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+#![cfg_attr(
+    not(any(windows, target_os = "macos", target_os = "linux")),
+    allow(dead_code)
+)]
 
 use base64::Engine;
 
@@ -386,6 +389,8 @@ fn key_name(k: &Key) -> Result<Pressed, String> {
     }
 }
 
+#[cfg(target_os = "linux")]
+pub use crate::linux::Screen;
 #[cfg(target_os = "macos")]
 pub use crate::mac::Screen;
 #[cfg(windows)]

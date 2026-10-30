@@ -975,7 +975,10 @@ impl Access {
     /// Whether a controller waits for the host user's answer: while one
     /// does, no session's input reaches Kyokai's own windows, so nobody
     /// answers it in the host user's place.
-    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+    #[cfg_attr(
+        not(any(windows, target_os = "macos", target_os = "linux")),
+        allow(dead_code)
+    )]
     pub fn asking(&self) -> bool {
         self.pending
             .lock()

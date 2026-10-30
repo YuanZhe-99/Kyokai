@@ -847,9 +847,9 @@ impl Network {
             return;
         }
         let _rt = self.rt.enter();
-        let v4 = listen_tcp(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        let v4 = listen_tcp(IpAddr::V4(Ipv4Addr::UNSPECIFIED), KYOKAI_PORT);
         // Without IPv6 on this computer, IPv4 alone.
-        let v6 = listen_tcp(IpAddr::V6(Ipv6Addr::UNSPECIFIED)).ok();
+        let v6 = listen_tcp(IpAddr::V6(Ipv6Addr::UNSPECIFIED), KYOKAI_PORT).ok();
         let v4 = match v4 {
             Ok(l) => l,
             Err(e) => {
@@ -1479,9 +1479,9 @@ async fn race(
     None
 }
 
-/// A TCP listener on KYOKAI_PORT of every address of one family (IPv6
-/// only for IPv6, so both families can listen side by side).
-fn listen_tcp(any: IpAddr) -> std::io::Result<tokio::net::TcpListener> {
+/// A TCP listener on `port` (KYOKAI_PORT) of every address of one family
+/// (IPv6 only for IPv6, so both families can listen side by side).
+fn listen_tcp(any: IpAddr, port: u16) -> std::io::Result<tokio::net::TcpListener> {
     use socket2::{Domain, Protocol, Socket, Type};
     let domain = if any.is_ipv4() {
         Domain::IPV4
@@ -1492,7 +1492,13 @@ fn listen_tcp(any: IpAddr) -> std::io::Result<tokio::net::TcpListener> {
     if any.is_ipv6() {
         socket.set_only_v6(true)?;
     }
-    socket.bind(&SocketAddr::new(any, KYOKAI_PORT).into())?;
+    // A connection the last listener closed may linger in TIME-WAIT, which
+    // keeps Linux and macOS from binding the port for a minute without it
+    // (std and tokio set it too); on Windows it would let another socket
+    // take the port, so not there.
+    #[cfg(unix)]
+    socket.set_reuse_address(true)?;
+    socket.bind(&SocketAddr::new(any, port).into())?;
     socket.listen(64)?;
     socket.set_nonblocking(true)?;
     tokio::net::TcpListener::from_std(socket.into())
@@ -2072,6 +2078,32 @@ fn nat_name(n: i32) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A host started again listens at once although its last listener
+    /// closed a connection (TIME-WAIT on the port); regression: a Linux host
+    /// restarted after a session listened nowhere for a minute.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_port_is_listened_on_again_after_a_closed_connection() {
+        let any = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        // A port of its own, free now.
+        let port = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let first = listen_tcp(any, port).unwrap();
+        let client = tokio::net::TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        let (served, _) = first.accept().await.unwrap();
+        // The listening side closes first, so the port keeps TIME-WAIT.
+        drop(served);
+        drop(client);
+        drop(first);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(listen_tcp(any, port).is_ok());
+    }
 
     /// Auto ranks routes that answer first, then those not failing, then
     /// those not remembered slow, by round trip (unknown last), direct

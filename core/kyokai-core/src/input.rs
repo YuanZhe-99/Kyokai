@@ -85,7 +85,10 @@ pub fn lock_for(code: u32, caps: bool, num: bool) -> Option<(u32, bool)> {
 /// alone would refuse clicks on windows the viewer does see while Kyokai's
 /// (unseen) window is in front.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+#[cfg_attr(
+    not(any(windows, target_os = "macos", target_os = "linux")),
+    allow(dead_code)
+)]
 pub(crate) enum Guard {
     /// Releases: they end what was pressed elsewhere and start nothing.
     None,
@@ -100,7 +103,10 @@ pub(crate) enum Guard {
 
 impl Event {
     /// Which window this event is checked against.
-    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+    #[cfg_attr(
+        not(any(windows, target_os = "macos", target_os = "linux")),
+        allow(dead_code)
+    )]
     pub(crate) fn guard(&self) -> Guard {
         match self {
             Event::Pointer {
@@ -414,19 +420,21 @@ pub use windows_impl::{
     pointer_in,
 };
 
+#[cfg(target_os = "linux")]
+pub use crate::linux::{Injector, pointer, pointer_in};
 #[cfg(target_os = "macos")]
 pub use crate::mac::{Injector, pointer, pointer_in};
 
 /// Where the pointer is, as fractions of the primary display (outside 0–1
 /// on another display). Not available off Windows and macOS.
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 pub fn pointer() -> Option<(f32, f32)> {
     None
 }
 
 /// Where the pointer is, as fractions of `area`. Not available off Windows
 /// and macOS.
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 pub fn pointer_in(_area: Area) -> Option<(f32, f32)> {
     None
 }

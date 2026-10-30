@@ -7,6 +7,12 @@
   the caller from `SO_PEERCRED` and `SO_PEERGROUPS` and its socket lives under `$XDG_RUNTIME_DIR`;
   the codecs build with vcpkg's `x64-linux` and `arm64-linux` triplets; the system sample comes from
   procfs. No capture or input yet: a Linux host shows the test pattern.
+- Linux on X11: capture through MIT-SHM with Kyokai's windows blacked out, XTest input that never
+  reaches them (text through spare keycodes), the pointer, the local-input watch through XInput 2
+  with Ctrl+Alt+Shift+Esc, DPMS, and AI tasks on the same desktop. Wayland hosts still show the
+  placeholder.
+- A host started again right after a session (the old connection in TIME-WAIT on port 47310)
+  listened nowhere for about a minute on Linux and macOS: the listener now reuses the address there.
 - A host that cannot capture on its system (`cannot-capture`) shows the placeholder for good, as
   documented, instead of reopening the video at once and counting recovery steps.
 - Upstream: MyGo v0.7.3, no interface migration (its one breaking change, pinch zoom in pages, does

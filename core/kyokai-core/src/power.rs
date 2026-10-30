@@ -15,7 +15,10 @@
 //! Windows has reported the display off for a second (a dark display is
 //! as quiet as a still screen), at most every five seconds; a viewer's
 //! Wake it does the same at once.
-#![cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+#![cfg_attr(
+    not(any(windows, target_os = "macos", target_os = "linux")),
+    allow(dead_code)
+)]
 
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
@@ -41,19 +44,22 @@ pub fn wake_due(dark_since: Option<Instant>, woke: Option<Instant>, now: Instant
 /// resets the display idle timer (`SetThreadExecutionState(ES_DISPLAY_REQUIRED)`)
 /// and moves the pointer one pixel and back with absolute moves, tagged as
 /// Kyokai's input (the local-input watch leaves it out); macOS: declares
-/// user activity (`IOPMAssertionDeclareUserActivity`). Elsewhere nothing.
+/// user activity (`IOPMAssertionDeclareUserActivity`); Linux on X11: DPMS on
+/// and the screen saver reset.
 pub fn wake_display() {
     if let Some(link) = crate::agent::link() {
         link.wake_display();
     } else {
         #[cfg(any(windows, target_os = "macos"))]
         imp::wake();
+        #[cfg(target_os = "linux")]
+        crate::linux::wake_display();
     }
 }
 
 /// Whether the system reports the display off (Windows' console display
 /// state; macOS: the main display asleep, or no display active while one is
-/// connected; elsewhere never).
+/// connected; Linux on X11: DPMS not on).
 pub fn display_off() -> bool {
     #[cfg(windows)]
     {
@@ -63,8 +69,10 @@ pub fn display_off() -> bool {
     {
         crate::mac::asleep()
     }
-    #[cfg(not(any(windows, target_os = "macos")))]
-    false
+    #[cfg(target_os = "linux")]
+    {
+        crate::linux::display_off()
+    }
 }
 
 #[cfg(windows)]
