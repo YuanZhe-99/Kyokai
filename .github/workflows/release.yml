@@ -224,7 +224,8 @@ jobs:
       - name: Collect the downloads
         run: |
           mkdir -p dist
-          find build -maxdepth 2 -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.tar.gz' -o -name '*.delta' -o -name 'update-*.json' \) -exec cp {} dist/ \;
+          # build/tools holds appimagetool, which is not a download.
+          find build -maxdepth 2 -path build/tools -prune -o -type f \( -name '*.deb' -o -name '*.AppImage' -o -name '*.tar.gz' -o -name '*.delta' -o -name 'update-*.json' \) -exec cp {} dist/ \;
           # install.sh is the same script for every system: the amd64 job
           # publishes it.
           if [ "${{ matrix.arch }}" = amd64 ]; then cp build/linux-amd64/install.sh dist/; fi
