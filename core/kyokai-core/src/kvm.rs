@@ -774,6 +774,7 @@ impl Drop for Hid {
 /// What the capture card gave.
 pub(crate) enum Picture<'a> {
     /// One JPEG (Linux and Windows read the card's own MJPEG).
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     Jpeg(&'a [u8]),
     /// A decoded picture (macOS, whose capture decodes it).
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
