@@ -133,6 +133,13 @@ var coreLib = sync.OnceValues(func() (*core.Lib, error) {
 type viewer struct {
 	app    *App
 	device string
+	// kvm: the computer wired to the device's NanoKVM USB, not its
+	// desktop; own: this computer's own NanoKVM, opened here without a
+	// network session (both fixed at creation).
+	kvm, own bool
+	// inUse: this computer's own NanoKVM is in a controller's use, and
+	// takeOver asks the next connection to end that session; guarded by mu.
+	inUse, takeOver bool
 	// sid is the session the connection is now; a reconnect makes another.
 	sid atomic.Uint64
 	// title names the device: its friendly name and Device ID.
@@ -286,11 +293,41 @@ func (v *viewer) sendControl(msg map[string]any) {
 // session is the connection's current session id (0 before the first).
 func (v *viewer) session() uint64 { return v.sid.Load() }
 
-// viewerFor is the connection to a device, or nil.
+// viewerFor is the connection to a device's desktop, or nil.
 func (a *App) viewerFor(device string) *viewer {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.viewers[device]
+}
+
+// kvmViewerFor is the connection to the computer wired to a device's
+// NanoKVM USB, or nil.
+func (a *App) kvmViewerFor(device string) *viewer {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.viewers[serviceKey(device, serviceNanokvm)]
+}
+
+// connectNanokvm opens the connection to the computer wired to a device's
+// NanoKVM USB as a tab of the main window, or shows its tab when it is
+// open; one that ended connects again.
+// Returns: the tab's tabKey.
+// Notes: call on the main thread; one such connection per device.
+func (a *App) connectNanokvm(device, address string) string {
+	if v := a.kvmViewerFor(device); v != nil {
+		if w := v.home.Load(); w != nil {
+			w.show(v)
+		}
+		if !v.live() {
+			v.redial("", false)
+		}
+		return v.tabKey()
+	}
+	v := a.newViewer(device, a.recentAbout(device), []string{localapi.PermUseNanokvm}, true)
+	v.address = address
+	a.main.add(v)
+	v.redial("", false)
+	return v.tabKey()
 }
 
 // connectDevice opens the connection to a device's desktop (desktopWant)
@@ -314,21 +351,29 @@ func (a *App) connectDevice(device, address string, about localapi.About) {
 		}
 		return
 	}
-	v := a.newViewer(device, about, desktopWant)
+	v := a.newViewer(device, about, desktopWant, false)
 	v.address = address
 	a.main.add(v)
 	v.redial("", false)
 }
 
-// newViewer makes a device's connection, not yet dialed, and registers it.
-func (a *App) newViewer(device string, about localapi.About, want []string) *viewer {
+// newViewer makes a device's connection, not yet dialed, and registers it:
+// to its desktop, or with kvm to the computer wired to its NanoKVM USB.
+func (a *App) newViewer(device string, about localapi.About, want []string, kvm bool) *viewer {
 	a.mu.Lock()
 	about = a.prefs.named(device, about)
 	a.mu.Unlock()
-	v := &viewer{app: a, device: device, title: deviceTitle(about, device), want: want,
+	a.mu.Lock()
+	own := kvm && a.status != nil && device == a.status.DeviceID
+	a.mu.Unlock()
+	title := deviceTitle(about, device)
+	if own {
+		title = L.PickThisComputer()
+	}
+	v := &viewer{app: a, device: device, kvm: kvm, own: own, title: title, want: want,
 		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto"}
-	// The settings chosen for this device last time.
-	if vp, ok := a.viewerPrefs(device); ok {
+	// The settings chosen for this connection last time.
+	if vp, ok := a.viewerPrefs(v.tabKey()); ok {
 		v.preset, v.full, v.swap, v.mute, v.folded = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap, vp.Mute, vp.Folded
 		v.original, v.clip.off = vp.Original, vp.NoClipboard
 		if slices.Contains(fpsCaps, vp.FPS) {
@@ -339,7 +384,7 @@ func (a *App) newViewer(device string, about localapi.About, want []string) *vie
 		}
 	}
 	a.mu.Lock()
-	a.viewers[device] = v
+	a.viewers[v.tabKey()] = v
 	a.mu.Unlock()
 	return v
 }
@@ -365,14 +410,15 @@ func (v *viewer) redial(password string, remember bool) {
 	v.mu.Lock()
 	v.phase = localapi.SessionInfo{State: "connecting", DeviceID: v.device}
 	v.state, v.bm, v.start, v.password = "", nil, videoStart{}, ""
-	want, address := v.want, v.address
+	want, address, takeOver := v.want, v.address, v.takeOver
+	v.inUse, v.takeOver = false, false
 	v.mu.Unlock()
 	go func() {
 		if old != 0 {
 			v.app.closeSession(old)
 		}
 		resp, err := v.app.requestWith(localapi.Request{Type: localapi.RequestConnect, Connect: &localapi.ConnectRequest{
-			DeviceID: v.device, Password: password, Want: want, Remember: remember, Address: address,
+			DeviceID: v.device, Password: password, Want: want, Remember: remember, Address: address, Nanokvm: v.kvm, TakeOver: takeOver,
 		}})
 		// The session is known before the tab looks: a tab that closed
 		// while it was asked for closes it here, else its own close does
@@ -393,9 +439,13 @@ func (v *viewer) redial(password string, remember bool) {
 				if errors.As(err, &refused) {
 					msg = refused.Message
 				}
+				inUse := msg == localapi.KvmInUse
+				if inUse {
+					msg = L.NanokvmInUse(v.app.kvmUser())
+				}
 				v.mu.Lock()
 				v.phase = localapi.SessionInfo{State: "failed", DeviceID: v.device}
-				v.state = msg
+				v.state, v.inUse = msg, inUse
 				v.mu.Unlock()
 				return
 			}
@@ -456,15 +506,20 @@ func (a *App) syncViewers() {
 	// opens for them.
 	owned, dialing := a.syncAILinks(sessions)
 	for _, s := range sessions {
-		if !desktopController(s) || closed[s.ID] || owned[s.ID] || dialing[s.DeviceID] && a.viewerFor(s.DeviceID) == nil {
+		kvm := s.Role == "controller" && s.Service == serviceNanokvm
+		if !desktopController(s) && !kvm || closed[s.ID] || owned[s.ID] || dialing[s.DeviceID] && a.viewerFor(s.DeviceID) == nil {
 			continue
 		}
-		v := a.viewerFor(s.DeviceID)
+		find := a.viewerFor
+		if kvm {
+			find = a.kvmViewerFor
+		}
+		v := find(s.DeviceID)
 		if v == nil {
 			if s.State != "connected" {
 				continue
 			}
-			v = a.newViewer(s.DeviceID, s.Peer, s.Granted)
+			v = a.newViewer(s.DeviceID, s.Peer, s.Granted, kvm)
 			v.sid.Store(s.ID)
 			a.main.add(v)
 		}
@@ -481,16 +536,18 @@ func (a *App) syncViewers() {
 		a.mu.Unlock()
 		v.mu.Lock()
 		v.phase = s
-		if peer.Name != "" {
+		if peer.Name != "" && !v.own {
 			v.title = deviceTitle(peer, s.DeviceID)
 		}
 		start := s.State == "connected" && !v.pumping
 		if start {
 			v.pumping = true
-			v.control = slices.Contains(s.Granted, localapi.PermControlInput)
-			v.clip.may = slices.Contains(s.Granted, localapi.PermClipboard) || slices.Contains(s.Granted, localapi.PermFiles)
+			// The computer wired to a NanoKVM: its picture and input come
+			// with use-nanokvm, and nothing of the clipboard.
+			v.control = slices.Contains(s.Granted, localapi.PermControlInput) || v.kvm
+			v.clip.may = !v.kvm && (slices.Contains(s.Granted, localapi.PermClipboard) || slices.Contains(s.Granted, localapi.PermFiles))
 			v.state = ""
-			if !slices.Contains(s.Granted, localapi.PermViewScreen) {
+			if !slices.Contains(s.Granted, localapi.PermViewScreen) && !v.kvm {
 				v.state = L.ViewerNoPicture()
 			}
 		}
@@ -510,8 +567,8 @@ func (v *viewer) close() {
 	v.endGrab()
 	v.home.Store(nil)
 	v.app.mu.Lock()
-	if v.app.viewers[v.device] == v {
-		delete(v.app.viewers, v.device)
+	if v.app.viewers[v.tabKey()] == v {
+		delete(v.app.viewers, v.tabKey())
 	}
 	v.app.mu.Unlock()
 	v.mu.Lock()
@@ -1131,6 +1188,10 @@ func (v *viewer) connectPanel(c *ui.Context, phase localapi.SessionInfo) {
 			v.mu.Unlock()
 		}
 	}
+	if v.own {
+		v.ownPanel(c, phase)
+		return
+	}
 	ui.Column(c).Fill().Background(t.Background).AlignItems(ui.Center).Justify(ui.Center).Padding(0, paneMargin*2).Children(func() {
 		homeCard(c, "connect-panel-"+v.tabKey()).FillWidth().MaxWidth(connectPanelW).Children(func() {
 			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
@@ -1304,6 +1365,8 @@ func viewerWaitText(hostVideo, placeholder string) (string, bool) {
 		return L.ViewerHostNoCodec(), false
 	case "cannot-capture":
 		return L.ViewerHostCannotCapture(), false
+	case "nanokvm":
+		return L.ViewerHostNanokvm(), true
 	default:
 		return L.ViewerHostRetrying(), true
 	}
@@ -1640,13 +1703,34 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 		}
 	}
 
-	// The checks show what the host reports, not what was asked.
-	if control && a != nil {
+	// The checks show what the host reports, not what was asked. Typing
+	// the clipboard needs only control; the host's own actions come with
+	// its offer.
+	if control {
 		action := func(name string) {
 			v.sendControl(map[string]any{"type": "action", "action": name})
 			back()
 		}
 		barMenu(c, v.app, "bar-actions", barActions, L.ViewerActions(), func(m *ui.Menu) {
+			if m.Item(L.ViewerTypeClipboard()).Chosen() {
+				go v.typeClipboard()
+				back()
+			}
+			// The computer wired to a NanoKVM takes keys alone: its
+			// Ctrl+Alt+Del and Wake (a Shift press), nothing of the host's.
+			if v.kvm {
+				if m.Item(L.ViewerCtrlAltDel()).Chosen() {
+					action("ctrl-alt-del")
+				}
+				if m.Item(L.ViewerWake()).Chosen() {
+					action("wake")
+				}
+				return
+			}
+			if a == nil {
+				return
+			}
+			m.Separator()
 			if m.Item(L.ViewerLock()).Chosen() {
 				action("lock")
 			}
@@ -1675,7 +1759,7 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 	if !soundOn {
 		icon = barSoundOff
 	}
-	if barToggle(c, "bar-sound", &soundOn, icon, L.ViewerSound(), L.ViewerSoundHint()).Changed() {
+	if !v.kvm && barToggle(c, "bar-sound", &soundOn, icon, L.ViewerSound(), L.ViewerSoundHint()).Changed() {
 		v.setSound(soundOn)
 		back()
 	}
@@ -1691,8 +1775,9 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 		v.clip.shown = clipShown
 		v.mu.Unlock()
 	}
-	// The device's AI: a session's pane beside this one.
-	if v.app != nil && barButton(c, "bar-ai", navAI, L.ViewerAITitle()).Clicked() {
+	// The device's AI: a session's pane beside this one (not the wired
+	// computer's: AI through a NanoKVM is not there yet).
+	if v.app != nil && !v.kvm && barButton(c, "bar-ai", navAI, L.ViewerAITitle()).Clicked() {
 		v.app.openAIBeside(v)
 	}
 	if w := v.home.Load(); w != nil {

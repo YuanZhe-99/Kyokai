@@ -189,9 +189,9 @@ when `SCREENSHOT_DIR` is set.
   identity kept from then on; `secrets.start_over`). **Connect to a device** — a Device ID or an
   address (an IP address or domain name, for a device that accepts connections by address;
   "Looking for the device…" while it is asked who it is) and Connect (Enter too; a Device ID needs
-  a network), and **Open as**: Desktop, SSH, Remote Desktop, VNC or AI task (the desktop asking to
-  run AI tasks there), what Connect opens (`connectAs`) — five segments, or a menu where the card
-  is narrower than they need in the widest language (440 points). On macOS, while Screen
+  a network), and **Open as**: Desktop, SSH, Remote Desktop, VNC, AI task or NanoKVM USB (the desktop asking to
+  run AI tasks there), what Connect opens (`connectAs`) — six segments, or a menu where the card
+  is narrower than they need in the widest language (560 points). On macOS, while Screen
   Recording, Accessibility, Input Monitoring or the Keychain is missing, **Privacy permissions**
   under its title as Home's sections have one: a card of the rows Settings › Access lists them in
   (`privacyList`) — each its tile, one sentence and Allow, or Allowed; the longer explanation
@@ -325,7 +325,12 @@ when `SCREENSHOT_DIR` is set.
   Clipboard, Copy files, Hear sound, Run AI tasks, Approve AI actions, See status, SSH, Remote
   Desktop, VNC; See status on and the services off by default), "Anything else waits for your OK"
   beside the title. **Ports of this computer's services**: a port each for SSH, Remote Desktop and
-  VNC, empty for the standard one, with Save and Cancel while edited. Then the devices watching
+  VNC, empty for the standard one, with Save and Cancel while edited. **NanoKVM USB**: Capture card
+  and Serial port, each a choice of the devices found (the saved one, else the one picked, else the
+  pair found; one that is gone shown as not connected; None found when there are none), Offer it
+  to other devices (off until both are chosen; a change while it is on takes effect at once), and
+  Look again and Open (this computer's own, once its devices are saved; a choice is saved at once),
+  with "Found a NanoKVM USB" while a pair was found (`nanokvmSection`). Then the devices watching
   this computer's status, with since when; trusted devices with their last connection and Remove;
   and **Sound**: Sound to share — what this computer plays unless an input device is chosen, a
   device that is gone shown as not connected, an input asking macOS for the Microphone permission.
@@ -412,7 +417,7 @@ when `SCREENSHOT_DIR` is set.
   filled, Sign in is off), then the client: MyGo's terminal for SSH,
   in the app's light or dark theme, or the other desktop's picture for Remote Desktop and VNC, with
   a toolbar of Display (Fit or Original size), Keyboard (the keyboard mode), Actions
-  (Ctrl+Alt+Del) and Full screen. When it ends it says why, with Reconnect, and after an SSH
+  (Type the clipboard, Ctrl+Alt+Del) and Full screen. When it ends it says why, with Reconnect, and after an SSH
   server's key changed, Trust the new key.
 - The picture is scaled to fit on black, or with Original size at one point per pixel of the
   host, scrolled both ways when larger than the window (its scroll bars' thumbs move it; the wheel
@@ -430,12 +435,21 @@ when `SCREENSHOT_DIR` is set.
   Translate two dots under the icon, the first green while Kyokai holds the keyboard, the second
   green while the keys reach it and amber when they do not, both grey without a grab, the tooltip
   saying why: `grabDots`, `grabHint`, [computer-use.md](computer-use.md), "Keyboard modes"), Actions (with
-  `control-input`, when the host offers them, a Windows host: Lock screen, Ctrl+Alt+Del in the
+  `control-input`: Type the clipboard — this computer's clipboard text typed on the host as keys
+  would type it, in text events of at most 4,096 bytes, for a field that refuses pasting or a
+  computer behind a NanoKVM, which has no clipboard (`typeClipboard`); then, when the host offers
+  them, a Windows host: Lock screen, Ctrl+Alt+Del in the
   helper modes, Block their keyboard and mouse and Privacy mode, checked as the host reports),
   then toggles for Sound (plays the host's sound; on unless chosen, kept for each device), Pointer
   (shows or hides the ring, remembered for every viewer), Clipboard (pulls out the clipboard panel,
   with `clipboard` or `files`), AI (the device's AI session in a pane beside the desktop: the
-  newest one open, else a new one) and Full screen; what does not fit a
+  newest one open, else a new one) and Full screen; a NanoKVM USB's pane (`connectNanokvm`, keyed
+  `<Device ID>/nanokvm` beside the device's desktop) has Actions with Ctrl+Alt+Del and Wake only, and
+  no Sound, Clipboard or AI, and its Codec adds Raw (MJPEG) when the host offers it; this computer's
+  own (`openOwnNanokvm`: Home's This device row NanoKVM USB with Open, Access's Open, the + picker's
+  This computer row, search's NanoKVM USB) is named This computer, and before its picture says
+  Opening the NanoKVM USB…, or why it ended with Reconnect, or who is using it with Take over
+  (`ownPanel`); what does not fit a
   narrow window goes into the toolbar's » menu. Beside them the path: a dot and the address the session takes
   (`sessions[].route`), else Direct or Relayed (Relayed in the warning colour, its tooltip with a
   hint to turn on direct connections on both devices), with the host's measured delay, the tooltip also showing size, codec, frame rate and

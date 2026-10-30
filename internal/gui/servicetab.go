@@ -216,6 +216,8 @@ func serviceName(service string) string {
 		return L.ServiceSSH()
 	case serviceRDP:
 		return L.ServiceRDP()
+	case serviceNanokvm:
+		return L.ServiceNanokvm()
 	}
 	return L.ServiceVNC()
 }
@@ -227,6 +229,9 @@ func serviceName(service string) string {
 // Returns: the tab's tabKey.
 // Notes: call on the main thread.
 func (a *App) openService(device, address, service string) string {
+	if service == serviceNanokvm {
+		return a.connectNanokvm(device, address)
+	}
 	n := 1
 	if service == serviceSSH {
 		a.mu.Lock()

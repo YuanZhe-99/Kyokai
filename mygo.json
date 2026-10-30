@@ -1,7 +1,7 @@
 {
   "name": "Kyokai",
   "identifier": "com.yuanzhe.kyokai",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "copyright": "Copyright (C) 2026 YuanZhe",
   "main": "./cmd/kyokai",
   "out": "build",
@@ -24,6 +24,7 @@
     },
     "infoPlist": {
       "NSLocalNetworkUsageDescription": "Kyokai connects directly to your other devices on this network.",
+      "NSCameraUsageDescription": "Kyokai shares the picture of the NanoKVM USB capture card you choose with the devices you let use it.",
       "NSMicrophoneUsageDescription": "Kyokai shares the sound of the input you choose with the devices that control this Mac."
     }
   },

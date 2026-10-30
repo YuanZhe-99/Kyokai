@@ -108,7 +108,7 @@ as it needs and put back together on the other side; a chunk of a newer frame dr
 older one (latest frame wins), and frames over 64 MiB are dropped. As the session starts the
 controller sends `{"type": "codecs", decode, i444}`: the codecs it decodes (`h264` and `hevc`
 through Media Foundation or VideoToolbox, `vp9` through Media Foundation, `vp9-sw`, `av1` and `vp8`
-in software) and those it decodes in
+in software, and `mjpeg`, a NanoKVM's own pictures) and those it decodes in
 full colour (`vp9-sw`, `av1`; a field older builds leave out). The host answers with
 `{"type": "codec-offer", codecs}`: what it can send that the controller decodes, in its order; the
 controller may choose one with `{"type": "codec", codec}`, and asks for the host's sound with
@@ -118,7 +118,7 @@ while it is silent, the packets waiting when a frame's chunk was sent going out 
 chunk, [computer-use.md](computer-use.md), "Sound") (`auto`, or a name of the offer; another
 name changes nothing), and a resumed controller sends its viewer's `quality`, `codec` and `audio` again
 before its `codecs`. Before its first frame the host
-sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern; a `recovery` host adds `placeholder` to the test pattern's: `asleep`, `no-display`, `agent`, `no-encoder`, `retrying`, `no-codec` or `cannot-capture`). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer than 3 are unacknowledged, takes only an acknowledgement of a frame it sent and that was not acknowledged, and waits for acknowledgements however long they take: every controller (protocol 10) acknowledges every frame over an ordered, reliable stream, so a late one means a slow path, not a lost frame (a dead connection ends by the idle limit). The controller may send `{"type":
+sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern; a `recovery` host adds `placeholder` to the test pattern's: `asleep`, `no-display`, `agent`, `no-encoder`, `retrying`, `no-codec`, `cannot-capture` or `nanokvm`). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer than 3 are unacknowledged, takes only an acknowledgement of a frame it sent and that was not acknowledged, and waits for acknowledgements however long they take: every controller (protocol 10) acknowledges every frame over an ordered, reliable stream, so a late one means a slow path, not a lost frame (a dead connection ends by the idle limit). The controller may send `{"type":
 "key-frame"}` (the host then describes the stream, its displays and the codec offer again and
 sends a key frame, unless the last key frame it sent is not acknowledged yet: that one is waited for) — its GUI's requests (as it opens, after a frame it lost or failed to decode,
 each second until a key frame comes), and the controller's own while its queue leaves frames out
@@ -164,6 +164,20 @@ plaintexts that start with byte `0x05`, each followed by up to one frame's worth
 order, both ways, besides `ping`, `pong` and `bye`; there is no video, input or other message. A
 side whose service or client ends sends `bye` after the bytes it read, and the other side ends
 too. A tunnel with no frame from its peer for 60 seconds is closed.
+
+## NanoKVM sessions
+
+A session may carry the computer wired to the host's NanoKVM USB instead of the host's desktop
+([remote-services.md](remote-services.md), "NanoKVM USB"). To a host that announced `nanokvm` the
+controller sets `nanokvm: true` in `client_hello` and asks for `use-nanokvm` alone; it never sends
+it to a host that did not announce `nanokvm`, and stops after frame 2 instead (`unsupported`). The
+host refuses it as `service-down` when it does not offer its NanoKVM (before anyone is asked) or
+its serial port does not open, and as `busy` while another is connected; otherwise it admits it
+like any permission, with no resume token. The session then runs as a desktop's — the video with
+`codecs`, `codec-offer` and acknowledgements, input events, `actions` — on the wired computer:
+the codec offer adds `mjpeg` (each frame one JPEG, a key frame) when the host can send the card's
+own pictures and the controller decodes them, the host offers the actions `ctrl-alt-del` and
+`wake` (a Shift press), and there is no sound, clipboard, files, display list, pointer or AI.
 
 ## Status watchers
 
@@ -218,6 +232,7 @@ outside the range this build speaks (10 to 10) is refused as incompatible.
 | `input-sync` | the controller's `sync` input event (the keys and buttons it holds) |
 | `wake` | the `wake` session action (the host wakes its displays) |
 | `recovery` | the controller's `no-picture`; the host's `placeholder` in `video-start` and `video` in its stats |
+| `nanokvm` | sessions of the computer wired to the host's NanoKVM USB (`client_hello`'s `nanokvm`); permission `use-nanokvm` |
 
 ## Decoders
 

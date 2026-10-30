@@ -348,7 +348,7 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 	case localapi.RequestStartOver:
 		return h.command("store.start_over", nil)
 	case localapi.RequestAccessSettings:
-		if req.PasswordMode == "" && req.WithoutAsking == nil && req.ByAddress == nil && req.ServicePorts == nil {
+		if req.PasswordMode == "" && req.WithoutAsking == nil && req.ByAddress == nil && req.ServicePorts == nil && req.Nanokvm == nil {
 			return localapi.Fail(localapi.CodeInvalid, "nothing to change")
 		}
 		params := map[string]any{}
@@ -376,6 +376,9 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 				}
 			}
 			params["service_ports"] = ports
+		}
+		if req.Nanokvm != nil {
+			params["nanokvm"] = req.Nanokvm
 		}
 		return h.command("access.settings", params)
 	case localapi.RequestPermission:
@@ -427,6 +430,12 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 			return localapi.Fail(localapi.CodeInvalid, "source missing")
 		}
 		return h.command("sound.source", map[string]string{"source": *req.SoundSource})
+	case localapi.RequestNanokvmDevices:
+		var devices localapi.NanokvmDevices
+		if err := h.lib.Call("nanokvm.devices", nil, &devices); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true, NanokvmDevices: &devices}
 	case localapi.RequestSoundDevices:
 		var devices []localapi.SoundDevice
 		if err := h.lib.Call("sound.devices", nil, &devices); err != nil {
@@ -841,7 +850,7 @@ func (h *handler) status() (*localapi.Status, error) {
 		Version: st.Version, Build: version.Build(), ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: h.runMode, Background: h.isBackground(), Persistence: st.Persistence,
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
-		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, ByAddress: byAddress, ServicePorts: localapi.ServicePorts(st.ServicePorts), LogsOff: LogsOff(h.stateDir) || !st.KeepsHistory, Protected: st.Protected, AIDraft: st.AIDraft, Permissions: permissions,
+		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, ByAddress: byAddress, ServicePorts: localapi.ServicePorts(st.ServicePorts), Nanokvm: (*localapi.Nanokvm)(st.Nanokvm), LogsOff: LogsOff(h.stateDir) || !st.KeepsHistory, Protected: st.Protected, AIDraft: st.AIDraft, Permissions: permissions,
 		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
 		Name: st.Name, About: about, Watching: watching, Watchers: watchers,
 	}, nil

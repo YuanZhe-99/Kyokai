@@ -1,5 +1,24 @@
 # Version history
 
+## 0.6.8 (2026-10-30)
+
+- NanoKVM USB: a host offers the computer wired to it through Sipeed's NanoKVM USB, chosen under
+  Access (its capture card and serial port, the pair found suggested, off until turned on); a
+  controller opens it as a pane of its own beside the device's desktop (Open as, the device's card
+  and ⋯ menu), with the permission `use-nanokvm` (feature `nanokvm`, the hello's `nanokvm`; one
+  session at a time, `service-down` when not offered). The card's MJPEG is encoded like a screen,
+  or sent as it is with the codec Raw (`mjpeg`, Linux and Windows hosts); keys, text and the
+  pointer go through the serial port as USB reports, the lock keys following the controller's.
+  Capture through V4L2, Media Foundation and AVFoundation; Ctrl+Alt+Del and Wake in Actions.
+- The host's own user opens its NanoKVM USB too — Home's This device, Access, the + picker and
+  search — in this engine without a network session, Raw by Auto; taking it over from a controller
+  ends their session, and controllers are busy while it is open.
+- Type the clipboard in Actions, for a desktop, a NanoKVM USB, Remote Desktop and VNC: this
+  computer's clipboard text typed on the other side as keys would type it.
+- macOS: the camera entitlement and usage description, for the capture card.
+- Upstreams checked, unchanged: MyGo v0.7.3, EasyTier v2.7.0 (`8b7f1f0`), RustDesk 1.5.0, vcpkg
+  2026.10.16, Rust 1.99.1; zune-jpeg 0.5.15 (in the tree already) is now a direct dependency.
+
 ## 0.6.7 (2026-10-29)
 
 - Linux (x64, ARM64) as a third platform, host and controller, in every run mode. The Rust core, the

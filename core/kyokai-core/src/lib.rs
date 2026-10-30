@@ -22,6 +22,8 @@ mod identity;
 mod input;
 mod keyboard;
 mod keys;
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+mod kvm;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
@@ -105,6 +107,14 @@ struct Connect {
     /// Keep the password for this host after a login it accepts.
     #[serde(default)]
     remember: bool,
+    /// The computer wired to the host's NanoKVM USB instead of its desktop
+    /// (`want` is then `use-nanokvm` alone); to this device's own ID, its
+    /// own NanoKVM, opened here (`session::local_kvm`).
+    #[serde(default)]
+    nanokvm: bool,
+    /// Opening this device's own NanoKVM ends a controller's session of it.
+    #[serde(default)]
+    take_over: bool,
 }
 
 /// A `request.decide` answer to a host confirmation.
@@ -1068,6 +1078,12 @@ fn call(input: &[u8]) -> Result<Value, String> {
             }
             try_core(|c| {
                 if r.device_id == c.ctx.identity.device_id() {
+                    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                    if r.nanokvm {
+                        let (id, work) = session::local_kvm(&c.ctx, r.take_over)?;
+                        c.network.spawn(work);
+                        return Ok(json!({"id": id}));
+                    }
                     return Err("that is this device's own ID".into());
                 }
                 // An empty password uses the one saved for this host, if any.
@@ -1092,7 +1108,11 @@ fn call(input: &[u8]) -> Result<Value, String> {
                     password: saved.unwrap_or(r.password),
                     want: r.want,
                     remember,
-                    kind: session::Kind::Desktop,
+                    kind: if r.nanokvm {
+                        session::Kind::Nanokvm
+                    } else {
+                        session::Kind::Desktop
+                    },
                 })?;
                 Ok(json!({"id": id}))
             })
@@ -1429,6 +1449,10 @@ fn call(input: &[u8]) -> Result<Value, String> {
             }
             Ok(json!({}))
         }
+        // This computer's capture cards and serial ports, for the NanoKVM
+        // USB its user offers (doc/en-us/remote-services.md, "NanoKVM USB").
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+        "nanokvm.devices" => Ok(json!(kvm::devices())),
         "sound.devices" => match agent::link() {
             Some(link) => link.call::<Value>("sound.devices", json!({})),
             None => Ok(json!(audio::devices())),
@@ -1450,6 +1474,8 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 without_asking: Option<bool>,
                 by_address: Option<access::ByAddress>,
                 service_ports: Option<access::ServicePorts>,
+                #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                nanokvm: Option<kvm::Settings>,
             }
             let p: Settings = serde_json::from_value(req.params)
                 .map_err(|e| format!("bad access settings: {e}"))?;
@@ -1466,6 +1492,10 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 }
                 if let Some(ports) = p.service_ports {
                     c.ctx.access.set_service_ports(ports)?;
+                }
+                #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                if let Some(k) = p.nanokvm {
+                    c.ctx.access.set_nanokvm(k)?;
                 }
                 Ok(json!({}))
             })
@@ -1641,6 +1671,20 @@ fn try_core(f: impl FnOnce(&mut Core) -> Result<Value, String>) -> Result<Value,
 /// Shortest permanent password accepted.
 const MIN_PERMANENT: usize = 8;
 
+/// The NanoKVM USB this host offers, for the status: `{on, video,
+/// serial}`, or null where there is none.
+fn nanokvm_status(access: &access::Access) -> Value {
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    {
+        json!(access.nanokvm())
+    }
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    {
+        let _ = access;
+        Value::Null
+    }
+}
+
 /// The status a host shows: never a secret.
 fn status() -> Value {
     with_core(|c| {
@@ -1658,6 +1702,7 @@ fn status() -> Value {
             "password_mode": c.ctx.access.password_mode(),
             "without_asking": c.ctx.access.without_asking(),
             "service_ports": c.ctx.access.service_ports().status(),
+            "nanokvm": nanokvm_status(&c.ctx.access),
             "by_address": c.network.by_address_status(),
             "keeps_history": c.ctx.access.keeps_history(),
             "protected": c.ctx.access.protected(),

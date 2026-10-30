@@ -18,6 +18,9 @@ const (
 	serviceSSH = "ssh"
 	serviceRDP = "rdp"
 	serviceVNC = "vnc"
+	// serviceNanokvm is the computer wired to a device's NanoKVM USB,
+	// shown in a viewer of its own rather than through a tunnel.
+	serviceNanokvm = "nanokvm"
 )
 
 // serviceLink is how a service tab reaches a device's own service and the

@@ -133,6 +133,10 @@ pub async fn host<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             probed = Some(Instant::now());
                         }
                         s.services = services.clone();
+                        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                        {
+                            s.nanokvm = access.nanokvm().offered();
+                        }
                         send(&mut noise, &mut buf, &mut wr, &Message::System(Box::new(s))).await?;
                     }
                 }

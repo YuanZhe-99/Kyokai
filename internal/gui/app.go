@@ -101,6 +101,8 @@ type App struct {
 	name   nameForm
 	grants map[uint64][]string
 	access accessForm
+	// kvm is Access's NanoKVM USB while it is edited.
+	kvm kvmForm
 	// Identity backup passphrase (identity.go), write-only.
 	passphrase string
 	// Open viewer windows by session id (viewer.go).
@@ -561,6 +563,10 @@ var notificationsSupported = sync.OnceValue(mygo.NotificationsSupported)
 // clipboardWrite puts text on the clipboard; tests replace it.
 // Notes: it waits for the main thread, as notify does.
 var clipboardWrite = func(text string) { mygo.Clipboard.WriteText(text) }
+
+// clipboardRead is this computer's clipboard text (for Type the
+// clipboard). Tests replace it.
+var clipboardRead = func() string { return mygo.Clipboard.ReadText() }
 
 // setToast shows a short message at the bottom for four seconds (caller holds
 // a.mu or runs on the main thread).

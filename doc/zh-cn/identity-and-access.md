@@ -41,7 +41,7 @@ SSH 风格的 Ed25519 密钥可以不用密码登录 Kyokai（[protocol.md](prot
 
 ## 权限
 
-`view-screen`、`control-input`、`run-ai-task`、`approve-ai-action`、`clipboard`、`files`（通过剪贴板复制文件；`clipboard` 不包含它）、`hear-sound`（被控端的声音；`view-screen` 不包含它）、`see-status`（静默查看被控端的状态，[computer-use.md](computer-use.md)，“被控端状态”），以及 `use-ssh`、`use-rdp` 与 `use-vnc`（通往被控端自身 SSH、远程桌面或 VNC 的隧道，[remote-services.md](remote-services.md)）。控制端请求一组权限；被控端用户授予其中
+`view-screen`、`control-input`、`run-ai-task`、`approve-ai-action`、`clipboard`、`files`（通过剪贴板复制文件；`clipboard` 不包含它）、`hear-sound`（被控端的声音；`view-screen` 不包含它）、`see-status`（静默查看被控端的状态，[computer-use.md](computer-use.md)，“被控端状态”），`use-ssh`、`use-rdp` 与 `use-vnc`（通往被控端自身 SSH、远程桌面或 VNC 的隧道，[remote-services.md](remote-services.md)），以及 `use-nanokvm`（经被控端的 NanoKVM USB 有线连接的电脑，[remote-services.md](remote-services.md)，“NanoKVM USB”）。控制端请求一组权限；被控端用户授予其中
 的子集；任何权限都不隐含另一个。加入网络本身不授予任何权限。`run-ai-task` 允许控制端在被控端上启动 AI 任务（使用被控端的密钥运行），并控制被控端的任务，无论由谁发起（被控端为所有控制端保留同一份 AI 记录）；
 `approve-ai-action` 允许它答复该任务的批准请求（[computer-use.md](computer-use.md)）。移除受信任设备会立即撤销它：它与本机的进行中会话结束，续接令牌被丢弃。
 

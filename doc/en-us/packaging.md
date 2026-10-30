@@ -34,8 +34,9 @@ Built files under `resources/<goos>-<goarch>/` and `resources/licenses/` are not
   "Open Anyway" on first launch. The certificate lasts a year: renew it in Xcode, export the
   `.p12` and replace both secrets. `packaging/macos/app.entitlements` and
   `packaging/macos/engine.entitlements` (`macos.helperEntitlements` for `bin/kyokai-svc` and
-  `bin/Kyokai Helper.app`) disable library validation under the hardened runtime. Without the
-  certificate the app is ad hoc signed.
+  `bin/Kyokai Helper.app`) disable library validation under the hardened runtime and allow the
+  microphone and the camera (a NanoKVM USB's capture card, with `NSCameraUsageDescription` in
+  `mygo.json` and `scripts/build.sh`). Without the certificate the app is ad hoc signed.
 - **Windows:** not code signed; SmartScreen warns on first launch. With `KYOKAI_SIGNING_KEY` the
   `bin` folder also holds `bundle.json` and `bundle.sig`, which an installed helper checks before it
   updates itself ([run-modes.md](run-modes.md), "Updates").

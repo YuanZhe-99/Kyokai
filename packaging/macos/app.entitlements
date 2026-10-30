@@ -10,5 +10,8 @@
 	<!-- An input device as the sound to share (the Microphone permission). -->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
+	<!-- A NanoKVM USB's capture card (the Camera permission). -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
 </dict>
 </plist>

@@ -1,5 +1,19 @@
 # 版本历史
 
+## 0.6.8（2026-10-30）
+
+- NanoKVM USB：被控端可提供经 Sipeed 的 NanoKVM USB 与它有线连接的电脑，在“访问”中选择（它的采集卡与串口，建议找到的那一对，
+  打开之前关闭）；控制端以单独的小窗在该设备的桌面旁打开它（“打开为”、设备卡片与 ⋯ 菜单），需要权限 `use-nanokvm`（功能 `nanokvm`、
+  问候消息的 `nanokvm`；同一时间一个会话，未提供时为 `service-down`）。采集卡的 MJPEG 像屏幕一样编码，或以编码“原始”（`mjpeg`，
+  Linux 与 Windows 被控端）原样发送；按键、文字与指针经串口以 USB 报告发送，锁定键跟随控制端。采集经 V4L2、Media Foundation 与
+  AVFoundation；“操作”中有 Ctrl+Alt+Del 与“唤醒”。
+- 被控端用户自己也能打开它的 NanoKVM USB——主页“本机”、“访问”、+ 选择器与搜索——在本引擎中打开，不经网络会话，“自动”即原始；
+  从控制端接管会结束对方的会话，本机打开期间控制端得到 busy。
+- “操作”中的“强制粘贴”，用于桌面、NanoKVM USB、远程桌面与 VNC：把本机剪贴板中的文本像按键一样在另一端键入。
+- macOS：为采集卡加入摄像头权限声明与使用说明。
+- 上游已检查，未变化：MyGo v0.7.3、EasyTier v2.7.0（`8b7f1f0`）、RustDesk 1.5.0、vcpkg 2026.10.16、Rust 1.99.1；zune-jpeg 0.5.15
+  （原已在依赖树中）现为直接依赖。
+
 ## 0.6.7（2026-10-29）
 
 - Linux（x64、ARM64）成为第三个平台，作为被控端与控制端，支持所有运行方式。Rust 核心、引擎与本地 API 可在 Linux 上构建并通过测试。存储的主密钥保存在 Secret Service（GNOME Keyring、KWallet）中；本地 API 通过 `SO_PEERCRED` 与 `SO_PEERGROUPS` 识别调用方，其套接字位于 `$XDG_RUNTIME_DIR` 下；编解码库以 vcpkg 的 `x64-linux` 与 `arm64-linux` triplet 构建；系统采样来自 procfs。

@@ -109,6 +109,13 @@ type Status struct {
 		RDP int `json:"rdp"`
 		VNC int `json:"vnc"`
 	} `json:"service_ports"`
+	// Nanokvm is the NanoKVM USB the host offers (localapi.Nanokvm), null
+	// where there is none.
+	Nanokvm *struct {
+		On     bool   `json:"on"`
+		Video  string `json:"video"`
+		Serial string `json:"serial"`
+	} `json:"nanokvm"`
 	// KeepsHistory: the connection history is written to the store (off
 	// with No logs).
 	KeepsHistory bool `json:"keeps_history"`

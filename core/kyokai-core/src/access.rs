@@ -36,6 +36,9 @@ pub enum Permission {
     UseRdp,
     /// A tunnel to the host's own VNC or Screen Sharing; needs `tunnel`.
     UseVnc,
+    /// The computer wired to the host's NanoKVM USB, seen and operated as
+    /// a desktop of its own; needs `nanokvm`.
+    UseNanokvm,
 }
 
 impl Permission {
@@ -46,6 +49,7 @@ impl Permission {
         match self {
             Permission::SeeStatus => Some(feature::STATUS),
             Permission::UseSsh | Permission::UseRdp | Permission::UseVnc => Some(feature::TUNNEL),
+            Permission::UseNanokvm => Some(feature::NANOKVM),
             _ => None,
         }
     }
@@ -115,6 +119,8 @@ const PASSWORD_MODE_NAME: &str = "password_mode";
 const WITHOUT_ASKING_NAME: &str = "connect_without_asking";
 const BY_ADDRESS_NAME: &str = "connect_by_address";
 const SERVICE_PORTS_NAME: &str = "service_ports";
+/// The NanoKVM USB the host's user offers (`crate::kvm::Settings`).
+const NANOKVM_NAME: &str = "nanokvm";
 /// Set while this device keeps no connection history (Settings, No logs).
 const NO_HISTORY_NAME: &str = "no_history";
 /// Set while the host is in protected mode: its interface offers only the
@@ -283,7 +289,7 @@ const DEFAULT_PASSWORD_GRANTS: [Permission; 6] = [
 ];
 /// Every permission this build knows: the password grants a host's user
 /// chose were chosen over these (`password_grants_known`).
-const ALL_PERMISSIONS: [Permission; 11] = [
+const ALL_PERMISSIONS: [Permission; 12] = [
     Permission::ViewScreen,
     Permission::ControlInput,
     Permission::RunAiTask,
@@ -295,6 +301,7 @@ const ALL_PERMISSIONS: [Permission; 11] = [
     Permission::UseSsh,
     Permission::UseRdp,
     Permission::UseVnc,
+    Permission::UseNanokvm,
 ];
 /// Failed logins one source address may make in `FAIL_WINDOW`.
 pub(crate) const FAILS_PER_ADDRESS: usize = 5;
@@ -780,6 +787,28 @@ impl Access {
             return Err("a port is between 1 and 65535".into());
         }
         self.store(SERVICE_PORTS_NAME, &ports)
+    }
+
+    /// The NanoKVM USB this host offers: off, with no devices chosen,
+    /// until its user chooses.
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    pub fn nanokvm(&self) -> crate::kvm::Settings {
+        self.secrets
+            .get(NANOKVM_NAME)
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default()
+    }
+
+    /// Sets the NanoKVM USB this host offers.
+    /// Side effects: rewrites the secrets store.
+    /// Notes: a session open with it keeps its devices; the next one opens
+    /// the new ones.
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    pub fn set_nanokvm(&self, s: crate::kvm::Settings) -> Result<(), String> {
+        if s.on && (s.video.is_empty() || s.serial.is_empty()) {
+            return Err("choose the capture card and the serial port first".into());
+        }
+        self.store(NANOKVM_NAME, &s)
     }
 
     /// Whether and from where this host accepts sessions by address (off

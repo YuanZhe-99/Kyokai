@@ -46,6 +46,11 @@ pub struct Sample {
     /// set, filled in per watcher.
     #[serde(default)]
     pub services: Vec<Service>,
+    /// Whether the host offers its NanoKVM USB, filled in per watcher (a
+    /// flag of its own: older controllers refuse a service they do not
+    /// know in `services`).
+    #[serde(default)]
+    pub nanokvm: bool,
     /// What the watcher's password or key grants without asking, filled
     /// in per watcher (empty while the host asks for everything), so the
     /// controller offers only what will work.
@@ -334,6 +339,7 @@ impl Probe {
             net: rates,
             battery: imp::battery(),
             services: Vec::new(),
+            nanokvm: false,
             offers: Vec::new(),
             ai: false,
         }

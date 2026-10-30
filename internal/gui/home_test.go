@@ -137,6 +137,10 @@ func TestCardActions(t *testing.T) {
 		{"host without tunnels", &localapi.SystemSample{Services: []string{"ssh"}, Offers: all, AI: true}, false, nil, []string{"ai"}},
 		{"most used first", &localapi.SystemSample{Services: []string{"ssh", "rdp", "vnc"}, Offers: all, AI: true}, true,
 			map[string]int{"vnc": 2, "ai": 5, "ssh": 2}, []string{"ai", "ssh", "vnc", "rdp"}},
+		// A NanoKVM is no tunnel: it comes with its own flag.
+		{"NanoKVM offered and granted", &localapi.SystemSample{Nanokvm: true, Offers: []string{"use-nanokvm"}}, false, nil, []string{"nanokvm"}},
+		{"NanoKVM needs the host's user", &localapi.SystemSample{Nanokvm: true, Offers: all}, true, nil, nil},
+		{"NanoKVM granted but not offered", &localapi.SystemSample{Offers: []string{"use-nanokvm"}}, true, nil, nil},
 	} {
 		if got := cardActions(c.sample, c.tunnels, c.uses); !slices.Equal(got, c.want) {
 			t.Errorf("%s: %v, want %v", c.name, got, c.want)

@@ -1379,8 +1379,14 @@ func (v *viewer) disconnect() {
 	go v.app.closeSession(id)
 }
 
-// tabKey is the viewer's tab's identity: the Device ID.
-func (v *viewer) tabKey() string { return v.device }
+// tabKey is the viewer's tab's identity: the Device ID, or the device's
+// NanoKVM key (serviceKey).
+func (v *viewer) tabKey() string {
+	if v.kvm {
+		return serviceKey(v.device, serviceNanokvm)
+	}
+	return v.device
+}
 
 // tabTitle names the viewer's tab: the device's name and Device ID.
 func (v *viewer) tabTitle() string { return v.title }
@@ -1389,6 +1395,9 @@ func (v *viewer) tabTitle() string { return v.title }
 // with its Device ID beside it.
 func (v *viewer) head() paneHead {
 	title, sub := splitTitle(v.title)
+	if v.kvm {
+		return paneHead{icon: kindNanokvm, title: title, sub: sub, kind: L.ServiceNanokvm()}
+	}
 	return paneHead{icon: kindDesktop, title: title, sub: sub, kind: L.PaneDesktop()}
 }
 

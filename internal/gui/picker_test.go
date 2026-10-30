@@ -55,7 +55,7 @@ func TestPickRows(t *testing.T) {
 		{"", "living room", nil},
 	} {
 		var got []string
-		for _, r := range pickRows(c.kind, c.query, rows, watched, nil, others, ui.Color{}, ui.Color{}, ui.Color{}) {
+		for _, r := range pickRows(c.kind, c.query, false, rows, watched, nil, others, ui.Color{}, ui.Color{}, ui.Color{}) {
 			k := r.key
 			if !r.ok {
 				k = no + k
@@ -69,7 +69,7 @@ func TestPickRows(t *testing.T) {
 			t.Errorf("%q %q: %v, want %v", c.kind, c.query, got, c.want)
 		}
 	}
-	typed := pickRows("", "nuc.local", nil, nil, nil, nil, ui.Color{}, ui.Color{}, ui.Color{})
+	typed := pickRows("", "nuc.local", false, nil, nil, nil, nil, ui.Color{}, ui.Color{}, ui.Color{})
 	if typed[0].address != "nuc.local" || typed[0].device != "" || typed[0].note != L.PickByAddress() {
 		t.Errorf("an address typed: %+v", typed[0])
 	}
@@ -174,5 +174,23 @@ func TestPickerKindKeepsTheKeys(t *testing.T) {
 	tt.Frame()
 	if a.picker.query != "nu" || a.picker.chosen != "402118905" {
 		t.Fatalf("the keys did not reach the search: %+v", a.picker)
+	}
+}
+
+// A NanoKVM pane is offered where the host offers its NanoKVM USB and the
+// saved sign-in grants it, tunnels or not.
+func TestKindOfferedNanokvm(t *testing.T) {
+	for _, c := range []struct {
+		sample *localapi.SystemSample
+		want   bool
+	}{
+		{&localapi.SystemSample{Nanokvm: true, Offers: []string{localapi.PermUseNanokvm}}, true},
+		{&localapi.SystemSample{Nanokvm: true, Offers: []string{localapi.PermViewScreen}}, false},
+		{&localapi.SystemSample{Offers: []string{localapi.PermUseNanokvm}}, false},
+		{nil, true},
+	} {
+		if got := kindOffered(serviceNanokvm, c.sample, false); got != c.want {
+			t.Errorf("%+v: %v, want %v", c.sample, got, c.want)
+		}
 	}
 }

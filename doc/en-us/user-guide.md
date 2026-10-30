@@ -211,8 +211,27 @@ key, and if it ever changes, it sends no password and asks whether to trust the 
 other computer runs a service on another port, its user enters that port under Access, **Ports
 of this computer's services**; you only pick the service. The
 picture of Remote Desktop and VNC fits the window or shows at its original size (**Display**),
-takes the keyboard like a desktop's (**Keyboard**), sends **Ctrl+Alt+Del** from **Actions**, and
+takes the keyboard like a desktop's (**Keyboard**), sends **Ctrl+Alt+Del** from **Actions**, types your clipboard's text with **Type the clipboard** there
+(for a field that refuses pasting), and
 shares the clipboard's text while its pane is in front.
+
+### NanoKVM USB
+
+A device with a Sipeed NanoKVM USB plugged in can let you use the computer wired to it — its HDMI
+screen through the NanoKVM's capture card, its keyboard and mouse through the NanoKVM's USB — even
+when that computer runs nothing of Kyokai's, or is in its firmware setup. On that device, open
+Settings › Access, **NanoKVM USB**: Kyokai suggests the capture card and serial port it found
+(**Look again** after plugging it in). To use it on that device itself, press **Open** there or
+on Home's **This device** card: no password, no network, and the picture as the card gives it. To
+let others use it, turn on **Offer it to other devices**; then
+from another device choose **NanoKVM USB** in Open as, on the device's card or in its ⋯ menu; its
+user allows it like a service (Access, **With a correct password**, has a tile for it, off by
+default). It opens as a pane beside the device's own desktop, one at a time; if you open it on the device
+while someone uses it, **Take over** ends their session. In **Quality**,
+**Codec**, **Raw (MJPEG)** sends the capture card's pictures as they are: sharper and lighter on
+that device, but heavy on the network (up to about 100 Mbit/s), so for a local network. Text you
+type goes as a US keyboard types it. On Linux, that device's user must be in the `video` and
+`dialout` groups; a Mac asks for the Camera the first time.
 
 ### Status on Home
 

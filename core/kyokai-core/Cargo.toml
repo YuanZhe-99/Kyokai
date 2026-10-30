@@ -55,10 +55,13 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 # tree already through rustls.
 ring = "0.17.14"
 arboard = { version = "3.7.0", default-features = false, features = ["image-data"] }
+# The NanoKVM USB capture card's MJPEG, decoded on the host to encode it
+# again and on the viewer for Raw (kvm.rs); in the tree already.
+zune-jpeg = "0.5.15"
 
 [target."cfg(windows)".dependencies]
 rustdesk-dxgi = { path = "../third_party/rustdesk-dxgi" }
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Devices", "Win32_Devices_FunctionDiscovery", "Win32_Media", "Win32_Media_Audio", "Win32_Media_MediaFoundation", "Win32_System_DataExchange", "Win32_System_Environment", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Shutdown", "Win32_System_SystemInformation", "Win32_System_Performance", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Pipes", "Win32_System_RemoteDesktop", "Win32_System_StationsAndDesktops", "Win32_Storage_FileSystem", "Win32_Security", "Win32_Security_Authorization", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Devices", "Win32_Devices_Communication", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_FunctionDiscovery", "Win32_Media", "Win32_Media_Audio", "Win32_Media_MediaFoundation", "Win32_System_DataExchange", "Win32_System_Environment", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Shutdown", "Win32_System_SystemInformation", "Win32_System_Performance", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Pipes", "Win32_System_RemoteDesktop", "Win32_System_StationsAndDesktops", "Win32_Storage_FileSystem", "Win32_Security", "Win32_Security_Authorization", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -94,6 +97,8 @@ objc2-core-graphics = "0.3.2"
 objc2-core-media = "0.3.2"
 objc2-core-video = "0.3.2"
 objc2-screen-capture-kit = "0.3.2"
+# AVFoundation: the NanoKVM USB's capture card (kvm/mac.rs).
+objc2-av-foundation = "0.3.2"
 # VideoToolbox: H.264 and HEVC in hardware (doc/en-us/computer-use.md).
 objc2-video-toolbox = { version = "0.3.2", default-features = false, features = ["std", "objc2", "bitflags", "objc2-core-media", "objc2-core-video", "VTBase", "VTCompressionProperties", "VTCompressionSession", "VTDecompressionProperties", "VTDecompressionSession", "VTErrors", "VTSession", "VTVideoEncoderList"] }
 objc2-application-services = "0.3.2"

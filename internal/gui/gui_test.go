@@ -164,6 +164,21 @@ func TestViewsRender(t *testing.T) {
 				{Key: "k2", DeviceID: "647222040", Last: 1797300000, Granted: []string{localapi.PermViewScreen}},
 			}}
 		},
+		// Home with a NanoKVM USB plugged in here.
+		"home-nanokvm": func(a *App) {
+			a.status.Nanokvm = &localapi.Nanokvm{Video: "/dev/video0", Serial: "/dev/ttyUSB0"}
+		},
+		// Access with a NanoKVM USB found and offered.
+		"access-nanokvm": func(a *App) {
+			a.page = pageAccess
+			a.status.Nanokvm = &localapi.Nanokvm{On: true, Video: "/dev/video0", Serial: "/dev/ttyUSB0"}
+			a.access = accessForm{loaded: true}
+			a.kvm = kvmForm{devices: &localapi.NanokvmDevices{
+				Video:     []localapi.NanokvmPort{{ID: "/dev/video0", Name: "MACROSILICON USB2 Video (/dev/video0)", Nanokvm: true}},
+				Serial:    []localapi.NanokvmPort{{ID: "/dev/ttyUSB0", Name: "USB Serial (/dev/ttyUSB0)", Nanokvm: true}},
+				Suggested: &localapi.Nanokvm{Video: "/dev/video0", Serial: "/dev/ttyUSB0"},
+			}}
+		},
 		"home-address": func(a *App) {
 			a.connect = connectForm{target: "office.example.org", identifying: true}
 			a.prefs.Aliases = map[string]string{"657365333": "Studio"}
@@ -227,6 +242,8 @@ func TestViewsRender(t *testing.T) {
 					height = 2300 // the editor and the notices run long
 				case "network-online", "network-edit":
 					height = 1500 // three networks, then how devices reach this one
+				case "access-nanokvm":
+					height = 1300 // the NanoKVM USB comes after the sign-ins, the grants and the ports
 				}
 				tt := ui.NewTester(a.View, 1000, height)
 				tt.SetDark(dark)
@@ -1058,7 +1075,7 @@ func TestViewerToolbarDrags(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
 	pic := image.NewRGBA(image.Rect(0, 0, 320, 180))
 	open := func() (*viewer, *ui.Tester) {
-		v := a.newViewer("482916735", localapi.About{}, nil)
+		v := a.newViewer("482916735", localapi.About{}, nil, false)
 		v.start, v.bm, v.pumping, v.control = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), true, true
 		tt := ui.NewTester(v.view, 1100, 560)
 		tt.SetPreferences(ui.Preferences{ReduceMotion: true})
@@ -1127,7 +1144,7 @@ func TestViewerToolbarDrags(t *testing.T) {
 // the host's session actions.
 func TestViewerToolbarMenus(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
-	v := a.newViewer("482916735", localapi.About{}, nil)
+	v := a.newViewer("482916735", localapi.About{}, nil, false)
 	v.start, v.bm, v.pumping, v.control = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 320, 180))), true, true
 	v.actions = &hostActions{}
 	tt := ui.NewTester(v.view, 1100, 560)
@@ -1162,7 +1179,7 @@ func TestViewerToolbarMenus(t *testing.T) {
 // chosen for it last time; another device with the defaults.
 func TestViewerSettingsPerDevice(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
-	v := a.newViewer("482916735", localapi.About{}, nil)
+	v := a.newViewer("482916735", localapi.About{}, nil, false)
 	v.setQuality(2, "60 fps", true)
 	v.setCodec("av1")
 	v.setSwap(false)
@@ -1170,11 +1187,11 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 	v.folded = true
 	v.mu.Unlock()
 	v.keepSettings()
-	again := a.newViewer("482916735", localapi.About{}, nil)
+	again := a.newViewer("482916735", localapi.About{}, nil, false)
 	if again.preset != 2 || again.fpsCap != "60 fps" || !again.full || again.codec != "av1" || again.swap == nil || *again.swap || !again.folded {
 		t.Errorf("reopened %d %q %v %q %v %v", again.preset, again.fpsCap, again.full, again.codec, again.swap, again.folded)
 	}
-	if other := a.newViewer("123456789", localapi.About{}, nil); other.preset != 1 || other.codec != "auto" || other.swap != nil {
+	if other := a.newViewer("123456789", localapi.About{}, nil, false); other.preset != 1 || other.codec != "auto" || other.swap != nil {
 		t.Errorf("another device %d %q", other.preset, other.codec)
 	}
 	if p := loadPrefs(a.stateDir); p.Viewers["482916735"].Codec != "av1" {

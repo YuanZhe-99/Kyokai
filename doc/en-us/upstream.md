@@ -275,6 +275,24 @@ Verified against Anthropic's computer use documentation and API reference on 202
   also carried `context_management` with `clear_tool_uses_20250919` and the
   `context-management-2025-06-27` beta; it was accepted and the task finished in three actions.
 
+## NanoKVM USB
+
+Checked on the USB2 model (2026-10-30) against `sipeed/NanoKVM-USB` `1d1dd5e`:
+
+- Two USB functions behind the device's own hub: a UVC capture card (MacroSilicon, `345f:2131`;
+  other models other products of `345f`) and a CH340 serial chip (`1a86:7523`).
+- The card gives MJPEG at full rate (1920×1080 at up to 50 fps, 2560×1440 at 30, 1280×720 at 60);
+  YUYV only at 10 fps at 1080p. The first pictures after it opens may be cut short (no EOI); the
+  JPEGs carry their Huffman tables. UVC model IDs on macOS give the vendor in decimal
+  (`VendorID_13407`).
+- The serial line runs at 57,600 baud, 8N1. A command frame is `57 AB`, address 0, the command,
+  the data's length, the data and the low byte of the sum of all before it. GET_INFO (`0x01`)
+  answers `0x81` with the firmware version (`0x30` + tenths over 1.0), whether the target's USB is
+  connected and the lock lights (bit 0 Num, 1 Caps, 2 Scroll); keyboard (`0x02`) takes the 8-byte
+  boot report; the absolute pointer (`0x04`) takes `02`, the buttons, x and y little-endian on
+  0–4095 and the wheel; the device acknowledges each command (`0x80` | command), which the
+  official apps never wait for.
+
 ## Operating systems
 
 - **macOS:** since Sequoia, apps that capture the screen without the system picker are asked to

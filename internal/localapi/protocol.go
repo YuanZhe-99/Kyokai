@@ -85,6 +85,7 @@ const (
 	RequestKyokaiShown          RequestType = "kyokai.shown"               // whether one of Kyokai's windows shows on a Wayland desktop (Request.Shown): the picture holds and input waits while it does
 	RequestSoundSource          RequestType = "sound.source"               // the sound to share (Request.SoundSource): "" what the computer plays, else an input device's id
 	RequestSoundDevices         RequestType = "sound.devices"              // the input devices that may be shared (Response.SoundDevices)
+	RequestNanokvmDevices       RequestType = "nanokvm.devices"            // this computer's capture cards and serial ports, for its NanoKVM USB (Response.NanokvmDevices)
 	RequestBackground           RequestType = "helper.background"          // the helper serves from boot (Request.Background) or only while a GUI is attached
 	RequestStoreExport          RequestType = "store.export"               // the whole store sealed for this device's other engine (Request.Backup.Passphrase → Response.Document)
 	RequestStoreImport          RequestType = "store.import"               // take over a store this device's other engine sealed (Request.Backup)
@@ -179,6 +180,9 @@ type Request struct {
 	// ServicePorts sets the ports of this host's SSH, Remote Desktop and
 	// VNC (RequestAccessSettings; 0: the standard port).
 	ServicePorts *ServicePorts `json:"service_ports,omitempty"`
+	// Nanokvm sets the NanoKVM USB this host offers
+	// (RequestAccessSettings).
+	Nanokvm *Nanokvm `json:"nanokvm,omitempty"`
 	// Address is the IP address or domain name RequestIdentify dials.
 	Address string `json:"address,omitempty"`
 	// Permission names what RequestPermission asks the system for.
@@ -453,6 +457,44 @@ type ConnectRequest struct {
 	// Route is "auto", "network" or one of the host's addresses; empty: the
 	// route chosen for the host (doc/en-us/networking.md, "Routes").
 	Route string `json:"route,omitempty"`
+	// Nanokvm asks for the computer wired to the host's NanoKVM USB
+	// instead of its desktop (Want is then PermUseNanokvm alone); to this
+	// device's own Device ID, its own NanoKVM, opened without a network
+	// session.
+	Nanokvm bool `json:"nanokvm,omitempty"`
+	// TakeOver, opening this device's own NanoKVM, ends a controller's
+	// session of it; without it the engine answers KvmInUse while one is
+	// connected.
+	TakeOver bool `json:"take_over,omitempty"`
+}
+
+// KvmInUse is the error RequestConnect answers when this device's own
+// NanoKVM is in a controller's use (ConnectRequest.TakeOver).
+const KvmInUse = "nanokvm-in-use"
+
+// Nanokvm is the NanoKVM USB a host's user offers
+// (doc/en-us/remote-services.md, "NanoKVM USB"): whether, and its capture
+// card's and serial port's ids as NanokvmDevices lists them.
+type Nanokvm struct {
+	On     bool   `json:"on"`
+	Video  string `json:"video"`
+	Serial string `json:"serial"`
+}
+
+// NanokvmPort is a capture card or a serial port of this computer: what
+// opens it, its name, and whether it looks like a NanoKVM USB's.
+type NanokvmPort struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Nanokvm bool   `json:"nanokvm"`
+}
+
+// NanokvmDevices are this computer's capture cards and serial ports, with
+// the pair that looks like one NanoKVM USB (nil when none does).
+type NanokvmDevices struct {
+	Video     []NanokvmPort `json:"video"`
+	Serial    []NanokvmPort `json:"serial"`
+	Suggested *Nanokvm      `json:"suggested"`
 }
 
 // ProtectRequest turns protected mode on, or off with the permanent
@@ -499,14 +541,15 @@ const (
 	PermClipboard       = "clipboard"
 	PermFiles           = "files"
 	PermHearSound       = "hear-sound"
-	PermSeeStatus       = "see-status" // a quiet status watcher (needs the host's "status" feature)
-	PermUseSSH          = "use-ssh"    // a tunnel to the host's own SSH (needs "tunnel")
-	PermUseRDP          = "use-rdp"    // a tunnel to the host's own Remote Desktop
-	PermUseVNC          = "use-vnc"    // a tunnel to the host's own VNC or Screen Sharing
+	PermSeeStatus       = "see-status"  // a quiet status watcher (needs the host's "status" feature)
+	PermUseSSH          = "use-ssh"     // a tunnel to the host's own SSH (needs "tunnel")
+	PermUseRDP          = "use-rdp"     // a tunnel to the host's own Remote Desktop
+	PermUseVNC          = "use-vnc"     // a tunnel to the host's own VNC or Screen Sharing
+	PermUseNanokvm      = "use-nanokvm" // the computer wired to the host's NanoKVM USB (needs "nanokvm")
 )
 
 // AllPermissions in the order the interface lists them.
-var AllPermissions = []string{PermViewScreen, PermControlInput, PermRunAITask, PermApproveAIAction, PermClipboard, PermFiles, PermHearSound, PermSeeStatus, PermUseSSH, PermUseRDP, PermUseVNC}
+var AllPermissions = []string{PermViewScreen, PermControlInput, PermRunAITask, PermApproveAIAction, PermClipboard, PermFiles, PermHearSound, PermSeeStatus, PermUseSSH, PermUseRDP, PermUseVNC, PermUseNanokvm}
 
 // Response is one line from the engine: an answer, or a pushed frame of a
 // session.
@@ -537,6 +580,8 @@ type Response struct {
 	Document string `json:"document,omitempty"`
 	// SoundDevices answers RequestSoundDevices.
 	SoundDevices []SoundDevice `json:"sound_devices,omitempty"`
+	// NanokvmDevices answers RequestNanokvmDevices.
+	NanokvmDevices *NanokvmDevices `json:"nanokvm_devices,omitempty"`
 	// AISettings answers the AI settings and key requests.
 	AISettings *AISettings `json:"ai_settings,omitempty"`
 	// AITasks answers RequestAITasks.
@@ -819,6 +864,9 @@ type Status struct {
 	// ServicePorts are the ports a tunnel reaches this host's services on
 	// (zero from an engine before 0.5.1: the standard ones).
 	ServicePorts ServicePorts `json:"service_ports"`
+	// Nanokvm is the NanoKVM USB this host offers (nil from an engine
+	// before 0.6.8).
+	Nanokvm *Nanokvm `json:"nanokvm,omitempty"`
 	// LogsOff: this engine keeps no logs, crash traces or connection
 	// history (Settings, No logs).
 	LogsOff bool `json:"logs_off,omitempty"`
@@ -1068,6 +1116,8 @@ type SystemSample struct {
 	Offers []string `json:"offers,omitempty"`
 	// AI says whether the host's AI can start a task.
 	AI bool `json:"ai,omitempty"`
+	// Nanokvm says whether the host offers its NanoKVM USB.
+	Nanokvm bool `json:"nanokvm,omitempty"`
 }
 
 // CPUUse is the processor's load, 0–100, its logical cores, and the

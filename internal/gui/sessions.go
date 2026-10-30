@@ -401,7 +401,10 @@ func (a *App) renameCard(c *ui.Context, f renameForm) {
 // given here are forgotten.
 // Notes: call on the main thread.
 func (a *App) removeDevice(device string) {
-	if v := a.viewerFor(device); v != nil {
+	for _, v := range []*viewer{a.viewerFor(device), a.kvmViewerFor(device)} {
+		if v == nil {
+			continue
+		}
 		if w := v.home.Load(); w != nil {
 			w.closeTab(v)
 		} else {
@@ -513,6 +516,8 @@ func permissionLabel(p string) string {
 		return L.PermUseRDP()
 	case localapi.PermUseVNC:
 		return L.PermUseVNC()
+	case localapi.PermUseNanokvm:
+		return L.PermUseNanokvm()
 	}
 	return p
 }

@@ -269,6 +269,21 @@ func (sc *screenClient) ctrlAltDel() {
 	}
 }
 
+// typeClipboard types this computer's clipboard text on the other
+// desktop as keys would (Actions, Type the clipboard): Remote Desktop by
+// scan codes and Unicode key events, VNC by keysyms.
+// Notes: reads the clipboard, so call it off the main thread.
+func (sc *screenClient) typeClipboard(s *serviceTab) {
+	text := clipboardRead()
+	if text == "" {
+		s.app.update(func() { s.app.setToast(L.ViewerClipboardNoText(), true) })
+		return
+	}
+	if sc.desk != nil {
+		_ = sc.desk.text(text)
+	}
+}
+
 // grabMode is the keyboard mode the tab's grab takes keys in, "" for none.
 func (s *serviceTab) grabMode() string {
 	s.mu.Lock()
@@ -362,6 +377,10 @@ func (sc *screenClient) toolbar(c *ui.Context, s *serviceTab) {
 				})
 			}
 			barMenu(c, s.app, "screen-actions", barActions, L.ViewerActions(), func(m *ui.Menu) {
+				if m.Item(L.ViewerTypeClipboard()).Chosen() {
+					go sc.typeClipboard(s)
+					back()
+				}
 				if m.Item(L.ViewerCtrlAltDel()).Chosen() {
 					go sc.ctrlAltDel()
 					back()

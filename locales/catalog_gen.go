@@ -2951,6 +2951,156 @@ func (msgs Messages) NameSaved() string {
 	return Catalog.Format(msgs.locale, "NameSaved", nil)
 }
 
+// NanokvmFound says "Found a NanoKVM USB: its capture card and serial port are suggested."
+// in the language the app shows.
+func NanokvmFound() string { return In(i18n.Locale()).NanokvmFound() }
+
+// NanokvmFound says "Found a NanoKVM USB: its capture card and serial port are suggested."
+// in the language of msgs.
+func (msgs Messages) NanokvmFound() string {
+	return Catalog.Format(msgs.locale, "NanokvmFound", nil)
+}
+
+// NanokvmHint says "A NanoKVM USB plugged into this computer captures another computer's HDMI output and types and points on it through i…"
+// in the language the app shows.
+func NanokvmHint() string { return In(i18n.Locale()).NanokvmHint() }
+
+// NanokvmHint says "A NanoKVM USB plugged into this computer captures another computer's HDMI output and types and points on it through i…"
+// in the language of msgs.
+func (msgs Messages) NanokvmHint() string {
+	return Catalog.Format(msgs.locale, "NanokvmHint", nil)
+}
+
+// NanokvmInUse says "{name} is using this NanoKVM USB. Taking over ends their session."
+// in the language the app shows.
+func NanokvmInUse(name string) string { return In(i18n.Locale()).NanokvmInUse(name) }
+
+// NanokvmInUse says "{name} is using this NanoKVM USB. Taking over ends their session."
+// in the language of msgs.
+func (msgs Messages) NanokvmInUse(name string) string {
+	return Catalog.Format(msgs.locale, "NanokvmInUse", map[string]any{"name": name})
+}
+
+// NanokvmLookAgain says "Look again"
+// in the language the app shows.
+func NanokvmLookAgain() string { return In(i18n.Locale()).NanokvmLookAgain() }
+
+// NanokvmLookAgain says "Look again"
+// in the language of msgs.
+func (msgs Messages) NanokvmLookAgain() string {
+	return Catalog.Format(msgs.locale, "NanokvmLookAgain", nil)
+}
+
+// NanokvmLooking says "Looking for devices…"
+// in the language the app shows.
+func NanokvmLooking() string { return In(i18n.Locale()).NanokvmLooking() }
+
+// NanokvmLooking says "Looking for devices…"
+// in the language of msgs.
+func (msgs Messages) NanokvmLooking() string {
+	return Catalog.Format(msgs.locale, "NanokvmLooking", nil)
+}
+
+// NanokvmMissing says "{id} (not connected)"
+// in the language the app shows.
+func NanokvmMissing(id string) string { return In(i18n.Locale()).NanokvmMissing(id) }
+
+// NanokvmMissing says "{id} (not connected)"
+// in the language of msgs.
+func (msgs Messages) NanokvmMissing(id string) string {
+	return Catalog.Format(msgs.locale, "NanokvmMissing", map[string]any{"id": id})
+}
+
+// NanokvmNoneFound says "None found"
+// in the language the app shows.
+func NanokvmNoneFound() string { return In(i18n.Locale()).NanokvmNoneFound() }
+
+// NanokvmNoneFound says "None found"
+// in the language of msgs.
+func (msgs Messages) NanokvmNoneFound() string {
+	return Catalog.Format(msgs.locale, "NanokvmNoneFound", nil)
+}
+
+// NanokvmOffer says "Offer it to other devices"
+// in the language the app shows.
+func NanokvmOffer() string { return In(i18n.Locale()).NanokvmOffer() }
+
+// NanokvmOffer says "Offer it to other devices"
+// in the language of msgs.
+func (msgs Messages) NanokvmOffer() string {
+	return Catalog.Format(msgs.locale, "NanokvmOffer", nil)
+}
+
+// NanokvmOfferAbout says "Other devices open it like a service, one at a time, with the permission to use it."
+// in the language the app shows.
+func NanokvmOfferAbout() string { return In(i18n.Locale()).NanokvmOfferAbout() }
+
+// NanokvmOfferAbout says "Other devices open it like a service, one at a time, with the permission to use it."
+// in the language of msgs.
+func (msgs Messages) NanokvmOfferAbout() string {
+	return Catalog.Format(msgs.locale, "NanokvmOfferAbout", nil)
+}
+
+// NanokvmOpening says "Opening the NanoKVM USB…"
+// in the language the app shows.
+func NanokvmOpening() string { return In(i18n.Locale()).NanokvmOpening() }
+
+// NanokvmOpening says "Opening the NanoKVM USB…"
+// in the language of msgs.
+func (msgs Messages) NanokvmOpening() string {
+	return Catalog.Format(msgs.locale, "NanokvmOpening", nil)
+}
+
+// NanokvmSerial says "Serial port"
+// in the language the app shows.
+func NanokvmSerial() string { return In(i18n.Locale()).NanokvmSerial() }
+
+// NanokvmSerial says "Serial port"
+// in the language of msgs.
+func (msgs Messages) NanokvmSerial() string {
+	return Catalog.Format(msgs.locale, "NanokvmSerial", nil)
+}
+
+// NanokvmSerialAbout says "The NanoKVM's keyboard and mouse for the wired computer."
+// in the language the app shows.
+func NanokvmSerialAbout() string { return In(i18n.Locale()).NanokvmSerialAbout() }
+
+// NanokvmSerialAbout says "The NanoKVM's keyboard and mouse for the wired computer."
+// in the language of msgs.
+func (msgs Messages) NanokvmSerialAbout() string {
+	return Catalog.Format(msgs.locale, "NanokvmSerialAbout", nil)
+}
+
+// NanokvmTakeOver says "Take over"
+// in the language the app shows.
+func NanokvmTakeOver() string { return In(i18n.Locale()).NanokvmTakeOver() }
+
+// NanokvmTakeOver says "Take over"
+// in the language of msgs.
+func (msgs Messages) NanokvmTakeOver() string {
+	return Catalog.Format(msgs.locale, "NanokvmTakeOver", nil)
+}
+
+// NanokvmVideo says "Capture card"
+// in the language the app shows.
+func NanokvmVideo() string { return In(i18n.Locale()).NanokvmVideo() }
+
+// NanokvmVideo says "Capture card"
+// in the language of msgs.
+func (msgs Messages) NanokvmVideo() string {
+	return Catalog.Format(msgs.locale, "NanokvmVideo", nil)
+}
+
+// NanokvmVideoAbout says "The NanoKVM's HDMI capture: what the wired computer shows."
+// in the language the app shows.
+func NanokvmVideoAbout() string { return In(i18n.Locale()).NanokvmVideoAbout() }
+
+// NanokvmVideoAbout says "The NanoKVM's HDMI capture: what the wired computer shows."
+// in the language of msgs.
+func (msgs Messages) NanokvmVideoAbout() string {
+	return Catalog.Format(msgs.locale, "NanokvmVideoAbout", nil)
+}
+
 // NatCone says "Cone (easy to connect directly)"
 // in the language the app shows.
 func NatCone() string { return In(i18n.Locale()).NatCone() }
@@ -3961,6 +4111,16 @@ func (msgs Messages) PermShortStatus() string {
 	return Catalog.Format(msgs.locale, "PermShortStatus", nil)
 }
 
+// PermUseNanokvm says "Use the computer wired to its NanoKVM USB"
+// in the language the app shows.
+func PermUseNanokvm() string { return In(i18n.Locale()).PermUseNanokvm() }
+
+// PermUseNanokvm says "Use the computer wired to its NanoKVM USB"
+// in the language of msgs.
+func (msgs Messages) PermUseNanokvm() string {
+	return Catalog.Format(msgs.locale, "PermUseNanokvm", nil)
+}
+
 // PermUseRDP says "Connect to its Remote Desktop"
 // in the language the app shows.
 func PermUseRDP() string { return In(i18n.Locale()).PermUseRDP() }
@@ -4289,6 +4449,16 @@ func PickThisComputer() string { return In(i18n.Locale()).PickThisComputer() }
 // in the language of msgs.
 func (msgs Messages) PickThisComputer() string {
 	return Catalog.Format(msgs.locale, "PickThisComputer", nil)
+}
+
+// PickThisComputerKvm says "The NanoKVM USB plugged in here"
+// in the language the app shows.
+func PickThisComputerKvm() string { return In(i18n.Locale()).PickThisComputerKvm() }
+
+// PickThisComputerKvm says "The NanoKVM USB plugged in here"
+// in the language of msgs.
+func (msgs Messages) PickThisComputerKvm() string {
+	return Catalog.Format(msgs.locale, "PickThisComputerKvm", nil)
 }
 
 // PickThisComputerNote says "Runs here, with this computer's providers"
@@ -5361,6 +5531,16 @@ func ServiceMethodScreen() string { return In(i18n.Locale()).ServiceMethodScreen
 // in the language of msgs.
 func (msgs Messages) ServiceMethodScreen() string {
 	return Catalog.Format(msgs.locale, "ServiceMethodScreen", nil)
+}
+
+// ServiceNanokvm says "NanoKVM USB"
+// in the language the app shows.
+func ServiceNanokvm() string { return In(i18n.Locale()).ServiceNanokvm() }
+
+// ServiceNanokvm says "NanoKVM USB"
+// in the language of msgs.
+func (msgs Messages) ServiceNanokvm() string {
+	return Catalog.Format(msgs.locale, "ServiceNanokvm", nil)
 }
 
 // ServiceNeedsSignIn says "This server needs a sign-in. Choose another way to sign in."
@@ -8397,6 +8577,16 @@ func (msgs Messages) ViewerClipboard() string {
 	return Catalog.Format(msgs.locale, "ViewerClipboard", nil)
 }
 
+// ViewerClipboardNoText says "The clipboard has no text to type."
+// in the language the app shows.
+func ViewerClipboardNoText() string { return In(i18n.Locale()).ViewerClipboardNoText() }
+
+// ViewerClipboardNoText says "The clipboard has no text to type."
+// in the language of msgs.
+func (msgs Messages) ViewerClipboardNoText() string {
+	return Catalog.Format(msgs.locale, "ViewerClipboardNoText", nil)
+}
+
 // ViewerCodec says "Codec"
 // in the language the app shows.
 func ViewerCodec() string { return In(i18n.Locale()).ViewerCodec() }
@@ -8415,6 +8605,16 @@ func ViewerCodecAuto() string { return In(i18n.Locale()).ViewerCodecAuto() }
 // in the language of msgs.
 func (msgs Messages) ViewerCodecAuto() string {
 	return Catalog.Format(msgs.locale, "ViewerCodecAuto", nil)
+}
+
+// ViewerCodecRaw says "Raw (MJPEG)"
+// in the language the app shows.
+func ViewerCodecRaw() string { return In(i18n.Locale()).ViewerCodecRaw() }
+
+// ViewerCodecRaw says "Raw (MJPEG)"
+// in the language of msgs.
+func (msgs Messages) ViewerCodecRaw() string {
+	return Catalog.Format(msgs.locale, "ViewerCodecRaw", nil)
 }
 
 // ViewerCtrlAltDel says "Ctrl+Alt+Del"
@@ -8569,6 +8769,16 @@ func ViewerHostDark() string { return In(i18n.Locale()).ViewerHostDark() }
 // in the language of msgs.
 func (msgs Messages) ViewerHostDark() string {
 	return Catalog.Format(msgs.locale, "ViewerHostDark", nil)
+}
+
+// ViewerHostNanokvm says "The NanoKVM's capture card on that computer isn't available."
+// in the language the app shows.
+func ViewerHostNanokvm() string { return In(i18n.Locale()).ViewerHostNanokvm() }
+
+// ViewerHostNanokvm says "The NanoKVM's capture card on that computer isn't available."
+// in the language of msgs.
+func (msgs Messages) ViewerHostNanokvm() string {
+	return Catalog.Format(msgs.locale, "ViewerHostNanokvm", nil)
 }
 
 // ViewerHostNoCodec says "This device can't show the picture that computer sends."
@@ -9003,6 +9213,16 @@ func ViewerToolbar() string { return In(i18n.Locale()).ViewerToolbar() }
 // in the language of msgs.
 func (msgs Messages) ViewerToolbar() string {
 	return Catalog.Format(msgs.locale, "ViewerToolbar", nil)
+}
+
+// ViewerTypeClipboard says "Type the clipboard"
+// in the language the app shows.
+func ViewerTypeClipboard() string { return In(i18n.Locale()).ViewerTypeClipboard() }
+
+// ViewerTypeClipboard says "Type the clipboard"
+// in the language of msgs.
+func (msgs Messages) ViewerTypeClipboard() string {
+	return Catalog.Format(msgs.locale, "ViewerTypeClipboard", nil)
 }
 
 // ViewerUnsupported says "This picture uses {codec}, which this version can't show yet."

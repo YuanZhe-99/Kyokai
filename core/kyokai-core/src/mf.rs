@@ -109,7 +109,7 @@ const INPUTS: usize = 4;
 const NO_TIME: i64 = i64::MIN;
 
 /// Starts COM and Media Foundation for the calling thread.
-fn startup() -> Result<(), String> {
+pub(crate) fn startup() -> Result<(), String> {
     // SAFETY: plain initialization calls; a repeated CoInitializeEx on the
     // same thread only returns S_FALSE.
     unsafe {

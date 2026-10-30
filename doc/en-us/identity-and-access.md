@@ -68,8 +68,10 @@ login").
 `view-screen`, `control-input`, `run-ai-task`, `approve-ai-action`, `clipboard`, `files`
 (copying files through the clipboard; `clipboard` does not include it), `hear-sound` (the host's
 sound; `view-screen` does not include it), `see-status` (a quiet watch of the host's status,
-[computer-use.md](computer-use.md), "Host status") and `use-ssh`, `use-rdp` and `use-vnc` (a tunnel to the
-host's own SSH, Remote Desktop or VNC, [remote-services.md](remote-services.md)). A controller asks
+[computer-use.md](computer-use.md), "Host status"), `use-ssh`, `use-rdp` and `use-vnc` (a tunnel to the
+host's own SSH, Remote Desktop or VNC, [remote-services.md](remote-services.md)) and `use-nanokvm`
+(the computer wired to the host's NanoKVM USB, [remote-services.md](remote-services.md), "NanoKVM
+USB"). A controller asks
 for a set; the host's user grants a subset; none implies another. Network membership grants none of
 them. `run-ai-task` lets a controller start AI tasks on the host, which run with the host's key, and
 steer the host's task whoever started it (the host keeps one AI record for every controller);

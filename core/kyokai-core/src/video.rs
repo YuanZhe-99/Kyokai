@@ -393,6 +393,13 @@ impl Choice {
     /// The choice a codec name stands for, None for a codec this build
     /// does not know.
     pub fn parse(codec: &str, i444: bool) -> Option<Choice> {
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+        if codec == crate::kvm::RAW {
+            return Some(Choice {
+                codec: crate::kvm::RAW,
+                i444: false,
+            });
+        }
         ORDER
             .into_iter()
             .find(|c| *c == codec)
@@ -528,6 +535,9 @@ pub fn decodable() -> (Vec<String>, Vec<String>) {
     let mut decode = Vec::new();
     let soft = crate::soft::Codec::ALL;
     decode.extend(soft.iter().map(|c| c.name().to_string()));
+    // A NanoKVM's own pictures (Raw), which only a NanoKVM host offers.
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    decode.push(crate::kvm::RAW.to_string());
     let i444 = soft
         .iter()
         .filter(|c| c.full_colour())
@@ -595,7 +605,7 @@ pub struct Source {
 
 /// Why a host sends its placeholder, as the viewer is told
 /// (`VideoStart::placeholder`).
-const PLACEHOLDERS: [&str; 7] = [
+const PLACEHOLDERS: [&str; 8] = [
     "asleep",
     "no-display",
     "agent",
@@ -603,6 +613,7 @@ const PLACEHOLDERS: [&str; 7] = [
     "retrying",
     "no-codec",
     "cannot-capture",
+    "nanokvm",
 ];
 
 /// Capture threads of dropped sources that may still hold their display
@@ -782,6 +793,47 @@ impl Source {
         }
     }
 
+    /// Starts the NanoKVM USB's capture card `video` in the first of
+    /// `choices` that opens (Raw, `crate::kvm::RAW`, among them), or else
+    /// the placeholder, `nanokvm`, saying why.
+    /// Notes: waits first for the capture threads of dropped sources;
+    /// opening the card can take a second: call it off the async runtime.
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    pub fn kvm(video: &str, choices: &[Choice]) -> Source {
+        wait_stopped();
+        let key = Arc::new(AtomicBool::new(true));
+        let stop = Arc::new(AtomicBool::new(false));
+        let targets = Arc::new(Targets::default());
+        let (tx, frames) = mpsc::channel(1);
+        let mut why = String::from("no codec this host sends is one the controller decodes");
+        for &c in choices {
+            match crate::kvm::start(
+                video.to_owned(),
+                c,
+                tx.clone(),
+                key.clone(),
+                stop.clone(),
+                targets.clone(),
+            ) {
+                Ok((start, done)) => {
+                    return Source {
+                        start,
+                        display: None,
+                        frames,
+                        key,
+                        stop,
+                        targets,
+                        done: Some(done),
+                        _agent: None,
+                        why: None,
+                    };
+                }
+                Err(e) => why = e,
+            }
+        }
+        Source::pattern("nanokvm", &why)
+    }
+
     /// Sets the frame rate and bitrate QoS chose (the test pattern keeps its
     /// own).
     pub fn set_targets(&self, fps: u32, bitrate: u32) {
@@ -876,7 +928,7 @@ pub(crate) trait Grab: Sized {
 }
 
 #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-mod capture {
+pub(crate) mod capture {
     //! The capture-and-encode loop shared by the platforms, on one thread
     //! (DXGI and Media Foundation are tied to the thread that made them).
     use super::*;
@@ -943,7 +995,7 @@ mod capture {
     }
 
     /// The stream's encoder with the picture it encodes next.
-    enum Encoder {
+    pub(crate) enum Encoder {
         /// Media Foundation, fed NV12 in samples of its own.
         #[cfg(windows)]
         Mf(crate::mf::Encoder),
@@ -965,7 +1017,7 @@ mod capture {
         /// Opens the encoder a choice names for `width`×`height`; with
         /// `hardware` false, Media Foundation's software encoder, never the
         /// GPU's.
-        fn open(
+        pub(crate) fn open(
             choice: Choice,
             width: u32,
             height: u32,
@@ -1004,7 +1056,7 @@ mod capture {
 
         /// Which encoder this is, by name, and whether it runs in hardware,
         /// as it reports (a system encoder may fall back to software).
-        fn kind(&self) -> (&'static str, bool) {
+        pub(crate) fn kind(&self) -> (&'static str, bool) {
             match self {
                 #[cfg(windows)]
                 Encoder::Mf(e) => ("media-foundation", e.hardware()),
@@ -1027,12 +1079,12 @@ mod capture {
         }
 
         /// Whether the stream is in full colour.
-        fn i444(&self) -> bool {
+        pub(crate) fn i444(&self) -> bool {
             matches!(self, Encoder::Soft(e) if e.i444())
         }
 
         /// Takes a captured BGRA picture as the next one to encode.
-        fn picture(&mut self, bgra: &[u8], width: usize, height: usize, stride: usize) {
+        pub(crate) fn picture(&mut self, bgra: &[u8], width: usize, height: usize, stride: usize) {
             match self {
                 #[cfg(windows)]
                 Encoder::Mf(e) => e.picture(Picture {
@@ -1063,7 +1115,7 @@ mod capture {
         }
 
         /// Encodes the last picture; `key` asks for a key frame.
-        fn encode(&mut self, key: bool) -> Result<Vec<(Vec<u8>, bool)>, String> {
+        pub(crate) fn encode(&mut self, key: bool) -> Result<Vec<(Vec<u8>, bool)>, String> {
             match self {
                 #[cfg(windows)]
                 Encoder::Mf(e) => e.encode(key),
@@ -1080,7 +1132,7 @@ mod capture {
         }
 
         /// Sets the target bitrate in bit/s.
-        fn set_bitrate(&mut self, bitrate: u32) {
+        pub(crate) fn set_bitrate(&mut self, bitrate: u32) {
             match self {
                 #[cfg(windows)]
                 Encoder::Mf(e) => e.set_bitrate(bitrate),

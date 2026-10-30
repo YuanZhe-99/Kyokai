@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream};
 use tokio::sync::{Notify, mpsc};
 
 use crate::{audio, media, video};
@@ -46,6 +46,9 @@ pub mod feature {
     /// The `no-picture` message: the host recovers a picture its viewer
     /// says it does not show.
     pub const RECOVERY: &str = "recovery";
+    /// Sessions of the computer wired to the host's NanoKVM USB
+    /// (doc/en-us/remote-services.md, "NanoKVM USB").
+    pub const NANOKVM: &str = "nanokvm";
 }
 
 /// The features this build announces.
@@ -56,6 +59,7 @@ pub const FEATURES: &[&str] = &[
     feature::INPUT_SYNC,
     feature::WAKE,
     feature::RECOVERY,
+    feature::NANOKVM,
 ];
 
 /// What the other side of a session announced: its features, none for
@@ -152,6 +156,10 @@ struct ClientHello {
     /// announcing `status`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     watch: bool,
+    /// The computer wired to the host's NanoKVM USB instead of the
+    /// desktop, only to a host announcing `nanokvm`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    nanokvm: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -540,6 +548,35 @@ const BOOST_DELAY_MS: u32 = 100;
 
 /// The frame rate to send: the QoS's, or the viewer's cap while a person's
 /// input came within INPUT_BOOST and the delay is low.
+/// The ways a host tries to send, best first (`video::choose`), the
+/// viewer's codec first (`video::prefer`); a NanoKVM host that can send its
+/// card's own pictures (`raw`) puts Raw first when the viewer chose it and
+/// decodes it, and never otherwise.
+fn pick(
+    decodes: &(Vec<String>, Vec<String>),
+    full_colour: bool,
+    hevc_first: bool,
+    preferred: Option<&str>,
+    raw: bool,
+) -> Vec<video::Choice> {
+    #[cfg_attr(
+        not(any(windows, target_os = "macos", target_os = "linux")),
+        allow(unused_mut)
+    )]
+    let mut c = video::choose(&decodes.0, &decodes.1, full_colour, hevc_first);
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    if raw
+        && preferred == Some(crate::kvm::RAW)
+        && decodes.0.iter().any(|d| d == crate::kvm::RAW)
+        && let Some(r) = video::Choice::parse(crate::kvm::RAW, false)
+    {
+        c.insert(0, r);
+    }
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    let _ = raw;
+    video::prefer(c, preferred)
+}
+
 fn boosted(qos_fps: u32, cap: u32, input_at: Option<Instant>, delay_ms: u32) -> u32 {
     match input_at {
         Some(t) if t.elapsed() < INPUT_BOOST && delay_ms < BOOST_DELAY_MS => qos_fps.max(cap),
@@ -701,6 +738,9 @@ pub enum Kind {
     /// A quiet watch of the host's status (doc/en-us/computer-use.md,
     /// "Host status"): left out of the sessions listed.
     Watch,
+    /// The computer wired to the host's NanoKVM USB, as a desktop of its
+    /// own (doc/en-us/remote-services.md, "NanoKVM USB").
+    Nanokvm,
 }
 
 impl Kind {
@@ -708,7 +748,7 @@ impl Kind {
     fn service(self) -> Option<crate::tunnel::Service> {
         match self {
             Kind::Tunnel(s) => Some(s),
-            Kind::Desktop | Kind::Watch => None,
+            Kind::Desktop | Kind::Watch | Kind::Nanokvm => None,
         }
     }
 
@@ -725,6 +765,8 @@ struct Entry {
     role: Role,
     /// What it carries.
     kind: Kind,
+    /// This computer's own NanoKVM, opened by its own GUI (`local_kvm`).
+    local: bool,
     device_id: String,
     state: State,
     failure: Option<Failure>,
@@ -1035,6 +1077,7 @@ impl Sessions {
             id,
             role,
             kind: Kind::Desktop,
+            local: false,
             device_id: device_id.to_owned(),
             state: State::Connecting,
             failure: None,
@@ -1202,6 +1245,27 @@ impl Sessions {
         })
     }
 
+    /// The connected host sessions of this computer's NanoKVM.
+    fn host_kvm(&self) -> Vec<u64> {
+        self.inner.lock().map_or(Vec::new(), |s| {
+            s.1.iter()
+                .filter(|e| {
+                    e.role == Role::Host && e.kind == Kind::Nanokvm && e.state == State::Connected
+                })
+                .map(|e| e.id)
+                .collect()
+        })
+    }
+
+    /// Whether this computer's own GUI has its NanoKVM open, or is opening
+    /// it (`local_kvm`).
+    fn local_kvm(&self) -> bool {
+        self.inner.lock().is_ok_and(|s| {
+            s.1.iter()
+                .any(|e| e.local && matches!(e.state, State::Connecting | State::Connected))
+        })
+    }
+
     /// How many host desktop sessions are connected (tunnels have a limit
     /// of their own).
     fn connected_hosts(&self) -> usize {
@@ -1323,7 +1387,10 @@ impl Sessions {
                     "peer_version": e.peer_version,
                     "peer_source": e.peer_source,
                     "peer": e.peer,
-                    "service": e.kind.service(),
+                    "service": match e.kind {
+                        Kind::Nanokvm => json!("nanokvm"),
+                        k => json!(k.service()),
+                    },
                     // A controller's route: an address, or empty for the network.
                     "route": (e.role == Role::Controller).then_some(&e.address),
                 })
@@ -1528,10 +1595,11 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let device_id = identity::device_id(&client_key);
     let (id, stop) = ctx.sessions.open(Role::Host, &device_id);
     let cut = ctx.sessions.cut(id);
-    let kind = match (client.tunnel, client.watch) {
-        (Some(s), _) => Kind::Tunnel(s),
-        (None, true) => Kind::Watch,
-        (None, false) => Kind::Desktop,
+    let kind = match (client.tunnel, client.watch, client.nanokvm) {
+        (Some(s), _, _) => Kind::Tunnel(s),
+        (None, true, _) => Kind::Watch,
+        (None, false, true) => Kind::Nanokvm,
+        (None, false, false) => Kind::Desktop,
     };
     ctx.sessions.update(id, |e| {
         e.kind = kind;
@@ -1562,6 +1630,7 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             granted,
             peer,
             service: Some(service),
+            ..
         }) => {
             ctx.sessions.update(id, |e| {
                 e.peer = peer;
@@ -1596,12 +1665,21 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             ctx.sessions.end(id, failure);
             ctx.sessions.forget(id);
         }
-        Ok(Admitted { granted, peer, .. }) => {
+        Ok(admitted) => {
+            let Admitted { granted, peer, .. } = admitted;
             ctx.sessions.update(id, |e| e.peer = peer);
-            let video = granted.contains(&Permission::ViewScreen);
-            let input = granted.contains(&Permission::ControlInput);
-            let sound = granted.contains(&Permission::HearSound);
-            let clipboard = shared(&ctx, &granted);
+            // A NanoKVM session sees and operates the computer wired to the
+            // host, and nothing of the host's own.
+            #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+            let kvm = admitted.kvm;
+            #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+            let wired = kvm.is_some();
+            #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+            let wired = false;
+            let video = granted.contains(&Permission::ViewScreen) || wired;
+            let input = granted.contains(&Permission::ControlInput) || wired;
+            let sound = granted.contains(&Permission::HearSound) && !wired;
+            let clipboard = if wired { None } else { shared(&ctx, &granted) };
             let ai = HostAi {
                 ai: ctx.ai.clone(),
                 peer: device_id.clone(),
@@ -1622,6 +1700,8 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         input,
                         ai,
                         access: ctx.access.clone(),
+                        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                        kvm,
                     },
                     clipboard,
                 ) => r.err(),
@@ -1670,6 +1750,9 @@ struct Admitted {
     peer: About,
     /// A tunnel's connection to the host's own service.
     service: Option<tokio::net::TcpStream>,
+    /// A NanoKVM session's devices, its serial port open.
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    kvm: Option<Wired>,
 }
 
 /// The host's side of login and confirmation.
@@ -1740,6 +1823,8 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             granted,
             peer,
             service: None,
+            #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+            kvm: None,
         });
     }
     let busy = match kind {
@@ -1748,10 +1833,22 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             ctx.sessions.connected(|k| matches!(k, Kind::Tunnel(_))) >= crate::tunnel::MAX_TUNNELS
         }
         Kind::Watch => ctx.sessions.connected(|k| k == Kind::Watch) >= crate::watch::MAX_WATCHERS,
+        // One NanoKVM session at a time: its serial port is exclusive.
+        Kind::Nanokvm => !ctx.sessions.host_kvm().is_empty() || ctx.sessions.local_kvm(),
     };
     if busy {
         let _ = ch.send(&refuse(Refusal::Busy)).await;
         return Err(Failure::Refused(Refusal::Busy));
+    }
+    // A NanoKVM the host's user does not offer is down, before anyone is
+    // asked.
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    let offered_kvm = ctx.access.nanokvm().offered();
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    let offered_kvm = false;
+    if kind == Kind::Nanokvm && !offered_kvm {
+        let _ = ch.send(&refuse(Refusal::ServiceDown)).await;
+        return Err(Failure::Refused(Refusal::ServiceDown));
     }
     let host_key = ctx.identity.public_key();
     // A sign-in key admits before any password; an authorized key whose
@@ -1810,6 +1907,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     let mut want = match kind {
         Kind::Tunnel(s) => vec![s.permission()],
         Kind::Watch => vec![Permission::SeeStatus],
+        Kind::Nanokvm => vec![Permission::UseNanokvm],
         Kind::Desktop => client.want.clone(),
     };
     want.sort();
@@ -1899,7 +1997,35 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
                 }
             }
         }
-        Kind::Desktop | Kind::Watch => None,
+        Kind::Desktop | Kind::Watch | Kind::Nanokvm => None,
+    };
+    // A NanoKVM session goes ahead only with its permission and once its
+    // serial port opens (another program may hold it).
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    let kvm = if kind == Kind::Nanokvm {
+        if !granted.contains(&Permission::UseNanokvm) {
+            let _ = ch.send(&refuse(Refusal::Denied)).await;
+            return Err(Failure::Refused(Refusal::Denied));
+        }
+        let chosen = ctx.access.nanokvm();
+        let serial = chosen.serial.clone();
+        let opened = tokio::task::spawn_blocking(move || crate::kvm::Hid::open(&serial))
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()));
+        match opened {
+            Ok(hid) => Some(Wired {
+                chosen,
+                hid,
+                local: false,
+            }),
+            Err(e) => {
+                log::info!("host session: the NanoKVM's serial port: {e}");
+                let _ = ch.send(&refuse(Refusal::ServiceDown)).await;
+                return Err(Failure::Refused(Refusal::ServiceDown));
+            }
+        }
+    } else {
+        None
     };
     // A watcher leaves no trace among the trusted devices.
     if kind != Kind::Watch {
@@ -1920,7 +2046,152 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         granted,
         peer,
         service,
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+        kvm,
     })
+}
+
+/// A NanoKVM session's devices on the host: the ones chosen, the serial
+/// port open, and whether it is this computer's own GUI's (Raw by
+/// default, `local_kvm`).
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+pub struct Wired {
+    chosen: crate::kvm::Settings,
+    hid: crate::kvm::Hid,
+    local: bool,
+}
+
+/// What `session.connect` answers while a controller uses this host's
+/// NanoKVM and the host's user did not choose to take it over.
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+pub const KVM_IN_USE: &str = "nanokvm-in-use";
+/// How long this computer's own GUI waits for a controller it took the
+/// NanoKVM from to let go of its serial port.
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+const TAKE_OVER_WAIT: Duration = Duration::from_secs(3);
+
+/// Two ends of an in-process session: a Noise handshake run in memory, the
+/// initiator's channel first.
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+fn local_channels() -> Result<(Channel<DuplexStream>, Channel<DuplexStream>), Failure> {
+    let (mut i, _) = noise(true)?;
+    let (mut r, _) = noise(false)?;
+    let (mut buf, mut out) = (vec![0u8; MAX_FRAME], vec![0u8; MAX_FRAME]);
+    let n = i.write_message(&[], &mut buf)?;
+    r.read_message(&buf[..n], &mut out)?;
+    let n = r.write_message(&[], &mut buf)?;
+    i.read_message(&buf[..n], &mut out)?;
+    let n = i.write_message(&[], &mut buf)?;
+    r.read_message(&buf[..n], &mut out)?;
+    let (a, b) = tokio::io::duplex(1 << 22);
+    Ok((
+        Channel {
+            stream: a,
+            noise: i.into_transport_mode()?,
+            buf,
+        },
+        Channel {
+            stream: b,
+            noise: r.into_transport_mode()?,
+            buf: out,
+        },
+    ))
+}
+
+/// Opens this computer's own NanoKVM USB for its own GUI: a controller
+/// session to its own Device ID, whose host side runs in this process —
+/// no network, password or permission (the local API serves only this
+/// computer's user), and its devices whether or not they are offered.
+/// Inputs: `take_over` ends a controller's NanoKVM session first.
+/// Returns: the session's id, with the work that connects and runs it
+/// (spawned by the caller), or `KVM_IN_USE` while a controller uses it and
+/// `take_over` is off.
+/// Side effects: the session is listed at once; it fails as
+/// `service-down` when the serial port does not open within
+/// TAKE_OVER_WAIT.
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+pub fn local_kvm(
+    ctx: &Arc<Ctx>,
+    take_over: bool,
+) -> Result<(u64, impl Future<Output = ()> + Send + 'static), String> {
+    let chosen = ctx.access.nanokvm();
+    if chosen.video.is_empty() || chosen.serial.is_empty() {
+        return Err("choose the NanoKVM USB's capture card and serial port first".into());
+    }
+    let own = ctx.identity.device_id();
+    let remote = ctx.sessions.host_kvm();
+    if !remote.is_empty() && !take_over {
+        return Err(KVM_IN_USE.into());
+    }
+    let (id, stop) = begin_as(ctx, &own, Remember::default(), Kind::Nanokvm);
+    let about = ctx.about();
+    ctx.sessions.update(id, |e| {
+        e.features = Peer {
+            features: our_features(),
+        };
+        e.peer = about;
+        e.local = true;
+    });
+    let ctx = ctx.clone();
+    Ok((id, async move {
+        for r in remote {
+            log::info!("nanokvm: this computer's user takes it over");
+            let _ = ctx.sessions.close(r);
+        }
+        // The serial port is free once a session taken over let go of it.
+        let until = Instant::now() + TAKE_OVER_WAIT;
+        let hid = loop {
+            let serial = chosen.serial.clone();
+            let opened = tokio::task::spawn_blocking(move || crate::kvm::Hid::open(&serial))
+                .await
+                .unwrap_or_else(|e| Err(e.to_string()));
+            match opened {
+                Ok(hid) => break hid,
+                Err(e) if Instant::now() >= until => {
+                    log::info!("nanokvm: the serial port: {e}");
+                    ctx.sessions
+                        .end(id, Some(Failure::Refused(Refusal::ServiceDown)));
+                    return;
+                }
+                Err(_) => tokio::time::sleep(Duration::from_millis(100)).await,
+            }
+        };
+        let Ok((host_ch, viewer_ch)) = local_channels() else {
+            ctx.sessions.end(id, Some(Failure::Broken));
+            return;
+        };
+        ctx.sessions.update(id, |e| {
+            e.state = State::Connected;
+            e.granted = vec![Permission::UseNanokvm];
+        });
+        let Some(viewer) = ctx.sessions.side(id) else {
+            return;
+        };
+        let host = Side::Host {
+            video: true,
+            sound: false,
+            input: true,
+            ai: HostAi {
+                ai: ctx.ai.clone(),
+                peer: own,
+                run: false,
+                approve: false,
+            },
+            access: ctx.access.clone(),
+            kvm: Some(Wired {
+                chosen,
+                hid,
+                local: true,
+            }),
+        };
+        let host_stop = Notify::new();
+        let (_, viewed) = tokio::join!(run(host_ch, &host_stop, host, None), async {
+            let r = run(viewer_ch, &stop, viewer, None).await;
+            host_stop.notify_one();
+            r
+        });
+        ctx.sessions.end(id, viewed.err());
+    }))
 }
 
 /// The base64 Ed25519 key of an authorized key's line, as a proof names it.
@@ -2021,6 +2292,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         let offered = match kind {
             Kind::Tunnel(_) => peer.has(feature::TUNNEL),
             Kind::Watch => peer.has(feature::STATUS),
+            Kind::Nanokvm => peer.has(feature::NANOKVM),
             Kind::Desktop => true,
         };
         if !offered {
@@ -2058,6 +2330,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             want: match kind {
                 Kind::Tunnel(s) => vec![s.permission()],
                 Kind::Watch => vec![Permission::SeeStatus],
+                Kind::Nanokvm => vec![Permission::UseNanokvm],
                 Kind::Desktop => crate::access::wire_want(&want, &peer),
             },
             // Its description goes with a key or without a password, as
@@ -2069,6 +2342,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             keys,
             tunnel: kind.service(),
             watch: kind == Kind::Watch,
+            nanokvm: kind == Kind::Nanokvm,
         };
         let offered_keys = !hello.keys.is_empty();
         let payload = serde_json::to_vec(&hello).map_err(|_| Failure::Broken)?;
@@ -2216,7 +2490,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             ctx.sessions.end(id, result.err());
             Outcome::Done
         }
-        Ok((ch, granted, token, Kind::Desktop)) => {
+        Ok((ch, granted, token, Kind::Desktop | Kind::Nanokvm)) => {
             let clipboard = shared(&ctx, &granted);
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
@@ -2415,6 +2689,10 @@ pub enum Side {
             allow(dead_code)
         )]
         access: Arc<Access>,
+        /// A NanoKVM session's devices and its serial port: the picture is
+        /// the capture card's and the input goes to the wired computer.
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+        kvm: Option<Wired>,
     },
     /// The controller: puts media into the queue its GUI drains, and sends
     /// the GUI's control messages (input, key-frame requests) to the host;
@@ -2735,7 +3013,11 @@ impl Drop for AbortOnDrop {
 async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     ch: Channel<S>,
     stop: &Notify,
-    side: Side,
+    #[cfg_attr(
+        not(any(windows, target_os = "macos", target_os = "linux")),
+        allow(unused_mut)
+    )]
+    mut side: Side,
     clipboard: Option<Shared>,
 ) -> Result<(), Failure> {
     let Channel { stream, noise, buf } = ch;
@@ -2768,14 +3050,39 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // step dropped the video, which then opened on the primary display as
     // for a controller that names no codecs — none on a Mac).
     let mut codecs_due = wants_video.then(|| tokio::time::Instant::now() + CODECS_WAIT);
+    // A NanoKVM session's capture card and its input to the wired
+    // computer, which replace the host's screen and input service.
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    let (card, mut hid, local) = match &mut side {
+        Side::Host { kvm, .. } => match kvm.take() {
+            Some(w) => (Some(w.chosen.video), Some(w.hid), w.local),
+            None => (None, None, false),
+        },
+        Side::Controller { .. } => (None, None, false),
+    };
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    let wired = card.is_some();
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    let wired = false;
+    // The capture card's own pictures may go as they come (Raw).
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    let raw = wired && crate::kvm::raw_here();
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    let raw = false;
+    // This computer's own NanoKVM pane takes Raw for Auto: nothing to
+    // encode, nothing on the network.
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    let auto: Option<String> = (local && raw).then(|| crate::kvm::RAW.into());
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    let auto: Option<String> = None;
     // The host's input service; dropping it releases what it holds.
     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     let mut injector = match side {
-        Side::Host { input: true, .. } => Some(crate::input::Injector::default()),
+        Side::Host { input: true, .. } if !wired => Some(crate::input::Injector::default()),
         _ => None,
     };
     // The displays the controller may choose from, with the one shown.
-    let mut displays = if wants_video {
+    let mut displays = if wants_video && !wired {
         video::displays()
     } else {
         Vec::new()
@@ -2912,8 +3219,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }};
     }
     let mut ai_sync = tokio::time::interval(AI_SYNC);
-    // The host's pointer, which the captured picture leaves out.
-    let mut pointer = wants_video.then(PointerWatch::start);
+    // The host's pointer, which the captured picture leaves out (a
+    // NanoKVM's picture has the wired computer's own).
+    let mut pointer = (wants_video && !wired).then(PointerWatch::start);
     let mut pointer_sent: Option<((i32, i32), bool)> = None;
     let mut ai_sent: Option<Value> = None;
     // The serial of the shared draft this controller has (host side).
@@ -2969,7 +3277,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut hevc_first = false;
     let mut full_colour = false;
     // The viewer's codec (None: Auto), and what this host offers.
-    let mut preferred: Option<String> = None;
+    let mut preferred: Option<String> = auto.clone();
     let mut offer: Vec<String> = Vec::new();
     let mut chosen: Vec<video::Choice> = Vec::new();
     if wants_video {
@@ -3018,6 +3326,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     #[cfg(windows)]
     if let Some(inj) = &injector {
         out.json(&offered(inj))?;
+    }
+    // The wired computer takes Ctrl+Alt+Del like any keys.
+    if wired {
+        out.json(&Message::Actions {
+            ctrl_alt_del: true,
+            blocked: false,
+            privacy: false,
+        })?;
     }
     // Takes the next recovery step for a stream whose picture does not reach
     // the viewer (`recovery`), and says why in the log: the stream is dropped
@@ -3080,7 +3396,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             if std::mem::take(&mut next_codec) && wanted.len() > 1 {
                 wanted.remove(0);
             }
+            #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+            let card = card.clone();
             let (s, list) = tokio::task::spawn_blocking(move || {
+                #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                if let Some(card) = card {
+                    return (video::Source::kvm(&card, &wanted), Vec::new());
+                }
                 (video::Source::open(display, &wanted), video::displays())
             })
             .await
@@ -3536,7 +3858,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         // changes the codec or its chroma.
                         if i444 != full_colour {
                             full_colour = i444;
-                            let c = video::prefer(video::choose(&decodes.0, &decodes.1, full_colour, hevc_first), preferred.as_deref());
+                            let c = pick(&decodes, full_colour, hevc_first, preferred.as_deref(), raw);
                             let first_changed = c.first() != chosen.first();
                             chosen = c;
                             if wants_video && source.is_some() && first_changed {
@@ -3729,9 +4051,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         // Listing the encoders asks the system: off the
                         // network's threads.
                         hevc_first = tokio::task::spawn_blocking(video::hevc_hardware).await.unwrap_or(false);
-                        let c = video::prefer(video::choose(&decodes.0, &decodes.1, full_colour, hevc_first), preferred.as_deref());
+                        let c = pick(&decodes, full_colour, hevc_first, preferred.as_deref(), raw);
                         if wants_video {
                             offer = video::offer(&decodes.0, &video::encodable()).iter().map(|c| c.to_string()).collect();
+                            #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                            if raw && decodes.0.iter().any(|d| d == crate::kvm::RAW) {
+                                offer.push(crate::kvm::RAW.into());
+                            }
                             out.json(&Message::CodecOffer { codecs: offer.clone() })?;
                         }
                         // The video opens again only when the first choice
@@ -3749,9 +4075,9 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // restarts when that changes which one goes first. A
                     // resumed session's choice comes before the codecs.
                     Message::Codec { codec } => {
-                        preferred = (codec != "auto").then_some(codec);
+                        preferred = (codec != "auto").then_some(codec).or_else(|| auto.clone());
                         if wants_video && !decodes.0.is_empty() {
-                            let c = video::prefer(video::choose(&decodes.0, &decodes.1, full_colour, hevc_first), preferred.as_deref());
+                            let c = pick(&decodes, full_colour, hevc_first, preferred.as_deref(), raw);
                             let first_changed = c.first() != chosen.first();
                             chosen = c;
                             if source.is_some() && first_changed {
@@ -3836,6 +4162,34 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // A controller's `sync` (after a stall or a resume): the
                     // host lets go of whatever else this session holds. It
                     // only releases, so it takes nothing over.
+                    // A NanoKVM session's input goes to the wired computer
+                    // (its keys by their USB usages); a `sync` releases what
+                    // the controller no longer holds.
+                    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                    Message::Input { event } if hid.is_some() => {
+                        let hid = hid.as_mut().expect("checked");
+                        if event["kind"] == "sync" {
+                            if let Ok(s) = serde_json::from_value::<crate::input::Sync>(event)
+                                && s.held.valid()
+                            {
+                                for e in held.releases_beyond(&s.held, pointer_at) {
+                                    held.follow(&e);
+                                    hid.inject(&e);
+                                }
+                            }
+                        } else if let Ok(e) = serde_json::from_value::<crate::input::Event>(event) {
+                            if let crate::input::Event::Pointer { x, y, .. } = e {
+                                pointer_at = (x, y);
+                            }
+                            held.follow(&e);
+                            hid.inject(&e);
+                            let quiet = input_at.is_none_or(|t| t.elapsed() >= INPUT_BOOST);
+                            input_at = Some(Instant::now());
+                            if quiet && last_kbps > 0 && let Some(s) = &source {
+                                s.set_targets(boosted(qos.fps(), fps_cap, input_at, last_delay), last_kbps.saturating_mul(1000));
+                            }
+                        }
+                    }
                     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
                     Message::Input { event } if event["kind"] == "sync" => {
                         if let (Some(inj), Ok(s), Side::Host { ai, access, .. }) = (injector.as_mut(), serde_json::from_value::<crate::input::Sync>(event), &side)
@@ -3878,6 +4232,26 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // on the desktop, so no window guard stands in its way
                     // (regression: Wake it's Shift press was refused while
                     // Kyokai's window had the focus).
+                    // The wired computer: Ctrl+Alt+Del as keys, and waking
+                    // its display with a Shift press; nothing else applies.
+                    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                    Message::Action { action } if hid.is_some() => {
+                        let hid = hid.as_mut().expect("checked");
+                        match action {
+                            SessionAction::CtrlAltDel => {
+                                hid.ctrl_alt_del();
+                            }
+                            SessionAction::Wake => {
+                                for down in [true, false] {
+                                    hid.inject(&crate::input::Event::Scan { code: 0x2A, down, caps: false, num: false });
+                                }
+                                if let Some(s) = &source {
+                                    s.key_frame();
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
                     Message::Action { action: SessionAction::Wake } => {
                         if injector.is_some() {
@@ -4052,6 +4426,7 @@ mod compat_tests {
             }],
             tunnel: Some(crate::tunnel::Service::Ssh),
             watch: true,
+            nanokvm: false,
         };
         let old: legacy::ClientHello =
             serde_json::from_value(serde_json::to_value(&client).unwrap()).unwrap();
@@ -6181,6 +6556,7 @@ mod tests {
                 approve: false,
             },
             access: host.access.clone(),
+            kvm: None,
         };
         let stopped = stop.clone();
         let task = tokio::spawn(async move { run(host_end, &stopped, side, None).await });
@@ -6235,6 +6611,7 @@ mod tests {
                 approve: false,
             },
             access: host.access.clone(),
+            kvm: None,
         };
         let stopped = stop.clone();
         let task = tokio::spawn(async move { run(host_end, &stopped, side, None).await });
@@ -6517,6 +6894,7 @@ mod tests {
                 approve: false,
             },
             access: host.access.clone(),
+            kvm: None,
         };
         let shared = Shared {
             board: Box::new(crate::clipboard::fake::Fake(board.clone())),
@@ -7196,6 +7574,314 @@ mod tunnel_tests {
 }
 
 /// Quiet status watchers (doc/en-us/computer-use.md, "Host status").
+#[cfg(all(test, any(windows, target_os = "macos", target_os = "linux")))]
+mod nanokvm_tests {
+    use super::tests::{device, session};
+    use super::*;
+
+    fn host_with(grants: Vec<Permission>) -> Arc<Ctx> {
+        let host = device("1.0.0");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        host.access.set_password_grants(grants).unwrap();
+        host
+    }
+
+    /// Asks the host for its NanoKVM over an in-memory pipe.
+    /// Returns: the controller's session once it settled, and whether the
+    /// host's user was asked.
+    async fn open(host: &Arc<Ctx>, controller: &Arc<Ctx>) -> (Value, bool) {
+        let (a, b) = tokio::io::duplex(1 << 16);
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.2".parse().unwrap(),
+        };
+        tokio::spawn(serve(host.clone(), b, from));
+        let dialed = host.identity.device_id();
+        let (id, stop) = begin_as(controller, &dialed, Remember::default(), Kind::Nanokvm);
+        tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop,
+            a,
+            dialed,
+            zeroize::Zeroizing::new("k7mq2xpa".to_owned()),
+            vec![Permission::UseNanokvm],
+            None,
+        ));
+        let mut asked = false;
+        for _ in 0..250 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            asked |= host
+                .access
+                .pending()
+                .as_array()
+                .is_some_and(|a| !a.is_empty());
+            let st = session(controller, id)["state"].clone();
+            if st != "connecting" && st != "confirming" {
+                break;
+            }
+        }
+        (session(controller, id), asked)
+    }
+
+    /// A NanoKVM the host's user does not offer is down, and nobody is
+    /// asked; offered with a serial port that does not open, it is down
+    /// too.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_nanokvm_not_offered_or_not_there_is_down() {
+        let host = host_with(vec![Permission::UseNanokvm]);
+        let controller = device("1.0.1");
+        let (s, asked) = open(&host, &controller).await;
+        assert_eq!(s["failure"], json!({"refused": "service-down"}), "{s}");
+        assert!(!asked);
+        // Turned on without its devices: refused by the setting itself.
+        assert!(
+            host.access
+                .set_nanokvm(crate::kvm::Settings {
+                    on: true,
+                    ..Default::default()
+                })
+                .is_err()
+        );
+        let gone = if cfg!(windows) {
+            "COM250"
+        } else {
+            "/dev/kyokai-no-such-port"
+        };
+        host.access
+            .set_nanokvm(crate::kvm::Settings {
+                on: true,
+                video: "card".into(),
+                serial: gone.into(),
+            })
+            .unwrap();
+        let (s, _) = open(&host, &controller).await;
+        assert_eq!(s["failure"], json!({"refused": "service-down"}), "{s}");
+    }
+
+    /// Against a NanoKVM USB attached to this computer
+    /// (`KYOKAI_TEST_NANOKVM=1`): a session shows the wired computer encoded,
+    /// then Raw once the viewer chooses it, offers Ctrl+Alt+Del, and takes a
+    /// pointer move to the middle of the picture (the only input it sends).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn live_nanokvm_session() {
+        if std::env::var_os("KYOKAI_TEST_NANOKVM").is_none() {
+            return;
+        }
+        let host = host_with(vec![Permission::UseNanokvm]);
+        let pair = tokio::task::spawn_blocking(crate::kvm::devices)
+            .await
+            .unwrap()
+            .suggested
+            .expect("a NanoKVM pair");
+        host.access
+            .set_nanokvm(crate::kvm::Settings {
+                on: true,
+                video: pair.video,
+                serial: pair.serial,
+            })
+            .unwrap();
+        let controller = device("1.0.1");
+        let (a, b) = tokio::io::duplex(1 << 22);
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.2".parse().unwrap(),
+        };
+        tokio::spawn(serve(host.clone(), b, from));
+        let dialed = host.identity.device_id();
+        let (id, stop) = begin_as(&controller, &dialed, Remember::default(), Kind::Nanokvm);
+        tokio::spawn(connect(
+            controller.clone(),
+            id,
+            stop,
+            a,
+            dialed,
+            zeroize::Zeroizing::new("k7mq2xpa".to_owned()),
+            vec![Permission::UseNanokvm],
+            None,
+        ));
+        let until = Instant::now() + Duration::from_secs(10);
+        while session(&controller, id)["state"] != "connected" && Instant::now() < until {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(session(&controller, id)["granted"], json!(["use-nanokvm"]));
+        assert_eq!(host.sessions.list()[0]["service"], "nanokvm");
+        let (queue, control) = controller.sessions.media(id).unwrap();
+        // Counts the frames of a stream for a few seconds, from its start.
+        let measure = |queue: Arc<media::Queue>, codec: &'static str| {
+            tokio::task::spawn_blocking(move || {
+                let until = Instant::now() + Duration::from_secs(15);
+                let mut start = Value::Null;
+                let (mut frames, mut bytes, mut since) = (0u32, 0usize, None::<Instant>);
+                let mut first = Vec::new();
+                while Instant::now() < until {
+                    let Ok(p) = queue.pop(Duration::from_millis(200)) else {
+                        continue;
+                    };
+                    match p[0] {
+                        media::packet::VIDEO_START => {
+                            let s: Value = serde_json::from_slice(&p[1..]).unwrap();
+                            if s["codec"] == codec {
+                                (start, frames, bytes, since) = (s, 0, 0, Some(Instant::now()));
+                            }
+                        }
+                        media::packet::FRAME if since.is_some() => {
+                            frames += 1;
+                            bytes += p.len();
+                            if first.is_empty() {
+                                first = p[10..].to_vec();
+                            }
+                            if since.unwrap().elapsed() >= Duration::from_secs(4) {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let secs = since.map_or(1.0, |s| s.elapsed().as_secs_f64());
+                (
+                    start,
+                    frames as f64 / secs,
+                    bytes as f64 * 8.0 / secs / 1e6,
+                    first,
+                )
+            })
+        };
+        // A frame rate the card gives, not the default 30.
+        control
+            .try_send(json!({"type": "quality", "preset": "balanced", "fps": 60, "i444": false}))
+            .unwrap();
+        let (start, fps, mbps, _) = measure(queue.clone(), "vp9-sw").await.unwrap();
+        println!("encoded: {start} at {fps:.1} fps, {mbps:.1} Mbit/s");
+        assert_eq!(start["codec"], "vp9-sw", "{start}");
+        assert!(fps > 1.0);
+        control
+            .try_send(json!({"type": "input", "event": {"kind": "pointer", "action": "move", "x": 0.5, "y": 0.5}}))
+            .unwrap();
+        control
+            .try_send(json!({"type": "codec", "codec": crate::kvm::RAW}))
+            .unwrap();
+        let (start, fps, mbps, first) = measure(queue.clone(), crate::kvm::RAW).await.unwrap();
+        println!("raw: {start} at {fps:.1} fps, {mbps:.1} Mbit/s");
+        assert_eq!(start["codec"], crate::kvm::RAW, "{start}");
+        let mut rgba = Vec::new();
+        let size = crate::kvm::JpegDecoder.decode(&first, &mut rgba).unwrap();
+        assert_eq!(
+            size,
+            Some((
+                start["width"].as_u64().unwrap() as u32,
+                start["height"].as_u64().unwrap() as u32
+            ))
+        );
+        assert_eq!(session(&controller, id)["state"], "connected");
+        // This computer's own GUI: refused while the controller uses it,
+        // then taking it over; Auto is Raw there.
+        assert_eq!(local_kvm(&host, false).err().as_deref(), Some(KVM_IN_USE));
+        let (local, work) = local_kvm(&host, true).map_err(|e| e.to_string()).unwrap();
+        tokio::spawn(work);
+        let until = Instant::now() + Duration::from_secs(10);
+        while session(&host, local)["state"] != "connected" && Instant::now() < until {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(session(&host, local)["state"], "connected");
+        let (own, own_control) = host.sessions.media(local).unwrap();
+        own_control
+            .try_send(json!({"type": "quality", "preset": "balanced", "fps": 60, "i444": false}))
+            .unwrap();
+        own_control
+            .try_send(json!({"type": "codec", "codec": "auto"}))
+            .unwrap();
+        let (start, fps, mbps, _) = measure(own, crate::kvm::RAW).await.unwrap();
+        println!("local: {start} at {fps:.1} fps, {mbps:.1} Mbit/s");
+        assert_eq!(start["codec"], crate::kvm::RAW, "{start}");
+        assert_ne!(session(&controller, id)["state"], "connected", "taken over");
+        host.sessions.close(local).unwrap();
+    }
+
+    /// This computer's own NanoKVM needs its devices chosen (not offered);
+    /// while it is opening or open, controllers asking for it are busy.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_local_nanokvm_and_controllers_exclude_each_other() {
+        let host = host_with(vec![Permission::UseNanokvm]);
+        assert!(local_kvm(&host, false).is_err(), "no devices chosen");
+        let gone = if cfg!(windows) {
+            "COM250"
+        } else {
+            "/dev/kyokai-no-such-port"
+        };
+        host.access
+            .set_nanokvm(crate::kvm::Settings {
+                on: true,
+                video: "card".into(),
+                serial: gone.into(),
+            })
+            .unwrap();
+        // Opening (its work not run): listed as connecting, and local.
+        let (id, _work) = local_kvm(&host, false).map_err(|e| e.to_string()).unwrap();
+        let listed = host.sessions.list();
+        let own = listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == id)
+            .unwrap();
+        assert_eq!(own["service"], "nanokvm");
+        assert_eq!(own["device_id"], host.identity.device_id());
+        let controller = device("1.0.1");
+        let (s, asked) = open(&host, &controller).await;
+        assert_eq!(s["failure"], json!({"refused": "busy"}), "{s}");
+        assert!(!asked);
+        // Its work runs: the serial port does not open within the wait,
+        // and it fails as down, after which nothing is busy.
+        host.sessions.end(id, None);
+        let (id, work) = local_kvm(&host, false).map_err(|e| e.to_string()).unwrap();
+        work.await;
+        assert_eq!(
+            session(&host, id)["failure"],
+            json!({"refused": "service-down"})
+        );
+        assert!(!host.sessions.local_kvm());
+    }
+
+    /// `use-nanokvm` never reaches a host that did not announce `nanokvm`
+    /// (an older host ends a session on a name it does not know).
+    #[test]
+    fn the_permission_needs_its_feature() {
+        let want = [Permission::ViewScreen, Permission::UseNanokvm];
+        assert_eq!(
+            crate::access::wire_want(&want, &Peer::default()),
+            vec![Permission::ViewScreen]
+        );
+        let peer = Peer {
+            features: vec![feature::NANOKVM.into()],
+        };
+        assert_eq!(crate::access::wire_want(&want, &peer), want.to_vec());
+    }
+
+    /// Raw goes first only on a NanoKVM host that can send it, when the
+    /// viewer chose it and decodes it; Auto never picks it.
+    #[test]
+    fn raw_only_when_chosen() {
+        let raw = crate::kvm::RAW;
+        let decodes = (vec!["vp8".to_string(), raw.to_string()], Vec::new());
+        let first = |preferred: Option<&str>, here: bool| {
+            pick(&decodes, false, false, preferred, here)
+                .first()
+                .map(|c| c.codec)
+        };
+        assert_eq!(first(Some(raw), true), Some(raw));
+        assert_eq!(first(None, true), Some("vp8"));
+        assert_eq!(first(Some(raw), false), Some("vp8"));
+        let no_raw = (vec!["vp8".to_string()], Vec::new());
+        assert_eq!(pick(&no_raw, false, false, Some(raw), true)[0].codec, "vp8");
+    }
+}
+
 #[cfg(test)]
 mod watch_tests {
     use super::tests::device;

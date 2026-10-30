@@ -74,13 +74,13 @@ OPAQUE（`opaque-ke` 4：Ristretto255、使用 SHA-512 的 TripleDH、Argon2id�
 以字节 `0x01` 开头的明文是媒体分片，而不是 JSON：帧号（u32）、分片序号与分片数（各 u16）、标志（第 0 位：关键帧）以及以微秒计的
 显示时间（u64），均为大端，之后是帧的一部分。一帧按需拆成若干分片，在另一端重新拼合；较新帧的分片会丢弃尚未拼完的旧帧
 （最新帧优先），超过 64 MiB 的帧会被丢弃。会话开始时，控制端发送 `{"type": "codecs", decode, i444}`：它能解码的编解码器（经 Media Foundation 或 VideoToolbox 的
-`h264` 与 `hevc`，经 Media Foundation 的 `vp9`，软件的 `vp9-sw`、`av1` 与 `vp8`），以及其中能以全彩解码的（`vp9-sw`、`av1`；旧版本不带此字段）。
+`h264` 与 `hevc`，经 Media Foundation 的 `vp9`，软件的 `vp9-sw`、`av1` 与 `vp8`，以及 NanoKVM 自己的画面 `mjpeg`），以及其中能以全彩解码的（`vp9-sw`、`av1`；旧版本不带此字段）。
 被控端回复 `{"type": "codec-offer", codecs}`：它能发送且控制端能解码的编码，按它的顺序；控制端可以用 `{"type": "codec", codec}`
 选择其中之一（`auto`，或清单中的名称；其他名称不改变任何东西），并用 `{"type": "audio", on}` 请求被控端的声音（被控端只发给获得 `hear-sound` 的
 控制端，以字节 `0x04` 开头的明文，后接一个 48 kHz 立体声、10 毫秒的 Opus 数据包，静音时不发送，发送某帧的一个分片时已在等待的数据包在
 该帧下一个分片之前发出，[computer-use.md](computer-use.md)“声音”）；恢复的控制端
 会在发送其 `codecs` 之前再次发送查看者的 `quality`、`codec` 与 `audio`。
-被控端在第一帧之前发送 `{"type": "video-start", codec, width, height, i444, encoder, hardware}`（`i444` 与 `hardware` 仅在为真时出现；`encoder`：`videotoolbox`、`media-foundation`、`libvpx` 或 `libaom`，由编码器自己报告，测试图案不带此字段；声明了 `recovery` 的被控端会在测试图案的 `video-start` 中加上 `placeholder`：`asleep`、`no-display`、`agent`、`no-encoder`、`retrying`、`no-codec` 或 `cannot-capture`）。每帧的最后一个分片到达时，控制端发送 `{"type": "received", frame}`（该帧的编号）；被控端只在未确认的帧少于 3 个时发送新帧，只接受对它已发送且尚未确认的帧的确认，并且无论确认多久才到都等待：每个控制端（协议 10）都通过有序、可靠的流确认每一帧，因此确认迟到意味着路径慢，而不是帧丢失（断开的连接会在空闲时限时结束）。控制端可以发送
+被控端在第一帧之前发送 `{"type": "video-start", codec, width, height, i444, encoder, hardware}`（`i444` 与 `hardware` 仅在为真时出现；`encoder`：`videotoolbox`、`media-foundation`、`libvpx` 或 `libaom`，由编码器自己报告，测试图案不带此字段；声明了 `recovery` 的被控端会在测试图案的 `video-start` 中加上 `placeholder`：`asleep`、`no-display`、`agent`、`no-encoder`、`retrying`、`no-codec`、`cannot-capture` 或 `nanokvm`）。每帧的最后一个分片到达时，控制端发送 `{"type": "received", frame}`（该帧的编号）；被控端只在未确认的帧少于 3 个时发送新帧，只接受对它已发送且尚未确认的帧的确认，并且无论确认多久才到都等待：每个控制端（协议 10）都通过有序、可靠的流确认每一帧，因此确认迟到意味着路径慢，而不是帧丢失（断开的连接会在空闲时限时结束）。控制端可以发送
 `{"type": "key-frame"}`（被控端随后重新说明视频流、其显示器与编码清单，并发送关键帧，除非它上一个发出的关键帧尚未确认：那时等待那一个）——即其界面的请求（打开时、丢失某帧或解码失败之后，以及在关键帧到达之前每秒一次），以及控制端在其队列丢弃帧期间自己的请求
 （最多每秒一次，用它自己的计时器，因此没有帧到达时也会请求），以及发给声明了 `recovery` 的被控端的 `{"type": "no-picture", for_ms, why}`，即其查看窗口已 5 秒没有显示画面（`why`：`decode-error`、`waiting` 或 `stale`；最多每秒一次；被控端把它视为故障，除非其上一个关键帧尚未确认，或画面应到但未满 5 秒，[computer-use.md](computer-use.md)“视频”）——在拥有 `control-input` 时还可发送 `{"type": "input", event}`；发给声明了 `input-sync` 的被控端时，事件可以是 `{"kind": "sync", held: {scans, keys, buttons}}`，即控制端在停顿或恢复之后按住的按键（按扫描码与按名称）与按钮，被控端随即松开该会话按住的其他一切（最多 64 项，且都必须是已知的，否则丢弃）。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
 回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate, encode_ms, frames}`（`encode_ms`：上一秒各帧从画面到编码完成的平均时间；`frames`：它在这一秒发送的帧数，0.4.0 不带此字段；声明了 `recovery` 的被控端加上 `video`：`live`、`dark`、`recovering` 或 `placeholder`）（[computer-use.md](computer-use.md)）；控制端可用
@@ -103,6 +103,15 @@ files}` 提供本端复制的文件，每个文件为 `{path, size, dir}`（名�
 连接该服务（127.0.0.1，然后是 ::1），只有在连接打开之后才发送表示接受的结果；服务在 3 秒内没有应答时，以 `service-down` 拒绝。隧道的结果
 不带续接令牌。此后字节以字节 `0x05` 开头的明文传输，每个明文后接最多一帧容量的数据流，按顺序、双向传输，此外只有 `ping`、`pong` 与 `bye`；
 没有视频、输入或其他消息。服务或客户端结束的一方在发出它读到的字节之后发送 `bye`，另一方随之结束。60 秒内未收到对端任何帧的隧道会被关闭。
+
+## NanoKVM 会话
+
+会话可以不承载被控端的桌面，而承载经被控端的 NanoKVM USB 有线连接的电脑（[remote-services.md](remote-services.md)，“NanoKVM USB”）。
+对声明了 `nanokvm` 的被控端，控制端在 `client_hello` 中设置 `nanokvm: true`，并只请求 `use-nanokvm`；控制端从不把它发给没有声明 `nanokvm`
+的被控端，而是在第 2 帧之后就停下（`unsupported`）。被控端没有提供它的 NanoKVM（在询问任何人之前）或串口打不开时以 `service-down` 拒绝，
+另一个已连接时以 `busy` 拒绝；否则像对待任何权限一样准入它，不带续接令牌。此后会话像桌面会话一样运行——带有 `codecs`、`codec-offer`
+与确认的视频、输入事件、`actions`——作用于有线连接的电脑：被控端能发送采集卡自己的画面且控制端能解码时，编码清单加上 `mjpeg`
+（每帧一个 JPEG，都是关键帧），被控端提供 `ctrl-alt-del` 与 `wake`（按一下 Shift）两个操作，没有声音、剪贴板、文件、显示器列表、指针或 AI。
 
 ## 状态查看者
 
@@ -145,6 +154,7 @@ net, battery, services, offers, ai}`，每 2 秒一次，此外只有 `ping`、`
 | `input-sync` | 控制端的 `sync` 输入事件（它按住的键与按钮） |
 | `wake` | `wake` 会话操作（被控端唤醒其显示器） |
 | `recovery` | 控制端的 `no-picture`；被控端 `video-start` 中的 `placeholder` 与其统计信息中的 `video` |
+| `nanokvm` | 经被控端的 NanoKVM USB 有线连接的电脑的会话（`client_hello` 的 `nanokvm`）；权限 `use-nanokvm` |
 
 ## 解码
 

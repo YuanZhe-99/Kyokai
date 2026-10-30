@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"slices"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 
@@ -205,7 +206,7 @@ func (v *viewer) keepSettings() {
 	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap, Mute: v.mute, Folded: v.folded,
 		Original: v.original, NoClipboard: v.clip.off}
 	v.mu.Unlock()
-	v.app.setViewerPrefs(v.device, vp)
+	v.app.setViewerPrefs(v.tabKey(), vp)
 }
 
 // setSound plays the host's sound or not; the host captures it only while
@@ -329,6 +330,8 @@ func codecLabel(name string) string {
 		return "AV1"
 	case "vp8":
 		return "VP8"
+	case "mjpeg":
+		return L.ViewerCodecRaw()
 	}
 	return name
 }
@@ -1025,4 +1028,41 @@ func pointerKeys(img ui.Element, inPane, covered bool) {
 func (v *viewer) inPane() bool {
 	w := v.home.Load()
 	return w != nil && w.pointerOver(v)
+}
+
+// maxTextEvent is the most a host takes in one text event, in bytes.
+const maxTextEvent = 4096
+
+// textPieces splits text into pieces of at most max bytes, at character
+// boundaries, for text events.
+func textPieces(text string, max int) []string {
+	var out []string
+	for len(text) > max {
+		cut := max
+		for cut > 0 && !utf8.RuneStart(text[cut]) {
+			cut--
+		}
+		out = append(out, text[:cut])
+		text = text[cut:]
+	}
+	if text != "" {
+		out = append(out, text)
+	}
+	return out
+}
+
+// typeClipboard types this computer's clipboard text on the host, as keys
+// would type it (Actions, Type the clipboard): for a field that refuses
+// pasting, or a computer behind a NanoKVM, which has no clipboard; a host
+// types it into what has the focus, a NanoKVM as a US keyboard does.
+// Notes: reads the clipboard, so call it off the main thread.
+func (v *viewer) typeClipboard() {
+	text := clipboardRead()
+	if text == "" {
+		v.update(func() { v.app.setToast(L.ViewerClipboardNoText(), true) })
+		return
+	}
+	for _, piece := range textPieces(text, maxTextEvent) {
+		v.queue(inputEvent{Kind: "text", Text: piece})
+	}
 }

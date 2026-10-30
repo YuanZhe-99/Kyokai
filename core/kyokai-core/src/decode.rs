@@ -22,6 +22,9 @@ enum Decoder {
     /// VideoToolbox's H.264 and HEVC.
     #[cfg(target_os = "macos")]
     Vt(crate::vt::Decoder),
+    /// A NanoKVM's own pictures (Raw), each a JPEG.
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    Jpeg(crate::kvm::JpegDecoder),
 }
 
 /// A decoder kept between calls.
@@ -50,6 +53,8 @@ pub fn open(start: &[u8]) -> Result<u64, String> {
             width: s.width,
             height: s.height,
         },
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+        crate::kvm::RAW => Decoder::Jpeg(crate::kvm::JpegDecoder),
         name if crate::soft::Codec::from_name(name).is_some() => Decoder::Soft(
             crate::soft::Decoder::new(crate::soft::Codec::from_name(name).expect("checked"))?,
         ),
@@ -101,11 +106,13 @@ pub fn decode(id: u64, frame: &[u8], rgba: &mut Vec<u8>) -> Result<Option<(u32, 
         Decoder::Mf { dec, width, height } => dec.decode(frame, *width, *height, rgba),
         #[cfg(target_os = "macos")]
         Decoder::Vt(dec) => dec.decode(frame, rgba),
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+        Decoder::Jpeg(dec) => dec.decode(frame, rgba),
     }
 }
 
 /// Which decoder a handle is, by name (`videotoolbox`, `media-foundation`,
-/// `libvpx`, `libaom`; empty for the test pattern), and whether it decodes
+/// `libvpx`, `libaom`, `jpeg`; empty for the test pattern), and whether it decodes
 /// in hardware, as it reports.
 /// Returns: None for an unknown handle.
 pub fn info(id: u64) -> Option<(&'static str, bool)> {
@@ -117,6 +124,8 @@ pub fn info(id: u64) -> Option<(&'static str, bool)> {
         Decoder::Mf { dec, .. } => ("media-foundation", dec.hardware()),
         #[cfg(target_os = "macos")]
         Decoder::Vt(dec) => ("videotoolbox", dec.hardware()),
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+        Decoder::Jpeg(_) => ("jpeg", false),
     })
 }
 

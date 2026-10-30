@@ -802,6 +802,12 @@ impl Network {
         Ok(id)
     }
 
+    /// Runs work of the core's own on the network's runtime (this
+    /// computer's own NanoKVM session, `session::local_kvm`).
+    pub fn spawn(&self, work: impl Future<Output = ()> + Send + 'static) {
+        self.rt.spawn(work);
+    }
+
     /// What dials devices for the core's own connections (status watches).
     pub fn dialer(&self) -> Dialer {
         Dialer {

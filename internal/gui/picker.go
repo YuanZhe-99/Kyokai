@@ -51,6 +51,9 @@ func kindOffered(kind string, s *localapi.SystemSample, tunnels bool) bool {
 	if kind == actionAI {
 		return s.AI && slices.Contains(s.Offers, localapi.PermRunAITask)
 	}
+	if kind == serviceNanokvm {
+		return s.Nanokvm && slices.Contains(s.Offers, localapi.PermUseNanokvm)
+	}
 	perm := map[string]string{serviceSSH: localapi.PermUseSSH, serviceRDP: localapi.PermUseRDP, serviceVNC: localapi.PermUseVNC}[kind]
 	return tunnels && slices.Contains(s.Services, kind) && slices.Contains(s.Offers, perm)
 }
@@ -59,7 +62,7 @@ func kindOffered(kind string, s *localapi.SystemSample, tunnels bool) bool {
 // AI task.
 func kindName(kind string) string {
 	switch kind {
-	case serviceSSH, serviceRDP, serviceVNC:
+	case serviceSSH, serviceRDP, serviceVNC, serviceNanokvm:
 		return serviceName(kind)
 	case actionAI:
 		return L.HomeOpenAI()
@@ -70,7 +73,7 @@ func kindName(kind string) string {
 // kindIcon is a kind of pane's icon.
 func kindIcon(kind string) *ui.SVG {
 	switch kind {
-	case serviceSSH, serviceRDP, serviceVNC:
+	case serviceSSH, serviceRDP, serviceVNC, serviceNanokvm:
 		return serviceIcon(kind)
 	case actionAI:
 		return navAI
@@ -79,13 +82,14 @@ func kindIcon(kind string) *ui.SVG {
 }
 
 // pickRows are the rows the picker lists for a kind and the words typed:
-// for an AI task, this computer first; a Device ID typed that no row has,
+// for an AI task, and for a NanoKVM USB when ownKvm (its devices are
+// chosen here), this computer first; a Device ID typed that no row has,
 // or an address typed (with a dot or a colon, or anything without spaces
 // that nothing else matches); the devices this one knows (greyed with the
 // reason when they do not offer the kind); then for the desktop, the
 // devices of my networks never connected to. The words match a name, a
 // Device ID (spaces aside) or an address.
-func pickRows(kind, query string, rows []deviceRow, watched map[string]*localapi.SystemSample, online map[string]localapi.NetworkDevice, others []networkOther, success, warning, muted ui.Color) []pickRow {
+func pickRows(kind, query string, ownKvm bool, rows []deviceRow, watched map[string]*localapi.SystemSample, online map[string]localapi.NetworkDevice, others []networkOther, success, warning, muted ui.Color) []pickRow {
 	words := strings.Fields(strings.ToLower(query))
 	match := func(texts ...string) bool {
 		hay := strings.ToLower(strings.Join(texts, " "))
@@ -99,6 +103,9 @@ func pickRows(kind, query string, rows []deviceRow, watched map[string]*localapi
 	var out, found []pickRow
 	if kind == actionAI && match(L.PickThisComputer()) {
 		out = append(out, pickRow{key: selfID, device: selfID, name: L.PickThisComputer(), note: L.PickThisComputerNote(), dot: success, ok: true})
+	}
+	if kind == serviceNanokvm && ownKvm && match(L.PickThisComputer()) {
+		out = append(out, pickRow{key: selfID, device: selfID, name: L.PickThisComputer(), note: L.PickThisComputerKvm(), dot: success, ok: true})
 	}
 	for _, r := range rows {
 		var addrs []string
@@ -206,7 +213,7 @@ func (a *App) pickerView(c *ui.Context, at string, anchor ui.Element) {
 	}
 	others := networkOthers(st.Network.Networks, rows, st.DeviceID)
 	a.mu.Unlock()
-	list := pickRows(p.kind, p.query, rows, watched, online, others, t.Success, t.Warning, t.TextMuted)
+	list := pickRows(p.kind, p.query, a.ownKvmReady(), rows, watched, online, others, t.Success, t.Warning, t.TextMuted)
 	chosen := slices.IndexFunc(list, func(r pickRow) bool { return r.key == p.chosen && r.ok })
 	moved := false
 	open := true
@@ -398,6 +405,13 @@ func (a *App) pickOpen(p pickerState, r pickRow) {
 	z := p.zone
 	if z == zoneMiddle {
 		z = zoneRight
+	}
+	if r.device == selfID && p.kind == serviceNanokvm {
+		key := a.openOwnNanokvm()
+		if target != nil && a.tabFor(key) != target {
+			a.dropTab(key, a.main, target, z)
+		}
+		return
 	}
 	if r.device == selfID {
 		a.openAISession("", "", "", target, z)

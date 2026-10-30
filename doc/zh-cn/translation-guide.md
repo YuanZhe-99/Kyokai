@@ -129,6 +129,9 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | tunnel (to a service) | 隧道 |
 | status watcher / see this computer's status | 状态查看者 / 查看本机状态 |
 | Remote Desktop (RDP) / Screen Sharing (VNC) | 远程桌面（RDP） / 屏幕共享（VNC） |
+| capture card / serial port (NanoKVM USB) | 采集卡 / 串口 |
+| the wired computer (behind a NanoKVM USB) | 有线连接的电脑 |
+| Raw (codec) | 原始 |
 | input paused | 输入已暂停 |
 | input method / composition (IME) | 输入法 / 输入组合 |
 | keyboard grab / the grab steps aside | 键盘抓取 / 抓取让开 |

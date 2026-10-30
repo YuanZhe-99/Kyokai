@@ -2,7 +2,8 @@
 
 A controller reaches a host's own SSH server, Remote Desktop or VNC (Screen Sharing on macOS)
 through a tunnel inside a Kyokai session, to the host's loopback. Nothing listens on the network
-for them: the services stay where they are, reached only by whoever Kyokai admitted.
+for them: the services stay where they are, reached only by whoever Kyokai admitted. A host may
+also offer the computer wired to it through a NanoKVM USB ([NanoKVM USB](#nanokvm-usb)).
 
 ## Services
 
@@ -88,6 +89,9 @@ secret. Private keys never leave the engine: the SSH client signs through `keys.
 - Saved service passwords stay in the engine's store and reach the GUI's client only through
   `credentials.get`, at its sign-in, for the owner or the operator; never in the status or a log
   ([security.md](security.md)).
+- A NanoKVM USB gives whoever is admitted the wired computer's keyboard and mouse: whatever that
+  computer lets its own keyboard do (its sign-in screen, its firmware setup). Its permission is
+  therefore off by default and asks the host's user.
 
 ## Clients
 
@@ -160,6 +164,67 @@ is a pane like a desktop's ([gui.md](gui.md), "Connections").
   modifiers and text as text; in every mode the controller's input method is off in the picture,
   as in a desktop's. The clipboard's text crosses while the pane is in front: this
   computer's goes as the pane comes in front, the other desktop's comes back as it changes.
-  Ctrl+Alt+Del is in Actions.
+  Actions has Type the clipboard (this computer's clipboard text typed as keys: Remote Desktop by
+  scan codes and Unicode key events, VNC by keysyms) and Ctrl+Alt+Del.
 - **Sign-ins kept**: see the sign-in method above; SSH also saves the server's key pinned on first
   use, with the remembered method and user when the key is new to a remembered sign-in.
+
+## NanoKVM USB
+
+A host may offer the computer wired to it through Sipeed's NanoKVM USB: a UVC capture card for
+that computer's HDMI output and a CH340 serial chip that types and points on it through its USB
+keyboard and mouse (the CH9329 command frames at 57,600 baud). A controller sees and operates that
+computer in a pane of its own, as a desktop; nothing of the host's own screen, input, sound,
+clipboard or AI reaches it.
+
+- **Choosing it.** Under Access, "NanoKVM USB", the host's user chooses the capture card and the
+  serial port and turns "Offer it to other devices" on (`access.settings`
+  `{nanokvm: {on, video, serial}}`; on without both is refused; the status says `nanokvm`).
+  `nanokvm.devices` lists this computer's capture cards and USB serial ports (`{video, serial,
+  suggested}`, each port `{id, name, nanokvm}`) and suggests the pair that looks like one NanoKVM:
+  the MacroSilicon capture chip (USB vendor 345F) and the CH340 (1A86:7523) on the same hub, or
+  the only one of each. Linux lists V4L2 capture nodes and `ttyUSB`/`ttyACM` ports from sysfs;
+  Windows, Media Foundation's video capture devices and the Ports class, paired by their hub in the
+  device tree; macOS, AVFoundation's external devices and `/dev/cu.usbserial*`,
+  `/dev/cu.wchusbserial*` and `/dev/cu.usbmodem*`, paired only when there is one of each. Nothing
+  is offered until the host's user turns it on.
+- **On this computer.** Its own user opens it too, without a network session, a password or a
+  permission, as soon as its devices are chosen (offered or not): `session.connect` to this
+  device's own Device ID with `nanokvm` (`session::local_kvm`) lists a controller session whose
+  host side runs in the same engine, the two joined in memory. Raw is its Auto (where the host
+  can send it): nothing is encoded or sent over a network. The host's user always wins: while a
+  controller's NanoKVM session is connected the request answers `nanokvm-in-use`, and with
+  `take_over` it ends that session first and opens the serial port once it is free (3 seconds at
+  most, else `service-down`); while it is open or opening, controllers asking for it are `busy`.
+  Home's This device card (Open), Access (Open), the + picker's This computer row and search open
+  it, as a pane named This computer.
+- **Admission.** Its permission is `use-nanokvm`, asked for alone like a service's (off by
+  default under "With a correct password"). A host that does not offer it refuses as
+  `service-down` before anyone is asked, and so does one whose serial port does not open (another
+  program holds it, no permission); one session at a time (`busy`). Its verdict carries no resume
+  token: a dropped session ends and the viewer connects again. The controller names it in its
+  hello only to a host that announced `nanokvm` ([protocol.md](protocol.md), "NanoKVM sessions");
+  Home's card and the + picker offer it while the host's status sample says `nanokvm` and the saved
+  sign-in grants it.
+- **The picture.** The host reads the card's MJPEG at 1920×1080 or the size it gives, at its
+  fastest rate (V4L2 on Linux, Media Foundation on Windows; AVFoundation on macOS, which decodes
+  it); a picture that is not one whole JPEG (the first after it opens) is dropped. By default it
+  decodes them (zune-jpeg) and encodes them like a screen, in the codec the viewer chooses, with
+  the same QoS and acknowledgements, an unchanged picture not encoded again. **Raw** — the codec
+  `mjpeg`, offered by a Linux or Windows host to a controller that decodes it, never chosen by
+  Auto — sends the card's JPEG as it comes, each a key frame, at the viewer's frame-rate cap: no
+  encoding on the host and no second compression, but some 50 to 120 Mbit/s at 1080p with no
+  bitrate control, for a local network. A card that does not open shows the placeholder
+  `nanokvm`, tried again like a screen.
+- **Input.** Keys by position go to the wired computer as USB usages (US positions, which its own
+  layout reads), keys by name with their modifiers, text typed as a US keyboard types it
+  (characters without a key there are skipped), the pointer absolute across the picture (0–4095)
+  with three buttons and the wheel. Moves are merged while the serial line is busy (it carries
+  some 400 frames a second); presses, releases and keys never are. Every second the host asks the
+  device how the wired computer stands (GET_INFO): its Caps Lock and Num Lock are brought in line
+  with the controller's before a letter or a keypad key, as on a desktop. Actions has Type the
+  clipboard (as text, above), Ctrl+Alt+Del and Wake (a Shift press); everything held is released when the session ends.
+- **Platforms.** On Linux the engine's user needs the capture card (the `video` group, or the
+  seat's) and the serial port (`dialout`; `uucp` on Arch). macOS asks for the Camera the first
+  time a card opens (`NSCameraUsageDescription` and `com.apple.security.device.camera`). In the
+  helper modes the engine opens the devices itself.

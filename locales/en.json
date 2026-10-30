@@ -615,6 +615,35 @@
   "LogsFileKind": "Text file",
   "LogsSaved": "Logs saved.",
   "NameSaved": "Name saved.",
+  "NanokvmFound": "Found a NanoKVM USB: its capture card and serial port are suggested.",
+  "NanokvmHint": "A NanoKVM USB plugged into this computer captures another computer's HDMI output and types and points on it through its USB. Choose its capture card and serial port; Kyokai suggests the pair it finds.",
+  "NanokvmInUse": "{name} is using this NanoKVM USB. Taking over ends their session.",
+  "@NanokvmInUse": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "NanokvmLookAgain": "Look again",
+  "NanokvmLooking": "Looking for devices…",
+  "NanokvmMissing": "{id} (not connected)",
+  "@NanokvmMissing": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "NanokvmNoneFound": "None found",
+  "NanokvmOffer": "Offer it to other devices",
+  "NanokvmOfferAbout": "Other devices open it like a service, one at a time, with the permission to use it.",
+  "NanokvmOpening": "Opening the NanoKVM USB…",
+  "NanokvmSerial": "Serial port",
+  "NanokvmSerialAbout": "The NanoKVM's keyboard and mouse for the wired computer.",
+  "NanokvmTakeOver": "Take over",
+  "NanokvmVideo": "Capture card",
+  "NanokvmVideoAbout": "The NanoKVM's HDMI capture: what the wired computer shows.",
   "NatCone": "Cone (easy to connect directly)",
   "NatOpen": "Open internet",
   "NatSymmetric": "Symmetric (direct connections are hard)",
@@ -781,6 +810,7 @@
   "PermShortClipboard": "Clipboard",
   "PermShortInput": "Mouse & keyboard",
   "PermShortStatus": "See status",
+  "PermUseNanokvm": "Use the computer wired to its NanoKVM USB",
   "PermUseRDP": "Connect to its Remote Desktop",
   "PermUseSSH": "Connect to its SSH",
   "PermUseVNC": "Connect to its VNC or Screen Sharing",
@@ -828,6 +858,7 @@
   "PickSearch": "Name, Device ID or address",
   "PickStartAI": "Start AI task",
   "PickThisComputer": "This computer",
+  "PickThisComputerKvm": "The NanoKVM USB plugged in here",
   "PickThisComputerNote": "Runs here, with this computer's providers",
   "ProtectedAbout": "Leaves only AI settings and tasks until the permanent password turns it off.",
   "ProtectedConfirm": "Kyokai will show only the AI settings and AI tasks. To change anything else, you'll need the permanent password to turn protected mode off. Connection requests and devices connected here still show, so you can always deny and disconnect them.",
@@ -1001,6 +1032,7 @@
   "ServiceMethodPassword": "Password",
   "ServiceMethodPasswordOnly": "Password only",
   "ServiceMethodScreen": "On the remote screen",
+  "ServiceNanokvm": "NanoKVM USB",
   "ServiceNeedsSignIn": "This server needs a sign-in. Choose another way to sign in.",
   "ServiceNoAnswer": "The server did not answer the sign-in. After failed sign-ins a server can hold new ones for several minutes: wait a few minutes, check the user name and password, then reconnect.",
   "ServiceNoTunnel": "That device runs an older Kyokai: update it there to reach its services.",
@@ -1496,8 +1528,10 @@
   "ViewerClipHint": "Only the device whose tab is in front shares the clipboard. What crossed is listed here until the tab closes, and kept nowhere else.",
   "ViewerClipShare": "Share the clipboard with this device",
   "ViewerClipboard": "Clipboard",
+  "ViewerClipboardNoText": "The clipboard has no text to type.",
   "ViewerCodec": "Codec",
   "ViewerCodecAuto": "Auto",
+  "ViewerCodecRaw": "Raw (MJPEG)",
   "ViewerCtrlAltDel": "Ctrl+Alt+Del",
   "ViewerDecoding": "Decoding (this computer): {codec}, {impl}",
   "@ViewerDecoding": {
@@ -1540,6 +1574,7 @@
   "ViewerHostAsleep": "The screen there is asleep. Waking it…",
   "ViewerHostCannotCapture": "That computer can't share its screen.",
   "ViewerHostDark": "The screen there is off. Waking it…",
+  "ViewerHostNanokvm": "The NanoKVM's capture card on that computer isn't available.",
   "ViewerHostNoCodec": "This device can't show the picture that computer sends.",
   "ViewerHostNoDisplay": "The computer there shows no screen right now. Trying again…",
   "ViewerHostRestarting": "Starting the picture again…",
@@ -1633,6 +1668,7 @@
     }
   },
   "ViewerToolbar": "Connection controls",
+  "ViewerTypeClipboard": "Type the clipboard",
   "ViewerUnsupported": "This picture uses {codec}, which this version can't show yet.",
   "@ViewerUnsupported": {
     "placeholders": {

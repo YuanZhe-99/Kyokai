@@ -342,6 +342,16 @@ func (a *App) thisDeviceCard(c *ui.Context) {
 		default:
 			a.passwordRow(c, "")
 		}
+		// The NanoKVM USB plugged in here, once its devices are chosen.
+		if k := st.Nanokvm; k != nil && k.Video != "" && k.Serial != "" {
+			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, kindNanokvm).FontSize(navIconSize).TextColor(t.TextMuted)
+				ui.Text(c, L.ServiceNanokvm()).Grow(1)
+				if ui.Button(c.Key("own-kvm"), L.ActionOpen()).Clicked() {
+					a.openOwnNanokvm()
+				}
+			})
+		}
 		if note := secretsNote(st.Persistence); note != "" && st.Persistence != "os-store" {
 			ui.Text(c, note).FontSize(sizeSmall).TextColor(textTone(t, t.Warning))
 		}
@@ -399,8 +409,8 @@ func (a *App) passwordRow(c *ui.Context, prefix string) {
 }
 
 // openAs are Open as's choices on Home, in its order: the desktop, SSH,
-// Remote Desktop, VNC, an AI task.
-var openAs = []string{"", serviceSSH, serviceRDP, serviceVNC, actionAI}
+// Remote Desktop, VNC, an AI task, NanoKVM USB.
+var openAs = []string{"", serviceSSH, serviceRDP, serviceVNC, actionAI, serviceNanokvm}
 
 // connectCard is Home's Connect to a device: a Device ID or an address,
 // Connect (Enter too), and what to open there (Open as). The password is
@@ -433,7 +443,7 @@ func (a *App) connectCard(c *ui.Context) {
 		as.Children(func() {
 			ui.Text(c, L.HomeOpenAs()).FontSize(sizeSmall).TextColor(t.TextMuted)
 			idx := max(slices.Index(openAs, f.as), 0)
-			kinds := []string{L.PaneDesktop(), L.ServiceSSH(), L.ServiceRDP(), L.ServiceVNC(), L.HomeOpenAI()}
+			kinds := []string{L.PaneDesktop(), L.ServiceSSH(), L.ServiceRDP(), L.ServiceVNC(), L.HomeOpenAI(), L.ServiceNanokvm()}
 			var changed bool
 			if narrow {
 				cur := kinds[idx]
@@ -469,7 +479,7 @@ func (a *App) connectAs(device, address, as string, placed func(key string)) {
 	open := func(device, address string) {
 		key := device
 		switch as {
-		case serviceSSH, serviceRDP, serviceVNC:
+		case serviceSSH, serviceRDP, serviceVNC, serviceNanokvm:
 			key = a.openService(device, address, as)
 		case actionAI:
 			key = a.openAISession(device, address, "", nil, zoneMiddle).tabKey()
@@ -647,6 +657,8 @@ func serviceIcon(service string) *ui.SVG {
 		return kindSSH
 	case serviceRDP:
 		return kindRDP
+	case serviceNanokvm:
+		return kindNanokvm
 	}
 	return kindVNC
 }
@@ -658,19 +670,22 @@ const actionAI = "ai"
 // services the host reports answering, and its AI when it is ready, each
 // only when the saved password or key grants it without asking (what
 // needs the host's user stays in the ⋯ menu); the most used first, then
-// Remote Desktop, SSH, VNC and AI.
+// Remote Desktop, SSH, VNC, AI and NanoKVM USB.
 // Inputs: s is the host's current sample (nil: none, so nothing); uses
 // counts how often each action was used for this device.
 func cardActions(s *localapi.SystemSample, tunnels bool, uses map[string]int) []string {
 	if s == nil {
 		return nil
 	}
-	perm := map[string]string{serviceRDP: localapi.PermUseRDP, serviceSSH: localapi.PermUseSSH, serviceVNC: localapi.PermUseVNC, actionAI: localapi.PermRunAITask}
+	perm := map[string]string{serviceRDP: localapi.PermUseRDP, serviceSSH: localapi.PermUseSSH, serviceVNC: localapi.PermUseVNC, actionAI: localapi.PermRunAITask, serviceNanokvm: localapi.PermUseNanokvm}
 	var out []string
-	for _, act := range []string{serviceRDP, serviceSSH, serviceVNC, actionAI} {
+	for _, act := range []string{serviceRDP, serviceSSH, serviceVNC, actionAI, serviceNanokvm} {
 		ready := tunnels && slices.Contains(s.Services, act)
-		if act == actionAI {
+		switch act {
+		case actionAI:
 			ready = s.AI
+		case serviceNanokvm:
+			ready = s.Nanokvm
 		}
 		if ready && slices.Contains(s.Offers, perm[act]) {
 			out = append(out, act)

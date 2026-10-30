@@ -110,6 +110,11 @@ func (a *App) paletteItems() []paletteItem {
 	out = append(out,
 		paletteItem{group: actions, title: L.SidebarNew(), hint: L.ActionOpen(), icon: shellPlus, do: func() { a.openPicker(at, false, "", zoneMiddle) }},
 		paletteItem{group: actions, title: L.AINewSession(), sub: L.PickThisComputer(), hint: L.ActionOpen(), icon: navAI, do: func() { a.openAISession("", "", "", nil, zoneMiddle) }},
+	)
+	if st != nil && st.Nanokvm != nil && st.Nanokvm.Video != "" && st.Nanokvm.Serial != "" {
+		out = append(out, paletteItem{group: actions, title: L.ServiceNanokvm(), sub: L.PickThisComputer(), hint: L.ActionOpen(), icon: kindNanokvm, do: func() { a.openOwnNanokvm() }})
+	}
+	out = append(out,
 		paletteItem{group: actions, title: L.NavSettings(), hint: L.ActionOpen(), icon: shellGear, do: func() { a.openSettings(pageGeneral) }},
 		paletteItem{group: actions, title: sidebar, icon: shellSidebar, do: func() { a.setRail(!rail) }},
 	)

@@ -117,6 +117,8 @@ var (
 	remoteDesktopSVG []byte
 	//go:embed assets/icons/vnc.svg
 	vncSVG []byte
+	//go:embed assets/icons/nanokvm.svg
+	nanokvmSVG []byte
 
 	shellSidebar   = ui.MustParseSVG(sidebarSVG)
 	shellPlus      = ui.MustParseSVG(plusSVG)
@@ -134,6 +136,7 @@ var (
 	kindSSH        = ui.MustParseSVG(terminalSVG)
 	kindRDP        = ui.MustParseSVG(remoteDesktopSVG)
 	kindVNC        = ui.MustParseSVG(vncSVG)
+	kindNanokvm    = ui.MustParseSVG(nanokvmSVG)
 )
 
 // The icons of Settings' rows (settings.go), in the same style.
@@ -472,7 +475,7 @@ const (
 	homeOtherH      float32 = 58  // a device in my networks never connected to
 	homeTopGap      float32 = 14  // between This device and Connect to a device
 	homeTwoColumnsW float32 = 640 // the room they need side by side
-	openAsSegmentsW float32 = 440 // Connect's Open as as five segments, in the widest language with room to spare
+	openAsSegmentsW float32 = 560 // Connect's Open as as six segments, in the widest language with room to spare
 	openAsMenuW     float32 = 200 // and as a menu in less
 	homeColumns     int     = 3   // Home's device cards side by side, at most
 	tileGap         float32 = 8   // between a card's status tiles

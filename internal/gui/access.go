@@ -25,6 +25,7 @@ func (a *App) accessView(c *ui.Context) {
 		a.signInSection(c)
 		a.grantsSection(c)
 		a.portsSection(c)
+		a.nanokvmSection(c)
 		a.watchersSection(c)
 		a.trustedSection(c)
 		a.mu.Lock()
@@ -317,6 +318,8 @@ func permissionIcon(p string) *ui.SVG {
 		return kindRDP
 	case localapi.PermUseVNC:
 		return kindVNC
+	case localapi.PermUseNanokvm:
+		return kindNanokvm
 	}
 	return navPermissions
 }
@@ -336,6 +339,8 @@ func permissionShort(p string) string {
 		return L.ServiceRDP()
 	case localapi.PermUseVNC:
 		return L.ServiceVNC()
+	case localapi.PermUseNanokvm:
+		return L.ServiceNanokvm()
 	}
 	return permissionLabel(p)
 }
