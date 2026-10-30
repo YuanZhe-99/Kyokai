@@ -427,7 +427,9 @@ hardware, outside Kyokai.
 ## Clipboard
 
 While a session has `clipboard`, both engines look at their clipboard twice a second (on Windows
-reading it only when its sequence number changed) and offer what was copied since the session
+reading it only when its sequence number changed; on Linux through X11, or Wayland's data-control
+protocol where the desktop has it — KDE, wlroots; GNOME's Wayland clipboard reaches Kyokai through
+Xwayland) and offer what was copied since the session
 began to the other side, which puts it on its own clipboard; what arrived this way is not offered
 back. What was on a clipboard before the session is not offered,
 nor is text that Kyokai itself copied (the Device ID, a password: on Windows the clipboard's owner

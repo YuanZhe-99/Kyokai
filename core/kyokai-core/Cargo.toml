@@ -73,6 +73,9 @@ x11rb = { version = "0.13.2", features = ["shm", "randr", "xtest", "xinput", "re
 # stream the pictures come in (doc/en-us/computer-use.md, "Linux").
 ashpd = { version = "0.13.13", default-features = false, features = ["tokio", "screencast", "remote_desktop"] }
 pipewire = "0.10.1"
+# The clipboard on Wayland too, through the data-control protocol (KDE,
+# wlroots; GNOME's goes through Xwayland).
+arboard = { version = "3.7.0", default-features = false, features = ["image-data", "wayland-data-control"] }
 # logind and the desktop's screen saver over D-Bus (keeping awake, the sleep
 # watch); the same zbus the portals use.
 zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }

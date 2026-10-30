@@ -254,7 +254,7 @@ macOS 报告显示器休眠（`CGDisplayIsAsleep`、`CGGetOnlineDisplayList`）�
 
 ## 剪贴板
 
-会话拥有 `clipboard` 时，两端的引擎每秒查看两次各自的剪贴板（在 Windows 上只在其序列号变化时读取），把会话开始后复制的内容提供给对方，
+会话拥有 `clipboard` 时，两端的引擎每秒查看两次各自的剪贴板（在 Windows 上只在其序列号变化时读取；在 Linux 上经 X11，或桌面支持时经 Wayland 的 data-control 协议——KDE、wlroots；GNOME 的 Wayland 剪贴板经 Xwayland 到达 Kyokai），把会话开始后复制的内容提供给对方，
 对方将其放到自己的剪贴板上；以这种方式收到的内容不会再被送回。会话开始前剪贴板上已有的内容不会被提供，Kyokai 自己复制的文本（设备 ID、密码：在 Windows 上，
 剪贴板的所有者是 Kyokai 的进程）也不会。支持最大 1 MiB 的文本，或以 PNG 发送、最大 3840×2160 的图片（最多 3 MiB；两者都有时优先文本；文件见“文件”）。
 在助手模式下不接收来自控制端的图片，因为助手及其代理都有特权，从不解码远程媒体（[run-modes.md](run-modes.md)）。
