@@ -7,7 +7,10 @@
 - The 32-byte master key comes from the operating system: on Windows a DPAPI blob for the current
   user (`master.key`), on macOS a generic password in the login Keychain (service
   `com.yuanzhe.kyokai`, account `master-key` or `master-key.<profile>`; the macOS helper, as root,
-  in the System keychain, deleted with its state).
+  in the System keychain, deleted with its state), on Linux an item in the Secret Service's default
+  collection (GNOME Keyring, KWallet; attributes `service` `com.yuanzhe.kyokai` and `account` as
+  on macOS), reached over the session D-Bus with an encrypted session; dismissing the keyring's
+  unlock prompt counts as refused, as a denied Keychain does.
 - Without a working OS store nothing is persisted: secrets live in memory for that run and the
   interface says the Device ID will change. A store that exists but cannot be decrypted is never
   overwritten; that run uses a temporary identity and says so, and Start over moves it aside

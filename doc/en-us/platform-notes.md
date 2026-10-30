@@ -4,7 +4,7 @@
 |---|---|
 | Windows (x64, ARM64) | 0.1.0 foundation implemented and verified on Windows 11 ARM64, x64 under emulation (below). |
 | macOS (Apple silicon, Intel) | Built and tested on GitHub's macOS runners (Apple silicon: full gate including `scripts/smoke.sh user` and the unsigned package; Intel: build and Go tests); run on a MacBook Pro (M1, macOS 27.0.1) on 2026-10-17 (below). |
-| Linux | Not supported yet. |
+| Linux | In progress (0.6.7, `PLAN.md`): the core, the engine and the local API build and pass the gate on Debian 13 x86_64 (below); no capture, input or packages yet. |
 
 ## Windows
 
@@ -114,6 +114,12 @@ Studio 2026 without its Clang component):
 | 0.6.5 login start and automatic install, on Windows (2026-10-28) | not run on a Mac. The cause of the window at a macOS login was read from MyGo v0.7.1's source (the launch's Apple Event asked in `applicationWillFinishLaunching:`, before AppKit dispatches it) and the fix reads it inside `applicationDidFinishLaunching:`; built and vetted for darwin/arm64 only, so a login on a Mac is to confirm Kyokai stays in the tray. The automatic install's decision has table tests (`TestAutoInstallNow`); no automatic install has run against a published release |
 | 0.6.6 official EasyTier core and the half-screen keyboard, on Windows (2026-10-28) | on the Windows ARM64 computer, two engines (development profiles) on official 2.7.0 cores: `ctl cores` listed 2.7.0 (preview) and 2.6.4 among the releases; `ctl core-install` downloaded 2.7.0, checked its digest and kept the core, the CLI and two libraries; with one network whose TOML gave one engine a listener on this computer's LAN address, both came online with a DHCP address and listed each other as direct, and no runtime file was left. A session from one to the other went through the SOCKS5 portal and the other's core to `127.0.0.1:47310`, where the installed Kyokai Helper's by-address listener took it and closed it (failed "broken"); both networks said other devices cannot reach them, the port being taken. A whole session through official cores is still to run on a computer whose port 47310 is free. The spike before it (two cores, plain listeners) carried a connection both ways on 2.6.4 and 2.7.0. The macOS keyboard change (frontmost application) was not built or run on a Mac here |
 | Keychain | a test binary that reads a Keychain item another (differently signed) binary created raises an access prompt, which hangs a headless run; tests therefore use a fresh profile per run and delete its item when they finish (the core's FFI test, `TestRealLibrary` and `scripts/smoke.sh`; every other test keeps secrets in memory), and the shipped app is always signed with the same certificate |
+
+## Linux
+
+| Check | Result |
+|---|---|
+| Core, engine and local API (2026-10-29) | on Debian 13 x86_64 (GNOME on X11, gnome-keyring): the whole gate passes (Go tests with and without cgo, `mygo vet`, clippy, 226 + 72 Rust tests, `cargo deny`); the codecs built with vcpkg's `x64-linux` triplet; `scripts/smoke.sh user` passes (status, password and regenerate, a second engine refused, shutdown, the same Device ID after a restart, the key read back from the Secret Service and the smoke profile's item removed after). The store's test kept a secret across a reopen in gnome-keyring, and with the session bus unreachable stayed in memory and wrote no file. Peer credentials report this process's uid, gid, pid and groups. Not run: a GUI, a second machine, KWallet, Wayland |
 
 ## Known limitations
 

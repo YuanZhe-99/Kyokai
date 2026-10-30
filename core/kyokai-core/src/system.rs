@@ -1000,7 +1000,160 @@ mod imp {
     }
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(target_os = "linux")]
+mod imp {
+    //! The sample from procfs and sysfs; no GPU load and no disk rates yet.
+    use super::{Battery, Usage};
+    use std::fs;
+
+    /// User (with nice), system (with interrupts) and total processor ticks
+    /// of every core, from /proc/stat's `cpu` line.
+    pub fn cpu_times() -> Option<(u64, u64, u64)> {
+        parse_stat(&fs::read_to_string("/proc/stat").ok()?)
+    }
+
+    /// `cpu_times` from the text of /proc/stat: user, nice, system, idle,
+    /// iowait, irq, softirq, steal (guest time is already in user).
+    pub(super) fn parse_stat(text: &str) -> Option<(u64, u64, u64)> {
+        let line = text.lines().find(|l| l.starts_with("cpu "))?;
+        let t: Vec<u64> = line
+            .split_whitespace()
+            .skip(1)
+            .take(8)
+            .map(|v| v.parse().ok())
+            .collect::<Option<_>>()?;
+        if t.len() < 4 {
+            return None;
+        }
+        let at = |i: usize| t.get(i).copied().unwrap_or(0);
+        Some((at(0) + at(1), at(2) + at(5) + at(6), t.iter().sum()))
+    }
+
+    /// Memory in use as `free` counts it: total less what is available.
+    pub fn memory() -> Usage {
+        fs::read_to_string("/proc/meminfo")
+            .map(|t| parse_meminfo(&t))
+            .unwrap_or_default()
+    }
+
+    /// `memory` from the text of /proc/meminfo (kB values).
+    pub(super) fn parse_meminfo(text: &str) -> Usage {
+        let kb = |key: &str| {
+            text.lines()
+                .find_map(|l| l.strip_prefix(key)?.strip_prefix(':'))
+                .and_then(|v| v.split_whitespace().next()?.parse::<u64>().ok())
+                .map(|v| v * 1024)
+        };
+        let total = kb("MemTotal").unwrap_or(0);
+        let available = kb("MemAvailable").unwrap_or(total);
+        Usage {
+            used: total.saturating_sub(available),
+            total,
+        }
+    }
+
+    pub fn uptime() -> u64 {
+        fs::read_to_string("/proc/uptime")
+            .ok()
+            .and_then(|t| t.split_whitespace().next()?.parse::<f64>().ok())
+            .map_or(0, |s| s as u64)
+    }
+
+    /// The file system holding the user's home folder, else the root.
+    pub fn disk() -> Usage {
+        let home = std::env::var("HOME").unwrap_or_default();
+        for path in [home.as_str(), "/"] {
+            if path.is_empty() {
+                continue;
+            }
+            let Ok(c) = std::ffi::CString::new(path) else {
+                continue;
+            };
+            // SAFETY: a plain structure filled by the call.
+            let mut fs: libc::statvfs = unsafe { std::mem::zeroed() };
+            // SAFETY: a zero-terminated path and an out structure.
+            if unsafe { libc::statvfs(c.as_ptr(), &mut fs) } == 0 {
+                let total = fs.f_blocks * fs.f_frsize;
+                let free = fs.f_bavail * fs.f_frsize;
+                return Usage {
+                    used: total.saturating_sub(free),
+                    total,
+                };
+            }
+        }
+        Usage::default()
+    }
+
+    /// Bytes received and sent by the physical interfaces (those with a
+    /// device in sysfs: no loopback, bridges, tunnels or EasyTier's own).
+    pub fn net_bytes() -> Option<(u64, u64)> {
+        let text = fs::read_to_string("/proc/net/dev").ok()?;
+        Some(parse_net_dev(&text, |name| {
+            fs::exists(format!("/sys/class/net/{name}/device")).unwrap_or(false)
+        }))
+    }
+
+    /// `net_bytes` from the text of /proc/net/dev, over the interfaces
+    /// `physical` accepts.
+    pub(super) fn parse_net_dev(text: &str, physical: impl Fn(&str) -> bool) -> (u64, u64) {
+        let (mut rx, mut tx) = (0u64, 0u64);
+        for line in text.lines().skip(2) {
+            let Some((name, counters)) = line.split_once(':') else {
+                continue;
+            };
+            if !physical(name.trim()) {
+                continue;
+            }
+            let v: Vec<u64> = counters
+                .split_whitespace()
+                .filter_map(|x| x.parse().ok())
+                .collect();
+            if v.len() >= 9 {
+                rx += v[0];
+                tx += v[8];
+            }
+        }
+        (rx, tx)
+    }
+
+    /// The first system battery's charge, from sysfs.
+    pub fn battery() -> Option<Battery> {
+        for entry in fs::read_dir("/sys/class/power_supply").ok()?.flatten() {
+            let dir = entry.path();
+            let read = |f: &str| fs::read_to_string(dir.join(f)).map(|s| s.trim().to_owned());
+            if !read("type").is_ok_and(|t| t == "Battery")
+                || read("scope").is_ok_and(|s| s == "Device")
+            {
+                continue;
+            }
+            let percent = read("capacity").ok()?.parse::<u8>().ok()?.min(100);
+            let charging = read("status").is_ok_and(|s| s == "Charging" || s == "Full");
+            return Some(Battery { percent, charging });
+        }
+        None
+    }
+
+    pub struct Gpu;
+    impl Gpu {
+        pub fn open() -> Gpu {
+            Gpu
+        }
+        pub fn load(&mut self) -> Option<f64> {
+            None
+        }
+    }
+    pub struct DiskCounters;
+    impl DiskCounters {
+        pub fn open() -> DiskCounters {
+            DiskCounters
+        }
+        pub fn rates(&mut self) -> Option<super::DiskIo> {
+            None
+        }
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 mod imp {
     use super::{Battery, Usage};
     pub fn cpu_times() -> Option<(u64, u64, u64)> {
@@ -1041,7 +1194,7 @@ mod imp {
     }
 }
 
-#[cfg(all(test, any(windows, target_os = "macos")))]
+#[cfg(all(test, any(windows, target_os = "macos", target_os = "linux")))]
 mod tests {
     use super::*;
 
@@ -1076,6 +1229,28 @@ mod tests {
         ] {
             assert!(v.get(key).is_some(), "{key}");
         }
+    }
+
+    /// The procfs parsers read the fields a sample needs and nothing else.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn procfs_parses() {
+        let stat = "cpu  10 2 30 400 5 6 7 8 9 0\ncpu0 1 1 1 1 1 1 1 1 0 0\n";
+        assert_eq!(imp::parse_stat(stat), Some((12, 43, 468)));
+        assert_eq!(imp::parse_stat("cpu0 1 2 3 4\n"), None);
+        assert_eq!(imp::parse_stat("cpu  1 x 3 4\n"), None);
+        let mem = "MemTotal:       16000 kB\nMemFree:  1000 kB\nMemAvailable:   6000 kB\n";
+        assert_eq!(
+            imp::parse_meminfo(mem),
+            Usage {
+                used: 10000 * 1024,
+                total: 16000 * 1024
+            }
+        );
+        // Without MemAvailable nothing counts as used.
+        assert_eq!(imp::parse_meminfo("MemTotal: 8 kB\n").used, 0);
+        let dev = "Inter-|   Receive\n face |bytes packets\n    lo: 500 5 0 0 0 0 0 0 600 6 0 0 0 0 0 0\n  eth0: 100 1 0 0 0 0 0 0 200 2 0 0 0 0 0 0\nwlan0:10 1 0 0 0 0 0 0 20 2 0 0 0 0 0 0\n";
+        assert_eq!(imp::parse_net_dev(dev, |n| n != "lo"), (110, 220));
     }
 
     /// The host samples at the slow pace only while every watcher asks for

@@ -1924,12 +1924,14 @@ mod tests {
         for (codec, want) in cases {
             assert_eq!(names(&prefer(order.clone(), *codec)), *want, "{codec:?}");
         }
-        // The offer: what both sides do, in the host's order.
+        // The offer: what both sides do, in the host's order (H.264 only
+        // where this platform has it in ORDER).
         let decode: Vec<String> = ["vp8", "av1", "h264"].map(String::from).to_vec();
-        assert_eq!(
-            offer(&decode, &["h264", "vp9-sw", "av1", "vp8"]),
-            ["h264", "av1", "vp8"]
-        );
+        let want: Vec<&str> = ["h264", "av1", "vp8"]
+            .into_iter()
+            .filter(|c| ORDER.contains(c))
+            .collect();
+        assert_eq!(offer(&decode, &["h264", "vp9-sw", "av1", "vp8"]), want);
         assert_eq!(offer(&decode, &["vp9-sw"]), Vec::<&str>::new());
         assert!(encodable().contains(&"vp9-sw"));
     }

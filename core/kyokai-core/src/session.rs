@@ -2976,6 +2976,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // The viewer's frame-rate cap, when a person's input last came, and the
     // bitrate last set (kbit/s), for the input boost.
     let mut fps_cap = rustdesk_qos::FPS;
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(unused_mut))]
     let mut input_at: Option<Instant> = None;
     let mut last_kbps = 0u32;
     let mut sent_this_second = 0usize;
@@ -3096,7 +3097,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             // old one still unacknowledged are not waited for.
             acked = frame_no;
             s.set_room(IN_FLIGHT);
-            let why = s.why.clone();
+            // A host without screen capture (no capture code for this
+            // system) never gets a picture by trying again.
+            let why = s
+                .why
+                .clone()
+                .filter(|_| s.start.placeholder.as_deref() != Some("cannot-capture"));
             source = Some(s);
             pointer_sent = None;
             reopen_at = None;

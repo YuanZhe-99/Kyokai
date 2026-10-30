@@ -133,8 +133,9 @@ runtime statically, so nothing is resolved through the search path.
 ## Local API
 
 - Transport: an AF_UNIX socket (also on Windows) at `%TEMP%\kyokai\engine.sock` or
-  `$TMPDIR/kyokai-<uid>/engine.sock` (`engine-<profile>.sock` for a profile; `KYOKAI_SOCKET`
-  overrides); newline-delimited JSON with a `version` field (2). One request per connection,
+  `$TMPDIR/kyokai-<uid>/engine.sock` (macOS) or `$XDG_RUNTIME_DIR/kyokai/engine.sock` (Linux; the
+  user's cache folder when it is unset, never the shared `/tmp`) (`engine-<profile>.sock` for a
+  profile; `KYOKAI_SOCKET` overrides); newline-delimited JSON with a `version` field (2). One request per connection,
   except `session.attach`, which keeps its connection and receives the status whenever it
   changes.
 - Requests: `status` (with the network status and `build`, the commit the engine was built from,
@@ -164,6 +165,7 @@ runtime statically, so nothing is resolved through the search path.
   permanent password, a typed password, a provider's API key). A session receives the status after every command that changes it
   and whenever the network's status moves.
 - Authorization comes from the operating system's peer credentials (`LOCAL_PEERCRED` on macOS;
+  `SO_PEERCRED` and `SO_PEERGROUPS` on Linux;
   `SIO_AF_UNIX_GETPEERPID` and the process token's SID on Windows), never from the request: only
   the engine's own user is served; an unreadable identity is refused. The server marks each
   connection's tier in the request's context (`localapi.IsOwner`): the owner, or the helper's
@@ -177,7 +179,7 @@ runtime statically, so nothing is resolved through the search path.
 | `%APPDATA%\Kyokai\` / `~/Library/Application Support/Kyokai/` | The state directory (`Kyokai-<profile>` for a profile) |
 | `secrets.bin` | The secrets store, encrypted ([security.md](security.md)) |
 | `moved.json` | Where this engine's store went in a run-mode switch: while it is there the engine is parked and makes no identity ([run-modes.md](run-modes.md)) |
-| `master.key` (Windows) | The store's key as a DPAPI blob; on macOS the key is in the login Keychain |
+| `master.key` (Windows) | The store's key as a DPAPI blob; on macOS the key is in the login Keychain, on Linux in the Secret Service |
 | `gui.json` | GUI preferences |
 | `ai.json` | AI settings: provider, models, approval policy (no key) |
 | `ai-tasks.json` | Finished AI tasks, without screenshots |

@@ -2,6 +2,13 @@
 
 ## 0.6.7 (not released)
 
+- Linux, first step (`PLAN.md`): the Rust core, the engine and the local API build and pass on Linux.
+  The store's master key is kept in the Secret Service (GNOME Keyring, KWallet); the local API reads
+  the caller from `SO_PEERCRED` and `SO_PEERGROUPS` and its socket lives under `$XDG_RUNTIME_DIR`;
+  the codecs build with vcpkg's `x64-linux` and `arm64-linux` triplets; the system sample comes from
+  procfs. No capture or input yet: a Linux host shows the test pattern.
+- A host that cannot capture on its system (`cannot-capture`) shows the placeholder for good, as
+  documented, instead of reopening the video at once and counting recovery steps.
 - Upstream: MyGo v0.7.3, no interface migration (its one breaking change, pinch zoom in pages, does
   not touch Kyokai, which shows no pages). Checked, unchanged: EasyTier v2.7.0, RustDesk 1.5.0
   (vendored code), vcpkg 2026.10.16, Rust 1.99.1 (checked 2026-10-29).

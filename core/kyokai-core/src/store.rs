@@ -1,6 +1,7 @@
 //! The secrets store: one JSON map of secrets, encrypted with
 //! XChaCha20-Poly1305 under a random master key that the operating system
-//! protects (Windows DPAPI for the user; the macOS login Keychain).
+//! protects (Windows DPAPI for the user; the macOS login Keychain; the
+//! Secret Service's default collection on Linux).
 //!
 //! Without a working OS store nothing is persisted: secrets live in memory
 //! for this run only. An existing store that cannot be decrypted is never
@@ -30,9 +31,10 @@ pub enum Persistence {
     /// untouched and this run keeps secrets in memory.
     Unreadable,
     /// The OS store refused its key (macOS: access to the Keychain item was
-    /// denied); the stored secrets are left untouched, this run keeps
-    /// secrets in memory, and opening again asks again.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    /// denied; Linux: the unlock prompt was dismissed); the stored secrets
+    /// are left untouched, this run keeps secrets in memory, and opening
+    /// again asks again.
+    #[cfg_attr(windows, allow(dead_code))]
     Denied,
 }
 
@@ -129,9 +131,9 @@ impl Secrets {
 /// Returns: whether no key for profile is left outside a state directory.
 #[cfg(test)]
 pub fn forget_master_key(profile: &str) -> bool {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     return os::forget(profile);
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         // DPAPI keeps the key next to the store; elsewhere there is none.
         let _ = profile;
@@ -364,7 +366,149 @@ mod os {
     }
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(target_os = "linux")]
+mod os {
+    //! The master key as an item in the Secret Service's default collection
+    //! (GNOME Keyring, KWallet), found by its service and account attributes.
+    use super::{Persistence, new_key};
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
+    use secret_service::{Collection, EncryptionType, Error, SecretService};
+    use std::collections::HashMap;
+    use std::path::Path;
+    use zeroize::Zeroizing;
+
+    const SERVICE: &str = "com.yuanzhe.kyokai";
+
+    /// Reads the master key, or creates and stores a new one when there is
+    /// none.
+    /// Returns: the key; `Denied` when the user dismissed the collection's
+    /// unlock prompt, `MemoryOnly` when no Secret Service answers or it
+    /// cannot keep one, `Unreadable` when the item holds no key. An existing
+    /// item is never replaced.
+    /// Side effects: the desktop may ask the user to unlock the keyring.
+    pub fn master_key(
+        _state_dir: &Path,
+        profile: &str,
+    ) -> Result<Zeroizing<[u8; 32]>, Persistence> {
+        let account = account(profile);
+        run(async move {
+            let ss = SecretService::connect(EncryptionType::Dh)
+                .await
+                .map_err(|_| Persistence::MemoryOnly)?;
+            let collection = default_collection(&ss).await?;
+            let attrs = attributes(&account);
+            let found = collection
+                .search_items(attrs.clone())
+                .await
+                .map_err(|_| Persistence::MemoryOnly)?;
+            if let Some(item) = found.first() {
+                let text = Zeroizing::new(item.get_secret().await.map_err(denied)?);
+                let raw = Zeroizing::new(
+                    STANDARD
+                        .decode(text.as_slice())
+                        .map_err(|_| Persistence::Unreadable)?,
+                );
+                return Ok(Zeroizing::new(
+                    raw.as_slice()
+                        .try_into()
+                        .map_err(|_| Persistence::Unreadable)?,
+                ));
+            }
+            let key = new_key().ok_or(Persistence::MemoryOnly)?;
+            let text = Zeroizing::new(STANDARD.encode(key.as_ref()));
+            collection
+                .create_item("Kyokai", attrs, text.as_bytes(), false, "text/plain")
+                .await
+                .map_err(|_| Persistence::MemoryOnly)?;
+            Ok(key)
+        })
+        .unwrap_or(Err(Persistence::MemoryOnly))
+    }
+
+    /// The default collection, unlocked.
+    /// Returns: `Denied` when the user dismissed the unlock prompt,
+    /// `MemoryOnly` when there is no default collection.
+    async fn default_collection<'a>(
+        ss: &'a SecretService<'a>,
+    ) -> Result<Collection<'a>, Persistence> {
+        let collection = ss
+            .get_default_collection()
+            .await
+            .map_err(|_| Persistence::MemoryOnly)?;
+        if collection
+            .is_locked()
+            .await
+            .map_err(|_| Persistence::MemoryOnly)?
+        {
+            collection.unlock().await.map_err(denied)?;
+        }
+        Ok(collection)
+    }
+
+    /// Maps a refused unlock to `Denied`, anything else to `MemoryOnly`.
+    fn denied(e: Error) -> Persistence {
+        match e {
+            Error::Prompt | Error::Locked => Persistence::Denied,
+            _ => Persistence::MemoryOnly,
+        }
+    }
+
+    /// The account that holds profile's master key.
+    fn account(profile: &str) -> String {
+        if profile.is_empty() {
+            "master-key".to_owned()
+        } else {
+            format!("master-key.{profile}")
+        }
+    }
+
+    /// The attributes that find profile's item.
+    fn attributes(account: &str) -> HashMap<&str, &str> {
+        HashMap::from([("service", SERVICE), ("account", account)])
+    }
+
+    /// Runs f to completion on a runtime of its own in a thread of its own,
+    /// so a caller already inside a tokio runtime does not nest one.
+    /// Returns: f's result, or None when the runtime could not start.
+    fn run<T: Send + 'static>(
+        f: impl std::future::Future<Output = T> + Send + 'static,
+    ) -> Option<T> {
+        std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .ok()
+                .map(|rt| rt.block_on(f))
+        })
+        .join()
+        .ok()
+        .flatten()
+    }
+
+    /// Deletes profile's item.
+    /// Returns: whether no item is left.
+    #[cfg(test)]
+    pub fn forget(profile: &str) -> bool {
+        let account = account(profile);
+        run(async move {
+            let Ok(ss) = SecretService::connect(EncryptionType::Dh).await else {
+                return true; // no Secret Service, nothing kept
+            };
+            let Ok(found) = ss.search_items(attributes(&account)).await else {
+                return false;
+            };
+            for item in found.unlocked.iter().chain(found.locked.iter()) {
+                let _ = item.delete().await;
+            }
+            matches!(ss.search_items(attributes(&account)).await,
+                Ok(f) if f.unlocked.is_empty() && f.locked.is_empty())
+        })
+        .unwrap_or(false)
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 mod os {
     //! No supported OS credential store.
     use super::Persistence;
@@ -394,6 +538,38 @@ mod tests {
         let last = data.len() - 1;
         data[last] ^= 1;
         assert!(decrypt(&key, &data).is_none());
+    }
+
+    /// With a Secret Service the store reopens with what was saved and its
+    /// item is removed after; without one (CI) nothing reaches the disk.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_secret_service_keeps_the_key_or_nothing_persists() {
+        let dir = std::env::temp_dir().join(format!("kyokai-ss-{}", std::process::id()));
+        let profile = format!("test-ss-{}", std::process::id());
+        std::fs::create_dir_all(&dir).unwrap();
+        let (secrets, persistence) = open(&dir, &profile);
+        match persistence {
+            Persistence::OsStore => {
+                secrets.set("device_key", "abc").unwrap();
+                let (again, p) = open(&dir, &profile);
+                assert!(matches!(p, Persistence::OsStore));
+                assert_eq!(again.get("device_key").unwrap().as_str(), "abc");
+            }
+            Persistence::MemoryOnly => {
+                secrets.set("device_key", "abc").unwrap();
+                assert!(
+                    !dir.join(FILE).exists(),
+                    "a secret was written without a key store"
+                );
+            }
+            _ => panic!("unexpected persistence"),
+        }
+        assert!(
+            forget_master_key(&profile),
+            "the Secret Service item remains"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// Starting over keeps an unreadable store: it is renamed, byte for

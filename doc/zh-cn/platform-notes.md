@@ -4,7 +4,7 @@
 |---|---|
 | Windows（x64、ARM64） | 0.1.0 基础已实现，并在 Windows 11 ARM64 上验证，x64 在模拟下验证（见下）。 |
 | macOS（Apple 芯片、Intel） | 已在 GitHub 的 macOS 运行器上构建与测试（Apple 芯片：完整检查，包括 `scripts/smoke.sh user` 与未签名安装包；Intel：构建与 Go 测试）；2026-10-17 在一台 MacBook Pro（M1，macOS 27.0.1）上运行过（见下）。 |
-| Linux | 暂不支持。 |
+| Linux | 进行中（0.6.7，`PLAN.md`）：核心、引擎与本地 API 在 Debian 13 x86_64 上可以构建并通过检查（见下文）；尚无采集、输入与安装包。 |
 
 ## Windows
 
@@ -114,6 +114,12 @@ Studio 2026）：
 | 0.6.5 登录时启动与自动安装，在 Windows 上（2026-10-28） | 未在 Mac 上运行。macOS 登录时出现窗口的原因来自 MyGo v0.7.1 的源代码（在 `applicationWillFinishLaunching:` 中读取启动的 Apple 事件，而 AppKit 那时还没有分派它）；修复改为在 `applicationDidFinishLaunching:` 中读取；只为 darwin/arm64 构建并通过 vet，因此仍需在 Mac 上登录一次，确认 Kyokai 留在托盘。自动安装的判断有表格测试（`TestAutoInstallNow`）；还没有针对已发布的版本真正自动安装过 |
 | 0.6.6 官方 EasyTier 核心与半屏键盘，在 Windows 上（2026-10-28） | 在 Windows ARM64 电脑上，两个引擎（开发配置）运行在官方 2.7.0 核心上：`ctl cores` 在发布中列出了 2.7.0（预览版）和 2.6.4；`ctl core-install` 下载了 2.7.0、校验了摘要，并保留了核心、CLI 和两个库；一个网络的 TOML 让其中一个引擎在这台电脑的局域网地址上监听，两个引擎都上线并获得 DHCP 地址，互相列为直连，也没有留下运行文件。从一个引擎到另一个的会话经 SOCKS5 入口和对方的核心到达 `127.0.0.1:47310`，被已安装的 Kyokai Helper 的按地址监听器接住并关闭（失败为 “broken”）；两个网络都显示其他设备无法连到它们，因为端口已被占用。经官方核心的完整会话仍需在端口 47310 空闲的电脑上运行。此前的验证（两个核心、普通监听器）在 2.6.4 与 2.7.0 上双向都通。macOS 键盘的修改（最前面的应用）未在 Mac 上构建或运行 |
 | 钥匙串 | 测试程序读取另一个（签名不同的）程序创建的钥匙串项目时会弹出访问提示，无人值守运行会因此卡住；因此测试每次使用新的配置，并在结束时删除其项目（核心的 FFI 测试、`TestRealLibrary` 与 `scripts/smoke.sh`；其他测试都只在内存中保存机密），而发布的应用始终使用同一证书签名 |
+
+## Linux
+
+| 检查 | 结果 |
+|---|---|
+| 核心、引擎与本地 API（2026-10-29） | 在 Debian 13 x86_64（X11 上的 GNOME，gnome-keyring）上：完整检查通过（启用与不启用 cgo 的 Go 测试、`mygo vet`、clippy、226 + 72 个 Rust 测试、`cargo deny`）；编解码库以 vcpkg 的 `x64-linux` triplet 构建；`scripts/smoke.sh user` 通过（状态、密码与重新生成、拒绝第二个引擎、关闭、重启后设备 ID 不变、密钥从 Secret Service 读回，结束后删除冒烟配置的项目）。存储的测试在 gnome-keyring 中重新打开后保留了机密；会话总线不可达时只保存在内存中，未写入任何文件。对端凭据报告本进程的 uid、gid、pid 与各组。未运行：界面、第二台机器、KWallet、Wayland |
 
 ## 已知限制
 

@@ -32,7 +32,8 @@ const SocketEnv = "KYOKAI_SOCKET"
 
 // UserSocketPath is the No privileges engine's per-user socket:
 // $KYOKAI_SOCKET, else the user's temporary directory (%TEMP% on Windows,
-// a per-user folder under $TMPDIR on macOS) + kyokai/engine[-profile].sock.
+// a per-user folder under $TMPDIR on macOS, $XDG_RUNTIME_DIR on Linux) +
+// kyokai/engine[-profile].sock.
 func UserSocketPath(profile string) string {
 	if p := os.Getenv(SocketEnv); p != "" {
 		return p

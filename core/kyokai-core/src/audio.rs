@@ -3,6 +3,7 @@
 //! Windows), turned into 48 kHz stereo and sent as 10 ms Opus packets, none
 //! while it is silent. In
 //! the helper's modes the session agent captures it on the user's desktop.
+#![cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 
 use crate::opus;
 use std::collections::VecDeque;
@@ -200,6 +201,10 @@ impl Source {
                 if now != generation || (ended && tried.elapsed() >= RESTART) {
                     generation = now;
                     tried = Instant::now();
+                    #[cfg_attr(
+                        not(any(windows, target_os = "macos")),
+                        allow(clippy::drop_non_drop)
+                    )]
                     drop(capture.take());
                     capture = match Capture::start(pcm.clone(), &source) {
                         Ok(c) => Some(c),

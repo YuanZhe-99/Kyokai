@@ -21,8 +21,8 @@ type Peer struct {
 	UID uint32
 	GID uint32
 	PID uint32
-	// Groups are the peer's supplementary groups (macOS: from
-	// LOCAL_PEERCRED).
+	// Groups are the peer's groups (macOS: from LOCAL_PEERCRED; Linux:
+	// the primary gid and SO_PEERGROUPS).
 	Groups []uint32
 	// SID and Admin identify the caller on Windows (its token's user and
 	// membership of Administrators); uids are unused there.

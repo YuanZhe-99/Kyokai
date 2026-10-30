@@ -686,6 +686,7 @@ impl Ai {
     /// Whether a task waits for the host user's approval of an action: while
     /// one does, no session's input reaches Kyokai's own windows (only those
     /// allowed to approve answer it, through the session).
+    #[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
     pub fn awaiting_approval(&self) -> bool {
         let tasks = self.shared.tasks.lock().expect("tasks");
         tasks.iter().any(|t| matches!(t.state, State::Approval))

@@ -50,8 +50,8 @@ encoder, no codec in common, or the screen not capturable), and the viewer shows
 pattern. A display the system reports back on is tried at once; a picture that keeps coming for 10
 seconds starts the count over. An open that finds no display while the system reports it asleep
 wakes it and looks again first (macOS leaves a sleeping display out of its list). A host that
-cannot capture (no interactive desktop, such as a service or an SSH session) shows the placeholder
-for good; a host without Media
+cannot capture (no interactive desktop, such as a service or an SSH session, or a system Kyokai
+cannot capture on yet, `cannot-capture`) shows the placeholder for good, without recovery steps; a host without Media
 Foundation's encoders (Windows N, Server editions without Media Foundation) sends in software. When the display is lost — a mode change, the lock
 screen or a UAC prompt — the host releases it and opens the primary display again every half
 second; the stream keeps its size and a new mode is scaled into it (a changed aspect ratio shows
@@ -495,19 +495,19 @@ seconds while all its watchers asked for the slow pace (`pace`), and again at on
 for the usual pace and the last sample is older than 2 seconds — and sends each sample to every
 watcher as a `system` message:
 
-| Field | Windows | macOS |
-|---|---|---|
-| `cpu` `{usage, cores, user, system}` | `GetSystemTimes` (system: kernel time less idle) | `host_statistics` (`HOST_CPU_LOAD_INFO`; user with nice) |
-| `memory` `{used, total}` | `GlobalMemoryStatusEx` | `hw.memsize`; app memory, wired and compressed from `host_statistics64` |
-| `gpu` `{usage}` or null | the 3D engines' `Utilization Percentage` counters (PDH), as Task Manager sums them | the busiest `IOAccelerator`'s `Device Utilization %` |
-| `disk` `{used, total}` | the disk Windows is on | the data volume |
-| `disk_io` `{read_bps, write_bps}` or null | the `PhysicalDisk(_Total)` read and write byte counters (PDH) | the `IOBlockStorageDriver`s' `Statistics`, turned into rates |
-| `net` `{rx_bps, tx_bps, rx_total, tx_total}` | `GetIfTable2`, the hardware interfaces that are up | `getifaddrs`, the interfaces that are up, loopback left out |
-| `battery` `{percent, charging}` or null | `GetSystemPowerStatus` | the power sources (IOKit) |
-| `uptime_s`, `at` | `GetTickCount64`; the host's clock (Unix milliseconds) | `kern.boottime` |
-| `services` | which of SSH, Remote Desktop and VNC accept a connection on its loopback on the ports its user set, looked at every 30 seconds ([remote-services.md](remote-services.md)) | the same |
-| `offers` | per watcher: the permissions its password or key grants without asking (the password grants while Connect without asking is on, else none), so the controller offers only what will work | the same |
-| `ai` | per watcher: whether the host's AI could start a task now (a model chosen and, unless its server is on the host, its provider's key present) | the same |
+| Field | Windows | macOS | Linux |
+|---|---|---|---|
+| `cpu` `{usage, cores, user, system}` | `GetSystemTimes` (system: kernel time less idle) | `host_statistics` (`HOST_CPU_LOAD_INFO`; user with nice) | `/proc/stat` (user with nice; system with interrupts) |
+| `memory` `{used, total}` | `GlobalMemoryStatusEx` | `hw.memsize`; app memory, wired and compressed from `host_statistics64` | `/proc/meminfo`: total less `MemAvailable` |
+| `gpu` `{usage}` or null | the 3D engines' `Utilization Percentage` counters (PDH), as Task Manager sums them | the busiest `IOAccelerator`'s `Device Utilization %` | null (not read yet) |
+| `disk` `{used, total}` | the disk Windows is on | the data volume | the file system of the home folder (`statvfs`) |
+| `disk_io` `{read_bps, write_bps}` or null | the `PhysicalDisk(_Total)` read and write byte counters (PDH) | the `IOBlockStorageDriver`s' `Statistics`, turned into rates | null (not read yet) |
+| `net` `{rx_bps, tx_bps, rx_total, tx_total}` | `GetIfTable2`, the hardware interfaces that are up | `getifaddrs`, the interfaces that are up, loopback left out | `/proc/net/dev`, the interfaces with a device in sysfs (no loopback, bridges or tunnels) |
+| `battery` `{percent, charging}` or null | `GetSystemPowerStatus` | the power sources (IOKit) | the first system battery in `/sys/class/power_supply` |
+| `uptime_s`, `at` | `GetTickCount64`; the host's clock (Unix milliseconds) | `kern.boottime` | `/proc/uptime` |
+| `services` | which of SSH, Remote Desktop and VNC accept a connection on its loopback on the ports its user set, looked at every 30 seconds ([remote-services.md](remote-services.md)) | the same | the same |
+| `offers` | per watcher: the permissions its password or key grants without asking (the password grants while Connect without asking is on, else none), so the controller offers only what will work | the same | the same |
+| `ai` | per watcher: whether the host's AI could start a task now (a model chosen and, unless its server is on the host, its provider's key present) | the same | the same |
 
 The controller's GUI holds a lease on the hosts it shows (`watch.set` `{devices, slow}`, at most
 8, `slow` those of them at the slow pace; renewed every 10 seconds while the main window is open

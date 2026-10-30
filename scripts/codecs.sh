@@ -24,6 +24,8 @@ triplet() {
 	windows/arm64) echo arm64-windows-static ;;
 	darwin/amd64) echo x64-osx ;;
 	darwin/arm64) echo arm64-osx ;;
+	linux/amd64) echo x64-linux ;;
+	linux/arm64) echo arm64-linux ;;
 	*) echo "unsupported target $1" >&2; exit 1 ;;
 	esac
 }

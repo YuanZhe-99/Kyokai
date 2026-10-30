@@ -9,6 +9,13 @@
   (ARM64 and/or x64), the Windows SDK, and the component "C++ Clang Compiler for Windows" — `ring`
   needs clang on `aarch64-pc-windows-msvc`; put the installation's `VC\Tools\Llvm\ARM64\bin` on
   `PATH` (the component does not). Git for Windows provides bash and OpenSSL.
+- Linux (Debian 13 / Ubuntu 24.04, x86_64): Go and rustup, `build-essential`, `cmake`, `ninja-build`,
+  `pkg-config`, `nasm` (libvpx and aom on x64), `curl`, `zip` and `unzip` (vcpkg), and a Secret
+  Service (GNOME Keyring or KWallet) for a store that persists. No vcpkg ships with the system:
+  clone the pinned commit (`third_party/upstream.json`) into `build/tools/vcpkg`, run its
+  `bootstrap-vcpkg.sh -disableMetrics`, and point `VCPKG_ROOT` at it. The Linux port is in
+  progress (`PLAN.md`): the core, the engine and the local API build and test; capture and input
+  do not exist yet.
 - macOS: the Xcode command line tools; Go and rustup (Homebrew works); `pkg-config`
   (`brew install pkgconf`), which vcpkg needs for aom, and `nasm` (`brew install nasm`), which
   aom's x64 build needs on an Apple silicon Mac.
@@ -90,8 +97,9 @@ KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
 `KYOKAI_PROFILE` keeps a development instance apart from an installed Kyokai: its own app name,
 single-instance lock, socket and state directory (`Kyokai-<profile>`). `KYOKAI_SVC` points the GUI at
 another engine binary, `KYOKAI_SOCKET` at another socket. The ABI smoke test needs an absolute
-library path. On macOS the tests that start a real core (`cargo test`, the ABI smoke test,
-`scripts/smoke.sh`) make a Keychain item for a fresh profile (`master-key.test-…`, `master-key.smoke-…`)
+library path. On macOS and on Linux with a Secret Service the tests that start a real core
+(`cargo test`, the ABI smoke test, `scripts/smoke.sh`, which on Linux removes its item with
+`secret-tool` from `libsecret-tools`) make a Keychain or Secret Service item for a fresh profile (`master-key.test-…`, `master-key.smoke-…`)
 and delete it when they finish; the Rust and Go tests fail if theirs remains. `ctl network-set` (the first network) and `ctl network-profile` (add one, or change
 the one `--network` names) take the network secret from `KYOKAI_NETWORK_SECRET`, never from the
 command line; `ctl network` and `ctl networks` show the settings without it, `ctl network-remove`

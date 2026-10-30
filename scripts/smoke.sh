@@ -12,17 +12,22 @@ cd "$(dirname "$0")/.."
 [ "${1:-}" = user ] || { echo "usage: scripts/smoke.sh user" >&2; exit 2; }
 
 work=$(mktemp -d)
-# The Keychain item of the smoke profile outlives the state directory.
+# The Keychain or Secret Service item of the smoke profile outlives the
+# state directory.
 cleanup() {
 	rm -rf "$work"
-	if [ "$(uname)" = Darwin ] && [ -n "${KYOKAI_PROFILE:-}" ]; then
+	[ -n "${KYOKAI_PROFILE:-}" ] || return 0
+	if [ "$(uname)" = Darwin ]; then
 		security delete-generic-password -s com.yuanzhe.kyokai -a "master-key.$KYOKAI_PROFILE" >/dev/null 2>&1 || true
+	elif command -v secret-tool >/dev/null; then
+		secret-tool clear service com.yuanzhe.kyokai account "master-key.$KYOKAI_PROFILE" || true
 	fi
 }
 trap cleanup EXIT
 case "$(go env GOOS)" in
 windows) lib=kyokai_core.dll ext=.exe ;;
 darwin) lib=libkyokai_core.dylib ext="" ;;
+linux) lib=libkyokai_core.so ext="" ;;
 *) echo "unsupported platform" >&2; exit 1 ;;
 esac
 # For the host's own target triple, like scripts/build.sh: CI builds it once.

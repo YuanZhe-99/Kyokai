@@ -16,7 +16,9 @@ fn triplet() -> &'static str {
         ("windows", "x86_64") => "x64-windows-static",
         ("macos", "aarch64") => "arm64-osx",
         ("macos", "x86_64") => "x64-osx",
-        _ => panic!("no codec libraries for {arch}-{os}: Kyokai supports Windows and macOS"),
+        ("linux", "aarch64") => "arm64-linux",
+        ("linux", "x86_64") => "x64-linux",
+        _ => panic!("no codec libraries for {arch}-{os}: Kyokai supports Windows, macOS and Linux"),
     }
 }
 
