@@ -31,7 +31,8 @@ pub enum Persistence {
     /// untouched and this run keeps secrets in memory.
     Unreadable,
     /// The OS store refused its key (macOS: access to the Keychain item was
-    /// denied; Linux: the unlock prompt was dismissed); the stored secrets
+    /// denied; Linux: the unlock prompt was dismissed or not answered within
+    /// a minute); the stored secrets
     /// are left untouched, this run keeps secrets in memory, and opening
     /// again asks again.
     #[cfg_attr(windows, allow(dead_code))]
@@ -383,10 +384,12 @@ mod os {
     /// Reads the master key, or creates and stores a new one when there is
     /// none.
     /// Returns: the key; `Denied` when the user dismissed the collection's
-    /// unlock prompt, `MemoryOnly` when no Secret Service answers or it
+    /// unlock prompt or nothing answered within WAIT, `MemoryOnly` when no
+    /// Secret Service is there or it
     /// cannot keep one, `Unreadable` when the item holds no key. An existing
     /// item is never replaced.
-    /// Side effects: the desktop may ask the user to unlock the keyring.
+    /// Side effects: the desktop may ask the user to unlock the keyring
+    /// (WAIT at most; no answer in time is `Denied`).
     pub fn master_key(
         _state_dir: &Path,
         profile: &str,
@@ -423,7 +426,8 @@ mod os {
                 .map_err(|_| Persistence::MemoryOnly)?;
             Ok(key)
         })
-        .unwrap_or(Err(Persistence::MemoryOnly))
+        // No answer in time counts as refused: opening again asks again.
+        .unwrap_or(Err(Persistence::Denied))
     }
 
     /// The default collection, unlocked.
@@ -468,18 +472,27 @@ mod os {
         HashMap::from([("service", SERVICE), ("account", account)])
     }
 
-    /// Runs f to completion on a runtime of its own in a thread of its own,
-    /// so a caller already inside a tokio runtime does not nest one.
-    /// Returns: f's result, or None when the runtime could not start.
+    /// How long the Secret Service, and a person at its unlock prompt, may
+    /// take: a keyring that prompts where nobody can answer (a headless
+    /// session) would otherwise hold the engine's start for good.
+    const WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+    /// Runs f to completion, WAIT at most, on a runtime of its own in a
+    /// thread of its own, so a caller already inside a tokio runtime does not
+    /// nest one.
+    /// Returns: f's result, or None when the runtime could not start or the
+    /// time ran out.
     fn run<T: Send + 'static>(
         f: impl std::future::Future<Output = T> + Send + 'static,
     ) -> Option<T> {
         std::thread::spawn(move || {
-            tokio::runtime::Builder::new_current_thread()
+            let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
+                .ok()?;
+            // The timer belongs to the runtime: made inside it.
+            rt.block_on(async move { tokio::time::timeout(WAIT, f).await })
                 .ok()
-                .map(|rt| rt.block_on(f))
         })
         .join()
         .ok()

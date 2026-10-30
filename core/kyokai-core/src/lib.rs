@@ -44,6 +44,8 @@ mod video;
 #[cfg(target_os = "macos")]
 mod vt;
 mod watch;
+#[cfg(target_os = "linux")]
+mod wayland;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -755,6 +757,8 @@ fn start(input: &[u8]) -> Result<(), String> {
 /// network and generates a temporary password.
 fn build(cfg: StartConfig) -> Result<Core, String> {
     std::fs::create_dir_all(&cfg.state_dir).map_err(|e| format!("state directory: {e}"))?;
+    #[cfg(target_os = "linux")]
+    wayland::set_state_dir(&cfg.state_dir);
     let (secrets, persistence) = store::open(&cfg.state_dir, &cfg.profile);
     build_on(cfg, secrets, persistence)
 }
@@ -1394,6 +1398,18 @@ fn call(input: &[u8]) -> Result<Value, String> {
         "input.kyokai" => {
             let allow = req.params["allow"].as_bool().ok_or("bad input setting")?;
             input::set_kyokai_input(allow);
+            Ok(json!({}))
+        }
+        // One of Kyokai's windows shows on a Wayland desktop, where it can
+        // be neither left out of the picture nor kept from input: while one
+        // does, the picture holds and input waits (doc/en-us/computer-use.md,
+        // "Linux").
+        "kyokai.shown" => {
+            let shown = req.params["shown"].as_bool().ok_or("bad shown setting")?;
+            #[cfg(target_os = "linux")]
+            wayland::set_kyokai_shown(shown);
+            #[cfg(not(target_os = "linux"))]
+            let _ = shown;
             Ok(json!({}))
         }
         "capture.show" => {

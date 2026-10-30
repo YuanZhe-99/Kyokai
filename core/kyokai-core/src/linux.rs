@@ -1,12 +1,13 @@
-//! Linux on X11 (doc/en-us/computer-use.md, "Linux"): the displays from
+//! Linux (doc/en-us/computer-use.md, "Linux"): on X11 the displays from
 //! RandR, capture through MIT-SHM with Kyokai's own windows blacked out,
 //! input through XTest that never reaches Kyokai's windows, the pointer,
 //! the host user's own input through XInput 2 raw events, and the display's
-//! power state through DPMS.
+//! power state through DPMS; on Wayland the same through the portals and
+//! the input devices (`crate::wayland`). The public types pick by
+//! `session()`.
 //!
-//! Every function here talks to the X server named by `$DISPLAY`. A Wayland
-//! session (`session()`) has no X11 capture or input: its X server
-//! (Xwayland) shows only the X programs.
+//! The X11 functions talk to the X server named by `$DISPLAY`; on Wayland
+//! that server (Xwayland) shows only the X programs, so it is not used.
 
 use crate::ai::desktop::{Desktop, Frame};
 use crate::input::{Area, Event, Guard, LocalInput, Mods, PointerAction, lock_for};
@@ -418,14 +419,21 @@ fn with_x<T>(f: impl FnOnce(&X) -> Option<T>) -> Option<T> {
     out
 }
 
-/// The displays: the primary first, the others left to right (empty
-/// without an X11 session).
+/// The displays: the primary first, the others left to right (on Wayland,
+/// those the host user shares; empty without a graphical session).
 pub fn displays() -> Vec<Display> {
-    with_x(|x| Some(x.displays())).unwrap_or_default()
+    match session() {
+        Session::X11 => with_x(|x| Some(x.displays())).unwrap_or_default(),
+        Session::Wayland => crate::wayland::displays(),
+        Session::None => Vec::new(),
+    }
 }
 
-/// Whether DPMS has the display off (standby, suspend or off).
+/// Whether DPMS has the display off (standby, suspend or off; X11 only).
 pub fn display_off() -> bool {
+    if session() != Session::X11 {
+        return false;
+    }
     with_x(|x| {
         let r = x.conn.dpms_info().ok()?.reply().ok()?;
         Some(r.state && r.power_level != DPMSMode::ON)
@@ -433,8 +441,11 @@ pub fn display_off() -> bool {
     .unwrap_or(false)
 }
 
-/// Turns the display on, as input would.
+/// Turns the display on, as input would (X11 only).
 pub fn wake_display() {
+    if session() != Session::X11 {
+        return;
+    }
     with_x(|x| {
         x.conn.dpms_force_level(DPMSMode::ON).ok()?;
         x.conn.force_screen_saver(xproto::ScreenSaver::RESET).ok()?;
@@ -448,8 +459,12 @@ pub fn pointer() -> Option<(f32, f32)> {
     pointer_in(main_area())
 }
 
-/// Where the pointer is, as fractions of `area`.
+/// Where the pointer is, as fractions of `area` (X11 only: Wayland does
+/// not tell, and its pictures carry the pointer drawn in).
 pub fn pointer_in(area: Area) -> Option<(f32, f32)> {
+    if session() != Session::X11 {
+        return None;
+    }
     let (x, y, _) = with_x(X::pointer)?;
     Some((
         (x - area.x) as f32 / area.width.max(1) as f32,
@@ -549,7 +564,7 @@ unsafe impl Send for Segment {}
 
 /// A display through MIT-SHM, without the pointer (the viewer draws it) and
 /// without Kyokai's windows unless the host user lets capture see them.
-pub struct Capture {
+pub struct XCapture {
     x: X,
     display: Display,
     seg: Segment,
@@ -565,9 +580,9 @@ pub struct Capture {
 /// How often a capture looks at the screen while it waits for a change.
 const GRAB_EVERY: Duration = Duration::from_millis(1000 / crate::video::MAX_FPS as u64);
 
-impl Capture {
+impl XCapture {
     /// Opens `display` on its own connection.
-    fn start(display: Display) -> Result<Capture, String> {
+    fn start(display: Display) -> Result<XCapture, String> {
         let x = X::open()?;
         if x.conn
             .extension_information(x11rb::protocol::shm::X11_EXTENSION_NAME)
@@ -586,7 +601,7 @@ impl Capture {
             .check()
             .map_err(|e| format!("shm attach: {e}"))?;
         seg.release_name();
-        Ok(Capture {
+        Ok(XCapture {
             x,
             display,
             seg,
@@ -667,14 +682,14 @@ impl Capture {
     }
 }
 
-impl Drop for Capture {
+impl Drop for XCapture {
     fn drop(&mut self) {
         let _ = self.x.conn.shm_detach(self.shmseg);
         let _ = self.x.conn.flush();
     }
 }
 
-impl Grab for Capture {
+impl Grab for XCapture {
     fn open(display: Display) -> Result<(Self, u32, u32), String> {
         // The display as it is now: a mode change since the list was read
         // gives the new size.
@@ -682,7 +697,7 @@ impl Grab for Capture {
             .into_iter()
             .find(|d| (d.x, d.y) == (display.x, display.y))
             .ok_or("the display is gone")?;
-        Ok((Capture::start(now)?, now.width, now.height))
+        Ok((XCapture::start(now)?, now.width, now.height))
     }
 
     fn frame(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got {
@@ -832,11 +847,11 @@ pub fn keycode(name: &str) -> Option<u8> {
 /// X keycodes are evdev codes moved by 8.
 const XKB_OFFSET: u8 = 8;
 /// Whether a modifier set asks for one modifier.
-type Wanted = fn(&Mods) -> bool;
+pub(crate) type Wanted = fn(&Mods) -> bool;
 
 /// The modifier keys of a key event (evdev codes) and whether each is
 /// wanted.
-const MODIFIERS: [(u8, Wanted); 4] = [
+pub(crate) const MODIFIERS: [(u8, Wanted); 4] = [
     (42, |m| m.shift),
     (29, |m| m.ctrl),
     (56, |m| m.alt),
@@ -856,7 +871,7 @@ const WHEEL: [u8; 4] = [4, 5, 6, 7];
 /// own windows, and whatever is held released at the end. Text is typed
 /// through spare keycodes given the characters' keysyms, so it does not
 /// depend on the host's layout.
-pub struct Injector {
+pub struct XInjector {
     x: Option<X>,
     area: Option<Area>,
     /// Evdev codes held down.
@@ -868,9 +883,9 @@ pub struct Injector {
     spares: Option<Vec<u8>>,
 }
 
-impl Default for Injector {
+impl Default for XInjector {
     fn default() -> Self {
-        Injector {
+        XInjector {
             x: X::open().ok(),
             area: None,
             keys: BTreeSet::new(),
@@ -882,7 +897,7 @@ impl Default for Injector {
     }
 }
 
-impl Injector {
+impl XInjector {
     /// Sets the display pointer positions refer to (None: the primary).
     pub fn set_area(&mut self, area: Option<Area>) {
         self.area = area;
@@ -1144,7 +1159,7 @@ impl Injector {
     }
 }
 
-impl Drop for Injector {
+impl Drop for XInjector {
     fn drop(&mut self) {
         self.release_all();
     }
@@ -1213,14 +1228,14 @@ struct Watched {
 /// Watches the host user's own keyboard and mouse through XInput 2 raw
 /// events (XTest's virtual devices, Kyokai's input, left out), and the
 /// emergency-stop shortcut Ctrl+Alt+Shift+Esc.
-pub struct LocalWatch {
+pub struct XWatch {
     watched: Arc<Watched>,
 }
 
-impl LocalWatch {
+impl XWatch {
     /// Starts the watch on a thread of its own.
     /// Returns: an error without an X11 session or XInput 2.
-    pub fn start() -> Result<LocalWatch, String> {
+    pub fn start() -> Result<XWatch, String> {
         let x = X::open()?;
         x.conn
             .xinput_xi_query_version(2, 0)
@@ -1256,7 +1271,7 @@ impl LocalWatch {
         let watched = Arc::new(Watched::default());
         let shared = watched.clone();
         std::thread::spawn(move || watch(x, xtest, &shared));
-        Ok(LocalWatch { watched })
+        Ok(XWatch { watched })
     }
 
     /// When the host user last pressed something and moved the pointer.
@@ -1273,7 +1288,7 @@ impl LocalWatch {
     }
 }
 
-impl Drop for LocalWatch {
+impl Drop for XWatch {
     fn drop(&mut self) {
         self.watched.ended.store(true, Ordering::Release);
     }
@@ -1339,19 +1354,133 @@ pub(crate) fn stop_shortcut(held: &mut BTreeSet<u8>, code: u8, down: bool) -> bo
     down && code == ESCAPE + XKB_OFFSET && has(CTRL) && has(ALT) && has(SHIFT)
 }
 
+/// A display capture on the session's own terms: MIT-SHM on X11, the
+/// portal's PipeWire stream on Wayland.
+pub enum Capture {
+    X(Box<XCapture>),
+    Wayland(crate::wayland::Capture),
+}
+
+impl Grab for Capture {
+    fn open(display: Display) -> Result<(Self, u32, u32), String> {
+        match session() {
+            Session::X11 => {
+                XCapture::open(display).map(|(c, w, h)| (Capture::X(Box::new(c)), w, h))
+            }
+            Session::Wayland => {
+                crate::wayland::Capture::open(display).map(|(c, w, h)| (Capture::Wayland(c), w, h))
+            }
+            Session::None => Err("this session has no screen".into()),
+        }
+    }
+
+    fn frame(&mut self, timeout: Duration, take: &mut Take<'_>) -> Got {
+        match self {
+            Capture::X(c) => c.frame(timeout, take),
+            Capture::Wayland(c) => c.frame(timeout, take),
+        }
+    }
+}
+
+/// The host's input on the session's own terms: XTest on X11, the
+/// RemoteDesktop portal on Wayland, nothing without a graphical session.
+pub enum Injector {
+    X(Box<XInjector>),
+    Wayland(crate::wayland::Injector),
+    None,
+}
+
+impl Default for Injector {
+    fn default() -> Self {
+        match session() {
+            Session::X11 => Injector::X(Box::default()),
+            Session::Wayland => Injector::Wayland(crate::wayland::Injector::default()),
+            Session::None => Injector::None,
+        }
+    }
+}
+
+impl Injector {
+    /// Sets the display pointer positions refer to (None: the primary).
+    pub fn set_area(&mut self, area: Option<Area>) {
+        match self {
+            Injector::X(i) => i.set_area(area),
+            Injector::Wayland(i) => i.set_area(area),
+            Injector::None => {}
+        }
+    }
+
+    /// Injects an event unless it would reach Kyokai's windows and
+    /// `kyokai_ok` is false.
+    /// Returns: whether it was injected.
+    pub fn inject(&mut self, e: &Event, kyokai_ok: bool) -> bool {
+        match self {
+            Injector::X(i) => i.inject(e, kyokai_ok),
+            Injector::Wayland(i) => i.inject(e, kyokai_ok),
+            Injector::None => false,
+        }
+    }
+
+    /// Releases every key and button this session holds.
+    pub fn release_all(&mut self) {
+        match self {
+            Injector::X(i) => i.release_all(),
+            Injector::Wayland(i) => i.release_all(),
+            Injector::None => {}
+        }
+    }
+}
+
+/// The watch on the host user's own input: XInput 2 on X11, the input
+/// devices on Wayland.
+pub enum LocalWatch {
+    X(XWatch),
+    Evdev(crate::wayland::Evdev),
+}
+
+impl LocalWatch {
+    /// Starts the watch.
+    /// Returns: an error where nothing can watch.
+    pub fn start() -> Result<LocalWatch, String> {
+        match session() {
+            Session::X11 => XWatch::start().map(LocalWatch::X),
+            Session::Wayland => crate::wayland::Evdev::start().map(LocalWatch::Evdev),
+            Session::None => Err("this session has no keyboard or mouse".into()),
+        }
+    }
+
+    /// When the host user last pressed something and moved the pointer.
+    pub fn input(&self) -> LocalInput {
+        match self {
+            LocalWatch::X(w) => w.input(),
+            LocalWatch::Evdev(w) => w.input(),
+        }
+    }
+
+    /// Whether the stop shortcut was pressed since the last call.
+    pub fn stop_requested(&self) -> bool {
+        match self {
+            LocalWatch::X(w) => w.stop_requested(),
+            LocalWatch::Evdev(w) => w.stop_requested(),
+        }
+    }
+}
+
 /// The real desktop for AI tasks: the primary display at full resolution,
-/// XTest input, and a watch on local input.
+/// the session's input, and a watch on local input (no AI task starts
+/// where the host user's own input cannot be watched).
 pub struct Screen {
     injector: Injector,
     watch: LocalWatch,
 }
 
 impl Screen {
-    /// Opens the desktop and starts watching for local input.
+    /// Starts watching for local input and opens the desktop.
     pub fn open() -> Result<Screen, String> {
+        let watch = LocalWatch::start()?;
         Ok(Screen {
             injector: Injector::default(),
-            watch: LocalWatch::start()?,
+            watch,
         })
     }
 }
@@ -1371,13 +1500,18 @@ impl Desktop for Screen {
 
     fn capture(&mut self) -> Result<Frame, String> {
         let d = primary()?;
-        let mut cap = Capture::start(d)?;
-        cap.grab()?;
-        Ok(Frame {
-            bgra: cap.seg.bytes().to_vec(),
-            width: d.width,
-            height: d.height,
-        })
+        if session() == Session::X11 {
+            let mut cap = XCapture::start(d)?;
+            cap.grab()?;
+            return Ok(Frame {
+                bgra: cap.seg.bytes().to_vec(),
+                width: d.width,
+                height: d.height,
+            });
+        }
+        crate::wayland::Capture::open(d)?
+            .0
+            .grab(Duration::from_secs(2))
     }
 
     fn inject(&mut self, e: &Event) -> bool {
@@ -1390,6 +1524,9 @@ impl Desktop for Screen {
     }
 
     fn cursor(&mut self) -> Option<(f32, f32)> {
+        if let Injector::Wayland(i) = &self.injector {
+            return i.at;
+        }
         let (x, y) = pointer()?;
         Some((x.clamp(0.0, 1.0), y.clamp(0.0, 1.0)))
     }
@@ -1584,7 +1721,7 @@ mod tests {
         let list = displays();
         assert!(!list.is_empty());
         assert!(list[0].primary);
-        let (mut cap, w, h) = Capture::open(list[0]).unwrap();
+        let (mut cap, w, h) = XCapture::open(list[0]).unwrap();
         assert_eq!((w, h), (list[0].width, list[0].height));
         let mut got = None;
         let r = cap.frame(
@@ -1603,7 +1740,7 @@ mod tests {
         assert!(pointer().is_some());
         // The watch on the host user's input starts (XInput 2) and has seen
         // nothing of its own.
-        let watch = LocalWatch::start().unwrap();
+        let watch = XWatch::start().unwrap();
         assert!(!watch.stop_requested());
     }
 }

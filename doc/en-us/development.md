@@ -10,8 +10,14 @@
   needs clang on `aarch64-pc-windows-msvc`; put the installation's `VC\Tools\Llvm\ARM64\bin` on
   `PATH` (the component does not). Git for Windows provides bash and OpenSSL.
 - Linux (Debian 13 / Ubuntu 24.04, x86_64): Go and rustup, `build-essential`, `cmake`, `ninja-build`,
-  `pkg-config`, `nasm` (libvpx and aom on x64), `curl`, `zip` and `unzip` (vcpkg), and a Secret
-  Service (GNOME Keyring or KWallet) for a store that persists. No vcpkg ships with the system:
+  `pkg-config`, `nasm` (libvpx and aom on x64), `curl`, `zip` and `unzip` (vcpkg),
+  `libpipewire-0.3-dev` and `libclang-dev` (the PipeWire bindings are generated as the core builds;
+  the core then needs `libpipewire-0.3` at run time), and a Secret Service (GNOME Keyring or
+  KWallet) for a store that persists. To try X11 hosting without touching the desktop: `Xvfb :99`
+  and an engine with `DISPLAY=:99`; Wayland: a headless sway (`WLR_BACKENDS=headless`, the GL
+  renderer, not pixman) with `xdg-desktop-portal` and `xdg-desktop-portal-wlr` (`chooser_type=none`)
+  on a bus of its own (`dbus-run-session`), which shares the screen without asking but has no
+  RemoteDesktop. No vcpkg ships with the system:
   clone the pinned commit (`third_party/upstream.json`) into `build/tools/vcpkg`, run its
   `bootstrap-vcpkg.sh -disableMetrics`, and point `VCPKG_ROOT` at it. The Linux port is in
   progress (`PLAN.md`): the core, the engine and the local API build and test; capture and input

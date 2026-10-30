@@ -107,6 +107,9 @@ until a GUI says), `input.kyokai` (`{allow}`: whether a person's remote input ma
 windows, as the same switch says, which the GUI sends with `capture.show`; each session decides per
 event, never for the AI nor while a confirmation or an approval waits, and tells the helper's agent
 with the event; refused until a GUI says; an older engine refuses the request and stays guarded),
+`kyokai.shown` (`{shown}`: one of Kyokai's windows shows on a Wayland desktop, which can neither
+leave it out of the picture nor keep input from it, so while it does the picture holds still and
+no remote or AI input is injected unless Hide Kyokai from capture is off; ignored elsewhere),
 `sound.source` (`{source}`: the sound to share, "" for what the computer plays or
 an input device's id; running streams switch; the helper passes it to its agent), `sound.devices`
 (→ `[{id, name}]`, the input devices; the agent's in the helper), and for AI tasks ([computer-use.md](computer-use.md)):
@@ -147,7 +150,7 @@ runtime statically, so nothing is resolved through the search path.
   `trusted.remove`, `host.forget`, `keys.list`, `keys.add`, `keys.remove`, `keys.sign`,
   `authorized.list`, `authorized.add`, `authorized.set`, `authorized.remove`, `credentials.get` (owner or operator
   only), `credentials.set`, `credentials.forget`, `watch.set`, `tunnel.open` (streaming, below), `identity.export`, `identity.import`, `identity.reset`,
-  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it once an attached engine reports a running core — not parked —, again each second until it arrives, and when the setting changes), `input.kyokai` (`{kyokai_input}`; sent with `capture.show`; an engine that does not know it keeps Kyokai's windows guarded), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; after the store moved out), `store.forget_move` (a parked engine starts over), `sessions.close_controllers`, `store.export`,
+  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it once an attached engine reports a running core — not parked —, again each second until it arrives, and when the setting changes), `input.kyokai` (`{kyokai_input}`; sent with `capture.show`; an engine that does not know it keeps Kyokai's windows guarded), `kyokai.shown` (`{shown}`; Linux on Wayland), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; after the store moved out), `store.forget_move` (a parked engine starts over), `sessions.close_controllers`, `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,
   `session.media`, `shutdown`, and the AI requests named after the core's
   methods (`ai.settings.get` … `ai.stop`, `ai.draft.set`). `session.media` (`{id}` of a live controller

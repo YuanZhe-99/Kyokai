@@ -9,8 +9,14 @@
   procfs. No capture or input yet: a Linux host shows the test pattern.
 - Linux on X11: capture through MIT-SHM with Kyokai's windows blacked out, XTest input that never
   reaches them (text through spare keycodes), the pointer, the local-input watch through XInput 2
-  with Ctrl+Alt+Shift+Esc, DPMS, and AI tasks on the same desktop. Wayland hosts still show the
-  placeholder.
+  with Ctrl+Alt+Shift+Esc, DPMS, and AI tasks on the same desktop.
+- Linux on Wayland: the screen through the ScreenCast portal and PipeWire, input through the
+  RemoteDesktop portal, one portal session for the engine whose restore token is kept, the host
+  user's own input from the input devices (Kyokai Helper or the `input` group; without them no AI
+  task starts), and `kyokai.shown` (local API 2, an addition): while one of Kyokai's windows shows on
+  Wayland the picture holds and input waits.
+- The Secret Service gets a minute: a keyring prompt nobody answers no longer holds the engine's
+  start (the store counts as refused, as a dismissed prompt does).
 - A host started again right after a session (the old connection in TIME-WAIT on port 47310)
   listened nowhere for about a minute on Linux and macOS: the listener now reuses the address there.
 - A host that cannot capture on its system (`cannot-capture`) shows the placeholder for good, as

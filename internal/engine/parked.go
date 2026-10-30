@@ -118,7 +118,7 @@ func (p *parked) Handle(ctx context.Context, req localapi.Request) localapi.Resp
 			return localapi.Fail(localapi.CodeInternal, "%v", err)
 		}
 		return localapi.Response{OK: true}
-	case localapi.RequestCaptureShow, localapi.RequestInputKyokai, localapi.RequestSoundSource, localapi.RequestLogs:
+	case localapi.RequestCaptureShow, localapi.RequestInputKyokai, localapi.RequestKyokaiShown, localapi.RequestSoundSource, localapi.RequestLogs:
 		// What a GUI sends as it attaches: kept by the GUI and sent again
 		// once the core runs.
 		return localapi.Response{OK: true}

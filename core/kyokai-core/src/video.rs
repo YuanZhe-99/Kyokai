@@ -703,10 +703,9 @@ impl Source {
         type Platform = crate::mac::Capture;
         #[cfg(target_os = "linux")]
         type Platform = crate::linux::Capture;
-        // A Wayland session has no X11 capture (Xwayland shows only X
-        // programs), and a service or an SSH login has no display at all.
+        // A service or an SSH login has no display at all.
         #[cfg(target_os = "linux")]
-        if crate::linux::session() != crate::linux::Session::X11 {
+        if crate::linux::session() == crate::linux::Session::None {
             let _ = (display, choices, tx, frames);
             return Source::pattern("cannot-capture", "this session's screen cannot be captured");
         }

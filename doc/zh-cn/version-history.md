@@ -3,7 +3,9 @@
 ## 0.6.7（未发布）
 
 - Linux 第一步（`PLAN.md`）：Rust 核心、引擎与本地 API 可在 Linux 上构建并通过测试。存储的主密钥保存在 Secret Service（GNOME Keyring、KWallet）中；本地 API 通过 `SO_PEERCRED` 与 `SO_PEERGROUPS` 识别调用方，其套接字位于 `$XDG_RUNTIME_DIR` 下；编解码库以 vcpkg 的 `x64-linux` 与 `arm64-linux` triplet 构建；系统采样来自 procfs。尚无采集与输入：Linux 被控端显示测试图案。
-- X11 上的 Linux：经 MIT-SHM 采集并把 Kyokai 窗口涂黑，经 XTest 输入且永不到达这些窗口（文字经空闲键码），指针，经 XInput 2 的本地输入监视及 Ctrl+Alt+Shift+Esc，DPMS，以及在同一桌面上的 AI 任务。Wayland 被控端仍显示占位画面。
+- X11 上的 Linux：经 MIT-SHM 采集并把 Kyokai 窗口涂黑，经 XTest 输入且永不到达这些窗口（文字经空闲键码），指针，经 XInput 2 的本地输入监视及 Ctrl+Alt+Shift+Esc，DPMS，以及在同一桌面上的 AI 任务。
+- Wayland 上的 Linux：经 ScreenCast 门户与 PipeWire 采集屏幕，经 RemoteDesktop 门户输入，整个引擎一个门户会话并保留其恢复令牌，被控端用户自己的输入来自输入设备（Kyokai Helper 或 `input` 组；没有时不启动 AI 任务），以及 `kyokai.shown`（本地 API 2，新增）：Kyokai 的某个窗口显示在 Wayland 上时，画面保持不动，输入等待。
+- Secret Service 最多等一分钟：无人回答的密钥环提示不再阻挡引擎启动（存储视为已拒绝，与关闭提示相同）。
 - 会话结束后立即重新启动的被控端（旧连接在端口 47310 上处于 TIME-WAIT）在 Linux 与 macOS 上约一分钟内不监听任何地址：现在监听器在这些系统上复用地址。
 - 在其系统上无法采集的被控端（`cannot-capture`）按文档所述一直显示占位画面，不再立即重新打开视频并计入恢复步骤。
 - 上游：MyGo v0.7.3，无需界面迁移（其唯一的不兼容变更是网页的双指缩放，Kyokai 不显示网页，不受影响）。已检查，未变：EasyTier v2.7.0、RustDesk 1.5.0（复用代码）、vcpkg 2026.10.16、Rust 1.99.1（检查于 2026-10-29）。

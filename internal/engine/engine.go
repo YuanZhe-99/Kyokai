@@ -194,7 +194,7 @@ func Run(ctx context.Context, opts Options) error {
 var protectedAllows = map[localapi.RequestType]bool{
 	localapi.RequestStatus: true, localapi.RequestProtect: true, localapi.RequestShutdown: true, localapi.RequestCloseControllers: true,
 	localapi.RequestDecide: true, localapi.RequestClose: true,
-	localapi.RequestCaptureShow: true, localapi.RequestInputKyokai: true, localapi.RequestSoundSource: true, localapi.RequestLogs: true,
+	localapi.RequestCaptureShow: true, localapi.RequestInputKyokai: true, localapi.RequestKyokaiShown: true, localapi.RequestSoundSource: true, localapi.RequestLogs: true,
 	localapi.RequestPermission: true, localapi.RequestAgentRestart: true, localapi.RequestHelperUpdate: true,
 	localapi.RequestAISettingsGet: true, localapi.RequestAISettingsSet: true, localapi.RequestAIKeySet: true,
 	localapi.RequestAIModels: true, localapi.RequestAITaskStart: true, localapi.RequestAIDraft: true,
@@ -417,6 +417,11 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 			return localapi.Fail(localapi.CodeInvalid, "allow missing")
 		}
 		return h.command("input.kyokai", map[string]bool{"allow": *req.KyokaiInput})
+	case localapi.RequestKyokaiShown:
+		if req.Shown == nil {
+			return localapi.Fail(localapi.CodeInvalid, "shown missing")
+		}
+		return h.command("kyokai.shown", map[string]bool{"shown": *req.Shown})
 	case localapi.RequestSoundSource:
 		if req.SoundSource == nil {
 			return localapi.Fail(localapi.CodeInvalid, "source missing")
