@@ -161,7 +161,7 @@ Settings › Network › **Runs on** chooses what every network runs on: **Kyoka
 embedded node above (the default), or an official EasyTier core (`network.backend`, the core's tag
 in `easytier`; `ctl network-backend --easytier <tag>`). The engine lists EasyTier's GitHub
 releases of the 2.6 and 2.7 lines (`cores.list`, never `nightly`) for which this system has an
-asset and the release a SHA-256 digest, and downloads one when it is chosen (`cores.install`,
+asset (`easytier-<windows|macos|linux>-<arch>-<tag>.zip`) and the release a SHA-256 digest, and downloads one when it is chosen (`cores.install`,
 `internal/cores`): the zip is checked against the digest before anything is unpacked, then
 `easytier-core`, `easytier-cli` and their libraries go into `<state>/cores/<tag>/` (the helper's
 state directory in the helper modes, written by the helper). easytier-mini is not offered: without

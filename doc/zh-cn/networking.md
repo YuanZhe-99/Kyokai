@@ -114,7 +114,7 @@ IPv4 计算。端口已被占用时（本机上的第二个引擎）不会监听
 
 设置 › 网络 › **运行于** 选择所有网络运行在什么上：**Kyokai 网络**，即上面的内嵌节点（默认），或官方 EasyTier 核心
 （`network.backend`，核心的标签放在 `easytier` 中；`ctl network-backend --easytier <tag>`）。引擎列出 EasyTier 在 GitHub 上
-2.6 与 2.7 系列的发布（`cores.list`，从不列 `nightly`），只列本系统有对应资源、且发布带有 SHA-256 摘要的版本；选中时才下载
+2.6 与 2.7 系列的发布（`cores.list`，从不列 `nightly`），只列本系统有对应资源（`easytier-<windows|macos|linux>-<arch>-<tag>.zip`）、且发布带有 SHA-256 摘要的版本；选中时才下载
 （`cores.install`，`internal/cores`）：解压任何内容之前先用摘要校验 zip，然后把 `easytier-core`、`easytier-cli` 及其库放进
 `<state>/cores/<tag>/`（助手模式下是助手的状态目录，由助手写入）。不提供 easytier-mini：没有 TUN 时它没有 SOCKS5 入口，
 也不会转发到它自己虚拟地址的连接，因此无法承载 Kyokai 的会话（在一台电脑上用两个核心做的验证，2026-10-28）。

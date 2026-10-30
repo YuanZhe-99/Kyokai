@@ -16,7 +16,9 @@ func TestAssetName(t *testing.T) {
 		{"windows", "arm64", "easytier-windows-arm64-v2.7.0.zip"},
 		{"darwin", "arm64", "easytier-macos-aarch64-v2.7.0.zip"},
 		{"darwin", "amd64", "easytier-macos-x86_64-v2.7.0.zip"},
-		{"linux", "amd64", ""},
+		{"linux", "amd64", "easytier-linux-x86_64-v2.7.0.zip"},
+		{"linux", "arm64", "easytier-linux-aarch64-v2.7.0.zip"},
+		{"freebsd", "amd64", ""},
 		{"windows", "386", ""},
 	}
 	for _, c := range cases {

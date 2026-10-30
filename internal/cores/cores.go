@@ -65,7 +65,7 @@ type ghRelease struct {
 // AssetName is the zip EasyTier publishes for a system and architecture
 // (Go's names), or "" where it publishes none Kyokai runs on.
 func AssetName(goos, goarch, tag string) string {
-	osName := map[string]string{"windows": "windows", "darwin": "macos"}[goos]
+	osName := map[string]string{"windows": "windows", "darwin": "macos", "linux": "linux"}[goos]
 	arch := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[goarch]
 	if goos == "windows" && goarch == "arm64" {
 		arch = "arm64"
