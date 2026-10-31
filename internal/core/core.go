@@ -135,9 +135,11 @@ type Status struct {
 	AI json.RawMessage `json:"ai"`
 	// AIDraft is the shared draft of the next AI instruction.
 	AIDraft string `json:"ai_draft"`
-	// Name is the chosen friendly name; About is decoded by the host.
-	Name  string          `json:"name"`
-	About json.RawMessage `json:"about"`
+	// Name is the chosen friendly name; PublishName: it shows in the
+	// networks before any login; About is decoded by the host.
+	Name        string          `json:"name"`
+	PublishName bool            `json:"publish_name"`
+	About       json.RawMessage `json:"about"`
 }
 
 // Load opens the library at path (absolute) and checks its ABI version.

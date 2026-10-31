@@ -1,5 +1,11 @@
 # Version history
 
+## 0.6.12 (2026-10-31)
+
+- Fix: the Show in my networks switch turned back off at once — the engine left the setting out of
+  the status it gives the interface, though the core kept it.
+- Upstreams checked, unchanged.
+
 ## 0.6.11 (2026-10-31)
 
 - A pane in a window of its own fills it, with no margin or border round it, and its header's ×

@@ -111,6 +111,14 @@ func TestRealLibrary(t *testing.T) {
 		status.Network.Networks[0].ID != id || !status.Network.Networks[0].Joined {
 		t.Fatalf("status: %v %+v", err, status.Network)
 	}
+	// Showing the name in the networks reaches the status.
+	var shown Status
+	if err := l.Call("device.set_name", map[string]any{"publish": true}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Call("status", nil, &shown); err != nil || !shown.PublishName {
+		t.Fatalf("the name shown in the networks: %v %v", err, shown.PublishName)
+	}
 	if err := l.Call("network.profile.set", map[string]any{"id": id, "joined": false}, &nets); err != nil || nets.Profiles[0].Joined {
 		t.Fatalf("leave: %v %+v", err, nets)
 	}

@@ -859,7 +859,7 @@ func (h *handler) status() (*localapi.Status, error) {
 		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
 		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, ByAddress: byAddress, ServicePorts: localapi.ServicePorts(st.ServicePorts), Nanokvm: (*localapi.Nanokvm)(st.Nanokvm), LogsOff: LogsOff(h.stateDir) || !st.KeepsHistory, Protected: st.Protected, AIDraft: st.AIDraft, Permissions: permissions,
 		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
-		Name: st.Name, About: about, Watching: watching, Watchers: watchers,
+		Name: st.Name, PublishName: st.PublishName, About: about, Watching: watching, Watchers: watchers,
 	}, nil
 }
 
