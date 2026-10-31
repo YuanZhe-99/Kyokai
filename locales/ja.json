@@ -940,5 +940,230 @@
   "WindowRestore": "ウィンドウを元のサイズに戻す",
   "WithoutAskingAbout": "オフ：接続のたびにあなたが許可します。",
   "WithoutAskingHint": "上でチェックした方法でサインインしたデバイスは、確認なしで、パスワードで許可される範囲で接続できます。このコンピュータに誰もいないとき（バックグラウンドサービス）は固定パスワードか鍵だけが使えます。オフにすると毎回確認します。",
-  "WithoutAskingTitle": "確認なしで接続"
+  "WithoutAskingTitle": "確認なしで接続",
+  "FilesPanel": "ファイル",
+  "FilesTab": "ファイル",
+  "FilesTransfers": "転送",
+  "FilesTransfersCount": "{count, plural, other {転送 · #}}",
+  "@FilesTransfersCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "FilesOpening": "ファイルを開いています…",
+  "FilesUp": "1つ上のフォルダー",
+  "FilesNewFolder": "新しいフォルダー",
+  "FilesNewFolderName": "新しいフォルダー",
+  "FilesUpload": "アップロード",
+  "FilesUploadHere": "ここにアップロード…",
+  "FilesRefresh": "更新",
+  "FilesShowHidden": "隠しファイルを表示",
+  "FilesHideHidden": "隠しファイルを表示しない",
+  "FilesDropHint": "フォルダーにファイルをドロップするとそこにアップロードします",
+  "FilesDropInto": "ドロップすると {folder} にアップロードします",
+  "@FilesDropInto": {
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesReading": "読み込んでいます…",
+  "FilesEmpty": "このフォルダーは空です。",
+  "FilesChangedAt": "更新: {when}",
+  "@FilesChangedAt": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesSizeAt": "{size} · 更新: {when}",
+  "@FilesSizeAt": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesFolderAt": "フォルダー · 更新: {when}",
+  "@FilesFolderAt": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesMarkUp": "アップロード中",
+  "FilesMarkDown": "ダウンロード済み",
+  "FilesMarkFailed": "転送に失敗しました",
+  "FilesDownload": "ダウンロード",
+  "FilesDownloadTo": "保存先を選んでダウンロード…",
+  "FilesRename": "名前を変更",
+  "FilesCopyPath": "パスをコピー",
+  "FilesOpenInTerminal": "ターミナルでフォルダーを開く",
+  "FilesDelete": "削除",
+  "FilesDeleteAsk": "削除…",
+  "FilesDeleteTitle": "{device} の {name} を削除しますか?",
+  "@FilesDeleteTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesDeleteHint": "そのコンピューターからすぐに削除されます。フォルダーは中身ごと削除されます。ごみ箱には入らず、元に戻せません。",
+  "FilesBadName": "名前は空にできず、/ や \\ を含められません。",
+  "FilesNoSFTP": "このコンピューターの SSH はファイルの閲覧に対応していません",
+  "FilesNoSFTPHint": "SSH サーバーに SFTP がないため、Kyokai は SCP でコピーします。ダウンロードするファイルのパスを入力するか、フォルダーにアップロードするファイルを選んでください。",
+  "FilesPathOn": "{device} 上のパス",
+  "@FilesPathOn": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesSCPHint": "「ここにアップロード」は、そのパスのフォルダー(/ で終わるパスはそのフォルダー自体)にファイルを置き、同じ名前のものは置き換えます。名前の変更、削除、新しいフォルダーには SFTP が必要です。",
+  "FilesNoTransfers": "まだ転送はありません。",
+  "FilesClearFinished": "完了したものを消去",
+  "FilesTo": "保存先: {where}",
+  "@FilesTo": {
+    "placeholders": {
+      "where": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesShowInFolder": "フォルダーで表示",
+  "FilesTryAgain": "再試行",
+  "FilesWaiting": "待機中",
+  "FilesUploading": "アップロード中",
+  "FilesDownloading": "ダウンロード中",
+  "FilesOf": "{done} / {total}",
+  "@FilesOf": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesDone": "完了",
+  "FilesCanceled": "キャンセルしました",
+  "FilesTaken": "{folder} にはすでに {name} があります",
+  "@FilesTaken": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesTakenHint": "既存: {there}。新しいもの: {coming}。",
+  "@FilesTakenHint": {
+    "placeholders": {
+      "there": {
+        "type": "String"
+      },
+      "coming": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesForTheRest": "この転送の残りにも同じ操作を適用",
+  "FilesSkip": "スキップ",
+  "FilesKeepBoth": "両方残す",
+  "FilesReplace": "置き換え",
+  "FilesErrDenied": "そのアカウントにはこの操作の権限がありません。",
+  "FilesErrGone": "もう存在しません。",
+  "FilesErrTaken": "その名前はすでに使われています。",
+  "FilesErrSCPFolder": "SCP はファイルのみコピーでき、フォルダーはコピーできません。",
+  "FilesErrServer": "サーバーが拒否しました: {why}",
+  "@FilesErrServer": {
+    "placeholders": {
+      "why": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesErrEnded": "接続が終了しました。",
+  "FilesErrFailed": "完了できませんでした。",
+  "TermLookFor": "{device} のターミナルの外観",
+  "@TermLookFor": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "TermLookHint": "このデバイスだけの設定です。既定のままの項目は「設定 › 一般」に従います。",
+  "TermUseDefault": "既定 ({value})",
+  "@TermUseDefault": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "TermUseDefaults": "すべて既定に戻す",
+  "TermCursorLater": "カーソルの変更は次の接続から反映されます。",
+  "TermThemeKyokai": "Kyokai",
+  "TermLight": "ライトモードのテーマ",
+  "TermDark": "ダークモードのテーマ",
+  "TermFont": "フォント",
+  "TermFontSystem": "システムの等幅フォント",
+  "TermSize": "文字サイズ",
+  "TermCursor": "カーソル",
+  "TermCursorBlock": "ブロック",
+  "TermCursorBar": "バー",
+  "TermCursorUnderline": "下線",
+  "TermBlink": "カーソルの点滅",
+  "TermBlinkOn": "点滅する",
+  "TermBlinkOff": "点滅しない",
+  "TermFind": "検索",
+  "TermFindNone": "一致なし",
+  "TermFindCount": "{total} 件中 {at} 件目",
+  "@TermFindCount": {
+    "placeholders": {
+      "at": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "TermFindPrevious": "前の一致",
+  "TermFindNext": "次の一致",
+  "TermNotice": "{pane}: {text}",
+  "@TermNotice": {
+    "placeholders": {
+      "pane": {
+        "type": "String"
+      },
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "SectionTerminal": "SSH ターミナル",
+  "SettingsTermAbout": "SSH ペインの外観です。デバイスごとに、そのペインのファイルパネルの「設定」で個別に選べます。",
+  "FilesFolder": "フォルダー",
+  "TermPreview": "プレビュー",
+  "TermPreviewLight": "ライトモードのプレビュー",
+  "TermPreviewDark": "ダークモードのプレビュー",
+  "FilesSettings": "設定"
 }

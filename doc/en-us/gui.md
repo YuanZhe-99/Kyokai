@@ -369,7 +369,8 @@ when `SCREENSHOT_DIR` is set.
   to, with a note when the engine in use cannot do it yet —, how secrets are kept, and Protected
   mode (only with a permanent password, after a confirmation).
 - **General:** **Language and look** — the language, and the appearance (also the sidebar's
-  button); **Start and close** — open at login, off by default (started at login, Kyokai shows no
+  button); **SSH terminal** — the default look of SSH panes ([Terminal look](#terminal-look)),
+  with its preview; **Start and close** — open at login, off by default (started at login, Kyokai shows no
   window, only its tray icon; on a Mac as a login item, read from the launch's Apple Event while
   AppKit handles it, inside `applicationDidFinishLaunching:` (`LaunchedAsLoginItem`): MyGo's own
   check reads it earlier and always answers no), Start in the tray when opened at login (on by default), and the
@@ -433,10 +434,32 @@ when `SCREENSHOT_DIR` is set.
   remote screen), the fields that way needs (user name; domain for Remote Desktop; password), a
   hint for Key and the no-sign-in ways, Remember, and Cancel and Sign in (until the fields are
   filled, Sign in is off), then the client: MyGo's terminal for SSH,
-  in the app's light or dark theme, or the other desktop's picture for Remote Desktop and VNC, with
+  in the device's [Terminal look](#terminal-look), or the other desktop's picture for Remote Desktop and VNC, with
   a toolbar of Display (Fit or Original size), Keyboard (the keyboard mode), Actions
   (Type the clipboard, Ctrl+Alt+Del) and Full screen. When it ends it says why, with Reconnect, and after an SSH
   server's key changed, Trust the new key.
+- **An SSH pane** has a Files button in its header, tinted while its files panel shows. The
+  header's second line adds, after SSH, the title the program in the shell set (cleaned of
+  control characters, at most 80 characters). ⌘F on macOS, Ctrl+Shift+F elsewhere (Ctrl+F stays
+  the shell's), opens the find bar over the terminal's top right: what to find, "2 of 5" or No
+  matches, the previous and the next match, and × or Escape. A program's notice (OSC 9, OSC 777)
+  shows as Kyokai's notice, naming its pane.
+- **The files panel** ([remote-services.md](remote-services.md), "Files over SSH") stands beside
+  the terminal, 320 points wide, and over the terminal's right side when the pane leaves the
+  terminal less than 360 points. Three tabs across its width, as wide as each other: **Files**,
+  **Transfers** (with how many wait or run) and **Settings**. Files: the folder shown as a path
+  from `~`, each folder on the way a button (cut at its start when long), then Up, New folder,
+  Upload, Refresh and Show or hide hidden files; the tree (a chevron for each folder, which opens
+  on a click and is shown on a double click; a file's size; its mark ↑, ↓ or !; the size and the
+  time changed as a tooltip), whose rows open a menu on a right click — Download, Download to…,
+  Upload here… and New folder for a folder, Rename (in place: Enter keeps it, Escape drops it),
+  Copy path, Open the folder in the terminal (a `cd` typed into the shell), Delete…; and at its
+  foot where files dropped go, which turns to the folder under them while they are dragged over
+  it. Transfers: each transfer with its direction, name, where it goes, progress, state and
+  amount, and its button; Clear finished. Settings: the device's [Terminal look](#terminal-look).
+  Where the server has no SFTP, Files says so and offers the path, Download and Upload here…. A
+  question — a name taken (Replace, Keep both, Skip, and for the rest), or Delete — shows over the
+  pane, dimmed.
 - The picture is scaled to fit on black, or with Original size at one point per pixel of the
   host, scrolled both ways when larger than the window (its scroll bars' thumbs move it; the wheel
   goes to the host while the session controls it) and centred when smaller; the host's pointer is
@@ -511,6 +534,21 @@ when `SCREENSHOT_DIR` is set.
   says so when its pane is behind.
 - A desktop's connection asks for viewing, input, the clipboard, files and sound. Its AI is a
   session's pane beside it (the toolbar's AI) over a link of its own ([AI sessions](#ai-sessions)).
+
+## Terminal look
+
+SSH panes' terminals take the look Settings › General › SSH terminal sets (`Prefs.Terminal`), and
+over it each device's own choices (`Prefs.Terminals`, by Device ID), field by field: a field a
+device leaves at Default follows Settings (`TermLook.over`); Use the defaults for all clears the
+device's. The parts: the theme in light mode and in dark mode (Kyokai's — the terminal's own
+colors with the accent as the cursor and its tint as the selection — or any of the themes Ghostty
+ships, typed to find in a combobox; a name no longer there reads as Kyokai's), the font (empty:
+the system's monospaced font), the text size (9 to 24, 13 by default), the cursor (block, bar,
+underline) and its blinking. Every terminal keeps text at least 4.5:1 against its background
+(MyGo's minimum contrast). Colors and font reach open panes at once; the cursor, from their next
+connection. A preview shows the look in light and dark mode side by side in Settings, one above the
+other in the files panel's Settings tab: a prompt, a listing, an error and a warning in the program
+colors a shell uses most, and the cursor (`termPreview`).
 
 ## AI sessions
 

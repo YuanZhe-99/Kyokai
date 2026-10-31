@@ -1,5 +1,19 @@
 # Version history
 
+## 0.6.13 (2026-10-31)
+
+- SSH panes copy files: a files panel over SFTP on the pane's own connection — browse, upload
+  (also by dropping on a folder), download, new folder, rename, delete — with transfers one at a
+  time, and Replace, Keep both or Skip for a name taken; SCP by path where the server has no SFTP.
+  No new permission: `use-ssh` and the account's own rights decide. Adds `pkg/sftp` v1.13.12.
+- The terminal's look: Kyokai's colors or any of Ghostty's themes for light and dark mode, font,
+  size, cursor and blinking, set in Settings › General and per device in the panel's Settings
+  tab, with a preview; text kept at 4.5:1 contrast.
+- The SSH shell asks for `LANG` in the interface's language and `COLORTERM=truecolor`; the
+  program's title shows in the pane's header; ⌘F or Ctrl+Shift+F finds text; a program's notice
+  shows as Kyokai's.
+- Upstreams checked, unchanged (MyGo v0.7.3, EasyTier v2.7.0, RustDesk 1.5.0, Rust 1.99.1).
+
 ## 0.6.12 (2026-10-31)
 
 - Fix: the Show in my networks switch turned back off at once — the engine left the setting out of

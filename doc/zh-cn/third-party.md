@@ -23,6 +23,8 @@ Kyokai 采用 AGPL-3.0-only 许可。本清单列出它复用或内嵌的每个�
 | open-screen-sharing | `nekohasekai/open-screen-sharing`，提交 `ce6408d` | 内置的远程桌面与 VNC 客户端：`internal/rdp`（含 `codec/*` 与 `ntlm`）、`internal/rfb`（客户端部分）、`internal/bgra`、`internal/outbox` | GPL-3.0-or-later，附加条款：未经事先同意，衍生作品不得使用该应用的名称或暗示与其有关联 | 只保留客户端：去掉 rdpeudp、multitransport 与 UDP、磁盘上的图形缓存、RFB 服务器、媒体流、虚拟显示器、文件复制与 Kerberos；`sagernet/sing` 换成标准库（`internal/exceptions`）；`Conn` 选项使用 Kyokai 的隧道；RDP 客户端以 Kyokai 自称；每个文件保留来源文件头并加上 “Modified by Kyokai” 说明 | GPL-3.0 的条款，由 Kyokai 的 AGPL-3.0 源码满足；产品中绝不出现上游的名称（只出现在来源文件头与这些记录中）；随附 `open-screen-sharing-LICENSE.txt` 与 `GPL-3.0.txt` |
 | NanoKVM-USB | `sipeed/NanoKVM-USB`，提交 `1d1dd5e` | 仅作为设计参照，未复制代码：CH9329 命令帧、键盘与绝对指针报告、速率与 GET_INFO 的应答（`core/kyokai-core/src/kvm.rs`） | GPL-3.0 | 无（未复制任何内容） | 无 |
 | libghostty-vt | `ghostty-org/ghostty`，经由 MyGo 的终端插件（MyGo 发布的构建） | SSH 终端的模拟器，运行时加载 | MIT | 无 | 保留版权声明 |
+| pkg/sftp | `pkg/sftp` v1.13.12，含 `kr/fs` v0.1.0 | SSH 小窗通过 SFTP 传输文件（`internal/gui/sshfiles.go`） | BSD-2-Clause（`kr/fs`：BSD-3-Clause） | 无 | 保留版权声明 |
+| Ghostty 的主题 | iTerm2-Color-Schemes，即 MyGo 终端插件所绑定的 Ghostty 附带的版本 | 可供选择的 SSH 终端主题 | MIT | 无 | 保留版权声明 |
 
 ## 绝不使用
 

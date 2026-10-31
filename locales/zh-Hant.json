@@ -940,5 +940,230 @@
   "WindowRestore": "還原視窗",
   "WithoutAskingAbout": "關閉時：每個連線都由你自己允許。",
   "WithoutAskingHint": "以上方勾選的方式登入的裝置無需你確認即可連線，獲得密碼可授予的權限。沒有人在這台電腦前時（背景服務），只有固定密碼或金鑰可以。關閉後每次都會詢問你。",
-  "WithoutAskingTitle": "無需確認即可連線"
+  "WithoutAskingTitle": "無需確認即可連線",
+  "FilesPanel": "檔案",
+  "FilesTab": "檔案",
+  "FilesTransfers": "傳輸",
+  "FilesTransfersCount": "{count, plural, other {傳輸 · #}}",
+  "@FilesTransfersCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "FilesOpening": "正在開啟檔案…",
+  "FilesUp": "上一層資料夾",
+  "FilesNewFolder": "新增資料夾",
+  "FilesNewFolderName": "新資料夾",
+  "FilesUpload": "上傳",
+  "FilesUploadHere": "上傳到這裡…",
+  "FilesRefresh": "重新整理",
+  "FilesShowHidden": "顯示隱藏檔案",
+  "FilesHideHidden": "不顯示隱藏檔案",
+  "FilesDropHint": "把檔案拖到資料夾上即可上傳到那裡",
+  "FilesDropInto": "放開即上傳到 {folder}",
+  "@FilesDropInto": {
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesReading": "正在讀取…",
+  "FilesEmpty": "此資料夾是空的。",
+  "FilesChangedAt": "修改於 {when}",
+  "@FilesChangedAt": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesSizeAt": "{size} · 修改於 {when}",
+  "@FilesSizeAt": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesFolderAt": "資料夾 · 修改於 {when}",
+  "@FilesFolderAt": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesMarkUp": "正在上傳",
+  "FilesMarkDown": "已下載",
+  "FilesMarkFailed": "傳輸失敗",
+  "FilesDownload": "下載",
+  "FilesDownloadTo": "下載到…",
+  "FilesRename": "重新命名",
+  "FilesCopyPath": "複製路徑",
+  "FilesOpenInTerminal": "在終端機中開啟該資料夾",
+  "FilesDelete": "刪除",
+  "FilesDeleteAsk": "刪除…",
+  "FilesDeleteTitle": "刪除 {device} 上的 {name}？",
+  "@FilesDeleteTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesDeleteHint": "會立即在那台電腦上刪除，資料夾連同其中的全部內容。不會進入資源回收筒，也無法復原。",
+  "FilesBadName": "名稱不能為空，也不能包含 / 或 \\。",
+  "FilesNoSFTP": "此電腦的 SSH 不支援瀏覽檔案",
+  "FilesNoSFTPHint": "它的 SSH 伺服器沒有 SFTP，因此 Kyokai 用 SCP 複製：輸入要下載的檔案路徑，或選擇檔案上傳到某個資料夾。",
+  "FilesPathOn": "{device} 上的路徑",
+  "@FilesPathOn": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesSCPHint": "「上傳到這裡」會把檔案放進該路徑所在的資料夾（以 / 結尾的路徑即資料夾本身），並取代同名檔案。重新命名、刪除和新增資料夾需要 SFTP。",
+  "FilesNoTransfers": "還沒有傳輸。",
+  "FilesClearFinished": "清除已完成",
+  "FilesTo": "到 {where}",
+  "@FilesTo": {
+    "placeholders": {
+      "where": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesShowInFolder": "在資料夾中顯示",
+  "FilesTryAgain": "重試",
+  "FilesWaiting": "等待中",
+  "FilesUploading": "正在上傳",
+  "FilesDownloading": "正在下載",
+  "FilesOf": "{done} / {total}",
+  "@FilesOf": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesDone": "完成",
+  "FilesCanceled": "已取消",
+  "FilesTaken": "{folder} 中已有 {name}",
+  "@FilesTaken": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesTakenHint": "已有的：{there}。傳入的：{coming}。",
+  "@FilesTakenHint": {
+    "placeholders": {
+      "there": {
+        "type": "String"
+      },
+      "coming": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesForTheRest": "本次傳輸的其餘檔案也這樣處理",
+  "FilesSkip": "略過",
+  "FilesKeepBoth": "保留兩者",
+  "FilesReplace": "取代",
+  "FilesErrDenied": "該帳戶在那裡沒有這樣做的權限。",
+  "FilesErrGone": "它已不在那裡。",
+  "FilesErrTaken": "那裡已有同名的項目。",
+  "FilesErrSCPFolder": "SCP 只能複製檔案，不能複製資料夾。",
+  "FilesErrServer": "伺服器拒絕了：{why}",
+  "@FilesErrServer": {
+    "placeholders": {
+      "why": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesErrEnded": "連線已結束。",
+  "FilesErrFailed": "無法完成。",
+  "TermLookFor": "{device} 的終端機外觀",
+  "@TermLookFor": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "TermLookHint": "只用於此裝置。保持「預設」的項目跟隨「設定 › 一般」。",
+  "TermUseDefault": "預設（{value}）",
+  "@TermUseDefault": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "TermUseDefaults": "全部恢復預設",
+  "TermCursorLater": "新的游標樣式從下次連線起生效。",
+  "TermThemeKyokai": "Kyokai",
+  "TermLight": "淺色模式主題",
+  "TermDark": "深色模式主題",
+  "TermFont": "字型",
+  "TermFontSystem": "系統等寬字型",
+  "TermSize": "字級",
+  "TermCursor": "游標",
+  "TermCursorBlock": "方塊",
+  "TermCursorBar": "直線",
+  "TermCursorUnderline": "底線",
+  "TermBlink": "游標閃爍",
+  "TermBlinkOn": "閃爍",
+  "TermBlinkOff": "不閃爍",
+  "TermFind": "尋找",
+  "TermFindNone": "無結果",
+  "TermFindCount": "第 {at} 個，共 {total} 個",
+  "@TermFindCount": {
+    "placeholders": {
+      "at": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "TermFindPrevious": "上一個",
+  "TermFindNext": "下一個",
+  "TermNotice": "{pane}：{text}",
+  "@TermNotice": {
+    "placeholders": {
+      "pane": {
+        "type": "String"
+      },
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "SectionTerminal": "SSH 終端機",
+  "SettingsTermAbout": "SSH 小窗的外觀。每台裝置都可以另行選擇：在其小窗的檔案面板中，選「設定」。",
+  "FilesFolder": "資料夾",
+  "TermPreview": "預覽",
+  "TermPreviewLight": "淺色模式預覽",
+  "TermPreviewDark": "深色模式預覽",
+  "FilesSettings": "設定"
 }

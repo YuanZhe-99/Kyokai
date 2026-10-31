@@ -134,8 +134,12 @@ is a pane like a desktop's ([gui.md](gui.md), "Connections").
   is sent, and only the key the person chose with Trust the new key is accepted instead. Every later
   key exchange of the connection (a re-key) must show the key the first one accepted, or the
   connection ends. The shell
-  has a PTY of `xterm-256color`; MyGo's terminal (`plugins/terminal`, libghostty-vt) shows it with
-  the tunnel as its `Conn`, whose `Resize` sends a window change.
+  has a PTY of `xterm-256color` and asks for `LANG` (the interface's language in UTF-8:
+  `en_US`, `zh_CN`, `zh_TW` or `ja_JP`) and `COLORTERM=truecolor`, which a server takes only as
+  its `AcceptEnv` allows (OpenSSH: `LANG` and `LC_*`); MyGo's terminal (`plugins/terminal`,
+  libghostty-vt) shows it with the tunnel as its `Conn`, whose `Resize` sends a window change, in
+  the look chosen for the device ([gui.md](gui.md), "Terminal look"). Its files: [Files over
+  SSH](#files-over-ssh).
 - **Remote Desktop** (vendored, `internal/rdp`): Network Level Authentication (CredSSP with NTLMv2)
   for User name and password, TLS alone for On the remote screen, which shows the Windows sign-in
   screen (a server that allows only Network Level Authentication asks for another method); the graphics
@@ -168,6 +172,41 @@ is a pane like a desktop's ([gui.md](gui.md), "Connections").
   scan codes and Unicode key events, VNC by keysyms) and Ctrl+Alt+Del.
 - **Sign-ins kept**: see the sign-in method above; SSH also saves the server's key pinned on first
   use, with the remembered method and user when the key is new to a remembered sign-in.
+
+## Files over SSH
+
+An SSH pane's files panel (its header's Files button; `internal/gui`: `sshfiles.go`,
+`sshpanel.go`) shows the server's files and copies them both ways over the pane's own SSH
+connection. It opens no tunnel of its own (it does not count against the host's 8), asks for no
+permission beyond `use-ssh`, and can do only what the account signed in may do on the server —
+what its shell can reach already. Nothing changes on the host: its engine passes the bytes
+through the tunnel as it does the shell's.
+
+- **SFTP.** The first time the panel opens, it starts the server's `sftp` subsystem
+  (`github.com/pkg/sftp`) on a channel of the pane's connection, at the account's home folder
+  (the server's working directory). Folders are read as they are opened: folders first, then by
+  name ignoring case; names starting with "." only with Show hidden files (`gui.json`
+  `hidden_files`). It makes folders ("New folder", then "New folder 2"…), renames (a name taken is
+  refused, as are an empty name and one holding `/`, `\` or NUL), deletes after asking (a folder
+  with all it holds), uploads files and folders (chosen, or dropped on a folder of the tree, or on
+  the tree for the folder shown) and downloads them, to the Downloads folder in the home folder
+  (made when missing) or to a folder chosen with Download to….
+- **SCP.** Where the server refuses the SFTP subsystem, the panel says so and copies by path with
+  SCP, one file at a time (`scp -f path`, `scp -t folder`; a folder is refused): a path typed is
+  downloaded, and files chosen are uploaded into the folder of the path typed (a path ending in
+  `/` is that folder), replacing a name taken there, which SCP cannot look at first. The path is
+  quoted for the server's shell: in double quotes on a Windows host (as the device says it runs),
+  in single quotes elsewhere, a leading `~/` left for the shell to expand.
+- **Transfers** run one at a time, in the order asked. Transfers lists each with its progress and
+  speed: Cancel while it waits or runs, Show in folder once a download is done, Try again after
+  one failed or was canceled — a new transfer the person asks for: nothing is resumed or sent
+  again on its own. A download is written to `name.kyokai-part` and renamed into place once whole;
+  an upload that ends early is removed on the server. A name taken where a file or folder goes is
+  asked over the pane: Replace (a folder there is replaced, never merged), Keep both
+  (`name (2).ext`), or Skip, for this one or for the rest of what the same action started. The tree
+  marks a path being uploaded ↑, downloaded ↓, or whose transfer failed !.
+- When the pane's connection ends, its transfers end with it; the next connection starts with an
+  empty panel.
 
 ## NanoKVM USB
 

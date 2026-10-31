@@ -212,6 +212,29 @@ var (
 	rowGlobe    = statusIconNetwork
 )
 
+// An SSH pane's icons: its files panel in the header; a file, an upload, a new folder, and up and down in the panel.
+var (
+	//go:embed assets/icons/files-panel.svg
+	filesPanelSVG []byte
+	//go:embed assets/icons/file.svg
+	fileSVG []byte
+	//go:embed assets/icons/upload.svg
+	uploadSVG []byte
+	//go:embed assets/icons/folder-plus.svg
+	folderPlusSVG []byte
+	//go:embed assets/icons/arrow-up.svg
+	arrowUpSVG []byte
+	//go:embed assets/icons/arrow-down.svg
+	arrowDownSVG []byte
+
+	sshFiles    = ui.MustParseSVG(filesPanelSVG)
+	filesFile   = ui.MustParseSVG(fileSVG)
+	filesUpload = ui.MustParseSVG(uploadSVG)
+	filesNewDir = ui.MustParseSVG(folderPlusSVG)
+	filesUp     = ui.MustParseSVG(arrowUpSVG)
+	filesDown   = ui.MustParseSVG(arrowDownSVG)
+)
+
 // An AI session's icons: send and stop in the prompt box, pause and
 // resume, rename in the header, approvals' shield, a menu chip's chevron,
 // a step that did not run, and the suggestions' image and printer.
@@ -414,6 +437,14 @@ const (
 	aiRecentH       float32 = 40  // a recent task's row
 	aiRenameW       float32 = 260 // a session's title being typed in the header
 	clipPanelW      float32 = 300 // the viewer's clipboard panel
+	filesPanelW     float32 = 320 // an SSH pane's files panel
+	filesTermMinW   float32 = 360 // the terminal beside it; narrower, the panel goes over it
+	filesRowH       float32 = 30  // a row of its tree
+	filesTabH       float32 = 28  // a tab of the panel
+	filesIndent     float32 = 16  // a level of the tree
+	termFieldW      float32 = 240 // a choice of the terminal's look
+	termLookW       float32 = 380 // a device's terminal look, under its button
+	findBarW        float32 = 340 // the terminal's find bar
 	shellSidebarW   float32 = 248 // the sidebar beside the panes
 	railW           float32 = 56  // the sidebar folded to its icons (railWidth)
 	railMacW        float32 = 72  // on macOS: the traffic lights and 9 on either side

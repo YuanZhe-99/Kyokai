@@ -1177,6 +1177,9 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 		if ai != nil {
 			ai.headButtons(c, narrow)
 		}
+		if svc, ok := v.(*serviceTab); ok {
+			svc.headButtons(c)
+		}
 		switch {
 		case !vw.main:
 			if mainOpen && iconButton(c, "head-back-"+key, panePopIn, L.PaneBackToMain()) {

@@ -109,6 +109,19 @@ func (a *App) generalView(c *ui.Context) {
 				}
 			})
 		})
+		a.section(c, "terminal", L.SectionTerminal(), nil, func(r *rows) {
+			l, changed := termLookForm(c, "term", p.Terminal, nil, func(id, title string, control func()) {
+				about := ""
+				if id == "term-light" {
+					about = L.SettingsTermAbout()
+				}
+				r.row(c, id, tile(kindSSH), setting{title: title, about: about}, control)
+			})
+			r.block(c, "term-preview", func() { termPreview(c, "term-preview-in", l.over(TermLook{}), false) })
+			if changed {
+				a.setTermLook("", l)
+			}
+		})
 		a.section(c, "start", L.SectionStart(), nil, func(r *rows) {
 			r.row(c, "login", tile(rowPower), setting{title: L.SettingsOpenAtLogin(), about: L.SettingsOpenAtLoginHint()}, func() {
 				if ui.Switch(c.Key("login-sw"), &login).Label(L.SettingsOpenAtLogin()).Changed() {

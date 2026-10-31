@@ -6,10 +6,13 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -242,6 +245,9 @@ func sshShell(client *ssh.Client, tunnel net.Conn) (*sshTerm, error) {
 	if err != nil {
 		return nil, err
 	}
+	for _, kv := range sshEnv() {
+		_ = sess.Setenv(kv[0], kv[1]) // a server that refuses one goes on without it
+	}
 	modes := ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 115200, ssh.TTY_OP_OSPEED: 115200}
 	if err := sess.RequestPty("xterm-256color", 24, 80, modes); err != nil {
 		return nil, err
@@ -260,19 +266,166 @@ func sshShell(client *ssh.Client, tunnel net.Conn) (*sshTerm, error) {
 	return &sshTerm{tunnel: tunnel, client: client, sess: sess, in: in, out: out}, nil
 }
 
-// sshClient is a running SSH tab: MyGo's terminal on the shell, in the
-// app's theme; pic is the terminal's view (main thread).
+// sshClient is a running SSH pane: MyGo's terminal on the shell, in the
+// look chosen for the device, with its find bar, beside the files panel
+// while it shows (sshpanel.go); pic is the terminal's view. find and
+// panel are the main thread's.
 type sshClient struct {
-	term *terminal.Terminal
-	conn *sshTerm
-	pic  ui.Handle
+	s       *serviceTab
+	term    *terminal.Terminal
+	conn    *sshTerm
+	pic     ui.Handle
+	windows bool
+	// title is what the program running set as the window's title.
+	title atomic.Pointer[string]
+	// files are the server's files once the panel first opened them.
+	files   atomic.Pointer[remoteFiles]
+	opening sync.Once
+	find    findBar
+	panel   filesPanel
 }
 
-// newTerminal starts a terminal on a connection; it ran when the shell
-// ended. Tests replace it (the terminal loads libghostty-vt).
-var newTerminal = func(conn io.ReadWriteCloser, ended func()) (*terminal.Terminal, error) {
-	return terminal.New(terminal.Options{Conn: conn, OnExit: func(int) { ended() }})
+// findBar is the terminal's find bar: open, what it looks for, and how
+// many it found.
+type findBar struct {
+	open   bool
+	text   string
+	status terminal.SearchStatus
 }
+
+// newTerminal starts a terminal (tests replace it: the terminal loads
+// libghostty-vt).
+var newTerminal = terminal.New
+
+// sshTitleMax bounds a title a program set, in characters.
+const sshTitleMax = 80
+
+// cleanTitle is a title or a notice a program on the server sent, as the
+// pane shows it: without control characters, trimmed, cut to max.
+func cleanTitle(s string, max int) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || r == '‮' || r == '‭' {
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > max {
+		s = string(r[:max]) + "…"
+	}
+	return s
+}
+
+// shownTitle is the title the program running set, "" when none.
+func (c *sshClient) shownTitle() string {
+	if t := c.title.Load(); t != nil {
+		return *t
+	}
+	return ""
+}
+
+// findKey reports whether a key opens the find bar: ⌘F on macOS,
+// Ctrl+Shift+F elsewhere (Ctrl+F is the shell's).
+func findKey(mods ui.Modifiers, key ui.Key) bool {
+	if key != ui.KeyF {
+		return false
+	}
+	if runtime.GOOS == "darwin" {
+		return mods == ui.Super
+	}
+	return mods == ui.Ctrl|ui.Shift
+}
+
+// remote starts reading the server's files the first time it is asked,
+// and returns them once SFTP answered (or SCP alone stands), else nil.
+func (c *sshClient) remote() *remoteFiles {
+	c.opening.Do(func() {
+		go func() {
+			c.files.Store(openRemoteFiles(c.conn.client, c.windows, c.s.redraw))
+			c.s.redraw()
+		}()
+	})
+	return c.files.Load()
+}
+
+func (c *sshClient) view(ctx *ui.Context, s *serviceTab) {
+	key := s.tabKey()
+	body := ui.Row(ctx.Key("ssh-" + key)).Fill()
+	w := body.LayoutBounds().W
+	over := c.panel.open && w > 0 && w < filesPanelW+filesTermMinW
+	body.Children(func() {
+		ui.Box(ctx.Key("ssh-term-" + key)).Grow(1).Basis(0).MinWidth(0).FillHeight().Children(func() {
+			terminal.View(ctx, c.term).Fill().AutoFocus().Bind(&c.pic)
+			c.findView(ctx, key)
+		})
+		if c.panel.open && !over {
+			c.panelView(ctx, key, false)
+		}
+		if over {
+			c.panelView(ctx, key, true)
+		}
+	})
+}
+
+// findView is the find bar over the terminal's top right: what to find,
+// how many there are, the next and the one before, and close; Escape
+// closes it.
+func (c *sshClient) findView(ctx *ui.Context, key string) {
+	f := &c.find
+	if !f.open {
+		return
+	}
+	t := ctx.Theme()
+	ui.Row(ctx.Key("ssh-find-"+key)).Absolute().Top(8).Right(12).Width(findBarW).Padding(4, 4, 4, 8).Gap(2).AlignItems(ui.Center).
+		Radius(cardRadius).Background(t.Background).Border(1, t.Border).Shadow(0, 4, 16, 0, sheetShadow).Children(func() {
+		in := ui.TextInput(ctx.Key("ssh-find-in-"+key), &f.text).Placeholder(L.TermFind()).Label(L.TermFind()).Grow(1).Basis(0).MinWidth(0).AutoFocus()
+		if in.Changed() {
+			c.term.Search(f.text)
+		}
+		if in.Submitted() {
+			c.term.SearchNext()
+		}
+		count := ""
+		switch {
+		case f.text == "":
+		case f.status.Total == 0 && !f.status.Searching:
+			count = L.TermFindNone()
+		default:
+			count = L.TermFindCount(f.status.Selected, f.status.Total)
+		}
+		ui.Text(ctx, count).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine()
+		if iconButton(ctx, "ssh-find-prev-"+key, filesUp, L.TermFindPrevious()) {
+			c.term.SearchPrevious()
+		}
+		if iconButton(ctx, "ssh-find-next-"+key, filesDown, L.TermFindNext()) {
+			c.term.SearchNext()
+		}
+		if iconButton(ctx, "ssh-find-close-"+key, paneClose, L.ActionClose()) || in.Shortcut(0, ui.KeyEscape) {
+			c.endFind()
+		}
+	})
+}
+
+// endFind closes the find bar and its search.
+func (c *sshClient) endFind() {
+	c.find = findBar{}
+	c.term.EndSearch()
+}
+
+func (c *sshClient) close() {
+	if f := c.files.Load(); f != nil {
+		f.close()
+	}
+	if c.term != nil {
+		_ = c.term.Close()
+	}
+	_ = c.conn.Close()
+}
+
+func (c *sshClient) grabs() bool        { return false }
+func (c *sshClient) scan(core.KeyEvent) {}
+func (c *sshClient) setFront(bool)      {}
+func (c *sshClient) keys() *ui.Handle   { return &c.pic }
 
 // errPasswordRefused ends a sign-in whose password the server already
 // refused once in this connection.
@@ -318,8 +471,36 @@ func dialSSH(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 	if err != nil {
 		return nil, err
 	}
-	c := &sshClient{conn: conn}
-	term, err := newTerminal(conn, func() { s.ended(c, L.ServiceEnded()) })
+	c := &sshClient{s: s, conn: conn, windows: s.app.deviceOS(s.device) == "windows"}
+	look := s.app.termLook(s.device)
+	light, dark := look.themes()
+	cursor, still := look.cursor()
+	term, err := newTerminal(terminal.Options{
+		Conn: conn, Theme: light, DarkTheme: dark, Font: look.font(), Cursor: cursor, NoBlink: still,
+		MinimumContrast: termContrast,
+		OnExit:          func(int) { s.ended(c, L.ServiceEnded()) },
+		OnTitle: func(title string) {
+			title = cleanTitle(title, sshTitleMax)
+			c.title.Store(&title)
+			s.redraw()
+		},
+		// A program's notice (OSC 9, OSC 777) shows as Kyokai's, naming
+		// the pane it came from.
+		OnNotify: func(title, body string) {
+			text := cleanTitle(strings.TrimSpace(title+" "+body), sshNoticeMax)
+			if text != "" {
+				s.app.update(func() { s.app.setToast(L.TermNotice(s.title, text), false) })
+			}
+		},
+		OnKey: func(mods ui.Modifiers, key ui.Key) bool {
+			if !findKey(mods, key) {
+				return false
+			}
+			c.find.open = true
+			return true
+		},
+		OnSearch: func(st terminal.SearchStatus) { c.find.status = st },
+	})
 	if err != nil {
 		_ = conn.Close()
 		return nil, err
@@ -328,18 +509,18 @@ func dialSSH(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 	return c, nil
 }
 
-func (c *sshClient) view(ctx *ui.Context, _ *serviceTab) {
-	terminal.View(ctx, c.term).Fill().AutoFocus().Bind(&c.pic)
-}
+// sshNoticeMax bounds a program's notice, in characters.
+const sshNoticeMax = 160
 
-func (c *sshClient) close() {
-	if c.term != nil {
-		_ = c.term.Close()
+// deviceOS is the system a device last said it runs ("windows", "macos",
+// or "" unknown).
+func (a *App) deviceOS(device string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, r := range a.statusRecent() {
+		if r.DeviceID == device {
+			return r.About.OS
+		}
 	}
-	_ = c.conn.Close()
+	return ""
 }
-
-func (c *sshClient) grabs() bool        { return false }
-func (c *sshClient) scan(core.KeyEvent) {}
-func (c *sshClient) setFront(bool)      {}
-func (c *sshClient) keys() *ui.Handle   { return &c.pic }

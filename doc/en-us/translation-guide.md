@@ -115,6 +115,10 @@ and Latin words only where it helps readability.
 | Settings sheet / a window of its own | 设置面板 / 独立窗口 |
 | Open in a window of its own / Back to the main window / hide the sidebar altogether | 在独立窗口中打开 / 收回主窗口 / 完全收起侧边栏 |
 | Show in my networks (the friendly name, before any login) | 在我的网络中显示 |
+| files panel / Files / Transfers / Settings (an SSH pane's) | 文件面板 / 文件 / 传输 / 设置 |
+| transfer / Replace / Keep both / Skip (a name taken) | 传输 / 替换 / 保留两者 / 跳过 |
+| Terminal look / SSH terminal (Settings) / Default (…) / Use the defaults for all / preview | 终端外观 / SSH 终端 / 默认（…） / 全部恢复默认 / 预览 |
+| find bar (the terminal's) | 查找栏 |
 | Search settings / How it works (the ⓘ beside a setting) | 搜索设置 / 工作原理 |
 | tile (a permission a password grants) / Manage (the keys) | 图块 / 管理 |
 | In use / Switch (a run mode) | 使用中 / 切换 |

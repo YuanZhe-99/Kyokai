@@ -940,5 +940,230 @@
   "WindowRestore": "还原窗口",
   "WithoutAskingAbout": "关闭时：每个连接都由你自己允许。",
   "WithoutAskingHint": "以上方勾选的方式登录的设备无需你确认即可连接，获得密码可授予的权限。没有人在这台电脑前时（后台服务），只有固定密码或密钥可以。关闭后每次都会询问你。",
-  "WithoutAskingTitle": "无需确认即可连接"
+  "WithoutAskingTitle": "无需确认即可连接",
+  "FilesPanel": "文件",
+  "FilesTab": "文件",
+  "FilesTransfers": "传输",
+  "FilesTransfersCount": "{count, plural, other {传输 · #}}",
+  "@FilesTransfersCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "FilesOpening": "正在打开文件…",
+  "FilesUp": "上一级文件夹",
+  "FilesNewFolder": "新建文件夹",
+  "FilesNewFolderName": "新建文件夹",
+  "FilesUpload": "上传",
+  "FilesUploadHere": "上传到这里…",
+  "FilesRefresh": "刷新",
+  "FilesShowHidden": "显示隐藏文件",
+  "FilesHideHidden": "不显示隐藏文件",
+  "FilesDropHint": "把文件拖到文件夹上即可上传到那里",
+  "FilesDropInto": "松开即上传到 {folder}",
+  "@FilesDropInto": {
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesReading": "正在读取…",
+  "FilesEmpty": "此文件夹是空的。",
+  "FilesChangedAt": "修改于 {when}",
+  "@FilesChangedAt": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesSizeAt": "{size} · 修改于 {when}",
+  "@FilesSizeAt": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesFolderAt": "文件夹 · 修改于 {when}",
+  "@FilesFolderAt": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesMarkUp": "正在上传",
+  "FilesMarkDown": "已下载",
+  "FilesMarkFailed": "传输失败",
+  "FilesDownload": "下载",
+  "FilesDownloadTo": "下载到…",
+  "FilesRename": "重命名",
+  "FilesCopyPath": "复制路径",
+  "FilesOpenInTerminal": "在终端中打开该文件夹",
+  "FilesDelete": "删除",
+  "FilesDeleteAsk": "删除…",
+  "FilesDeleteTitle": "删除 {device} 上的 {name}？",
+  "@FilesDeleteTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesDeleteHint": "会立即在那台计算机上删除，文件夹连同其中的全部内容。不会进入回收站，也无法恢复。",
+  "FilesBadName": "名称不能为空，也不能包含 / 或 \\。",
+  "FilesNoSFTP": "此计算机的 SSH 不支持浏览文件",
+  "FilesNoSFTPHint": "它的 SSH 服务器没有 SFTP，因此 Kyokai 用 SCP 复制：输入要下载的文件路径，或选择文件上传到某个文件夹。",
+  "FilesPathOn": "{device} 上的路径",
+  "@FilesPathOn": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesSCPHint": "“上传到这里”会把文件放进该路径所在的文件夹（以 / 结尾的路径即文件夹本身），并替换同名文件。重命名、删除和新建文件夹需要 SFTP。",
+  "FilesNoTransfers": "还没有传输。",
+  "FilesClearFinished": "清除已完成",
+  "FilesTo": "到 {where}",
+  "@FilesTo": {
+    "placeholders": {
+      "where": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesShowInFolder": "在文件夹中显示",
+  "FilesTryAgain": "重试",
+  "FilesWaiting": "等待中",
+  "FilesUploading": "正在上传",
+  "FilesDownloading": "正在下载",
+  "FilesOf": "{done} / {total}",
+  "@FilesOf": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesDone": "完成",
+  "FilesCanceled": "已取消",
+  "FilesTaken": "{folder} 中已有 {name}",
+  "@FilesTaken": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesTakenHint": "已有的：{there}。传入的：{coming}。",
+  "@FilesTakenHint": {
+    "placeholders": {
+      "there": {
+        "type": "String"
+      },
+      "coming": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesForTheRest": "本次传输的其余文件也这样处理",
+  "FilesSkip": "跳过",
+  "FilesKeepBoth": "保留两者",
+  "FilesReplace": "替换",
+  "FilesErrDenied": "该账户在那里没有这样做的权限。",
+  "FilesErrGone": "它已不在那里。",
+  "FilesErrTaken": "那里已有同名的项目。",
+  "FilesErrSCPFolder": "SCP 只能复制文件，不能复制文件夹。",
+  "FilesErrServer": "服务器拒绝了：{why}",
+  "@FilesErrServer": {
+    "placeholders": {
+      "why": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesErrEnded": "连接已结束。",
+  "FilesErrFailed": "无法完成。",
+  "TermLookFor": "{device} 的终端外观",
+  "@TermLookFor": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "TermLookHint": "只用于此设备。保持“默认”的项跟随“设置 › 通用”。",
+  "TermUseDefault": "默认（{value}）",
+  "@TermUseDefault": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "TermUseDefaults": "全部恢复默认",
+  "TermCursorLater": "新的光标样式从下次连接起生效。",
+  "TermThemeKyokai": "Kyokai",
+  "TermLight": "浅色模式主题",
+  "TermDark": "深色模式主题",
+  "TermFont": "字体",
+  "TermFontSystem": "系统等宽字体",
+  "TermSize": "字号",
+  "TermCursor": "光标",
+  "TermCursorBlock": "方块",
+  "TermCursorBar": "竖线",
+  "TermCursorUnderline": "下划线",
+  "TermBlink": "光标闪烁",
+  "TermBlinkOn": "闪烁",
+  "TermBlinkOff": "不闪烁",
+  "TermFind": "查找",
+  "TermFindNone": "无结果",
+  "TermFindCount": "第 {at} 个，共 {total} 个",
+  "@TermFindCount": {
+    "placeholders": {
+      "at": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "TermFindPrevious": "上一个",
+  "TermFindNext": "下一个",
+  "TermNotice": "{pane}：{text}",
+  "@TermNotice": {
+    "placeholders": {
+      "pane": {
+        "type": "String"
+      },
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "SectionTerminal": "SSH 终端",
+  "SettingsTermAbout": "SSH 小窗的外观。每台设备都可以另行选择：在其小窗的文件面板中，选“设置”。",
+  "FilesFolder": "文件夹",
+  "TermPreview": "预览",
+  "TermPreviewLight": "浅色模式预览",
+  "TermPreviewDark": "深色模式预览",
+  "FilesSettings": "设置"
 }

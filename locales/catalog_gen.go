@@ -9424,3 +9424,927 @@ func WithoutAskingTitle() string { return In(i18n.Locale()).WithoutAskingTitle()
 func (msgs Messages) WithoutAskingTitle() string {
 	return Catalog.Format(msgs.locale, "WithoutAskingTitle", nil)
 }
+
+// FilesPanel says "Files"
+// in the language the app shows.
+func FilesPanel() string { return In(i18n.Locale()).FilesPanel() }
+
+// FilesPanel says "Files"
+// in the language of msgs.
+func (msgs Messages) FilesPanel() string {
+	return Catalog.Format(msgs.locale, "FilesPanel", nil)
+}
+
+// FilesTab says "Files"
+// in the language the app shows.
+func FilesTab() string { return In(i18n.Locale()).FilesTab() }
+
+// FilesTab says "Files"
+// in the language of msgs.
+func (msgs Messages) FilesTab() string {
+	return Catalog.Format(msgs.locale, "FilesTab", nil)
+}
+
+// FilesTransfers says "Transfers"
+// in the language the app shows.
+func FilesTransfers() string { return In(i18n.Locale()).FilesTransfers() }
+
+// FilesTransfers says "Transfers"
+// in the language of msgs.
+func (msgs Messages) FilesTransfers() string {
+	return Catalog.Format(msgs.locale, "FilesTransfers", nil)
+}
+
+// FilesTransfersCount says "{count, plural, one {Transfers · #} other {Transfers · #}}"
+// in the language the app shows.
+func FilesTransfersCount(count int) string { return In(i18n.Locale()).FilesTransfersCount(count) }
+
+// FilesTransfersCount says "{count, plural, one {Transfers · #} other {Transfers · #}}"
+// in the language of msgs.
+func (msgs Messages) FilesTransfersCount(count int) string {
+	return Catalog.Format(msgs.locale, "FilesTransfersCount", map[string]any{"count": count})
+}
+
+// FilesOpening says "Opening the files…"
+// in the language the app shows.
+func FilesOpening() string { return In(i18n.Locale()).FilesOpening() }
+
+// FilesOpening says "Opening the files…"
+// in the language of msgs.
+func (msgs Messages) FilesOpening() string {
+	return Catalog.Format(msgs.locale, "FilesOpening", nil)
+}
+
+// FilesUp says "Up one folder"
+// in the language the app shows.
+func FilesUp() string { return In(i18n.Locale()).FilesUp() }
+
+// FilesUp says "Up one folder"
+// in the language of msgs.
+func (msgs Messages) FilesUp() string {
+	return Catalog.Format(msgs.locale, "FilesUp", nil)
+}
+
+// FilesNewFolder says "New folder"
+// in the language the app shows.
+func FilesNewFolder() string { return In(i18n.Locale()).FilesNewFolder() }
+
+// FilesNewFolder says "New folder"
+// in the language of msgs.
+func (msgs Messages) FilesNewFolder() string {
+	return Catalog.Format(msgs.locale, "FilesNewFolder", nil)
+}
+
+// FilesNewFolderName says "New folder"
+// in the language the app shows.
+func FilesNewFolderName() string { return In(i18n.Locale()).FilesNewFolderName() }
+
+// FilesNewFolderName says "New folder"
+// in the language of msgs.
+func (msgs Messages) FilesNewFolderName() string {
+	return Catalog.Format(msgs.locale, "FilesNewFolderName", nil)
+}
+
+// FilesUpload says "Upload"
+// in the language the app shows.
+func FilesUpload() string { return In(i18n.Locale()).FilesUpload() }
+
+// FilesUpload says "Upload"
+// in the language of msgs.
+func (msgs Messages) FilesUpload() string {
+	return Catalog.Format(msgs.locale, "FilesUpload", nil)
+}
+
+// FilesUploadHere says "Upload here…"
+// in the language the app shows.
+func FilesUploadHere() string { return In(i18n.Locale()).FilesUploadHere() }
+
+// FilesUploadHere says "Upload here…"
+// in the language of msgs.
+func (msgs Messages) FilesUploadHere() string {
+	return Catalog.Format(msgs.locale, "FilesUploadHere", nil)
+}
+
+// FilesRefresh says "Refresh"
+// in the language the app shows.
+func FilesRefresh() string { return In(i18n.Locale()).FilesRefresh() }
+
+// FilesRefresh says "Refresh"
+// in the language of msgs.
+func (msgs Messages) FilesRefresh() string {
+	return Catalog.Format(msgs.locale, "FilesRefresh", nil)
+}
+
+// FilesShowHidden says "Show hidden files"
+// in the language the app shows.
+func FilesShowHidden() string { return In(i18n.Locale()).FilesShowHidden() }
+
+// FilesShowHidden says "Show hidden files"
+// in the language of msgs.
+func (msgs Messages) FilesShowHidden() string {
+	return Catalog.Format(msgs.locale, "FilesShowHidden", nil)
+}
+
+// FilesHideHidden says "Hide hidden files"
+// in the language the app shows.
+func FilesHideHidden() string { return In(i18n.Locale()).FilesHideHidden() }
+
+// FilesHideHidden says "Hide hidden files"
+// in the language of msgs.
+func (msgs Messages) FilesHideHidden() string {
+	return Catalog.Format(msgs.locale, "FilesHideHidden", nil)
+}
+
+// FilesDropHint says "Drop files on a folder to upload them there"
+// in the language the app shows.
+func FilesDropHint() string { return In(i18n.Locale()).FilesDropHint() }
+
+// FilesDropHint says "Drop files on a folder to upload them there"
+// in the language of msgs.
+func (msgs Messages) FilesDropHint() string {
+	return Catalog.Format(msgs.locale, "FilesDropHint", nil)
+}
+
+// FilesDropInto says "Drop to upload into {folder}"
+// in the language the app shows.
+func FilesDropInto(folder string) string { return In(i18n.Locale()).FilesDropInto(folder) }
+
+// FilesDropInto says "Drop to upload into {folder}"
+// in the language of msgs.
+func (msgs Messages) FilesDropInto(folder string) string {
+	return Catalog.Format(msgs.locale, "FilesDropInto", map[string]any{"folder": folder})
+}
+
+// FilesReading says "Reading…"
+// in the language the app shows.
+func FilesReading() string { return In(i18n.Locale()).FilesReading() }
+
+// FilesReading says "Reading…"
+// in the language of msgs.
+func (msgs Messages) FilesReading() string {
+	return Catalog.Format(msgs.locale, "FilesReading", nil)
+}
+
+// FilesEmpty says "This folder is empty."
+// in the language the app shows.
+func FilesEmpty() string { return In(i18n.Locale()).FilesEmpty() }
+
+// FilesEmpty says "This folder is empty."
+// in the language of msgs.
+func (msgs Messages) FilesEmpty() string {
+	return Catalog.Format(msgs.locale, "FilesEmpty", nil)
+}
+
+// FilesChangedAt says "Changed {when}"
+// in the language the app shows.
+func FilesChangedAt(when string) string { return In(i18n.Locale()).FilesChangedAt(when) }
+
+// FilesChangedAt says "Changed {when}"
+// in the language of msgs.
+func (msgs Messages) FilesChangedAt(when string) string {
+	return Catalog.Format(msgs.locale, "FilesChangedAt", map[string]any{"when": when})
+}
+
+// FilesSizeAt says "{size} · changed {when}"
+// in the language the app shows.
+func FilesSizeAt(size string, when string) string { return In(i18n.Locale()).FilesSizeAt(size, when) }
+
+// FilesSizeAt says "{size} · changed {when}"
+// in the language of msgs.
+func (msgs Messages) FilesSizeAt(size string, when string) string {
+	return Catalog.Format(msgs.locale, "FilesSizeAt", map[string]any{"size": size, "when": when})
+}
+
+// FilesFolderAt says "A folder · changed {when}"
+// in the language the app shows.
+func FilesFolderAt(when string) string { return In(i18n.Locale()).FilesFolderAt(when) }
+
+// FilesFolderAt says "A folder · changed {when}"
+// in the language of msgs.
+func (msgs Messages) FilesFolderAt(when string) string {
+	return Catalog.Format(msgs.locale, "FilesFolderAt", map[string]any{"when": when})
+}
+
+// FilesMarkUp says "Uploading"
+// in the language the app shows.
+func FilesMarkUp() string { return In(i18n.Locale()).FilesMarkUp() }
+
+// FilesMarkUp says "Uploading"
+// in the language of msgs.
+func (msgs Messages) FilesMarkUp() string {
+	return Catalog.Format(msgs.locale, "FilesMarkUp", nil)
+}
+
+// FilesMarkDown says "Downloaded"
+// in the language the app shows.
+func FilesMarkDown() string { return In(i18n.Locale()).FilesMarkDown() }
+
+// FilesMarkDown says "Downloaded"
+// in the language of msgs.
+func (msgs Messages) FilesMarkDown() string {
+	return Catalog.Format(msgs.locale, "FilesMarkDown", nil)
+}
+
+// FilesMarkFailed says "A transfer failed"
+// in the language the app shows.
+func FilesMarkFailed() string { return In(i18n.Locale()).FilesMarkFailed() }
+
+// FilesMarkFailed says "A transfer failed"
+// in the language of msgs.
+func (msgs Messages) FilesMarkFailed() string {
+	return Catalog.Format(msgs.locale, "FilesMarkFailed", nil)
+}
+
+// FilesDownload says "Download"
+// in the language the app shows.
+func FilesDownload() string { return In(i18n.Locale()).FilesDownload() }
+
+// FilesDownload says "Download"
+// in the language of msgs.
+func (msgs Messages) FilesDownload() string {
+	return Catalog.Format(msgs.locale, "FilesDownload", nil)
+}
+
+// FilesDownloadTo says "Download to…"
+// in the language the app shows.
+func FilesDownloadTo() string { return In(i18n.Locale()).FilesDownloadTo() }
+
+// FilesDownloadTo says "Download to…"
+// in the language of msgs.
+func (msgs Messages) FilesDownloadTo() string {
+	return Catalog.Format(msgs.locale, "FilesDownloadTo", nil)
+}
+
+// FilesRename says "Rename"
+// in the language the app shows.
+func FilesRename() string { return In(i18n.Locale()).FilesRename() }
+
+// FilesRename says "Rename"
+// in the language of msgs.
+func (msgs Messages) FilesRename() string {
+	return Catalog.Format(msgs.locale, "FilesRename", nil)
+}
+
+// FilesCopyPath says "Copy path"
+// in the language the app shows.
+func FilesCopyPath() string { return In(i18n.Locale()).FilesCopyPath() }
+
+// FilesCopyPath says "Copy path"
+// in the language of msgs.
+func (msgs Messages) FilesCopyPath() string {
+	return Catalog.Format(msgs.locale, "FilesCopyPath", nil)
+}
+
+// FilesOpenInTerminal says "Open the folder in the terminal"
+// in the language the app shows.
+func FilesOpenInTerminal() string { return In(i18n.Locale()).FilesOpenInTerminal() }
+
+// FilesOpenInTerminal says "Open the folder in the terminal"
+// in the language of msgs.
+func (msgs Messages) FilesOpenInTerminal() string {
+	return Catalog.Format(msgs.locale, "FilesOpenInTerminal", nil)
+}
+
+// FilesDelete says "Delete"
+// in the language the app shows.
+func FilesDelete() string { return In(i18n.Locale()).FilesDelete() }
+
+// FilesDelete says "Delete"
+// in the language of msgs.
+func (msgs Messages) FilesDelete() string {
+	return Catalog.Format(msgs.locale, "FilesDelete", nil)
+}
+
+// FilesDeleteAsk says "Delete…"
+// in the language the app shows.
+func FilesDeleteAsk() string { return In(i18n.Locale()).FilesDeleteAsk() }
+
+// FilesDeleteAsk says "Delete…"
+// in the language of msgs.
+func (msgs Messages) FilesDeleteAsk() string {
+	return Catalog.Format(msgs.locale, "FilesDeleteAsk", nil)
+}
+
+// FilesDeleteTitle says "Delete {name} on {device}?"
+// in the language the app shows.
+func FilesDeleteTitle(name string, device string) string {
+	return In(i18n.Locale()).FilesDeleteTitle(name, device)
+}
+
+// FilesDeleteTitle says "Delete {name} on {device}?"
+// in the language of msgs.
+func (msgs Messages) FilesDeleteTitle(name string, device string) string {
+	return Catalog.Format(msgs.locale, "FilesDeleteTitle", map[string]any{"name": name, "device": device})
+}
+
+// FilesDeleteHint says "It is deleted on that computer at once, a folder with everything in it. It does not go to a trash and cannot be broug…"
+// in the language the app shows.
+func FilesDeleteHint() string { return In(i18n.Locale()).FilesDeleteHint() }
+
+// FilesDeleteHint says "It is deleted on that computer at once, a folder with everything in it. It does not go to a trash and cannot be broug…"
+// in the language of msgs.
+func (msgs Messages) FilesDeleteHint() string {
+	return Catalog.Format(msgs.locale, "FilesDeleteHint", nil)
+}
+
+// FilesBadName says "A name can't be empty or contain / or \\."
+// in the language the app shows.
+func FilesBadName() string { return In(i18n.Locale()).FilesBadName() }
+
+// FilesBadName says "A name can't be empty or contain / or \\."
+// in the language of msgs.
+func (msgs Messages) FilesBadName() string {
+	return Catalog.Format(msgs.locale, "FilesBadName", nil)
+}
+
+// FilesNoSFTP says "This computer's SSH offers no file browsing"
+// in the language the app shows.
+func FilesNoSFTP() string { return In(i18n.Locale()).FilesNoSFTP() }
+
+// FilesNoSFTP says "This computer's SSH offers no file browsing"
+// in the language of msgs.
+func (msgs Messages) FilesNoSFTP() string {
+	return Catalog.Format(msgs.locale, "FilesNoSFTP", nil)
+}
+
+// FilesNoSFTPHint says "Its SSH server has no SFTP, so Kyokai copies with SCP: type the path of a file to download, or choose files to upload…"
+// in the language the app shows.
+func FilesNoSFTPHint() string { return In(i18n.Locale()).FilesNoSFTPHint() }
+
+// FilesNoSFTPHint says "Its SSH server has no SFTP, so Kyokai copies with SCP: type the path of a file to download, or choose files to upload…"
+// in the language of msgs.
+func (msgs Messages) FilesNoSFTPHint() string {
+	return Catalog.Format(msgs.locale, "FilesNoSFTPHint", nil)
+}
+
+// FilesPathOn says "Path on {device}"
+// in the language the app shows.
+func FilesPathOn(device string) string { return In(i18n.Locale()).FilesPathOn(device) }
+
+// FilesPathOn says "Path on {device}"
+// in the language of msgs.
+func (msgs Messages) FilesPathOn(device string) string {
+	return Catalog.Format(msgs.locale, "FilesPathOn", map[string]any{"device": device})
+}
+
+// FilesSCPHint says "Upload here puts the files into the folder of that path (a path ending in / is the folder itself), replacing a name t…"
+// in the language the app shows.
+func FilesSCPHint() string { return In(i18n.Locale()).FilesSCPHint() }
+
+// FilesSCPHint says "Upload here puts the files into the folder of that path (a path ending in / is the folder itself), replacing a name t…"
+// in the language of msgs.
+func (msgs Messages) FilesSCPHint() string {
+	return Catalog.Format(msgs.locale, "FilesSCPHint", nil)
+}
+
+// FilesNoTransfers says "Nothing has been copied yet."
+// in the language the app shows.
+func FilesNoTransfers() string { return In(i18n.Locale()).FilesNoTransfers() }
+
+// FilesNoTransfers says "Nothing has been copied yet."
+// in the language of msgs.
+func (msgs Messages) FilesNoTransfers() string {
+	return Catalog.Format(msgs.locale, "FilesNoTransfers", nil)
+}
+
+// FilesClearFinished says "Clear finished"
+// in the language the app shows.
+func FilesClearFinished() string { return In(i18n.Locale()).FilesClearFinished() }
+
+// FilesClearFinished says "Clear finished"
+// in the language of msgs.
+func (msgs Messages) FilesClearFinished() string {
+	return Catalog.Format(msgs.locale, "FilesClearFinished", nil)
+}
+
+// FilesTo says "To {where}"
+// in the language the app shows.
+func FilesTo(where string) string { return In(i18n.Locale()).FilesTo(where) }
+
+// FilesTo says "To {where}"
+// in the language of msgs.
+func (msgs Messages) FilesTo(where string) string {
+	return Catalog.Format(msgs.locale, "FilesTo", map[string]any{"where": where})
+}
+
+// FilesShowInFolder says "Show in folder"
+// in the language the app shows.
+func FilesShowInFolder() string { return In(i18n.Locale()).FilesShowInFolder() }
+
+// FilesShowInFolder says "Show in folder"
+// in the language of msgs.
+func (msgs Messages) FilesShowInFolder() string {
+	return Catalog.Format(msgs.locale, "FilesShowInFolder", nil)
+}
+
+// FilesTryAgain says "Try again"
+// in the language the app shows.
+func FilesTryAgain() string { return In(i18n.Locale()).FilesTryAgain() }
+
+// FilesTryAgain says "Try again"
+// in the language of msgs.
+func (msgs Messages) FilesTryAgain() string {
+	return Catalog.Format(msgs.locale, "FilesTryAgain", nil)
+}
+
+// FilesWaiting says "Waiting"
+// in the language the app shows.
+func FilesWaiting() string { return In(i18n.Locale()).FilesWaiting() }
+
+// FilesWaiting says "Waiting"
+// in the language of msgs.
+func (msgs Messages) FilesWaiting() string {
+	return Catalog.Format(msgs.locale, "FilesWaiting", nil)
+}
+
+// FilesUploading says "Uploading"
+// in the language the app shows.
+func FilesUploading() string { return In(i18n.Locale()).FilesUploading() }
+
+// FilesUploading says "Uploading"
+// in the language of msgs.
+func (msgs Messages) FilesUploading() string {
+	return Catalog.Format(msgs.locale, "FilesUploading", nil)
+}
+
+// FilesDownloading says "Downloading"
+// in the language the app shows.
+func FilesDownloading() string { return In(i18n.Locale()).FilesDownloading() }
+
+// FilesDownloading says "Downloading"
+// in the language of msgs.
+func (msgs Messages) FilesDownloading() string {
+	return Catalog.Format(msgs.locale, "FilesDownloading", nil)
+}
+
+// FilesOf says "{done} of {total}"
+// in the language the app shows.
+func FilesOf(done string, total string) string { return In(i18n.Locale()).FilesOf(done, total) }
+
+// FilesOf says "{done} of {total}"
+// in the language of msgs.
+func (msgs Messages) FilesOf(done string, total string) string {
+	return Catalog.Format(msgs.locale, "FilesOf", map[string]any{"done": done, "total": total})
+}
+
+// FilesDone says "Done"
+// in the language the app shows.
+func FilesDone() string { return In(i18n.Locale()).FilesDone() }
+
+// FilesDone says "Done"
+// in the language of msgs.
+func (msgs Messages) FilesDone() string {
+	return Catalog.Format(msgs.locale, "FilesDone", nil)
+}
+
+// FilesCanceled says "Canceled"
+// in the language the app shows.
+func FilesCanceled() string { return In(i18n.Locale()).FilesCanceled() }
+
+// FilesCanceled says "Canceled"
+// in the language of msgs.
+func (msgs Messages) FilesCanceled() string {
+	return Catalog.Format(msgs.locale, "FilesCanceled", nil)
+}
+
+// FilesTaken says "{name} is already in {folder}"
+// in the language the app shows.
+func FilesTaken(name string, folder string) string { return In(i18n.Locale()).FilesTaken(name, folder) }
+
+// FilesTaken says "{name} is already in {folder}"
+// in the language of msgs.
+func (msgs Messages) FilesTaken(name string, folder string) string {
+	return Catalog.Format(msgs.locale, "FilesTaken", map[string]any{"name": name, "folder": folder})
+}
+
+// FilesTakenHint says "The one there: {there}. This one: {coming}."
+// in the language the app shows.
+func FilesTakenHint(there string, coming string) string {
+	return In(i18n.Locale()).FilesTakenHint(there, coming)
+}
+
+// FilesTakenHint says "The one there: {there}. This one: {coming}."
+// in the language of msgs.
+func (msgs Messages) FilesTakenHint(there string, coming string) string {
+	return Catalog.Format(msgs.locale, "FilesTakenHint", map[string]any{"there": there, "coming": coming})
+}
+
+// FilesForTheRest says "Do the same for the rest of this transfer"
+// in the language the app shows.
+func FilesForTheRest() string { return In(i18n.Locale()).FilesForTheRest() }
+
+// FilesForTheRest says "Do the same for the rest of this transfer"
+// in the language of msgs.
+func (msgs Messages) FilesForTheRest() string {
+	return Catalog.Format(msgs.locale, "FilesForTheRest", nil)
+}
+
+// FilesSkip says "Skip"
+// in the language the app shows.
+func FilesSkip() string { return In(i18n.Locale()).FilesSkip() }
+
+// FilesSkip says "Skip"
+// in the language of msgs.
+func (msgs Messages) FilesSkip() string {
+	return Catalog.Format(msgs.locale, "FilesSkip", nil)
+}
+
+// FilesKeepBoth says "Keep both"
+// in the language the app shows.
+func FilesKeepBoth() string { return In(i18n.Locale()).FilesKeepBoth() }
+
+// FilesKeepBoth says "Keep both"
+// in the language of msgs.
+func (msgs Messages) FilesKeepBoth() string {
+	return Catalog.Format(msgs.locale, "FilesKeepBoth", nil)
+}
+
+// FilesReplace says "Replace"
+// in the language the app shows.
+func FilesReplace() string { return In(i18n.Locale()).FilesReplace() }
+
+// FilesReplace says "Replace"
+// in the language of msgs.
+func (msgs Messages) FilesReplace() string {
+	return Catalog.Format(msgs.locale, "FilesReplace", nil)
+}
+
+// FilesErrDenied says "That account may not do this there."
+// in the language the app shows.
+func FilesErrDenied() string { return In(i18n.Locale()).FilesErrDenied() }
+
+// FilesErrDenied says "That account may not do this there."
+// in the language of msgs.
+func (msgs Messages) FilesErrDenied() string {
+	return Catalog.Format(msgs.locale, "FilesErrDenied", nil)
+}
+
+// FilesErrGone says "It is no longer there."
+// in the language the app shows.
+func FilesErrGone() string { return In(i18n.Locale()).FilesErrGone() }
+
+// FilesErrGone says "It is no longer there."
+// in the language of msgs.
+func (msgs Messages) FilesErrGone() string {
+	return Catalog.Format(msgs.locale, "FilesErrGone", nil)
+}
+
+// FilesErrTaken says "That name is taken there."
+// in the language the app shows.
+func FilesErrTaken() string { return In(i18n.Locale()).FilesErrTaken() }
+
+// FilesErrTaken says "That name is taken there."
+// in the language of msgs.
+func (msgs Messages) FilesErrTaken() string {
+	return Catalog.Format(msgs.locale, "FilesErrTaken", nil)
+}
+
+// FilesErrSCPFolder says "SCP copies files only, not folders."
+// in the language the app shows.
+func FilesErrSCPFolder() string { return In(i18n.Locale()).FilesErrSCPFolder() }
+
+// FilesErrSCPFolder says "SCP copies files only, not folders."
+// in the language of msgs.
+func (msgs Messages) FilesErrSCPFolder() string {
+	return Catalog.Format(msgs.locale, "FilesErrSCPFolder", nil)
+}
+
+// FilesErrServer says "The server refused: {why}"
+// in the language the app shows.
+func FilesErrServer(why string) string { return In(i18n.Locale()).FilesErrServer(why) }
+
+// FilesErrServer says "The server refused: {why}"
+// in the language of msgs.
+func (msgs Messages) FilesErrServer(why string) string {
+	return Catalog.Format(msgs.locale, "FilesErrServer", map[string]any{"why": why})
+}
+
+// FilesErrEnded says "The connection ended."
+// in the language the app shows.
+func FilesErrEnded() string { return In(i18n.Locale()).FilesErrEnded() }
+
+// FilesErrEnded says "The connection ended."
+// in the language of msgs.
+func (msgs Messages) FilesErrEnded() string {
+	return Catalog.Format(msgs.locale, "FilesErrEnded", nil)
+}
+
+// FilesErrFailed says "It could not be done."
+// in the language the app shows.
+func FilesErrFailed() string { return In(i18n.Locale()).FilesErrFailed() }
+
+// FilesErrFailed says "It could not be done."
+// in the language of msgs.
+func (msgs Messages) FilesErrFailed() string {
+	return Catalog.Format(msgs.locale, "FilesErrFailed", nil)
+}
+
+// TermLookFor says "Terminal look for {device}"
+// in the language the app shows.
+func TermLookFor(device string) string { return In(i18n.Locale()).TermLookFor(device) }
+
+// TermLookFor says "Terminal look for {device}"
+// in the language of msgs.
+func (msgs Messages) TermLookFor(device string) string {
+	return Catalog.Format(msgs.locale, "TermLookFor", map[string]any{"device": device})
+}
+
+// TermLookHint says "For this device only. A choice left at its default follows Settings, General."
+// in the language the app shows.
+func TermLookHint() string { return In(i18n.Locale()).TermLookHint() }
+
+// TermLookHint says "For this device only. A choice left at its default follows Settings, General."
+// in the language of msgs.
+func (msgs Messages) TermLookHint() string {
+	return Catalog.Format(msgs.locale, "TermLookHint", nil)
+}
+
+// TermUseDefault says "Default ({value})"
+// in the language the app shows.
+func TermUseDefault(value string) string { return In(i18n.Locale()).TermUseDefault(value) }
+
+// TermUseDefault says "Default ({value})"
+// in the language of msgs.
+func (msgs Messages) TermUseDefault(value string) string {
+	return Catalog.Format(msgs.locale, "TermUseDefault", map[string]any{"value": value})
+}
+
+// TermUseDefaults says "Use the defaults for all"
+// in the language the app shows.
+func TermUseDefaults() string { return In(i18n.Locale()).TermUseDefaults() }
+
+// TermUseDefaults says "Use the defaults for all"
+// in the language of msgs.
+func (msgs Messages) TermUseDefaults() string {
+	return Catalog.Format(msgs.locale, "TermUseDefaults", nil)
+}
+
+// TermCursorLater says "A new cursor shows from the next connection."
+// in the language the app shows.
+func TermCursorLater() string { return In(i18n.Locale()).TermCursorLater() }
+
+// TermCursorLater says "A new cursor shows from the next connection."
+// in the language of msgs.
+func (msgs Messages) TermCursorLater() string {
+	return Catalog.Format(msgs.locale, "TermCursorLater", nil)
+}
+
+// TermThemeKyokai says "Kyokai"
+// in the language the app shows.
+func TermThemeKyokai() string { return In(i18n.Locale()).TermThemeKyokai() }
+
+// TermThemeKyokai says "Kyokai"
+// in the language of msgs.
+func (msgs Messages) TermThemeKyokai() string {
+	return Catalog.Format(msgs.locale, "TermThemeKyokai", nil)
+}
+
+// TermLight says "Theme in light mode"
+// in the language the app shows.
+func TermLight() string { return In(i18n.Locale()).TermLight() }
+
+// TermLight says "Theme in light mode"
+// in the language of msgs.
+func (msgs Messages) TermLight() string {
+	return Catalog.Format(msgs.locale, "TermLight", nil)
+}
+
+// TermDark says "Theme in dark mode"
+// in the language the app shows.
+func TermDark() string { return In(i18n.Locale()).TermDark() }
+
+// TermDark says "Theme in dark mode"
+// in the language of msgs.
+func (msgs Messages) TermDark() string {
+	return Catalog.Format(msgs.locale, "TermDark", nil)
+}
+
+// TermFont says "Font"
+// in the language the app shows.
+func TermFont() string { return In(i18n.Locale()).TermFont() }
+
+// TermFont says "Font"
+// in the language of msgs.
+func (msgs Messages) TermFont() string {
+	return Catalog.Format(msgs.locale, "TermFont", nil)
+}
+
+// TermFontSystem says "The system's monospaced font"
+// in the language the app shows.
+func TermFontSystem() string { return In(i18n.Locale()).TermFontSystem() }
+
+// TermFontSystem says "The system's monospaced font"
+// in the language of msgs.
+func (msgs Messages) TermFontSystem() string {
+	return Catalog.Format(msgs.locale, "TermFontSystem", nil)
+}
+
+// TermSize says "Text size"
+// in the language the app shows.
+func TermSize() string { return In(i18n.Locale()).TermSize() }
+
+// TermSize says "Text size"
+// in the language of msgs.
+func (msgs Messages) TermSize() string {
+	return Catalog.Format(msgs.locale, "TermSize", nil)
+}
+
+// TermCursor says "Cursor"
+// in the language the app shows.
+func TermCursor() string { return In(i18n.Locale()).TermCursor() }
+
+// TermCursor says "Cursor"
+// in the language of msgs.
+func (msgs Messages) TermCursor() string {
+	return Catalog.Format(msgs.locale, "TermCursor", nil)
+}
+
+// TermCursorBlock says "Block"
+// in the language the app shows.
+func TermCursorBlock() string { return In(i18n.Locale()).TermCursorBlock() }
+
+// TermCursorBlock says "Block"
+// in the language of msgs.
+func (msgs Messages) TermCursorBlock() string {
+	return Catalog.Format(msgs.locale, "TermCursorBlock", nil)
+}
+
+// TermCursorBar says "Bar"
+// in the language the app shows.
+func TermCursorBar() string { return In(i18n.Locale()).TermCursorBar() }
+
+// TermCursorBar says "Bar"
+// in the language of msgs.
+func (msgs Messages) TermCursorBar() string {
+	return Catalog.Format(msgs.locale, "TermCursorBar", nil)
+}
+
+// TermCursorUnderline says "Underline"
+// in the language the app shows.
+func TermCursorUnderline() string { return In(i18n.Locale()).TermCursorUnderline() }
+
+// TermCursorUnderline says "Underline"
+// in the language of msgs.
+func (msgs Messages) TermCursorUnderline() string {
+	return Catalog.Format(msgs.locale, "TermCursorUnderline", nil)
+}
+
+// TermBlink says "Cursor blinking"
+// in the language the app shows.
+func TermBlink() string { return In(i18n.Locale()).TermBlink() }
+
+// TermBlink says "Cursor blinking"
+// in the language of msgs.
+func (msgs Messages) TermBlink() string {
+	return Catalog.Format(msgs.locale, "TermBlink", nil)
+}
+
+// TermBlinkOn says "Blinks"
+// in the language the app shows.
+func TermBlinkOn() string { return In(i18n.Locale()).TermBlinkOn() }
+
+// TermBlinkOn says "Blinks"
+// in the language of msgs.
+func (msgs Messages) TermBlinkOn() string {
+	return Catalog.Format(msgs.locale, "TermBlinkOn", nil)
+}
+
+// TermBlinkOff says "Stays still"
+// in the language the app shows.
+func TermBlinkOff() string { return In(i18n.Locale()).TermBlinkOff() }
+
+// TermBlinkOff says "Stays still"
+// in the language of msgs.
+func (msgs Messages) TermBlinkOff() string {
+	return Catalog.Format(msgs.locale, "TermBlinkOff", nil)
+}
+
+// TermFind says "Find"
+// in the language the app shows.
+func TermFind() string { return In(i18n.Locale()).TermFind() }
+
+// TermFind says "Find"
+// in the language of msgs.
+func (msgs Messages) TermFind() string {
+	return Catalog.Format(msgs.locale, "TermFind", nil)
+}
+
+// TermFindNone says "No matches"
+// in the language the app shows.
+func TermFindNone() string { return In(i18n.Locale()).TermFindNone() }
+
+// TermFindNone says "No matches"
+// in the language of msgs.
+func (msgs Messages) TermFindNone() string {
+	return Catalog.Format(msgs.locale, "TermFindNone", nil)
+}
+
+// TermFindCount says "{at} of {total}"
+// in the language the app shows.
+func TermFindCount(at int, total int) string { return In(i18n.Locale()).TermFindCount(at, total) }
+
+// TermFindCount says "{at} of {total}"
+// in the language of msgs.
+func (msgs Messages) TermFindCount(at int, total int) string {
+	return Catalog.Format(msgs.locale, "TermFindCount", map[string]any{"at": at, "total": total})
+}
+
+// TermFindPrevious says "Previous match"
+// in the language the app shows.
+func TermFindPrevious() string { return In(i18n.Locale()).TermFindPrevious() }
+
+// TermFindPrevious says "Previous match"
+// in the language of msgs.
+func (msgs Messages) TermFindPrevious() string {
+	return Catalog.Format(msgs.locale, "TermFindPrevious", nil)
+}
+
+// TermFindNext says "Next match"
+// in the language the app shows.
+func TermFindNext() string { return In(i18n.Locale()).TermFindNext() }
+
+// TermFindNext says "Next match"
+// in the language of msgs.
+func (msgs Messages) TermFindNext() string {
+	return Catalog.Format(msgs.locale, "TermFindNext", nil)
+}
+
+// TermNotice says "{pane}: {text}"
+// in the language the app shows.
+func TermNotice(pane string, text string) string { return In(i18n.Locale()).TermNotice(pane, text) }
+
+// TermNotice says "{pane}: {text}"
+// in the language of msgs.
+func (msgs Messages) TermNotice(pane string, text string) string {
+	return Catalog.Format(msgs.locale, "TermNotice", map[string]any{"pane": pane, "text": text})
+}
+
+// SectionTerminal says "SSH terminal"
+// in the language the app shows.
+func SectionTerminal() string { return In(i18n.Locale()).SectionTerminal() }
+
+// SectionTerminal says "SSH terminal"
+// in the language of msgs.
+func (msgs Messages) SectionTerminal() string {
+	return Catalog.Format(msgs.locale, "SectionTerminal", nil)
+}
+
+// SettingsTermAbout says "How SSH panes look. Each device can choose its own: its pane's Files panel, Settings."
+// in the language the app shows.
+func SettingsTermAbout() string { return In(i18n.Locale()).SettingsTermAbout() }
+
+// SettingsTermAbout says "How SSH panes look. Each device can choose its own: its pane's Files panel, Settings."
+// in the language of msgs.
+func (msgs Messages) SettingsTermAbout() string {
+	return Catalog.Format(msgs.locale, "SettingsTermAbout", nil)
+}
+
+// FilesFolder says "A folder"
+// in the language the app shows.
+func FilesFolder() string { return In(i18n.Locale()).FilesFolder() }
+
+// FilesFolder says "A folder"
+// in the language of msgs.
+func (msgs Messages) FilesFolder() string {
+	return Catalog.Format(msgs.locale, "FilesFolder", nil)
+}
+
+// TermPreview says "Preview"
+// in the language the app shows.
+func TermPreview() string { return In(i18n.Locale()).TermPreview() }
+
+// TermPreview says "Preview"
+// in the language of msgs.
+func (msgs Messages) TermPreview() string {
+	return Catalog.Format(msgs.locale, "TermPreview", nil)
+}
+
+// TermPreviewLight says "Preview in light mode"
+// in the language the app shows.
+func TermPreviewLight() string { return In(i18n.Locale()).TermPreviewLight() }
+
+// TermPreviewLight says "Preview in light mode"
+// in the language of msgs.
+func (msgs Messages) TermPreviewLight() string {
+	return Catalog.Format(msgs.locale, "TermPreviewLight", nil)
+}
+
+// TermPreviewDark says "Preview in dark mode"
+// in the language the app shows.
+func TermPreviewDark() string { return In(i18n.Locale()).TermPreviewDark() }
+
+// TermPreviewDark says "Preview in dark mode"
+// in the language of msgs.
+func (msgs Messages) TermPreviewDark() string {
+	return Catalog.Format(msgs.locale, "TermPreviewDark", nil)
+}
+
+// FilesSettings says "Settings"
+// in the language the app shows.
+func FilesSettings() string { return In(i18n.Locale()).FilesSettings() }
+
+// FilesSettings says "Settings"
+// in the language of msgs.
+func (msgs Messages) FilesSettings() string {
+	return Catalog.Format(msgs.locale, "FilesSettings", nil)
+}

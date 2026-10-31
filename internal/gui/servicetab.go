@@ -402,10 +402,16 @@ func (s *serviceTab) tabKey() string   { return s.key }
 func (s *serviceTab) tabTitle() string { return s.title }
 
 // head is the service's pane header: its kind's icon, the device's name,
-// and the service.
+// and the service, with the title the program in an SSH shell set.
 func (s *serviceTab) head() paneHead {
 	title, _ := splitTitle(s.name)
-	return paneHead{icon: serviceIcon(s.service), title: title, sub: s.kind, kind: s.kind}
+	sub := s.kind
+	if c, ok := s.running().(*sshClient); ok {
+		if shown := c.shownTitle(); shown != "" {
+			sub += " · " + shown
+		}
+	}
+	return paneHead{icon: serviceIcon(s.service), title: title, sub: sub, kind: s.kind}
 }
 func (s *serviceTab) tabWindow() *viewerWindow     { return s.home.Load() }
 func (s *serviceTab) setTabWindow(w *viewerWindow) { s.home.Store(w) }

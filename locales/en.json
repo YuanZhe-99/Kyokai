@@ -1702,5 +1702,230 @@
   "WindowRestore": "Restore window",
   "WithoutAskingAbout": "Off: you allow each connection yourself.",
   "WithoutAskingHint": "A way to sign in checked above lets a device in with what passwords grant, without asking you. With nobody at this computer (Background service), only the permanent password or a key does. Off: you are always asked.",
-  "WithoutAskingTitle": "Connect without asking"
+  "WithoutAskingTitle": "Connect without asking",
+  "FilesPanel": "Files",
+  "FilesTab": "Files",
+  "FilesTransfers": "Transfers",
+  "FilesTransfersCount": "{count, plural, one {Transfers · #} other {Transfers · #}}",
+  "@FilesTransfersCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "FilesOpening": "Opening the files…",
+  "FilesUp": "Up one folder",
+  "FilesNewFolder": "New folder",
+  "FilesNewFolderName": "New folder",
+  "FilesUpload": "Upload",
+  "FilesUploadHere": "Upload here…",
+  "FilesRefresh": "Refresh",
+  "FilesShowHidden": "Show hidden files",
+  "FilesHideHidden": "Hide hidden files",
+  "FilesDropHint": "Drop files on a folder to upload them there",
+  "FilesDropInto": "Drop to upload into {folder}",
+  "@FilesDropInto": {
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesReading": "Reading…",
+  "FilesEmpty": "This folder is empty.",
+  "FilesChangedAt": "Changed {when}",
+  "@FilesChangedAt": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesSizeAt": "{size} · changed {when}",
+  "@FilesSizeAt": {
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesFolderAt": "A folder · changed {when}",
+  "@FilesFolderAt": {
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesMarkUp": "Uploading",
+  "FilesMarkDown": "Downloaded",
+  "FilesMarkFailed": "A transfer failed",
+  "FilesDownload": "Download",
+  "FilesDownloadTo": "Download to…",
+  "FilesRename": "Rename",
+  "FilesCopyPath": "Copy path",
+  "FilesOpenInTerminal": "Open the folder in the terminal",
+  "FilesDelete": "Delete",
+  "FilesDeleteAsk": "Delete…",
+  "FilesDeleteTitle": "Delete {name} on {device}?",
+  "@FilesDeleteTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesDeleteHint": "It is deleted on that computer at once, a folder with everything in it. It does not go to a trash and cannot be brought back.",
+  "FilesBadName": "A name can't be empty or contain / or \\.",
+  "FilesNoSFTP": "This computer's SSH offers no file browsing",
+  "FilesNoSFTPHint": "Its SSH server has no SFTP, so Kyokai copies with SCP: type the path of a file to download, or choose files to upload into a folder.",
+  "FilesPathOn": "Path on {device}",
+  "@FilesPathOn": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesSCPHint": "Upload here puts the files into the folder of that path (a path ending in / is the folder itself), replacing a name taken there. Renaming, deleting and new folders need SFTP.",
+  "FilesNoTransfers": "Nothing has been copied yet.",
+  "FilesClearFinished": "Clear finished",
+  "FilesTo": "To {where}",
+  "@FilesTo": {
+    "placeholders": {
+      "where": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesShowInFolder": "Show in folder",
+  "FilesTryAgain": "Try again",
+  "FilesWaiting": "Waiting",
+  "FilesUploading": "Uploading",
+  "FilesDownloading": "Downloading",
+  "FilesOf": "{done} of {total}",
+  "@FilesOf": {
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesDone": "Done",
+  "FilesCanceled": "Canceled",
+  "FilesTaken": "{name} is already in {folder}",
+  "@FilesTaken": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesTakenHint": "The one there: {there}. This one: {coming}.",
+  "@FilesTakenHint": {
+    "placeholders": {
+      "there": {
+        "type": "String"
+      },
+      "coming": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesForTheRest": "Do the same for the rest of this transfer",
+  "FilesSkip": "Skip",
+  "FilesKeepBoth": "Keep both",
+  "FilesReplace": "Replace",
+  "FilesErrDenied": "That account may not do this there.",
+  "FilesErrGone": "It is no longer there.",
+  "FilesErrTaken": "That name is taken there.",
+  "FilesErrSCPFolder": "SCP copies files only, not folders.",
+  "FilesErrServer": "The server refused: {why}",
+  "@FilesErrServer": {
+    "placeholders": {
+      "why": {
+        "type": "String"
+      }
+    }
+  },
+  "FilesErrEnded": "The connection ended.",
+  "FilesErrFailed": "It could not be done.",
+  "TermLookFor": "Terminal look for {device}",
+  "@TermLookFor": {
+    "placeholders": {
+      "device": {
+        "type": "String"
+      }
+    }
+  },
+  "TermLookHint": "For this device only. A choice left at its default follows Settings, General.",
+  "TermUseDefault": "Default ({value})",
+  "@TermUseDefault": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "TermUseDefaults": "Use the defaults for all",
+  "TermCursorLater": "A new cursor shows from the next connection.",
+  "TermThemeKyokai": "Kyokai",
+  "TermLight": "Theme in light mode",
+  "TermDark": "Theme in dark mode",
+  "TermFont": "Font",
+  "TermFontSystem": "The system's monospaced font",
+  "TermSize": "Text size",
+  "TermCursor": "Cursor",
+  "TermCursorBlock": "Block",
+  "TermCursorBar": "Bar",
+  "TermCursorUnderline": "Underline",
+  "TermBlink": "Cursor blinking",
+  "TermBlinkOn": "Blinks",
+  "TermBlinkOff": "Stays still",
+  "TermFind": "Find",
+  "TermFindNone": "No matches",
+  "TermFindCount": "{at} of {total}",
+  "@TermFindCount": {
+    "placeholders": {
+      "at": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "TermFindPrevious": "Previous match",
+  "TermFindNext": "Next match",
+  "TermNotice": "{pane}: {text}",
+  "@TermNotice": {
+    "placeholders": {
+      "pane": {
+        "type": "String"
+      },
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "SectionTerminal": "SSH terminal",
+  "SettingsTermAbout": "How SSH panes look. Each device can choose its own: its pane's Files panel, Settings.",
+  "FilesFolder": "A folder",
+  "TermPreview": "Preview",
+  "TermPreviewLight": "Preview in light mode",
+  "TermPreviewDark": "Preview in dark mode",
+  "FilesSettings": "Settings"
 }

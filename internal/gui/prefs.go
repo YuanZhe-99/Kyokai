@@ -88,6 +88,14 @@ type Prefs struct {
 	// profile's first start until it is finished or skipped, then "done";
 	// "" for a profile from before the tour, which never sees it.
 	Tour string `json:"tour,omitempty"`
+	// Terminal is how SSH panes' terminals look by default (Settings,
+	// General); Terminals a device's own choices over it, by Device ID, a
+	// field left zero following the default (TermLook.over).
+	Terminal  TermLook            `json:"terminal,omitzero"`
+	Terminals map[string]TermLook `json:"terminals,omitempty"`
+	// HiddenFiles shows the files whose names start with a dot in SSH
+	// panes' files panels.
+	HiddenFiles bool `json:"hidden_files,omitempty"`
 	// SendKey is what sends an AI prompt: "" Enter (Shift+Enter breaks the
 	// line), "shift-enter" the reverse, "button" only the send button.
 	SendKey string `json:"send_key,omitempty"`

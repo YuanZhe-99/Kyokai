@@ -221,6 +221,28 @@ takes the keyboard like a desktop's (**Keyboard**), sends **Ctrl+Alt+Del** from 
 (for a field that refuses pasting), and
 shares the clipboard's text while its pane is in front.
 
+### Files and the terminal over SSH
+
+An SSH pane copies files too, with no extra permission: what the account you signed in with may
+do there is all it can do. Click **Files** in the pane's header. **Files** shows your home folder
+on that computer: open a folder with its arrow, go into it with a double click, and right-click
+anything to **Download** it (into your Downloads folder), **Download to…** a folder you choose,
+**Rename** it, **Copy path**, **Open the folder in the terminal** or **Delete…** it (Kyokai asks
+first; nothing goes to a trash). Drop files from your desktop or Explorer or Finder on a folder to
+upload them there, or use **Upload**. **Transfers** shows each copy with its progress; **Cancel**
+stops one, **Try again** starts it anew. If a name is taken, Kyokai asks: **Replace**, **Keep both**
+or **Skip**, for one file or for the rest. If the other computer's SSH has no SFTP, the panel copies
+by path with SCP instead: type the path of a file to download, or choose files to upload into a
+folder.
+
+The panel's **Settings** tab sets how that device's terminal looks — its themes for light and dark
+mode (Kyokai's or any of Ghostty's), font, text size and cursor — with a preview; what you leave at
+**Default** follows Settings › General › **SSH terminal**, which sets it for every device.
+**Use the defaults for all** forgets the device's own choices. Press ⌘F on a Mac, or Ctrl+Shift+F
+on Windows and Linux, to find text in the terminal. To see colors from the other computer's shell,
+turn them on there (for example `ls --color` on Linux, `ls -G` on a Mac); Kyokai does not change
+that computer's settings.
+
 ### NanoKVM USB
 
 A device with a Sipeed NanoKVM USB plugged in can let you use the computer wired to it — its HDMI
