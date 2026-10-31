@@ -122,6 +122,11 @@ struct HostHello {
     /// 0.4.0 and older.
     #[serde(default)]
     features: Vec<String>,
+    /// The host's friendly name while its user shows it in their networks
+    /// (`about::Local::published`); absent otherwise and before 0.6.11. A
+    /// claim, like the description in `verdict`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1561,6 +1566,7 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             device_key: STANDARD.encode(ctx.identity.public_key()),
             signature: sign_static(&ctx.identity, &my_static),
             features: our_features(),
+            name: ctx.about.lock().ok().and_then(|l| l.published()),
         };
         let payload = serde_json::to_vec(&hello).map_err(|_| Failure::Broken)?;
         let n = hs.write_message(&payload, &mut buf)?;
@@ -2628,8 +2634,11 @@ pub fn route_seen(ctx: &Ctx, id: u64) -> Option<(u32, u32)> {
 /// Learns which device answers at an address: the first two handshake
 /// messages, then the connection is dropped (the host sees a connection
 /// that never logs in).
-/// Returns: the Device ID its device key derives, proven by its signature.
-pub async fn identify<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S) -> Result<String, Failure> {
+/// Returns: the Device ID its device key derives, proven by its signature,
+/// and the name the host shows in its networks (cleaned), if it does.
+pub async fn identify<S: AsyncRead + AsyncWrite + Unpin>(
+    mut stream: S,
+) -> Result<(String, Option<String>), Failure> {
     let (mut hs, _) = noise(true)?;
     let mut buf = vec![0u8; MAX_FRAME];
     let n = hs.write_message(&[], &mut buf)?;
@@ -2641,7 +2650,18 @@ pub async fn identify<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S) -> Resul
         return Err(Failure::Incompatible);
     }
     let key = verify_static(&host.device_key, &host.signature, hs.get_remote_static())?;
-    Ok(identity::device_id(&key))
+    let name = host
+        .name
+        .map(|name| {
+            About {
+                name,
+                ..About::default()
+            }
+            .clean()
+            .name
+        })
+        .filter(|n| !n.is_empty());
+    Ok((identity::device_id(&key), name))
 }
 
 /// Ends an outgoing session that found no device to talk to.
@@ -4397,6 +4417,7 @@ mod compat_tests {
             device_key: "k".into(),
             signature: "s".into(),
             features: vec![feature::STATUS.into(), feature::TUNNEL.into()],
+            name: None,
         };
         let old: legacy::HostHello =
             serde_json::from_value(serde_json::to_value(&host).unwrap()).unwrap();
@@ -4905,8 +4926,17 @@ mod tests {
     async fn names_cross_only_after_the_login() {
         let host = device("1.0.0");
         let controller = device("1.0.1");
-        host.about.lock().unwrap().set_name("Living room").unwrap();
-        controller.about.lock().unwrap().set_name("Laptop").unwrap();
+        host.about
+            .lock()
+            .unwrap()
+            .set(Some("Living room"), None)
+            .unwrap();
+        controller
+            .about
+            .lock()
+            .unwrap()
+            .set(Some("Laptop"), None)
+            .unwrap();
         host.access
             .slots
             .lock()
@@ -4916,7 +4946,12 @@ mod tests {
         let dialed = host.identity.device_id();
         // A wrong password learns nothing, and tells nothing.
         let stranger = device("1.0.2");
-        stranger.about.lock().unwrap().set_name("Stranger").unwrap();
+        stranger
+            .about
+            .lock()
+            .unwrap()
+            .set(Some("Stranger"), None)
+            .unwrap();
         let id = attempt(&host, &stranger, &dialed, "wrong-one", None).await;
         assert_eq!(session(&stranger, id)["peer"]["name"], "");
         let hosts = host.sessions.list();
@@ -6965,21 +7000,36 @@ mod tests {
         assert!(task.await.unwrap().is_ok());
     }
 
-    /// A device at an address tells its Device ID before any login, and
-    /// the host is left with no session.
+    /// A device at an address tells its Device ID before any login, and its
+    /// friendly name only while its user shows it in their networks; the
+    /// host is left with no session.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn identify_learns_the_device_id_at_an_address() {
         let host = device("0.3.0");
-        let (a, b) = tokio::io::duplex(1 << 16);
-        tokio::spawn(serve(
-            host.clone(),
-            b,
-            Source {
-                network: 0,
-                ip: "192.168.1.20".parse().unwrap(),
-            },
-        ));
-        assert_eq!(identify(a).await.unwrap(), host.identity.device_id());
+        host.about
+            .lock()
+            .unwrap()
+            .set(Some("Living room"), None)
+            .unwrap();
+        let look = async |host: &Arc<Ctx>| {
+            let (a, b) = tokio::io::duplex(1 << 16);
+            tokio::spawn(serve(
+                host.clone(),
+                b,
+                Source {
+                    network: 0,
+                    ip: "192.168.1.20".parse().unwrap(),
+                },
+            ));
+            identify(a).await.unwrap()
+        };
+        assert_eq!(look(&host).await, (host.identity.device_id(), None));
+        host.about.lock().unwrap().set(None, Some(true)).unwrap();
+        assert_eq!(
+            look(&host).await,
+            (host.identity.device_id(), Some("Living room".into()))
+        );
+        host.about.lock().unwrap().set(None, Some(false)).unwrap();
         assert!(host.sessions.list().as_array().unwrap().is_empty());
     }
 
@@ -7294,6 +7344,7 @@ mod login_tests {
             device_key: STANDARD.encode(host.identity.public_key()),
             signature: sign_static(&host.identity, &my_static),
             features: features.iter().map(|f| f.to_string()).collect(),
+            name: None,
         };
         let n = hs
             .write_message(&serde_json::to_vec(&hello).unwrap(), &mut buf)
@@ -7562,6 +7613,7 @@ mod tunnel_tests {
             device_key: STANDARD.encode(host.identity.public_key()),
             signature: sign_static(&host.identity, &my_static),
             features: Vec::new(),
+            name: None,
         };
         let n = hs
             .write_message(&serde_json::to_vec(&hello).unwrap(), &mut buf)

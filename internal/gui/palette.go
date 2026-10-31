@@ -56,7 +56,7 @@ func (a *App) paletteItems() []paletteItem {
 	if st != nil {
 		rows = deviceRows(st, a.prefs)
 	}
-	rail := a.prefs.SidebarRail
+	rail, hidden := a.prefs.SidebarRail, a.prefs.SidebarHidden
 	a.mu.Unlock()
 	var out []paletteItem
 	if st != nil {
@@ -104,7 +104,10 @@ func (a *App) paletteItems() []paletteItem {
 	}
 	actions := L.PaletteActions()
 	at, sidebar := "sidebar", L.SidebarHide()
-	if rail {
+	switch {
+	case hidden:
+		at, sidebar = "head-sidebar", L.SidebarShow()
+	case rail:
 		at, sidebar = "rail", L.SidebarShow()
 	}
 	out = append(out,
@@ -116,7 +119,13 @@ func (a *App) paletteItems() []paletteItem {
 	}
 	out = append(out,
 		paletteItem{group: actions, title: L.NavSettings(), hint: L.ActionOpen(), icon: shellGear, do: func() { a.openSettings(pageGeneral) }},
-		paletteItem{group: actions, title: sidebar, icon: shellSidebar, do: func() { a.setRail(!rail) }},
+		paletteItem{group: actions, title: sidebar, icon: shellSidebar, do: func() {
+			if hidden {
+				a.setSidebar(rail, false)
+			} else {
+				a.setSidebar(!rail, false)
+			}
+		}},
 	)
 	for _, th := range []struct {
 		theme, title string

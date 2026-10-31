@@ -27,19 +27,27 @@ when `SCREENSHOT_DIR` is set.
   header does. At the bottom: search (below), the appearance (follow the system, light and dark in
   turn — a half-filled monitor, a sun, a moon), the gear (Settings), and the networks' state as a dot and a
   word (Online, Connecting…, Could not connect, Offline; before the engine answers, Starting… or
-  Engine not running) that opens Settings at Network. Hidden, the sidebar is
-  a rail of icons, a group's with its count and names in tooltips (`sidebar_rail` in `gui.json`).
+  Engine not running) that opens Settings at Network. Hide the sidebar folds it to a rail of
+  icons, a group's with its count and names in tooltips (`sidebar_rail` in `gui.json`), whose
+  first button unfolds it again. A double click on either button (a second click within 500 ms,
+  `sidebarButton`) hides the sidebar altogether (`sidebar_hidden`): its button then starts the
+  top-left pane's header, after the traffic lights on macOS, and the panes keep the window's margin
+  on that side too, their material round them as ever, unlike a window of its own; a click on it
+  brings the sidebar back as it was before the double click, whole or the rail. Search's Show
+  the sidebar does the same.
 - **A pane's header** (44 points): the kind's icon, the device's name (at most 200 points) and
   its Device ID (or the service, or an AI session's title), which drag the pane — with room
   running short the second line gives way first, then the name, never an AI session's pill, and
   what still does not fit is cut at its end rather than drawn under the buttons; an empty part
-  that moves the window, a double click maximizing it; in the
-  main window Split right and Split down — the + picker, opening beside this pane on that side;
+  that moves the window, a double click maximizing it, with a desktop's toolbar in its middle
+  while it has room (see [Connections](#connections)); in the main window Open in a window of
+  its own (not on Home), Split right and Split down — the + picker, opening beside this pane on that side;
   with other panes open, first a menu of them, the one chosen going beside this one, and Open a
   device… for the picker; greyed out, its tooltip saying why, while the pane has no room for
   that split —, in a group of several Maximize (the pane alone over its group, the
   others still running) or Restore, and close (×; not on Home alone, which has nothing to close
-  to). A pane narrower than 560 points folds the splits and Maximize into ⋯, each split a submenu
+  to). A pane narrower than 560 points folds Open in a window of its own, the splits and Maximize
+  into ⋯, each split a submenu
   of the other panes and Open a device…, or without room a greyed-out item saying why
   (`foldedButtons`). In a group the pane in focus has an
   accent edge; the focus follows the keyboard and clicks into a pane.
@@ -64,10 +72,13 @@ when `SCREENSHOT_DIR` is set.
   rail. A window smaller than that, as when the sidebar comes back, grows on its display; when its
   display cannot hold the group (moved to a smaller display, a resolution change) the group comes
   apart into entries of their own, the pane in focus shown, and a toast says so (`fitWindow`).
-- **A window of its own:** a pane dragged out of Kyokai's windows moves into a window of its own —
-  one pane, no sidebar, never split — which closes with its pane, disconnecting it; dropped on the
-  main window's sidebar or panes, it comes back. Its header keeps the room of the traffic lights
-  on macOS.
+- **A window of its own:** a pane dragged out of Kyokai's windows, or its header's Open in a
+  window of its own, moves it into a window of its own — one pane, no sidebar, never split — whose
+  pane fills it, with no margin, corners or border round it; the window closes with its pane
+  (the window's ×), disconnecting it. Its header has no close of its own: in its place Back to
+  the main window, while the main window is open (not in the tray), moves the pane back as an
+  entry of its own and brings the main window forward (`backToMain`); dropped on the main window's
+  sidebar or panes, it comes back too. Its header keeps the room of the traffic lights on macOS.
 - **The + picker** (`pickerView`): a popover under the sidebar's + (the rail's), or under a pane
   header's split button. First the kind — Desktop, SSH, Remote Desktop, VNC or AI task, the one
   chosen last kept —, then a search by name, Device ID (spaces aside) or address, then the devices
@@ -79,8 +90,8 @@ when `SCREENSHOT_DIR` is set.
   connected), greyed with "… isn't available" when its status of the last minute says it does not
   open the kind (`kindOffered`: the service does not answer or the saved sign-in does not grant
   it; its AI is not ready or not granted), never for want of a status; for the desktop, last, the
-  Kyokai devices the joined networks reach and this one never connected to, with a dashed icon,
-  under In your networks. At its foot, where it opens — On its own (an entry of its own) or Beside
+  Kyokai devices the joined networks reach and this one never connected to, with a dashed icon
+  and the name each shows in its networks, if it does, under In your networks. At its foot, where it opens — On its own (an entry of its own) or Beside
   current (a split with the pane in focus, or on its side with the pane whose split button opened
   the picker, which then starts at Beside current) — and Open (Open SSH, Start AI task…). The
   search takes the keys as it opens, and again once a kind is chosen; ↑ and ↓ choose among the
@@ -104,9 +115,10 @@ when `SCREENSHOT_DIR` is set.
 - **The window's controls:** on macOS the traffic lights over the sidebar's top row, 9 points from
   the window's edge as on the system's own windows, centred on the top pane's header; the rail is
   72 points wide there (`railWidth`), the lights and 9 on either side, so that they and its icons
-  share one centre line, and protected mode keeps a strip as wide for them beside its pane. In a
-  window of its own they sit on its pane's header, 18 points from the edge (MyGo places them only
-  as a window opens: `TitleBarOptions`). On Windows the system's
+  share one centre line, and protected mode keeps a strip as wide for them beside its pane; with
+  the sidebar hidden they sit on the top-left pane's header, which keeps their room. In a window
+  of its own they sit on its pane's header, 14 points from the edge (MyGo places them only as a
+  window opens: `TitleBarOptions`). On Windows the system's
   buttons would sit on the window's corner, half outside the pane, and on Linux GTK draws them
   over the pane's own controls, so on both the window hides them
   (`HideWindowButtons`) and the view draws minimize, maximize or restore, and close after a
@@ -228,8 +240,9 @@ when `SCREENSHOT_DIR` is set.
   it and its finished connections off Home, and forgets its pinned key, saved sign-ins and the name
   given here). With Others in my networks on, **In your networks** follows: the Kyokai devices the
   joined networks reach that this one never connected to, each once by its best way — direct
-  before relayed, then the lowest latency (`networkOthers`) — as dashed cards with the Device ID,
-  the network and the way with its latency, and Connect.
+  before relayed, then the lowest latency (`networkOthers`) — as dashed cards with the Device ID
+  (after the name the device shows in its networks, if it does), the network and the way with its
+  latency, and Connect.
 - **Live status on Home:** while the main window is open, the GUI leases a watch of the recent
   devices (`watch.set`, eight at most, renewed every 10 s): at the usual pace while Home shows (its
   Home pane shown and Settings closed), at the slow pace while it is hidden, so that coming back
@@ -304,8 +317,9 @@ when `SCREENSHOT_DIR` is set.
   port is taken says "other devices can't reach this one".
 - **Device names:** wherever a device appears (a confirmation, Home's devices, the panes and the sidebar, trusted
   devices, the viewer's title, the Network page) its name — the one this device's user gave it
-  (`gui.json` `aliases`, never sent anywhere), else the friendly name it gives itself — goes beside
-  the Device ID, never instead of it,
+  (`gui.json` `aliases`, never sent anywhere), else the friendly name it gives itself, and for a
+  device of the networks never connected to the name it shows there, if it does (the + picker's
+  In your networks, Home's Others in my networks) — goes beside the Device ID, never instead of it,
   with a round avatar (`deviceAvatar`): the vendor's monochrome logo when the device's maker,
   model, name or system (tried in that order; whole words only, so `hp` does not match `php-dev`)
   names a known maker or system (`deviceLogoName`), else the name's first letter. Vendor logos are
@@ -337,6 +351,8 @@ when `SCREENSHOT_DIR` is set.
   and **Sound**: Sound to share — what this computer plays unless an input device is chosen, a
   device that is gone shown as not connected, an input asking macOS for the Microphone permission.
 - **Security & privacy:** **Device identity** — Device ID with Copy, friendly name with Save,
+  Show in my networks (a switch, off by default: the devices of the joined networks see the name
+  before any login, [identity-and-access.md](identity-and-access.md), "Friendly names"),
   fingerprint with Copy, back up or restore with a passphrase through a file dialog, and reset
   after a warning; **Your keys**, Generate a key and Import a key beside the title (name, type and
   `SHA256:` fingerprint, Copy public key, Remove after a confirmation; Generate — Ed25519, its
@@ -427,7 +443,13 @@ when `SCREENSHOT_DIR` is set.
   marked with a small ring that follows the mouse. A toolbar floats over the picture's top edge,
   as RustDesk's: its grip (or any gap between its controls) drags it along that edge, and where it
   is let go is kept for every viewer (`toolbar_at` in `gui.json`); ⌃ folds it to a small handle
-  (the grip and ⌄) at the same place, kept for each device. Its icons, each named by its tooltip:
+  (the grip and ⌄) at the same place, kept for each device. While the pane's header has room for
+  it — its width and at least 48 points of empty header on each side to move the window by
+  (`barDragRoom`) — it sits in the middle of the header instead, without the grip and ⌃
+  (`barInHead`, `headBar`), on a desktop pane in the main window or in a window of its own; it
+  goes there only with 16 points more than it needs to stay (`barHeadSlack`), so it never goes
+  back and forth, and floats again when the room runs out and in full screen, which has no
+  header. Its icons, each named by its tooltip:
   Display (the display by number when the host has several; Fit or Original size), Quality (the
   preset, Frame rate with the cap such as "30 fps", Codec with Auto and what both computers do, by
   codec name only, when there is a choice, and Full colour), Keyboard (with `control-input`, on
@@ -454,7 +476,8 @@ when `SCREENSHOT_DIR` is set.
   (`ownPanel`); what does not fit a
   narrow window goes into the toolbar's » menu. Beside them the path: a dot and the address the session takes
   (`sessions[].route`), else Direct or Relayed (Relayed in the warning colour, its tooltip with a
-  hint to turn on direct connections on both devices), with the host's measured delay, the tooltip also showing size, codec, frame rate and
+  hint to turn on direct connections on both devices), with the host's measured delay, which
+  keeps the room of three digits so that its changes never move what is beside it, the tooltip also showing size, codec, frame rate and
   bitrate, what encodes and what decodes, each in hardware or software as it reports, and where
   the time goes (the host's encoding, the network, this computer's decoding and drawing, the frame
   rate against the host's target) — or, for the test pattern of a host that may not record its

@@ -3,6 +3,7 @@ package gui
 import (
 	_ "embed"
 	"runtime"
+	"time"
 
 	"github.com/egoist/mygo/plugins/loading"
 	"github.com/egoist/mygo/ui"
@@ -119,6 +120,10 @@ var (
 	vncSVG []byte
 	//go:embed assets/icons/nanokvm.svg
 	nanokvmSVG []byte
+	//go:embed assets/icons/pop-out.svg
+	popOutSVG []byte
+	//go:embed assets/icons/pop-in.svg
+	popInSVG []byte
 
 	shellSidebar   = ui.MustParseSVG(sidebarSVG)
 	shellPlus      = ui.MustParseSVG(plusSVG)
@@ -131,6 +136,8 @@ var (
 	paneSplitDown  = ui.MustParseSVG(splitDownSVG)
 	paneMaximize   = ui.MustParseSVG(maximizeSVG)
 	paneRestore    = ui.MustParseSVG(restoreSVG)
+	panePopOut     = ui.MustParseSVG(popOutSVG)
+	panePopIn      = ui.MustParseSVG(popInSVG)
 	paneClose      = ui.MustParseSVG(closeSVG)
 	kindDesktop    = barDisplay
 	kindSSH        = ui.MustParseSVG(terminalSVG)
@@ -458,6 +465,8 @@ const (
 	pointerR        float32 = 6   // the host's pointer marker in the viewer
 	barTop          float32 = 8   // the viewer toolbar, from the picture's top edge
 	barMargin       float32 = 8   // the least room it keeps from the picture's sides
+	barDragRoom     float32 = 48  // in a pane's header, the least empty room it leaves either side to move the window
+	barHeadSlack    float32 = 16  // and the more it needs to go there than to stay, so that it never goes back and forth
 	barRadius       float32 = 10  // its corners
 	barIconSize     float32 = 16  // its icons
 	grabDot         float32 = 4   // a keyboard dot under the keyboard icon (grabDots)
@@ -494,13 +503,20 @@ const (
 // Where the macOS traffic lights sit: the close button's top-left corner,
 // which centres the 14-point buttons on the top pane's header — in the main
 // window at the system's own inset from its edge, over the sidebar's top
-// row or the rail; in a window of its own clear of its pane's edge, which
-// starts paneMargin from the window's.
+// row, the rail or, with the sidebar hidden, the top-left pane's header
+// (which starts paneMargin from the window's); in a window of its own,
+// whose pane fills it, on its header a little further in.
 const (
 	trafficMainX = 9
-	trafficOwnX  = 18
-	trafficY     = int(paneMargin + (paneHeaderH-14)/2)
+	trafficMainY = int(paneMargin + (paneHeaderH-14)/2)
+	trafficOwnX  = 14
+	trafficOwnY  = int((paneHeaderH - 14) / 2)
 )
+
+// sbDoubleClick is how soon a second click on the sidebar's button hides
+// the sidebar altogether (sidebarButton): Windows' default double-click
+// time.
+const sbDoubleClick = 500 * time.Millisecond
 
 // railWidth is the width of the sidebar folded to its icons: on macOS the
 // traffic lights' with their inset on either side, so that they and the

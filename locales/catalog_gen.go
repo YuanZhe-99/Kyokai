@@ -3851,6 +3851,26 @@ func (msgs Messages) PaneClose() string {
 	return Catalog.Format(msgs.locale, "PaneClose", nil)
 }
 
+// PaneBackToMain says "Back to the main window"
+// in the language the app shows.
+func PaneBackToMain() string { return In(i18n.Locale()).PaneBackToMain() }
+
+// PaneBackToMain says "Back to the main window"
+// in the language of msgs.
+func (msgs Messages) PaneBackToMain() string {
+	return Catalog.Format(msgs.locale, "PaneBackToMain", nil)
+}
+
+// PanePopOut says "Open in a window of its own"
+// in the language the app shows.
+func PanePopOut() string { return In(i18n.Locale()).PanePopOut() }
+
+// PanePopOut says "Open in a window of its own"
+// in the language of msgs.
+func (msgs Messages) PanePopOut() string {
+	return Catalog.Format(msgs.locale, "PanePopOut", nil)
+}
+
 // PaneDesktop says "Desktop"
 // in the language the app shows.
 func PaneDesktop() string { return In(i18n.Locale()).PaneDesktop() }
@@ -6201,6 +6221,36 @@ func (msgs Messages) SettingsNameHint() string {
 	return Catalog.Format(msgs.locale, "SettingsNameHint", nil)
 }
 
+// SettingsNamePublish says "Show in my networks"
+// in the language the app shows.
+func SettingsNamePublish() string { return In(i18n.Locale()).SettingsNamePublish() }
+
+// SettingsNamePublish says "Show in my networks"
+// in the language of msgs.
+func (msgs Messages) SettingsNamePublish() string {
+	return Catalog.Format(msgs.locale, "SettingsNamePublish", nil)
+}
+
+// SettingsNamePublishAbout says "Devices in your networks see the name before connecting."
+// in the language the app shows.
+func SettingsNamePublishAbout() string { return In(i18n.Locale()).SettingsNamePublishAbout() }
+
+// SettingsNamePublishAbout says "Devices in your networks see the name before connecting."
+// in the language of msgs.
+func (msgs Messages) SettingsNamePublishAbout() string {
+	return Catalog.Format(msgs.locale, "SettingsNamePublishAbout", nil)
+}
+
+// SettingsNamePublishHint says "Kyokai devices in the networks this computer joined see its friendly name beside its Device ID, even those that never…"
+// in the language the app shows.
+func SettingsNamePublishHint() string { return In(i18n.Locale()).SettingsNamePublishHint() }
+
+// SettingsNamePublishHint says "Kyokai devices in the networks this computer joined see its friendly name beside its Device ID, even those that never…"
+// in the language of msgs.
+func (msgs Messages) SettingsNamePublishHint() string {
+	return Catalog.Format(msgs.locale, "SettingsNamePublishHint", nil)
+}
+
 // SettingsOpenAtLogin says "Open at login"
 // in the language the app shows.
 func SettingsOpenAtLogin() string { return In(i18n.Locale()).SettingsOpenAtLogin() }
@@ -6389,6 +6439,16 @@ func SidebarHide() string { return In(i18n.Locale()).SidebarHide() }
 // in the language of msgs.
 func (msgs Messages) SidebarHide() string {
 	return Catalog.Format(msgs.locale, "SidebarHide", nil)
+}
+
+// SidebarHideAllHint says "Double-click to hide it altogether"
+// in the language the app shows.
+func SidebarHideAllHint() string { return In(i18n.Locale()).SidebarHideAllHint() }
+
+// SidebarHideAllHint says "Double-click to hide it altogether"
+// in the language of msgs.
+func (msgs Messages) SidebarHideAllHint() string {
+	return Catalog.Format(msgs.locale, "SidebarHideAllHint", nil)
 }
 
 // SidebarNew says "Connect to a device"

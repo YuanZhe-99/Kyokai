@@ -526,6 +526,7 @@ func settingsHits() []settingsHit {
 		{pageNetwork, L.NetworkLatencyFirst(), L.NetworkLatencyFirstHint()},
 		{pageSecurity, L.HomeDeviceID(), L.IdentityIDAbout()},
 		{pageSecurity, L.SettingsName(), L.SettingsNameAbout()},
+		{pageSecurity, L.SettingsNamePublish(), L.SettingsNamePublishAbout()},
 		{pageSecurity, L.IdentityFingerprint(), ""},
 		{pageSecurity, L.BackupTitle(), join(L.BackupAbout(), L.ActionBackUp(), L.ActionRestore())},
 		{pageSecurity, L.ResetTitle(), L.ResetAbout()},

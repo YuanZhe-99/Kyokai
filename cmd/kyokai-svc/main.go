@@ -11,7 +11,7 @@
 //	kyokai-svc ctl cores | core-install --tag T | network-backend [--easytier T]   (official EasyTier cores; run the networks on one, or on Kyokai Network)
 //	kyokai-svc ctl network-profile [--network ID] [--label L] [--server URL…] [--name N] [--joined=true|false]   (no ID adds one)
 //	kyokai-svc ctl network-remove --network ID
-//	kyokai-svc ctl name-set --name N     (an empty N follows the computer's name)
+//	kyokai-svc ctl name-set [--name N] [--publish=true|false]   (an empty N follows the computer's name; publish shows it in the networks before any login)
 //	kyokai-svc ctl permanent [--remove]
 //	kyokai-svc ctl connect --device ID [--address A] [--want P,P…] | identify --address A | remove --device ID
 //	kyokai-svc ctl close --id N | watch --id N [--seconds S] [--snapshot F.png] [--quality P] [--fps N] [--codec C] [--text T] [--click X,Y] [--type T] [--keys K,K… [--keys-every D]] [--action A,A…] [--display N]
@@ -200,6 +200,7 @@ func ctl(args []string) error {
 	to := fs.String("to", "", "move: the socket of the engine that takes over this device's store")
 	mode := fs.String("mode", "", "access: which passwords open this host (temporary, permanent, both)")
 	withoutAsking := fs.String("without-asking", "", "access: whether an accepted password admits without asking (true, false)")
+	publish := fs.String("publish", "", "name-set: show the friendly name in the networks before any login (true, false)")
 	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached); capture-show: captures show Kyokai's windows; no-logs: keep no logs or connection history; protect: protected mode; network-direct: try direct paths in every network")
 	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
@@ -267,7 +268,15 @@ func ctl(args []string) error {
 	// where other processes could read them.
 	switch cmd {
 	case "name-set":
-		req.Name = name
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "name" {
+				req.Name = name
+			}
+		})
+		if *publish != "" {
+			p := *publish == "true"
+			req.PublishName = &p
+		}
 	case "access":
 		req.PasswordMode = *mode
 		if *withoutAsking != "" {

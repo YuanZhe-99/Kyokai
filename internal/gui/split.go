@@ -76,6 +76,20 @@ func (s *split) topRight() tab {
 	return p.tab
 }
 
+// topLeft is the tab in the split's top-left corner, whose pane's header
+// holds the sidebar's button while the sidebar is hidden: the first half
+// all the way down.
+func (s *split) topLeft() tab {
+	p := s.root
+	for p != nil && p.first != nil {
+		p = p.first
+	}
+	if p == nil {
+		return nil
+	}
+	return p.tab
+}
+
 // leaf is the pane showing t, and its parent (nil for the root).
 func (s *split) leaf(t tab) (p, parent *pane) {
 	var find func(p, up *pane) (*pane, *pane)

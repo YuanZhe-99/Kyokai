@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -344,6 +344,9 @@ pub struct Network {
     by_address_error: Option<String>,
     /// The latest looks at known hosts' addresses (memory only).
     probes: Arc<Probes>,
+    /// The names the devices of the networks show before a login (memory
+    /// only).
+    names: Arc<Names>,
     /// Where the official cores and their runtime files are.
     state_dir: PathBuf,
     /// Accepts the official cores' connections on loopback while one runs
@@ -385,6 +388,7 @@ impl Network {
             by_address: None,
             by_address_error: None,
             probes: Arc::default(),
+            names: Arc::default(),
             state_dir: state_dir.to_owned(),
             local: None,
             local_error: None,
@@ -648,11 +652,15 @@ impl Network {
                                 .iter()
                                 .filter_map(|r| {
                                     let id = r.hostname.strip_prefix("Kyokai-")?;
-                                    Some(json!({
+                                    let mut d = json!({
                                         "device_id": id,
                                         "path": if r.direct { "direct" } else { "relay" },
                                         "latency_ms": r.latency.max(0),
-                                    }))
+                                    });
+                                    if let Some(name) = self.names.of(id) {
+                                        d["name"] = json!(name);
+                                    }
+                                    Some(d)
                                 })
                                 .collect();
                             json!({
@@ -679,6 +687,22 @@ impl Network {
                 entry
             })
             .collect();
+        // The names the devices show, looked at again now and then.
+        let ids: Vec<String> = snapshots
+            .iter()
+            .flatten()
+            .flat_map(|s| &s.peers)
+            .filter_map(|r| r.hostname.strip_prefix("Kyokai-"))
+            .filter(|id| *id != self.device_id)
+            .map(str::to_owned)
+            .collect();
+        for id in self.names.due(&ids, Instant::now()) {
+            let (names, nodes) = (self.names.clone(), running(&self.nodes));
+            self.rt.spawn(async move {
+                let seen = look_name(nodes, &id).await;
+                names.found(&id, seen);
+            });
+        }
         aggregate(networks)
     }
 
@@ -1389,6 +1413,91 @@ impl Probes {
     }
 }
 
+/// How long the name a device of the networks shows is taken as it is
+/// before another look (`Names`).
+const NAME_AGAIN: Duration = Duration::from_secs(300);
+
+/// The names the devices of the joined networks show before any login
+/// (`about::Local::published`), as the last look at each found them, by
+/// Device ID (memory only). Each is the device's claim, shown beside its
+/// Device ID (doc/en-us/identity-and-access.md, "Friendly names").
+#[derive(Default)]
+pub struct Names(Mutex<std::collections::HashMap<String, Named>>);
+
+/// The looks at a device's name: the name it showed (None: none), when the
+/// last look began, and whether it is still under way.
+#[derive(Default)]
+struct Named {
+    name: Option<String>,
+    at: Option<Instant>,
+    busy: bool,
+}
+
+impl Names {
+    /// The name a device showed at the last look that reached it.
+    fn of(&self, device_id: &str) -> Option<String> {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|m| m.get(device_id).and_then(|n| n.name.clone()))
+    }
+
+    /// Takes the devices whose name is due for a look — never looked at, or
+    /// last NAME_AGAIN ago and not under way — and marks them under way.
+    fn due(&self, device_ids: &[String], now: Instant) -> Vec<String> {
+        let Ok(mut m) = self.0.lock() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for id in device_ids {
+            let named = m.entry(id.clone()).or_default();
+            if named.busy
+                || named
+                    .at
+                    .is_some_and(|at| now.duration_since(at) < NAME_AGAIN)
+            {
+                continue;
+            }
+            named.at = Some(now);
+            named.busy = true;
+            out.push(id.clone());
+        }
+        out
+    }
+
+    /// Records what a look found: the name shown (Some(None): none), or
+    /// None when it reached nobody, which keeps the last name.
+    fn found(&self, device_id: &str, seen: Option<Option<String>>) {
+        if let Ok(mut m) = self.0.lock()
+            && let Some(named) = m.get_mut(device_id)
+        {
+            named.busy = false;
+            if let Some(name) = seen {
+                named.name = name;
+            }
+        }
+    }
+}
+
+/// Reads the name a device of the networks shows: its hello over the
+/// first of its routes that answers, which must be the device itself.
+/// Returns: the name shown (Some(None): none), or None when no route
+/// answered as the device.
+async fn look_name(nodes: Vec<Core>, device_id: &str) -> Option<Option<String>> {
+    for c in candidates(&nodes, device_id).await {
+        let look = async {
+            let stream = open(Target::Net(c), nodes.clone()).await?;
+            session::identify(stream).await.ok()
+        };
+        if let Ok(Some((id, name))) = tokio::time::timeout(PROBE_WAIT, look).await
+            && id == device_id
+        {
+            return Some(name);
+        }
+    }
+    None
+}
+
 /// Looks at an address: resolves it, times the TCP handshake and reads the
 /// host's hello, which says which device answers.
 pub async fn probe_address(address: &str, device_id: &str) -> Probe {
@@ -1404,7 +1513,7 @@ pub async fn probe_address(address: &str, device_id: &str) -> Probe {
         };
         let rtt = Some(rtt.as_millis().min(u128::from(u32::MAX)) as u32);
         match session::identify(stream).await {
-            Ok(id) if id == device_id => state("ok", rtt),
+            Ok((id, _)) if id == device_id => state("ok", rtt),
             Ok(_) => state("other-device", rtt),
             Err(session::Failure::Incompatible) => state("incompatible", rtt),
             Err(_) => state("broken", rtt),
@@ -1585,10 +1694,13 @@ pub async fn identify(address: &str) -> Result<String, &'static str> {
     let (stream, _) = connect_address(address, DIAL_TIMEOUT)
         .await
         .map_err(|_| "unreachable")?;
-    session::identify(stream).await.map_err(|f| match f {
-        session::Failure::Incompatible => "incompatible",
-        _ => "broken",
-    })
+    session::identify(stream)
+        .await
+        .map(|(id, _)| id)
+        .map_err(|f| match f {
+            session::Failure::Incompatible => "incompatible",
+            _ => "broken",
+        })
 }
 
 /// Decides whether a dropped session keeps resuming after an attempt.
@@ -2353,6 +2465,30 @@ mod tests {
             ("Kyokai-100000002".into(), "Kyokai-100000002".into())
         );
         assert_ne!(ca.get_inst_name(), cb.get_inst_name());
+    }
+
+    /// A device's name is looked at once, then again only NAME_AGAIN later
+    /// and never twice at a time; a look that reached nobody keeps the last
+    /// name, one that reached the device without a name clears it.
+    #[test]
+    fn names_are_looked_at_now_and_then() {
+        let names = Names::default();
+        let ids = ["1".to_owned(), "2".to_owned()];
+        let t0 = Instant::now();
+        assert_eq!(names.due(&ids, t0), ids, "never looked at");
+        assert!(names.due(&ids, t0 + NAME_AGAIN * 2).is_empty(), "under way");
+        names.found("1", Some(Some("Den".into())));
+        names.found("2", None);
+        assert_eq!(names.of("1").as_deref(), Some("Den"));
+        assert_eq!(names.of("2"), None);
+        assert!(names.due(&ids, t0 + NAME_AGAIN / 2).is_empty(), "too soon");
+        assert_eq!(names.due(&ids, t0 + NAME_AGAIN), ids);
+        names.found("1", None);
+        assert_eq!(names.of("1").as_deref(), Some("Den"), "nobody reached");
+        names.found("2", Some(None));
+        assert_eq!(names.due(&ids[..1], t0 + NAME_AGAIN * 2), ["1"]);
+        names.found("1", Some(None));
+        assert_eq!(names.of("1"), None, "no longer shown");
     }
 
     /// Direct paths first, then the lowest latency; the networks' order

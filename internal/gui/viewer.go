@@ -156,6 +156,12 @@ type viewer struct {
 	barW        float32
 	barDragging bool
 	pic         ui.Handle
+	// The toolbar in the pane's header, on the main thread: whether it is
+	// there (barInHead), its width there in the last frame, and whether the
+	// header drew it in the frame being built, so that it does not float
+	// too.
+	inHead, barShown bool
+	headW            float32
 	// address is where the connection dials the device (an IP address
 	// or domain name), empty over the network; guarded by mu.
 	address string
@@ -1125,31 +1131,27 @@ func (v *viewer) setState(s string) {
 }
 
 // view is the viewer window: the picture (fitted, or at its original size)
-// with the toolbar over its top edge, and beside it the clipboard panel when
-// the session may use it.
+// with the toolbar over its top edge unless the pane's header holds it
+// (headBar), and beside it the clipboard panel when the session may use it.
 func (v *viewer) view(c *ui.Context) {
-	v.mu.Lock()
-	phase, pumping := v.phase, v.pumping
-	v.mu.Unlock()
-	if !pumping && phase.State != "connected" {
+	inHead := v.barShown
+	v.barShown = false // the header says so again in the next frame
+	if !v.picturing() {
 		// No picture, no keys: the grab ends with the connection.
+		v.mu.Lock()
+		phase := v.phase
+		v.mu.Unlock()
 		v.syncGrab(false)
 		v.connectPanel(c, phase)
 		return
 	}
+	b, actions, control := v.barState()
 	v.mu.Lock()
-	bm, state, start, original, control := v.bm, v.state, v.start, v.original, v.control
-	withClip, ptr, actions := v.clip.may && v.clip.shown, v.pointer, v.actions
-	b := bar{start: start, fps: v.fps, kbps: v.kbps, decodeMS: v.decodeMS, drawMS: v.drawMS, host: v.host,
-		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec, decoder: v.decoder, paused: v.paused && control}
+	bm, state, start, original := v.bm, v.state, v.start, v.original
+	withClip, ptr := v.clip.may && v.clip.shown, v.pointer
 	v.mu.Unlock()
-	b.showPtr = v.app == nil || v.app.showPointer()
 	if !b.showPtr {
 		ptr.Visible = false
-	}
-	if v.app != nil {
-		b.path = v.app.pathTo(v.device)
-		b.route = v.app.routeOf(v.device)
 	}
 	ui.Row(c).Fill().Background(ui.Hex("#000000")).AlignItems(ui.Stretch).Children(func() {
 		// The toolbar floats over the picture, the panels beside it.
@@ -1161,12 +1163,79 @@ func (v *viewer) view(c *ui.Context) {
 			} else {
 				v.picture(c, bm, state, start, ptr)
 			}
-			v.toolbar(c, b, actions, control, stageW)
+			if !inHead {
+				v.toolbar(c, b, actions, control, stageW)
+			}
 		})
 		if withClip {
 			v.clipPanel(c)
 		}
 	})
+}
+
+// picturing reports whether the session is under way or connected, as the
+// picture and its toolbar show rather than the connect panel.
+func (v *viewer) picturing() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.pumping || v.phase.State == "connected"
+}
+
+// barState is what the toolbar shows now, the host's session actions and
+// whether this session controls the host's input.
+func (v *viewer) barState() (bar, *hostActions, bool) {
+	v.mu.Lock()
+	control := v.control
+	b := bar{start: v.start, fps: v.fps, kbps: v.kbps, decodeMS: v.decodeMS, drawMS: v.drawMS, host: v.host,
+		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec, decoder: v.decoder, paused: v.paused && control}
+	actions := v.actions
+	v.mu.Unlock()
+	b.showPtr = v.app == nil || v.app.showPointer()
+	if v.app != nil {
+		b.path = v.app.pathTo(v.device)
+		b.route = v.app.routeOf(v.device)
+	}
+	return b, actions, control
+}
+
+// barInHead decides whether the toolbar goes into the pane's header, in
+// the middle of its empty part (doc/en-us/gui.md, "The viewer"): it stays
+// there while the empty room left on each side of it keeps barDragRoom, to
+// move the window by; it goes there once the empty part has room for it as
+// it last was there (else as it floats) and barDragRoom on each side. Only
+// while the picture shows.
+// Inputs: the width of the empty part in the last frame — the whole of it,
+// or while the toolbar was there the room on its left.
+// Notes: call on the main thread, as the header builds (inHead, headW).
+func (v *viewer) barInHead(empty float32) bool {
+	switch {
+	case !v.picturing():
+		v.inHead = false
+	case v.inHead:
+		v.inHead = empty >= barDragRoom
+	default:
+		want := v.headW
+		if want == 0 {
+			want = v.barW
+		}
+		v.inHead = want > 0 && empty >= want+2*barDragRoom+barHeadSlack
+	}
+	return v.inHead
+}
+
+// headBar is the toolbar in the pane's header: its menus, toggles and the
+// path, without the grip and the fold, which only the floating toolbar has
+// (it moves along the picture, and folds over it).
+// Notes: call on the main thread, as the header builds.
+func (v *viewer) headBar(c *ui.Context) {
+	b, actions, control := v.barState()
+	bar := ui.Row(c.Key("head-bar")).Shrink(0).AlignItems(ui.Center).Gap(2)
+	bar.Children(func() {
+		ui.Toolbar(c, func() { v.barControls(c, b, actions, control) }).Label(L.ViewerToolbar()).Shrink(0).Padding(0)
+		pathChip(c, b)
+	})
+	v.headW = bar.LayoutBounds().W
+	v.barShown = true
 }
 
 // connectPanel is the tab before and after the picture: connecting,
@@ -1830,20 +1899,35 @@ func pathChip(c *ui.Context, b bar) {
 		L.ViewerEncoding(codec, implLabel(codecImpl{start.Encoder, start.Hardware})) + "\n" +
 		L.ViewerDecoding(codec, implLabel(b.decoder)) + "\n" +
 		L.ViewerTimes(b.host.EncodeMS, b.host.DelayMS, int(b.decodeMS+0.5), int(b.drawMS+0.5), int(b.fps+0.5), b.host.FPS)
-	dot, text := t.Success, fmt.Sprintf("%d ms", b.host.DelayMS)
+	dot, way, delay := t.Success, "", fmt.Sprintf("%d ms", b.host.DelayMS)
 	// The session's own route: an address, else the network's path.
 	switch {
 	case b.route != "":
-		text = b.route + " · " + text
+		way = b.route + " · "
 		tip = L.ViewerByAddressHint() + "\n\n" + tip
 	case b.path.Path == "direct":
-		text = L.PathDirect() + " · " + text
+		way = L.PathDirect() + " · "
 	case b.path.Path == "relay":
-		dot, text = t.Warning, L.PathRelay()+" · "+text
+		dot, way = t.Warning, L.PathRelay()+" · "
 		tip = L.ViewerRelayedHint() + "\n\n" + tip
 	}
-	ui.Row(c.Key("bar-path")).Gap(6).Padding(0, 6).AlignItems(ui.Center).Shrink(0).Tooltip(tip).Children(func() {
+	// The delay keeps the room of three digits, so that its changes never
+	// move what is beside it (regression: the toolbar shook as it changed);
+	// the way ends in a no-break space, which a line keeps.
+	room := "000 ms"
+	if len(delay) > len(room) {
+		room = delay
+	}
+	ui.Row(c.Key("bar-path")).Gap(6).Padding(0, 6).AlignItems(ui.Center).Shrink(0).Label(way + delay).Tooltip(tip).Children(func() {
 		ui.Column(c).Size(onlineDot, onlineDot).Radius(onlineDot / 2).Background(dot)
-		ui.Text(c, text).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted).SingleLine()
+		ui.Row(c).AlignItems(ui.Center).Children(func() {
+			if way != "" {
+				ui.Text(c, way).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine()
+			}
+			ui.Box(c).Children(func() {
+				ui.Text(c, room).FontSize(sizeSmall).FontFeatures("tnum").TextColor(ui.Transparent).SingleLine()
+				ui.Text(c, delay).FontSize(sizeSmall).FontFeatures("tnum").TextColor(t.TextMuted).SingleLine().Absolute().Left(0).Top(0)
+			})
+		})
 	})
 }

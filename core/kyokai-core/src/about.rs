@@ -4,7 +4,8 @@
 //!
 //! None of it authenticates anything: the Device ID and the pinned key do.
 //! It never travels before the password check, and never in the EasyTier
-//! hostname.
+//! hostname — except the name alone, in `host_hello`, while the user chose to
+//! show it in their networks (`publish`).
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -63,29 +64,35 @@ pub struct Local {
     path: PathBuf,
     /// The name the user chose; empty follows the computer's name.
     chosen: String,
+    /// The name shows to anyone who reaches this device, before any login
+    /// (`published`).
+    publish: bool,
     hardware: (String, String),
 }
 
-/// The file that keeps the chosen name (not a secret).
+/// The file that keeps the chosen name and whether it shows before a login
+/// (not a secret).
 #[derive(Serialize, Deserialize, Default)]
 struct Saved {
     #[serde(default)]
     name: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    publish: bool,
 }
 
 impl Local {
-    /// Reads the chosen name from `state_dir` and the hardware from the
-    /// system (once).
+    /// Reads the chosen name and whether it shows before a login from
+    /// `state_dir`, and the hardware from the system (once).
     pub fn load(state_dir: &Path) -> Local {
         let path = state_dir.join("device.json");
-        let chosen = std::fs::read(&path)
+        let saved = std::fs::read(&path)
             .ok()
             .and_then(|b| serde_json::from_slice::<Saved>(&b).ok())
-            .map(|s| tidy(&s.name, MAX_NAME))
             .unwrap_or_default();
         Local {
             path,
-            chosen,
+            chosen: tidy(&saved.name, MAX_NAME),
+            publish: saved.publish,
             hardware: hardware(),
         }
     }
@@ -95,14 +102,34 @@ impl Local {
         &self.chosen
     }
 
-    /// Sets the friendly name; an empty one follows the computer's name.
+    /// Whether the name shows to anyone who reaches this device.
+    pub fn publish(&self) -> bool {
+        self.publish
+    }
+
+    /// Sets the friendly name (an empty one follows the computer's name)
+    /// and whether it shows before a login; None keeps either as it is.
     /// Side effects: writes device.json.
-    pub fn set_name(&mut self, name: &str) -> Result<(), String> {
-        let name = tidy(name, MAX_NAME);
-        let data = serde_json::to_vec(&Saved { name: name.clone() }).map_err(|e| e.to_string())?;
+    pub fn set(&mut self, name: Option<&str>, publish: Option<bool>) -> Result<(), String> {
+        let name = name.map_or_else(|| self.chosen.clone(), |n| tidy(n, MAX_NAME));
+        let publish = publish.unwrap_or(self.publish);
+        let data = serde_json::to_vec(&Saved {
+            name: name.clone(),
+            publish,
+        })
+        .map_err(|e| e.to_string())?;
         crate::store::write_atomic(&self.path, &data)?;
         self.chosen = name;
+        self.publish = publish;
         Ok(())
+    }
+
+    /// The name this device shows before any login: its friendly name while
+    /// the user chose to show it in their networks, else None.
+    pub fn published(&self) -> Option<String> {
+        self.publish
+            .then(|| self.about().name)
+            .filter(|n| !n.is_empty())
     }
 
     /// What this device tells a peer now.
@@ -234,14 +261,36 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let mut l = Local::load(&dir);
         assert_eq!(l.chosen(), "");
-        l.set_name("  Living room  ").unwrap();
+        l.set(Some("  Living room  "), None).unwrap();
         assert_eq!(Local::load(&dir).about().name, "Living room");
-        l.set_name("").unwrap();
+        l.set(Some(""), None).unwrap();
         assert_eq!(Local::load(&dir).chosen(), "");
         assert_eq!(
             Local::load(&dir).about().name,
             tidy(&computer_name(), MAX_NAME)
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_name_shows_before_a_login_only_while_published() {
+        let dir = std::env::temp_dir().join(format!("kyokai-publish-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut l = Local::load(&dir);
+        l.set(Some("Living room"), None).unwrap();
+        assert_eq!(l.published(), None, "off by default");
+        l.set(None, Some(true)).unwrap();
+        let again = Local::load(&dir);
+        assert_eq!(again.chosen(), "Living room", "the name stays");
+        assert_eq!(again.published().as_deref(), Some("Living room"));
+        l.set(Some("Den"), None).unwrap();
+        assert_eq!(
+            Local::load(&dir).published().as_deref(),
+            Some("Den"),
+            "the choice stays"
+        );
+        l.set(None, Some(false)).unwrap();
+        assert_eq!(Local::load(&dir).published(), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

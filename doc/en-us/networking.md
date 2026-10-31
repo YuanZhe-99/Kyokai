@@ -148,7 +148,7 @@ together, as older GUIs, Home and the viewer read it; its `networks` lists each:
 | `address` | the virtual IPv4 address, once assigned (together: the first online network's) |
 | `nat` | the NAT type found through STUN: `unknown`, `open`, `no-pat`, `full-cone`, `restricted`, `port-restricted`, `symmetric`, `symmetric-easy`, `symmetric-firewall` (together: the first online network's) |
 | `listen_port` | the port other devices' nodes connect to directly, when it listens (direct connections on; together: the first online network's) |
-| `devices` | other Kyokai devices the network routes to: announced Device ID, `direct` or `relay` path, latency in ms; together, each device once, by its best path (direct first, then the lowest latency) |
+| `devices` | other Kyokai devices the network routes to: announced Device ID, `direct` or `relay` path, latency in ms, and `name`, the friendly name the device shows in its networks if it does (see Trust); together, each device once, by its best path (direct first, then the lowest latency) |
 | `networks` | each network kept, in the order added: its `id`, `label` (the name it is shown by), `joined` and the fields above (`off` while it is not joined) |
 | `unreachable` | with an official EasyTier core, why other devices cannot reach this one (its loopback port taken) while it still reaches them |
 

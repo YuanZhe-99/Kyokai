@@ -1,5 +1,21 @@
 # Version history
 
+## 0.6.11 (2026-10-31)
+
+- A pane in a window of its own fills it, with no margin or border round it, and its header's ×
+  becomes Back to the main window while the main window is open; the main window's pane headers
+  gain Open in a window of its own.
+- A double click on the sidebar's button hides the sidebar altogether, its button then on the
+  top-left pane's header; a click there brings it back as it was.
+- A desktop's toolbar sits in the middle of its pane's header while the header has room for it and
+  for moving the window on either side, and floats over the picture otherwise; the delay keeps
+  the room of three digits, so the toolbar no longer shakes as it changes.
+- Show in my networks (Security, off by default): the friendly name goes into `host_hello`, and
+  controllers show it beside the Device ID of the devices of their networks they never connected
+  to.
+- Upstreams checked, unchanged: MyGo v0.7.3, EasyTier v2.7.0 (`8b7f1f0`), RustDesk 1.5.0, vcpkg
+  2026.10.16, Rust 1.99.1.
+
 ## 0.6.10 (2026-10-30)
 
 - Linux hosts send H.264 and HEVC through the GPU (VA-API) where its driver has them, HEVC first, the

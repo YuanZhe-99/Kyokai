@@ -31,6 +31,9 @@ type Prefs struct {
 	TrayHintShown bool `json:"tray_hint_shown,omitempty"`
 	// SidebarRail keeps the main window's sidebar folded to its icons.
 	SidebarRail bool `json:"sidebar_rail,omitempty"`
+	// SidebarHidden hides the sidebar altogether, its button on the
+	// top-left pane's header; SidebarRail still says how it comes back.
+	SidebarHidden bool `json:"sidebar_hidden,omitempty"`
 	// OthersInNetworks also shows on Home the Kyokai devices the joined
 	// networks reach that this one never connected to (off by default).
 	OthersInNetworks bool `json:"others_in_networks,omitempty"`

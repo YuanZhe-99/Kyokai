@@ -139,23 +139,30 @@ func TestGroups(t *testing.T) {
 	}
 }
 
-// TestTopRight: the pane that keeps the room of the window's caption
-// buttons is the top-right one of its group.
-func TestTopRight(t *testing.T) {
+// TestCorners: the pane that keeps the room of the window's caption
+// buttons is the top-right one of its group, the one that holds the
+// sidebar's button while the sidebar is hidden the top-left one.
+func TestCorners(t *testing.T) {
 	a, b, c := fakeTab("a"), fakeTab("b"), fakeTab("c")
 	var s split
 	s.single(a)
-	if s.topRight() != a {
-		t.Fatal("alone, a is in the corner")
+	if s.topRight() != a || s.topLeft() != a {
+		t.Fatal("alone, a is in both corners")
 	}
 	s.place(b, a, zoneRight)
 	s.place(c, b, zoneBottom)
 	if got := s.topRight(); got != b {
 		t.Fatalf("(a|(b/c)): %v, want b", got)
 	}
+	if got := s.topLeft(); got != a {
+		t.Fatalf("(a|(b/c)) top-left: %v, want a", got)
+	}
 	s.place(c, a, zoneTop)
 	if got := s.topRight(); got != b {
 		t.Fatalf("((c/a)|b): %v, want b", got)
+	}
+	if got := s.topLeft(); got != c {
+		t.Fatalf("((c/a)|b) top-left: %v, want c", got)
 	}
 }
 
@@ -329,5 +336,37 @@ func TestPlacesWhereItFits(t *testing.T) {
 		if got := entries(); got != st.want {
 			t.Fatalf("%s: %s, want %s", st.name, got, st.want)
 		}
+	}
+}
+
+// TestBarInHead: the toolbar goes into a pane's header once the empty part
+// has room for it and barDragRoom on each side to move the window, stays
+// while each side keeps that, and does not come back at the width it left
+// at (regression guard: it must never go back and forth frame by frame).
+func TestBarInHead(t *testing.T) {
+	v := &viewer{pumping: true, barW: 400}
+	for _, st := range []struct {
+		name  string
+		headW float32 // as the header measured it there
+		empty float32
+		want  bool
+	}{
+		{"short of room", 0, 400 + 2*barDragRoom + barHeadSlack - 1, false},
+		{"room for it floating", 0, 400 + 2*barDragRoom + barHeadSlack, true},
+		{"each side keeps its room", 380, barDragRoom, true},
+		{"a side runs short", 380, barDragRoom - 1, false},
+		// The whole empty part as it left: the room it had, both sides and
+		// the header's gaps.
+		{"not back at once", 380, 380 + 2*(barDragRoom-1) + 8, false},
+		{"back with room", 380, 380 + 2*barDragRoom + barHeadSlack, true},
+	} {
+		v.headW = st.headW
+		if got := v.barInHead(st.empty); got != st.want {
+			t.Errorf("%s: %v, want %v", st.name, got, st.want)
+		}
+	}
+	v.pumping = false
+	if v.barInHead(10000) {
+		t.Error("no picture, no toolbar in the header")
 	}
 }

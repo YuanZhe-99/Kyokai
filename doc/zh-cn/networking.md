@@ -104,7 +104,7 @@ IPv4 计算。端口已被占用时（本机上的第二个引擎）不会监听
 | `address` | 分配到之后的虚拟 IPv4 地址（合在一起时：第一个在线网络的） |
 | `nat` | 通过 STUN 得到的 NAT 类型：`unknown`、`open`、`no-pat`、`full-cone`、`restricted`、`port-restricted`、`symmetric`、`symmetric-easy`、`symmetric-firewall`（合在一起时：第一个在线网络的） |
 | `listen_port` | 本机监听时（打开直接连接），其他设备的节点直接连接所用的端口（合在一起时：第一个在线网络的） |
-| `devices` | 网络可路由到的其他 Kyokai 设备：其宣告的设备 ID、`direct` 或 `relay` 路径、以毫秒计的延迟；合在一起时，每台设备只列一次，取最好的路径（先直接，再按延迟最低） |
+| `devices` | 网络可路由到的其他 Kyokai 设备：其宣告的设备 ID、`direct` 或 `relay` 路径、以毫秒计的延迟，以及 `name`，即设备在其网络中显示的别名（如果显示的话；见“信任”）；合在一起时，每台设备只列一次，取最好的路径（先直接，再按延迟最低） |
 | `networks` | 保存的每个网络，按添加顺序：它的 `id`、`label`（显示的名称）、`joined` 以及以上字段（未加入时为 `off`） |
 | `unreachable` | 使用官方 EasyTier 核心时，其他设备无法连到这台电脑的原因（它的回环端口被占用），而这台电脑仍能连到它们 |
 

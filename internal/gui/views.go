@@ -164,8 +164,8 @@ func (a *App) aboutView(c *ui.Context) {
 }
 
 // identitySettings is the Security & privacy page's Device identity: the
-// Device ID, the friendly name, the fingerprint, back up or restore, and
-// reset.
+// Device ID, the friendly name and whether it shows in the networks, the
+// fingerprint, back up or restore, and reset.
 func (a *App) identitySettings(c *ui.Context) {
 	a.mu.Lock()
 	st := *a.status
@@ -401,8 +401,10 @@ type nameForm struct {
 	editing bool
 }
 
-// nameSetting is Device identity's friendly-name row: the name other
-// devices see beside this Device ID once their login succeeded.
+// nameSetting is Device identity's friendly-name rows: the name other
+// devices see beside this Device ID once their login succeeded, and Show
+// in my networks, which shows it to the devices of the networks before
+// any login.
 func (a *App) nameSetting(c *ui.Context, r *rows, st localapi.Status) {
 	a.mu.Lock()
 	f, busy := a.name, a.busy["name"]
@@ -425,6 +427,30 @@ func (a *App) nameSetting(c *ui.Context, r *rows, st localapi.Status) {
 			a.saveName(f.text)
 		}
 	})
+	publish := st.PublishName
+	r.row(c, "name-publish", tile(navNetwork), setting{title: L.SettingsNamePublish(), about: L.SettingsNamePublishAbout(), more: L.SettingsNamePublishHint()}, func() {
+		if ui.Switch(c.Key("name-publish-sw"), &publish).Label(L.SettingsNamePublish()).Disabled(busy).Changed() {
+			a.publishName(publish)
+		}
+	})
+}
+
+// publishName shows the friendly name in the networks before any login, or
+// stops showing it.
+// Side effects: asks the engine; the status push shows the choice.
+func (a *App) publishName(on bool) {
+	a.mu.Lock()
+	a.busy["name"] = true
+	a.mu.Unlock()
+	go func() {
+		_, err := a.requestWith(localapi.Request{Type: localapi.RequestNameSet, PublishName: &on})
+		a.update(func() {
+			delete(a.busy, "name")
+			if err != nil {
+				a.setToast(L.EngineDown(), true)
+			}
+		})
+	}()
 }
 
 // saveName stores the friendly name ("" follows the computer's name).

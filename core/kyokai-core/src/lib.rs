@@ -1010,14 +1010,25 @@ fn call(input: &[u8]) -> Result<Value, String> {
             })
         }
         "device.set_name" => {
-            let name = req.params["name"].as_str().ok_or("bad name")?.to_owned();
-            if name.chars().count() > about::MAX_NAME {
+            // The name, whether it shows in the networks, or both.
+            let name = match &req.params["name"] {
+                Value::Null => None,
+                v => Some(v.as_str().ok_or("bad name")?.to_owned()),
+            };
+            let publish = match &req.params["publish"] {
+                Value::Null => None,
+                v => Some(v.as_bool().ok_or("bad publish")?),
+            };
+            if name
+                .as_ref()
+                .is_some_and(|n| n.chars().count() > about::MAX_NAME)
+            {
                 return Err(format!("a name has at most {} characters", about::MAX_NAME));
             }
             try_core(|c| {
                 let mut l = c.ctx.about.lock().map_err(|_| "core state poisoned")?;
-                l.set_name(&name)?;
-                Ok(json!({"name": l.chosen(), "about": l.about()}))
+                l.set(name.as_deref(), publish)?;
+                Ok(json!({"name": l.chosen(), "publish": l.publish(), "about": l.about()}))
             })
         }
         "network.get" => with_core(|c| c.network.settings()),
@@ -1741,6 +1752,7 @@ fn status() -> Value {
                 })
                 .collect::<Value>(),
             "name": c.ctx.about.lock().map(|l| l.chosen().to_owned()).unwrap_or_default(),
+            "publish_name": c.ctx.about.lock().is_ok_and(|l| l.publish()),
             "serve": c.ctx.access.serve(),
             "about": c.ctx.about(),
         })

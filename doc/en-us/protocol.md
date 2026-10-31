@@ -22,7 +22,7 @@ static key per session and prove their device identity by signing it.
 | Frame | Direction | Noise | Payload (JSON) |
 |---|---|---|---|
 | 1 | controller → host | `e` | none |
-| 2 | host → controller | `e, ee, s, es` | `host_hello`: protocol, product version, source URL, device key, signature |
+| 2 | host → controller | `e, ee, s, es` | `host_hello`: protocol, product version, source URL, device key, signature, and from 0.6.11 the host's friendly name (`name`) while its user shows it in their networks ([identity-and-access.md](identity-and-access.md), "Friendly names") |
 | 3 | controller → host | `s, se` | `client_hello`: protocol, product version, device key, signature, requested permissions, two OPAQUE credential requests (or none, with the controller's description `about`, to ask without a password), a resume token when resuming, proofs with sign-in keys (see Key login), the service of a tunnel (see Tunnels), and `watch` for a status watch (see Status watchers) |
 
 The signature is Ed25519 by the device key over `kyokai/noise-static/v1` followed by the sender's
@@ -221,7 +221,8 @@ ignores message types, permission names, session actions and AI commands it does
 0.4.0 and older send none and end a session on them. So a newer build sends a new message type, a
 new permission (in `want` or `granted`) or a new refusal only to a peer that announced the token it
 belongs to, and a missing list means the 0.4.0 set. Both hellos are otherwise unchanged, and 0.4.0
-ignores fields it does not know, so the two talk with what both have. A peer whose protocol lies
+ignores fields it does not know, so the two talk with what both have. `host_hello`'s `name` (0.6.11) needs
+no token: a build that does not know it ignores it. A peer whose protocol lies
 outside the range this build speaks (10 to 10) is refused as incompatible.
 
 | Token | Brings |

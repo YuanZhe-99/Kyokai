@@ -885,8 +885,9 @@ func networkOthers(nets []localapi.NetworkState, known []deviceRow, self string)
 
 // othersSection is Home's Kyokai devices in the joined networks that this
 // one never connected to (Others in my networks): their title and how
-// many, then dashed cards in the devices' columns — the Device ID, the
-// network and how it reaches the device, and Connect.
+// many, then dashed cards in the devices' columns — the name the device
+// shows in its networks, if it does, beside its Device ID, the network
+// and how it reaches the device, and Connect.
 func (a *App) othersSection(c *ui.Context, others []networkOther, tracks []ui.Track) {
 	t := c.Theme()
 	ui.Row(c.Key("others-head")).FillWidth().Gap(10).AlignItems(ui.Center).Padding(10, 2, 0, 2).Children(func() {
@@ -909,14 +910,14 @@ func (a *App) othersSection(c *ui.Context, others []networkOther, tracks []ui.Tr
 					ui.Icon(c, kindDesktop).FontSize(navIconSize).TextColor(t.TextMuted)
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-					ui.Text(c, groupDigits(o.id)).Bold().FontFeatures("tnum").SingleLine()
+					ui.Text(c, deviceTitle(localapi.About{Name: o.path.Name}, o.id)).Bold().FontFeatures("tnum").SingleLine().MinWidth(0)
 					ui.Row(c).Gap(6).AlignItems(ui.Center).MinWidth(0).Children(func() {
 						ui.Box(c).Size(onlineDot, onlineDot).Shrink(0).Radius(onlineDot / 2).Background(dot)
 						ui.Text(c, o.network+" · "+path+" · "+L.LatencyMS(o.path.LatencyMS)).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine().MinWidth(0)
 					})
 				})
 				if ui.Button(c.Key("other-go-"+o.id), L.ActionConnect()).Clicked() {
-					a.connectDevice(o.id, "", localapi.About{})
+					a.connectDevice(o.id, "", localapi.About{Name: o.path.Name})
 				}
 			})
 		}

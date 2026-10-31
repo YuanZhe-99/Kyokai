@@ -339,10 +339,17 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 		}
 		return localapi.Response{OK: true, Cores: &localapi.Cores{Installed: cores.Installed(h.stateDir)}}
 	case localapi.RequestNameSet:
-		if req.Name == nil {
+		if req.Name == nil && req.PublishName == nil {
 			return localapi.Fail(localapi.CodeInvalid, "name missing")
 		}
-		return h.command("device.set_name", map[string]string{"name": *req.Name})
+		params := map[string]any{}
+		if req.Name != nil {
+			params["name"] = *req.Name
+		}
+		if req.PublishName != nil {
+			params["publish"] = *req.PublishName
+		}
+		return h.command("device.set_name", params)
 	case localapi.RequestAgentRestart:
 		return h.command("agent.restart", nil)
 	case localapi.RequestStartOver:

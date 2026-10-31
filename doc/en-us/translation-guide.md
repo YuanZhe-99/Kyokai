@@ -113,6 +113,8 @@ and Latin words only where it helps readability.
 | pane / pane header / group (panes split together) | 小窗 / 小窗标题栏 / 分组（分屏在一起的小窗） |
 | sidebar / rail (the sidebar hidden to its icons) | 侧边栏 / 图标栏（隐藏后只剩图标的侧边栏） |
 | Settings sheet / a window of its own | 设置面板 / 独立窗口 |
+| Open in a window of its own / Back to the main window / hide the sidebar altogether | 在独立窗口中打开 / 收回主窗口 / 完全收起侧边栏 |
+| Show in my networks (the friendly name, before any login) | 在我的网络中显示 |
 | Search settings / How it works (the ⓘ beside a setting) | 搜索设置 / 工作原理 |
 | tile (a permission a password grants) / Manage (the keys) | 图块 / 管理 |
 | In use / Switch (a run mode) | 使用中 / 切换 |

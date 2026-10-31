@@ -136,14 +136,14 @@ func pickRows(kind, query string, ownKvm bool, rows []deviceRow, watched map[str
 	}
 	if kind == "" {
 		for _, o := range others {
-			if !match(o.id, o.network) {
+			if !match(o.id, o.network, o.path.Name) {
 				continue
 			}
 			dot, way := success, L.PathDirect()
 			if o.path.Path != "direct" {
 				dot, way = warning, L.PathRelay()
 			}
-			found = append(found, pickRow{key: o.id, device: o.id, name: groupDigits(o.id), note: o.network + " · " + way + " · " + L.LatencyMS(o.path.LatencyMS), dot: dot, ok: true, peer: true})
+			found = append(found, pickRow{key: o.id, device: o.id, name: deviceTitle(localapi.About{Name: o.path.Name}, o.id), note: o.network + " · " + way + " · " + L.LatencyMS(o.path.LatencyMS), dot: dot, ok: true, peer: true})
 		}
 	}
 	device, address := parseTarget(query)

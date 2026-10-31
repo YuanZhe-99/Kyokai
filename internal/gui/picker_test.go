@@ -30,13 +30,17 @@ func TestPickRows(t *testing.T) {
 		"657365333": {Services: []string{serviceSSH, serviceRDP}, Offers: []string{localapi.PermUseSSH, localapi.PermRunAITask}, AI: true},
 		"402118905": {Services: []string{serviceSSH}, AI: true},
 	}
-	others := []networkOther{{id: "100000002", network: "lab", path: localapi.NetworkDevice{Path: "relay", LatencyMS: 40}}}
+	others := []networkOther{
+		{id: "100000002", network: "lab", path: localapi.NetworkDevice{Path: "relay", LatencyMS: 40}},
+		// It shows its name in its networks.
+		{id: "100000003", network: "lab", path: localapi.NetworkDevice{Path: "direct", LatencyMS: 2, Name: "Den"}},
+	}
 	no := "!" // a row greyed: it does not open the kind
 	for _, c := range []struct {
 		kind, query string
 		want        []string // keys, no+key for a row greyed
 	}{
-		{"", "", []string{"657365333", "402118905", "647222040", "100000002"}},
+		{"", "", []string{"657365333", "402118905", "647222040", "100000002", "100000003"}},
 		{serviceSSH, "", []string{"657365333", no + "402118905", "647222040"}},
 		{serviceRDP, "", []string{no + "657365333", no + "402118905", "647222040"}},
 		{serviceVNC, "", []string{no + "657365333", no + "402118905", "647222040"}},
@@ -45,7 +49,8 @@ func TestPickRows(t *testing.T) {
 		{"", "studio", []string{"657365333"}},
 		{"", "657 365", []string{"657365333"}},
 		{"", "657365333", []string{"657365333"}},
-		{"", "lab", []string{"100000002"}},
+		{"", "lab", []string{"100000002", "100000003"}},
+		{"", "den", []string{"100000003"}},
 		{serviceSSH, "100 000 002", []string{"100000002"}}, // not a peer here: typed
 		{"", "123456789", []string{"123456789"}},
 		{"", "192.168.1.20", []string{"192.168.1.20", "657365333"}},
@@ -68,6 +73,10 @@ func TestPickRows(t *testing.T) {
 		if !slices.Equal(got, c.want) {
 			t.Errorf("%q %q: %v, want %v", c.kind, c.query, got, c.want)
 		}
+	}
+	// A name shown in the networks goes beside the Device ID, never instead.
+	if den := pickRows("", "den", false, nil, nil, nil, others, ui.Color{}, ui.Color{}, ui.Color{}); den[0].name != "Den · 100 000 003" {
+		t.Errorf("a name shown in the networks: %q", den[0].name)
 	}
 	typed := pickRows("", "nuc.local", false, nil, nil, nil, nil, ui.Color{}, ui.Color{}, ui.Color{})
 	if typed[0].address != "nuc.local" || typed[0].device != "" || typed[0].note != L.PickByAddress() {

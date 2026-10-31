@@ -142,7 +142,15 @@ uses the computer's name: `COMPUTERNAME` on Windows, the Sharing name on macOS) 
 `SystemManufacturer` and `SystemProductName` on Windows; Apple and `hw.model` on macOS) and its
 system. The controller sends this description in its `login`, the host in an accepting `verdict`
 ([protocol.md](protocol.md)), so nothing reaches a device before the password check and the EasyTier
-hostname stays `Kyokai-<Device ID>`. A received description is cleaned (control characters and
+hostname stays `Kyokai-<Device ID>`. One exception is the user's choice: Security, **Show in my
+networks** (off by default; `publish` in `device.json`) puts the name alone — no maker, model or
+system — into `host_hello`, which anyone who reaches the device reads before any login. A
+controller's engine reads it from the devices its joined networks route to: the first two
+handshake frames over the network, as `session.identify` does, the hello coming from the device
+the Device ID names (its signature checked), once for each device and again every 5 minutes
+(`net::Names`, memory only); the network status lists it as `devices[].name`, cleaned as a
+received description is. The + picker's In your networks and Home's Others in my networks show it
+beside the Device ID. A received description is cleaned (control characters and
 bidirectional overrides removed, each field cut to 64 characters) and stored with the trusted device
 (host side) or the known host (controller side); a resumed session keeps the last one. It is a
 claim of the other device: the interface shows it beside the Device ID, never instead of it, and it

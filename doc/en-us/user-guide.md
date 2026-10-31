@@ -53,7 +53,8 @@ the **Temporary password**, hidden until you choose Show. The temporary password
 time Kyokai starts and whenever you choose **New password**; give it only to someone you want to let
 in. Access can also set a permanent password, for devices you trust over time.
 Security & privacy, Device identity, sets this computer's **Friendly name**, which others see beside the
-Device ID once they have logged in; left empty, it is the computer's name.
+Device ID once they have logged in; left empty, it is the computer's name. Turn on **Show in my
+networks** for the devices of your networks to see it before they connect, too.
 
 ## Join a network
 
@@ -112,15 +113,19 @@ anything more its user is asked. The other computer's user chooses what to allow
 | Approve AI actions | answer the approvals of those tasks |
 
 Once connected, the pane shows the other screen; click a connection in the sidebar to show it, and
-**Hide the sidebar** at its top keeps only its icons. To see several at once, choose **Split
+**Hide the sidebar** at its top keeps only its icons; double-click it to hide the sidebar
+altogether, its button then at the start of the top-left pane's header, where a click brings it
+back. To see several at once, choose **Split
 right** or **Split down** in a pane's header and pick another open pane, or **Open a device…** to
 open one there, or drag a pane by its
 title onto another: drop it at an edge to show it beside, above or below that one (up to four, in
 any arrangement), and the sidebar lists them together as one group. The one you click in takes the
 keyboard, and **Maximize** in its header shows it alone until **Restore**; dropped on the sidebar,
-a pane leaves its group. Drag a pane out of the window for a window of its own, and back onto the
-main window to return it. The toolbar floating
-over the top of the picture holds the controls; rest the pointer on an icon to see its name. Drag
+a pane leaves its group. Drag a pane out of the window, or choose **Open in a window of its own**
+in its header, for a window of its own; **Back to the main window** in that window's header, or
+dragging it back onto the main window, returns it. The toolbar floating
+over the top of the picture holds the controls — or, when the pane's header has room, sits in the
+middle of the header, leaving room on either side to move the window; rest the pointer on an icon to see its name. Drag
 it by its grip at the left end to wherever along the top edge suits you, and fold it with ⌃ to a small handle;
 Kyokai remembers both. **Display** chooses the screen when the other computer has several, and
 **Fit** (the whole screen in the window) or **Original size** (one point per pixel of the other

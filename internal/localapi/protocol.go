@@ -71,7 +71,7 @@ const (
 	RequestIdentityExport       RequestType = "identity.export"            // an encrypted identity backup (Request.Backup.Passphrase)
 	RequestIdentityImport       RequestType = "identity.import"            // restore an identity backup (Request.Backup)
 	RequestIdentityReset        RequestType = "identity.reset"             // a new identity and Device ID
-	RequestNameSet              RequestType = "device.set_name"            // this device's friendly name (Request.Name; "" follows the computer's name)
+	RequestNameSet              RequestType = "device.set_name"            // this device's friendly name (Request.Name; "" follows the computer's name) and whether it shows in the networks (Request.PublishName)
 	RequestAccessSettings       RequestType = "access.settings"            // which passwords open this host (Request.PasswordMode), whether a password admits without asking (Request.WithoutAsking) and connections by address (Request.ByAddress)
 	RequestAgentRestart         RequestType = "helper.agent_restart"       // the helper's session agent starts anew (macOS counts new privacy grants only then)
 	RequestStartOver            RequestType = "secrets.start_over"         // the saved identity cannot be unlocked: move it aside and keep a new one
@@ -163,8 +163,10 @@ type Request struct {
 	Key string `json:"key,omitempty"`
 	// DeviceID names a host whose pinned key to forget (RequestHostForget).
 	DeviceID string `json:"device_id,omitempty"`
-	// Name is the friendly name of RequestNameSet.
-	Name *string `json:"name,omitempty"`
+	// Name is the friendly name of RequestNameSet, and PublishName whether
+	// it shows in the networks before any login; nil keeps either.
+	Name        *string `json:"name,omitempty"`
+	PublishName *bool   `json:"publish_name,omitempty"`
 	// Source names an AI source (RequestAIModels).
 	Source string `json:"source,omitempty"`
 	// From is the app folder whose signed bundle RequestHelperUpdate
@@ -822,6 +824,9 @@ type NetworkDevice struct {
 	DeviceID  string `json:"device_id"`
 	Path      string `json:"path"` // "direct" or "relay"
 	LatencyMS int    `json:"latency_ms"`
+	// Name is the friendly name the device shows in its networks before any
+	// login, if it does: its claim, shown beside its Device ID.
+	Name string `json:"name,omitempty"`
 }
 
 // Status is the engine's state: product and ABI version, the device
@@ -878,9 +883,11 @@ type Status struct {
 	// Recent are the hosts this device connected to, newest first.
 	Recent []RecentDevice `json:"recent"`
 	// Name is the friendly name chosen here ("" follows the computer's
-	// name); About is what this device tells its peers.
-	Name  string `json:"name"`
-	About About  `json:"about"`
+	// name); About is what this device tells its peers; PublishName: the
+	// name shows in the networks before any login.
+	Name        string `json:"name"`
+	About       About  `json:"about"`
+	PublishName bool   `json:"publish_name,omitempty"`
 	// AI is the AI task in progress, nil when there is none.
 	AI *AIActive `json:"ai,omitempty"`
 	// AIDraft is the shared draft of the next AI instruction, as anyone

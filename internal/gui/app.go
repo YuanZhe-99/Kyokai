@@ -133,6 +133,11 @@ type App struct {
 	// it.
 	main *viewerWindow
 	home *homeTab
+	// sbClick is when the sidebar's button was last clicked, and sbRail
+	// whether the sidebar was the rail then: a second click soon after hides
+	// it altogether, as it was (sidebarButton).
+	sbClick time.Time
+	sbRail  bool
 	// lastWin is the Kyokai window used last, whose shown tab is the one
 	// in front, which alone exchanges the clipboard (viewerclip.go).
 	lastWin *viewerWindow
@@ -246,7 +251,7 @@ func (a *App) mainWindow() *mygo.Window {
 		// moment.
 		Hidden:  true,
 		Content: ui.View(a.MainView),
-	}, trafficMainX))
+	}, trafficMainX, trafficMainY))
 	w.SetContentProtection(!show)
 	a.mu.Lock()
 	a.window = w

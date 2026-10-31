@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 
@@ -837,6 +838,7 @@ func TestShellRenders(t *testing.T) {
 		zone        dropZone
 	}
 	defer func(own bool) { ownWindowButtons = own }(ownWindowButtons)
+	defer func() { a.window = nil }()
 	shots := []struct {
 		name     string
 		cur      int // -1: Home
@@ -845,6 +847,9 @@ func TestShellRenders(t *testing.T) {
 		drops    []drop
 		rail     bool
 		settings bool
+		// hidden: the sidebar hidden altogether; own: the pane shown in a
+		// window of its own, the main window open.
+		hidden, own bool
 		// width: the window's, else 1280; drag: a pane dragged over the
 		// panes.
 		width int
@@ -866,6 +871,10 @@ func TestShellRenders(t *testing.T) {
 		{name: "shell-split-four", drops: []drop{{1, 0, zoneRight}, {2, 1, zoneBottom}, {3, 0, zoneBottom}}},
 		{name: "shell-rail", rail: true, drops: []drop{{1, 0, zoneRight}}},
 		{name: "shell-rail-mac", mac: true, rail: true, drops: []drop{{1, 0, zoneRight}}},
+		{name: "shell-hidden", hidden: true, drops: []drop{{1, 0, zoneRight}}},
+		{name: "shell-hidden-mac", mac: true, hidden: true},
+		{name: "shell-own", own: true},
+		{name: "shell-own-mac", own: true, mac: true},
 		// Panes at their minimum; a pane with no room to split right;
 		// the drop zones that fit.
 		{name: "shell-split-min", width: 989, drops: []drop{{1, 0, zoneRight}}},
@@ -890,6 +899,7 @@ func TestShellRenders(t *testing.T) {
 			for _, shot := range shots {
 				vw := &viewerWindow{app: a, main: true}
 				a.main = vw
+				a.window = nil
 				vw.homeGroupLocked()
 				for _, v := range tabs {
 					if shot.empty {
@@ -906,7 +916,15 @@ func TestShellRenders(t *testing.T) {
 				} else if len(shot.drops) == 0 {
 					vw.placeLocked(tabs[shot.cur], nil, zoneMiddle)
 				}
-				a.prefs.SidebarRail = shot.rail
+				a.prefs.SidebarRail, a.prefs.SidebarHidden = shot.rail, shot.hidden
+				if shot.own {
+					// The pane shown alone in a window of its own; the main window
+					// open, so that it offers to go back there.
+					vw = &viewerWindow{app: a}
+					vw.tabs = []tab{tabs[0]}
+					vw.placeLocked(tabs[0], nil, zoneMiddle)
+					a.window = &mygo.Window{}
+				}
 				a.settingsOpen, a.page = shot.settings, pageGeneral
 				a.picker, a.palette = pickerState{}, paletteState{}
 				if shot.pick != "" {
@@ -923,7 +941,10 @@ func TestShellRenders(t *testing.T) {
 				}
 				tt := ui.NewTester(vw.view, width, 800)
 				tt.SetDark(dark)
-				if shot.mac {
+				switch {
+				case shot.mac && shot.own:
+					tt.SetTitleBar(ui.TitleBar{Height: 28, Left: trafficOwnX + 54})
+				case shot.mac:
 					tt.SetTitleBar(ui.TitleBar{Height: 28, Left: trafficMainX + 54})
 				}
 				tt.Frame()

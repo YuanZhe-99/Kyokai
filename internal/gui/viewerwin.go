@@ -134,13 +134,14 @@ type tabDrag struct{ key string }
 // own), centred on the top pane's header; on Windows the view draws
 // minimize, maximize and close itself, at the end of the top-right pane's
 // header (windowButtons). The window keeps its resizing edges, shadow and
-// corners; its material shows around the panes. lightsX is how far from
-// the window's edge the traffic lights start (trafficMainX, trafficOwnX):
-// MyGo places them only as the window opens.
-func TitleBarOptions(o mygo.WindowOptions, lightsX int) mygo.WindowOptions {
+// corners; its material shows around the panes. lightsX and lightsY are
+// how far from the window's top-left corner the traffic lights start (trafficMainX and
+// trafficMainY, trafficOwnX and trafficOwnY): MyGo places them only as the
+// window opens.
+func TitleBarOptions(o mygo.WindowOptions, lightsX, lightsY int) mygo.WindowOptions {
 	o.TitleBarStyle = mygo.TitleBarHidden
 	o.HideWindowButtons = ownWindowButtons
-	o.TrafficLightPosition = &mygo.Point{X: lightsX, Y: trafficY}
+	o.TrafficLightPosition = &mygo.Point{X: lightsX, Y: lightsY}
 	o.Vibrancy = windowMaterial()
 	return o
 }
@@ -229,7 +230,7 @@ func (a *App) newViewerWindow() *viewerWindow {
 		// moment.
 		Hidden:  true,
 		Content: ui.View(vw.view),
-	}, trafficOwnX))
+	}, trafficOwnX, trafficOwnY))
 	a.mu.Lock()
 	show := a.prefs.ShowInCapture
 	a.viewerWins = append(a.viewerWins, vw)
@@ -439,7 +440,10 @@ func (vw *viewerWindow) needNow() size {
 	a := vw.app
 	a.mu.Lock()
 	side, protected := shellSidebarW, a.protected()
-	if a.prefs.SidebarRail {
+	switch {
+	case a.prefs.SidebarHidden:
+		side = paneMargin / 2
+	case a.prefs.SidebarRail:
 		side = railWidth()
 	}
 	a.mu.Unlock()
@@ -857,9 +861,7 @@ func (vw *viewerWindow) view(c *ui.Context) {
 		vw.app.shellView(c, vw, g)
 		vw.fitLater()
 	case g.split.focus != nil:
-		ui.Column(c).Fill().Padding(paneMargin / 2).Children(func() {
-			vw.tabPane(c, paneDraw{g: g, topRight: g.split.focus}, g.split.focus)
-		})
+		vw.tabPane(c, paneDraw{g: g, topLeft: g.split.focus, topRight: g.split.focus}, g.split.focus)
 	}
 	// A tab not shown takes no keys (regression: a grab stayed on behind
 	// Home, and keys typed there went to the other computer).
@@ -871,10 +873,12 @@ func (vw *viewerWindow) view(c *ui.Context) {
 }
 
 // paneDraw is how the panes of the group shown draw: the group, the pane
-// whose header ends with the window's buttons, whether a pane is dragged
-// over them, and their room as the last frame laid it out.
+// whose header starts with the sidebar's button while the sidebar is hidden,
+// the one whose header ends with the window's buttons, whether a pane is
+// dragged over them, and their room as the last frame laid it out.
 type paneDraw struct {
 	g        group
+	topLeft  tab
 	topRight tab
 	dragging bool
 	area     size
@@ -902,9 +906,9 @@ func (vw *viewerWindow) panesView(c *ui.Context, g group) {
 	vw.dragging = over
 	vw.area = size{r.W, r.H}
 	vw.mu.Unlock()
-	d := paneDraw{g: g, topRight: g.split.topRight(), dragging: dragging, area: size{r.W, r.H}}
+	d := paneDraw{g: g, topLeft: g.split.topLeft(), topRight: g.split.topRight(), dragging: dragging, area: size{r.W, r.H}}
 	if g.zoom != nil {
-		d.topRight = g.zoom
+		d.topLeft, d.topRight = g.zoom, g.zoom
 	}
 	area.Children(func() {
 		if g.zoom != nil {
@@ -957,10 +961,16 @@ func (vw *viewerWindow) paneView(c *ui.Context, d paneDraw, p *pane, path string
 // drop would put it. The focus follows the keyboard into a pane.
 // Notes: half the margin between panes goes round each pane, the other
 // half round the panes (shellView): a split's divider is a line where its
-// two sides meet, which then runs in the middle of the gap (paneView).
+// two sides meet, which then runs in the middle of the gap (paneView). A
+// window of its own is its pane alone: no margin, corners or border round
+// it, which would only show the window's material.
 func (vw *viewerWindow) tabPane(c *ui.Context, d paneDraw, v tab) {
 	t := c.Theme()
 	key := v.tabKey()
+	if !vw.main {
+		vw.paneBox(c, d, v, ui.Column(c.Key("pane-"+key)).Fill().MinWidth(0).MinHeight(0).Clip().Background(t.Background), false)
+		return
+	}
 	several := d.g.split.root != nil && d.g.split.root.first != nil && d.g.zoom == nil
 	holder := ui.Column(c.Key("pane-at-" + key)).Fill().MinWidth(0).MinHeight(0).Padding(paneMargin / 2)
 	var box ui.Element
@@ -1068,37 +1078,58 @@ func noRoomHint(z dropZone) string {
 	return L.PaneNoRoomAcrossHint()
 }
 
-// paneHeader is a pane's header: the kind's icon, the device's name and
-// the second line, which drag the pane (into another place, the sidebar,
-// or out into a window of its own) — on an AI session the icon in the
-// accent, its title as the second line (typed in place while renamed),
-// Rename and a pill while its task waits or is paused; an empty part that
-// moves the window; a host's AI session's Watch its screen; then, in the
-// main window, split right and split down (beside the pane: another open
-// pane or the + picker), greyed out with the reason while the pane has no
-// room for it, and, in a group of several, maximize or restore;
-// and close, except on Home alone. The top-right pane's header ends with
-// the window's buttons on Windows (unseen while Settings covers it, which
-// shows them in their place); a window of its own's keeps the room of the
-// traffic lights on macOS.
+// paneHeader is a pane's header: while the sidebar is hidden, on the
+// top-left pane first the sidebar's button, which shows it again; the
+// kind's icon, the device's name and the second line, which drag the pane
+// (into another place, the sidebar, or out into a window of its own) — on
+// an AI session the icon in the accent, its title as the second line (typed
+// in place while renamed), Rename and a pill while its task waits or is
+// paused; an empty part that moves the window, with a desktop's toolbar in
+// its middle when it has room (barInHead); a host's AI session's Watch its
+// screen; then, in the main window, Open in a window of its own (not for
+// Home), split right and split down (beside the pane: another open pane or
+// the + picker), greyed out with the reason while the pane has no room for
+// it, and, in a group of several, maximize or restore, and close, except
+// on Home alone; in a window of its own, Back to the main window while that
+// is open. The top-right pane's header ends with the window's buttons on
+// Windows and Linux (unseen while Settings covers it, which shows them in
+// their place); a header under the traffic lights on macOS keeps their
+// room.
 func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 	t := c.Theme()
+	a := vw.app
 	key := v.tabKey()
 	h := v.head()
+	a.mu.Lock()
+	hidden, rail := a.prefs.SidebarHidden, a.prefs.SidebarRail
+	mainOpen := a.window != nil
+	a.mu.Unlock()
+	sidebar := vw.main && hidden && v == d.topLeft
 	left := float32(14)
-	if !vw.main {
-		left = max(c.TitleBar().Left-paneMargin+8, 14)
+	switch bar := c.TitleBar(); {
+	case !vw.main && bar.Left > 0:
+		left = bar.Left + 8
+	case sidebar:
+		left = max(bar.Left-paneMargin+8, 8)
 	}
 	several := d.g.split.root != nil && d.g.split.root.first != nil
 	head := ui.Row(c.Key("head-"+key)).Height(paneHeaderH).Shrink(0).Padding(0, 8, 0, left).Gap(4).AlignItems(ui.Center)
 	// A narrow pane folds split right, split down and maximize into ⋯.
 	w := head.LayoutBounds().W
 	narrow := w > 0 && w < paneNarrowW
+	desk, _ := v.(*viewer)
 	head.Children(func() {
+		if sidebar {
+			b := iconButtonBase(c, "head-sidebar", shellSidebar, L.SidebarShow())
+			if b.Clicked() {
+				a.setSidebar(rail, false)
+			}
+			a.pickerView(c, "head-sidebar", b)
+		}
 		// Too narrow even for the name and the pill, it is cut at its end
 		// rather than drawn under the buttons.
 		title := ui.Row(c.Key("head-title-" + key)).FillHeight().Gap(8).AlignItems(ui.Center).MinWidth(0).Shrink(1).Clip().Label(h.title)
-		if v == tab(vw.app.home) {
+		if v == tab(a.home) {
 			title.Drag(tabDrag{key})
 		} else {
 			title.Drag(tabDrag{key}).DragData(transfer.TextData(v.tabTitle()), transfer.DragOptions{
@@ -1106,7 +1137,7 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 				// a drag given up with Escape leaves the pane where it is.
 				Done: func(r transfer.Result) {
 					if r.Operation == transfer.None && !r.Escaped {
-						vw.app.moveTab(key, nil)
+						a.moveTab(key, nil)
 					}
 				},
 			})
@@ -1136,14 +1167,27 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 				ai.titleExtras(c)
 			}
 		})
-		ui.Box(c.Key("head-drag-" + key)).Grow(1).FillHeight().DragWindow()
+		// The empty part moves the window; a desktop's toolbar sits in its
+		// middle while both sides keep barDragRoom (barInHead).
+		drag := ui.Box(c.Key("head-drag-" + key)).Grow(1).Basis(0).MinWidth(0).FillHeight().DragWindow()
+		if desk != nil && desk.barInHead(drag.LayoutBounds().W) {
+			desk.headBar(c)
+			ui.Box(c.Key("head-drag-end-" + key)).Grow(1).Basis(0).MinWidth(0).FillHeight().DragWindow()
+		}
 		if ai != nil {
 			ai.headButtons(c, narrow)
 		}
 		switch {
-		case vw.main && narrow:
+		case !vw.main:
+			if mainOpen && iconButton(c, "head-back-"+key, panePopIn, L.PaneBackToMain()) {
+				a.backToMain(key)
+			}
+		case narrow:
 			vw.foldedButtons(c, d, v, several)
-		case vw.main:
+		default:
+			if v != tab(a.home) && iconButton(c, "head-out-"+key, panePopOut, L.PanePopOut()) {
+				a.moveTab(key, nil)
+			}
 			across, down := d.splits(v)
 			vw.splitButton(c, v, zoneRight, across)
 			vw.splitButton(c, v, zoneBottom, down)
@@ -1157,24 +1201,39 @@ func (vw *viewerWindow) paneHeader(c *ui.Context, d paneDraw, v tab) {
 				}
 			}
 		}
-		// Home alone has nothing to close to: its sidebar row stays.
-		if (v != tab(vw.app.home) || several) && iconButton(c, "head-close-"+key, paneClose, L.PaneClose()) {
+		// Home alone has nothing to close to: its sidebar row stays. A
+		// window of its own closes with its window's ×.
+		if vw.main && (v != tab(a.home) || several) && iconButton(c, "head-close-"+key, paneClose, L.PaneClose()) {
 			vw.closeTab(v)
 		}
 		if v == d.topRight {
 			// Under the Settings sheet they keep their room, unseen: the
 			// sheet shows them in this very place, above the dimming.
-			vw.app.mu.Lock()
+			a.mu.Lock()
 			shown := float32(1)
-			if vw.main && vw.app.settingsOpen {
+			if vw.main && a.settingsOpen {
 				shown = 0
 			}
-			vw.app.mu.Unlock()
+			a.mu.Unlock()
 			ui.Row(c.Key("head-win")).Gap(4).AlignItems(ui.Center).Opacity(shown).Children(func() {
 				windowButtons(c, "head-win", vw.win, false)
 			})
 		}
 	})
+}
+
+// backToMain moves a pane from its window of its own back into the main
+// window, as an entry of its own there, and brings the main window forward.
+// Notes: call on the main thread.
+func (a *App) backToMain(key string) {
+	a.moveTab(key, a.main)
+	a.mu.Lock()
+	w := a.window
+	a.mu.Unlock()
+	if w != nil {
+		w.Show()
+		w.Focus()
+	}
 }
 
 // toggleZoom maximizes a pane over its group, or restores the group.
@@ -1212,8 +1271,9 @@ func (vw *viewerWindow) othersFor(v tab) []tab {
 	return others
 }
 
-// foldedButtons are a narrow pane's split right, split down and maximize
-// or restore, folded into ⋯: each split lists the other open panes, then
+// foldedButtons are a narrow pane's Open in a window of its own (not for
+// Home), split right, split down and maximize or restore, folded into ⋯:
+// each split lists the other open panes, then
 // Open a device… (the + picker beside this pane on that side); a split the
 // pane has no room for is a greyed-out item saying why.
 func (vw *viewerWindow) foldedButtons(c *ui.Context, d paneDraw, v tab, several bool) {
@@ -1224,6 +1284,10 @@ func (vw *viewerWindow) foldedButtons(c *ui.Context, d paneDraw, v tab, several 
 	// The menu takes the keyboard while it is open (App.menuOpened).
 	chosen := vw.app.menuClosed
 	b.Menu(paneMenu(vw.app, func(m *ui.Menu) {
+		if v != tab(vw.app.home) && m.Item(L.PanePopOut()).Chosen() {
+			chosen()
+			vw.app.moveTab(key, nil)
+		}
 		for _, z := range []dropZone{zoneRight, zoneBottom} {
 			label, room := L.PaneSplitRight(), across
 			if z == zoneBottom {

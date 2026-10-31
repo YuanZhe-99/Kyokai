@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -104,9 +105,16 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 		a.settingsSheet(c, vw.win)
 		return
 	}
+	a.mu.Lock()
+	// With the sidebar hidden the panes keep the window's margin on the left too.
+	left := float32(0)
+	if a.prefs.SidebarHidden {
+		left = paneMargin / 2
+	}
+	a.mu.Unlock()
 	ui.Row(c.Key("shell")).Fill().AlignItems(ui.Stretch).Children(func() {
 		a.sidebarView(c, vw)
-		ui.Column(c.Key("main")).Grow(1).MinWidth(0).MinHeight(0).Padding(paneMargin/2, paneMargin/2, paneMargin/2, 0).Children(func() {
+		ui.Column(c.Key("main")).Grow(1).MinWidth(0).MinHeight(0).Padding(paneMargin/2, paneMargin/2, paneMargin/2, left).Children(func() {
 			a.bannersView(c)
 			vw.panesView(c, g)
 			a.toastView(c)
@@ -222,18 +230,19 @@ func (a *App) sidebarView(c *ui.Context, vw *viewerWindow) {
 	t := c.Theme()
 	bar := c.TitleBar()
 	a.mu.Lock()
-	rail := a.prefs.SidebarRail
+	rail, hidden := a.prefs.SidebarRail, a.prefs.SidebarHidden
 	a.mu.Unlock()
-	if rail {
+	switch {
+	case hidden:
+		return // its button is on the top-left pane's header (paneHeader)
+	case rail:
 		a.railView(c, vw)
 		return
 	}
 	entries := vw.entries()
 	ui.Column(c.Key("sidebar")).Width(shellSidebarW).Shrink(0).FillHeight().Padding(10, 10, 10, 12).Gap(2).Children(func() {
 		ui.Row(c.Key("sb-top")).Height(sbTopH).Shrink(0).Gap(2).AlignItems(ui.Center).Padding(0, 0, 0, max(bar.Left-12, 0)).Children(func() {
-			if iconButton(c, "sb-hide", shellSidebar, L.SidebarHide()) {
-				a.setRail(true)
-			}
+			a.sidebarButton(c, "sb-hide", L.SidebarHide(), true)
 			plus := iconButtonBase(c, "sb-new", shellPlus, L.SidebarNew())
 			if plus.Clicked() {
 				a.openPicker("sidebar", false, "", zoneMiddle)
@@ -400,9 +409,7 @@ func (a *App) railView(c *ui.Context, vw *viewerWindow) {
 		if bar.Left > 0 {
 			ui.Box(c).Height(sbTopH).Shrink(0).FillWidth().DragWindow()
 		}
-		if iconButton(c, "rail-show", shellSidebar, L.SidebarShow()) {
-			a.setRail(false)
-		}
+		a.sidebarButton(c, "rail-show", L.SidebarShow(), false)
 		plus := iconButtonBase(c, "rail-new", shellPlus, L.SidebarNew())
 		if plus.Clicked() {
 			a.openPicker("rail", false, "", zoneMiddle)
@@ -466,13 +473,38 @@ func railButton(c *ui.Context, key string, icon *ui.SVG, name string, count int,
 	return b.Clicked()
 }
 
-// setRail folds the sidebar to its icons, or unfolds it, and keeps the
-// choice.
-func (a *App) setRail(on bool) {
+// sidebarButton is the first button of the sidebar (fold: it folds it to
+// the rail) or of the rail (it unfolds it). A second click on either within
+// sbDoubleClick hides the sidebar altogether, kept as it was before the
+// first click, which is how it comes back (setSidebar).
+// Notes: the first click redraws the button elsewhere, as the other one,
+// so the two clicks are paired here rather than by the element.
+func (a *App) sidebarButton(c *ui.Context, key, label string, fold bool) {
+	if !iconButtonBase(c, key, shellSidebar, label).Tooltip(label + "\n" + L.SidebarHideAllHint()).Clicked() {
+		return
+	}
+	now := time.Now()
+	a.mu.Lock()
+	double, before := now.Sub(a.sbClick) < sbDoubleClick, a.sbRail
+	a.sbClick, a.sbRail = now, a.prefs.SidebarRail
+	if double {
+		a.sbClick = time.Time{}
+	}
+	a.mu.Unlock()
+	if double {
+		a.setSidebar(before, true)
+		return
+	}
+	a.setSidebar(fold, false)
+}
+
+// setSidebar shows the sidebar whole or folded to its icons (rail), or
+// hides it altogether, and keeps the choice.
+func (a *App) setSidebar(rail, hidden bool) {
 	a.mu.Lock()
 	p := a.prefs
 	a.mu.Unlock()
-	p.SidebarRail = on
+	p.SidebarRail, p.SidebarHidden = rail, hidden
 	a.setPrefs(p)
 }
 
