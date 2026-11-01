@@ -1915,7 +1915,7 @@ mod tests {
         let list = displays();
         assert!(!list.is_empty());
         assert!(list[0].primary);
-        let (mut cap, w, h) = XCapture::open(list[0]).unwrap();
+        let (mut cap, w, h) = XCapture::open(list[0], u32::MAX).unwrap();
         assert_eq!((w, h), (list[0].width, list[0].height));
         let mut got = None;
         let r = cap.frame(

@@ -962,7 +962,7 @@ mod tests {
         let mut enc = Encoder::new(Codec::H264, w as u32, h as u32, 30, 2_000_000).unwrap();
         enc.picture(&picture(w, h, 0), w, h, w * 4);
         let (key, _) = enc
-            .encode(true)
+            .encode(true, std::time::Duration::ZERO)
             .unwrap()
             .into_iter()
             .find(|(_, key)| *key)

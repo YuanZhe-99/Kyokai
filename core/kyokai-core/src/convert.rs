@@ -9,6 +9,7 @@
 const L: usize = 16;
 
 /// The widest picture converted, as the decoders open at most.
+#[cfg(any(windows, target_os = "macos", test))]
 const WIDEST: usize = 16384;
 
 /// What a decoder makes of its newest picture.
@@ -76,6 +77,7 @@ impl<'a> Sink<'a> {
 
     /// What is wanted of the picture (a decoder need not read one that is
     /// not converted).
+    #[cfg(any(windows, target_os = "macos", test))]
     pub fn want(&self) -> Want {
         self.want
     }
@@ -115,6 +117,7 @@ impl<'a> Sink<'a> {
     /// Converts NV12 planes (`y`, and `uv` with U and V interleaved, with
     /// their strides) of w×h.
     /// Returns: an error when the picture does not fit the buffer.
+    #[cfg(any(windows, target_os = "macos", test))]
     pub fn nv12(
         &mut self,
         y: &[u8],
