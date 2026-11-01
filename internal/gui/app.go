@@ -5,11 +5,14 @@ package gui
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"log"
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -50,13 +53,21 @@ type App struct {
 	engine     engineChild
 	// captureMu keeps the capture setting's sends in order (sendCapture).
 	captureMu sync.Mutex
+	// prefsMu keeps gui.json's writes in order (writePrefs) and guards
+	// prefsSaved, the change of prefs the file last took (prefsGen).
+	prefsMu    sync.Mutex
+	prefsSaved uint64
 
-	mu       sync.Mutex
-	window   *mygo.Window
-	tray     *Tray
-	prefs    Prefs
-	visible  bool
-	quitting bool
+	mu     sync.Mutex
+	window *mygo.Window
+	tray   *Tray
+	prefs  Prefs
+	// prefsGen counts the changes of prefs; prefsDirty wakes the
+	// preferences' writer, started with the first change (prefsChangedLocked).
+	prefsGen   uint64
+	prefsDirty chan struct{}
+	visible    bool
+	quitting   bool
 
 	// Engine connection: the last pushed status, or why there is none.
 	status    *localapi.Status
@@ -443,6 +454,9 @@ func (a *App) Start() {
 	go a.watchMain()
 	go a.watchLoop()
 	go a.guardWayland()
+	// The core library loads now, off the main thread, rather than at the
+	// first viewer or keyboard grab that needs it.
+	go coreLib()
 }
 
 // How often the GUI makes sure its main thread still answers, and how long
@@ -486,8 +500,10 @@ func (a *App) watchMain() {
 	}
 }
 
-// Stop ends the session and the engine.
+// Stop saves the preferences not written yet and ends the session and the
+// engine.
 func (a *App) Stop() {
+	_ = a.writePrefs() // what the writer has not saved yet
 	a.cancel()
 	// Only the GUI's own engine stops; the helper keeps running.
 	a.engine.stop(a.userSocket)
@@ -520,6 +536,7 @@ func (a *App) Quit() {
 // takes its socket; only then does MyGo quit and start the app anew.
 func (a *App) relaunch() {
 	a.MarkQuitting()
+	_ = a.writePrefs()
 	a.cancel()
 	a.engine.stop(a.userSocket)
 	mygo.App.Relaunch()
@@ -568,6 +585,45 @@ var notificationsSupported = sync.OnceValue(mygo.NotificationsSupported)
 // clipboardWrite puts text on the clipboard; tests replace it.
 // Notes: it waits for the main thread, as notify does.
 var clipboardWrite = func(text string) { mygo.Clipboard.WriteText(text) }
+
+// clipboardMineWait bounds how long a copy waits for the engine to take
+// note that the text is Kyokai's own (markMine).
+const clipboardMineWait = 300 * time.Millisecond
+
+// copyText puts text Kyokai itself copies (a password, a Device ID, a key)
+// on the clipboard, the engine told first that it is its own (markMine).
+// Notes: returns at once; safe on the main thread and under a.mu. Copies
+// land in the order made: one that finishes after a newer one writes
+// nothing.
+func (a *App) copyText(text string) {
+	n := copies.Add(1)
+	go func() {
+		a.markMine(text)
+		copyMu.Lock()
+		defer copyMu.Unlock()
+		if copies.Load() == n {
+			clipboardWrite(text)
+		}
+	}()
+}
+
+// copies numbers the copies Kyokai made; copyMu orders their writes.
+var (
+	copies atomic.Uint64
+	copyMu sync.Mutex
+)
+
+// markMine tells the engine that the clipboard is about to hold text
+// Kyokai copied itself, by its SHA-256 (clipboard.mine), so that it is
+// not offered to the controllers of this device. Best effort: an engine
+// that does not answer within clipboardMineWait is not waited for.
+// Notes: call off the main thread, without a.mu, before clipboardWrite.
+func (a *App) markMine(text string) {
+	sum := sha256.Sum256([]byte(text))
+	ctx, cancel := context.WithTimeout(context.Background(), clipboardMineWait)
+	defer cancel()
+	_, _ = localapi.NewClient(a.sock()).Do(ctx, localapi.Request{Type: localapi.RequestClipboardMine, Digest: hex.EncodeToString(sum[:])})
+}
 
 // clipboardRead is this computer's clipboard text (for Type the
 // clipboard). Tests replace it.

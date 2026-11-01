@@ -37,6 +37,8 @@ func TestKvmChoice(t *testing.T) {
 // each with its own tab and settings.
 func TestNanokvmViewerBesideTheDesktop(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
+	// The preferences' writer is done before the folder goes.
+	t.Cleanup(func() { _ = a.writePrefs() })
 	desk := a.newViewer("482916735", localapi.About{}, nil, false)
 	desk.setCodec("av1")
 	desk.keepSettings()
@@ -76,6 +78,8 @@ func TestPickThisComputerNanokvm(t *testing.T) {
 func TestOwnNanokvmPane(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}, status: &localapi.Status{DeviceID: "482916735",
 		Nanokvm: &localapi.Nanokvm{Video: "/dev/video0", Serial: "/dev/ttyUSB0"}}}
+	// The preferences' writer is done before the folder goes.
+	t.Cleanup(func() { _ = a.writePrefs() })
 	if !a.ownKvmReady() {
 		t.Fatal("devices chosen: ready")
 	}
@@ -112,6 +116,8 @@ func TestTextPieces(t *testing.T) {
 // system says nothing of the wired computer's.
 func TestNanokvmSwapOnlyWhenChosen(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
+	// The preferences' writer is done before the folder goes.
+	t.Cleanup(func() { _ = a.writePrefs() })
 	kvm := a.newViewer("482916735", localapi.About{}, []string{localapi.PermUseNanokvm}, true)
 	kvm.phase.Peer.OS = "windows"
 	if kvm.swapping() {

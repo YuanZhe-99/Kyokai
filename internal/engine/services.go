@@ -159,7 +159,7 @@ func (h *handler) tunnel(ctx context.Context, req localapi.Request, open func() 
 	if waited.State != "connected" {
 		return localapi.Fail(localapi.CodeInvalid, "%s", tunnelFailure(waited.State, waited.Failure))
 	}
-	h.pump(ctx, opened.ID, open())
+	h.pump(ctx, opened.ID, open(), tunnelMax, tunnelMax)
 	return localapi.Response{OK: true}
 }
 

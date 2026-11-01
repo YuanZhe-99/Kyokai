@@ -28,6 +28,12 @@ const (
 	modeBackground
 )
 
+// init makes every request to the helper's socket first check that the
+// helper listens there (SYSTEM or root): a folder or socket someone else
+// put in its place receives nothing, not the whole store a run-mode switch
+// moves nor any secret the pages send.
+func init() { localapi.RequireServer(helper.SocketPath, helper.IsHelper) }
+
 // sock is the socket of the engine this GUI uses now: its child, or the
 // helper.
 func (a *App) sock() string {
@@ -361,7 +367,7 @@ func (a *App) useSocket(socket string, helperMode bool) error {
 	a.soundDevices, a.soundDevicesLoaded = nil, false
 	a.mu.Unlock()
 	p.Helper = helperMode
-	err := a.setPrefs(p)
+	err := a.setPrefsNow(p)
 	if reattach != nil {
 		reattach()
 	}

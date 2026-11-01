@@ -167,7 +167,19 @@ type viewer struct {
 	address string
 	// home is the window the tab is in now; nil once the viewer closed.
 	home atomic.Pointer[viewerWindow]
-	conn net.Conn
+	// fit is how many times smaller than the stream the fitted picture
+	// shows on screen, a power of two (0 or 1: full size), as the view last
+	// drew it: the decoder box-filters each picture by it (shrinkInto), so
+	// that the main thread never has to. builtAt is when the view was last
+	// built (UnixNano): a tab neither built lately nor shown keeps its
+	// newest picture for its next build (show).
+	fit     atomic.Int32
+	builtAt atomic.Int64
+	// The video goroutine's own: the full-size picture it decodes into
+	// while the picture shows smaller, and its row sums (shrinkInto).
+	whole *image.RGBA
+	sums  []uint32
+	conn  net.Conn
 	// out queues control packets (input) for the media connection's writer.
 	out chan []byte
 	// moved wakes the writer for a pending pointer move (viewerinput.go).
@@ -1055,6 +1067,7 @@ func (v *viewer) begin(s videoStart) {
 	v.mu.Lock()
 	v.start, v.imgs, v.shown, v.ready, v.decoder = s, imgs, -1, -1, codecImpl{}
 	v.mu.Unlock()
+	v.whole = nil
 	v.setState("")
 }
 
@@ -1062,30 +1075,56 @@ func (v *viewer) begin(s videoStart) {
 // becomes the waiting one, and has the main thread show the newest one
 // waiting: decoding never waits for drawing, and a picture not drawn yet
 // gives way to a newer one. Frames the decoder holds show nothing.
+// While the fitted picture shows at half its size or less (fit), the frame
+// is decoded into the goroutine's full-size picture and box-filtered into
+// the waiting one, here rather than on the main thread (MyGo filters a
+// bitmap drawn that small after every update). A tab not built lately and
+// not shown is not redrawn; its next build shows the newest picture
+// (present).
 // Returns: the decoder's error (a picture of another size is one too).
 // Notes: the bitmap takes a picture without a copy, so the one shown is
-// never decoded into.
+// never decoded into. Runs on the video goroutine.
 func (v *viewer) show(dec *core.Decoder, data []byte) error {
+	f := max(int(v.fit.Load()), 1)
 	v.mu.Lock()
 	free := 0
 	for free == v.shown || free == v.ready {
 		free++
 	}
 	pic := v.imgs[free]
+	sw, sh := v.start.Width, v.start.Height
+	if pic != nil {
+		// The waiting picture is the size it shows at; another size is
+		// made once, as the size changes.
+		if pw, ph := shrunk(sw, f), shrunk(sh, f); pic.Rect.Dx() != pw || pic.Rect.Dy() != ph {
+			pic = image.NewRGBA(image.Rect(0, 0, pw, ph))
+			v.imgs[free] = pic
+		}
+	}
 	v.bytes += len(data)
 	v.mu.Unlock()
 	if pic == nil {
 		return nil
 	}
+	into := pic
+	if f > 1 {
+		if v.whole == nil || v.whole.Rect.Dx() != sw || v.whole.Rect.Dy() != sh {
+			v.whole = image.NewRGBA(image.Rect(0, 0, sw, sh))
+		}
+		into = v.whole
+	}
 	began := time.Now()
-	w, h, ok, err := dec.Decode(data, pic.Pix)
+	w, h, ok, err := dec.Decode(data, into.Pix)
 	switch {
 	case err != nil:
 		return err
 	case !ok:
 		return nil
-	case w != pic.Rect.Dx() || h != pic.Rect.Dy():
-		return fmt.Errorf("a %d×%d picture in a %d×%d stream", w, h, pic.Rect.Dx(), pic.Rect.Dy())
+	case w != sw || h != sh:
+		return fmt.Errorf("a %d×%d picture in a %d×%d stream", w, h, sw, sh)
+	}
+	if f > 1 {
+		v.sums = shrinkInto(pic, into, f, v.sums)
 	}
 	decoded := time.Now()
 	v.mu.Lock()
@@ -1103,23 +1142,123 @@ func (v *viewer) show(dec *core.Decoder, data []byte) error {
 		v.decoding, v.drawing = 0, 0
 	}
 	v.mu.Unlock()
-	v.update(func() {
-		v.mu.Lock()
-		defer v.mu.Unlock()
-		if v.ready < 0 {
-			return // a newer update showed it already
-		}
-		img := v.imgs[v.ready]
-		if v.bm == nil {
-			v.bm = ui.NewBitmap(img)
-		} else {
-			v.bm.Update(img)
-		}
-		v.drawing += time.Since(v.readyAt)
-		v.drawn++
-		v.shown, v.ready = v.ready, -1
-	})
+	if v.seen(decoded) {
+		v.update(v.present)
+	}
 	return nil
+}
+
+// builtLately is how long after its last build a tab still counts as on
+// screen: a tab not built for longer and not shown is not redrawn for its
+// pictures (show).
+const builtLately = 250 * time.Millisecond
+
+// seen reports whether the tab's window should redraw for a new picture:
+// its view was built within builtLately of now, or its pane is shown (a
+// still picture rebuilds nothing for a while).
+func (v *viewer) seen(now time.Time) bool {
+	if now.UnixNano()-v.builtAt.Load() <= int64(builtLately) {
+		return true
+	}
+	w := v.home.Load()
+	if w == nil {
+		return false
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.cur != nil && slices.Contains(w.cur.shownTabs(), tab(v))
+}
+
+// present has the bitmap show the newest picture waiting, if any.
+// Notes: on the main thread, as each build does too.
+func (v *viewer) present() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	// None: a newer update showed it already, or no stream began yet (its
+	// pictures are nil).
+	if v.ready < 0 || v.imgs[v.ready] == nil {
+		return
+	}
+	img := v.imgs[v.ready]
+	if v.bm == nil {
+		v.bm = ui.NewBitmap(img)
+	} else {
+		v.bm.Update(img)
+	}
+	v.drawing += time.Since(v.readyAt)
+	v.drawn++
+	v.shown, v.ready = v.ready, -1
+}
+
+// setFit sets how many times smaller the picture shows (fit). A picture
+// that shows larger than the last one was made asks the host for a key
+// frame, which brings its pixels back at once, on a still screen too.
+func (v *viewer) setFit(f int) {
+	if old := v.fit.Swap(int32(f)); int32(f) < old && old > 1 {
+		v.sendControl(map[string]any{"type": "key-frame"})
+	}
+}
+
+// shrunk is a side of n pixels box-filtered f times smaller (shrinkInto).
+func shrunk(n, f int) int { return (n + f - 1) / f }
+
+// shrinkFor is how many times smaller than its pixels to make a picture of
+// pw×ph shown fitted in box (DIPs) at scale pixels per DIP: the largest
+// power of two, up to 16, it shows that many times smaller or more; 1 when
+// it shows larger than half its size.
+func shrinkFor(box ui.Rect, scale float32, pw, ph int) int {
+	_, _, w, h := pictureBox(box, pw, ph)
+	if w <= 0 || h <= 0 || scale <= 0 {
+		return 1
+	}
+	shrink := min(float32(pw)/(w*scale), float32(ph)/(h*scale))
+	f := 1
+	for f < 16 && shrink >= float32(2*f) {
+		f *= 2
+	}
+	return f
+}
+
+// shrinkInto box-filters src f times smaller into dst (shrunk's size):
+// each pixel the rounded average of the f×f it covers, fewer at the right
+// and bottom edges. sums is a row buffer, returned for the next call.
+func shrinkInto(dst, src *image.RGBA, f int, sums []uint32) []uint32 {
+	sw, sh := src.Rect.Dx(), src.Rect.Dy()
+	dw, dh := dst.Rect.Dx(), dst.Rect.Dy()
+	if cap(sums) < 4*dw {
+		sums = make([]uint32, 4*dw)
+	}
+	sums = sums[:4*dw]
+	for y := range dh {
+		clear(sums)
+		y0, y1 := y*f, min(y*f+f, sh)
+		for sy := y0; sy < y1; sy++ {
+			row := src.Pix[sy*src.Stride : sy*src.Stride+4*sw]
+			for x := range dw {
+				var r, g, b, a uint32
+				px := row[4*x*f : 4*min(x*f+f, sw)]
+				for i := 0; i+3 < len(px); i += 4 {
+					r += uint32(px[i])
+					g += uint32(px[i+1])
+					b += uint32(px[i+2])
+					a += uint32(px[i+3])
+				}
+				s := sums[4*x : 4*x+4 : 4*x+4]
+				s[0] += r
+				s[1] += g
+				s[2] += b
+				s[3] += a
+			}
+		}
+		out := dst.Pix[y*dst.Stride : y*dst.Stride+4*dw]
+		for x := range dw {
+			n := uint32((y1 - y0) * (min(x*f+f, sw) - x*f))
+			for c := range 4 {
+				out[4*x+c] = uint8((sums[4*x+c] + n/2) / n)
+			}
+		}
+	}
+	return sums
 }
 
 func (v *viewer) setState(s string) {
@@ -1134,6 +1273,8 @@ func (v *viewer) setState(s string) {
 // with the toolbar over its top edge unless the pane's header holds it
 // (headBar), and beside it the clipboard panel when the session may use it.
 func (v *viewer) view(c *ui.Context) {
+	v.builtAt.Store(time.Now().UnixNano())
+	v.present() // a picture that came while the tab was not redrawn (show)
 	inHead := v.barShown
 	v.barShown = false // the header says so again in the next frame
 	if !v.picturing() {
@@ -1370,7 +1511,12 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 			// host's own input method composes, if it has one); it comes
 			// back as the picture loses the focus.
 			img := ui.Image(c.Key("picture"), bm).Fit(ui.Contain).Grow(1).FillWidth().Focusable().
-				TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(false).HandleInput(v.sendInput).Bind(&v.pic)
+				TextCaret(ui.Rect{W: 1, H: 16}).InputMethod(false).HandleInput(v.sendInput).Bind(&v.pic).
+				Draw(func(p *ui.Painter, r ui.Rect) {
+					// How much smaller it shows, for the decoder to make it
+					// that small (show); it paints nothing.
+					v.setFit(shrinkFor(r, p.Scale(), start.Width, start.Height))
+				})
 			pointerKeys(img, inPane, covered)
 			shows = true
 			box := img.LayoutBounds()
@@ -1455,6 +1601,7 @@ func viewerWaitText(hostVideo, placeholder string) (string, bool) {
 func (v *viewer) originalPicture(c *ui.Context, bm *ui.Bitmap, start videoStart, ptr hostPointer) {
 	inPane, covered := v.inPane(), v.app.covered()
 	defer func() { v.syncGrab(inPane && !covered) }()
+	v.setFit(1) // every pixel shows
 	w, h := float32(start.Width), float32(start.Height)
 	scroll := ui.ScrollBoth(c.Key("picture-scroll")).Grow(1).MinWidth(0).FillHeight()
 	area := scroll.LayoutBounds()

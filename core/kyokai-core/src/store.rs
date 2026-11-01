@@ -13,6 +13,7 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use zeroize::Zeroizing;
 
 const FILE: &str = "secrets.bin";
@@ -47,6 +48,11 @@ pub struct Secrets {
     map: Mutex<Map>,
     /// Where and with what key to persist; None keeps everything in memory.
     disk: Option<(PathBuf, Zeroizing<[u8; 32]>)>,
+    /// Numbers each change, under `map`'s lock, in the order they were made.
+    changes: AtomicU64,
+    /// The number of the change the file holds: guards the file's writes,
+    /// so that an older snapshot never replaces a newer one.
+    written: Mutex<u64>,
 }
 
 /// Opens the store in state_dir, keyed in the OS store by profile.
@@ -69,6 +75,8 @@ pub fn open(state_dir: &Path, profile: &str) -> (Secrets, Persistence) {
         Secrets {
             map: Mutex::new(map),
             disk: Some((path, key)),
+            changes: AtomicU64::new(0),
+            written: Mutex::new(0),
         },
         Persistence::OsStore,
     )
@@ -94,6 +102,8 @@ impl Secrets {
         Secrets {
             map: Mutex::new(Map::new()),
             disk: None,
+            changes: AtomicU64::new(0),
+            written: Mutex::new(0),
         }
     }
 
@@ -117,13 +127,34 @@ impl Secrets {
         })
     }
 
+    /// Applies `change` to the map and, when the store persists, writes the
+    /// map as it stands after it.
+    /// Notes: only the change and a copy of the map hold the map's lock (a
+    /// reader never waits for the encryption or the disk). The writes are
+    /// ordered: a snapshot older than the one in the file is not written,
+    /// so the last change always lands last.
     fn write(&self, change: impl FnOnce(&mut Map)) -> Result<(), String> {
-        let mut map = self.map.lock().map_err(|_| "secrets store poisoned")?;
-        change(&mut map);
+        let (number, snapshot) = {
+            let mut map = self.map.lock().map_err(|_| "secrets store poisoned")?;
+            change(&mut map);
+            if self.disk.is_none() {
+                return Ok(());
+            }
+            let number = self.changes.fetch_add(1, Ordering::Relaxed) + 1;
+            (number, map.clone())
+        };
         let Some((path, key)) = &self.disk else {
             return Ok(());
         };
-        write_atomic(path, &encrypt(key, &map)?)
+        let data = encrypt(key, &snapshot)?;
+        drop(snapshot);
+        let mut written = self.written.lock().map_err(|_| "secrets store poisoned")?;
+        if *written > number {
+            return Ok(()); // a newer snapshot, with this change, is on disk
+        }
+        write_atomic(path, &data)?;
+        *written = number;
+        Ok(())
     }
 }
 
@@ -644,6 +675,40 @@ mod tests {
             forget_master_key(&profile),
             "the Secret Service item remains"
         );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Writes from many threads, encrypted outside the map's lock, still
+    /// leave the last change on disk: the file holds the map as it stands.
+    #[test]
+    fn concurrent_writes_leave_the_last_change_on_disk() {
+        let dir = std::env::temp_dir().join(format!("kyokai-writes-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let key = Zeroizing::new([7u8; 32]);
+        let secrets = Secrets {
+            map: Mutex::new(Map::new()),
+            disk: Some((dir.join(FILE), key.clone())),
+            changes: AtomicU64::new(0),
+            written: Mutex::new(0),
+        };
+        std::thread::scope(|s| {
+            for t in 0..8 {
+                let secrets = &secrets;
+                s.spawn(move || {
+                    for i in 0..40 {
+                        secrets.set(&format!("t{t}"), &i.to_string()).unwrap();
+                        if i % 7 == 0 {
+                            secrets.remove("gone").unwrap();
+                            secrets.set("gone", "x").unwrap();
+                        }
+                    }
+                });
+            }
+        });
+        let on_disk = decrypt(&key, &std::fs::read(dir.join(FILE)).unwrap()).unwrap();
+        let in_memory = secrets.map.lock().unwrap().clone();
+        assert_eq!(on_disk, in_memory);
+        assert!((0..8).all(|t| on_disk[&format!("t{t}")].as_str() == "39"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -693,6 +693,10 @@ impl Drop for RemoteDesktop {
 /// helper goes.
 /// Inputs: `input` carries requests, `out` replies and video.
 /// Side effects: captures, injects, reads and writes the clipboard.
+/// Notes: requests are answered in order on this thread, except the slow
+/// ones (opening a video or sound stream, a clipboard image), which finish
+/// on workers and are answered by their id when done, so that input never
+/// waits behind them.
 pub fn serve(input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
     AGENT.store(true, Ordering::Relaxed);
     let out = Arc::new(Mutex::new(BufWriter::new(out)));
@@ -711,6 +715,27 @@ pub fn serve(input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
             });
         }
     }
+    // Requests are read on a thread of their own, so that the work slow
+    // requests finish on their workers (`Work::Done`) comes in between.
+    let (work, jobs) = std_mpsc::channel::<Work>();
+    {
+        let work = work.clone();
+        let mut input = input;
+        std::thread::spawn(move || {
+            while let Ok((kind, body)) = read_message(&mut input) {
+                if kind != JSON {
+                    continue;
+                }
+                let Ok(req) = serde_json::from_slice::<Value>(&body) else {
+                    continue;
+                };
+                if work.send(Work::Request(req)).is_err() {
+                    return;
+                }
+            }
+            let _ = work.send(Work::Ended);
+        });
+    }
     let mut agent = Agent {
         out: out.clone(),
         sources: HashMap::new(),
@@ -719,20 +744,25 @@ pub fn serve(input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
         clipboard: None,
         desks: HashMap::new(),
         awake: None,
+        work,
+        opening: HashMap::new(),
     };
-    let mut input = input;
-    while let Ok((kind, body)) = read_message(&mut input) {
-        if kind != JSON {
-            continue;
-        }
-        let Ok(req) = serde_json::from_slice::<Value>(&body) else {
-            continue;
+    for job in jobs {
+        let (id, reply) = match job {
+            Work::Ended => break,
+            Work::Request(req) => {
+                follow_input_desktop();
+                let id = req["id"].as_u64().unwrap_or(0);
+                match agent.handle(id, &req) {
+                    Ok(Some(v)) => (id, Ok(v)),
+                    Ok(None) => continue,
+                    Err(e) => (id, Err(e)),
+                }
+            }
+            Work::Done(id, finish) => (id, finish(&mut agent)),
         };
-        follow_input_desktop();
-        let id = req["id"].as_u64().unwrap_or(0);
-        let msg = match agent.handle(id, &req) {
-            Ok(Some(v)) => json!({"id": id, "ok": v}),
-            Ok(None) => continue,
+        let msg = match reply {
+            Ok(v) => json!({"id": id, "ok": v}),
             Err(e) => json!({"id": id, "err": e}),
         };
         if id != 0 {
@@ -755,7 +785,28 @@ struct Agent {
     /// Keeps the console session's displays awake while video streams: a
     /// display request from the helper in session 0 does not count.
     awake: Option<crate::power::Awake>,
+    /// Where the workers of slow requests hand their results back.
+    work: std_mpsc::Sender<Work>,
+    /// The streams opening on a worker, by kind (`video`, `audio`) and
+    /// number, with whether the helper closed them meanwhile.
+    opening: HashMap<(&'static str, u32), bool>,
 }
+
+/// What the agent's loop takes next.
+enum Work {
+    /// A request from the helper.
+    Request(Value),
+    /// A slow request (opening a stream, encoding a clipboard image)
+    /// finished on its worker: the loop applies the result to the agent and
+    /// replies to the request with this id. Input and the other quick
+    /// requests never wait behind one.
+    Done(u64, Finish),
+    /// The helper's connection ended.
+    Ended,
+}
+
+/// What a worker's result does on the agent's loop (`Work::Done`).
+type Finish = Box<dyn FnOnce(&mut Agent) -> Result<Value, String> + Send>;
 
 #[cfg(windows)]
 type Injector = crate::input::Injector;
@@ -826,7 +877,9 @@ impl Injector {
 impl Agent {
     /// Answers one request.
     /// Returns: the reply, or None when the reply was sent already (a
-    /// screenshot) or none is due; an error is sent as the reply.
+    /// screenshot), a worker sends it later (opening a stream, encoding a
+    /// clipboard image: `Work::Done`) or none is due; an error is sent as
+    /// the reply.
     fn handle(&mut self, id: u64, req: &Value) -> Result<Option<Value>, String> {
         let stream = req["stream"].as_u64().unwrap_or(0) as u32;
         let injector = req["injector"].as_u64().unwrap_or(0);
@@ -848,41 +901,17 @@ impl Agent {
                     .iter()
                     .filter_map(|w| crate::video::Choice::parse(&w.codec, w.i444))
                     .collect();
-                let mut source = crate::video::Source::open(display, &choices);
-                // A capture that did not open says why: the helper's session
-                // shows its own placeholder and tries again, rather than
-                // streaming a test pattern it would take for the screen.
-                if let Some(why) = source.why.take() {
-                    let code = source.start.placeholder.take().unwrap_or_default();
-                    return Err(format!("{code}: {why}"));
-                }
-                let reply = json!({"start": source.start, "display": source.display});
-                let (_, empty) = mpsc::channel(1);
-                let mut frames = std::mem::replace(&mut source.frames, empty);
-                let out = self.out.clone();
+                // Opening a capture can take seconds: on a worker, while
+                // input goes on (`Work::Done`).
+                self.opening.insert(("video", stream), false);
+                let work = self.work.clone();
                 std::thread::spawn(move || {
-                    while let Some(f) = frames.blocking_recv() {
-                        let head = [
-                            &stream.to_le_bytes()[..],
-                            &[f.flags],
-                            &f.pts.to_le_bytes(),
-                            &f.took_us.to_le_bytes(),
-                        ]
-                        .concat();
-                        let mut w = out.lock().expect("agent out");
-                        if write_message(&mut *w, VIDEO, &[&head, &f.data]).is_err() {
-                            return;
-                        }
-                    }
-                    // The capture ended by itself (a stream the helper
-                    // closed is gone from its list already): the helper
-                    // ends the session's stream, which opens it again.
-                    let body = serde_json::to_vec(&json!({"ended": stream})).expect("json");
-                    let _ = write_message(&mut *out.lock().expect("agent out"), JSON, &[&body]);
+                    follow_input_desktop();
+                    let source = crate::video::Source::open(display, &choices);
+                    let finish = move |agent: &mut Agent| agent.video_opened(stream, source);
+                    let _ = work.send(Work::Done(id, Box::new(finish)));
                 });
-                self.sources.insert(stream, source);
-                self.awake.get_or_insert_with(crate::power::keep_awake);
-                reply
+                return Ok(None);
             }
             "video.key" => {
                 if let Some(s) = self.sources.get(&stream) {
@@ -906,6 +935,9 @@ impl Agent {
                 return Ok(None);
             }
             "video.close" => {
+                if let Some(closed) = self.opening.get_mut(&("video", stream)) {
+                    *closed = true;
+                }
                 self.sources.remove(&stream);
                 if self.sources.is_empty() {
                     self.awake = None;
@@ -913,22 +945,19 @@ impl Agent {
                 return Ok(None);
             }
             "audio.open" => {
-                let mut source = crate::audio::Source::local()?;
-                let (_, empty) = mpsc::channel(1);
-                let mut packets = std::mem::replace(&mut source.packets, empty);
-                let out = self.out.clone();
+                self.opening.insert(("audio", stream), false);
+                let work = self.work.clone();
                 std::thread::spawn(move || {
-                    while let Some(p) = packets.blocking_recv() {
-                        let mut w = out.lock().expect("agent out");
-                        if write_message(&mut *w, AUDIO, &[&stream.to_le_bytes(), &p]).is_err() {
-                            break;
-                        }
-                    }
+                    let source = crate::audio::Source::local();
+                    let finish = move |agent: &mut Agent| agent.audio_opened(stream, source);
+                    let _ = work.send(Work::Done(id, Box::new(finish)));
                 });
-                self.sounds.insert(stream, source);
-                json!({})
+                return Ok(None);
             }
             "audio.close" => {
+                if let Some(closed) = self.opening.get_mut(&("audio", stream)) {
+                    *closed = true;
+                }
                 self.sounds.remove(&stream);
                 return Ok(None);
             }
@@ -1010,13 +1039,21 @@ impl Agent {
                 None => crate::input::pointer(),
             }),
             "clip.serial" => json!(self.clip().and_then(|c| c.serial())),
-            "clip.item" => json!(self.clip().and_then(|c| c.item()).and_then(|i| match i {
-                crate::clipboard::Item::Text(text) => Some(ClipItem::Text { text }),
-                crate::clipboard::Item::Image(img) =>
-                    crate::clipboard::to_png(&img).map(|png| ClipItem::Image { png }),
-                crate::clipboard::Item::Png(png) => Some(ClipItem::Image { png }),
-                crate::clipboard::Item::Files(paths) => Some(ClipItem::Files { paths }),
-            })),
+            "clip.item" => match self.clip().and_then(|c| c.item()) {
+                // Encoding a large picture takes a while: on a worker.
+                Some(crate::clipboard::Item::Image(img)) => {
+                    let work = self.work.clone();
+                    std::thread::spawn(move || {
+                        let png = crate::clipboard::to_png(&img).map(|png| ClipItem::Image { png });
+                        let _ = work.send(Work::Done(id, Box::new(move |_| Ok(json!(png)))));
+                    });
+                    return Ok(None);
+                }
+                Some(crate::clipboard::Item::Text(text)) => json!(ClipItem::Text { text }),
+                Some(crate::clipboard::Item::Png(png)) => json!(ClipItem::Image { png }),
+                Some(crate::clipboard::Item::Files(paths)) => json!(ClipItem::Files { paths }),
+                None => Value::Null,
+            },
             "clip.set" => match serde_json::from_value::<ClipItem>(req["item"].clone()) {
                 Ok(ClipItem::Text { text }) => json!(
                     self.clip()
@@ -1078,6 +1115,84 @@ impl Agent {
                 }
             }
         }))
+    }
+
+    /// Takes a video source a worker opened for `stream` (`video.open`):
+    /// streams its frames to the helper and keeps it, unless the helper
+    /// closed the stream meanwhile.
+    /// Returns: the reply to `video.open`.
+    fn video_opened(
+        &mut self,
+        stream: u32,
+        mut source: crate::video::Source,
+    ) -> Result<Value, String> {
+        let closed = self.opening.remove(&("video", stream)).unwrap_or(false);
+        // A capture that did not open says why: the helper's session
+        // shows its own placeholder and tries again, rather than
+        // streaming a test pattern it would take for the screen.
+        if let Some(why) = source.why.take() {
+            let code = source.start.placeholder.take().unwrap_or_default();
+            return Err(format!("{code}: {why}"));
+        }
+        if closed {
+            return Err("the stream was closed".into());
+        }
+        let reply = json!({"start": source.start, "display": source.display});
+        let (_, empty) = mpsc::channel(1);
+        let mut frames = std::mem::replace(&mut source.frames, empty);
+        let out = self.out.clone();
+        std::thread::spawn(move || {
+            while let Some(f) = frames.blocking_recv() {
+                let head = [
+                    &stream.to_le_bytes()[..],
+                    &[f.flags],
+                    &f.pts.to_le_bytes(),
+                    &f.took_us.to_le_bytes(),
+                ]
+                .concat();
+                let mut w = out.lock().expect("agent out");
+                if write_message(&mut *w, VIDEO, &[&head, &f.data]).is_err() {
+                    return;
+                }
+            }
+            // The capture ended by itself (a stream the helper
+            // closed is gone from its list already): the helper
+            // ends the session's stream, which opens it again.
+            let body = serde_json::to_vec(&json!({"ended": stream})).expect("json");
+            let _ = write_message(&mut *out.lock().expect("agent out"), JSON, &[&body]);
+        });
+        self.sources.insert(stream, source);
+        self.awake.get_or_insert_with(crate::power::keep_awake);
+        Ok(reply)
+    }
+
+    /// Takes the sound source a worker opened for `stream` (`audio.open`):
+    /// streams its packets to the helper and keeps it, unless the helper
+    /// closed the stream meanwhile.
+    /// Returns: the reply to `audio.open`.
+    fn audio_opened(
+        &mut self,
+        stream: u32,
+        opened: Result<crate::audio::Source, String>,
+    ) -> Result<Value, String> {
+        let closed = self.opening.remove(&("audio", stream)).unwrap_or(false);
+        let mut source = opened?;
+        if closed {
+            return Err("the stream was closed".into());
+        }
+        let (_, empty) = mpsc::channel(1);
+        let mut packets = std::mem::replace(&mut source.packets, empty);
+        let out = self.out.clone();
+        std::thread::spawn(move || {
+            while let Some(p) = packets.blocking_recv() {
+                let mut w = out.lock().expect("agent out");
+                if write_message(&mut *w, AUDIO, &[&stream.to_le_bytes(), &p]).is_err() {
+                    break;
+                }
+            }
+        });
+        self.sounds.insert(stream, source);
+        Ok(json!({}))
     }
 
     /// The agent's clipboard, opened on first use.
@@ -1857,6 +1972,38 @@ mod tests {
         let link = Arc::new(Link::new());
         link.attach(Box::new(up_r), Box::new(down_w));
         link
+    }
+
+    /// Regression: the agent served one request at a time, so input waited
+    /// behind a stream opening (up to about 2 s). Input is answered while a
+    /// stream opens on its worker.
+    #[test]
+    fn input_is_answered_while_a_stream_opens() {
+        let link = linked();
+        let opening = {
+            let link = link.clone();
+            std::thread::spawn(move || {
+                let t = Instant::now();
+                let choices = json!([{"codec": "vp9-sw", "i444": false}]);
+                let opened =
+                    link.call::<Value>("video.open", json!({"stream": 99, "choices": choices}));
+                (t.elapsed(), opened.is_ok())
+            })
+        };
+        std::thread::sleep(Duration::from_millis(20));
+        let t = Instant::now();
+        link.call::<Value>("pointer", json!({}))
+            .expect("the pointer");
+        let answered = t.elapsed();
+        let (took, opened) = opening.join().unwrap();
+        if opened {
+            let _ = link.send("video.close", json!({"stream": 99}));
+        }
+        // A capture that opens at once proves nothing either way.
+        assert!(
+            took < Duration::from_millis(500) || answered + Duration::from_millis(200) < took,
+            "the pointer took {answered:?} while the stream opened in {took:?}"
+        );
     }
 
     /// Regression: an older agent's connection that ended after a newer

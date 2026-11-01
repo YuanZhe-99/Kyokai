@@ -78,6 +78,11 @@ func ListenWith(o ListenOptions) (net.Listener, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
+	// A folder someone else made first (a shared temporary directory)
+	// would let them replace the socket and receive the GUI's requests.
+	if err := checkSocketDir(dir, mode&0o077 == 0 && o.Group == 0); err != nil {
+		return nil, err
+	}
 	// A system socket lets its group traverse the directory; a per-user
 	// socket stays owner-only. DirMode widens it to others when they may
 	// read.
@@ -162,6 +167,7 @@ func ServeWith(ctx context.Context, ln net.Listener, h Handler, authz Authorizer
 	}()
 	var connections sync.WaitGroup
 	defer connections.Wait()
+	open := make(chan struct{}, maxConnections)
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -174,14 +180,36 @@ func ServeWith(ctx context.Context, ln net.Listener, h Handler, authz Authorizer
 			}
 			return err
 		}
+		accepted := time.Now()
+		select {
+		case open <- struct{}{}:
+		default:
+			// Too many at once: this one is closed unanswered.
+			conn.Close()
+			continue
+		}
 		connections.Add(1)
-		go func() { defer connections.Done(); serveConn(ctx, conn, h, authz) }()
+		go func() {
+			defer connections.Done()
+			defer func() { <-open }()
+			serveConn(ctx, conn, h, authz, accepted)
+		}()
 	}
 }
 
+// maxConnections bounds the connections served at once, so that an
+// authorized client opening many cannot exhaust the engine.
+const maxConnections = 256
+
+// requestWait is how long a connection may stay silent before each request
+// line arrives; a session or a stream then sets its own deadlines.
+var requestWait = 10 * time.Second
+
 // serveConn answers one connection's requests, once its peer is allowed,
 // until it closes or ctx ends.
-func serveConn(ctx context.Context, conn net.Conn, h Handler, authz Authorizer) {
+// Inputs: accepted, when the connection was accepted (Windows checks that
+// the peer's process is older).
+func serveConn(ctx context.Context, conn net.Conn, h Handler, authz Authorizer, accepted time.Time) {
 	defer conn.Close()
 	done := make(chan struct{})
 	defer close(done)
@@ -200,15 +228,17 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, authz Authorizer) 
 		case <-done:
 		}
 	}()
-	peer, err := peerCredentials(conn)
+	peer, err := peerCredentials(conn, accepted)
 	access := err == nil && authz.Allows(peer)
 	if !access {
 		// No identity, or not authorized: answer nothing at all.
 		return
 	}
-	ctx = context.WithValue(ctx, ownerKey{}, authz.Owner(peer))
+	ctx = WithOwner(ctx, authz.Owner(peer))
 	reader := bufio.NewReaderSize(conn, maxRequestSize)
 	for {
+		_ = conn.SetReadDeadline(time.Now().Add(requestWait))
+		// After the deadline: a stop that set its own is not undone.
 		if ctx.Err() != nil {
 			return
 		}
@@ -277,13 +307,14 @@ func stream(ctx context.Context, conn net.Conn, reader *bufio.Reader, h Handler,
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		resp.Version = ProtocolVersion
-		payload, err := json.Marshal(resp)
+		payload, err := resp.marshal()
 		if err != nil {
 			return err
 		}
 		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if _, err := conn.Write(append(payload, '\n')); err != nil {
+		// A full slice: the payload may be one frame shared by every
+		// session, whose spare capacity append must not write into.
+		if _, err := conn.Write(append(payload[:len(payload):len(payload)], '\n')); err != nil {
 			cancel()
 			return err
 		}

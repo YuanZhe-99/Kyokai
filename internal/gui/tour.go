@@ -653,7 +653,7 @@ func (a *App) tourLetInStep(c *ui.Context, tr tour) {
 				ui.Text(c, L.HomeDeviceID()).FontSize(sizeSmall).TextColor(t.TextMuted).Grow(1)
 				ui.Text(c, groupDigits(id)).FontSize(sizeHeading + 2).Bold().FontFeatures("tnum").NoWrap().Selectable()
 				if iconButton(c, "tour-copy-id", rowCopy, L.ActionCopy()) {
-					mygo.Clipboard.WriteText(id)
+					a.copyText(id)
 					a.update(func() { a.setToast(L.Copied(), false) })
 				}
 			})

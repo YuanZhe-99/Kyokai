@@ -69,6 +69,8 @@ func TestFirstRunTour(t *testing.T) {
 // tourApp is a fresh profile's App on its first run, its engine attached.
 func tourApp(t *testing.T) *App {
 	a := New("", t.TempDir(), filepath.Join(t.TempDir(), "none.sock"))
+	// The preferences' writer is done before the folder goes.
+	t.Cleanup(func() { _ = a.writePrefs() })
 	if a.tour == nil {
 		t.Fatal("a fresh profile shows no tour")
 	}
@@ -118,6 +120,7 @@ func TestSkipAsksThenStartsWithTheDefaults(t *testing.T) {
 	if !reflect.DeepEqual(a.prefs, want) {
 		t.Errorf("Skip changed the preferences: %+v, want %+v", a.prefs, want)
 	}
+	_ = a.writePrefs() // as quitting does
 	if b := New("", a.stateDir, ""); b.tour != nil {
 		t.Error("the tour came back after Skip")
 	}

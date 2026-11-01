@@ -132,6 +132,48 @@ struct Decide {
 
 static CORE: Mutex<Option<Core>> = Mutex::new(None);
 
+/// Held across a change to the running core's secrets and across any
+/// rebuild of the core (`set_permanent`, `replace_identity`, `start_over`,
+/// `reopen_store`), so that a rebuild never drops a change that reported
+/// success and two rebuilds never interleave. Taken before CORE, never
+/// while holding it; the slow parts (Argon2id, the Keychain's prompt) run
+/// under it, CORE's lock stays short.
+static REBUILD: Mutex<()> = Mutex::new(());
+
+/// Takes REBUILD (it guards no data, so a poisoned lock is still good).
+fn rebuilding() -> std::sync::MutexGuard<'static, ()> {
+    REBUILD.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// What the media and tunnel paths of controller sessions need, apart from
+/// CORE so that a long hold of the core's lock (a status, a store export)
+/// never stalls a session's video, input or tunnel. Set whenever CORE gets
+/// a core, cleared before it loses one.
+static MEDIA: std::sync::RwLock<Option<Media>> = std::sync::RwLock::new(None);
+
+/// The sessions and the network runtime of the running core, for MEDIA.
+#[derive(Clone)]
+struct Media {
+    sessions: Arc<session::Sessions>,
+    rt: tokio::runtime::Handle,
+}
+
+/// Points MEDIA at `core`'s sessions and runtime, or at none.
+fn set_media(core: Option<&Core>) {
+    let media = core.map(|c| Media {
+        sessions: c.ctx.sessions.clone(),
+        rt: c.network.handle(),
+    });
+    if let Ok(mut m) = MEDIA.write() {
+        *m = media;
+    }
+}
+
+/// The running core's sessions and runtime, without CORE's lock.
+fn media() -> Option<Media> {
+    MEDIA.read().ok()?.clone()
+}
+
 /// What the host passes to `kyokai_start`.
 #[derive(Clone, Deserialize)]
 struct StartConfig {
@@ -230,6 +272,7 @@ pub extern "C" fn kyokai_stop() {
             }
         }
         if let Ok(mut core) = CORE.lock() {
+            set_media(None);
             *core = None;
         }
     });
@@ -261,15 +304,9 @@ pub unsafe extern "C" fn kyokai_media_read(
         if let Some(read) = tunnel_read(session, wait) {
             return Some(read);
         }
-        // The core's lock is held only to find the queue, never while waiting.
-        let queue = CORE
-            .lock()
-            .ok()?
-            .as_ref()?
-            .ctx
-            .sessions
-            .media(session)
-            .map(|(q, _)| q)?;
+        // Never the core's lock (MEDIA): a long hold of it must not stall
+        // the picture.
+        let queue = media()?.sessions.media(session).map(|(q, _)| q)?;
         Some(queue.pop(std::time::Duration::from_millis(timeout_ms.into())))
     });
     let packet = match got {
@@ -319,11 +356,7 @@ pub unsafe extern "C" fn kyokai_media_write(session: u64, ptr: *const u8, len: u
         let Ok(mut msg) = serde_json::from_slice::<Value>(json) else {
             return -1;
         };
-        let Some((tx, gate)) = CORE
-            .lock()
-            .ok()
-            .and_then(|c| c.as_ref()?.ctx.sessions.input(session))
-        else {
+        let Some((tx, gate)) = media().and_then(|m| m.sessions.input(session)) else {
             return -2;
         };
         // Input is a stream: the gate decides at once (a malformed event
@@ -763,7 +796,9 @@ fn start(input: &[u8]) -> Result<(), String> {
     if guard.is_some() {
         return Err("the core is already started".into());
     }
-    *guard = Some(build(cfg)?);
+    let core = build(cfg)?;
+    set_media(Some(&core));
+    *guard = Some(core);
     Ok(())
 }
 
@@ -816,20 +851,26 @@ fn build_on(
 /// Changes the identity's secrets, then rebuilds the core so every part
 /// uses the new identity.
 /// Side effects: ends every session and reconnects the network.
+/// Notes: the change (a backup's Argon2id key, say) runs without the core's
+/// lock; only the rebuild holds it. Both run under REBUILD, so no other
+/// rebuild comes between them and drops the change.
 fn replace_identity(
     change: impl FnOnce(&store::Secrets) -> Result<(), String>,
 ) -> Result<Value, String> {
+    let _rebuilding = rebuilding();
+    change(core_ctx()?.access.secrets())?;
     let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
     let core = guard.as_ref().ok_or("the core is not started")?;
-    change(core.ctx.access.secrets())?;
     let cfg = core.cfg.clone();
     // Whom the host serves is the engine's decision and outlives the
     // identity (a helper without a GUI must not start serving everyone).
     let serve = core.ctx.access.serve();
+    set_media(None);
     *guard = None; // stops the network and drops the old identity
     let core = build(cfg)?;
     core.ctx.access.set_serve(serve);
     let id = core.ctx.identity.device_id();
+    set_media(Some(&core));
     *guard = Some(core);
     Ok(json!({"device_id": id}))
 }
@@ -841,12 +882,8 @@ fn replace_identity(
 /// Side effects: ends every session and reconnects the network when the
 /// store opened.
 fn reopen_store() -> Result<bool, String> {
-    let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
-    let core = guard.as_ref().ok_or("the core is not started")?;
-    if !matches!(core.persistence, store::Persistence::Denied) {
-        return Ok(true);
-    }
-    rebuild_on_store(&mut guard)
+    let _rebuilding = rebuilding();
+    rebuild_on_store(|p| matches!(p, store::Persistence::Denied))
 }
 
 /// Starts over when the saved store cannot be unlocked (its key is gone):
@@ -855,30 +892,54 @@ fn reopen_store() -> Result<bool, String> {
 /// Returns: whether the new store is kept by the OS store.
 /// Side effects: renames secrets.bin; rebuilds the core on the new store,
 /// with a new Device ID.
+/// Notes: under REBUILD, so a second call waits and then finds the store
+/// readable (regression: two at once, and the second moved aside the store
+/// the first had just made).
 fn start_over() -> Result<bool, String> {
-    let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
-    let core = guard.as_ref().ok_or("the core is not started")?;
-    if !matches!(core.persistence, store::Persistence::Unreadable) {
-        return Err("the saved identity is readable".into());
+    let _rebuilding = rebuilding();
+    {
+        let guard = CORE.lock().map_err(|_| "core state poisoned")?;
+        let core = guard.as_ref().ok_or("the core is not started")?;
+        if !matches!(core.persistence, store::Persistence::Unreadable) {
+            return Err("the saved identity is readable".into());
+        }
+        store::set_aside(&core.cfg.state_dir)?;
     }
-    store::set_aside(&core.cfg.state_dir)?;
-    rebuild_on_store(&mut guard)
+    rebuild_on_store(|p| matches!(p, store::Persistence::Unreadable))
 }
 
 /// Opens the store again and rebuilds the core on it, unless the OS store
-/// refuses again.
-fn rebuild_on_store(guard: &mut Option<Core>) -> Result<bool, String> {
-    let core = guard.as_ref().ok_or("the core is not started")?;
-    let cfg = core.cfg.clone();
+/// refuses again, while the core's store still stands as `stands` says
+/// (another call may have rebuilt it meanwhile).
+/// Returns: whether the store is open now.
+/// Notes: opening the store (which may wait for the Keychain's prompt)
+/// runs without the core's lock; only the rebuild holds it. The caller
+/// holds REBUILD.
+fn rebuild_on_store(stands: fn(&store::Persistence) -> bool) -> Result<bool, String> {
+    let cfg = {
+        let guard = CORE.lock().map_err(|_| "core state poisoned")?;
+        let core = guard.as_ref().ok_or("the core is not started")?;
+        if !stands(&core.persistence) {
+            return Ok(true);
+        }
+        core.cfg.clone()
+    };
     // Refused again: this run goes on with what it keeps in memory.
     let (secrets, persistence) = store::open(&cfg.state_dir, &cfg.profile);
     if matches!(persistence, store::Persistence::Denied) {
         return Ok(false);
     }
+    let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
+    let core = guard.as_ref().ok_or("the core is not started")?;
+    if !stands(&core.persistence) {
+        return Ok(true);
+    }
     let serve = core.ctx.access.serve();
+    set_media(None);
     *guard = None; // stops the network and drops the in-memory identity
     let core = build_on(cfg, secrets, persistence)?;
     core.ctx.access.set_serve(serve);
+    set_media(Some(&core));
     *guard = Some(core);
     Ok(true)
 }
@@ -929,30 +990,30 @@ fn call(input: &[u8]) -> Result<Value, String> {
                     "the permanent password needs at least {MIN_PERMANENT} characters"
                 ));
             }
-            try_core(|c| {
-                let mut slots = c
-                    .ctx
-                    .access
-                    .slots
-                    .lock()
-                    .map_err(|_| "access state poisoned")?;
-                let key = c.ctx.identity.public_key();
-                slots.set_permanent(
-                    c.ctx.access.secrets(),
-                    password.as_deref().map(String::as_str),
-                    &key,
-                )?;
-                Ok(json!({"permanent_password": slots.has_permanent()}))
-            })
+            // The OPAQUE record's key stretching: not under the core's lock,
+            // but under REBUILD, so no rebuild drops the new password.
+            let _rebuilding = rebuilding();
+            let ctx = core_ctx()?;
+            let mut slots = ctx
+                .access
+                .slots
+                .lock()
+                .map_err(|_| "access state poisoned")?;
+            let key = ctx.identity.public_key();
+            slots.set_permanent(
+                ctx.access.secrets(),
+                password.as_deref().map(String::as_str),
+                &key,
+            )?;
+            Ok(json!({"permanent_password": slots.has_permanent()}))
         }
         "identity.export" => {
             let passphrase: zeroize::Zeroizing<String> =
                 serde_json::from_value(req.params["passphrase"].take())
                     .map_err(|e| format!("bad passphrase: {e}"))?;
-            try_core(|c| {
-                let doc = backup::export(c.ctx.access.secrets(), &passphrase)?;
-                Ok(json!({"document": doc}))
-            })
+            // Argon2id: not under the core's lock.
+            let doc = backup::export(core_ctx()?.access.secrets(), &passphrase)?;
+            Ok(json!({"document": doc}))
         }
         "identity.import" => {
             let document = req.params["document"]
@@ -971,15 +1032,19 @@ fn call(input: &[u8]) -> Result<Value, String> {
             let passphrase: zeroize::Zeroizing<String> =
                 serde_json::from_value(req.params["passphrase"].take())
                     .map_err(|e| format!("bad passphrase: {e}"))?;
-            try_core(|c| {
-                let doc = backup::export_store(
-                    c.ctx.access.secrets(),
-                    c.ctx.access.held_history(),
-                    &c.state_dir,
-                    &passphrase,
-                )?;
-                Ok(json!({"document": doc}))
-            })
+            // Argon2id: not under the core's lock.
+            let (ctx, dir) = {
+                let guard = CORE.lock().map_err(|_| "core state poisoned")?;
+                let c = guard.as_ref().ok_or("the core is not started")?;
+                (c.ctx.clone(), c.state_dir.clone())
+            };
+            let doc = backup::export_store(
+                ctx.access.secrets(),
+                ctx.access.held_history(),
+                &dir,
+                &passphrase,
+            )?;
+            Ok(json!({"document": doc}))
         }
         "store.import" => {
             let document = req.params["document"]
@@ -1316,13 +1381,12 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 .ok_or("bad protected-mode choice")?;
             let password: zeroize::Zeroizing<String> =
                 serde_json::from_value(req.params["password"].take()).unwrap_or_default();
-            try_core(|c| {
-                let key = c.ctx.identity.public_key();
-                c.ctx
-                    .access
-                    .set_protected(on, &password, &key)
-                    .map(|()| json!({}))
-            })
+            // Checking the password stretches it: not under the core's lock.
+            let ctx = core_ctx()?;
+            let key = ctx.identity.public_key();
+            ctx.access
+                .set_protected(on, &password, &key)
+                .map(|()| json!({}))
         }
         "access.history" => {
             let keep = req.params["keep"].as_bool().ok_or("bad history choice")?;
@@ -1368,10 +1432,9 @@ fn call(input: &[u8]) -> Result<Value, String> {
             ) else {
                 return Err("bad signing request".into());
             };
-            try_core(|c| {
-                keys::sign_ssh(c.ctx.access.secrets(), id, algorithm, data)
-                    .map(|s| json!({"signature": s}))
-            })
+            // An RSA signature: not under the core's lock.
+            keys::sign_ssh(core_ctx()?.access.secrets(), id, algorithm, data)
+                .map(|s| json!({"signature": s}))
         }
         "authorized.list" => with_core(|c| json!(keys::authorized(c.ctx.access.secrets()))),
         "authorized.add" => {
@@ -1454,6 +1517,13 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 link.show_kyokai(show);
             }
             Ok(json!({}))
+        }
+        // A text Kyokai is about to put on the clipboard (a password, the
+        // Device ID): no session ever offers it. Allowed in protected mode.
+        "clipboard.mine" => {
+            let hex = req.params["digest"].as_str().ok_or("bad digest")?;
+            clipboard::mine(sha256_hex(hex).ok_or("bad digest")?);
+            Ok(Value::Null)
         }
         "sound.source" => {
             let source = req.params["source"].as_str().ok_or("bad sound source")?;
@@ -1625,12 +1695,9 @@ fn call(input: &[u8]) -> Result<Value, String> {
 /// Returns: None when `session` is no tunnel; else the packet, or why there
 /// is none (the wait ran out, or the tunnel ended).
 fn tunnel_read(session: u64, wait: std::time::Duration) -> Option<Result<Vec<u8>, media::Empty>> {
-    // The core's lock is held only to find the tunnel, never while waiting.
-    let (ends, rt) = {
-        let core = CORE.lock().ok()?;
-        let c = core.as_ref()?;
-        (c.ctx.sessions.tunnel(session)?, c.network.handle())
-    };
+    // Never the core's lock (MEDIA).
+    let Media { sessions, rt } = media()?;
+    let ends = sessions.tunnel(session)?;
     let next = rt.block_on(async {
         tokio::time::timeout(wait, async { ends.down.lock().await.recv().await }).await
     });
@@ -1650,11 +1717,7 @@ fn tunnel_read(session: u64, wait: std::time::Duration) -> Option<Result<Vec<u8>
 /// `kyokai_media_write` (outside any runtime).
 /// Returns: 0, or -2 when there is no such tunnel or it ended.
 fn tunnel_write(session: u64, bytes: &[u8]) -> i32 {
-    let ends = CORE
-        .lock()
-        .ok()
-        .and_then(|c| c.as_ref()?.ctx.sessions.tunnel(session));
-    let Some(ends) = ends else {
+    let Some(ends) = media().and_then(|m| m.sessions.tunnel(session)) else {
         return -2;
     };
     for piece in bytes.chunks(tunnel::PIECE) {
@@ -1663,6 +1726,25 @@ fn tunnel_write(session: u64, bytes: &[u8]) -> i32 {
         }
     }
     0
+}
+
+/// Reads a SHA-256 digest written as 64 lowercase hex digits.
+/// Returns: None for anything else.
+fn sha256_hex(hex: &str) -> Option<[u8; 32]> {
+    let b = hex.as_bytes();
+    if b.len() != 64 {
+        return None;
+    }
+    let nibble = |c: u8| match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        _ => None,
+    };
+    let mut out = [0u8; 32];
+    for (o, [hi, lo]) in out.iter_mut().zip(b.as_chunks::<2>().0) {
+        *o = nibble(*hi)? << 4 | nibble(*lo)?;
+    }
+    Some(out)
 }
 
 /// Reads a credential request's `device_id` and `service`.
@@ -1683,6 +1765,13 @@ fn try_core(f: impl FnOnce(&mut Core) -> Result<Value, String>) -> Result<Value,
     f(core)
 }
 
+/// The running core's shared state, for slow work done without the core's
+/// lock (an Argon2id key, a signature, a store write).
+fn core_ctx() -> Result<Arc<session::Ctx>, String> {
+    let guard = CORE.lock().map_err(|_| "core state poisoned")?;
+    Ok(guard.as_ref().ok_or("the core is not started")?.ctx.clone())
+}
+
 /// Shortest permanent password accepted.
 const MIN_PERMANENT: usize = 8;
 
@@ -1701,8 +1790,12 @@ fn nanokvm_status(access: &access::Access) -> Value {
 }
 
 /// The status a host shows: never a secret.
+/// Notes: the system's permissions (in the macOS helper, a question to its
+/// agent) are read after the core's lock is released.
 fn status() -> Value {
-    with_core(|c| {
+    let mut persistence = None;
+    let mut status = with_core(|c| {
+        persistence = Some(c.persistence);
         json!({
             "version": c.ctx.version,
             "abi": ABI_VERSION,
@@ -1721,7 +1814,6 @@ fn status() -> Value {
             "by_address": c.network.by_address_status(),
             "keeps_history": c.ctx.access.keeps_history(),
             "protected": c.ctx.access.protected(),
-            "permissions": permissions(c.persistence),
             "ai": c.ctx.ai.active(),
             "ai_draft": c.ctx.ai.draft().1,
             "requests": c.ctx.access.pending(),
@@ -1757,7 +1849,11 @@ fn status() -> Value {
             "about": c.ctx.about(),
         })
     })
-    .unwrap_or_else(|e| json!({"error": e}))
+    .unwrap_or_else(|e| json!({"error": e}));
+    if let Some(p) = persistence {
+        status["permissions"] = permissions(p);
+    }
+    status
 }
 
 /// A known host's addresses for the status: each with what earlier
@@ -1832,6 +1928,27 @@ fn request_permission(name: &str) -> Result<bool, String> {
 mod tests {
     use super::*;
 
+    /// Regression: a change to the core's secrets and a rebuild of the core
+    /// could interleave, and the rebuild dropped the change that reported
+    /// success. A change waits for REBUILD (this one changes nothing: it
+    /// fails, or the core is not started).
+    #[test]
+    fn a_change_to_the_secrets_waits_for_a_rebuild() {
+        let held = rebuilding();
+        let (done_tx, done) = std::sync::mpsc::channel();
+        let t = std::thread::spawn(move || {
+            let r = replace_identity(|_| Err("unchanged".into()));
+            let _ = done_tx.send(());
+            r
+        });
+        let wait = std::time::Duration::from_millis(200);
+        assert!(done.recv_timeout(wait).is_err(), "it waited");
+        drop(held);
+        done.recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap();
+        assert!(t.join().unwrap().is_err());
+    }
+
     fn roundtrip(
         f: unsafe extern "C" fn(*const u8, usize, *mut *mut u8, *mut usize) -> i32,
         input: &str,
@@ -1845,6 +1962,24 @@ mod tests {
         // SAFETY: freed once.
         unsafe { kyokai_free(out, len) };
         v
+    }
+
+    #[test]
+    fn digests_are_64_lowercase_hex_digits() {
+        let mut want = [0u8; 32];
+        want[0] = 0x0f;
+        want[31] = 0xa9;
+        let ok = format!("0f{}a9", "00".repeat(30));
+        for (hex, expect) in [
+            (ok.as_str(), Some(want)),
+            (&ok[..62], None),
+            (&format!("{ok}00"), None),
+            (&ok.to_uppercase(), None),
+            (&format!("0g{}", &ok[2..]), None),
+            ("", None),
+        ] {
+            assert_eq!(sha256_hex(hex), expect, "{hex}");
+        }
     }
 
     #[test]
@@ -1894,7 +2029,34 @@ mod tests {
         assert_eq!(reset["ok"], true, "{reset}");
         let after = roundtrip(kyokai_call, r#"{"method":"status"}"#);
         assert_eq!(after["result"]["serve"], "none");
+        // Regression: the media paths locked the core for every packet, so
+        // a long hold of it froze a controller's video, input and tunnels.
+        // With the core's lock held here, they still answer (a deadlock
+        // otherwise).
+        {
+            let _held = CORE.lock().unwrap();
+            let mut buf = [0u8; 8];
+            // SAFETY: `buf` has 8 writable bytes.
+            let read = unsafe { kyokai_media_read(999, buf.as_mut_ptr(), buf.len(), 10) };
+            assert_eq!(read, -2);
+            let packet = [media::packet::TUNNEL, 1, 2];
+            // SAFETY: `packet` has `packet.len()` readable bytes.
+            let write = unsafe { kyokai_media_write(999, packet.as_ptr(), packet.len()) };
+            assert_eq!(write, -2);
+        }
+        let digest = "ab".repeat(32);
+        let mine = roundtrip(
+            kyokai_call,
+            &json!({"method": "clipboard.mine", "params": {"digest": digest}}).to_string(),
+        );
+        assert_eq!(mine, json!({"ok": true, "result": null}));
+        let bad = roundtrip(
+            kyokai_call,
+            r#"{"method":"clipboard.mine","params":{"digest":"AB"}}"#,
+        );
+        assert_eq!(bad["ok"], false);
         kyokai_stop();
+        assert!(media().is_none(), "stopping clears the media paths");
         let _ = std::fs::remove_dir_all(dir);
         // Regression: every run left a `master-key.test-<pid>` Keychain item.
         assert!(

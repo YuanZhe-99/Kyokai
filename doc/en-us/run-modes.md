@@ -91,7 +91,9 @@ bundle (`com.yuanzhe.kyokai.helper`, no Dock icon) holding the core library and 
 `kyokai-svc`, so that macOS lists the agent's permissions as "Kyokai Helper" while the app's
 engine counts as Kyokai. `kyokai-svc helper install --from BIN --operator-uid N` (root, through
 the administrator prompt `osascript … with administrator privileges`, as EasyTier MyGo does)
-copies the bundle with `ditto` into `/Library/Application Support/Kyokai`, owned by root and
+copies the bundle with `ditto --noacl --noextattr` into `/Library/Application Support/Kyokai`
+(then `chmod -R -N` and `u=rwX,go=rX`, so no caller's permission survives; an update does the same,
+from the app folder recorded at install only), owned by root and
 writable by root only, creates `state` (root only), records the operator's uid in
 `state/helper.json`, and loads two launchd jobs: the daemon `com.yuanzhe.kyokai.helper`
 (`run --host helper` as root, from boot, restarted by launchd) and the agent
@@ -168,7 +170,8 @@ own, so neither holds up the network's threads. Only encoded video, input
 events, clipboard text, clipboard images this computer copied (as PNG, encoded by the agent), the
 paths of copied files and the AI's screenshots cross. Both processes are privileged and never decode remote media, so in the
 helper modes clipboard images from a controller are not taken. Files on the clipboard are read
-and written by the helper while it impersonates the console's signed-in user
+and written by the Windows helper while it impersonates the console's signed-in user; the macOS and
+Linux helpers, which run as root, send and receive none
 ([computer-use.md](computer-use.md), "Files"). Without an agent, video shows the
 placeholder (Kyokai Helper getting ready) while the session tries again ([computer-use.md](computer-use.md),
 "Video"), input is refused, and an AI task reads it as the host user taking over. An open that

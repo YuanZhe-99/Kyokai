@@ -2,7 +2,7 @@
 // internal/rdp/session.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: import paths.
+// prior consent. Modified by Kyokai: import paths, no password in Client Info without NLA.
 
 package rdp
 
@@ -109,13 +109,19 @@ type session struct {
 	errorInfo  uint32
 }
 
-func clientInfo(opts Options) []byte {
+// clientInfo is the Client Info PDU: the session's flags and, with NLA, the sign-in.
+// Inputs: nla, whether CredSSP authenticated the connection.
+// Notes: without NLA it carries neither the password nor INFO_AUTOLOGON (Kyokai): over TLS alone
+// nothing proved the server is the one the password is meant for.
+func clientInfo(opts Options, nla bool) []byte {
 	b := binary.LittleEndian.AppendUint32(nil, securityInfoPacket)
 	b = binary.LittleEndian.AppendUint32(b, 0)
 	flags := uint32(infoMouse | infoDisableCtrlAltDel | infoUnicode | infoMaximizeShell | infoLogonNotify |
 		infoCompression | infoEnableWindowsKey | infoCompressionRDP61 | infoLogonErrors | infoMouseHasWheel)
-	if opts.Username != "" {
+	password := ""
+	if nla && opts.Username != "" {
 		flags |= infoAutoLogon
+		password = opts.Password
 	}
 	// audiosrv.dll of Windows 11 26200 gives a session with INFO_REMOTECONSOLEAUDIO the local devices
 	// of the remote computer in place of the redirected ones, so it would have no redirected microphone.
@@ -126,7 +132,7 @@ func clientInfo(opts Options) []byte {
 		flags |= infoAudioCapture
 	}
 	b = binary.LittleEndian.AppendUint32(b, flags)
-	fields := [][]byte{utf16le(opts.Domain), utf16le(opts.Username), utf16le(opts.Password), nil, nil}
+	fields := [][]byte{utf16le(opts.Domain), utf16le(opts.Username), utf16le(password), nil, nil}
 	for _, s := range fields {
 		b = binary.LittleEndian.AppendUint16(b, uint16(len(s)))
 	}

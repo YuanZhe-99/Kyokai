@@ -5685,6 +5685,16 @@ func (msgs Messages) ServiceRDP() string {
 	return Catalog.Format(msgs.locale, "ServiceRDP", nil)
 }
 
+// ServiceRDPNoNLA says "That computer's Remote Desktop does not offer Network Level Authentication, so Kyokai sent it no password. Choose …"
+// in the language the app shows.
+func ServiceRDPNoNLA(method string) string { return In(i18n.Locale()).ServiceRDPNoNLA(method) }
+
+// ServiceRDPNoNLA says "That computer's Remote Desktop does not offer Network Level Authentication, so Kyokai sent it no password. Choose …"
+// in the language of msgs.
+func (msgs Messages) ServiceRDPNoNLA(method string) string {
+	return Catalog.Format(msgs.locale, "ServiceRDPNoNLA", map[string]any{"method": method})
+}
+
 // ServiceRememberMethod says "Remember"
 // in the language the app shows.
 func ServiceRememberMethod() string { return In(i18n.Locale()).ServiceRememberMethod() }
@@ -5767,6 +5777,16 @@ func (msgs Messages) ServiceTrustKey() string {
 	return Catalog.Format(msgs.locale, "ServiceTrustKey", nil)
 }
 
+// ServiceUnreadable says "The connection ended: the other computer sent something Kyokai could not read."
+// in the language the app shows.
+func ServiceUnreadable() string { return In(i18n.Locale()).ServiceUnreadable() }
+
+// ServiceUnreadable says "The connection ended: the other computer sent something Kyokai could not read."
+// in the language of msgs.
+func (msgs Messages) ServiceUnreadable() string {
+	return Catalog.Format(msgs.locale, "ServiceUnreadable", nil)
+}
+
 // ServiceUser says "User name"
 // in the language the app shows.
 func ServiceUser() string { return In(i18n.Locale()).ServiceUser() }
@@ -5825,6 +5845,18 @@ func ServiceVNCUnsupported() string { return In(i18n.Locale()).ServiceVNCUnsuppo
 // in the language of msgs.
 func (msgs Messages) ServiceVNCUnsupported() string {
 	return Catalog.Format(msgs.locale, "ServiceVNCUnsupported", nil)
+}
+
+// ServiceVNCWeakSignIn says "That VNC server offers no secure way to sign in with a user name and password, so Kyokai sent it no password. If it h…"
+// in the language the app shows.
+func ServiceVNCWeakSignIn(method string) string {
+	return In(i18n.Locale()).ServiceVNCWeakSignIn(method)
+}
+
+// ServiceVNCWeakSignIn says "That VNC server offers no secure way to sign in with a user name and password, so Kyokai sent it no password. If it h…"
+// in the language of msgs.
+func (msgs Messages) ServiceVNCWeakSignIn(method string) string {
+	return Catalog.Format(msgs.locale, "ServiceVNCWeakSignIn", map[string]any{"method": method})
 }
 
 // ServiceWrongSignIn says "The user name or password was not accepted."
@@ -9997,6 +10029,26 @@ func FilesErrTaken() string { return In(i18n.Locale()).FilesErrTaken() }
 // in the language of msgs.
 func (msgs Messages) FilesErrTaken() string {
 	return Catalog.Format(msgs.locale, "FilesErrTaken", nil)
+}
+
+// FilesErrBadName says "A name there can't be a file name on this computer."
+// in the language the app shows.
+func FilesErrBadName() string { return In(i18n.Locale()).FilesErrBadName() }
+
+// FilesErrBadName says "A name there can't be a file name on this computer."
+// in the language of msgs.
+func (msgs Messages) FilesErrBadName() string {
+	return Catalog.Format(msgs.locale, "FilesErrBadName", nil)
+}
+
+// FilesNoCd says "This folder's name can't be typed safely into the terminal."
+// in the language the app shows.
+func FilesNoCd() string { return In(i18n.Locale()).FilesNoCd() }
+
+// FilesNoCd says "This folder's name can't be typed safely into the terminal."
+// in the language of msgs.
+func (msgs Messages) FilesNoCd() string {
+	return Catalog.Format(msgs.locale, "FilesNoCd", nil)
 }
 
 // FilesErrSCPFolder says "SCP copies files only, not folders."

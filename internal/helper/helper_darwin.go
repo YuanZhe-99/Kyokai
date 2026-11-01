@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -63,15 +62,9 @@ func Elevated() bool { return os.Geteuid() == 0 }
 // GroupSID is empty outside Windows.
 func GroupSID() string { return "" }
 
-// GroupGID is the `kyokai` group's id, when an administrator created it.
-func GroupGID() (uint32, bool) {
-	g, err := user.LookupGroup(Group)
-	if err != nil {
-		return 0, false
-	}
-	id, err := strconv.ParseUint(g.Gid, 10, 32)
-	return uint32(id), err == nil
-}
+// GroupGID is this computer's own `kyokai` group's id, when an
+// administrator created it (localGroupGID).
+func GroupGID() (uint32, bool) { return localGroupGID(Group) }
 
 // plist writes a launchd job description.
 func plist(label string, args []string, extra string) string {
@@ -139,13 +132,13 @@ func Install(o InstallOptions) error {
 		return fmt.Errorf("install: no engine bundle at %s", src)
 	}
 	bootout()
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	if err := prepareDir(root, 0o755); err != nil {
 		return err
 	}
 	if err := placeBundle(src); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(StateDir, 0o700); err != nil {
+	if err := prepareDir(StateDir, 0o700); err != nil {
 		return err
 	}
 	uid := o.OperatorUID
@@ -169,20 +162,36 @@ func Install(o InstallOptions) error {
 
 // placeBundle copies a bundle into BundleDir, owned by root and writable
 // by root only, replacing the one there.
-// Notes: ditto keeps the code signature and its extended attributes.
 func placeBundle(src string) error {
 	tmp := BundleDir + ".new"
-	_ = os.RemoveAll(tmp)
-	if out, err := exec.Command("ditto", src, tmp).CombinedOutput(); err != nil {
-		return fmt.Errorf("copy %s: %v: %s", src, err, out)
-	}
-	if out, err := exec.Command("chown", "-R", "root:wheel", tmp).CombinedOutput(); err != nil {
-		return fmt.Errorf("chown: %v: %s", err, out)
-	}
-	if out, err := exec.Command("chmod", "-R", "go-w", tmp).CombinedOutput(); err != nil {
-		return fmt.Errorf("chmod: %v: %s", err, out)
+	if err := copyBundle(src, tmp); err != nil {
+		return err
 	}
 	return swapBundle(tmp)
+}
+
+// copyBundle copies the bundle at src to tmp as root's: owned by
+// root:wheel, without the source's ACLs or extended attributes, writable by
+// root only.
+// Side effects: replaces tmp; removes it when a step fails.
+// Notes: the code signature lives in the bundle's files (_CodeSignature,
+// the executables), not in extended attributes. Without --noacl and chmod
+// the copy kept the source's permissions and ACLs, so whoever owned the
+// app's folder could still change what root runs.
+func copyBundle(src, tmp string) error {
+	_ = os.RemoveAll(tmp)
+	for _, args := range [][]string{
+		{"ditto", "--noacl", "--noextattr", src, tmp},
+		{"chown", "-R", "root:wheel", tmp},
+		{"chmod", "-R", "-N", tmp},
+		{"chmod", "-R", "u=rwX,go=rX", tmp},
+	} {
+		if out, err := exec.Command(args[0], args[1:]...).CombinedOutput(); err != nil {
+			_ = os.RemoveAll(tmp)
+			return fmt.Errorf("%s: %v: %s", args[0], err, strings.TrimSpace(string(out)))
+		}
+	}
+	return nil
 }
 
 // swapBundle puts the bundle at tmp in place of BundleDir.
@@ -262,8 +271,8 @@ func Inspect() Status {
 // SelfUpdate replaces the helper's bundle with the app's, when its code
 // signature satisfies the installed bundle's designated requirement (the
 // same signing identity), and restarts both jobs.
-// Inputs: from, the app's bin folder (user-writable); running, this
-// helper's version.
+// Inputs: from, the app folder a request named, which must be the one
+// recorded at install (the only source); running, this helper's version.
 // Side effects: replaces BundleDir; this process exits a second later.
 // Notes: the bundle is copied into a root-owned folder first and that copy
 // is checked and installed, so a file swapped in the app's folder after
@@ -274,14 +283,20 @@ func SelfUpdate(from, running string) error {
 	if err != nil {
 		return err
 	}
-	tmp := BundleDir + ".new"
-	_ = os.RemoveAll(tmp)
-	if out, err := exec.Command("ditto", filepath.Join(from, BundleName), tmp).CombinedOutput(); err != nil {
-		return fmt.Errorf("copy: %v: %s", err, out)
+	s, err := ReadSettings()
+	if err != nil {
+		return err
 	}
-	if out, err := exec.Command("chown", "-R", "root:wheel", tmp).CombinedOutput(); err != nil {
-		_ = os.RemoveAll(tmp)
-		return fmt.Errorf("chown: %v: %s", err, out)
+	if s.AppDir == "" {
+		return errors.New("the helper has no recorded app folder to update from")
+	}
+	dir, err := updateSource(s.AppDir, from)
+	if err != nil {
+		return err
+	}
+	tmp := BundleDir + ".new"
+	if err := copyBundle(filepath.Join(dir, BundleName), tmp); err != nil {
+		return err
 	}
 	if out, err := exec.Command("codesign", "--verify", "--deep", "--strict", "-R="+req, tmp).CombinedOutput(); err != nil {
 		_ = os.RemoveAll(tmp)
@@ -365,4 +380,33 @@ func launchctl(args ...string) error {
 		return fmt.Errorf("launchctl %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// CheckState refuses to run the helper on folders it cannot trust: its
+// data folder (bundle and sockets) and its state folder must belong to
+// root, and no one else may change them.
+func CheckState() error {
+	for _, dir := range []string{root, StateDir} {
+		if err := checkTrusted(dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// localGroupGID reads a group's id from the local directory node (dscl's
+// "."), this Mac's own groups.
+// Notes: user.LookupGroup also finds a network directory's group of the
+// same name, which is not this Mac's to grant.
+func localGroupGID(name string) (uint32, bool) {
+	out, err := exec.Command("dscl", ".", "-read", "/Groups/"+name, "PrimaryGroupID").Output()
+	if err != nil {
+		return 0, false
+	}
+	v, ok := strings.CutPrefix(strings.TrimSpace(string(out)), "PrimaryGroupID:")
+	if !ok {
+		return 0, false
+	}
+	id, err := strconv.ParseUint(strings.TrimSpace(v), 10, 32)
+	return uint32(id), err == nil
 }

@@ -2,7 +2,8 @@
 // internal/rfb/client.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: media stream, file copy, virtual displays and the Prepare hook removed, import paths.
+// prior consent. Modified by Kyokai: media stream, file copy, virtual displays and the Prepare hook removed, import paths, the
+// password forgotten after setup, desktop sizes capped.
 
 package rfb
 
@@ -184,7 +185,10 @@ func Dial(ctx context.Context, options Options, handler Handler) (*Client, error
 	return client, nil
 }
 
+// setup runs the handshake, the sign-in, ServerInit and Apple's session selection on c.conn.
+// Side effects: forgets the password as it returns (Kyokai), so the session never holds it.
 func (c *Client) setup(ctx context.Context) error {
+	defer func() { c.options.Password = "" }()
 	c.stream = newStream(c.conn)
 	h := &handshake{ctx: ctx, conn: c.conn, stream: c.stream, options: &c.options, logger: c.logger}
 	err := h.negotiateVersion()
@@ -433,9 +437,13 @@ func (c *Client) QueueMessage(message []byte) error {
 	return c.outbox.Push(message, false)
 }
 
+// resizeLocked makes the framebuffer width by height, for ServerInit, DesktopSize,
+// ExtendedDesktopSize and DisplayLayout.
+// Returns: whether the size changed; an error for a size outside validDesktopSize (Kyokai: a
+// server could otherwise have the client allocate gigabytes).
 func (c *Client) resizeLocked(width, height int) (bool, error) {
-	if width <= 0 || height <= 0 {
-		return false, E.New("rfb: framebuffer size ", width, "x", height)
+	if !validDesktopSize(width, height, false) {
+		return false, E.New("rfb: framebuffer size ", width, "x", height, " is outside ", maximumDesktopSide, " a side and ", maximumDesktopPixels, " pixels")
 	}
 	if c.framebuffer != nil && c.width == width && c.height == height {
 		return false, nil

@@ -2,7 +2,8 @@
 // internal/rfb/security.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: Kerberos removed, default security type order added, standard-library helpers.
+// prior consent. Modified by Kyokai: Kerberos removed, default security type order added, standard-library helpers,
+// type 33 without 36 counted as unverified, the VNC password key cleared after use.
 
 package rfb
 
@@ -103,6 +104,12 @@ func (h *handshake) chooseSecurityType(preferred []SecurityType) (SecurityType, 
 			if h.info.Dialect == DialectApple && !slices.Contains(offered, SecurityAppleSRP) && !slices.Contains(offered, SecurityKerberos) {
 				continue
 			}
+			// Kyokai: without 36, type 33 sends the password under an RSA key nothing
+			// verifies, unless VerifyServerKey checks it.
+			if !slices.Contains(offered, SecurityAppleSRP) && h.options.VerifyServerKey == nil && !h.options.AllowUnverifiedLogin {
+				unverified = true
+				continue
+			}
 		case SecurityAppleDH:
 			if !h.options.AllowUnverifiedLogin {
 				unverified = true
@@ -128,6 +135,7 @@ func authenticateVNCPassword(h *handshake) ([]byte, error) {
 		return nil, err
 	}
 	var key [8]byte
+	defer clear(key[:])
 	copy(key[:], h.options.Password)
 	for i := range key {
 		key[i] = bits.Reverse8(key[i])
@@ -174,15 +182,17 @@ func securityList(types []SecurityType) string {
 	return strings.Join(names, ", ")
 }
 
-// defaultSecurityTypes orders the security types tried when Options.SecurityTypes is empty: the
-// Apple account logins when a user name is set, then the VNC password, then none (first when no
-// password is set either). Added by Kyokai.
+// defaultSecurityTypes orders the security types tried when Options.SecurityTypes is empty: only
+// the Apple account logins when a user name is set, only the VNC password when a password alone
+// is, else none, then the VNC password. Added by Kyokai.
+// Notes: a sign-in never falls to a weaker kind: a user name's password never goes to type 2's
+// crackable DES response, and a password never to type 1, which skips it.
 func defaultSecurityTypes(options *Options) []SecurityType {
 	switch {
 	case options.Username != "":
-		return append(slices.Clone(SecurityAccount), SecurityVNCPassword, SecurityNone)
+		return slices.Clone(SecurityAccount)
 	case options.Password != "":
-		return []SecurityType{SecurityVNCPassword, SecurityNone}
+		return []SecurityType{SecurityVNCPassword}
 	default:
 		return []SecurityType{SecurityNone, SecurityVNCPassword}
 	}

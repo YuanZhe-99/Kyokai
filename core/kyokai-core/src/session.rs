@@ -13,7 +13,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream};
 use tokio::sync::{Notify, mpsc};
@@ -479,6 +479,18 @@ fn kyokai_reachable(allowed: bool, access: &Access, ai: &crate::ai::Ai) -> bool 
     allowed && !access.asking() && !ai.awaiting_approval()
 }
 
+/// The `kyokai_reachable` decision as a check asked later: the X11
+/// injector's thread asks it just before each event, so input queued
+/// before a connection request or an AI approval appeared stays out.
+/// Returns: a check that reads the current state each time it is asked.
+#[cfg(any(target_os = "linux", test))]
+fn kyokai_gate(
+    access: Arc<Access>,
+    ai: Arc<crate::ai::Ai>,
+) -> impl Fn() -> bool + Send + Sync + 'static {
+    move || kyokai_reachable(crate::input::kyokai_input(), &access, &ai)
+}
+
 /// The displays message for a source, when there is a choice and it shows
 /// one of them.
 fn shown(displays: &[video::Display], s: &video::Source) -> Option<Message> {
@@ -803,6 +815,9 @@ struct Entry {
     /// Removed from the interface's list (Home's Remove): left out of the
     /// status, and dropped once it ends.
     removed: bool,
+    /// Asked to end from this side (`close` and its kin): a host session's
+    /// resume token no longer resumes it, even before it has ended.
+    closing: bool,
     /// Controller side of a tunnel: the GUI's ends, and the session's,
     /// which it takes once connected.
     tunnel: Option<crate::tunnel::Ends>,
@@ -1045,6 +1060,9 @@ pub struct Remember {
 #[derive(Default)]
 pub struct Sessions {
     inner: Mutex<(u64, Vec<Entry>)>,
+    /// Told whenever an entry changes, comes or goes (`update`, `open`,
+    /// `forget`, `remove_host`), for `wait`.
+    changed: Condvar,
     /// Incoming connections not yet finished with their handshake and login.
     incoming: AtomicUsize,
 }
@@ -1102,10 +1120,13 @@ impl Sessions {
             remember: Remember::default(),
             address: String::new(),
             removed: false,
+            closing: false,
             tunnel: None,
             wire: Arc::default(),
             since: 0,
         });
+        drop(s);
+        self.changed.notify_all();
         (id, stop)
     }
 
@@ -1117,7 +1138,10 @@ impl Sessions {
         let i =
             s.1.iter()
                 .position(|e| e.id == id && matches!(e.state, State::Closed | State::Failed))?;
-        Some(s.1.remove(i).failure)
+        let failure = s.1.remove(i).failure;
+        drop(s);
+        self.changed.notify_all();
+        Some(failure)
     }
 
     /// The devices watching this host's status, for the status.
@@ -1175,30 +1199,37 @@ impl Sessions {
                 s.1.remove(i);
             }
         }
+        drop(s);
+        self.changed.notify_all();
     }
 
     /// Waits until a session is connected or has ended, at most `wait`
     /// (`tunnel.wait`; called outside any runtime).
     /// Returns: `{state, failure}` as it then is, `connecting` or
     /// `confirming` when the wait ran out.
+    /// Notes: sleeps until an entry changes, comes or goes, never polls; a
+    /// waiter whose entry went away returns at once.
     pub fn wait(&self, id: u64, wait: Duration) -> Value {
         let until = Instant::now() + wait;
+        let Ok(mut s) = self.inner.lock() else {
+            return json!({"state": State::Closed});
+        };
         loop {
-            let now = self.inner.lock().ok().and_then(|s| {
+            let Some((state, failure)) =
                 s.1.iter()
                     .find(|e| e.id == id)
                     .map(|e| (e.state, e.failure))
-            });
-            match now {
-                None => return json!({"state": State::Closed}),
-                Some((state, failure))
-                    if !matches!(state, State::Connecting | State::Confirming)
-                        || Instant::now() >= until =>
-                {
-                    return json!({"state": state, "failure": failure});
-                }
-                _ => std::thread::sleep(Duration::from_millis(50)),
+            else {
+                return json!({"state": State::Closed});
+            };
+            let left = until.saturating_duration_since(Instant::now());
+            if !matches!(state, State::Connecting | State::Confirming) || left.is_zero() {
+                return json!({"state": state, "failure": failure});
             }
+            s = match self.changed.wait_timeout(s, left) {
+                Ok((s, _)) => s,
+                Err(_) => return json!({"state": State::Closed}),
+            };
         }
     }
 
@@ -1304,24 +1335,34 @@ impl Sessions {
 
     /// Asks every live host session with a device to end.
     fn close_host_sessions(&self, device_id: &str) {
-        if let Ok(s) = self.inner.lock() {
-            for e in s.1.iter().filter(|e| {
+        if let Ok(mut s) = self.inner.lock() {
+            for e in s.1.iter_mut().filter(|e| {
                 e.role == Role::Host
                     && e.device_id == device_id
                     && !matches!(e.state, State::Closed | State::Failed)
             }) {
+                e.closing = true;
                 e.stop.notify_one();
             }
         }
     }
 
-    /// Asks a live session to end.
     /// Ends every session in which this device is the host.
     pub fn close_hosts(&self) {
-        let s = self.inner.lock().expect("sessions lock");
-        for e in s.1.iter().filter(|e| e.role == Role::Host) {
+        let mut s = self.inner.lock().expect("sessions lock");
+        for e in s.1.iter_mut().filter(|e| e.role == Role::Host) {
+            e.closing = true;
             e.stop.notify_one();
         }
+    }
+
+    /// Whether this side asked a session to end (`Entry::closing`).
+    /// Notes: a session that ended so also lost its resume tokens
+    /// (`end_host`); this covers the time until it has ended.
+    fn closing(&self, id: u64) -> bool {
+        self.inner
+            .lock()
+            .is_ok_and(|s| s.1.iter().any(|e| e.id == id && e.closing))
     }
 
     /// Ends this device's controller sessions (a GUI that quit or went
@@ -1336,11 +1377,12 @@ impl Sessions {
     /// Ends every session, each with a goodbye to its peer, so the other
     /// device ends it at once instead of waiting for the connection to die.
     pub fn close_all(&self) {
-        let s = self.inner.lock().expect("sessions lock");
+        let mut s = self.inner.lock().expect("sessions lock");
         for e in
-            s.1.iter()
+            s.1.iter_mut()
                 .filter(|e| !matches!(e.state, State::Closed | State::Failed))
         {
+            e.closing = true;
             e.stop.notify_one();
         }
     }
@@ -1351,9 +1393,15 @@ impl Sessions {
         s.1.iter().any(|e| e.state == State::Connected)
     }
 
+    /// Asks a live session to end (the person's Disconnect); a host
+    /// session so ended is never resumed.
     pub fn close(&self, id: u64) -> Result<(), String> {
-        let s = self.inner.lock().map_err(|_| "sessions lock poisoned")?;
-        let e = s.1.iter().find(|e| e.id == id).ok_or("no such session")?;
+        let mut s = self.inner.lock().map_err(|_| "sessions lock poisoned")?;
+        let e =
+            s.1.iter_mut()
+                .find(|e| e.id == id)
+                .ok_or("no such session")?;
+        e.closing = true;
         e.stop.notify_one();
         Ok(())
     }
@@ -1374,6 +1422,8 @@ impl Sessions {
             e.removed = true;
             e.stop.notify_one();
         }
+        drop(s);
+        self.changed.notify_all();
     }
 
     /// The sessions, for the status (never a secret).
@@ -1473,16 +1523,35 @@ pub(crate) async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<Vec<u8
     Ok(frame)
 }
 
+/// Writes one frame: its length and its bytes in a single write, so they
+/// leave together.
+/// Notes: copies the frame once; a running session's writer seals in place
+/// instead (`write_sealed`).
 pub(crate) async fn write_frame<W: AsyncWrite + Unpin>(
     w: &mut W,
     frame: &[u8],
 ) -> Result<(), Failure> {
     let len = u16::try_from(frame.len()).map_err(|_| Failure::Broken)?;
-    w.write_u16(len).await?;
-    w.write_all(frame).await?;
+    let mut whole = Vec::with_capacity(2 + frame.len());
+    whole.extend_from_slice(&len.to_be_bytes());
+    whole.extend_from_slice(frame);
+    w.write_all(&whole).await?;
     // No flush: EasyTier's TCP flush waits until the peer acknowledged
     // everything sent, which would allow one message per round trip. The
     // bytes leave as soon as they are written.
+    Ok(())
+}
+
+/// Writes one frame whose `n` bytes were sealed at `buf[2..]`, its length
+/// put in front, in a single write and with no copy.
+async fn write_sealed<W: AsyncWrite + Unpin>(
+    w: &mut W,
+    buf: &mut [u8],
+    n: usize,
+) -> Result<(), Failure> {
+    let len = u16::try_from(n).map_err(|_| Failure::Broken)?;
+    buf[..2].copy_from_slice(&len.to_be_bytes());
+    w.write_all(&buf[..2 + n]).await?;
     Ok(())
 }
 
@@ -1719,19 +1788,32 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             // The controller's AI task does not go on without it (as after
             // any drop, a resumed one too).
             ctx.ai.controller_left(&device_id);
-            ctx.sessions.end(id, failure);
+            end_host(&ctx, id, failure);
         }
         Err(f) => {
             // A refusal reaches the controller before the connection closes.
             if matches!(f, Failure::Refused(_)) {
                 ch.linger().await;
             }
-            ctx.sessions.end(id, Some(f));
+            end_host(&ctx, id, Some(f));
             if kind.hidden() {
                 ctx.sessions.forget(id);
             }
         }
     }
+}
+
+/// Ends a host session and settles its resume tokens: a dropped connection
+/// may be resumed for RESUME_WINDOW from now; any other end (a goodbye,
+/// the host's user or a revocation closing it, a resume superseding it)
+/// leaves nothing to resume.
+fn end_host(ctx: &Ctx, id: u64, failure: Option<Failure>) {
+    if failure == Some(Failure::Broken) && !ctx.sessions.closing(id) {
+        ctx.access.resume_dropped(id);
+    } else {
+        ctx.access.drop_resumes(id);
+    }
+    ctx.sessions.end(id, failure);
 }
 
 /// What a login binds to: the handshake hash after the last handshake
@@ -1801,10 +1883,12 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     // Resuming a dropped session: same key, same permissions, no new login.
     // The session it resumes ends now if this host has not noticed the drop
     // yet: it would hold its capture and the hardware encoder until its idle
-    // limit. A resume takes that session's place, so it is never busy.
+    // limit. A resume takes that session's place, so it is never busy. A
+    // session this host is closing is not resumed.
     if let Some(token) = &client.resume
         && kind == Kind::Desktop
         && let Some((granted, old)) = ctx.access.take_resume(token, &key_b64)
+        && !ctx.sessions.closing(old)
     {
         ctx.sessions.supersede(old);
         let resume = ctx.access.issue_resume(&key_b64, &granted, id);
@@ -1887,8 +1971,21 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
                 .map_err(|_| Failure::Broken)?
                 .respond(requests, &host_key, hs.context)
                 .map_err(|_| Failure::Broken)?;
+            // The challenge already tells the controller whether its
+            // password opens a slot: once it was sent, anything but a slot
+            // opened is a failed login, a connection that breaks or a step
+            // that runs out too (regression: those returned uncounted, so
+            // guesses went around every limit). A challenge that could not
+            // be sent told nothing, so it counts for nothing (regression:
+            // it counted, and a flaky link got an address blocked).
             step(ch.send(&Challenge { responses })).await?;
-            let login: Login = step(ch.recv()).await?;
+            let login = match step(ch.recv::<Login>()).await {
+                Ok(login) => login,
+                Err(f) => {
+                    ctx.access.failed(from);
+                    return Err(f);
+                }
+            };
             let opened = match (login.slot, login.finalization) {
                 (Some(slot), Some(fin)) if half.finish(slot, &fin, &host_key, hs.context) => {
                     Some(slot)
@@ -2213,6 +2310,10 @@ pub enum Outcome {
     /// The device on this route has another key than the dialed Device ID
     /// derives (a squatter): try the next route.
     WrongDevice,
+    /// The device on this route proved the dialed Device ID with another
+    /// key than the one pinned for it: try the next route (the pinned host
+    /// may answer there); when none does, the session fails `KeyChanged`.
+    KeyChanged,
     /// Finished; the session's entry records how.
     Done,
     /// The connection dropped (or a resume attempt could not get through):
@@ -2223,6 +2324,19 @@ pub enum Outcome {
         token: zeroize::Zeroizing<String>,
         connected: bool,
     },
+}
+
+/// Whether a controller takes a host's accepting verdict.
+/// Inputs: whether it asked without a password, whether the host's OPAQUE
+/// response opened with its password, and whether the host's key was
+/// pinned before (it matched, or the login stopped at KeyChanged).
+/// Notes: with a password typed, the password is what authenticates a host
+/// not pinned yet, so only a verdict after a response that opened counts.
+/// A key login proves nothing about the host: otherwise a network member
+/// whose key derives the same Device ID (about 30 bits, within reach of
+/// grinding) could accept the login, be pinned and impersonate the host.
+fn takes_verdict(asks: bool, host_proved: bool, pinned: bool) -> bool {
+    asks || host_proved || pinned
 }
 
 /// Reports whether a peer's unauthenticated version string looks like a
@@ -2317,7 +2431,14 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         };
         // Sign-in keys, only to a host that takes them and never on a
         // resume: the one this host admitted last, else every Ed25519 key.
-        let keys = if peer.has(feature::KEY_LOGIN) && resume.is_none() {
+        // With a password typed, only to a host already pinned: a key login
+        // proves nothing about the host, so to a host not pinned yet the
+        // password must (`takes_verdict`).
+        let pinned = ctx.access.known_host(&device_id).is_some();
+        let keys = if peer.has(feature::KEY_LOGIN)
+            && resume.is_none()
+            && (password.is_empty() || pinned)
+        {
             crate::keys::proofs(
                 ctx.access.secrets(),
                 ctx.access.saved(&device_id).key.as_deref(),
@@ -2351,6 +2472,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             nanokvm: kind == Kind::Nanokvm,
         };
         let offered_keys = !hello.keys.is_empty();
+        let asked = hello.want.clone();
         let payload = serde_json::to_vec(&hello).map_err(|_| Failure::Broken)?;
         let n = hs.write_message(&payload, &mut buf)?;
         step(write_frame(&mut stream, &buf[..n])).await?;
@@ -2375,13 +2497,24 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     .unwrap_or(Err(Failure::Broken))?
             }
         };
+        // Whether the host proved it holds this password's slot (OPAQUE
+        // authenticates both ends).
+        let mut host_proved = false;
         let verdict: Verdict = if first.get("accepted").is_some() {
             serde_json::from_value(first).map_err(|_| Failure::Broken)?
         } else if let Some(half) = half {
             let challenge: Challenge =
                 serde_json::from_value(first).map_err(|_| Failure::Broken)?;
-            // 5: login
-            let login = match half.finish(&password, &challenge.responses, &host_key, &context) {
+            // 5: login. Opening the responses runs Argon2id for each slot:
+            // off the network's threads.
+            let (pw, ctx_bytes) = (password.clone(), context.clone());
+            let opened = tokio::task::spawn_blocking(move || {
+                half.finish(&pw, &challenge.responses, &host_key, &ctx_bytes)
+            })
+            .await
+            .map_err(|_| Failure::Broken)?;
+            host_proved = opened.is_some();
+            let login = match opened {
                 Some((slot, fin)) => Login {
                     slot: Some(slot),
                     finalization: Some(fin),
@@ -2405,6 +2538,15 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         if !verdict.accepted {
             return Err(Failure::Refused(verdict.reason.unwrap_or(Refusal::Denied)));
         }
+        if !takes_verdict(password.is_empty(), host_proved, pinned) {
+            return Err(Failure::WrongDevice);
+        }
+        // Never more than was asked for, whatever the host says.
+        let granted: Vec<Permission> = verdict
+            .granted
+            .into_iter()
+            .filter(|p| asked.contains(p))
+            .collect();
         let peer = verdict.about.unwrap_or_default().clean();
         let mut address = String::new();
         ctx.sessions.update(id, |e| address.clone_from(&e.address));
@@ -2447,7 +2589,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             let _ = ctx.access.save_password(&device_id, &password);
         }
         ctx.sessions.update(id, |e| e.peer = peer);
-        Ok((ch, verdict.granted, verdict.resume, kind))
+        Ok((ch, granted, verdict.resume, kind))
     };
     // A session closed here while it signs in or waits for the host's
     // answer ends at once (regression: a close took effect only once the
@@ -2522,6 +2664,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             }
         }
         Err(Failure::WrongDevice) => Outcome::WrongDevice,
+        Err(Failure::KeyChanged) => Outcome::KeyChanged,
         // A resume that could not get through keeps its (unused) token.
         Err(Failure::Broken) if resume.is_some() => Outcome::Lost {
             token: resume.expect("checked"),
@@ -2682,7 +2825,9 @@ struct Shared {
 /// Opens this side's clipboard when the session may share text or files.
 fn shared(ctx: &Ctx, granted: &[Permission]) -> Option<Shared> {
     let text = granted.contains(&Permission::Clipboard);
-    let files = granted.contains(&Permission::Files);
+    // Files only where this process may act on them (never as root on
+    // macOS or Linux): the session then has none, as without the grant.
+    let files = granted.contains(&Permission::Files) && crate::files::available();
     let board = (text || files).then(|| (ctx.clipboard)()).flatten()?;
     Some(Shared { board, text, files })
 }
@@ -2786,6 +2931,18 @@ fn keep_choice(choices: &Mutex<Choices>, m: &Value) {
     }
 }
 
+/// Names why a viewer shows no picture, as the host logs it and shows it
+/// on its placeholder: one of the values the protocol knows, or `other`
+/// (the peer's own text, up to MAX_MESSAGE, never reaches the log).
+fn picture_why(why: &str) -> &'static str {
+    match why {
+        "waiting" => "waiting",
+        "decode-error" => "decode-error",
+        "stale" => "stale",
+        _ => "other",
+    }
+}
+
 /// Encrypts one plaintext and writes it as a frame (the tests' peers; a
 /// session sends through its writer, `Out`).
 #[cfg(test)]
@@ -2803,8 +2960,22 @@ async fn seal<W: AsyncWrite + Unpin>(
 /// plaintexts before it were written.
 enum Outgoing {
     Plain(Vec<u8>),
+    /// A plaintext queued at most once at a time: its flag is cleared as
+    /// it is written (`Out::once`).
+    Once(Arc<AtomicBool>, Vec<u8>),
+    /// Whatever its slot holds when the writer gets to it, the newest of
+    /// its kind (`Out::latest`).
+    Latest(Arc<Newest>),
     Flushed(tokio::sync::oneshot::Sender<()>),
 }
+
+/// The newest plaintext of a kind only the newest of which matters (a frame
+/// acknowledgement, the cursor's place), while it waits for the writer.
+type Newest = Mutex<Option<Vec<u8>>>;
+
+/// What an urgent plaintext counts against URGENT_BYTES besides its bytes,
+/// so a flood of tiny ones is bounded too.
+const URGENT_ENTRY: usize = 64;
 
 /// A running session's way out (doc/en-us/protocol.md, "Session"): the
 /// session hands its plaintexts to a writer of their own and never waits
@@ -2817,16 +2988,38 @@ enum Outgoing {
 /// each other up until the session broke).
 struct Out {
     urgent: mpsc::UnboundedSender<Outgoing>,
+    /// What the urgent plaintexts waiting for the writer count against
+    /// URGENT_BYTES (their bytes and URGENT_ENTRY each).
+    urgent_bytes: Arc<AtomicUsize>,
     video: mpsc::UnboundedSender<Vec<u8>>,
     /// The video and file plaintexts waiting for the writer, and word as
     /// they go (`bulk_room`).
     queued: Arc<AtomicUsize>,
     room: Arc<Notify>,
+    /// Whether a pong, or an echo of the host's delay probe, waits for the
+    /// writer: the peer's pings and probes are answered once per write,
+    /// however many come.
+    pong: Arc<AtomicBool>,
+    echo: Arc<AtomicBool>,
+    /// The newest frame acknowledgement (controller) and cursor place
+    /// (host) waiting for the writer: one place in the queue each, however
+    /// many frames or pointer moves come while the path stalls.
+    received: Arc<Newest>,
+    cursor: Arc<Newest>,
 }
 
 /// How many video or file plaintexts may wait for the writer before a file
 /// copy waits for room: a copy never fills memory, nor holds up the video.
 const BULK_ROOM: usize = 8;
+/// How much urgent data may wait for the writer: room for a few messages of
+/// MAX_MESSAGE in parts and far more input and sound than STEP_TIMEOUT
+/// brings (frame acknowledgements, the cursor, pongs and echoes take one
+/// place each), so only a peer that floods on purpose fills it before a
+/// stalled write breaks the session anyway (regression: a bound of 1024
+/// plaintexts, one per frame acknowledgement and input event, broke a
+/// healthy session after a stall of about 5 s; before that the queue had
+/// no bound, and a peer that sent pings and never read let it fill memory).
+const URGENT_BYTES: usize = 32 << 20;
 
 impl Out {
     /// Starts the writer on `w`, encrypting with the session's `noise`.
@@ -2838,15 +3031,24 @@ impl Out {
         mut buf: Vec<u8>,
     ) -> (Out, tokio::task::JoinHandle<()>) {
         let (urgent, mut urgent_rx) = mpsc::unbounded_channel();
+        let urgent_bytes = Arc::new(AtomicUsize::new(0));
+        let waiting = urgent_bytes.clone();
         let (video, mut video_rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let queued = Arc::new(AtomicUsize::new(0));
         let room = Arc::new(Notify::new());
         let (left, freed) = (queued.clone(), room.clone());
+        // The length's two bytes, then a whole sealed frame.
+        buf.resize(2 + MAX_FRAME, 0);
         let task = tokio::spawn(async move {
             loop {
                 let next = tokio::select! {
                     biased;
-                    Some(o) = urgent_rx.recv() => o,
+                    Some(o) = urgent_rx.recv() => {
+                        if let Outgoing::Plain(p) = &o {
+                            waiting.fetch_sub(p.len() + URGENT_ENTRY, Ordering::Relaxed);
+                        }
+                        o
+                    }
                     Some(v) = video_rx.recv() => {
                         left.fetch_sub(1, Ordering::Relaxed);
                         freed.notify_one();
@@ -2854,42 +3056,96 @@ impl Out {
                     }
                     else => return,
                 };
-                match next {
-                    Outgoing::Plain(plain) => {
-                        let sealed = noise
-                            .lock()
-                            .map_err(|_| ())
-                            .and_then(|mut n| n.write_message(&plain, &mut buf).map_err(|_| ()));
-                        let Ok(n) = sealed else {
-                            return;
+                let plain = match next {
+                    Outgoing::Plain(plain) => plain,
+                    Outgoing::Once(flag, plain) => {
+                        flag.store(false, Ordering::Relaxed);
+                        plain
+                    }
+                    Outgoing::Latest(slot) => {
+                        let Some(plain) = slot.lock().ok().and_then(|mut s| s.take()) else {
+                            continue;
                         };
-                        if step(write_frame(&mut w, &buf[..n])).await.is_err() {
-                            return;
-                        }
+                        plain
                     }
                     Outgoing::Flushed(done) => {
                         let _ = w.flush().await;
                         let _ = done.send(());
+                        continue;
                     }
+                };
+                // Sealed after room for the length (`write_sealed`).
+                let sealed = noise
+                    .lock()
+                    .map_err(|_| ())
+                    .and_then(|mut n| n.write_message(&plain, &mut buf[2..]).map_err(|_| ()));
+                let Ok(n) = sealed else {
+                    return;
+                };
+                if step(write_sealed(&mut w, &mut buf, n)).await.is_err() {
+                    return;
                 }
             }
         });
         (
             Out {
                 urgent,
+                urgent_bytes,
                 video,
                 queued,
                 room,
+                pong: Arc::default(),
+                echo: Arc::default(),
+                received: Arc::default(),
+                cursor: Arc::default(),
             },
             task,
         )
     }
 
     /// Queues an urgent plaintext.
-    /// Returns: Broken once the writer ended.
+    /// Returns: Broken once the writer ended, or when URGENT_BYTES already
+    /// wait (the peer reads nothing).
     fn plain(&self, plain: Vec<u8>) -> Result<(), Failure> {
+        let cost = plain.len() + URGENT_ENTRY;
+        if self.urgent_bytes.fetch_add(cost, Ordering::Relaxed) + cost > URGENT_BYTES {
+            self.urgent_bytes.fetch_sub(cost, Ordering::Relaxed);
+            return Err(Failure::Broken);
+        }
         self.urgent
             .send(Outgoing::Plain(plain))
+            .map_err(|_| Failure::Broken)
+    }
+
+    /// Queues an urgent message of which only the newest matters (`slot`:
+    /// `received` or `cursor`): it replaces the one still waiting, which
+    /// keeps its place in the queue.
+    /// Returns: Broken once the writer ended.
+    fn latest(&self, slot: &Arc<Newest>, msg: &Message) -> Result<(), Failure> {
+        let plain = serde_json::to_vec(msg).map_err(|_| Failure::Broken)?;
+        let waited = slot
+            .lock()
+            .map_err(|_| Failure::Broken)?
+            .replace(plain)
+            .is_some();
+        if waited {
+            return Ok(());
+        }
+        self.urgent
+            .send(Outgoing::Latest(slot.clone()))
+            .map_err(|_| Failure::Broken)
+    }
+
+    /// Queues an urgent message unless the one queued under `flag` has not
+    /// been written yet (a pong, a probe's echo): answers to a flood of
+    /// pings take one place in the queue.
+    fn once(&self, flag: &Arc<AtomicBool>, msg: &Message) -> Result<(), Failure> {
+        if flag.swap(true, Ordering::Relaxed) {
+            return Ok(());
+        }
+        let plain = serde_json::to_vec(msg).map_err(|_| Failure::Broken)?;
+        self.urgent
+            .send(Outgoing::Once(flag.clone(), plain))
             .map_err(|_| Failure::Broken)
     }
 
@@ -3095,18 +3351,35 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let auto: Option<String> = (local && raw).then(|| crate::kvm::RAW.into());
     #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     let auto: Option<String> = None;
-    // The host's input service; dropping it releases what it holds.
+    // The host's input service (dropping it releases what it holds), and
+    // the displays the controller may choose from, with the one shown.
+    // Both may wait on the system (Wayland's portal): off the network's
+    // threads.
     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-    let mut injector = match side {
-        Side::Host { input: true, .. } if !wired => Some(crate::input::Injector::default()),
-        _ => None,
-    };
-    // The displays the controller may choose from, with the one shown.
-    let mut displays = if wants_video && !wired {
-        video::displays()
-    } else {
-        Vec::new()
-    };
+    let injects = matches!(side, Side::Host { input: true, .. }) && !wired;
+    let lists = wants_video && !wired;
+    #[cfg_attr(
+        not(any(windows, target_os = "macos", target_os = "linux")),
+        allow(unused_variables)
+    )]
+    let (injector, mut displays) = tokio::task::spawn_blocking(move || {
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+        let injector = injects.then(crate::input::Injector::default);
+        #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+        let injector = ();
+        let displays = if lists { video::displays() } else { Vec::new() };
+        (injector, displays)
+    })
+    .await
+    .map_err(|_| Failure::Broken)?;
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    let mut injector = injector;
+    // On X11 the injector's thread asks again, just before each event,
+    // whether a person's input may reach Kyokai's windows.
+    #[cfg(target_os = "linux")]
+    if let (Some(inj), Side::Host { ai, access, .. }) = (injector.as_mut(), &side) {
+        inj.set_gate(Arc::new(kyokai_gate(access.clone(), ai.ai.clone())));
+    }
     // What this Mac lets the session do, for the log (the helper's agent
     // has grants of its own).
     #[cfg(target_os = "macos")]
@@ -3219,8 +3492,14 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
                 _ if !text_ok => None,
                 crate::clipboard::Item::Text(text) => Some(Message::Clipboard { text }),
+                // Encoding takes a while for a large image: off the
+                // network's threads.
                 crate::clipboard::Item::Image(img) => {
-                    crate::clipboard::to_png(&img).map(|png| Message::ClipboardImage { png })
+                    tokio::task::spawn_blocking(move || crate::clipboard::to_png(&img))
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|png| Message::ClipboardImage { png })
                 }
                 crate::clipboard::Item::Png(png) => Some(Message::ClipboardImage { png }),
             };
@@ -3582,7 +3861,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     let now = (((x * 4096.0) as i32, (y * 4096.0) as i32), visible);
                     if pointer_sent != Some(now) {
                         pointer_sent = Some(now);
-                        out.json(&Message::Cursor { x, y, visible })?;
+                        out.latest(&out.cursor, &Message::Cursor { x, y, visible })?;
                     }
                 }
             }
@@ -3825,7 +4104,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 let plain = &plain[..n];
                 if plain.first() == Some(&media::CHUNK_TAG) {
                     if let Some(frame) = media::last_chunk(plain) {
-                        out.json(&Message::Received { frame })?;
+                        out.latest(&out.received, &Message::Received { frame })?;
                     }
                     if let (Some(q), Some(f)) = (&queue, reassembler.push(plain)) {
                         let mut packet = Vec::with_capacity(10 + f.data.len());
@@ -3869,7 +4148,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     std::borrow::Cow::Borrowed(plain)
                 };
                 match serde_json::from_slice::<Message>(&whole).map_err(|_| Failure::Broken)? {
-                    Message::Ping => out.json(&Message::Pong)?,
+                    Message::Ping => out.once(&out.pong, &Message::Pong)?,
                     // A newer peer's message: ignored, never the end of the session.
                     Message::Unknown => {}
                     Message::Pong => {}
@@ -3937,7 +4216,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     Message::Audio { .. } => {}
                     Message::TestDelay { reply: false } => {
-                        out.json(&Message::TestDelay { reply: true })?;
+                        out.once(&out.echo, &Message::TestDelay { reply: true })?;
                     }
                     Message::TestDelay { reply: true } => {
                         if let Some(t) = probe_sent.take() {
@@ -3995,10 +4274,19 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             && clip_use.share
                             && clip_use.front
                             && crate::agent::link().is_none()
-                            && let Some(img) = crate::clipboard::from_png(&png)
                         {
-                            clip_history(&queue, "host", Crossed::Png(&png));
-                            let _ = c.writes.send(crate::clipboard::Item::Image(img));
+                            // Decoding takes a while for a large image: off
+                            // the network's threads.
+                            let (png, img) = tokio::task::spawn_blocking(move || {
+                                let img = crate::clipboard::from_png(&png);
+                                (png, img)
+                            })
+                            .await
+                            .map_err(|_| Failure::Broken)?;
+                            if let Some(img) = img {
+                                clip_history(&queue, "host", Crossed::Png(&png));
+                                let _ = c.writes.send(crate::clipboard::Item::Image(img));
+                            }
                         }
                     }
                     Message::ClipboardFiles { id, files } => {
@@ -4170,7 +4458,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             && u128::from(for_ms) >= VIEWER_WAIT.as_millis()
                             && stepped_at.is_none_or(|t| t.elapsed() >= STEP_GRACE)
                         {
-                            trouble!(format!("the viewer shows no picture ({why})"));
+                            trouble!(format!("the viewer shows no picture ({})", picture_why(&why)));
                         }
                     }
                     // Input reaches the host only with control-input; a
@@ -5152,11 +5440,12 @@ mod tests {
             zeroize::Zeroizing::new(password.to_owned()),
         );
         tokio::spawn(async move {
-            // As the dialer does: a wrong device key ends the attempt here.
-            if let Outcome::WrongDevice =
-                connect(c.clone(), id, stop, a, dialed_owned, password, want, None).await
-            {
-                give_up(&c, id, Failure::WrongDevice);
+            // As the dialer does: a wrong or changed device key ends the
+            // attempt here.
+            match connect(c.clone(), id, stop, a, dialed_owned, password, want, None).await {
+                Outcome::WrongDevice => give_up(&c, id, Failure::WrongDevice),
+                Outcome::KeyChanged => give_up(&c, id, Failure::KeyChanged),
+                _ => {}
             }
         });
         for _ in 0..200 {
@@ -7199,7 +7488,7 @@ mod login_tests {
 
     /// Gives the controller an Ed25519 sign-in key from `seed` and lets it
     /// connect to the host under `name`. Returns: the controller's key id.
-    fn pair(host: &Ctx, controller: &Ctx, seed: [u8; 32], name: &str) -> String {
+    pub(super) fn pair(host: &Ctx, controller: &Ctx, seed: [u8; 32], name: &str) -> String {
         let kept = crate::keys::add_login(controller.access.secrets(), "", &STANDARD.encode(seed))
             .unwrap();
         let line = kept["public"].as_str().unwrap();
@@ -7312,13 +7601,22 @@ mod login_tests {
         );
     }
 
-    /// Plays a host announcing `features` up to the controller's hello.
+    /// Plays a host announcing `features` up to the controller's hello,
+    /// which dials it with a password; `pinned`: the controller pinned the
+    /// host's key before.
     /// Returns: the hello as it came, as JSON.
-    async fn hello_to(features: &[&str]) -> Value {
+    async fn hello_to(features: &[&str], pinned: bool) -> Value {
         let host = device("1.0.0");
         let controller = device("1.0.1");
         pair(&host, &controller, [13; 32], "laptop");
         let dialed = host.identity.device_id();
+        if pinned {
+            let key = STANDARD.encode(host.identity.public_key());
+            controller
+                .access
+                .pin_host(&dialed, &key, &About::default(), "", &[])
+                .unwrap();
+        }
         let (a, mut b) = tokio::io::duplex(1 << 16);
         let (id, stop) = begin(&controller, &dialed, Remember::default());
         let password = zeroize::Zeroizing::new("k7mq2xpa".to_owned());
@@ -7359,11 +7657,22 @@ mod login_tests {
     /// gets the hello it knows.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn keys_go_only_to_hosts_that_take_them() {
-        let old = hello_to(&[]).await;
+        let old = hello_to(&[], true).await;
         assert!(old.get("keys").is_none(), "{old}");
-        let new = hello_to(&[feature::KEY_LOGIN]).await;
+        let new = hello_to(&[feature::KEY_LOGIN], true).await;
         assert_eq!(new["keys"].as_array().map(Vec::len), Some(1), "{new}");
         assert!(new["about"].is_object(), "a key may admit before any login");
+    }
+
+    /// Regression: with a password typed, keys went to a host not pinned
+    /// yet, and the verdict of a member who ground the Device ID was taken
+    /// "via key" and pinned. Now only the password authenticates such a
+    /// host, so no key goes to it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn with_a_password_keys_go_only_to_a_pinned_host() {
+        let unpinned = hello_to(&[feature::KEY_LOGIN], false).await;
+        assert!(unpinned.get("keys").is_none(), "{unpinned}");
+        assert!(unpinned["about"].is_null(), "{unpinned}");
     }
 }
 
@@ -8481,5 +8790,509 @@ mod route_tests {
         let fixed = connect(&net, &controller, &id, route);
         assert_eq!(fixed["state"], "failed", "{fixed}");
         assert_eq!(fixed["failure"], "wrong-device");
+    }
+}
+
+#[cfg(test)]
+mod hardening_tests {
+    use super::tests::{device, session};
+    use super::*;
+    use tokio::io::duplex;
+
+    /// Which way a fake host (a network member whose key derives the
+    /// dialed Device ID, but who knows no password) answers a login.
+    #[derive(Clone, Copy)]
+    enum Fake {
+        /// An accepting verdict at once, as frame 4.
+        AtOnce,
+        /// A challenge that opens with no password, then an acceptance.
+        Garbage,
+        /// A real challenge from the host's slots, then an acceptance that
+        /// grants more than was asked for.
+        Real,
+    }
+
+    /// Answers one controller as `host` would, but accepts whatever comes
+    /// (`Fake`), granting more than any controller asks for.
+    async fn fake_host(host: Arc<Ctx>, mut stream: DuplexStream, mode: Fake) {
+        let (mut hs, my_static) = noise(false).unwrap();
+        let mut buf = vec![0u8; MAX_FRAME];
+        let frame = read_frame(&mut stream).await.unwrap();
+        hs.read_message(&frame, &mut buf).unwrap();
+        let hello = HostHello {
+            protocol: PROTOCOL,
+            version: "1.0.0".into(),
+            source: SOURCE_URL.into(),
+            device_key: STANDARD.encode(host.identity.public_key()),
+            signature: sign_static(&host.identity, &my_static),
+            features: our_features(),
+            name: None,
+        };
+        let n = hs
+            .write_message(&serde_json::to_vec(&hello).unwrap(), &mut buf)
+            .unwrap();
+        write_frame(&mut stream, &buf[..n]).await.unwrap();
+        let frame = read_frame(&mut stream).await.unwrap();
+        let n = hs.read_message(&frame, &mut buf).unwrap();
+        let client: ClientHello = serde_json::from_slice(&buf[..n]).unwrap();
+        let context = hs.get_handshake_hash().to_vec();
+        let mut ch = Channel {
+            stream,
+            noise: hs.into_transport_mode().unwrap(),
+            buf,
+        };
+        let challenge = match mode {
+            Fake::AtOnce => None,
+            Fake::Garbage => Some(Challenge {
+                responses: [STANDARD.encode([7u8; 64]), STANDARD.encode([7u8; 64])],
+            }),
+            Fake::Real => {
+                let (responses, _) = host
+                    .access
+                    .slots
+                    .lock()
+                    .unwrap()
+                    .respond(
+                        client.requests.as_ref().unwrap(),
+                        &host.identity.public_key(),
+                        &context,
+                    )
+                    .unwrap();
+                Some(Challenge { responses })
+            }
+        };
+        if let Some(c) = challenge {
+            ch.send(&c).await.unwrap();
+            let _: Login = ch.recv().await.unwrap();
+        }
+        ch.send(&Verdict {
+            accepted: true,
+            granted: vec![
+                Permission::ViewScreen,
+                Permission::ControlInput,
+                Permission::RunAiTask,
+            ],
+            reason: None,
+            resume: None,
+            about: None,
+            via: Some(Via::Password),
+            key: None,
+        })
+        .await
+        .unwrap();
+        // Stays until the controller leaves.
+        while ch.recv::<Value>().await.is_ok() {}
+    }
+
+    #[test]
+    fn a_controller_with_a_password_takes_only_a_verdict_the_password_proved() {
+        // (asks without a password, host proved, host pinned) -> takes it.
+        // Offered keys are no reason: they go to an unpinned host only
+        // without a password, and prove nothing about the host.
+        let cases = [
+            ((false, false, false), false),
+            ((false, true, false), true),
+            ((false, false, true), true),
+            ((true, false, false), true),
+        ];
+        for ((asks, proved, pinned), want) in cases {
+            assert_eq!(
+                takes_verdict(asks, proved, pinned),
+                want,
+                "{asks} {proved} {pinned}"
+            );
+        }
+    }
+
+    /// Regression (X11): whether queued input may reach Kyokai's windows
+    /// was decided when it was queued; the gate the injector's thread asks
+    /// reads the state each time.
+    #[test]
+    fn the_kyokai_gate_reads_the_state_when_asked() {
+        let host = device("1.0.0");
+        let gate = kyokai_gate(host.access.clone(), host.ai.clone());
+        assert_eq!(
+            gate(),
+            kyokai_reachable(crate::input::kyokai_input(), &host.access, &host.ai)
+        );
+        assert!(kyokai_reachable(true, &host.access, &host.ai));
+        let _asked = host
+            .access
+            .ask(
+                "key-B",
+                "100000002",
+                vec![Permission::ViewScreen],
+                &About::default(),
+                false,
+                None,
+                None,
+            )
+            .unwrap();
+        assert!(!kyokai_reachable(true, &host.access, &host.ai));
+        assert!(!gate(), "a connection request appeared after it was made");
+    }
+
+    /// Regression: a host that accepted at once, or after a response the
+    /// password did not open, was taken, pinned and operated: anyone whose
+    /// key derives the Device ID could pose as a host not yet pinned. Also
+    /// when the controller holds a sign-in key: it was offered, and the
+    /// impostor's verdict taken "via key".
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_host_that_did_not_prove_the_password_is_not_taken() {
+        let modes = [Fake::AtOnce, Fake::Garbage];
+        for (mode, keyed) in modes.iter().flat_map(|&m| [(m, false), (m, true)]) {
+            let impostor = device("1.0.0");
+            let controller = device("1.0.1");
+            if keyed {
+                super::login_tests::pair(&impostor, &controller, [21; 32], "laptop");
+            }
+            let dialed = impostor.identity.device_id();
+            let (a, b) = duplex(1 << 16);
+            tokio::spawn(fake_host(impostor.clone(), b, mode));
+            let (id, stop) = begin(&controller, &dialed, Remember::default());
+            let outcome = tokio::time::timeout(
+                Duration::from_secs(20),
+                connect(
+                    controller.clone(),
+                    id,
+                    stop,
+                    a,
+                    dialed.clone(),
+                    zeroize::Zeroizing::new("k7mq2xpa".into()),
+                    vec![Permission::ViewScreen],
+                    None,
+                ),
+            )
+            .await
+            .unwrap();
+            assert!(matches!(outcome, Outcome::WrongDevice), "keyed {keyed}");
+            assert_eq!(controller.access.known_host(&dialed), None, "not pinned");
+        }
+    }
+
+    /// Regression: the controller took whatever the verdict granted, even
+    /// permissions it never asked for.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_controller_holds_no_more_than_it_asked_for() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let (a, b) = duplex(1 << 16);
+        tokio::spawn(fake_host(host.clone(), b, Fake::Real));
+        let (id, stop) = begin(&controller, &dialed, Remember::default());
+        let c = controller.clone();
+        let stopper = stop.clone();
+        let running = tokio::spawn(async move {
+            connect(
+                c,
+                id,
+                stopper,
+                a,
+                dialed,
+                zeroize::Zeroizing::new("k7mq2xpa".into()),
+                vec![Permission::ViewScreen],
+                None,
+            )
+            .await
+        });
+        let mut s = session(&controller, id);
+        for _ in 0..500 {
+            if s["state"] != "connecting" && s["state"] != "confirming" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            s = session(&controller, id);
+        }
+        assert_eq!(s["state"], "connected", "{s}");
+        assert_eq!(s["granted"], json!(["view-screen"]));
+        stop.notify_one();
+        let _ = running.await;
+    }
+
+    /// Regression: a controller that learned from the challenge that its
+    /// guess was wrong, and left (or let the step run out), was never
+    /// counted, so guessing went around every rate limit.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn leaving_after_the_challenge_counts_as_a_failed_login() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.2".parse().unwrap(),
+        };
+        for _ in 0..crate::access::FAILS_PER_ADDRESS {
+            let (c_end, mut relay_c) = duplex(1 << 16);
+            let (mut relay_h, h_end) = duplex(1 << 16);
+            let served = tokio::spawn(serve(host.clone(), h_end, from));
+            let (id, stop) = begin(&controller, &dialed, Remember::default());
+            let c = controller.clone();
+            let d = dialed.clone();
+            tokio::spawn(async move {
+                connect(
+                    c,
+                    id,
+                    stop,
+                    c_end,
+                    d,
+                    zeroize::Zeroizing::new("wrong-guess".into()),
+                    vec![Permission::ViewScreen],
+                    None,
+                )
+                .await
+            });
+            // Frames 1 to 3 pass; the challenge (frame 4) reaches the
+            // relay, which then leaves.
+            for to_host in [true, false, true] {
+                let (from_side, to_side) = if to_host {
+                    (&mut relay_c, &mut relay_h)
+                } else {
+                    (&mut relay_h, &mut relay_c)
+                };
+                let f = read_frame(from_side).await.unwrap();
+                write_frame(to_side, &f).await.unwrap();
+            }
+            let _challenge = read_frame(&mut relay_h).await.unwrap();
+            drop((relay_c, relay_h));
+            tokio::time::timeout(Duration::from_secs(20), served)
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        assert_eq!(
+            host.access.admit(from, false),
+            Err(Refusal::RateLimited),
+            "every guess counted"
+        );
+    }
+
+    /// Regression: a challenge the host could not send counted as a failed
+    /// login, though the controller learned nothing: a flaky link got a
+    /// legitimate address blocked.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_challenge_that_was_not_sent_counts_for_nothing() {
+        let host = device("1.0.0");
+        let controller = device("1.0.1");
+        host.access
+            .slots
+            .lock()
+            .unwrap()
+            .set_temporary("k7mq2xpa", &host.identity.public_key())
+            .unwrap();
+        let dialed = host.identity.device_id();
+        let from = Source {
+            network: 1,
+            ip: "10.126.126.3".parse().unwrap(),
+        };
+        for _ in 0..crate::access::FAILS_PER_ADDRESS {
+            let (c_end, mut relay_c) = duplex(1 << 16);
+            let (mut relay_h, h_end) = duplex(1 << 16);
+            let served = tokio::spawn(serve(host.clone(), h_end, from));
+            let (id, stop) = begin(&controller, &dialed, Remember::default());
+            let c = controller.clone();
+            let d = dialed.clone();
+            tokio::spawn(async move {
+                connect(
+                    c,
+                    id,
+                    stop,
+                    c_end,
+                    d,
+                    zeroize::Zeroizing::new("wrong-guess".into()),
+                    vec![Permission::ViewScreen],
+                    None,
+                )
+                .await
+            });
+            // Frames 1 to 3 pass; the link breaks before the challenge.
+            for to_host in [true, false, true] {
+                let (from_side, to_side) = if to_host {
+                    (&mut relay_c, &mut relay_h)
+                } else {
+                    (&mut relay_h, &mut relay_c)
+                };
+                let f = read_frame(from_side).await.unwrap();
+                write_frame(to_side, &f).await.unwrap();
+            }
+            drop((relay_c, relay_h));
+            tokio::time::timeout(Duration::from_secs(20), served)
+                .await
+                .unwrap()
+                .unwrap();
+        }
+        assert_eq!(host.access.admit(from, false), Ok(()), "nothing counted");
+    }
+
+    /// Regression: the host's Disconnect left the controller's resume
+    /// token valid, and a resume skips the password and every question.
+    #[test]
+    fn a_session_the_host_closed_cannot_be_resumed() {
+        let ctx = device("1.0.0");
+        let (closed, _) = ctx.sessions.open(Role::Host, "100000002");
+        let t = ctx
+            .access
+            .issue_resume("key-A", &[Permission::ViewScreen], closed);
+        ctx.sessions.close(closed).unwrap();
+        assert!(ctx.sessions.closing(closed), "refused before it has ended");
+        // Even if the closing connection then breaks.
+        end_host(&ctx, closed, Some(Failure::Broken));
+        assert_eq!(ctx.access.take_resume(&t, "key-A"), None);
+        // A connection that only dropped stays resumable.
+        let (dropped, _) = ctx.sessions.open(Role::Host, "100000002");
+        let t = ctx
+            .access
+            .issue_resume("key-A", &[Permission::ViewScreen], dropped);
+        end_host(&ctx, dropped, Some(Failure::Broken));
+        assert!(ctx.access.take_resume(&t, "key-A").is_some());
+        // A goodbye leaves nothing to resume.
+        let (bye, _) = ctx.sessions.open(Role::Host, "100000002");
+        let t = ctx
+            .access
+            .issue_resume("key-A", &[Permission::ViewScreen], bye);
+        end_host(&ctx, bye, None);
+        assert_eq!(ctx.access.take_resume(&t, "key-A"), None);
+    }
+
+    /// Regression: each of a peer's pings was answered into a queue with no
+    /// bound; a peer that never read let it fill memory. Then a bound of
+    /// 1024 plaintexts, one per frame acknowledgement or input event, broke
+    /// a healthy session after a write stall of about 5 s.
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    #[tokio::test]
+    async fn the_urgent_queue_coalesces_and_is_bounded_by_bytes() {
+        let (a, mut peer) = local_channels().unwrap();
+        let (out, _writer) = Out::start(a.stream, Arc::new(Mutex::new(a.noise)), a.buf);
+        // The writer has not run yet (one thread, no await): nothing leaves.
+        // A minute of video at 60 frames a second, pointer moves alike, and
+        // a flood of pings take one place each.
+        for frame in 0..3600 {
+            out.once(&out.pong, &Message::Pong).unwrap();
+            out.once(&out.echo, &Message::TestDelay { reply: true })
+                .unwrap();
+            out.latest(&out.received, &Message::Received { frame })
+                .unwrap();
+            let x = frame as f32 / 3600.0;
+            out.latest(
+                &out.cursor,
+                &Message::Cursor {
+                    x,
+                    y: x,
+                    visible: true,
+                },
+            )
+            .unwrap();
+        }
+        assert_eq!(out.urgent_bytes.load(Ordering::Relaxed), 0);
+        // STEP_TIMEOUT of input at 250 events a second and sound at 50
+        // packets a second fit.
+        let secs = STEP_TIMEOUT.as_secs() as usize;
+        let event = json!({"kind": "pointer", "action": "move", "x": 0.5, "y": 0.5});
+        for _ in 0..secs * 250 {
+            out.json(&Message::Input {
+                event: event.clone(),
+            })
+            .unwrap();
+        }
+        for _ in 0..secs * 50 {
+            out.plain(sound_packet(&[0; 400])).unwrap();
+        }
+        // A peer that floods on purpose meets the bound.
+        let mut sent = 0;
+        while out.plain(vec![0; 4096]).is_ok() {
+            sent += 1;
+            assert!(sent <= URGENT_BYTES / 4096, "the queue has a bound");
+        }
+        assert!(sent > 0);
+        assert!(out.urgent_bytes.load(Ordering::Relaxed) <= URGENT_BYTES);
+        // The writer sends each coalesced kind once, the newest.
+        let mut plain = vec![0u8; MAX_FRAME];
+        let mut got = Vec::new();
+        for _ in 0..4 {
+            let frame = read_frame(&mut peer.stream).await.unwrap();
+            let n = peer.noise.read_message(&frame, &mut plain).unwrap();
+            got.push(serde_json::from_slice::<Value>(&plain[..n]).unwrap());
+        }
+        assert_eq!(got[0]["type"], "pong", "{got:?}");
+        assert_eq!(got[2]["type"], "received", "{got:?}");
+        assert_eq!(got[2]["frame"], 3599, "the newest acknowledgement");
+        assert_eq!(got[3]["type"], "cursor", "{got:?}");
+        let next = read_frame(&mut peer.stream).await.unwrap();
+        let n = peer.noise.read_message(&next, &mut plain).unwrap();
+        let input: Value = serde_json::from_slice(&plain[..n]).unwrap();
+        assert_eq!(
+            input["type"], "input",
+            "nothing more of the coalesced kinds"
+        );
+    }
+
+    /// Regression: the peer's `why` (up to 4 MiB) went into the host's log
+    /// as it came.
+    #[test]
+    fn only_known_reasons_for_no_picture_reach_the_log() {
+        for (why, logged) in [
+            ("waiting", "waiting"),
+            ("decode-error", "decode-error"),
+            ("stale", "stale"),
+            ("", "other"),
+            ("x\ninjected log line", "other"),
+        ] {
+            assert_eq!(picture_why(why), logged);
+        }
+    }
+
+    /// `wait` returns as soon as the session connects (regression: it
+    /// looked every 50 ms).
+    #[test]
+    fn waiting_for_a_session_wakes_when_it_changes() {
+        let sessions = Arc::new(Sessions::default());
+        let (id, _) = sessions.open(Role::Controller, "100000002");
+        let s = sessions.clone();
+        let t = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            s.update(id, |e| e.state = State::Connected);
+        });
+        let started = Instant::now();
+        let got = sessions.wait(id, Duration::from_secs(30));
+        assert_eq!(got["state"], "connected");
+        assert!(started.elapsed() < Duration::from_secs(10));
+        t.join().unwrap();
+        // Ran out: as it then is.
+        let (other, _) = sessions.open(Role::Controller, "100000003");
+        let got = sessions.wait(other, Duration::from_millis(50));
+        assert_eq!(got["state"], "connecting");
+    }
+
+    /// A session shares clipboard files only where this process may act on
+    /// them (`files::available`: never as root on macOS or Linux).
+    #[test]
+    fn files_are_shared_only_where_they_are_available() {
+        let ctx = device("1.0.0");
+        let s = shared(&ctx, &[Permission::Clipboard, Permission::Files]).unwrap();
+        assert!(s.text);
+        assert_eq!(s.files, crate::files::available());
+    }
+
+    /// The length and the frame leave in one write, and read back whole.
+    #[tokio::test]
+    async fn a_frame_is_written_in_one_piece() {
+        let (mut a, mut b) = duplex(1 << 16);
+        write_frame(&mut a, b"hello").await.unwrap();
+        let mut buf = vec![0u8; 2 + 5];
+        buf[2..].copy_from_slice(b"world");
+        write_sealed(&mut a, &mut buf, 5).await.unwrap();
+        assert_eq!(read_frame(&mut b).await.unwrap(), b"hello");
+        assert_eq!(read_frame(&mut b).await.unwrap(), b"world");
     }
 }

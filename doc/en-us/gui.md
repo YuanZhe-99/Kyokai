@@ -543,7 +543,7 @@ device leaves at Default follows Settings (`TermLook.over`); Use the defaults fo
 device's. The parts: the theme in light mode and in dark mode (Kyokai's — the terminal's own
 colors with the accent as the cursor and its tint as the selection — or any of the themes Ghostty
 ships, typed to find in a combobox; a name no longer there reads as Kyokai's), the font (empty:
-the system's monospaced font), the text size (9 to 24, 13 by default), the cursor (block, bar,
+the system's monospaced font; a family typed is saved on Enter or as the field loses the focus), the text size (9 to 24, 13 by default), the cursor (block, bar,
 underline) and its blinking. Every terminal keeps text at least 4.5:1 against its background
 (MyGo's minimum contrast). Colors and font reach open panes at once; the cursor, from their next
 connection. A preview shows the look in light and dark mode side by side in Settings, one above the

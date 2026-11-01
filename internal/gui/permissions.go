@@ -116,10 +116,8 @@ func (a *App) permissionsChanged(st *localapi.Status) {
 	if a.prefs.AskedPermissions == version.Version {
 		return
 	}
-	p := a.prefs
-	p.AskedPermissions = version.Version
-	a.prefs = p
-	go func() { _ = savePrefs(a.stateDir, p) }()
+	a.prefs.AskedPermissions = version.Version
+	a.prefsChangedLocked()
 	for name, granted := range map[string]bool{"screen": st.Permissions.Screen,
 		"accessibility": st.Permissions.Accessibility, "input-monitoring": st.Permissions.InputMonitoring} {
 		if !granted {

@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -51,15 +50,9 @@ func Elevated() bool { return os.Geteuid() == 0 }
 // GroupSID is empty outside Windows.
 func GroupSID() string { return "" }
 
-// GroupGID is the `kyokai` group's id, when an administrator created it.
-func GroupGID() (uint32, bool) {
-	g, err := user.LookupGroup(Group)
-	if err != nil {
-		return 0, false
-	}
-	id, err := strconv.ParseUint(g.Gid, 10, 32)
-	return uint32(id), err == nil
-}
+// GroupGID is this computer's own `kyokai` group's id, when an
+// administrator created it (localGroupGID).
+func GroupGID() (uint32, bool) { return localGroupGID(Group) }
 
 // serviceUnit runs the engine as root from boot, started again when it
 // ends; systemd makes its socket folder (/run/kyokai, which everyone may
@@ -146,7 +139,7 @@ func Install(o InstallOptions) error {
 			return err
 		}
 	}
-	if err := os.MkdirAll(StateDir, 0o700); err != nil {
+	if err := prepareDir(StateDir, 0o700); err != nil {
 		return err
 	}
 	uid := o.OperatorUID
@@ -234,8 +227,8 @@ func Inspect() Status {
 // SelfUpdate installs the app's signed bundle (bundle.json and bundle.sig
 // beside its kyokai-svc, as on Windows) over the helper's files, then exits
 // for systemd to start the new one and restarts the agents.
-// Inputs: from, the app's bin folder (user-writable); running, this
-// helper's version.
+// Inputs: from, the app folder a request named (empty: the recorded one;
+// another is refused, updateSource); running, this helper's version.
 // Side effects: replaces the files in BinDir; this process exits a second
 // later.
 // Notes: the bundle is read once and exactly its verified bytes are
@@ -287,4 +280,40 @@ func systemctl(args ...string) error {
 		return fmt.Errorf("systemctl %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// CheckState refuses to run the helper on folders it cannot trust: its
+// state folder and its socket's folder must belong to root, and no one
+// else may change them.
+func CheckState() error {
+	for _, dir := range []string{StateDir, filepath.Dir(SocketPath)} {
+		if err := checkTrusted(dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// localGroupGID finds name in /etc/group, this computer's own groups.
+// Notes: user.LookupGroup also asks the name service (LDAP, a directory
+// service), whose group of the same name is not this computer's to grant.
+func localGroupGID(name string) (uint32, bool) {
+	data, err := os.ReadFile("/etc/group")
+	if err != nil {
+		return 0, false
+	}
+	return groupGID(string(data), name)
+}
+
+// groupGID finds a group's id in the text of an /etc/group file
+// (name:password:gid:members).
+func groupGID(group, name string) (uint32, bool) {
+	for _, line := range strings.Split(group, "\n") {
+		f := strings.Split(strings.TrimSpace(line), ":")
+		if len(f) >= 3 && f[0] == name {
+			id, err := strconv.ParseUint(f[2], 10, 32)
+			return uint32(id), err == nil
+		}
+	}
+	return 0, false
 }

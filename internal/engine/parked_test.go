@@ -45,8 +45,12 @@ func TestParkedEngineMakesNoIdentity(t *testing.T) {
 	if started != 0 {
 		t.Fatal("a parked engine started its core")
 	}
+	// Only the owner may start over; the group is refused.
+	if p.Handle(localapi.WithOwner(ctx, false), localapi.Request{Type: localapi.RequestStoreForgetMove}).OK {
+		t.Error("the group started a parked engine over")
+	}
 	// Starting over removes the marker first.
-	_ = p.Handle(ctx, localapi.Request{Type: localapi.RequestStoreForgetMove})
+	_ = p.Handle(localapi.WithOwner(ctx, true), localapi.Request{Type: localapi.RequestStoreForgetMove})
 	if started != 1 || movedTo(dir) != "" {
 		t.Fatalf("start over: started %d, marker %q", started, movedTo(dir))
 	}

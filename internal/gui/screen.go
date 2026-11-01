@@ -41,17 +41,25 @@ type screenClient struct {
 	// the toolbar (main thread).
 	pic ui.Handle
 
+	// work is the framebuffer's copy in RGBA, which only the protocol's
+	// goroutine touches (no lock): updated converts each changed rectangle
+	// into it.
+	work *image.RGBA
+
 	mu sync.Mutex
-	// fb is the protocol's framebuffer, decoded into on its goroutine;
-	// work its copy in RGBA, updated there; shown what the bitmap shows,
-	// copied from work on the main thread.
-	fb          *bgra.Image
-	work, shown *image.RGBA
-	bm          *ui.Bitmap
-	box         ui.Rect
-	buttons     uint8
-	original    bool
-	front       bool
+	// fb is the protocol's framebuffer, decoded into on its goroutine.
+	fb *bgra.Image
+	// pics are the pictures the bitmap shows, rotated as the viewer's
+	// (viewer.show): pics[shown] is the bitmap's, never written; pics[ready]
+	// the newest waiting for the main thread (-1: none); the third is
+	// copied into from work on the protocol's goroutine.
+	pics         [3]*image.RGBA
+	shown, ready int
+	bm           *ui.Bitmap
+	box          ui.Rect
+	buttons      uint8
+	original     bool
+	front        bool
 	// held are the keys sent down in Legacy mode, so each release goes
 	// exactly when its press did.
 	held map[ui.Key]remoteKey
@@ -61,34 +69,47 @@ type screenClient struct {
 
 // newScreen is a picture client for a service tab.
 func newScreen(s *serviceTab) *screenClient {
-	return &screenClient{s: s, held: map[ui.Key]remoteKey{}}
+	return &screenClient{s: s, held: map[ui.Key]remoteKey{}, shown: -1, ready: -1}
 }
 
 // resize makes the framebuffer the protocol decodes into, and the
 // pictures, for a desktop of w by h (the protocol's goroutine).
+// Notes: the protocols cap w and h (8192 a side, 32 megapixels) before
+// they ask.
 func (sc *screenClient) resize(w, h int) *bgra.Image {
 	fb := bgra.New(w, h)
-	work, shown := image.NewRGBA(image.Rect(0, 0, w, h)), image.NewRGBA(image.Rect(0, 0, w, h))
+	r := image.Rect(0, 0, w, h)
+	pics := [3]*image.RGBA{image.NewRGBA(r), image.NewRGBA(r), image.NewRGBA(r)}
+	sc.work = image.NewRGBA(r)
 	sc.mu.Lock()
-	sc.fb, sc.work, sc.shown, sc.bm = fb, work, shown, nil
+	sc.fb, sc.pics, sc.shown, sc.ready, sc.bm = fb, pics, -1, -1, nil
 	sc.mu.Unlock()
 	return fb
 }
 
-// updated copies a changed rectangle of the framebuffer into the picture
-// and asks for a redraw (the protocol's goroutine, which alone writes fb).
+// updated converts a changed rectangle of the framebuffer into work, copies
+// work into the picture neither shown nor waiting, which becomes the one
+// waiting, and asks for a redraw: the main thread only hands the bitmap the
+// newest picture (present), and the lock is held only to pick and publish.
+// Notes: on the protocol's goroutine, which alone writes fb and work.
 func (sc *screenClient) updated(r image.Rectangle) {
 	sc.mu.Lock()
-	fb, work := sc.fb, sc.work
-	if fb != nil && work != nil {
-		r = r.Intersect(image.Rect(0, 0, fb.Width, fb.Height))
-		for y := r.Min.Y; y < r.Max.Y; y++ {
-			src := fb.Pix[y*fb.Stride+r.Min.X*4 : y*fb.Stride+r.Max.X*4]
-			dst := work.Pix[y*work.Stride+r.Min.X*4 : y*work.Stride+r.Max.X*4]
-			for i := 0; i < len(src); i += 4 {
-				dst[i], dst[i+1], dst[i+2], dst[i+3] = src[i+2], src[i+1], src[i], 0xff
-			}
-		}
+	fb := sc.fb
+	free := 0
+	for free == sc.shown || free == sc.ready {
+		free++
+	}
+	pic := sc.pics[free]
+	sc.mu.Unlock()
+	work := sc.work
+	if fb == nil || work == nil || pic == nil {
+		return
+	}
+	convertBGRA(work, fb, r)
+	copy(pic.Pix, work.Pix)
+	sc.mu.Lock()
+	if sc.pics[free] == pic { // else a resize replaced the pictures
+		sc.ready = free
 	}
 	sc.mu.Unlock()
 	if !sc.pending.Swap(true) {
@@ -96,20 +117,35 @@ func (sc *screenClient) updated(r image.Rectangle) {
 	}
 }
 
-// present shows the newest picture (main thread).
+// convertBGRA copies rectangle r of fb into dst, the same size, as opaque
+// RGBA.
+func convertBGRA(dst *image.RGBA, fb *bgra.Image, r image.Rectangle) {
+	r = r.Intersect(image.Rect(0, 0, fb.Width, fb.Height))
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		src := fb.Pix[y*fb.Stride+r.Min.X*4 : y*fb.Stride+r.Max.X*4]
+		out := dst.Pix[y*dst.Stride+r.Min.X*4 : y*dst.Stride+r.Max.X*4]
+		for i := 0; i < len(src); i += 4 {
+			out[i], out[i+1], out[i+2], out[i+3] = src[i+2], src[i+1], src[i], 0xff
+		}
+	}
+}
+
+// present has the bitmap show the newest picture waiting, if any, without a
+// copy (main thread).
 func (sc *screenClient) present() {
 	sc.pending.Store(false)
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-	if sc.work == nil {
-		return
+	if sc.ready < 0 {
+		return // a newer update showed it already
 	}
-	copy(sc.shown.Pix, sc.work.Pix)
+	pic := sc.pics[sc.ready]
 	if sc.bm == nil {
-		sc.bm = ui.NewBitmap(sc.shown)
+		sc.bm = ui.NewBitmap(pic)
 	} else {
-		sc.bm.Update(sc.shown)
+		sc.bm.Update(pic)
 	}
+	sc.shown, sc.ready = sc.ready, -1
 }
 
 // remoteClipboard takes the other desktop's clipboard text, which reaches

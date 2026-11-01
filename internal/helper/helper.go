@@ -140,16 +140,25 @@ func removeWithParent(dir string) error {
 	return nil
 }
 
-// verifiedBundle reads the signed bundle in from (the app's bin folder)
-// and checks that it holds every file the helper runs and is not older
-// than the running helper.
+// verifiedBundle reads the signed bundle in the app folder the helper was
+// installed from (updateSource; from is the folder a request named, if
+// any) and checks that it holds every file the helper runs and is not
+// older than the running helper.
 // Returns: the verified bundle, whose Data is what SelfUpdate installs.
 func verifiedBundle(from, running string) (bundlesig.Bundle, error) {
 	key, err := bundlesig.PublicKey()
 	if err != nil {
 		return bundlesig.Bundle{}, err
 	}
-	b, err := bundlesig.Read(from, key)
+	s, err := ReadSettings()
+	if err != nil {
+		return bundlesig.Bundle{}, err
+	}
+	dir, err := updateSource(s.AppDir, from)
+	if err != nil {
+		return bundlesig.Bundle{}, err
+	}
+	b, err := bundlesig.Read(dir, key)
 	if err != nil {
 		return b, err
 	}
@@ -228,4 +237,36 @@ func dropPending(ops []string, dirs []string) ([]string, bool) {
 		keep = append(keep, ops[i], ops[i+1])
 	}
 	return keep, dropped
+}
+
+// updateSource is the folder SelfUpdate reads, as SYSTEM or root: the app
+// folder recorded at install (helper.json), never one the request chooses.
+// A request may still name the folder, which must then be that one. Only a
+// helper without a recorded folder (an AppImage's, a mount that changes)
+// takes the request's, which must be an absolute local path.
+// Returns: the cleaned folder, or why it is refused.
+// Notes: a folder on a share (\server\share, or a link to one) would make
+// the service sign in to that server with the computer's account.
+func updateSource(recorded, requested string) (string, error) {
+	dir := requested
+	if recorded != "" {
+		if requested != "" && !samePath(requested, recorded) {
+			return "", errors.New("the helper updates only from the app it was installed from")
+		}
+		dir = recorded
+	}
+	if dir == "" {
+		return "", errors.New("no app folder to update from")
+	}
+	if !filepath.IsAbs(dir) || !localPath(dir) {
+		return "", fmt.Errorf("the app folder %s is not a local folder", dir)
+	}
+	return filepath.Clean(dir), nil
+}
+
+// samePath reports whether a and b name the same folder as written
+// (ignoring case on Windows).
+func samePath(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	return a == b || runtime.GOOS == "windows" && strings.EqualFold(a, b)
 }

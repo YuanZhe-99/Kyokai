@@ -45,9 +45,10 @@ const INFO_WAIT: Duration = Duration::from_millis(100);
 /// How long the capture thread waits before opening the card again after
 /// it was lost.
 const REOPEN_AFTER: Duration = Duration::from_millis(500);
-/// How often the capture thread looks again for room while the session is
-/// still sending the last frame.
-const ROOM_WAIT: Duration = Duration::from_millis(2);
+/// Longest the capture thread waits for the session to take the frame
+/// waiting in its channel (woken sooner when the session sets its room,
+/// as it does once it took the frame).
+const FULL_WAIT: Duration = Duration::from_millis(5);
 /// Longest the capture thread waits for a picture before it looks at its
 /// stop flag again.
 const FRAME_WAIT: Duration = Duration::from_millis(100);
@@ -1038,7 +1039,7 @@ pub fn start(
                             if stop.load(Ordering::Relaxed) {
                                 return;
                             }
-                            std::thread::sleep(ROOM_WAIT);
+                            targets.nap(FULL_WAIT);
                         }
                         Err(mpsc::error::TrySendError::Closed(())) => return,
                     }

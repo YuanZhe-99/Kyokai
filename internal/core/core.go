@@ -53,17 +53,30 @@ type Lib struct {
 	decOpen, decDecode, decClose, decInfo uintptr
 	audOpen, audDecode, audClose          uintptr
 	kbGrab, kbRead, kbState, privacy      uintptr
-	mu                                    sync.Mutex // the core is one process-wide instance
-	// out receives a response's buffer, and kbBuf a keyboard state. They
-	// live in the Lib (on the heap, which never moves) rather than on a
-	// goroutine stack, which may move between converting its address to a
-	// uintptr and the C call. Guarded by mu.
-	out struct {
-		ptr *byte
-		len uintptr
-	}
+	// mu lets calls run together (each takes it for reading: the core
+	// guards its own state, and a slow call such as tunnel.wait or
+	// session.identify holds none of the core's locks meanwhile) and lets
+	// Stop wait for them (it takes it for writing).
+	mu sync.RWMutex
+	// kbBuf receives a keyboard state. It lives in the Lib (on the heap,
+	// which never moves) rather than on a goroutine stack, which may move
+	// between converting its address to a uintptr and the C call. Guarded
+	// by kbMu.
+	kbMu  sync.Mutex
 	kbBuf [256]byte
 }
+
+// outSlot receives one call's response buffer. Each call takes its own
+// from outSlots: pooled objects live on the heap, which never moves, unlike
+// a goroutine stack, which may move between converting an address to a
+// uintptr and the C call.
+type outSlot struct {
+	ptr *byte
+	len uintptr
+}
+
+// outSlots are the response slots of calls, reused.
+var outSlots = sync.Pool{New: func() any { return new(outSlot) }}
 
 // Config is what the core starts with.
 type Config struct {
@@ -192,6 +205,8 @@ func (l *Lib) Call(method string, params, out any) error {
 }
 
 // Stop stops the core, dropping its in-memory secrets.
+// Notes: waits for the calls in progress to return, and holds new ones
+// until the core has stopped.
 func (l *Lib) Stop() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -200,18 +215,24 @@ func (l *Lib) Stop() {
 
 // exchange marshals req, calls fn (kyokai_start or kyokai_call), frees the
 // response buffer and decodes its result into out.
+// Notes: calls from several goroutines run in the core together:
+// kyokai_start and kyokai_call may be entered concurrently (the core keeps
+// its state behind its own lock and allocates each response).
 func (l *Lib) exchange(fn uintptr, req, out any) error {
 	in, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
-	l.mu.Lock()
-	l.out.ptr, l.out.len = nil, 0
+	slot := outSlots.Get().(*outSlot)
+	slot.ptr, slot.len = nil, 0
+	l.mu.RLock()
 	rc := int32(syscallN(fn, uintptr(unsafe.Pointer(unsafe.SliceData(in))), uintptr(len(in)),
-		uintptr(unsafe.Pointer(&l.out.ptr)), uintptr(unsafe.Pointer(&l.out.len))))
+		uintptr(unsafe.Pointer(&slot.ptr)), uintptr(unsafe.Pointer(&slot.len))))
+	l.mu.RUnlock()
 	runtime.KeepAlive(in)
-	outPtr, outLen := l.out.ptr, l.out.len
-	l.mu.Unlock()
+	outPtr, outLen := slot.ptr, slot.len
+	slot.ptr, slot.len = nil, 0
+	outSlots.Put(slot)
 	if rc != 0 || outPtr == nil {
 		return fmt.Errorf("core call failed (code %d, response %t)", rc, outPtr != nil)
 	}
@@ -248,8 +269,8 @@ var (
 // session and copies it into buf.
 // Returns: the packet's length, or ErrMediaTimeout, ErrMediaEnded or
 // ErrMediaTooBig (that packet is dropped).
-// Notes: blocks its goroutine's OS thread; it does not take the Lib's lock,
-// so status calls go on meanwhile. buf must be heap memory (any slice from
+// Notes: blocks its goroutine's OS thread; it takes neither the Lib's lock
+// nor the core's, so calls go on meanwhile. buf must be heap memory (any slice from
 // make is), which never moves during the call.
 func (l *Lib) MediaRead(session uint64, buf []byte, timeout time.Duration) (int, error) {
 	if len(buf) == 0 {
@@ -457,8 +478,8 @@ type KeyboardState struct {
 // Returns: ErrNoKeyboard where the hook is unavailable.
 // Side effects: on macOS the core reads the on-screen window list.
 func (l *Lib) KeyboardState(window uintptr) (KeyboardState, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.kbMu.Lock()
+	defer l.kbMu.Unlock()
 	n := int32(syscallN(l.kbState, window, uintptr(unsafe.Pointer(&l.kbBuf[0])), uintptr(len(l.kbBuf))))
 	var s KeyboardState
 	if n < 0 {

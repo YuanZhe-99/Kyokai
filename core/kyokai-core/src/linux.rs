@@ -165,10 +165,26 @@ impl X {
 
     /// The visible top-level windows, bottom to top, with their place and
     /// process.
+    fn windows(&self) -> Vec<Win> {
+        let mut out = self.layout();
+        for win in &mut out {
+            win.pid = self.pid(win.id);
+        }
+        out
+    }
+
+    /// The process of the topmost visible top-level window at a point of
+    /// the root window: the one window's process looked up, not every one's.
+    fn owner_at(&self, x: i32, y: i32) -> Option<u32> {
+        self.pid(window_at(&self.layout(), x, y)?)
+    }
+
+    /// The visible top-level windows, bottom to top, with their place
+    /// (their processes not looked up).
     /// Notes: reads the window manager's stacking list; without one, the
     /// root's children. Requests go out together and the replies are read
     /// after, so a snapshot costs a few round trips, not one per window.
-    fn windows(&self) -> Vec<Win> {
+    fn layout(&self) -> Vec<Win> {
         let mut ids = self.words(self.root, self.stacking);
         if ids.is_empty() {
             ids = self
@@ -214,9 +230,6 @@ impl X {
                 },
                 pid: None,
             });
-        }
-        for win in &mut out {
-            win.pid = self.pid(win.id);
         }
         out
     }
@@ -871,8 +884,186 @@ const WHEEL: [u8; 4] = [4, 5, 6, 7];
 /// own windows, and whatever is held released at the end. Text is typed
 /// through spare keycodes given the characters' keysyms, so it does not
 /// depend on the host's layout.
+/// Notes: the events are injected on a thread of the injector's own, in
+/// order, so that the caller (the session's loop) never waits for typing
+/// text (TEXT_SETTLE) or for the X server; whether an event would reach
+/// Kyokai's windows is decided there, just before it is injected, and the
+/// session's `Gate` is asked again then. Once the injector is dropped the
+/// thread injects nothing more that was queued; it only lets go of what it
+/// holds.
 pub struct XInjector {
-    x: Option<X>,
+    area: Option<Area>,
+    /// The injector's thread's queue; None without an X server.
+    jobs: Option<std::sync::mpsc::SyncSender<Job>>,
+    /// Asked on the thread just before each event (see `set_gate`).
+    gate: Option<Gate>,
+    /// Set when the injector is dropped: the thread skips what is queued.
+    ended: Arc<AtomicBool>,
+}
+
+/// Whether a person's input may reach Kyokai's windows at this moment,
+/// asked by the X11 injector's thread just before it injects (a connection
+/// request or an AI approval may have appeared since the event was queued).
+pub type Gate = Arc<dyn Fn() -> bool + Send + Sync>;
+
+/// Whether an event the X11 injector's thread is about to inject may reach
+/// Kyokai's windows: only when it might when it was queued and the gate,
+/// asked now, still lets it.
+fn reachable_now(queued: bool, gate: Option<&Gate>) -> bool {
+    queued && gate.is_none_or(|g| g())
+}
+
+/// Work for the X11 injector's thread.
+enum Job {
+    /// An event, with whether it may reach Kyokai's windows and the display
+    /// pointer positions refer to; `done` hears whether it was injected.
+    Event {
+        e: Event,
+        kyokai_ok: bool,
+        gate: Option<Gate>,
+        area: Option<Area>,
+        done: Option<std::sync::mpsc::SyncSender<bool>>,
+    },
+    /// Release every key and button held.
+    Release,
+}
+
+/// Most events waiting for the X11 injector's thread; a caller that finds
+/// the queue full waits for room.
+const INJECT_QUEUE: usize = 256;
+
+impl Default for XInjector {
+    fn default() -> Self {
+        let Ok(x) = X::open() else {
+            return XInjector {
+                area: None,
+                jobs: None,
+                gate: None,
+                ended: Arc::default(),
+            };
+        };
+        let ended = Arc::new(AtomicBool::new(false));
+        let gone = ended.clone();
+        let (jobs, queue) = std::sync::mpsc::sync_channel(INJECT_QUEUE);
+        let mut input = XInput {
+            x,
+            area: None,
+            keys: BTreeSet::new(),
+            buttons: BTreeSet::new(),
+            scroll: (0.0, 0.0),
+            owners: Owners::default(),
+            spares: None,
+        };
+        let spawned = std::thread::Builder::new()
+            .name("kyokai-x11-input".into())
+            .spawn(move || {
+                for job in queue {
+                    match job {
+                        Job::Event {
+                            e,
+                            kyokai_ok,
+                            gate,
+                            area,
+                            done,
+                        } => {
+                            // The session ended (Disconnect, emergency
+                            // stop, a revoked permission): nothing queued
+                            // is injected any more.
+                            let injected = !gone.load(Ordering::Acquire) && {
+                                input.area = area;
+                                input.inject(&e, reachable_now(kyokai_ok, gate.as_ref()))
+                            };
+                            if let Some(done) = done {
+                                let _ = done.send(injected);
+                            }
+                        }
+                        Job::Release => input.release_all(),
+                    }
+                }
+                // The injector is gone: what it held is let go.
+                input.release_all();
+            });
+        XInjector {
+            area: None,
+            jobs: spawned.is_ok().then_some(jobs),
+            gate: None,
+            ended,
+        }
+    }
+}
+
+impl Drop for XInjector {
+    /// Tells the injector's thread to skip what is still queued; dropping
+    /// the queue then ends the thread, which releases what it holds.
+    fn drop(&mut self) {
+        self.ended.store(true, Ordering::Release);
+    }
+}
+
+impl XInjector {
+    /// Sets the gate the injector's thread asks just before each event
+    /// that may reach Kyokai's windows (`kyokai_ok` true when queued).
+    pub fn set_gate(&mut self, gate: Gate) {
+        self.gate = Some(gate);
+    }
+
+    /// Sets the display pointer positions refer to (None: the primary).
+    pub fn set_area(&mut self, area: Option<Area>) {
+        self.area = area;
+    }
+
+    /// Queues an event for the injector's thread, which injects it unless
+    /// it would reach a Kyokai window and `kyokai_ok` is false.
+    /// Returns: whether it was queued (false for an invalid event or
+    /// without an X server).
+    /// Notes: waits only while the queue is full.
+    pub fn inject(&mut self, e: &Event, kyokai_ok: bool) -> bool {
+        self.queue(e, kyokai_ok, None)
+    }
+
+    /// Injects an event as `inject` does and waits until the injector's
+    /// thread did it.
+    /// Returns: whether it was injected (false: it would have reached a
+    /// Kyokai window, or could not be).
+    pub fn inject_wait(&mut self, e: &Event, kyokai_ok: bool) -> bool {
+        let (done, answer) = std::sync::mpsc::sync_channel(1);
+        self.queue(e, kyokai_ok, Some(done)) && answer.recv().unwrap_or(false)
+    }
+
+    fn queue(
+        &self,
+        e: &Event,
+        kyokai_ok: bool,
+        done: Option<std::sync::mpsc::SyncSender<bool>>,
+    ) -> bool {
+        let Some(jobs) = &self.jobs else {
+            return false;
+        };
+        e.valid()
+            && jobs
+                .send(Job::Event {
+                    e: e.clone(),
+                    kyokai_ok,
+                    gate: self.gate.clone(),
+                    area: self.area,
+                    done,
+                })
+                .is_ok()
+    }
+
+    /// Releases every key and button this session holds, after the events
+    /// queued before.
+    pub fn release_all(&mut self) {
+        if let Some(jobs) = &self.jobs {
+            let _ = jobs.send(Job::Release);
+        }
+    }
+}
+
+/// The X11 injector's thread's state: its connection, what it holds, and
+/// the spare keycodes it types text through.
+struct XInput {
+    x: X,
     area: Option<Area>,
     /// Evdev codes held down.
     keys: BTreeSet<u8>,
@@ -883,31 +1074,10 @@ pub struct XInjector {
     spares: Option<Vec<u8>>,
 }
 
-impl Default for XInjector {
-    fn default() -> Self {
-        XInjector {
-            x: X::open().ok(),
-            area: None,
-            keys: BTreeSet::new(),
-            buttons: BTreeSet::new(),
-            scroll: (0.0, 0.0),
-            owners: Owners::default(),
-            spares: None,
-        }
-    }
-}
-
-impl XInjector {
-    /// Sets the display pointer positions refer to (None: the primary).
-    pub fn set_area(&mut self, area: Option<Area>) {
-        self.area = area;
-    }
-
+impl XInput {
     /// Sends one XTest event.
     fn fake(&self, kind: u8, detail: u8, at: Option<(i16, i16)>) {
-        let Some(x) = &self.x else {
-            return;
-        };
+        let x = &self.x;
         let (rx, ry) = at.unwrap_or((0, 0));
         let root = if at.is_some() { x.root } else { x11rb::NONE };
         let _ = x
@@ -952,17 +1122,15 @@ impl XInjector {
     /// Whether the window `guard` names belongs to Kyokai (or none can be
     /// told).
     fn blocked(&mut self, guard: Guard) -> bool {
-        let Some(x) = &self.x else {
-            return true;
-        };
+        let x = &self.x;
         let pid = match guard {
             Guard::None => return false,
             Guard::At(fx, fy) => {
                 let (px, py) = point_in(self.area.unwrap_or_else(main_area), fx, fy);
-                window_at(&x.windows(), px.into(), py.into())
+                x.owner_at(px.into(), py.into())
             }
             Guard::Pointer => match x.pointer() {
-                Some((px, py, _)) => window_at(&x.windows(), px, py),
+                Some((px, py, _)) => x.owner_at(px, py),
                 None => return true,
             },
             Guard::Focus => x.focused().and_then(|w| x.pid(w)),
@@ -972,9 +1140,8 @@ impl XInjector {
 
     /// The keycodes with no keysym, for typing text.
     fn spares(&mut self) -> Vec<u8> {
-        if self.spares.is_none()
-            && let Some(x) = &self.x
-        {
+        if self.spares.is_none() {
+            let x = &self.x;
             let setup = x.conn.setup();
             let (min, max) = (setup.min_keycode, setup.max_keycode);
             let map = x
@@ -1005,9 +1172,7 @@ impl XInjector {
     /// characters went missing).
     fn type_text(&mut self, text: &str) {
         let spares = self.spares();
-        let Some(x) = &self.x else {
-            return;
-        };
+        let x = &self.x;
         if spares.is_empty() {
             return;
         }
@@ -1051,8 +1216,8 @@ impl XInjector {
     /// `kyokai_ok` is false: a person's input while the host user lets it
     /// reach them (`input::kyokai_input`), never the AI's.
     /// Returns: whether it was injected.
-    pub fn inject(&mut self, e: &Event, kyokai_ok: bool) -> bool {
-        if self.x.is_none() || !e.valid() || (!kyokai_ok && self.blocked(e.guard())) {
+    fn inject(&mut self, e: &Event, kyokai_ok: bool) -> bool {
+        if !e.valid() || (!kyokai_ok && self.blocked(e.guard())) {
             return false;
         }
         match e {
@@ -1137,14 +1302,12 @@ impl XInjector {
                 self.key(key, *down);
             }
         }
-        if let Some(x) = &self.x {
-            let _ = x.conn.flush();
-        }
+        let _ = self.x.conn.flush();
         true
     }
 
     /// Releases every key and button this session holds.
-    pub fn release_all(&mut self) {
+    fn release_all(&mut self) {
         let keys: Vec<u8> = self.keys.iter().rev().copied().collect();
         for k in keys {
             self.key(k, false);
@@ -1153,15 +1316,7 @@ impl XInjector {
         for b in buttons {
             self.button(BUTTONS[b as usize], false);
         }
-        if let Some(x) = &self.x {
-            let _ = x.conn.flush();
-        }
-    }
-}
-
-impl Drop for XInjector {
-    fn drop(&mut self) {
-        self.release_all();
+        let _ = self.x.conn.flush();
     }
 }
 
@@ -1207,13 +1362,13 @@ pub(crate) fn keysym(c: char) -> u32 {
     }
 }
 
-/// The process of the topmost window at a point of the root window.
-fn window_at(windows: &[Win], x: i32, y: i32) -> Option<u32> {
+/// The topmost window at a point of the root window.
+fn window_at(windows: &[Win], x: i32, y: i32) -> Option<Window> {
     windows
         .iter()
         .rev()
         .find(|w| w.rect.contains(x, y))
-        .and_then(|w| w.pid)
+        .map(|w| w.id)
 }
 
 /// What the input watch's thread and its readers share.
@@ -1411,13 +1566,35 @@ impl Injector {
     }
 
     /// Injects an event unless it would reach Kyokai's windows and
-    /// `kyokai_ok` is false.
-    /// Returns: whether it was injected.
+    /// `kyokai_ok` is false, without waiting for it: both injectors work
+    /// through a thread of their own, in order.
+    /// Returns: whether it was taken (on X11, the guard decides on the
+    /// injector's thread; see `inject_wait`).
     pub fn inject(&mut self, e: &Event, kyokai_ok: bool) -> bool {
         match self {
             Injector::X(i) => i.inject(e, kyokai_ok),
             Injector::Wayland(i) => i.inject(e, kyokai_ok),
             Injector::None => false,
+        }
+    }
+
+    /// Injects an event as `inject` does, waiting on X11 until it was
+    /// injected or refused (the AI learns that it aimed at Kyokai's own
+    /// window).
+    /// Returns: whether it was injected.
+    pub fn inject_wait(&mut self, e: &Event, kyokai_ok: bool) -> bool {
+        match self {
+            Injector::X(i) => i.inject_wait(e, kyokai_ok),
+            Injector::Wayland(i) => i.inject(e, kyokai_ok),
+            Injector::None => false,
+        }
+    }
+
+    /// Sets what is asked again just before an X11 event that may reach
+    /// Kyokai's windows is injected (Wayland injects at once: no gate).
+    pub fn set_gate(&mut self, gate: Gate) {
+        if let Injector::X(i) = self {
+            i.set_gate(gate);
         }
     }
 
@@ -1516,7 +1693,7 @@ impl Desktop for Screen {
 
     fn inject(&mut self, e: &Event) -> bool {
         // The AI never reaches Kyokai's windows, whatever the host user lets.
-        self.injector.inject(e, false)
+        self.injector.inject_wait(e, false)
     }
 
     fn release(&mut self) {
@@ -1543,6 +1720,23 @@ impl Desktop for Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression: whether queued input may reach Kyokai's windows is asked
+    /// again on the injector's thread, so a connection request that
+    /// appeared after the event was queued keeps it out.
+    #[test]
+    fn queued_input_is_gated_when_injected() {
+        let asking = Arc::new(AtomicBool::new(false));
+        let seen = asking.clone();
+        let gate: Gate = Arc::new(move || !seen.load(Ordering::Relaxed));
+        assert!(reachable_now(true, Some(&gate)));
+        asking.store(true, Ordering::Relaxed);
+        assert!(!reachable_now(true, Some(&gate)));
+        asking.store(false, Ordering::Relaxed);
+        assert!(!reachable_now(false, Some(&gate)));
+        assert!(reachable_now(true, None));
+        assert!(!reachable_now(false, None));
+    }
 
     #[test]
     fn sessions_are_told_from_the_environment() {
@@ -1599,10 +1793,10 @@ mod tests {
     /// The window a point reaches is the topmost one there.
     #[test]
     fn the_topmost_window_takes_the_point() {
-        let w = |rect, pid| Win {
-            id: 0,
+        let w = |rect, id| Win {
+            id,
             rect,
-            pid: Some(pid),
+            pid: None,
         };
         let list = [w(r(0, 0, 100, 100), 1), w(r(50, 50, 100, 100), 2)];
         assert_eq!(window_at(&list, 10, 10), Some(1));

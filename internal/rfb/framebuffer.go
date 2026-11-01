@@ -2,7 +2,7 @@
 // internal/rfb/framebuffer.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: import paths.
+// prior consent. Modified by Kyokai: import paths, desktop size limits.
 
 package rfb
 
@@ -76,4 +76,20 @@ func boolByte(value bool) byte {
 		return 1
 	}
 	return 0
+}
+
+// The largest desktop a server may declare (Kyokai), as Remote Desktop's: 8192 pixels a side and
+// 32 megapixels, so no size read from the stream allocates more than 128 MiB of pixels.
+const (
+	maximumDesktopSide   = 8192
+	maximumDesktopPixels = 32 << 20
+)
+
+// validDesktopSize reports whether a desktop or rectangle of width by height from the server is
+// within the limits; an empty one is when allowEmpty is set.
+func validDesktopSize(width, height int, allowEmpty bool) bool {
+	if width <= 0 || height <= 0 {
+		return allowEmpty && width >= 0 && height >= 0
+	}
+	return width <= maximumDesktopSide && height <= maximumDesktopSide && width*height <= maximumDesktopPixels
 }

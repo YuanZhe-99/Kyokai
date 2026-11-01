@@ -365,6 +365,7 @@ func (l *countingLink) Open(context.Context, string, string, string) (net.Conn, 
 // dialed (regression: keys, then a blank password, were tried first).
 func TestServicesAskBeforeDialing(t *testing.T) {
 	a := New("", t.TempDir(), "")
+	t.Cleanup(func() { _ = a.writePrefs() })
 	link := &countingLink{}
 	a.link = link
 	for _, service := range []string{serviceSSH, serviceRDP, serviceVNC} {

@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
@@ -276,7 +275,7 @@ func (a *App) networkRows(c *ui.Context, r *rows, p localapi.NetworkProfile, s l
 		}
 		r.row(c, "dev-"+p.ID+"-"+d.DeviceID, avatarLead(about), ds, func() {
 			if ui.Button(c.Key("dev-copy-"+p.ID+"-"+d.DeviceID), L.ActionCopy()).Clicked() {
-				mygo.Clipboard.WriteText(d.DeviceID)
+				a.copyText(d.DeviceID)
 				a.update(func() { a.setToast(L.Copied(), false) })
 			}
 			if ui.Button(c.Key("dev-connect-"+p.ID+"-"+d.DeviceID), L.ActionConnect()).Clicked() {

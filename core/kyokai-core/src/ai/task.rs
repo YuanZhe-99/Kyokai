@@ -184,9 +184,18 @@ fn is_loopback(u: &reqwest::Url) -> bool {
     }
 }
 
-/// Whether a source may go without a key: a chat server on this computer.
+/// Whether a source may go without a key: a chat server on this computer,
+/// or any source over plain HTTP (which only reaches this computer and is
+/// never sent a key).
 fn keyless(s: &Source) -> bool {
-    s.protocol == Protocol::OpenaiChat && reqwest::Url::parse(&s.url).is_ok_and(|u| is_loopback(&u))
+    !https(s)
+        || (s.protocol == Protocol::OpenaiChat
+            && reqwest::Url::parse(&s.url).is_ok_and(|u| is_loopback(&u)))
+}
+
+/// Whether a source's address is HTTPS, the only way a key is ever sent.
+fn https(s: &Source) -> bool {
+    reqwest::Url::parse(&s.url).is_ok_and(|u| u.scheme() == "https")
 }
 
 /// A task's state (doc/en-us/computer-use.md has the diagram).
@@ -437,13 +446,19 @@ impl Ai {
             let new: Settings =
                 serde_json::from_value(doc).map_err(|e| format!("bad AI settings: {e}"))?;
             new.validate()?;
-            write_json(&self.shared.dir.join(SETTINGS), &new)?;
-            // A removed source takes its key with it.
+            // A removed source takes its key with it, and so does one whose
+            // address or protocol changed: a key goes only where it was
+            // given for. Dropped before the new settings are saved, so a
+            // failure leaves the old ones.
             for old in &s.sources {
-                if new.source(&old.id).is_none() {
-                    let _ = self.shared.secrets.remove(&key_name(&old.id));
+                if new
+                    .source(&old.id)
+                    .is_none_or(|n| n.url != old.url || n.protocol != old.protocol)
+                {
+                    self.shared.secrets.remove(&key_name(&old.id))?;
                 }
             }
+            write_json(&self.shared.dir.join(SETTINGS), &new)?;
             *s = new;
         }
         Ok(self.settings())
@@ -453,29 +468,22 @@ impl Ai {
     /// pick from; nothing is saved.
     /// Returns: the models, or why they could not be listed.
     pub fn list_models(&self, source: &str) -> Result<Vec<super::Model>, String> {
-        let s = self
-            .shared
-            .settings
-            .lock()
-            .expect("settings")
-            .source(source)
-            .cloned()
-            .ok_or("no such source")?;
-        let key = self.shared.secrets.get(&key_name(&s.id));
-        if key.is_none() && !keyless(&s) {
-            return Err("add an API key for the provider first".into());
-        }
+        // The source and its key are read together, so a key never meets
+        // an address it was not given for.
+        let (s, key) = {
+            let settings = self.shared.settings.lock().expect("settings");
+            let s = settings.source(source).cloned().ok_or("no such source")?;
+            let key = self.shared.key(&s);
+            (s, key)
+        };
+        let key = key.ok_or("add an API key for the provider first")?;
         let url = format!("{}/models", s.url.trim_end_matches('/'));
         let client = self.client.clone();
-        let doc = self.rt.as_ref().expect("runtime").block_on(async move {
-            client
-                .get(
-                    &url,
-                    s.protocol,
-                    key.as_deref().map(String::as_str).unwrap_or(""),
-                )
-                .await
-        })?;
+        let doc = self
+            .rt
+            .as_ref()
+            .expect("runtime")
+            .block_on(async move { client.get(&url, s.protocol, &key).await })?;
         Ok(super::parse_models(&doc))
     }
 
@@ -485,22 +493,16 @@ impl Ai {
         let settings = self.shared.settings.lock().expect("settings").clone();
         settings
             .source(&settings.model.source)
-            .is_some_and(|source| {
-                keyless(source) || self.shared.secrets.get(&key_name(&source.id)).is_some()
-            })
+            .is_some_and(|source| self.shared.key(source).is_some())
     }
 
     /// Stores a source's API key, or removes it (`None`).
     /// Side effects: writes the secrets store; never logs the key.
+    /// Notes: holds the settings while it writes, so the key belongs to the
+    /// source's address as it is now (a change of address drops it).
     pub fn set_key(&self, source: &str, key: Option<&str>) -> Result<(), String> {
-        if self
-            .shared
-            .settings
-            .lock()
-            .expect("settings")
-            .source(source)
-            .is_none()
-        {
+        let settings = self.shared.settings.lock().expect("settings");
+        if settings.source(source).is_none() {
             return Err("no such source".into());
         }
         match key.map(str::trim) {
@@ -828,6 +830,20 @@ impl Shared {
         Some(out)
     }
 
+    /// The key to send to a source: its stored key over HTTPS, nothing over
+    /// plain HTTP.
+    /// Returns: None when the source needs a key and has none.
+    /// Notes: the caller holds the settings `s` came from, so the key and
+    /// the address belong together.
+    fn key(&self, s: &Source) -> Option<Zeroizing<String>> {
+        if !https(s) {
+            return Some(Zeroizing::new(String::new()));
+        }
+        self.secrets
+            .get(&key_name(&s.id))
+            .or_else(|| keyless(s).then(|| Zeroizing::new(String::new())))
+    }
+
     /// The task's state and lease.
     fn phase(&self, id: u64) -> (State, u64) {
         let tasks = self.tasks.lock().expect("tasks");
@@ -1023,18 +1039,16 @@ async fn run(shared: &Arc<Shared>, client: &Client, id: u64) -> Result<Conversat
             )
         })
         .ok_or(Stop::Cancelled)?;
-    let source = shared
-        .settings
-        .lock()
-        .expect("settings")
-        .source(&source)
-        .cloned()
-        .ok_or_else(|| "the task's provider was removed".to_string())?;
-    let key: Zeroizing<String> = match shared.secrets.get(&key_name(&source.id)) {
-        Some(k) => k,
-        None if keyless(&source) => Zeroizing::new(String::new()),
-        None => return Err("the provider's API key is missing".to_string().into()),
+    let (source, key) = {
+        let settings = shared.settings.lock().expect("settings");
+        let source = settings
+            .source(&source)
+            .cloned()
+            .ok_or_else(|| "the task's provider was removed".to_string())?;
+        let key = shared.key(&source);
+        (source, key)
     };
+    let key = key.ok_or_else(|| "the provider's API key is missing".to_string())?;
     let endpoint = Endpoint {
         protocol: source.protocol,
         url: shared.url.clone().unwrap_or_else(|| {
@@ -1116,7 +1130,9 @@ async fn drive(
         ),
     };
     loop {
-        shared.running(id).await?;
+        // The lease the request goes out under: its answer acts only while
+        // the task still holds this one.
+        let lease = shared.running(id).await?;
         let body = conv.body();
         let response = ask_model(shared, client, id, endpoint, key, &body).await?;
         let turn = conv
@@ -1146,7 +1162,7 @@ async fn drive(
                 )));
             }
         }
-        let (outcomes, acknowledged) = act(shared, id, desk, &turn, &mut seen).await?;
+        let (outcomes, acknowledged) = act(shared, id, lease, desk, &turn, &mut seen).await?;
         // The answer goes out only while the task runs: after a pause it
         // waits for the resume, with a fresh screenshot.
         shared.running(id).await?;
@@ -1186,11 +1202,16 @@ async fn ask_model(
 }
 
 /// Runs one turn's actions in order.
+/// Inputs: `asked` — the lease the model was asked under.
 /// Returns: one outcome per action, and whether the host user approved the
 /// provider's safety checks.
+/// Notes: a task paused (and perhaps resumed) since the model was asked no
+/// longer holds `asked`: every action is then Paused, so the next turn
+/// starts from a new look at the screen.
 async fn act(
     shared: &Arc<Shared>,
     id: u64,
+    asked: u64,
     desk: &Desk,
     turn: &super::Turn,
     seen: &mut Seen,
@@ -1200,9 +1221,10 @@ async fn act(
     let mut failed = false;
     let mut acknowledged = turn.flagged.is_empty();
     let lease = match shared.phase(id) {
-        (State::Running, lease) => lease,
+        (State::Running, lease) if lease == asked => lease,
         (s, _) if s.finished() => return Err(Stop::Cancelled),
-        _ => u64::MAX, // paused while the model thought: nothing runs
+        // Paused while the model thought, even if resumed since: nothing runs.
+        _ => u64::MAX,
     };
     for proposed in &turn.actions {
         let action_json = proposed.as_ref().map_or(Value::Null, |a| json!(a));

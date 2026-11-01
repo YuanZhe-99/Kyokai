@@ -133,6 +133,10 @@ func TestClientRawUpdate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Dial: %v", err)
 			}
+			// Kyokai: the session forgets the password after the sign-in.
+			if client.options.Password != "" {
+				t.Error("the client kept the password after the sign-in")
+			}
 			done := make(chan error, 1)
 			go func() { done <- client.Run() }()
 			select {
@@ -253,5 +257,43 @@ func TestClientOnlyNoneSendsNoPassword(t *testing.T) {
 	clientConn.Close()
 	if <-chose {
 		t.Error("the client chose a security type")
+	}
+}
+
+// TestSecurityNoDowngrade is the regression test for credentials falling to weaker sign-ins: a user
+// name and password go only to Apple's SRP (36, or 33 alongside 36), never to anonymous
+// Diffie-Hellman (30), an unverified RSA key (33 alone), the VNC password's DES (2) or none (1); a
+// password alone goes only to the VNC password, never to none.
+func TestSecurityNoDowngrade(t *testing.T) {
+	account := Options{Username: "user", Password: "secret"}
+	tests := []struct {
+		name    string
+		options Options
+		dialect Dialect
+		offered []SecurityType
+		want    SecurityType
+		err     error
+	}{
+		{"SRP behind RSA", account, DialectApple, []SecurityType{30, 33, 36}, SecurityAppleRSA, nil},
+		{"SRP alone", account, DialectApple, []SecurityType{36, 2}, SecurityAppleSRP, nil},
+		{"Diffie-Hellman only", account, DialectApple, []SecurityType{30, 2, 1}, 0, ErrUnverifiedServer},
+		{"RSA without SRP", account, DialectStandard, []SecurityType{33}, 0, ErrUnverifiedServer},
+		{"VNC password or none", account, DialectStandard, []SecurityType{2, 1}, 0, ErrUnsupportedServer},
+		{"password, VNC password offered", Options{Password: "secret"}, DialectStandard, []SecurityType{1, 2}, SecurityVNCPassword, nil},
+		{"password, none offered", Options{Password: "secret"}, DialectStandard, []SecurityType{1}, 0, ErrUnsupportedServer},
+		{"no sign-in", Options{}, DialectStandard, []SecurityType{2, 1}, SecurityNone, nil},
+	}
+	for _, test := range tests {
+		h := &handshake{options: &test.options, info: ServerInfo{Dialect: test.dialect, SecurityTypes: test.offered}}
+		got, err := h.chooseSecurityType(defaultSecurityTypes(&test.options))
+		if test.err != nil {
+			if !errors.Is(err, test.err) {
+				t.Errorf("%s: error %v, want %v", test.name, err, test.err)
+			}
+			continue
+		}
+		if err != nil || got != test.want {
+			t.Errorf("%s: chose %v (%v), want %v", test.name, got, err, test.want)
+		}
 	}
 }

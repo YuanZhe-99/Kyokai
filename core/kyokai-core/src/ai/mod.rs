@@ -234,6 +234,8 @@ struct Endpoint {
 
 /// How long one model request may take, thinking included.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+/// How long listing a source's models may take.
+const LIST_TIMEOUT: Duration = Duration::from_secs(15);
 /// Retries of a request the provider answered as overloaded or failed.
 const RETRIES: u32 = 3;
 
@@ -263,15 +265,12 @@ impl Client {
         loop {
             let req = self.http.post(&to.url).json(body);
             let req = match to.protocol {
-                Protocol::OpenaiResponses => req.bearer_auth(key),
-                // A local server (Ollama, LM Studio) needs no key.
-                Protocol::OpenaiChat if key.is_empty() => req,
-                Protocol::OpenaiChat => req.bearer_auth(key),
                 Protocol::Anthropic => req
-                    .header("x-api-key", key)
                     .header("anthropic-version", claude::VERSION)
                     .header("anthropic-beta", claude::BETAS),
+                Protocol::OpenaiResponses | Protocol::OpenaiChat => req,
             };
+            let req = authorized(req, to.protocol, key);
             let resp = match req.send().await {
                 Ok(r) => r,
                 Err(e) if e.is_timeout() => {
@@ -309,19 +308,18 @@ impl Client {
 impl Client {
     /// Sends one GET (a model list) with the protocol's credentials.
     /// Returns: the response document, or an error that is safe to show.
+    /// Notes: it may take LIST_TIMEOUT, far less than a model's answer.
     async fn get(&self, url: &str, protocol: Protocol, key: &str) -> Result<Value, String> {
-        let req = self.http.get(url);
+        let req = self.http.get(url).timeout(LIST_TIMEOUT);
         let req = match protocol {
-            Protocol::Anthropic => req
-                .header("x-api-key", key)
-                .header("anthropic-version", claude::VERSION),
-            _ if key.is_empty() => req,
-            _ => req.bearer_auth(key),
+            Protocol::Anthropic => req.header("anthropic-version", claude::VERSION),
+            Protocol::OpenaiResponses | Protocol::OpenaiChat => req,
         };
-        let resp = req
-            .send()
-            .await
-            .map_err(|_| "the provider could not be reached".to_string())?;
+        let resp = match authorized(req, protocol, key).send().await {
+            Ok(r) => r,
+            Err(e) if e.is_timeout() => return Err("the provider did not answer in time".into()),
+            Err(_) => return Err("the provider could not be reached".into()),
+        };
         let status = resp.status().as_u16();
         let doc: Value = resp.json().await.unwrap_or(Value::Null);
         match status {
@@ -332,6 +330,20 @@ impl Client {
                 doc["error"]["message"].as_str().unwrap_or("")
             )),
         }
+    }
+}
+
+/// Adds a request's key as its protocol carries it; an empty key (a server
+/// on this computer) adds nothing.
+fn authorized(
+    req: reqwest::RequestBuilder,
+    protocol: Protocol,
+    key: &str,
+) -> reqwest::RequestBuilder {
+    match protocol {
+        _ if key.is_empty() => req,
+        Protocol::Anthropic => req.header("x-api-key", key),
+        Protocol::OpenaiResponses | Protocol::OpenaiChat => req.bearer_auth(key),
     }
 }
 

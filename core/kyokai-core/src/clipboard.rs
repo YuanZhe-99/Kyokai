@@ -2,13 +2,15 @@
 //! "Clipboard"): while a session may share the clipboard, text or an image
 //! copied on either side is offered to the other, and with `files` copied
 //! files (crate::files moves them). What Kyokai itself put there (the
-//! Device ID, a password) is never offered.
+//! Device ID, a password) is never offered: on Windows its owner window is
+//! Kyokai's, and on every system its text was recorded with [`mine`].
 
 use base64::Engine;
+use std::collections::VecDeque;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -20,6 +22,41 @@ pub const MAX_PIXELS: u64 = 3840 * 2160;
 pub const MAX_PNG: usize = 3 << 20;
 /// How often the clipboard is looked at for changes (it announces none).
 const POLL: Duration = Duration::from_millis(500);
+/// Texts of Kyokai's own that are remembered (see [`mine`]).
+const MINE: usize = 8;
+
+/// SHA-256 digests of the latest texts Kyokai put on the clipboard itself,
+/// oldest first.
+static MINE_DIGESTS: Mutex<VecDeque<[u8; 32]>> = Mutex::new(VecDeque::new());
+
+/// Records a text Kyokai is about to put on the clipboard (a password, the
+/// Device ID), so that no session of this process ever offers it.
+/// Inputs: `digest` — SHA-256 of the text's UTF-8 bytes.
+/// Side effects: remembers the digest, in place of the oldest of the last 8.
+/// Notes: call it before the text is written, so the clipboard watch never
+/// sees it unrecorded.
+pub fn mine(digest: [u8; 32]) {
+    let mut d = MINE_DIGESTS.lock().expect("clipboard digests");
+    if d.contains(&digest) {
+        return;
+    }
+    if d.len() == MINE {
+        d.pop_front();
+    }
+    d.push_back(digest);
+}
+
+/// Whether an item is a text recorded with [`mine`].
+fn is_mine(item: &Item) -> bool {
+    let Item::Text(t) = item else {
+        return false;
+    };
+    let digest: [u8; 32] = <sha2::Sha256 as sha2::Digest>::digest(t.as_bytes()).into();
+    MINE_DIGESTS
+        .lock()
+        .expect("clipboard digests")
+        .contains(&digest)
+}
 
 /// An image on a clipboard: RGBA pixels, row after row.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -174,7 +211,8 @@ impl Watch {
         }
     }
 
-    /// Returns the local item to offer, when it changed and fits.
+    /// Returns the local item to offer, when it changed, fits and is not a
+    /// text Kyokai put there itself ([`mine`]).
     pub fn changed(&mut self, now: Option<Item>) -> Option<Item> {
         let item = now.filter(fits)?;
         let f = fingerprint(&item);
@@ -182,7 +220,7 @@ impl Watch {
             return None;
         }
         self.last = Some(f);
-        Some(item)
+        (!is_mine(&item)).then_some(item)
     }
 
     /// Notes an item written from the other side.
@@ -385,6 +423,27 @@ mod tests {
             None,
             "pixels that do not match the size"
         );
+    }
+
+    /// Regression: on macOS and Linux text Kyokai copied itself (the
+    /// temporary password) was offered to controllers, since only Windows
+    /// tells who owns the clipboard.
+    #[test]
+    fn texts_kyokai_copied_are_never_offered() {
+        let digest =
+            |t: &str| -> [u8; 32] { <sha2::Sha256 as sha2::Digest>::digest(t.as_bytes()).into() };
+        let password = "kyokai-test-password-7f3a";
+        mine(digest(password));
+        let mut w = Watch::new(None);
+        assert_eq!(w.changed(text(password)), None, "Kyokai's own text");
+        assert_eq!(w.changed(text("typed")), text("typed"));
+        assert_eq!(w.changed(text(password)), None, "again after another copy");
+        // Only the last 8 are kept: the oldest is forgotten.
+        for i in 0..MINE {
+            mine(digest(&format!("kyokai-test-later-{i}")));
+        }
+        assert_eq!(w.changed(text("typed")), text("typed"));
+        assert_eq!(w.changed(text(password)), text(password));
     }
 
     #[test]

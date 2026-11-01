@@ -283,7 +283,7 @@ func (c *Client) connect(opts Options) error {
 	if err != nil {
 		return err
 	}
-	err = c.mcs.send(c.mcs.global, clientInfo(opts))
+	err = c.mcs.send(c.mcs.global, clientInfo(opts, c.transport.protocol != protocolSSL))
 	if err != nil {
 		return err
 	}

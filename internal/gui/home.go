@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
@@ -325,7 +324,7 @@ func (a *App) thisDeviceCard(c *ui.Context) {
 		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, groupDigits(st.DeviceID)).FontSize(sizeDeviceID).Bold().FontFeatures("tnum").NoWrap().Selectable().MinWidth(0)
 			if iconButton(c, "copy-id", rowCopy, L.ActionCopy()) {
-				mygo.Clipboard.WriteText(st.DeviceID)
+				a.copyText(st.DeviceID)
 				a.update(func() { a.setToast(L.Copied(), false) })
 			}
 		})
@@ -398,7 +397,7 @@ func (a *App) passwordRow(c *ui.Context, prefix string) {
 		}
 		if iconButton(c, prefix+"copy-pw", rowCopy, L.ActionCopy()) {
 			a.revealPassword(func(p string) {
-				clipboardWrite(p)
+				a.copyText(p)
 				a.update(func() { a.setToast(L.Copied(), false) })
 			})
 		}

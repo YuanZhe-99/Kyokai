@@ -125,6 +125,30 @@ func TestLookView(t *testing.T) {
 			_ = f.Close()
 		}
 	}
+	// A family with a space is typed whole and saved on Enter, not per key
+	// (regression: the saved value was trimmed and the field took it back).
+	// The field sits under its title.
+	title, ok := tt.Find(L.TermFont())
+	if !ok {
+		t.Fatal("no font row")
+	}
+	tt.Press(title.X+20, title.Y+title.H+16)
+	tt.Frame()
+	if !tt.Focused(L.TermFont()) {
+		t.Fatal("the font field did not take the focus")
+	}
+	tt.Type("Fira Code")
+	tt.Frame()
+	if got := a.termLook("657365333").Font; got != "" {
+		t.Fatalf("saved %q while typing", got)
+	}
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	tt.Frame()
+	if got := a.termLook("657365333").Font; got != "Fira Code" {
+		t.Fatalf("font after Enter: %q", got)
+	}
+
 	if err := tt.Click(L.TermUseDefaults()); err != nil {
 		t.Fatal(err)
 	}

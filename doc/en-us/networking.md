@@ -122,7 +122,8 @@ part unchanged.
   below half the best route's), by round trip (unknown last), direct before relayed. Dialing
   follows that order with happy eyeballs: the next route starts 300 ms after the one before it
   unless that one answered; the first connection that answers runs the session, and another
-  device answering moves on to the rest.
+  device answering moves on to the rest, as does a key other than the one pinned for the host (the
+  session fails as `key-changed` only when no route reaches the pinned key).
 - **A route chosen by hand** (the network, or one address) is used alone, also on resume.
 - **Memory:** each route keeps when a session last connected over it, failed dials in a row, a
   moving average of its round trip (the session's delay probes) and of the bitrate the host's

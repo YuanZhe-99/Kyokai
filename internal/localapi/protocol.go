@@ -21,6 +21,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -129,6 +130,7 @@ const (
 	RequestCoreInstall          RequestType = "cores.install"              // download an official EasyTier core (Request.Tag)
 	RequestStoreForgetMove      RequestType = "store.forget_move"          // a parked engine (its store moved out) starts over with a new identity
 	RequestCloseControllers     RequestType = "sessions.close_controllers" // end this engine's controller sessions (a GUI that quits)
+	RequestClipboardMine        RequestType = "clipboard.mine"             // the clipboard holds what this device itself put there (Request.Digest)
 	RequestShutdown             RequestType = "shutdown"
 )
 
@@ -252,6 +254,9 @@ type Request struct {
 	Replace bool `json:"replace,omitempty"`
 	// MovedTo is where RequestStoreClear's store went ("helper" or "user").
 	MovedTo string `json:"moved_to,omitempty"`
+	// Digest is RequestClipboardMine's: the SHA-256 of the clipboard's
+	// content, lowercase hex.
+	Digest string `json:"digest,omitempty"`
 }
 
 // LoginKey is one of this device's sign-in keys. Private is set only in a
@@ -598,6 +603,36 @@ type Response struct {
 	Authorized []AuthorizedKey `json:"authorized,omitempty"`
 	// Credentials answers RequestCredentialsGet.
 	Credentials *Credentials `json:"credentials,omitempty"`
+
+	// encoded is the whole line as Encode made it, written unchanged.
+	encoded []byte
+}
+
+// Encode marshals resp once, for a handler that pushes the same frame to
+// several sessions: the server writes the returned Response's bytes as
+// they are instead of marshalling it again for each session.
+// Returns: the Response carrying its encoding, which Encoded returns.
+func Encode(resp Response) (Response, error) {
+	resp.Version = ProtocolVersion
+	resp.encoded = nil
+	b, err := json.Marshal(resp)
+	if err != nil {
+		return Response{}, err
+	}
+	resp.encoded = b
+	return resp, nil
+}
+
+// Encoded is the line Encode made, or nil for a Response it did not make.
+func (r Response) Encoded() []byte { return r.encoded }
+
+// marshal is the line to write for r: its encoding when Encode made one.
+func (r Response) marshal() ([]byte, error) {
+	if r.encoded != nil {
+		return r.encoded, nil
+	}
+	r.Version = ProtocolVersion
+	return json.Marshal(r)
 }
 
 // TrustedDevice is a controller this host accepted before.
@@ -995,6 +1030,10 @@ func (c *Client) Attach(ctx context.Context, fn func(*Status) error) error {
 	}
 }
 
+// dial connects to the engine and, for a socket RequireServer names,
+// checks the engine's identity before anything is sent.
+// Returns: ErrNotRunning (wrapped) when nothing listens;
+// ErrUntrustedServer when the wrong program does.
 func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "unix", c.SocketPath)
@@ -1005,7 +1044,37 @@ func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 		}
 		return nil, err
 	}
+	if check := requiredServer(c.SocketPath); check != nil {
+		if p, err := serverPeer(conn); err != nil || !check(p) {
+			conn.Close()
+			return nil, ErrUntrustedServer
+		}
+	}
 	return conn, nil
+}
+
+// ErrUntrustedServer reports that the program listening on a socket is not
+// the engine RequireServer expects there: nothing was sent to it.
+var ErrUntrustedServer = errors.New("the program on Kyokai Helper's socket is not Kyokai Helper")
+
+// servers maps a socket path to the check its engine must pass
+// (RequireServer).
+var servers sync.Map
+
+// RequireServer makes every Client of the socket at path check, on each
+// connection and before sending anything, that ok accepts the identity of
+// the process listening there (the privileged helper: SYSTEM or root).
+// Side effects: process-wide; the GUI and ctl name the helper's socket.
+func RequireServer(path string, ok func(Peer) bool) {
+	servers.Store(filepath.Clean(path), ok)
+}
+
+// requiredServer is the check RequireServer set for path, or nil.
+func requiredServer(path string) func(Peer) bool {
+	if f, ok := servers.Load(filepath.Clean(path)); ok {
+		return f.(func(Peer) bool)
+	}
+	return nil
 }
 
 // maxResponseSize bounds one response line.
@@ -1062,12 +1131,18 @@ func WritePacket(w io.Writer, p []byte) error {
 // ReadPacket reads one media packet into buf (grown when it is too small).
 // Returns: the packet, a slice of the (possibly new) buffer.
 func ReadPacket(r io.Reader, buf []byte) ([]byte, error) {
+	return ReadPacketLimit(r, buf, MaxPacket)
+}
+
+// ReadPacketLimit is ReadPacket refusing packets longer than limit: the
+// engine reads a client's packets with the limit of their stream's kind.
+func ReadPacketLimit(r io.Reader, buf []byte, limit int) ([]byte, error) {
 	var head [4]byte
 	if _, err := io.ReadFull(r, head[:]); err != nil {
 		return nil, err
 	}
 	n := int(binary.BigEndian.Uint32(head[:]))
-	if n > MaxPacket {
+	if n > limit {
 		return nil, fmt.Errorf("media packet of %d bytes exceeds the limit", n)
 	}
 	if cap(buf) < n {

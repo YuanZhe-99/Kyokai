@@ -89,3 +89,9 @@ func IsOwner(ctx context.Context) bool {
 	owner, _ := ctx.Value(ownerKey{}).(bool)
 	return owner
 }
+
+// WithOwner marks ctx as a request of the owner tier (owner true) or not,
+// as the server does for each connection; IsOwner reads it.
+func WithOwner(ctx context.Context, owner bool) context.Context {
+	return context.WithValue(ctx, ownerKey{}, owner)
+}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 // TestPeerCredentialsLinux checks that a connection reports this process's
@@ -29,7 +30,7 @@ func TestPeerCredentialsLinux(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	p, err := peerCredentials(conn)
+	p, err := peerCredentials(conn, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

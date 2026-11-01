@@ -22,7 +22,7 @@ jobs:
     outputs:
       code: ${{ steps.diff.outputs.code }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - id: diff
@@ -44,13 +44,13 @@ jobs:
     name: Checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the secret scan reads the history
 
       # The Go version comes from go.mod, so a Go release never changes the
       # build underneath a working checkout.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
@@ -74,9 +74,18 @@ jobs:
         run: cargo fmt --manifest-path core/Cargo.toml --all --check
 
       - name: Dependency licenses and advisories
-        uses: EmbarkStudios/cargo-deny-action@v2
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           manifest-path: core/Cargo.toml
+
+      # Fails only on a vulnerability the code can reach on one of the three
+      # systems (the Go toolchain's own included), as cargo deny does for the
+      # core's crates. Installed once: GOOS on `go run` would build the tool
+      # itself for that system.
+      - name: Go advisories
+        run: |
+          GOBIN="$RUNNER_TEMP" go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          for os in windows darwin linux; do GOOS=$os "$RUNNER_TEMP/govulncheck" ./...; done
 
       - name: Secret scan
         run: go run github.com/zricethezav/gitleaks/v8@v8.30.1 git --no-banner --redact .
@@ -104,8 +113,8 @@ jobs:
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@master
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: "1.99.1"
           components: clippy, rustfmt
@@ -118,7 +127,7 @@ jobs:
           for t in $(rustup toolchain list | cut -d' ' -f1); do
             [ "$t" = "$keep" ] || rustup toolchain uninstall "$t"
           done
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: core
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -172,11 +181,11 @@ jobs:
       # tests needs less optimization.
       CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ matrix.package && '3' || '1' }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: "1.99.1"
           components: clippy, rustfmt
@@ -191,7 +200,7 @@ jobs:
           done
       # Only main saves the cache; other refs restore it. Its own key: this
       # job's cache holds the release build only.
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: core
           key: release
@@ -251,6 +260,12 @@ jobs:
           [ "$RUNNER_OS" = Windows ] && path=$(cygpath -w "$path")
           KYOKAI_CORE_LIB="$path" go test -timeout 3m ./...
           CGO_ENABLED=0 KYOKAI_CORE_LIB="$path" go test -timeout 3m ./...
+      # Data races between the goroutines and what they hand the main thread
+      # (regression: the files panel read a transfer's state as its worker
+      # changed it). The detector needs cgo; one runner is enough.
+      - name: Go tests with the race detector
+        if: matrix.full && runner.os == 'Linux'
+        run: go test -race -timeout 10m ./...
       - name: MyGo vet
         if: matrix.full
         run: go tool mygo vet .
@@ -271,7 +286,7 @@ jobs:
           dbus-run-session -- bash -c 'gnome-keyring-daemon --start --components=secrets >/dev/null && scripts/smoke.sh user'
 
       # Packages ship every Rust crate's license text (scripts/build.sh).
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
         if: matrix.package
         with:
           tool: cargo-about
@@ -290,7 +305,7 @@ jobs:
           mkdir -p "$dir" && cp "$CORE_RELEASE/$lib" "$dir/"
           scripts/build.sh
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.package
         with:
           name: unsigned-${{ matrix.os }}

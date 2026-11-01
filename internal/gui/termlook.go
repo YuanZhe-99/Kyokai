@@ -195,6 +195,10 @@ func (a *App) setTermLook(device string, l TermLook) {
 // names a Ghostty theme.
 const termKyokai = "kyokai"
 
+// fontDrafts are the font families being typed, by form; only views (the
+// main thread) use them.
+var fontDrafts = map[string]*string{}
+
 // termLookForm edits a look, a row each (row places a control under its
 // title): the themes for light and dark windows (any of Ghostty's, typed
 // to find), the font, its size, the cursor and its blinking. With base, a
@@ -260,11 +264,25 @@ func termLookForm(c *ui.Context, key string, l TermLook, base *TermLook, row fun
 		case base != nil:
 			ph = L.TermUseDefault(ph)
 		}
-		if field(ui.TextInput(c.Key(key+"-font-in"), &l.Font).Placeholder(ph)).Label(L.TermFont()).Changed() {
-			changed = true
+		// The family typed stays a draft while the field has the focus and
+		// is saved on Enter or as the focus leaves: saved per key, a family
+		// with a space could not be typed (the saved value was trimmed and
+		// the field took it back), and each key restyled every terminal.
+		draft, typing := fontDrafts[key]
+		if !typing {
+			draft = new(string)
+			*draft = l.Font
+		}
+		in := field(ui.TextInput(c.Key(key+"-font-in"), draft).Placeholder(ph)).Label(L.TermFont())
+		if in.Focused() && !in.Submitted() {
+			fontDrafts[key] = draft
+			return
+		}
+		delete(fontDrafts, key)
+		if f := strings.TrimSpace(*draft); f != l.Font {
+			l.Font, changed = f, true
 		}
 	})
-	l.Font = strings.TrimSpace(l.Font)
 	var sizes []string
 	for s := termSizeMin; s <= termSizeMax; s++ {
 		sizes = append(sizes, strconv.Itoa(int(s)))

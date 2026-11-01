@@ -654,8 +654,13 @@ pub struct Targets {
     /// Frames the session may send now (`IN_FLIGHT` less those the
     /// controller has not acknowledged): the capture takes a picture only
     /// while there is room, so the picture that goes out is the newest one,
-    /// not one that waited a round trip for the acknowledgements.
+    /// not one that waited a round trip for the acknowledgements. Set
+    /// through `set_room`, which wakes a capture waiting for room.
     pub room: AtomicU32,
+    /// Wakes the capture thread waiting in `wait_room` (with `room_lock`,
+    /// so that no change of room is missed between its look and its wait).
+    room_set: std::sync::Condvar,
+    room_lock: Mutex<()>,
 }
 
 impl Default for Targets {
@@ -664,7 +669,46 @@ impl Default for Targets {
             fps: AtomicU32::new(FPS),
             bitrate: AtomicU32::new(BITRATE),
             room: AtomicU32::new(IN_FLIGHT),
+            room_set: std::sync::Condvar::new(),
+            room_lock: Mutex::new(()),
         }
+    }
+}
+
+impl Targets {
+    /// Sets how many frames the session may send now, waking the capture.
+    pub fn set_room(&self, room: u32) {
+        self.room.store(room.min(IN_FLIGHT), Ordering::Relaxed);
+        self.wake();
+    }
+
+    /// Wakes the capture thread waiting in `wait_room` or `nap` (room
+    /// changed, a frame was taken, or the stream stops).
+    pub fn wake(&self) {
+        let _held = self.room_lock.lock().unwrap_or_else(|e| e.into_inner());
+        self.room_set.notify_all();
+    }
+
+    /// Waits until the session has room for a frame, or `timeout` passed.
+    /// Returns: whether there is room now.
+    pub fn wait_room(&self, timeout: Duration) -> bool {
+        let held = self.room_lock.lock().unwrap_or_else(|e| e.into_inner());
+        drop(
+            self.room_set
+                .wait_timeout_while(held, timeout, |_| self.room.load(Ordering::Relaxed) == 0)
+                .unwrap_or_else(|e| e.into_inner()),
+        );
+        self.room.load(Ordering::Relaxed) > 0
+    }
+
+    /// Waits until `wake` is called or `timeout` passed.
+    pub fn nap(&self, timeout: Duration) {
+        let held = self.room_lock.lock().unwrap_or_else(|e| e.into_inner());
+        drop(
+            self.room_set
+                .wait_timeout(held, timeout)
+                .unwrap_or_else(|e| e.into_inner()),
+        );
     }
 }
 
@@ -860,9 +904,7 @@ impl Source {
 
     /// Sets how many frames the session may send now (`Targets::room`).
     pub fn set_room(&self, room: u32) {
-        self.targets
-            .room
-            .store(room.min(IN_FLIGHT), Ordering::Relaxed);
+        self.targets.set_room(room);
     }
 
     /// Asks for a key frame next (a viewer opened or lost a frame).
@@ -874,6 +916,7 @@ impl Source {
 impl Drop for Source {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        self.targets.wake();
         if let Some(done) = self.done.take() {
             STOPPING
                 .lock()
@@ -949,9 +992,15 @@ pub(crate) mod capture {
     /// How long the capture thread waits before opening the display again
     /// after it was lost.
     const REOPEN_AFTER: Duration = Duration::from_millis(500);
-    /// How often the capture thread looks again for room while the session
-    /// is still sending the last frame.
-    const ROOM_WAIT: Duration = Duration::from_millis(2);
+    /// Longest the capture thread waits for room (`Targets::wait_room`,
+    /// woken as soon as the session sets it) before it looks at its stop
+    /// flag and the display again.
+    const ROOM_WAIT: Duration = Duration::from_millis(50);
+    /// Longest the capture thread waits for the session to take the frame
+    /// waiting in its channel (woken when the session sets its room).
+    const FULL_WAIT: Duration = Duration::from_millis(5);
+    /// How often the capture thread looks whether the display is off.
+    const OFF_CHECK: Duration = Duration::from_millis(250);
     /// Longest the capture thread waits for a picture before it looks at
     /// its stop flag again.
     const FRAME_WAIT: Duration = Duration::from_millis(100);
@@ -1258,8 +1307,14 @@ pub(crate) mod capture {
             // before a new one is made. The stream keeps its size; a new
             // display mode is scaled into it.
             let mut capturer = Some(capturer);
+            // Whether the display is off, looked at every OFF_CHECK at most
+            // (on X11 each look is a DPMS round trip).
+            let mut off = (t0, crate::power::display_off());
             while !stop.load(Ordering::Relaxed) {
-                off_since = if crate::power::display_off() {
+                if off.0.elapsed() >= OFF_CHECK {
+                    off = (Instant::now(), crate::power::display_off());
+                }
+                off_since = if off.1 {
                     off_since.or(Some(Instant::now()))
                 } else {
                     None
@@ -1337,14 +1392,15 @@ pub(crate) mod capture {
                 // Room for the frame first: a picture is taken only when the
                 // session can send it, so what goes out is the newest picture
                 // rather than one that waited behind the network.
-                if targets.room.load(Ordering::Relaxed) == 0 {
-                    std::thread::sleep(ROOM_WAIT);
+                if !targets.wait_room(ROOM_WAIT) {
                     continue;
                 }
                 let permit = match tx.try_reserve() {
                     Ok(permit) => permit,
+                    // The session takes the frame waiting, then sets its
+                    // room (which wakes this wait).
                     Err(mpsc::error::TrySendError::Full(())) => {
-                        std::thread::sleep(ROOM_WAIT);
+                        targets.nap(FULL_WAIT);
                         continue;
                     }
                     Err(mpsc::error::TrySendError::Closed(())) => return,
@@ -2249,15 +2305,35 @@ mod tests {
     #[test]
     fn the_capture_takes_pictures_only_with_room() {
         let targets = Arc::new(Targets::default());
-        targets.room.store(0, Ordering::Relaxed);
+        targets.set_room(0);
         let (mut frames, _, stop) = test_stream::<Fake>(targets.clone());
         assert!(
             next_frame(&mut frames, Duration::from_millis(300)).is_none(),
             "a frame without room"
         );
-        targets.room.store(1, Ordering::Relaxed);
+        targets.set_room(1);
         assert!(next_frame(&mut frames, Duration::from_secs(2)).is_some());
         stop.store(true, Ordering::Relaxed);
+    }
+
+    /// A capture waiting for room sleeps until the session sets it
+    /// (regression: it looked every 2 ms, and at the display each time).
+    #[test]
+    fn room_wakes_the_capture_waiting_for_it() {
+        let targets = Arc::new(Targets::default());
+        targets.set_room(0);
+        assert!(!targets.wait_room(Duration::from_millis(20)), "no room yet");
+        let waiting = {
+            let targets = targets.clone();
+            std::thread::spawn(move || {
+                let t = Instant::now();
+                (targets.wait_room(Duration::from_secs(30)), t.elapsed())
+            })
+        };
+        std::thread::sleep(Duration::from_millis(50));
+        targets.set_room(2);
+        let (room, took) = waiting.join().unwrap();
+        assert!(room && took < Duration::from_secs(10), "{took:?}");
     }
 
     /// A key frame asked for on a still screen comes out: the last picture

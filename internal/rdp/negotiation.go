@@ -2,7 +2,8 @@
 // internal/rdp/negotiation.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: Options.Conn used instead of dialing, import paths.
+// prior consent. Modified by Kyokai: Options.Conn used instead of dialing, import paths, the
+// protocols requested by whether credentials are set.
 
 package rdp
 
@@ -13,6 +14,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"net"
 	"strconv"
 	"strings"
@@ -26,6 +28,9 @@ const (
 	protocolHybrid     = 2
 	protocolHybridEx   = 8
 	requestedProtocols = protocolSSL | protocolHybrid | protocolHybridEx
+	// nlaProtocols are all a client with credentials asks for (Kyokai): never TLS alone, which
+	// would carry the password in the Client Info PDU to a server nothing has authenticated.
+	nlaProtocols = protocolHybrid | protocolHybridEx
 
 	negotiationRequest  = 1
 	negotiationResponse = 2
@@ -42,6 +47,9 @@ var (
 	ErrAuthenticationFailed = E.New("rdp: authentication failed")
 	ErrRemoteLogonDenied    = E.New("rdp: the account is not allowed to sign in remotely")
 	ErrCertificateChanged   = E.New("rdp: the server certificate changed")
+	// ErrNLAUnavailable is a server that would not use Network Level Authentication with a client
+	// that has credentials (Kyokai); no password was sent.
+	ErrNLAUnavailable = E.New("rdp: the server does not offer Network Level Authentication; no password was sent")
 )
 
 func Probe(ctx context.Context, conn net.Conn) (_ string, err error) {
@@ -56,7 +64,7 @@ func Probe(ctx context.Context, conn net.Conn) (_ string, err error) {
 	if err != nil {
 		return "", err
 	}
-	certificate, err := newTransport(conn).negotiate(host)
+	certificate, err := newTransport(conn).negotiate(host, requestedProtocols)
 	if err != nil {
 		return "", err
 	}
@@ -91,7 +99,17 @@ func negotiateTransport(ctx context.Context, opts Options, authenticating func()
 		}
 	}()
 	t := newTransport(conn)
-	certificate, err := t.negotiate(host)
+	// Kyokai: a client with credentials asks only for NLA, and one without only for TLS (the
+	// server's own sign-in screen), so a server that needs the other says so at once.
+	credentials := opts.Username != "" || opts.Password != ""
+	requested := uint32(protocolSSL)
+	if credentials {
+		requested = nlaProtocols
+	}
+	certificate, err := t.negotiate(host, requested)
+	if credentials && errors.Is(err, ErrUnsupportedSecurity) {
+		return nil, E.Cause1(ErrNLAUnavailable, err)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -115,8 +133,12 @@ func negotiateTransport(ctx context.Context, opts Options, authenticating func()
 	return t, nil
 }
 
-func (t *transport) negotiate(host string) (*x509.Certificate, error) {
-	err := t.write(connectionRequest())
+// negotiate asks the server for one of the requested protocols and upgrades the connection to TLS.
+// Inputs: requested, a set of protocol flags.
+// Returns: the server's certificate; ErrUnsupportedSecurity when the server refuses them all or
+// selects one not requested (Kyokai).
+func (t *transport) negotiate(host string, requested uint32) (*x509.Certificate, error) {
+	err := t.write(connectionRequest(requested))
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +155,9 @@ func (t *transport) negotiate(host string) (*x509.Certificate, error) {
 	}
 	switch protocol {
 	case protocolSSL, protocolHybrid, protocolHybridEx:
+		if protocol&requested == 0 {
+			return nil, E.Extend(ErrUnsupportedSecurity, "the server selected protocol ", protocol, ", not requested")
+		}
 	default:
 		return nil, E.Extend(ErrUnsupportedSecurity, "the server selected protocol ", protocol)
 	}
@@ -148,10 +173,11 @@ func (t *transport) negotiate(host string) (*x509.Certificate, error) {
 	})
 }
 
-func connectionRequest() []byte {
+// connectionRequest is the X.224 Connection Request asking for the requested protocols.
+func connectionRequest(requested uint32) []byte {
 	body := []byte{negotiationRequest, 0}
 	body = binary.LittleEndian.AppendUint16(body, negotiationLength)
-	body = binary.LittleEndian.AppendUint32(body, requestedProtocols)
+	body = binary.LittleEndian.AppendUint32(body, requested)
 	packet := []byte{tpktVersion, 0}
 	packet = binary.BigEndian.AppendUint16(packet, uint16(tpktHeaderLength+1+x224ConnectionHeaderLength+len(body)))
 	packet = append(packet, byte(x224ConnectionHeaderLength+len(body)), x224Request, 0, 0, 0, 0, 0)

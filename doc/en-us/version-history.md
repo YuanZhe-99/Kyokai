@@ -1,5 +1,50 @@
 # Version history
 
+## 0.6.14 (2026-10-31)
+
+A security and performance pass before the AI update.
+
+- Security fixes:
+  - Critical: files over SSH could write outside the folder chosen (a server's name with
+    backslashes, read as folders on Windows), and an SCP name `..` made Replace delete the home
+    folder. Server names must be plain names here; a file never replaces a folder; downloads carry
+    the system's mark for files from elsewhere.
+  - Leaving a login after the password challenge now counts as a failed login, so the rate limits
+    hold; the login tables stay bounded.
+  - The macOS and Linux helpers (root) no longer read or write clipboard files; a user's inbox is
+    private; a file swapped after it was listed is not read; only the latest offer stays on disk.
+  - The Windows helper installs only into folders it owns (moving aside one a user made first) and
+    refuses to start otherwise; the GUI and `ctl` speak only to a helper running as SYSTEM or root;
+    updates read only the recorded app folder, and on macOS the copy loses the caller's permissions.
+  - Exports, imports, reset, clear, `helper.remove` and `shutdown` are owner-only; protected mode
+    covers tunnels and the viewer's stream; local API connections and streams are limited.
+  - A model answer asked before a pause never acts after a resume; changing a source's address
+    deletes its key, and keys go only over HTTPS.
+  - Kyokai's own copies (the temporary password) are never offered to controllers on any system
+    (`clipboard.mine`).
+  - The host's Disconnect voids the resume token; a token lasts 60 s from the drop. A typed password
+    now proves the host on a first connection; a changed host key tries the other routes. The
+    controller keeps only the permissions it asked for; urgent messages are bounded; a peer's text
+    never reaches the log.
+  - SSH terminals: programs may not write the clipboard; Command or Control+click opens only web
+    and mail links; Open in terminal refuses names a shell could misread.
+  - Remote Desktop with a user name and password requires Network Level Authentication; VNC's
+    User name and password takes only Apple's SRP; malformed VNC data ends only its pane; desktop
+    sizes are limited.
+- Performance:
+  - The engine's core calls run concurrently, and video, input and tunnels never wait on the
+    core's lock; the networks' views refresh in the background; slow work (exports, key signing,
+    PNG, Argon2, the Wayland portal, store writes) runs off the session threads.
+  - Video fitted to half its size or less is shrunk on the decoding goroutine, not the main thread;
+    hidden tabs are not redrawn per frame; preferences are written by one background writer; key
+    generation, long lists and RDP/VNC pictures no longer stall the window.
+  - Linux X11 hosts inject input on a thread of their own (typing no longer stalls a session); the
+    capture waits for room instead of polling; the status reaches the GUI within about 100 ms.
+- Fix: the terminal font field could not take a family with a space.
+- CI pins every action to a commit, runs govulncheck and the Go tests under the race detector;
+  `golang.org/x/net` v0.62.0.
+- Upstreams checked, unchanged (MyGo v0.7.3, EasyTier v2.7.0, RustDesk 1.5.0, Rust 1.99.1).
+
 ## 0.6.13 (2026-10-31)
 
 - SSH panes copy files: a files panel over SFTP on the pane's own connection — browse, upload

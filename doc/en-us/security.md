@@ -38,15 +38,21 @@
 ## Clipboard
 
 Sharing needs the `clipboard` permission, starts with copies made after the session began and
-never offers text that Kyokai itself copied ([computer-use.md](computer-use.md)).
+never offers text that Kyokai itself copied ([computer-use.md](computer-use.md)): on Windows by the
+clipboard's owner, and on every system by its SHA-256, which the GUI records with the engine
+(`clipboard.mine`) before each copy of its own, the last 8 kept.
 
 Files need the separate `files` permission. The receiving side checks every offered path (no
 absolute paths, `..`, reserved characters or device names, no duplicates) and the limits (1000
 entries, 1 GiB) before anything is written, writes only inside a folder created for the session
 with names it creates new (never overwriting), and deletes that folder when the session ends.
-The sender never follows links or junctions. In the helper modes the files are read and written
-while impersonating the console's signed-in user, so a path put on the clipboard grants nothing
-that user could not read.
+The sender never follows links or junctions, and reads a file only while it is still the one it
+listed (its device and inode, or volume and file index). The receiving folder is the user's own:
+`Kyokai/<session>` made 0700 in the user's cache folder on Linux (`$XDG_CACHE_HOME`, else `~/.cache`) and macOS (a link or
+someone else's folder there is refused), and a newer offer received whole replaces the previous
+one's folder. In the helper modes on Windows the files are read and written while impersonating
+the console's signed-in user, so a path put on the clipboard grants nothing that user could not
+read; the macOS and Linux helpers, which run as root, send and receive no files at all.
 
 ## Remote services
 
@@ -72,7 +78,8 @@ stay in memory, and only for the hosts its GUI shows while its main window is op
 ## AI tasks
 
 - The model runs on the host's provider account: each source's key goes only to that source, over
-  HTTPS (plain HTTP is allowed only to a server on this computer, which needs no key),
+  HTTPS (plain HTTP is allowed only to a server on this computer, which is never sent a key);
+  changing a source's address or protocol deletes its key,
   and never into a log, an error, the status, the history or another device.
 - Screenshots exist in memory for the task's conversation and go only to the chosen provider; the
   history (`ai-tasks.json`) keeps instructions, the model's text and the actions, never a picture.
@@ -126,7 +133,8 @@ launchd job sends its stderr to `helper.log` in its state directory until the en
 `engine.log`. The Windows helper's session agent writes its own stderr, the core's lines about capture and
 the desktop it follows, to `logs/agent.log` in the helper's state directory; the macOS agent sends
 the same lines (and its panics) to the helper over their link, which writes them to its own log.
-The video's recovery logs each step with why and what the stream had sent, and the viewer one
+The video's recovery logs each step with why (one of its known reasons: a peer's own text never
+reaches a log) and what the stream had sent, and the viewer one
 line per stretch without a picture — counts and states, never a picture. The helper's logs need
 administrator rights to open; `logs.read` returns the logs of the engine's state directory (each
 cut to its newest megabyte) to the engine's owner or the helper's operator only, never to the
@@ -164,7 +172,27 @@ user, and the helper serves only SYSTEM, its operator and the `kyokai` group, ju
 caller's token (its user and its enabled groups); an administrator outside them is refused too
 ([run-modes.md](run-modes.md)). Signing with the engine's keys (`keys.sign`) and reading a saved service
 password (`credentials.get`) are served only to the owner or the operator, never to the group, by
-the tier the server marks on each connection from the same peer credentials.
+the tier the server marks on each connection from the same peer credentials. So are the
+requests that hand over or replace every secret or stop the engine: `identity.export`,
+`store.export`, `identity.import`, `store.import`, `store.clear`, `identity.reset`, `store.forget_move`,
+`helper.remove` and `shutdown`. Protected mode covers the streams too (`session.media`, `tunnel.open`). A request
+must arrive within 10 seconds; at most 256 connections, 64 streams and 16 media streams are served
+at once, and a packet from a client is cut at 8 MiB (a tunnel's at 128 KiB). Only a local `kyokai`
+group counts, never a domain's of that name. On Windows a peer process created after the
+connection was accepted is refused (its PID was reused). A socket folder that is a link, someone
+else's, or writable by others is refused, and so is any folder above it up to the user's runtime
+folder.
+
+The GUI and `ctl` send nothing to the helper's socket unless its server is SYSTEM (the helper
+service's process) or root (`localapi.RequireServer`), so a socket someone else bound in its place
+receives no secret. The helper's folders must be its own: installing moves aside a
+`%ProgramData%Kyokai` or `state` that is a link or junction or is not owned by SYSTEM or
+Administrators, then makes them owned by Administrators with a protected DACL; the helper refuses to
+start while its folders (on Linux `/var/lib/kyokai` and `/run/kyokai`, on macOS its Application
+Support folder and `state`) are not owned by root or SYSTEM and writable only by them. An update
+reads only the app folder recorded at install, on a local disk, and only regular files (at most
+512 MiB each); on macOS the copy loses the caller's ACLs and extended attributes and gets
+`u=rwX,go=rX` before its signature is checked.
 
 ## Threat model
 

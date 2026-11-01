@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -187,14 +188,14 @@ func (a *App) identitySettings(c *ui.Context) {
 		r.row(c, "id", tile(rowID), setting{title: L.HomeDeviceID(), about: L.IdentityIDAbout()}, func() {
 			ui.Text(c, groupDigits(st.DeviceID)).FontFeatures("tnum").Selectable()
 			if ui.Button(c.Key("id-copy"), L.ActionCopy()).Clicked() {
-				mygo.Clipboard.WriteText(st.DeviceID)
+				a.copyText(st.DeviceID)
 				a.update(func() { a.setToast(L.Copied(), false) })
 			}
 		})
 		a.nameSetting(c, r, st)
 		r.row(c, "fingerprint", tile(navSecurity), setting{title: L.IdentityFingerprint(), about: groupHex(st.Fingerprint), more: L.IdentityFingerprintHint()}, func() {
 			if ui.Button(c.Key("fp-copy"), L.ActionCopy()).Clicked() {
-				mygo.Clipboard.WriteText(st.Fingerprint)
+				a.copyText(st.Fingerprint)
 				a.update(func() { a.setToast(L.Copied(), false) })
 			}
 		})
@@ -364,8 +365,9 @@ func (a *App) aboutSection(c *ui.Context) {
 }
 
 // noticesText reads the shipped THIRD_PARTY_NOTICES.md (resources/licenses
-// in a package; the repository root in development).
-func noticesText() string {
+// in a package; the repository root in development), once: Licenses shows
+// it in every frame while open.
+var noticesText = sync.OnceValue(func() string {
 	var paths []string
 	if res, err := mygo.App.Path(mygo.PathResources); err == nil {
 		paths = append(paths, filepath.Join(res, "licenses", "THIRD_PARTY_NOTICES.md"))
@@ -377,7 +379,7 @@ func noticesText() string {
 		}
 	}
 	return sourceURL
-}
+})
 
 func (a *App) toastView(c *ui.Context) {
 	t := c.Theme()

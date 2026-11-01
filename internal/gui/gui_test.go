@@ -91,6 +91,8 @@ func TestGrouping(t *testing.T) {
 // demoApp is an App with the status a running engine pushes.
 func demoApp(t *testing.T) *App {
 	a := New("", t.TempDir(), filepath.Join(t.TempDir(), "none.sock"))
+	// The preferences' writer is done before the folder goes.
+	t.Cleanup(func() { _ = a.writePrefs() })
 	a.tour = nil // a profile from before, past its first run
 	a.connected = true
 	a.status = &localapi.Status{
@@ -207,7 +209,9 @@ func TestViewsRender(t *testing.T) {
 		"ai-new": func(a *App) {
 			a.page = pageAI
 			s := demoAISettings(false)
-			a.ai = aiState{loaded: true, settings: s, edit: &aiEdit{src: s.Sources[2], fetched: []localapi.AIModel{{ID: "qwen/qwen2.5-vl-72b-instruct"}}}}
+			a.ai = aiState{loaded: true, settings: s, edit: &aiEdit{src: s.Sources[2]}}
+			a.ai.edit.fetched = []localapi.AIModel{{ID: "qwen/qwen2.5-vl-72b-instruct"}}
+			a.ai.edit.labels = modelLabels(a.ai.edit.fetched, s.Sources[2].Name)
 		},
 		"ai-approval": func(a *App) {
 			a.page = pageAI
@@ -1094,6 +1098,8 @@ func TestKeyboardAcrossSystems(t *testing.T) {
 // it sends the host nothing.
 func TestViewerToolbarDrags(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
+	// The preferences' writer is done before the folder goes.
+	t.Cleanup(func() { _ = a.writePrefs() })
 	pic := image.NewRGBA(image.Rect(0, 0, 320, 180))
 	open := func() (*viewer, *ui.Tester) {
 		v := a.newViewer("482916735", localapi.About{}, nil, false)
@@ -1165,6 +1171,8 @@ func TestViewerToolbarDrags(t *testing.T) {
 // the host's session actions.
 func TestViewerToolbarMenus(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
+	// The preferences' writer is done before the folder goes.
+	t.Cleanup(func() { _ = a.writePrefs() })
 	v := a.newViewer("482916735", localapi.About{}, nil, false)
 	v.start, v.bm, v.pumping, v.control = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 320, 180))), true, true
 	v.actions = &hostActions{}
@@ -1200,6 +1208,8 @@ func TestViewerToolbarMenus(t *testing.T) {
 // chosen for it last time; another device with the defaults.
 func TestViewerSettingsPerDevice(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
+	// The preferences' writer is done before the folder goes.
+	t.Cleanup(func() { _ = a.writePrefs() })
 	v := a.newViewer("482916735", localapi.About{}, nil, false)
 	v.setQuality(2, "60 fps", true)
 	v.setCodec("av1")
@@ -1215,6 +1225,7 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 	if other := a.newViewer("123456789", localapi.About{}, nil, false); other.preset != 1 || other.codec != "auto" || other.swap != nil {
 		t.Errorf("another device %d %q", other.preset, other.codec)
 	}
+	_ = a.writePrefs() // as quitting does
 	if p := loadPrefs(a.stateDir); p.Viewers["482916735"].Codec != "av1" {
 		t.Errorf("gui.json %+v", p.Viewers)
 	}
@@ -1609,6 +1620,8 @@ func TestTunnelsAreNotDesktopConnections(t *testing.T) {
 		t.Errorf("Home counts tunnel %d as the desktop connection", s.ID)
 	}
 	a := New("", t.TempDir(), "")
+	// The preferences' writer is done before the folder goes.
+	t.Cleanup(func() { _ = a.writePrefs() })
 	a.status = st
 	// Opening a tab waits for a window this test has none of.
 	done := make(chan struct{})
@@ -1633,6 +1646,8 @@ func TestTunnelsAreNotDesktopConnections(t *testing.T) {
 // the same device at once, which said the session ended).
 func TestAClosedSessionGetsNoTab(t *testing.T) {
 	a := New("", t.TempDir(), "")
+	// The preferences' writer is done before the folder goes.
+	t.Cleanup(func() { _ = a.writePrefs() })
 	closing := localapi.SessionInfo{ID: 7, Role: "controller", DeviceID: "657365333", State: "connected"}
 	a.status = &localapi.Status{Sessions: []localapi.SessionInfo{closing}}
 	a.dropSession(closing.ID)

@@ -2,7 +2,7 @@
 // internal/rfb/decode.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: import paths.
+// prior consent. Modified by Kyokai: import paths, empty Raw rectangles skipped, stream sizes capped.
 
 package rfb
 
@@ -55,6 +55,10 @@ func (d *decoders) readPayload(input *stream) ([]byte, error) {
 
 func (d *decoders) decode(input *stream, framebuffer *bgra.Image, rectangle Rectangle) error {
 	x, y, width, height := rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height
+	// Kyokai: the decoders allocate from the rectangle's size before reading it.
+	if !validDesktopSize(width, height, true) {
+		return E.New("rfb: rectangle ", rectangle, " is over the size limit")
+	}
 	switch rectangle.Encoding {
 	case EncodingRaw:
 		return decodeRaw(input, framebuffer, x, y, width, height)
@@ -124,7 +128,9 @@ func (d *decoders) decode(input *stream, framebuffer *bgra.Image, rectangle Rect
 }
 
 func decodeRaw(input *stream, framebuffer *bgra.Image, x, y, width, height int) error {
-	if image.Rect(x, y, x+width, y+height).In(framebuffer.Bounds()) {
+	// Kyokai: an empty rectangle counts as inside any bounds, so it would
+	// index rows past the framebuffer.
+	if r := image.Rect(x, y, x+width, y+height); !r.Empty() && r.In(framebuffer.Bounds()) {
 		for line := 0; line < height; line++ {
 			offset := (y+line)*framebuffer.Stride + x*4
 			row := framebuffer.Pix[offset : offset+width*4]

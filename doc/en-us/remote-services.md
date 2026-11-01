@@ -138,11 +138,17 @@ is a pane like a desktop's ([gui.md](gui.md), "Connections").
   `en_US`, `zh_CN`, `zh_TW` or `ja_JP`) and `COLORTERM=truecolor`, which a server takes only as
   its `AcceptEnv` allows (OpenSSH: `LANG` and `LC_*`); MyGo's terminal (`plugins/terminal`,
   libghostty-vt) shows it with the tunnel as its `Conn`, whose `Resize` sends a window change, in
-  the look chosen for the device ([gui.md](gui.md), "Terminal look"). Its files: [Files over
+  the look chosen for the device ([gui.md](gui.md), "Terminal look"). A program in it may not write
+  the clipboard (OSC 52), and Command or Control+click opens only web and mail links (`http`,
+  `https`, `mailto`, `ui.SafeToOpen`): anything else a program names, a file, a share or another
+  scheme, is ignored. The typed password is dropped once the sign-in ends. Its files: [Files over
   SSH](#files-over-ssh).
 - **Remote Desktop** (vendored, `internal/rdp`): Network Level Authentication (CredSSP with NTLMv2)
   for User name and password, TLS alone for On the remote screen, which shows the Windows sign-in
-  screen (a server that allows only Network Level Authentication asks for another method); the graphics
+  screen (a server that allows only Network Level Authentication asks for another method). With a
+  user name or password only Network Level Authentication is asked for: a server that refuses it,
+  or picks TLS alone, gets no password (`rdp.ErrNLAUnavailable`), and the form says so and points to
+  On the remote screen; the password goes in Client Info only after it. The graphics
   pipeline without H.264 except on macOS (VideoToolbox). The server's certificate is accepted
   without pinning: the tunnel reaches the device's own port inside an authenticated Kyokai
   session. Keys go as scan codes.
@@ -157,7 +163,11 @@ is a pane like a desktop's ([gui.md](gui.md), "Connections").
   setting, a refusal shows the server's own reason (`rfb.RefusedError`), and a server offering no
   supported sign-in (`rfb.ErrUnsupportedServer`, an RFB 3.3 type beyond a byte named whole) asks
   for VNC password authentication. Password only asks the server for the VNC password (2) alone,
-  User name and password for Apple's sign-ins first, No sign-in for no security alone; a server
+  User name and password for Apple's SRP alone (36, or RSA 33 only beside 36), never falling back
+  to Diffie-Hellman (30), RSA alone, the VNC password or no security, which would show the password
+  to whatever answers on the port (a Mac offering only those needs Password only), No sign-in for no
+  security alone; a server's desktop larger than 8192 a side or 32 megapixels is refused, and data
+  either client cannot read ends only its pane, with a note (a panic is recovered per pane); a server
   that needs a sign-in it did not get asks for another method, never after a blank attempt that a
   Mac counts as a failure, and a server that closes the connection during a sign-in (`rfb.ErrSignInDropped`, what a
   Mac does to repeated failures) is a refused sign-in.
@@ -190,10 +200,17 @@ through the tunnel as it does the shell's.
   refused, as are an empty name and one holding `/`, `\` or NUL), deletes after asking (a folder
   with all it holds), uploads files and folders (chosen, or dropped on a folder of the tree, or on
   the tree for the folder shown) and downloads them, to the Downloads folder in the home folder
-  (made when missing) or to a folder chosen with Download to….
+  (made when missing) or to a folder chosen with Download to…. Every name the
+  server gives must be a plain name on this computer (`localName`: no `/`, `\`, NUL, `.` or `..`;
+  on Windows no device name, `:` or trailing dot or space): a download holding another fails with
+  "A name there can't be a file name on this computer", having written nothing outside the folder
+  chosen. Downloads carry the system's mark for files from elsewhere (Mark of the Web on Windows,
+  quarantine on macOS), so running one asks first. A listing ends with the connection and after a
+  minute at most. Open in terminal types `cd` only for a folder whose name no shell reads as more
+  (no control characters; on Windows no `"`, `$`, `` ` ``, `%` or typographic quotes, which PowerShell reads as `"`), and otherwise says so.
 - **SCP.** Where the server refuses the SFTP subsystem, the panel says so and copies by path with
   SCP, one file at a time (`scp -f path`, `scp -t folder`; a folder is refused): a path typed is
-  downloaded, and files chosen are uploaded into the folder of the path typed (a path ending in
+  downloaded (the server must send that very name), and files chosen are uploaded into the folder of the path typed (a path ending in
   `/` is that folder), replacing a name taken there, which SCP cannot look at first. The path is
   quoted for the server's shell: in double quotes on a Windows host (as the device says it runs),
   in single quotes elsewhere, a leading `~/` left for the shell to expand.
@@ -202,8 +219,10 @@ through the tunnel as it does the shell's.
   one failed or was canceled — a new transfer the person asks for: nothing is resumed or sent
   again on its own. A download is written to `name.kyokai-part` and renamed into place once whole;
   an upload that ends early is removed on the server. A name taken where a file or folder goes is
-  asked over the pane: Replace (a folder there is replaced, never merged), Keep both
-  (`name (2).ext`), or Skip, for this one or for the rest of what the same action started. The tree
+  asked over the pane: Replace (a folder there is replaced, never merged; a file never replaces a
+  folder nor a folder a file, which go beside it instead), Keep both (`name (2).ext`), or Skip, for
+  this one or for the rest of what the same action started. Inside a folder downloaded, names that
+  meet in one file (differing only in case) go beside each other, never over. The tree
   marks a path being uploaded ↑, downloaded ↓, or whose transfer failed !.
 - When the pane's connection ends, its transfers end with it; the next connection starts with an
   empty panel.

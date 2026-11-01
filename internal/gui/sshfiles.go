@@ -10,12 +10,14 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -122,6 +124,28 @@ type fileAnswer struct {
 // errSCPFolder: SCP here copies files, not folders.
 var errSCPFolder = errors.New("scp copies files only")
 
+// shellQuotes are what cmd and PowerShell read inside double quotes as
+// more than a name: quotes (PowerShell takes the typographic ones as ")
+// and what they expand. A path holding one is never quoted for a Windows
+// shell.
+const shellQuotes = "\"$`%“”„"
+
+// errBadName: a name the server gave is no plain file or folder name here.
+var errBadName = errors.New("a name from the server is not a plain name here")
+
+// localName reports whether a name the server gave is one plain file or
+// folder name on this computer: never a path (a separator of either system,
+// "..", a drive), NUL, and on Windows no device name, stream or name
+// Windows would cut. A server picks these names, and a Linux one may hold
+// backslashes, which Windows reads as folders (regression: a download could
+// write outside the folder chosen).
+func localName(name string) bool {
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") || !filepath.IsLocal(name) {
+		return false
+	}
+	return runtime.GOOS != "windows" || !strings.Contains(name, ":") && !strings.HasSuffix(name, ".") && !strings.HasSuffix(name, " ")
+}
+
 // openRemoteFiles starts SFTP on an SSH connection, or SCP alone where the
 // server has no SFTP subsystem.
 // Side effects: opens a channel of conn; changed runs on any goroutine as
@@ -172,7 +196,11 @@ func (r *remoteFiles) read(p string) *remoteDir {
 	d.loading = true
 	r.mu.Unlock()
 	go func() {
-		infos, err := r.sftp.ReadDir(p)
+		// A listing ends with the connection, and in time: a server could
+		// list without end.
+		ctx, cancel := context.WithTimeout(r.ctx, listTimeout)
+		infos, err := r.sftp.ReadDirContext(ctx, p)
+		cancel()
 		entries := make([]remoteEntry, 0, len(infos))
 		for _, fi := range infos {
 			dir := fi.IsDir()
@@ -303,10 +331,41 @@ func (r *remoteFiles) download(remote []string, to string) {
 }
 
 // list is the transfers for a frame, oldest first.
+// Notes: a transfer's state, err, at and started change under r.mu while
+// it runs: read them under it.
 func (r *remoteFiles) list() []*fileXfer {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return slices.Clone(r.transfers)
+}
+
+// busy is how many transfers wait or run.
+func (r *remoteFiles) busy() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, x := range r.transfers {
+		if x.state == xferWaiting || x.state == xferRunning {
+			n++
+		}
+	}
+	return n
+}
+
+// marks are the tree's marks for the transfers (transferMarks), read under
+// the lock their worker changes them under.
+func (r *remoteFiles) marks() map[string]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return transferMarks(r.transfers)
+}
+
+// wrote records where a transfer was written, for Show in folder.
+// Notes: only the transfer's worker writes at, so it reads it unlocked.
+func (r *remoteFiles) wrote(x *fileXfer, at string) {
+	r.mu.Lock()
+	x.at = at
+	r.mu.Unlock()
 }
 
 // clearFinished drops the transfers that ended.
@@ -355,7 +414,22 @@ func (r *remoteFiles) work() {
 		x.state, x.started = xferRunning, time.Now()
 		r.mu.Unlock()
 		r.changed()
+		// The progress shows as it moves, not only as the state changes.
+		tick := time.NewTicker(progressEvery)
+		ran := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-tick.C:
+					r.changed()
+				case <-ran:
+					return
+				}
+			}
+		}()
 		err := r.run(x)
+		close(ran)
+		tick.Stop()
 		r.mu.Lock()
 		switch {
 		case x.ctx.Err() != nil:
@@ -386,6 +460,9 @@ func (r *remoteFiles) run(x *fileXfer) error {
 
 // sftpDown copies a remote file or folder into a local folder.
 func (r *remoteFiles) sftpDown(x *fileXfer) error {
+	if !localName(x.name) {
+		return errBadName
+	}
 	st, err := r.sftp.Stat(x.src)
 	if err != nil {
 		return err
@@ -413,8 +490,14 @@ func (r *remoteFiles) sftpDown(x *fileXfer) error {
 		if err := w.Err(); err != nil {
 			return err
 		}
+		if err := x.ctx.Err(); err != nil {
+			return err
+		}
 		rel := strings.TrimPrefix(strings.TrimPrefix(w.Path(), x.src), "/")
-		to := filepath.Join(top, filepath.FromSlash(rel))
+		to, err := localPath(top, rel)
+		if err != nil {
+			return err
+		}
 		if w.Stat().IsDir() {
 			dirs = append(dirs, to)
 		} else if w.Stat().Mode().IsRegular() {
@@ -428,11 +511,13 @@ func (r *remoteFiles) sftpDown(x *fileXfer) error {
 		}
 	}
 	for _, f := range files {
-		if err := r.sftpGetFile(x, f.from, f.to); err != nil {
+		// Names that differ only in case meet in one file on Windows and
+		// macOS: the second goes beside the first, never over it.
+		if err := r.sftpGetFile(x, f.from, freeName(f.to)); err != nil {
 			return err
 		}
 	}
-	x.at = top
+	r.wrote(x, top)
 	return nil
 }
 
@@ -460,11 +545,18 @@ func (r *remoteFiles) sftpGetFile(x *fileXfer, from, to string) error {
 		_ = os.Remove(part)
 		return err
 	}
+	markDownloaded(to)
 	if x.at == "" {
-		x.at = to
+		r.wrote(x, to)
 	}
 	return nil
 }
+
+// listTimeout is the longest a folder's listing may take.
+const listTimeout = time.Minute
+
+// progressEvery is how often a running transfer's progress redraws.
+const progressEvery = 200 * time.Millisecond
 
 // partSuffix marks a download not yet whole.
 const partSuffix = ".kyokai-part"
@@ -521,7 +613,7 @@ func (r *remoteFiles) sftpUp(x *fileXfer) error {
 			return err
 		}
 	}
-	x.at = top
+	r.wrote(x, top)
 	return nil
 }
 
@@ -546,7 +638,7 @@ func (r *remoteFiles) sftpPutFile(x *fileXfer, from, to string) error {
 		return err
 	}
 	if x.at == "" {
-		x.at = to
+		r.wrote(x, to)
 	}
 	return nil
 }
@@ -588,6 +680,10 @@ func (r *remoteFiles) place(x *fileXfer, at string, info func(string) (*remoteEn
 			return "", false, x.ctx.Err()
 		}
 	}
+	// A file never replaces a folder, nor a folder a file: they go beside.
+	if policy == policyReplace && there.dir != coming.dir {
+		policy = policyBoth
+	}
 	switch policy {
 	case policySkip:
 		x.size.Store(0)
@@ -607,7 +703,7 @@ func (r *remoteFiles) place(x *fileXfer, at string, info func(string) (*remoteEn
 		}
 	}
 	// Replace: a folder there is not merged into.
-	if there.dir != coming.dir || there.dir {
+	if there.dir {
 		if x.up {
 			err = r.sftp.RemoveAll(at)
 		} else {
@@ -615,6 +711,27 @@ func (r *remoteFiles) place(x *fileXfer, at string, info func(string) (*remoteEn
 		}
 	}
 	return at, true, err
+}
+
+// localPath is where a remote file goes that lies at rel (slash-separated,
+// "" for the folder itself) below a folder downloaded into top.
+// Returns: errBadName unless every name in rel is a plain name here.
+func localPath(top, rel string) (string, error) {
+	if rel != "" && slices.ContainsFunc(strings.Split(rel, "/"), func(s string) bool { return !localName(s) }) {
+		return "", errBadName
+	}
+	return filepath.Join(top, filepath.FromSlash(rel)), nil
+}
+
+// freeName is a local file's path, or "name (n).ext" beside it when that
+// is taken.
+func freeName(p string) string {
+	for n, at := 2, p; ; n++ {
+		if _, err := os.Lstat(at); errors.Is(err, fs.ErrNotExist) {
+			return at
+		}
+		at = filepath.Join(filepath.Dir(p), numbered(filepath.Base(p), n, false))
+	}
 }
 
 // numbered is "name (n).ext" ("name (n)" for a folder).
@@ -688,7 +805,15 @@ func (r *remoteFiles) scpDown(x *fileXfer) error {
 	return r.scp(x, "-f", x.src, func(in io.Writer, out *bufio.Reader) error {
 		return scpReceive(in, out, func(name string, size int64, body io.Reader) error {
 			x.size.Store(size)
-			at, ok, err := r.place(x, filepath.Join(x.dst, filepath.Base(name)), localInfo, remoteEntry{name: name, size: size}, x.dst)
+			// The server names what it sends: only a plain name, as
+			// OpenSSH's own scp takes (regression: ".." named the home
+			// folder, which Replace removed).
+			// And only the file asked for, as OpenSSH's scp checks: a
+			// server may not drop another name (.profile) in its place.
+			if !localName(name) || name != path.Base(x.src) {
+				return errBadName
+			}
+			at, ok, err := r.place(x, filepath.Join(x.dst, name), localInfo, remoteEntry{name: name, size: size}, x.dst)
 			if err != nil || !ok {
 				if err == nil {
 					_, err = io.Copy(io.Discard, body)
@@ -711,7 +836,8 @@ func (r *remoteFiles) scpDown(x *fileXfer) error {
 				_ = os.Remove(part)
 				return err
 			}
-			x.at = at
+			markDownloaded(at)
+			r.wrote(x, at)
 			return nil
 		})
 	})
@@ -741,6 +867,9 @@ func (r *remoteFiles) scpUp(x *fileXfer) error {
 // scp runs "scp -f path" or "scp -t path" on the server and speaks its
 // protocol with fn.
 func (r *remoteFiles) scp(x *fileXfer, mode, p string, fn func(in io.Writer, out *bufio.Reader) error) error {
+	if r.windows && strings.ContainsAny(p, shellQuotes) || strings.ContainsFunc(p, unicode.IsControl) {
+		return errBadName
+	}
 	sess, err := r.conn.NewSession()
 	if err != nil {
 		return err
@@ -895,6 +1024,8 @@ func fileError(err error) string {
 		return L.FilesErrGone()
 	case errors.Is(err, fs.ErrExist):
 		return L.FilesErrTaken()
+	case errors.Is(err, errBadName):
+		return L.FilesErrBadName()
 	case errors.Is(err, errSCPFolder):
 		return L.FilesErrSCPFolder()
 	case errors.As(err, &scp):

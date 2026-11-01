@@ -162,3 +162,26 @@ func TestDropPending(t *testing.T) {
 		}
 	}
 }
+
+// TestUpdateSource: the helper updates only from the app folder recorded
+// at install, whatever the request names (regression: it read any folder a
+// caller gave, as SYSTEM or root); only a helper with none recorded (an
+// AppImage) takes the request's, and then only an absolute one.
+func TestUpdateSource(t *testing.T) {
+	app, other := t.TempDir(), t.TempDir()
+	for _, c := range []struct {
+		name, recorded, requested, want string
+	}{
+		{"recorded", app, "", app},
+		{"the recorded one named", app, app, app},
+		{"another named", app, other, ""},
+		{"none recorded", "", other, other},
+		{"none recorded, relative", "", "bin", ""},
+		{"none at all", "", "", ""},
+	} {
+		got, err := updateSource(c.recorded, c.requested)
+		if (err == nil) != (c.want != "") || err == nil && got != filepath.Clean(c.want) {
+			t.Errorf("%s: %q, %v; want %q", c.name, got, err, c.want)
+		}
+	}
+}

@@ -66,6 +66,9 @@ cargo deny --manifest-path core/Cargo.toml check
 请在仓库根目录运行 cargo：`rust-toolchain.toml` 与 `.cargo/config.toml` 是从当前目录读取的，而不是从
 `--manifest-path` 所在目录。
 
+Go 的竞态检测器（`go test -race ./...`）不能在 ARM 上的 Windows 运行：改动了 goroutine 交给主线程的内容后，请在 WSL
+中运行，或在 Linux、macOS 上运行。CI 在 Linux 上运行它。
+
 ## 开发流程
 
 ```bash

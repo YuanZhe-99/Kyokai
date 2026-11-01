@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -21,6 +22,10 @@ import (
 type filesPanel struct {
 	open bool
 	tab  int
+	// list is the tree's place, in its virtual list.
+	list ui.ListState
+	// xfers is the transfers' place, in theirs.
+	xfers ui.ListState
 	// root is the folder the tree starts at ("" the home folder).
 	root     string
 	expanded map[string]bool
@@ -113,11 +118,7 @@ func (c *sshClient) panelView(ctx *ui.Context, key string, over bool) {
 	col.Children(func() {
 		running := 0
 		if r != nil {
-			for _, x := range r.list() {
-				if x.state == xferWaiting || x.state == xferRunning {
-					running++
-				}
-			}
+			running = r.busy()
 		}
 		transfers := L.FilesTransfers()
 		if running > 0 {
@@ -198,15 +199,21 @@ func (c *sshClient) browseView(ctx *ui.Context, key string, r *remoteFiles) {
 	if p.note != "" {
 		ui.Text(ctx, p.note).FontSize(sizeSmall).TextColor(textTone(t, t.Danger)).Padding(0, 12, 8, 12)
 	}
-	marks := transferMarks(r.list())
-	tree := ui.Scroll(ctx.Key("ssh-files-tree-"+key)).Grow(1).FillWidth().MinHeight(0).Padding(0, 6)
+	marks := r.marks()
+	// Only the rows in view are built (regression: 5,000 entries took 58 ms
+	// a frame, and a terminal's output asks for frames).
+	lines := c.treeLines(r, p.root, 0, hidden, nil)
+	tree := ui.List(ctx.Key("ssh-files-tree-"+key), &p.list, len(lines)).ItemKey(func(i int) any { return lines[i].at }).
+		Grow(1).FillWidth().MinHeight(0).Padding(0, 6)
 	if files := tree.DroppedFiles(); len(files) > 0 {
 		r.upload(files, p.root)
 		p.tab = tabTransfers
 	}
 	dropOver := ""
-	tree.Children(func() {
-		dropOver = c.treeRows(ctx, key, r, p.root, 0, hidden, marks)
+	tree.Rows(func(row ui.ListRow) {
+		if o := c.treeRow(ctx, key, r, lines[row.Index], marks); o != "" {
+			dropOver = o
+		}
 	})
 	switch {
 	case dropOver != "":
@@ -275,110 +282,136 @@ func (c *sshClient) crumbs(ctx *ui.Context, key, home string) {
 	}
 }
 
-// treeRows are a folder's entries in the tree, the open folders' inside
-// them.
-// Returns: the folder files are dragged over, "" when none.
-func (c *sshClient) treeRows(ctx *ui.Context, key string, r *remoteFiles, dir string, depth int, hidden bool, marks map[string]string) string {
-	t := ctx.Theme()
-	p := &c.panel
+// treeLine is one line of the files tree: an entry, or what a folder
+// shows in place of its entries (reading, an error, nothing there).
+type treeLine struct {
+	e     remoteEntry
+	at    string
+	depth int
+	// note replaces the entry; bad: it is an error.
+	note string
+	bad  bool
+}
+
+// treeLines are a folder's entries in the tree, the open folders' inside
+// them, appended to out: plain values, built for every frame, of which the
+// list builds only the rows in view.
+func (c *sshClient) treeLines(r *remoteFiles, dir string, depth int, hidden bool, out []treeLine) []treeLine {
 	d := r.snapshot(dir)
-	pad := 4 + float32(depth)*filesIndent
-	if d.err != nil {
-		ui.Text(ctx, fileError(d.err)).FontSize(sizeSmall).TextColor(textTone(t, t.Danger)).Padding(4, 8, 4, pad+20)
-		return ""
+	switch {
+	case d.err != nil:
+		return append(out, treeLine{at: dir + "/\x00note", depth: depth, note: fileError(d.err), bad: true})
+	case d.loading && d.entries == nil:
+		return append(out, treeLine{at: dir + "/\x00note", depth: depth, note: L.FilesReading()})
+	case len(d.entries) == 0 && depth == 0:
+		return append(out, treeLine{at: dir + "/\x00note", depth: -1, note: L.FilesEmpty()})
 	}
-	if d.loading && d.entries == nil {
-		ui.Text(ctx, L.FilesReading()).FontSize(sizeSmall).TextColor(t.TextMuted).Padding(4, 8, 4, pad+20)
-		return ""
-	}
-	if len(d.entries) == 0 && depth == 0 {
-		ui.Text(ctx, L.FilesEmpty()).FontSize(sizeSmall).TextColor(t.TextMuted).Padding(8, 12)
-	}
-	over := ""
 	for _, e := range d.entries {
 		if !hidden && strings.HasPrefix(e.name, ".") {
 			continue
 		}
 		at := path.Join(dir, e.name)
-		open := e.dir && p.expanded[at]
-		row := ui.ButtonBase(ctx.Key("ssh-f-"+key+"-"+at)).Height(filesRowH).FillWidth().Padding(0, 8, 0, pad).Gap(6).
-			AlignItems(ui.Center).Radius(8).Label(e.name)
-		if e.dir {
-			if files := row.DroppedFiles(); len(files) > 0 {
-				r.upload(files, at)
-				p.tab = tabTransfers
-			}
-			if row.FileDragOver() {
-				over = at
-				row.Background(t.Accent.Alpha(0.12)).Border(2, t.Accent)
-			}
+		out = append(out, treeLine{e: e, at: at, depth: depth})
+		if e.dir && c.panel.expanded[at] {
+			out = c.treeLines(r, at, depth+1, hidden, out)
 		}
-		switch {
-		case over == at:
-		case p.chosen == at:
-			row.Background(t.Accent.Alpha(0.12))
-		case row.Hovered():
-			row.Background(t.SurfaceHover)
+	}
+	return out
+}
+
+// treeRow is one line of the tree.
+// Returns: the folder files are dragged over, "" when not this one.
+func (c *sshClient) treeRow(ctx *ui.Context, key string, r *remoteFiles, l treeLine, marks map[string]string) string {
+	t := ctx.Theme()
+	p := &c.panel
+	pad := 4 + float32(l.depth)*filesIndent
+	switch {
+	case l.depth < 0:
+		ui.Text(ctx.Key("ssh-f-"+key+"-"+l.at), l.note).FontSize(sizeSmall).TextColor(t.TextMuted).Padding(8, 12)
+		return ""
+	case l.note != "":
+		ink := t.TextMuted
+		if l.bad {
+			ink = textTone(t, t.Danger)
 		}
-		row.ContextMenu(func(m *ui.Menu) { c.entryMenu(m, r, at, e.dir) })
-		row.Children(func() {
-			ui.Box(ctx).Width(14).Center().Shrink(0).Children(func() {
-				switch {
-				case open:
-					ui.Icon(ctx, aiChevron).FontSize(12).TextColor(t.TextMuted)
-				case e.dir:
-					ui.Icon(ctx, aiChevronRight).FontSize(12).TextColor(t.TextMuted)
-				}
-			})
-			if e.dir {
-				ui.Icon(ctx, rowFolder).FontSize(navIconSize).TextColor(t.Accent)
-			} else {
-				ui.Icon(ctx, filesFile).FontSize(navIconSize).TextColor(t.TextMuted)
-			}
-			if p.renaming == at {
-				in := ui.TextInput(ctx.Key("ssh-rename-"+key), &p.name).Label(L.FilesRename()).Grow(1).Basis(0).MinWidth(0).AutoFocus()
-				switch {
-				case in.Submitted():
-					c.rename(r, at, p.name)
-				case in.Shortcut(0, ui.KeyEscape):
-					p.renaming = ""
-				}
-				return
-			}
-			ui.Box(ctx).Grow(1).Basis(0).MinWidth(0).Clip().Children(func() {
-				ui.Text(ctx, e.name).SingleLine()
-			})
-			if !e.dir {
-				ui.Text(ctx, sizeLabel(e.size)).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine()
-			}
-			if m := marks[at]; m != "" {
-				ink := textTone(t, t.Accent)
-				switch m {
-				case "↓":
-					ink = textTone(t, t.Success)
-				case "!":
-					ink = textTone(t, t.Danger)
-				}
-				ui.Text(ctx, m).FontSize(sizeSmall).Bold().TextColor(ink).Tooltip(markLabel(m))
+		ui.Text(ctx.Key("ssh-f-"+key+"-"+l.at), l.note).FontSize(sizeSmall).TextColor(ink).Padding(4, 8, 4, pad+20)
+		return ""
+	}
+	over := ""
+	e, at := l.e, l.at
+	open := e.dir && p.expanded[at]
+	row := ui.ButtonBase(ctx.Key("ssh-f-"+key+"-"+at)).Height(filesRowH).FillWidth().Padding(0, 8, 0, pad).Gap(6).
+		AlignItems(ui.Center).Radius(8).Label(e.name)
+	if e.dir {
+		if files := row.DroppedFiles(); len(files) > 0 {
+			r.upload(files, at)
+			p.tab = tabTransfers
+		}
+		if row.FileDragOver() {
+			over = at
+			row.Background(t.Accent.Alpha(0.12)).Border(2, t.Accent)
+		}
+	}
+	switch {
+	case over == at:
+	case p.chosen == at:
+		row.Background(t.Accent.Alpha(0.12))
+	case row.Hovered():
+		row.Background(t.SurfaceHover)
+	}
+	row.ContextMenu(func(m *ui.Menu) { c.entryMenu(m, r, at, e.dir) })
+	row.Children(func() {
+		ui.Box(ctx).Width(14).Center().Shrink(0).Children(func() {
+			switch {
+			case open:
+				ui.Icon(ctx, aiChevron).FontSize(12).TextColor(t.TextMuted)
+			case e.dir:
+				ui.Icon(ctx, aiChevronRight).FontSize(12).TextColor(t.TextMuted)
 			}
 		})
-		if row.Tooltip(entryTip(e)).Clicked() {
-			p.chosen = at
-			if e.dir {
-				p.expanded[at] = !open
-				if !open {
-					r.read(at)
-				}
+		if e.dir {
+			ui.Icon(ctx, rowFolder).FontSize(navIconSize).TextColor(t.Accent)
+		} else {
+			ui.Icon(ctx, filesFile).FontSize(navIconSize).TextColor(t.TextMuted)
+		}
+		if p.renaming == at {
+			in := ui.TextInput(ctx.Key("ssh-rename-"+key), &p.name).Label(L.FilesRename()).Grow(1).Basis(0).MinWidth(0).AutoFocus()
+			switch {
+			case in.Submitted():
+				c.rename(r, at, p.name)
+			case in.Shortcut(0, ui.KeyEscape):
+				p.renaming = ""
+			}
+			return
+		}
+		ui.Box(ctx).Grow(1).Basis(0).MinWidth(0).Clip().Children(func() {
+			ui.Text(ctx, e.name).SingleLine()
+		})
+		if !e.dir {
+			ui.Text(ctx, sizeLabel(e.size)).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine()
+		}
+		if m := marks[at]; m != "" {
+			ink := textTone(t, t.Accent)
+			switch m {
+			case "↓":
+				ink = textTone(t, t.Success)
+			case "!":
+				ink = textTone(t, t.Danger)
+			}
+			ui.Text(ctx, m).FontSize(sizeSmall).Bold().TextColor(ink).Tooltip(markLabel(m))
+		}
+	})
+	if row.Tooltip(entryTip(e)).Clicked() {
+		p.chosen = at
+		if e.dir {
+			p.expanded[at] = !open
+			if !open {
+				r.read(at)
 			}
 		}
-		if e.dir && row.DoubleClicked() {
-			p.root = at
-		}
-		if open {
-			if o := c.treeRows(ctx, key, r, at, depth+1, hidden, marks); o != "" {
-				over = o
-			}
-		}
+	}
+	if e.dir && row.DoubleClicked() {
+		p.root = at
 	}
 	return over
 }
@@ -464,14 +497,18 @@ func (c *sshClient) entryMenu(m *ui.Menu, r *remoteFiles, at string, dir bool) {
 		p.renaming, p.name = at, path.Base(at)
 	}
 	if m.Item(L.FilesCopyPath()).Chosen() {
-		clipboardWrite(at)
+		c.s.app.copyText(at)
 	}
 	if m.Item(L.FilesOpenInTerminal()).Chosen() {
 		folder := at
 		if !dir {
 			folder = path.Dir(at)
 		}
-		c.term.Send([]byte(cdCommand(folder, c.windows) + "\r"))
+		if cd, ok := cdCommand(folder, c.windows); ok {
+			c.term.Send([]byte(cd + "\r"))
+		} else {
+			c.panel.note = L.FilesNoCd()
+		}
 	}
 	m.Separator()
 	if m.Item(L.FilesDeleteAsk()).Chosen() {
@@ -481,12 +518,22 @@ func (c *sshClient) entryMenu(m *ui.Menu, r *remoteFiles, at string, dir bool) {
 
 // cdCommand is the shell command that goes to a folder: on Windows, from
 // SFTP's /C:/path, cd "C:\path" (cmd and PowerShell alike).
-func cdCommand(folder string, windows bool) string {
-	if windows {
-		f := strings.TrimPrefix(folder, "/")
-		return `cd "` + strings.ReplaceAll(f, "/", `\`) + `"`
+// Returns: false for a name the shell could read as more than a folder:
+// control characters (a line editor's keys, a newline), and on Windows a
+// quote or what cmd and PowerShell expand ($, `, %). Any user of the
+// server may name a folder.
+func cdCommand(folder string, windows bool) (string, bool) {
+	if strings.ContainsFunc(folder, unicode.IsControl) {
+		return "", false
 	}
-	return "cd " + scpQuote(folder, false)
+	if windows {
+		if strings.ContainsAny(folder, shellQuotes) {
+			return "", false
+		}
+		f := strings.TrimPrefix(folder, "/")
+		return `cd "` + strings.ReplaceAll(f, "/", `\`) + `"`, true
+	}
+	return "cd " + scpQuote(folder, false), true
 }
 
 // downloadTo downloads an entry into a local folder: Downloads for "".
@@ -601,14 +648,17 @@ func pathDir(p string) string {
 func (c *sshClient) transfersView(ctx *ui.Context, key string, r *remoteFiles) {
 	t := ctx.Theme()
 	xs := r.list()
-	ui.Scroll(ctx.Key("ssh-xfers-"+key)).Grow(1).FillWidth().MinHeight(0).Padding(4, 12, 12, 12).Gap(6).Children(func() {
-		if len(xs) == 0 {
-			ui.Text(ctx, L.FilesNoTransfers()).FontSize(sizeSmall).TextColor(t.TextMuted)
-		}
-		for i := len(xs) - 1; i >= 0; i-- {
+	if len(xs) == 0 {
+		ui.Text(ctx, L.FilesNoTransfers()).FontSize(sizeSmall).TextColor(t.TextMuted).Padding(4, 12, 12, 12)
+		ui.Box(ctx).Grow(1)
+	} else {
+		// Newest first; only the rows in view are built.
+		ui.List(ctx.Key("ssh-xfers-"+key), &c.panel.xfers, len(xs)).ItemKey(func(i int) any { return xs[len(xs)-1-i] }).
+			Grow(1).FillWidth().MinHeight(0).Padding(4, 12, 12, 12).Gap(6).Rows(func(row ui.ListRow) {
+			i := len(xs) - 1 - row.Index
 			c.transferRow(ctx, key, r, xs[i], i)
-		}
-	})
+		})
+	}
 	ui.Row(ctx).Padding(0, 12, 12, 12).Children(func() {
 		if ui.Button(ctx.Key("ssh-xfers-clear-"+key), L.FilesClearFinished()).Clicked() {
 			r.clearFinished()
@@ -621,7 +671,7 @@ func (c *sshClient) transfersView(ctx *ui.Context, key string, r *remoteFiles) {
 func (c *sshClient) transferRow(ctx *ui.Context, key string, r *remoteFiles, x *fileXfer, i int) {
 	t := ctx.Theme()
 	r.mu.Lock()
-	state, why, at := x.state, x.err, x.at
+	state, why, at, started := x.state, x.err, x.at, x.started
 	r.mu.Unlock()
 	size, done := x.size.Load(), x.done.Load()
 	arrow, where, ink := filesDown, L.FilesTo(x.dst), textTone(t, t.Success)
@@ -666,7 +716,7 @@ func (c *sshClient) transferRow(ctx *ui.Context, key string, r *remoteFiles, x *
 				word = L.FilesDownloading()
 			}
 			amount = L.FilesOf(sizeLabel(done), sizeLabel(size))
-			if secs := time.Since(x.started).Seconds(); secs >= 1 {
+			if secs := time.Since(started).Seconds(); secs >= 1 {
 				amount += " · " + sizeLabel(int64(float64(done)/secs)) + "/s"
 			}
 		case xferDone:

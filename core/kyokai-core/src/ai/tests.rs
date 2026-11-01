@@ -904,6 +904,27 @@ fn a_response_after_a_pause_never_acts() {
     assert_eq!(rig.clicks(), 0);
 }
 
+/// Regression: an answer to a request sent before a pause acted after a
+/// resume, on the screen the model saw before the pause.
+#[test]
+fn a_response_after_a_pause_and_a_resume_never_acts() {
+    let server = server(vec![
+        (400, claude_turn("m1", click_save())),
+        (0, claude_end("ok")),
+    ]);
+    let rig = rig("pause-resume", "claude", &server.url);
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    server.wait_for(1);
+    rig.ai.pause(id, Pause::HostUser).unwrap();
+    rig.ai.resume(id).unwrap();
+    let t = rig.state(id, "done");
+    assert_eq!(t["steps"][0]["outcome"], "paused");
+    assert_eq!(rig.clicks(), 0, "nothing ran");
+    let requests = server.requests.lock().unwrap();
+    let results = &requests[1].1["messages"][2]["content"];
+    assert_eq!(results[0]["content"], claude::PAUSED);
+}
+
 #[test]
 fn local_input_pauses_the_task_at_once() {
     let server = server(vec![
@@ -1115,6 +1136,70 @@ fn settings_and_keys_never_expose_the_key() {
     );
     rig.ai.set_key("claude", None).unwrap();
     assert!(rig.ai.start("k", "Save", None).is_err(), "no key, no task");
+}
+
+/// Regression: a source kept its key when its address changed, so a model
+/// list sent the key to the new address; a key never goes over plain HTTP.
+#[test]
+fn keys_go_only_over_https_to_where_they_were_given() {
+    let rig = rig("key-url", "claude", "http://127.0.0.1:9");
+    let sources = |rig: &Rig| rig.ai.settings()["sources"].clone();
+    let set = |rig: &Rig, s: Value| rig.ai.set_settings(&json!({"sources": s})).unwrap();
+    // A new name keeps the key; a new address or protocol drops it.
+    let mut s = sources(&rig);
+    s[0]["name"] = json!("Renamed");
+    set(&rig, s);
+    assert_eq!(rig.ai.settings()["keys"]["claude"], true, "renamed");
+    let mut s = sources(&rig);
+    s[0]["url"] = json!("https://elsewhere.example/v1");
+    set(&rig, s);
+    assert_eq!(rig.ai.settings()["keys"]["claude"], false, "a new address");
+    rig.ai.set_key("openai", Some(TEST_KEY)).unwrap();
+    let mut s = sources(&rig);
+    s[1]["protocol"] = json!("openai-chat");
+    set(&rig, s);
+    assert_eq!(rig.ai.settings()["keys"]["openai"], false, "a new protocol");
+    // A server on this computer over plain HTTP gets no key, though one is
+    // stored for it.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let seen = std::thread::spawn(move || {
+        use std::io::{BufRead, Write};
+        let (stream, _) = listener.accept().unwrap();
+        let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+        let mut headers = Vec::new();
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line.trim_end().is_empty() {
+                break;
+            }
+            headers.push(line.trim_end().to_string());
+        }
+        let body = r#"{"data":[{"id":"local-model"}]}"#;
+        let mut stream = stream;
+        let _ = write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        headers
+    });
+    let mut s = sources(&rig);
+    s.as_array_mut().unwrap().push(json!({"id": "local", "name": "Local", "template": "custom",
+        "protocol": "openai-chat", "url": format!("http://127.0.0.1:{port}/v1"), "models": [{"id": "m"}]}));
+    set(&rig, s);
+    rig.ai.set_key("local", Some(TEST_KEY)).unwrap();
+    let models = rig.ai.list_models("local").unwrap();
+    assert_eq!(models[0].id, "local-model");
+    let headers = seen.join().unwrap();
+    assert!(headers[0].starts_with("GET /v1/models"));
+    assert!(
+        !headers
+            .iter()
+            .any(|h| h.contains(TEST_KEY) || h.to_ascii_lowercase().starts_with("authorization")),
+        "no key over plain HTTP: {headers:?}"
+    );
 }
 
 /// A real Claude round trip on the synthetic screens (nothing touches the

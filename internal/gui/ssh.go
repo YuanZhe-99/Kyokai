@@ -145,13 +145,17 @@ func sshDial(ctx context.Context, link serviceLink, device, address string, plan
 	defer stop()
 	_ = tunnel.SetDeadline(time.Now().Add(sshTimeout))
 	var auth []ssh.AuthMethod
+	// The password lives only until the sign-in ends: the client keeps its
+	// methods for the whole connection.
+	password := plan.password
+	defer func() { password = "" }()
 	if plan.method == methodKey {
 		auth = []ssh.AuthMethod{ssh.PublicKeysCallback(func() ([]ssh.Signer, error) { return engineSigners(ctx, link), nil })}
 	} else {
 		// One password, tried once: a server that refused it by "password"
 		// is not given it again by "keyboard-interactive", a second failure
 		// that a Mac answers a minute late and counts against this computer.
-		password, sent := plan.password, false
+		sent := false
 		auth = []ssh.AuthMethod{ssh.PasswordCallback(func() (string, error) {
 			sent = true
 			return password, nil
@@ -500,6 +504,13 @@ func dialSSH(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 			return true
 		},
 		OnSearch: func(st terminal.SearchStatus) { c.find.status = st },
+		// A program may not write the clipboard (OSC 52): a server could
+		// swap what this user copied before a paste.
+		NoClipboardWrite: true,
+		// Command or Control+click opens only web and mail links; any other
+		// target (a file, a share, another scheme) is swallowed, since a
+		// program names it and the system would run it.
+		OpenLink: func(link string) bool { return !ui.SafeToOpen(link) },
 	})
 	if err != nil {
 		_ = conn.Close()

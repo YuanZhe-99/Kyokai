@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
@@ -65,7 +64,7 @@ func (a *App) paletteItems() []paletteItem {
 			out = append(out,
 				paletteItem{group: this, title: L.HomeTemporaryPassword(), sub: strings.Repeat("•", 8), hint: L.ActionCopy(), icon: rowLock, do: func() {
 					a.revealPassword(func(p string) {
-						clipboardWrite(p)
+						a.copyText(p)
 						a.update(func() { a.setToast(L.Copied(), false) })
 					})
 				}},
@@ -75,7 +74,7 @@ func (a *App) paletteItems() []paletteItem {
 		}
 		id := st.DeviceID
 		out = append(out, paletteItem{group: this, title: L.HomeDeviceID(), sub: groupDigits(id), hint: L.ActionCopy(), icon: rowID, do: func() {
-			mygo.Clipboard.WriteText(id)
+			a.copyText(id)
 			a.update(func() { a.setToast(L.Copied(), false) })
 		}})
 	}

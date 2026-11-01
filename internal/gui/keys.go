@@ -222,7 +222,7 @@ func (a *App) keyRow(c *ui.Context, r *rows, key, name, public string, busy bool
 // keyActions are a key's Copy public key and Remove (which asks first).
 func (a *App) keyActions(c *ui.Context, key, name, public string, busy bool, remove func()) {
 	if ui.Button(c.Key(key+"-copy"), L.KeysCopyPublic()).Clicked() {
-		mygo.Clipboard.WriteText(public)
+		a.copyText(public)
 		a.update(func() { a.setToast(L.Copied(), false) })
 	}
 	if ui.Button(c.Key(key+"-rm"), L.ActionRemove()).Disabled(busy).Clicked() {
@@ -321,7 +321,12 @@ func (a *App) keyForm(c *ui.Context, k keysState) {
 			}
 			label := map[string]string{"generate": L.KeysGenerate(), "import": L.KeysImport(), "authorize": L.KeysAuthorize(), "pair": L.KeysPair()}[f.kind]
 			if ui.PrimaryButton(c.Key("key-go"), label).Disabled(k.busy || (f.kind == "import" || f.kind == "authorize") && strings.TrimSpace(f.text) == "").Clicked() {
-				a.submitKeyForm(f)
+				// Making a key pair or opening a locked one takes up to a
+				// second (bcrypt): off the main thread, the form busy meanwhile.
+				a.mu.Lock()
+				a.keys.busy = true
+				a.mu.Unlock()
+				go a.submitKeyForm(f)
 			}
 		})
 	})
@@ -365,6 +370,8 @@ func baseName(p string) string {
 // or authorizes a public key (or a new pair's) to connect here.
 // Side effects: the engine keeps the key; a generated private key shows
 // once; the form's secrets are cleared.
+// Notes: runs off the main thread (bcrypt takes up to a second); the
+// caller set keys.busy, which the result clears.
 func (a *App) submitKeyForm(f keyForm) {
 	name := strings.TrimSpace(f.name)
 	if name == "" {
@@ -378,6 +385,7 @@ func (a *App) submitKeyForm(f keyForm) {
 	a.mu.Unlock()
 	fail := func(note string) {
 		a.update(func() {
+			a.keys.busy = false
 			a.keys.form = f
 			a.keys.form.passphrase, a.keys.form.note = "", note
 			if f.kind == "import" {
@@ -471,7 +479,7 @@ func (a *App) shownKey(c *ui.Context, k shownKey) {
 		ui.Text(c, k.pem).FontSize(sizeSmall).FontFeatures("tnum").Selectable()
 		ui.Row(c).Gap(gap).Children(func() {
 			if ui.Button(c.Key("shown-copy"), L.ActionCopy()).Clicked() {
-				mygo.Clipboard.WriteText(k.pem)
+				a.copyText(k.pem)
 				a.update(func() { a.setToast(L.Copied(), false) })
 			}
 			if ui.Button(c.Key("shown-save"), L.KeysSave()).Clicked() {

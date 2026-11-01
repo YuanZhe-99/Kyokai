@@ -49,10 +49,10 @@
 |---|---|
 | `kyokai_abi_version() -> u32` | ABI 版本（7）；不一致时宿主拒绝加载 |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | 以 `{version, state_dir, profile}` 启动核心 |
-| `kyokai_call(json, len, *out, *out_len) -> i32` | 应答 `{method, params}` |
+| `kyokai_call(json, len, *out, *out_len) -> i32` | 应答 `{method, params}`；调用可并发进行（Go 绑定为每个调用提供自己的响应槽；`kyokai_stop` 会等待它们）。耗时的工作——各网络的视图（每 2 秒在后台刷新；超过 10 秒的视图显示为正在连接）、导出及其密钥派生、固定密码、`protect.set`、`keys.sign`、macOS 助手的权限、钥匙串提示——都不持有核心的锁，只在读取与替换时才取锁；重建核心仍持有它 |
 | `kyokai_free(ptr, len)` | 释放响应缓冲区 |
 | `kyokai_stop()` | 结束所有会话（已连接的会话各发送告别，最多等待一秒），然后丢弃核心的状态，包括内存中的机密 |
-| `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | 等待控制端会话的下一个媒体包（隧道会话为其字节，包 14），并复制到调用方的缓冲区；-1 超时，-2 已结束，-3 过大 |
+| `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | 等待控制端会话的下一个媒体包（它与 `kyokai_media_write` 查找会话时不取核心的锁，因此任何调用都不会拖慢视频、输入或隧道）（隧道会话为其字节，包 14），并复制到调用方的缓冲区；-1 超时，-2 已结束，-3 过大 |
 | `kyokai_media_write(session, ptr, len) -> i32` | 把界面发来的控制包（输入、关键帧请求）交给会话：0，-1 格式错误，-2 已结束，-3 因落后而被拒绝；输入从不等待——会话无法接收输入时，移动、按下、点击与文字被拒绝，松开从不被拒绝（`session::InputGate`）——其他消息最多等待 200 毫秒；隧道的字节（包 14）总是等待空间 |
 | `kyokai_decoder_open(json, len) -> u64` | 为视频流（`{codec, width, height}`）打开查看用的解码器；编解码器不可用时返回 0。不需要已启动的核心 |
 | `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | 把一帧解码到调用方的 RGBA 缓冲区：1 有画面，0 需要更多输入，-1 错误，-3 过大 |
@@ -92,9 +92,11 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
   请求，`session.attach` 除外：它保持连接，状态变化时收到推送。
 - 请求：`status`（含网络状态，以及 `build`：引擎构建所用的提交，用来区分同一版本的两次构建）、`password.reveal`、`password.regenerate`、`network.get`、`network.set`、`network.profiles`、`network.profile.set`、`network.profile.remove`、`network.direct`（被拒绝的设置
   以 `invalid` 和原因答复；状态中的 `network` 在所有网络合在一起的状态上增加 `networks`，即每个网络各自的状态，因此旧版界面照常读取）、`password.set_permanent`、`session.connect`、`session.identify`、`device.remove`、`protect.set`（保护模式打开期间，引擎只答复 `protectedAllows` 中的请求，其余以 `invalid` 拒绝；状态中为 `protected`）、`logs.set`（`{logs_off}`：完全无日志；引擎写入或删除其状态目录中的 `no-logs` 标记，关闭或重新打开它的日志，删除日志并调用 `access.history`；状态中为 `logs_off`；界面在连接引擎时以及设置改变时发送）、`password.forget_saved`、`session.close`、`request.decide`、`trusted.list`、
-  `trusted.remove`、`host.forget`、`keys.list`、`keys.add`、`keys.remove`、`keys.sign`、`authorized.list`、`authorized.add`、`authorized.set`、`authorized.remove`、`credentials.get`（仅所有者或操作者）、`credentials.set`、`credentials.forget`、`watch.set`、`tunnel.open`（流式，见下文）、`identity.export`、`identity.import`、`identity.reset`、`device.set_name`、`access.settings`、`system.permission`（`{permission}`，macOS）、`capture.show`（`{show}`；界面在所连接的引擎报告核心已运行（未驻留）后发送，未送达则每秒重发，设置改变时也发送）、`kyokai.shown`（`{shown}`；Wayland 上的 Linux）、`input.kyokai`（`{kyokai_input}`；与 `capture.show` 一起发送；不认识它的引擎会继续保护 Kyokai 的窗口）、`sound.source`（`{sound_source}`，同样）、`sound.devices`（→ `sound_devices`）、`nanokvm.devices`（→ `nanokvm_devices`）、`secrets.start_over`、`helper.background`、`helper.agent_restart` 与 `helper.remove`（仅助手；在存储迁出之后）、`store.forget_move`（驻留的引擎重新开始）、`sessions.close_controllers`、`store.export`、`store.import`、`store.clear`（之后停止引擎）、`session.attach`、`session.media`、`shutdown`，以及与核心方法同名的 AI 请求（`ai.settings.get` … `ai.stop`、`ai.draft.set`）。`session.media`（某个进行中的控制端会话的 `{id}`）先答复 OK，
+  `trusted.remove`、`host.forget`、`keys.list`、`keys.add`、`keys.remove`、`keys.sign`、`authorized.list`、`authorized.add`、`authorized.set`、`authorized.remove`、`credentials.get`（仅所有者或操作者）、`credentials.set`、`credentials.forget`、`watch.set`、`tunnel.open`（流式，见下文）、`identity.export`、`identity.import`、`identity.reset`、`device.set_name`、`access.settings`、`system.permission`（`{permission}`，macOS）、`capture.show`（`{show}`；界面在所连接的引擎报告核心已运行（未驻留）后发送，未送达则每秒重发，设置改变时也发送）、`kyokai.shown`（`{shown}`；Wayland 上的 Linux）、`input.kyokai`（`{kyokai_input}`；与 `capture.show` 一起发送；不认识它的引擎会继续保护 Kyokai 的窗口）、`sound.source`（`{sound_source}`，同样）、`sound.devices`（→ `sound_devices`）、`nanokvm.devices`（→ `nanokvm_devices`）、`clipboard.mine`、`secrets.start_over`、`helper.background`、`helper.agent_restart` 与 `helper.remove`（仅助手；在存储迁出之后）、`store.forget_move`（驻留的引擎重新开始）、`sessions.close_controllers`、`store.export`、`store.import`、`store.clear`（之后停止引擎）、`session.attach`、`session.media`、`shutdown`，以及与核心方法同名的 AI 请求（`ai.settings.get` … `ai.stop`、`ai.draft.set`）。`session.media`（某个进行中的控制端会话的 `{id}`）先答复 OK，
   之后双向传输带长度前缀的包：引擎发出视频、统计、被控端的编码清单、其 AI 任务、经过剪贴板的内容（包 13）以及输入是否暂停（包 15，`{paused}`），界面发出控制与 AI 消息，其中的 `clipboard-use` 由引擎为该会话保存，从不转发；界面首先请求关键帧。`tunnel.open`（`{tunnel: {device_id, address?, route?, service}}`）在被控端准入隧道之后（最多等待 90 秒）答复，或说明原因，之后双向以包 14 承载隧道的字节（[remote-services.md](remote-services.md)）。这些新增内容不改变任何请求的含义，因此本地 API 仍为版本 2：旧引擎会忽略 `clipboard-use`，旧界面会忽略包 13 与包 15。状态包含待处理的被控端确认与会话；机密只朝引擎方向传递
-  （网络密钥、固定密码、用户输入的密码、服务商的 API 密钥）。会话在每个改变状态的命令之后、以及网络状态变化时收到状态。
+  （网络密钥、固定密码、用户输入的密码、服务商的 API 密钥）。会话在每个改变状态的命令之后、以及网络状态变化时收到状态：每个引擎由一个生产者生成状态，在变化后 100 毫秒、
+  以及有会话连接时每 500 毫秒生成一次，把最新的交给每个会话，从不等待读得慢的一方。`clipboard.mine`（`{digest}`，界面即将复制的文字的 SHA-256，
+  64 个小写十六进制字符）告诉核心不要把这段文字提供给控制端；所有级别与受保护模式都可以发送它。
 - 授权来自操作系统的对端凭据（macOS 为 `LOCAL_PEERCRED`；Linux 为 `SO_PEERCRED` 与 `SO_PEERGROUPS`；Windows 为 `SIO_AF_UNIX_GETPEERPID` 与进程令牌的 SID），
   从不取自请求内容：只服务引擎自己的用户；读不出身份的连接一律拒绝。服务器在请求的上下文中标记每个连接的级别
   （`localapi.IsOwner`）：所有者或助手的操作者还可以用引擎的密钥签名（`keys.sign`）并读取保存的服务密码（`credentials.get`）；
@@ -119,4 +121,7 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
 - **机密从不外传**（[security.md](security.md)）。
 - **绝不把陈旧数据显示为当前数据。** 只有引擎会话连接时界面才显示引擎状态，否则显示“正在启动”或引擎未运行的原因。
 - **带版本的边界。** ABI 与本地 API 都带版本；枚举以名称传递。
+- **主线程不做慢工作。** `gui.json` 由一个写入 goroutine 写入，保证最后的改动最后写入，退出时刷新（需要结果的调用方使用 `setPrefsNow`）；
+  生成密钥、首次加载核心库与查询键盘抓取的状态都不在主线程上；长列表（SSH 文件树、传输）只构建可见的行。Kyokai 复制的文字在写入前用
+  `clipboard.mine` 告知（`App.copyText`）。
 - **持有应用锁时绝不等待主线程。** MyGo 的通知、剪贴板与窗口调用都要等待主线程，而主线程绘制时要取界面的锁：这些调用都在放开锁之后进行（`statusPushed`、`revealPassword`）；主线程 10 秒没有响应时，看门狗会把每个 goroutine 的调用栈写入 `gui-crash.log`（`watchMain`）。

@@ -53,7 +53,7 @@ Kyokai 沿用 Easytier-MyGo 的做法：管理员授权只在安装特权助手�
 
 ## 助手（macOS）
 
-应用在 `Contents/Resources/bin` 中、它自己的 `kyokai-svc` 旁边附带 `Kyokai Helper.app`：一个包（`com.yuanzhe.kyokai.helper`，没有程序坞图标），其中有核心库和助手自己的 `kyokai-svc`，因此 macOS 把代理的权限列为“Kyokai Helper”，而应用的引擎算作 Kyokai。`kyokai-svc helper install --from BIN --operator-uid N`（root，经由管理员提示 `osascript … with administrator privileges`，与 EasyTier MyGo 相同）用 `ditto` 把该包复制到 `/Library/Application Support/Kyokai`（属于 root，只有 root 可写），创建 `state`（仅 root），把操作者的 uid 记录在 `state/helper.json` 中，并加载两个 launchd 任务：守护进程 `com.yuanzhe.kyokai.helper`（以 root 身份从开机起运行 `run --host helper`，由 launchd 重新启动）和位于 `/Library/LaunchAgents` 的代理 `com.yuanzhe.kyokai.agent`（`agent --socket …`，在每个图形会话中以该用户身份运行，也在登录窗口运行）。`helper uninstall` 卸载这两个任务并删除包与套接字（`--purge`：还删除状态以及助手在系统钥匙串中的密钥）。
+应用在 `Contents/Resources/bin` 中、它自己的 `kyokai-svc` 旁边附带 `Kyokai Helper.app`：一个包（`com.yuanzhe.kyokai.helper`，没有程序坞图标），其中有核心库和助手自己的 `kyokai-svc`，因此 macOS 把代理的权限列为“Kyokai Helper”，而应用的引擎算作 Kyokai。`kyokai-svc helper install --from BIN --operator-uid N`（root，经由管理员提示 `osascript … with administrator privileges`，与 EasyTier MyGo 相同）用 `ditto --noacl --noextattr` 把该包复制到 `/Library/Application Support/Kyokai`（随后执行 `chmod -R -N` 与 `u=rwX,go=rX`，调用方的权限一概不保留；更新也一样，且只从安装时记录的应用文件夹复制；属于 root，只有 root 可写），创建 `state`（仅 root），把操作者的 uid 记录在 `state/helper.json` 中，并加载两个 launchd 任务：守护进程 `com.yuanzhe.kyokai.helper`（以 root 身份从开机起运行 `run --host helper`，由 launchd 重新启动）和位于 `/Library/LaunchAgents` 的代理 `com.yuanzhe.kyokai.agent`（`agent --socket …`，在每个图形会话中以该用户身份运行，也在登录窗口运行）。`helper uninstall` 卸载这两个任务并删除包与套接字（`--purge`：还删除状态以及助手在系统钥匙串中的密钥）。
 
 助手把身份保存在 `state` 中，存储的密钥在系统钥匙串里。它的套接字 `ctl.sock` 所有本地用户都能打开；助手只按 uid 与 gid 服务 root、操作者以及本地 `kyokai` 组的成员（[security.md](security.md)）。
 
@@ -83,7 +83,7 @@ macOS 的代理所用的用户无法写入助手的文件夹，因此它经链�
 两者通过两条单向命名管道通信（同一个管道句柄上的同步 I/O 会被串行化，一个等待中的读取会阻塞所有写入），每条管道都有随机名称，以第一个实例的方式创建，
 并带有只允许 SYSTEM 的 DACL；助手检查客户端是否为它启动的代理进程，代理检查服务端是否为命令行上指明的助手。消息由 u32 长度、类型（JSON 请求或答复、
 一帧视频、一张截图）与正文组成。人的输入发给代理后不等待答复，指针位置则在会话自己的一个线程上询问，因此两者都不会拖住网络的线程。只有编码后的视频、输入事件、剪贴板文本、本机复制的剪贴板图片（由代理编码为 PNG）、所复制文件的路径以及 AI 的截图会在两者之间传递。
-两个进程都有特权，从不解码远程媒体，因此在助手模式下不接收来自控制端的剪贴板图片。剪贴板中的文件由助手在模拟控制台上已登录用户身份的情况下读写（[computer-use.md](computer-use.md) 的“文件”）。没有代理时，视频在会话重试期间显示占位画面（Kyokai Helper 正在准备）（[computer-use.md](computer-use.md) 的“视频”），输入被拒绝，AI 任务则视之为被控端用户接管。代理答复得太晚的打开会在那里再次关闭，没有代理连接时请求的唤醒会交给下一个代理，并且只有最新代理的连接结束才会断开链路。
+两个进程都有特权，从不解码远程媒体，因此在助手模式下不接收来自控制端的剪贴板图片。剪贴板中的文件由 Windows 助手在模拟控制台上已登录用户身份的情况下读写，以 root 运行的 macOS 与 Linux 助手不收发文件（[computer-use.md](computer-use.md) 的“文件”）。没有代理时，视频在会话重试期间显示占位画面（Kyokai Helper 正在准备）（[computer-use.md](computer-use.md) 的“视频”），输入被拒绝，AI 任务则视之为被控端用户接管。代理答复得太晚的打开会在那里再次关闭，没有代理连接时请求的唤醒会交给下一个代理，并且只有最新代理的连接结束才会断开链路。
 
 在 macOS 上由 launchd 而不是助手启动代理：它连接助手文件夹中的 `agent.sock`（属于 root，因此只有 root 能占用；代理会确认对端是 root），助手只接受由屏幕前的用户或登录窗口的 root 运行的、它自己的 `kyokai-svc` 发来的连接（`LOCAL_PEERPID`、`proc_pidpath`）；较新的代理会替换较旧的，而较旧代理的连接之后结束时不会影响较新代理的视频流。链路上的消息相同。代理以它自己的权限注入；在那里不提供阻止用户输入、隐私模式与锁定。在助手模式下，状态中的 `permissions` 是代理的权限，在那里请求的权限也由代理请求；macOS 只在授权之后启动的代理中计入新授权，因此权限卡片提供**重启 Kyokai Helper**（`helper.agent_restart`：代理退出，launchd 再次启动它）。
 

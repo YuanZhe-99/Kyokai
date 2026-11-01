@@ -1,8 +1,10 @@
 //! Files on the shared clipboard (doc/en-us/computer-use.md, "Files"): the
 //! copying side lists what was copied and offers paths and sizes; the other
 //! side checks them, accepts, and receives the contents, streamed in bounded
-//! pieces, into a folder of its own for the session. In the helper modes the
-//! files are read and written as the console's signed-in user.
+//! pieces, into a folder of its own for the session. In the Windows helper
+//! the files are read and written as the console's signed-in user; a
+//! process running as root on macOS or Linux (the helper there) moves no
+//! files at all.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -11,6 +13,24 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use tokio::sync::mpsc;
+
+/// Whether this process may list, read and write clipboard files.
+/// Notes: false while it runs as root on macOS or Linux, which has no
+/// console user to act as: files there would be read and written with
+/// root's rights.
+pub fn available() -> bool {
+    #[cfg(unix)]
+    // SAFETY: geteuid has no preconditions.
+    let euid = unsafe { libc::geteuid() };
+    #[cfg(not(unix))]
+    let euid = 1;
+    allowed(cfg!(windows), euid)
+}
+
+/// Whether a process with effective user `euid` may move files.
+fn allowed(windows: bool, euid: u32) -> bool {
+    windows || euid != 0
+}
 
 /// Most entries (files and folders) one offer holds.
 pub const MAX_ENTRIES: usize = 1000;
@@ -116,8 +136,18 @@ fn device(name: &str) -> bool {
 #[derive(Debug)]
 pub struct Listing {
     pub entries: Vec<Entry>,
-    /// Each file entry's path and size, in the entries' order.
-    sources: Vec<(PathBuf, u64)>,
+    /// Each file entry's file, in the entries' order.
+    sources: Vec<Source>,
+}
+
+/// One file to read for an offer, as it was listed.
+#[derive(Debug, Clone)]
+struct Source {
+    path: PathBuf,
+    size: u64,
+    /// Which file it was (see `identity`): a file put in its place since,
+    /// a link among them, is not read.
+    id: (u64, u64),
 }
 
 /// Lists copied files and folders, walking folders without following links
@@ -176,26 +206,97 @@ fn walk(path: &Path, rel: String, l: &mut Listing, total: &mut u64) -> Option<()
             size: meta.len(),
             dir: false,
         });
-        l.sources.push((path.to_path_buf(), meta.len()));
+        l.sources.push(Source {
+            path: path.to_path_buf(),
+            size: meta.len(),
+            id: listed(path, &meta)?,
+        });
     }
     Some(())
 }
 
+/// Opens a file to read without following a link at its end (on unix
+/// without waiting on a pipe put in its place).
+fn open(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut o = std::fs::OpenOptions::new();
+    o.read(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut o, libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    #[cfg(windows)]
+    std::os::windows::fs::OpenOptionsExt::custom_flags(
+        &mut o,
+        windows::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT.0,
+    );
+    o.open(path)
+}
+
+/// Which file an open file is: its device and inode on unix, its volume and
+/// file index on Windows.
+fn identity(f: &std::fs::File) -> Option<(u64, u64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let m = f.metadata().ok()?;
+        Some((m.dev(), m.ino()))
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Storage::FileSystem::{
+            BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+        };
+        let mut info = BY_HANDLE_FILE_INFORMATION::default();
+        // SAFETY: the handle is `f`'s, open for this call; `info` is only
+        // written.
+        unsafe {
+            GetFileInformationByHandle(
+                windows::Win32::Foundation::HANDLE(f.as_raw_handle()),
+                &mut info,
+            )
+        }
+        .ok()?;
+        Some((
+            u64::from(info.dwVolumeSerialNumber),
+            (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow),
+        ))
+    }
+}
+
+/// Which file a listed path is, from its listing's metadata on unix (no
+/// link followed), by opening it on Windows.
+fn listed(path: &Path, meta: &std::fs::Metadata) -> Option<(u64, u64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let _ = path;
+        Some((meta.dev(), meta.ino()))
+    }
+    #[cfg(windows)]
+    {
+        let _ = meta;
+        identity(&open(path).ok()?)
+    }
+}
+
 /// Reads an offer's files as pieces ready to seal, each at most `room`
 /// bytes of contents, while `stop` is not set.
-/// Returns: false when a file could not be read or changed size.
+/// Returns: false when a file could not be read, changed size, or is no
+/// longer the file that was listed.
 fn read_all(
     id: u64,
-    sources: &[(PathBuf, u64)],
+    sources: &[Source],
     room: usize,
     tx: &mpsc::Sender<Vec<u8>>,
     stop: &AtomicBool,
 ) -> bool {
-    for (path, size) in sources {
-        let Ok(mut f) = std::fs::File::open(path) else {
+    for s in sources {
+        let Ok(mut f) = open(&s.path) else {
             return false;
         };
-        let mut left = *size;
+        if identity(&f) != Some(s.id) {
+            return false;
+        }
+        let mut left = s.size;
         while left > 0 {
             if stop.load(Ordering::Relaxed) {
                 return true;
@@ -221,8 +322,9 @@ fn read_all(
     true
 }
 
-/// Writes an offer's entries below `dir` from the pieces' contents, each
-/// file new (never over an existing one).
+/// Writes an offer's entries into the new folder `dir` from the pieces'
+/// contents, each file new (never over an existing one) and no link
+/// followed below `dir`.
 /// Returns: the copied items' paths, for the clipboard.
 fn write_all(
     dir: &Path,
@@ -230,17 +332,17 @@ fn write_all(
     rx: &mut mpsc::Receiver<Vec<u8>>,
 ) -> std::io::Result<Vec<PathBuf>> {
     let local = |p: &str| p.split('/').fold(dir.to_path_buf(), |acc, n| acc.join(n));
-    std::fs::create_dir_all(dir)?;
+    std::fs::create_dir(dir)?;
     for e in entries.iter().filter(|e| e.dir) {
-        std::fs::create_dir_all(local(&e.path))?;
+        make_dirs(dir, &e.path)?;
     }
     let (mut buf, mut at) = (Vec::new(), 0);
     for e in entries.iter().filter(|e| !e.dir) {
-        let path = local(&e.path);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+        if let Some((parent, _)) = e.path.rsplit_once('/') {
+            make_dirs(dir, parent)?;
         }
-        let mut f = std::fs::File::create_new(&path)?;
+        // A new file: a link in its place is not followed but refused.
+        let mut f = std::fs::File::create_new(local(&e.path))?;
         let mut left = e.size;
         while left > 0 {
             if at == buf.len() {
@@ -266,6 +368,23 @@ fn write_all(
     Ok(roots)
 }
 
+/// Creates the folders of `rel` (names between `/`) below `dir` one name at
+/// a time, going on only through real folders, never through a link.
+fn make_dirs(dir: &Path, rel: &str) -> std::io::Result<()> {
+    let mut at = dir.to_path_buf();
+    for name in rel.split('/') {
+        at.push(name);
+        match std::fs::create_dir(&at) {
+            Ok(()) => {}
+            Err(e)
+                if e.kind() == std::io::ErrorKind::AlreadyExists
+                    && std::fs::symlink_metadata(&at)?.file_type().is_dir() => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
 /// The session's folder for received files: created on first use, deleted
 /// once the session and its last writer are done.
 struct Inbox {
@@ -274,16 +393,66 @@ struct Inbox {
 }
 
 impl Inbox {
-    /// The folder, created as the user the files are for.
+    /// The folder, created as the user the files are for; None where files
+    /// are not available or the folder is not safely the user's own.
     fn root(&self) -> Option<&Path> {
         self.root
             .get_or_init(|| {
-                let root = temp_dir()?.join("Kyokai").join(&self.tag);
-                as_user(|| std::fs::create_dir_all(&root))?.ok()?;
-                Some(root)
+                if !available() {
+                    return None;
+                }
+                let base = base_dir()?;
+                as_user(|| make_inbox(&base, &self.tag))?.ok()
             })
             .as_deref()
     }
+}
+
+/// Makes the inbox `<base>/Kyokai/<tag>`.
+/// Notes: on unix both folders are the user's own, 0700; one that exists
+/// and is a link or someone else's is refused.
+fn make_inbox(base: &Path, tag: &str) -> std::io::Result<PathBuf> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(base)?;
+        let kyokai = base.join("Kyokai");
+        own_dir(&kyokai)?;
+        let root = kyokai.join(tag);
+        own_dir(&root)?;
+        Ok(root)
+    }
+    #[cfg(not(unix))]
+    {
+        let root = base.join("Kyokai").join(tag);
+        std::fs::create_dir_all(&root)?;
+        Ok(root)
+    }
+}
+
+/// Creates a folder only this user can enter, or accepts one that is
+/// already this user's own (a real folder, not a link), closing it to
+/// others.
+#[cfg(unix)]
+fn own_dir(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    match std::fs::DirBuilder::new().mode(0o700).create(path) {
+        Ok(()) => return Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
+    }
+    let m = std::fs::symlink_metadata(path)?;
+    // SAFETY: geteuid has no preconditions.
+    if !m.file_type().is_dir() || m.uid() != unsafe { libc::geteuid() } {
+        return Err(std::io::ErrorKind::PermissionDenied.into());
+    }
+    if m.mode() & 0o077 != 0 {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
 }
 
 impl Drop for Inbox {
@@ -314,7 +483,8 @@ pub enum Step {
 enum Report {
     Listed(u64, Option<Listing>),
     ReadFailed(u64),
-    Written(u64, std::io::Result<Vec<PathBuf>>),
+    /// An offer was written: its folder, and the copied items in it.
+    Written(u64, std::io::Result<(PathBuf, Vec<PathBuf>)>),
 }
 
 /// An offer being sent: its pieces, until dropped.
@@ -330,12 +500,15 @@ impl Drop for Sending {
     }
 }
 
-/// The files to read for an offer, with their sizes.
-type Sources = Arc<[(PathBuf, u64)]>;
+/// The files to read for an offer.
+type Sources = Arc<[Source]>;
 
 /// One session's file transfers both ways, until dropped.
 /// Notes: every file is read and written on a thread of its own, never on
 /// the session's; a newer offer replaces an older one in each direction.
+/// Only the latest offer received is kept on disk: once a newer one has
+/// arrived, the older one's folder is removed (it is no longer on the
+/// clipboard), so a session holds at most two offers' worth of files.
 pub struct Transfers {
     /// Most bytes of contents per piece.
     room: usize,
@@ -351,6 +524,8 @@ pub struct Transfers {
     inbox: Arc<Inbox>,
     /// Folders made for offers received so far.
     received: u32,
+    /// The folder of the latest offer received whole (on the clipboard).
+    shown: Option<PathBuf>,
 }
 
 impl Transfers {
@@ -373,6 +548,7 @@ impl Transfers {
                 root: OnceLock::new(),
             }),
             received: 0,
+            shown: None,
         }
     }
 
@@ -382,7 +558,11 @@ impl Transfers {
     /// and are not offered back (another clipboard program, such as
     /// RustDesk, can rewrite the clipboard between Kyokai's write and its
     /// record of it, so the clipboard watch alone does not catch the echo).
+    /// Where files are not available (see `available`), nothing is offered.
     pub fn copied(&mut self, paths: Vec<PathBuf>) {
+        if !available() {
+            return;
+        }
         if let Some(Some(root)) = self.inbox.root.get()
             && paths.iter().all(|p| within(p, root))
         {
@@ -432,10 +612,11 @@ impl Transfers {
 
     /// The other side offers files: checks them and, when they pass, starts
     /// a writer for them, replacing an offer still being received.
-    /// Returns: whether to accept (then the session asks for the contents).
+    /// Returns: whether to accept (then the session asks for the contents);
+    /// never where files are not available (see `available`).
     pub fn offered(&mut self, id: u64, entries: Vec<Entry>) -> bool {
         self.receiving = None;
-        if !check(&entries) {
+        if !available() || !check(&entries) {
             return false;
         }
         self.received += 1;
@@ -447,11 +628,13 @@ impl Transfers {
                     .root()
                     .ok_or(std::io::ErrorKind::NotFound)?
                     .join(n.to_string());
-                let r = write_all(&dir, &entries, &mut rx);
-                if r.is_err() {
-                    let _ = std::fs::remove_dir_all(&dir);
+                match write_all(&dir, &entries, &mut rx) {
+                    Ok(roots) => Ok((dir, roots)),
+                    Err(e) => {
+                        let _ = std::fs::remove_dir_all(&dir);
+                        Err(e)
+                    }
                 }
-                r
             })
             .unwrap_or_else(|| Err(std::io::ErrorKind::PermissionDenied.into()));
             let _ = reports.send(Report::Written(id, written));
@@ -533,14 +716,27 @@ impl Transfers {
                     self.sending = None;
                     return Step::Cancel(id);
                 }
-                Report::Written(id, r)
-                    if self.receiving.as_ref().is_some_and(|(i, _)| *i == id) =>
-                {
-                    self.receiving = None;
-                    return match r {
-                        Ok(roots) => Step::Received(roots),
-                        Err(_) => Step::Stop(id),
-                    };
+                Report::Written(id, r) => {
+                    let current = self.receiving.as_ref().is_some_and(|(i, _)| *i == id);
+                    match r {
+                        Ok((dir, roots)) if current => {
+                            self.receiving = None;
+                            // The older offer leaves the clipboard: its
+                            // folder goes.
+                            if let Some(old) = self.shown.replace(dir) {
+                                discard(old);
+                            }
+                            return Step::Received(roots);
+                        }
+                        Err(_) if current => {
+                            self.receiving = None;
+                            return Step::Stop(id);
+                        }
+                        // Written whole, but replaced by a newer offer:
+                        // never on the clipboard.
+                        Ok((dir, _)) => discard(dir),
+                        Err(_) => {}
+                    }
                 }
                 _ => {}
             }
@@ -559,25 +755,60 @@ fn within(path: &Path, root: &Path) -> bool {
         .is_some_and(|rest| rest.is_empty() || rest.starts_with(['\\', '/']))
 }
 
-/// The folder for temporary files of the user the files are for.
-fn temp_dir() -> Option<PathBuf> {
+/// The folder that holds the inbox, of the user the files are for: on
+/// Windows their TEMP; on Linux their cache folder (`xdg_base`), on macOS
+/// their Caches, never the temporary folder all users share.
+fn base_dir() -> Option<PathBuf> {
     #[cfg(windows)]
-    if crate::agent::link().is_some() {
-        return user::temp_dir();
+    {
+        if crate::agent::link().is_some() {
+            return user::temp_dir();
+        }
+        Some(std::env::temp_dir())
     }
-    Some(std::env::temp_dir())
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var_os("HOME").map(PathBuf::from)?;
+        home.is_absolute()
+            .then(|| home.join("Library").join("Caches"))
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        xdg_base(|v| std::env::var_os(v))
+    }
 }
 
-/// Runs `f` with the rights of the user the files are for: in the helper
-/// modes the console's signed-in user (None when nobody is), else as this
-/// process.
+/// The Linux inbox's base from the environment (`var`): the user's cache
+/// folder, `$XDG_CACHE_HOME` or else `~/.cache`; the runtime folder only
+/// without either (regression: it came first, but it is a tmpfs often
+/// capped at a tenth of the memory, and an offer reaches 1 GiB).
+/// Returns: None when no absolute folder is named.
+#[cfg(any(all(unix, not(target_os = "macos")), test))]
+fn xdg_base(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
+    let abs = |v: &str| var(v).map(PathBuf::from).filter(|p| p.is_absolute());
+    abs("XDG_CACHE_HOME")
+        .or_else(|| abs("HOME").map(|h| h.join(".cache")))
+        .or_else(|| abs("XDG_RUNTIME_DIR"))
+}
+
+/// Runs `f` with the rights of the user the files are for: in the Windows
+/// helper the console's signed-in user (None when nobody is), else as this
+/// process (which on macOS and Linux is never root: see `available`).
 /// Notes: called only on threads of the transfers' own.
 fn as_user<T>(f: impl FnOnce() -> T) -> Option<T> {
+    if !available() {
+        return None;
+    }
     #[cfg(windows)]
     if crate::agent::link().is_some() {
         return user::run(f);
     }
     Some(f())
+}
+
+/// Removes a received offer's folder, on a thread of its own as the user.
+fn discard(dir: PathBuf) {
+    std::thread::spawn(move || as_user(|| std::fs::remove_dir_all(dir)));
 }
 
 #[cfg(windows)]
@@ -659,6 +890,43 @@ mod user {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression: the Linux inbox went to the runtime folder first, a
+    /// tmpfs often far smaller than an offer.
+    #[test]
+    fn the_linux_inbox_prefers_the_cache_folder() {
+        let root = std::env::temp_dir();
+        let (cache, home, run) = (root.join("cache"), root.join("home"), root.join("run"));
+        type Case<'a> = (&'a [(&'a str, &'a Path)], Option<PathBuf>);
+        let cases: [Case; 5] = [
+            (
+                &[
+                    ("XDG_RUNTIME_DIR", &run),
+                    ("XDG_CACHE_HOME", &cache),
+                    ("HOME", &home),
+                ],
+                Some(cache.clone()),
+            ),
+            (
+                &[("XDG_RUNTIME_DIR", &run), ("HOME", &home)],
+                Some(home.join(".cache")),
+            ),
+            (&[("XDG_RUNTIME_DIR", &run)], Some(run.clone())),
+            (
+                &[("XDG_CACHE_HOME", Path::new("relative")), ("HOME", &home)],
+                Some(home.join(".cache")),
+            ),
+            (&[], None),
+        ];
+        for (env, want) in cases {
+            let got = xdg_base(|v| {
+                env.iter()
+                    .find(|(k, _)| *k == v)
+                    .map(|(_, p)| p.as_os_str().to_owned())
+            });
+            assert_eq!(got, want, "{env:?}");
+        }
+    }
 
     fn file(path: &str, size: u64) -> Entry {
         Entry {
@@ -843,6 +1111,9 @@ mod tests {
     /// watching the clipboard). The inbox is matched without regard to case.
     #[tokio::test]
     async fn received_files_are_never_offered_back() {
+        if !available() {
+            return; // tests run as root on macOS or Linux: no files at all
+        }
         let mut t = Transfers::new(1000);
         let root = t.inbox.root().unwrap().to_path_buf();
         let upper = PathBuf::from(root.to_string_lossy().to_uppercase());
@@ -856,6 +1127,102 @@ mod tests {
         t.copied(vec![beside.join("c.txt")]);
         assert_eq!(t.next, 1);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Regression: the macOS and Linux helper read and wrote clipboard
+    /// files as root (a controller could fetch /etc/shadow, or plant files
+    /// through links in the shared /tmp).
+    #[test]
+    fn root_on_macos_and_linux_moves_no_files() {
+        for (windows, euid, ok) in [
+            (false, 0, false),
+            (false, 501, true),
+            (true, 0, true),
+            (true, 1, true),
+        ] {
+            assert_eq!(allowed(windows, euid), ok, "windows {windows}, euid {euid}");
+        }
+    }
+
+    /// Regression: a file swapped (for a link, or another file) after it
+    /// was listed was read in its place.
+    #[test]
+    fn a_file_replaced_after_listing_is_not_read() {
+        let d = scratch("swap");
+        std::fs::write(d.join("a.txt"), b"listed").unwrap();
+        let l = list(&[d.join("a.txt")]).unwrap();
+        let (tx, mut rx) = mpsc::channel(4);
+        assert!(read_all(1, &l.sources, 1000, &tx, &AtomicBool::new(false)));
+        assert_eq!(&rx.try_recv().unwrap()[HEADER..], b"listed");
+        // Another file of the same size in its place (the listed one kept,
+        // so it cannot share its identity).
+        std::fs::rename(d.join("a.txt"), d.join("old.txt")).unwrap();
+        std::fs::write(d.join("a.txt"), b"secret").unwrap();
+        assert!(!read_all(1, &l.sources, 1000, &tx, &AtomicBool::new(false)));
+        assert!(rx.try_recv().is_err(), "nothing of it was read");
+        #[cfg(unix)]
+        {
+            std::fs::remove_file(d.join("a.txt")).unwrap();
+            std::os::unix::fs::symlink(d.join("old.txt"), d.join("a.txt")).unwrap();
+            assert!(!read_all(1, &l.sources, 1000, &tx, &AtomicBool::new(false)));
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Regression: every offer received kept its folder until the session
+    /// ended, so a session could fill the disk 1 GiB at a time.
+    #[tokio::test]
+    async fn only_the_latest_offer_received_stays_on_disk() {
+        if !available() {
+            return;
+        }
+        let mut t = Transfers::new(1000);
+        let mut folders = Vec::new();
+        for id in 1..=3u64 {
+            assert!(t.offered(id, vec![file("a.txt", 3)]));
+            let mut piece = vec![TAG];
+            piece.extend_from_slice(&id.to_be_bytes());
+            piece.extend_from_slice(b"abc");
+            t.piece(&piece).await;
+            let Step::Received(roots) = t.next().await else {
+                panic!("offer {id} was not received");
+            };
+            assert_eq!(std::fs::read(roots[0].as_path()).unwrap(), b"abc");
+            folders.push(roots[0].parent().unwrap().to_path_buf());
+        }
+        let t0 = std::time::Instant::now();
+        while folders[..2].iter().any(|f| f.exists()) {
+            assert!(t0.elapsed().as_secs() < 10, "older offers still on disk");
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(folders[2].exists(), "the latest stays (on the clipboard)");
+        let root = t.inbox.root().unwrap().to_path_buf();
+        drop(t);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_inbox_is_private_and_never_a_link() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = scratch("inbox");
+        let made = make_inbox(&d, "t").unwrap();
+        for p in [d.join("Kyokai"), made] {
+            let mode = std::fs::metadata(&p).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o700, "{p:?}");
+        }
+        // A link planted where the inbox goes is refused, not followed.
+        let other = scratch("inbox-other");
+        std::os::unix::fs::symlink(&other, d.join("Kyokai").join("u")).unwrap();
+        assert!(make_inbox(&d, "u").is_err());
+        std::fs::create_dir(d.join("Kyokai").join("v")).unwrap();
+        std::os::unix::fs::symlink(&other, d.join("Kyokai").join("v").join("1")).unwrap();
+        let (_t, mut none) = mpsc::channel(1);
+        let entries = [dir("x")];
+        assert!(write_all(&d.join("Kyokai").join("v").join("1"), &entries, &mut none).is_err());
+        assert!(!other.join("x").exists(), "nothing made through the link");
+        let _ = std::fs::remove_dir_all(&d);
+        let _ = std::fs::remove_dir_all(&other);
     }
 
     #[test]

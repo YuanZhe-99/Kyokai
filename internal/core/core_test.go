@@ -3,10 +3,12 @@ package core
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"runtime"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 )
@@ -150,6 +152,40 @@ func TestRealLibrary(t *testing.T) {
 	dec.Close()
 	if _, err := l.OpenDecoder([]byte(`{"codec":"none","width":2,"height":1}`)); err == nil {
 		t.Fatal("an unknown codec must be refused")
+	}
+	// Regression: one call ran at a time, so a slow one (identifying a device
+	// that never answers) held every other call, the status too. The device
+	// here takes the connection and says nothing until the status answered.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	identified := make(chan error, 1)
+	go func() {
+		identified <- l.Call("session.identify", map[string]string{"address": ln.Addr().String()}, nil)
+	}()
+	silent, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var concurrent sync.WaitGroup
+	for range 8 {
+		concurrent.Go(func() {
+			if err := l.Call("status", nil, nil); err != nil {
+				t.Errorf("status during a slow call: %v", err)
+			}
+		})
+	}
+	concurrent.Wait()
+	select {
+	case err := <-identified:
+		t.Fatalf("the slow call ended before the device answered: %v", err)
+	default:
+	}
+	silent.Close()
+	if err := <-identified; err != nil {
+		t.Fatalf("identify: %v", err)
 	}
 	// Regression: the response slots once lived on the goroutine stack, and
 	// a stack that grew on the way into the C call left the response behind

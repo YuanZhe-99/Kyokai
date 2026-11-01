@@ -199,7 +199,7 @@ served.
 
 | Limit | Value |
 |---|---|
-| Failed logins per source address | 5 in 10 minutes, then that address is refused for 10 minutes; a denied or unanswered request without a password counts as one |
+| Failed logins per source address | 5 in 10 minutes, then that address is refused for 10 minutes; a denied or unanswered request without a password counts as one, as does a connection that drops or times out after the password challenge (the challenge alone tells a client whether its password was right); at most 1024 addresses are remembered, and a block is never dropped to make room (the global backoff applies instead) |
 | All failed logins | more than 20 in a minute makes every unpinned controller wait 30 seconds; pinned keys are exempt, so guessing cannot lock the real user out |
 | Incoming connections in their handshake or login | 16 at once; more are dropped |
 | Connected sessions on a host | 4 at once (each may hold a capture and an encoder); more are refused as busy |

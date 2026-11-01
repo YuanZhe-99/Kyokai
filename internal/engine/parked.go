@@ -89,7 +89,11 @@ func (p *parked) status() *localapi.Status {
 
 // Handle serves a parked engine's requests, or the ordinary handler's
 // once the core runs.
+// Notes: only the owner brings a store back or stops it (refuseTier).
 func (p *parked) Handle(ctx context.Context, req localapi.Request) localapi.Response {
+	if resp, refused := refuseTier(ctx, req); refused {
+		return resp
+	}
 	if h := p.current(); h != nil {
 		return h.Handle(ctx, req)
 	}

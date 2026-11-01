@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	L "github.com/YuanZhe-99/Kyokai/locales"
@@ -75,28 +74,31 @@ type clipPacket struct {
 	} `json:"files"`
 }
 
-// clipPacketIn takes a clipboard packet into the history; an image is
-// decoded and shrunk off the reader's goroutine, so video goes on.
+// clipPacketIn takes a clipboard packet into the history. It is read, and an
+// image decoded and shrunk, off the reader's goroutine (a copy of body: the
+// reader reuses its buffers), so video goes on while a large image's
+// base64 is parsed.
 func (v *viewer) clipPacketIn(body []byte) {
-	var p clipPacket
-	if json.Unmarshal(body, &p) != nil {
-		return
-	}
-	e := clipEntry{host: p.From == "host", at: time.UnixMilli(p.At), text: p.Text}
-	for _, f := range p.Files {
-		if !strings.Contains(f.Path, "/") {
-			e.names = append(e.names, f.Path)
-		}
-		if !f.Dir {
-			e.files++
-			e.size += f.Size
-		}
-	}
-	if p.PNG == "" {
-		v.update(func() { v.addClip(e) })
-		return
-	}
+	body = bytes.Clone(body)
 	go func() {
+		var p clipPacket
+		if json.Unmarshal(body, &p) != nil {
+			return
+		}
+		e := clipEntry{host: p.From == "host", at: time.UnixMilli(p.At), text: p.Text}
+		for _, f := range p.Files {
+			if !strings.Contains(f.Path, "/") {
+				e.names = append(e.names, f.Path)
+			}
+			if !f.Dir {
+				e.files++
+				e.size += f.Size
+			}
+		}
+		if p.PNG == "" {
+			v.update(func() { v.addClip(e) })
+			return
+		}
 		thumb, w, h, ok := thumbnail(p.PNG)
 		if !ok {
 			return
@@ -297,7 +299,7 @@ func (v *viewer) clipPanel(c *ui.Context) {
 					}
 					ui.Text(c, preview).FontSize(sizeSmall).Selectable()
 					if ui.Button(c.Key(key+"-copy"), L.ActionCopy()).Clicked() {
-						mygo.Clipboard.WriteText(e.text)
+						v.app.copyText(e.text)
 					}
 				}
 			})

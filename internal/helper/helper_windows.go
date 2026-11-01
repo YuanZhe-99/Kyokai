@@ -3,12 +3,14 @@ package helper
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -16,6 +18,7 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 
 	"github.com/YuanZhe-99/Kyokai/internal/fsutil"
+	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 )
 
 // ServiceName is the Windows service of the helper.
@@ -57,11 +60,17 @@ const AgentSocket = ""
 // GroupGID is unused on Windows, where the group is a SID.
 func GroupGID() (uint32, bool) { return 0, false }
 
-// GroupSID is the SID of the local `kyokai` group, or "" when no
+// GroupSID is the SID of this computer's own `kyokai` group, or "" when no
 // administrator created it.
+// Notes: only a local group counts: a domain group of the same name (which
+// an unqualified lookup also finds) is not this computer's to grant.
 func GroupSID() string {
-	sid, _, _, err := windows.LookupSID("", Group)
+	host, err := windows.ComputerName()
 	if err != nil {
+		return ""
+	}
+	sid, domain, kind, err := windows.LookupSID("", host+`\`+Group)
+	if err != nil || kind != windows.SidTypeAlias || !strings.EqualFold(domain, host) {
 		return ""
 	}
 	return sid.String()
@@ -95,14 +104,13 @@ func Install(o InstallOptions) error {
 			return fmt.Errorf("install %s: %w", name, err)
 		}
 	}
-	if err := os.MkdirAll(StateDir, 0o700); err != nil {
+	// A folder someone else made (users may create folders in ProgramData)
+	// is moved aside, never adopted.
+	if err := prepareDir(root, rootSDDL); err != nil {
 		return err
 	}
-	// SYSTEM and Administrators only; users may only open the folder that
-	// holds the socket (not inherited by the state folder).
-	if out, err := exec.Command("icacls", root, "/inheritance:r", "/grant:r",
-		"*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F", "*S-1-5-32-545:RX").CombinedOutput(); err != nil {
-		return fmt.Errorf("icacls: %v: %s", err, out)
+	if err := prepareDir(StateDir, stateSDDL); err != nil {
+		return err
 	}
 	if err := fsutil.WriteJSON(filepath.Join(StateDir, "helper.json"), Settings{OperatorSID: o.OperatorSID, AppDir: o.AppDir}); err != nil {
 		return err
@@ -249,8 +257,8 @@ func versionCmd() *exec.Cmd {
 // SelfUpdate replaces the helper's files with the signed bundle in from
 // (the app's bin folder), then exits so the service manager restarts it
 // with the new files.
-// Inputs: from, the user-writable app folder; running, this helper's
-// version.
+// Inputs: from, the app folder a request named (empty: the recorded one;
+// another is refused, updateSource); running, this helper's version.
 // Side effects: writes into BinDir; ends this process a second later.
 // Notes: installs the bytes that were verified, read once (installBundle).
 func SelfUpdate(from, running string) error {
@@ -318,4 +326,195 @@ func keepPending() {
 	default:
 		_ = k.SetStringsValue("PendingFileRenameOperations", keep)
 	}
+}
+
+// Security of the helper's folders, as SDDL: owned by Administrators, a
+// protected DACL (nothing inherited from ProgramData, which lets users
+// create folders and gives their creator full control) granting SYSTEM and
+// Administrators full control of everything below; users may only open
+// root, to reach the socket.
+const (
+	rootSDDL  = "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;;0x1200a9;;;BU)"
+	stateSDDL = "O:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+)
+
+// Well-known SIDs the helper's folders may belong to and grant changes to.
+const (
+	sidSystem = "S-1-5-18"
+	sidAdmins = "S-1-5-32-544"
+)
+
+// fileDeleteChild is FILE_DELETE_CHILD: delete what a folder holds.
+const fileDeleteChild = 0x40
+
+// writeRights are the rights on a folder that let someone change it or
+// what is in it: add or delete entries, write its attributes, or change
+// its security.
+const writeRights = windows.FILE_WRITE_DATA | windows.FILE_APPEND_DATA | windows.FILE_WRITE_EA |
+	fileDeleteChild | windows.FILE_WRITE_ATTRIBUTES | windows.DELETE | windows.WRITE_DAC |
+	windows.WRITE_OWNER | windows.GENERIC_WRITE | windows.GENERIC_ALL | windows.MAXIMUM_ALLOWED
+
+// prepareDir makes dir the helper's: a folder that is already trusted
+// (checkTrusted) gets the security sddl describes; one that is not, or a
+// link, is moved aside to dir.untrusted-<time>, and a new folder is created
+// with that security from the start.
+// Side effects: renames or creates dir; sets its owner and DACL, which
+// Windows propagates to everything below.
+// Notes: the folder is created with its security in one call, which fails
+// if someone created it meanwhile, so no one else's folder is adopted.
+func prepareDir(dir, sddl string) error {
+	sd, err := windows.SecurityDescriptorFromString(sddl)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(dir); err == nil {
+		if checkTrusted(dir) == nil {
+			owner, _, err := sd.Owner()
+			if err != nil {
+				return err
+			}
+			dacl, _, err := sd.DACL()
+			if err != nil {
+				return err
+			}
+			return windows.SetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT,
+				windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+				owner, nil, dacl, nil)
+		}
+		aside := fmt.Sprintf("%s.untrusted-%d", dir, time.Now().UnixNano())
+		if err := os.Rename(dir, aside); err != nil {
+			return fmt.Errorf("move aside %s, which someone else made: %w", dir, err)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	name, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		return err
+	}
+	sa := windows.SecurityAttributes{Length: uint32(unsafe.Sizeof(windows.SecurityAttributes{})), SecurityDescriptor: sd}
+	if err := windows.CreateDirectory(name, &sa); err != nil {
+		return fmt.Errorf("create %s: %w", dir, err)
+	}
+	return checkTrusted(dir)
+}
+
+// CheckState refuses to run the helper on folders it cannot trust: its
+// data folder and state folder must be plain folders (no junction or link)
+// owned by SYSTEM or Administrators, which no one else may change.
+// Returns: why not, naming the folder.
+func CheckState() error {
+	for _, dir := range []string{root, StateDir} {
+		if err := checkTrusted(dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkTrusted reports why dir is not a folder only SYSTEM and
+// Administrators control: it is a link or junction (a reparse point), it
+// belongs to someone else, or its DACL lets anyone else change it or what
+// is in it (an inherit-only entry included, which reaches what is created
+// below).
+func checkTrusted(dir string) error {
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() || isReparse(fi) {
+		return fmt.Errorf("%s is a link or not a folder", dir)
+	}
+	sd, err := windows.GetNamedSecurityInfo(dir, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		return fmt.Errorf("%s: %w", dir, err)
+	}
+	owner, _, err := sd.Owner()
+	if err != nil {
+		return fmt.Errorf("%s: %w", dir, err)
+	}
+	if !trustedSID(owner) {
+		return fmt.Errorf("%s belongs to %s, not SYSTEM or Administrators", dir, owner)
+	}
+	dacl, _, err := sd.DACL()
+	if err != nil {
+		return fmt.Errorf("%s: %w", dir, err)
+	}
+	if dacl == nil {
+		return fmt.Errorf("%s is open to everyone", dir)
+	}
+	for i := range uint32(dacl.AceCount) {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if err := windows.GetAce(dacl, i, &ace); err != nil {
+			return fmt.Errorf("%s: %w", dir, err)
+		}
+		switch ace.Header.AceType {
+		case windows.ACCESS_DENIED_ACE_TYPE:
+			continue
+		case windows.ACCESS_ALLOWED_ACE_TYPE:
+		default:
+			return fmt.Errorf("%s has an access entry of type %d", dir, ace.Header.AceType)
+		}
+		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart))
+		if !trustedSID(sid) && ace.Mask&writeRights != 0 {
+			return fmt.Errorf("%s lets %s change it", dir, sid)
+		}
+	}
+	return nil
+}
+
+// trustedSID reports whether sid is SYSTEM or Administrators.
+func trustedSID(sid *windows.SID) bool {
+	s := sid.String()
+	return s == sidSystem || s == sidAdmins
+}
+
+// isReparse reports whether fi (from Lstat) is a reparse point: a symbolic
+// link, a junction or a mount point, which could lead anywhere.
+func isReparse(fi fs.FileInfo) bool {
+	d, ok := fi.Sys().(*syscall.Win32FileAttributeData)
+	return fi.Mode()&(fs.ModeSymlink|fs.ModeIrregular) != 0 || ok && d.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+// localPath reports whether p is on a local drive (C:\…, not a share or a
+// device path) and no folder on the way is a reparse point that could lead
+// to a share.
+func localPath(p string) bool {
+	vol := filepath.VolumeName(p)
+	if len(vol) != 2 || vol[1] != ':' {
+		return false
+	}
+	for q := filepath.Clean(p); ; {
+		fi, err := os.Lstat(q)
+		if err != nil || isReparse(fi) {
+			return false
+		}
+		up := filepath.Dir(q)
+		if up == q {
+			return true
+		}
+		q = up
+	}
+}
+
+// IsHelper reports whether p, the process listening on SocketPath as a
+// client sees it, is the helper itself: SYSTEM, or (a user cannot read a
+// SYSTEM process's token) the KyokaiHelper service's own process. The GUI
+// checks it before sending anything to the helper (localapi.RequireServer).
+func IsHelper(p localapi.Peer) bool {
+	if p.SID == sidSystem {
+		return true
+	}
+	scm, h, err := openService()
+	if err != nil {
+		return false
+	}
+	defer windows.CloseServiceHandle(scm)
+	defer windows.CloseServiceHandle(h)
+	var st windows.SERVICE_STATUS_PROCESS
+	var need uint32
+	if err := windows.QueryServiceStatusEx(h, windows.SC_STATUS_PROCESS_INFO, (*byte)(unsafe.Pointer(&st)), uint32(unsafe.Sizeof(st)), &need); err != nil {
+		return false
+	}
+	return st.ProcessId != 0 && st.ProcessId == p.PID
 }

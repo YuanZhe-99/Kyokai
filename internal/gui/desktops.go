@@ -27,8 +27,11 @@ const (
 // dialRDP is the Remote Desktop tab's serviceDial, with the method chosen
 // or remembered: Network Level Authentication with a user name and
 // password, or no sign-in (TLS alone: the Windows sign-in screen asks).
+// Returns: errNoSecureSignIn when a server met with a password offers no
+// Network Level Authentication (the password is never sent over TLS alone).
 // Notes: the server's certificate is not pinned: the tunnel reaches the
-// device's own port inside an authenticated Kyokai session.
+// device's own port inside an authenticated Kyokai session; NLA's CredSSP
+// is what proves the server before a password reaches it.
 func dialRDP(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient, error) {
 	plan, ok := s.ask(typed, s.savedCredential(ctx))
 	if !ok {
@@ -49,6 +52,8 @@ func dialRDP(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 	defer cancel()
 	c, err := rdp.Dial(ctx, opts, rdpEvents{sc})
 	switch {
+	case errors.Is(err, rdp.ErrNLAUnavailable):
+		return nil, errNoSecureSignIn
 	case errors.Is(err, rdp.ErrUnsupportedSecurity) && plan.method == methodNone:
 		// The server allows only Network Level Authentication.
 		return nil, errSignInRequired
@@ -60,9 +65,12 @@ func dialRDP(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 	sc.desk = rdpDesk{c}
 	s.keep(ctx, plan, typed != nil)
 	go func() {
-		err := c.Run()
+		err := guard(c.Run)
 		note := L.ServiceEnded()
-		if errors.Is(err, rdp.ErrSessionReplaced) {
+		switch {
+		case errors.Is(err, errUnreadable):
+			note = L.ServiceUnreadable()
+		case errors.Is(err, rdp.ErrSessionReplaced):
 			note = L.ServiceReplaced()
 		}
 		s.ended(sc, note)
@@ -100,15 +108,23 @@ func (rdpEvents) AudioPacketReceived([]byte, uint64) {}
 func (rdpEvents) MicrophoneOpened(rdp.AudioFormat)   {}
 func (rdpEvents) MicrophoneClosed()                  {}
 
+// vncAccountTypes are the only VNC security types a user name and password
+// go to: Apple's SRP (36), alone or behind its RSA envelope (33 with 36,
+// which rfb accepts only alongside 36). Never Apple's anonymous
+// Diffie-Hellman (30), the VNC password's DES response (2) or none (1).
+var vncAccountTypes = []rfb.SecurityType{rfb.SecurityAppleRSA, rfb.SecurityAppleSRP}
+
 // dialVNC is the VNC tab's serviceDial, with the method chosen or
 // remembered: a VNC password alone, a Mac's user name and password (Apple's
-// sign-ins, else the VNC password), or no sign-in.
+// SRP sign-ins alone), or no sign-in.
+// Returns: errNoSecureSignIn when a user name and password meet a server
+// without Apple's SRP; nothing is sent to it.
 func dialVNC(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient, error) {
 	plan, ok := s.ask(typed, s.savedCredential(ctx))
 	if !ok {
 		return nil, errNeedSignIn
 	}
-	opts := rfb.Options{Mode: rfb.ModeControl, Clipboard: true, AllowUnverifiedLogin: true, AutomaticUpdates: true}
+	opts := rfb.Options{Mode: rfb.ModeControl, Clipboard: true, AutomaticUpdates: true}
 	switch plan.method {
 	case methodNone:
 		opts.SecurityTypes = []rfb.SecurityType{rfb.SecurityNone}
@@ -117,6 +133,7 @@ func dialVNC(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 		opts.SecurityTypes = []rfb.SecurityType{rfb.SecurityVNCPassword}
 	default:
 		opts.Username, opts.Password = plan.user, plan.password
+		opts.SecurityTypes = vncAccountTypes
 	}
 	conn, err := s.app.link.Open(ctx, s.device, s.address, serviceVNC)
 	if err != nil {
@@ -127,14 +144,20 @@ func dialVNC(ctx context.Context, s *serviceTab, typed *credForm) (serviceClient
 	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
 	defer cancel()
 	c, err := rfb.Dial(ctx, opts, vncEvents{sc})
-	if err != nil {
+	switch {
+	case plan.method == methodAccount && (errors.Is(err, rfb.ErrUnverifiedServer) || errors.Is(err, rfb.ErrUnsupportedServer)):
+		return nil, errNoSecureSignIn
+	case err != nil:
 		return nil, vncSignInError(err, plan.method == methodNone)
 	}
 	sc.desk = vncDesk{c}
 	s.keep(ctx, plan, typed != nil)
 	go func() {
-		_ = c.Run()
-		s.ended(sc, L.ServiceEnded())
+		note := L.ServiceEnded()
+		if errors.Is(guard(c.Run), errUnreadable) {
+			note = L.ServiceUnreadable()
+		}
+		s.ended(sc, note)
 	}()
 	return sc, nil
 }

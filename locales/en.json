@@ -1064,6 +1064,14 @@
   "ServicePortsSaved": "Service ports saved.",
   "ServicePortsTitle": "Ports of this computer's services",
   "ServiceRDP": "Remote Desktop",
+  "ServiceRDPNoNLA": "That computer's Remote Desktop does not offer Network Level Authentication, so Kyokai sent it no password. Choose “{method}” and sign in on the other computer's own screen.",
+  "@ServiceRDPNoNLA": {
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
   "ServiceRememberMethod": "Remember",
   "ServiceReplaced": "Someone else signed in to that desktop, so this connection ended.",
   "ServiceSSH": "SSH",
@@ -1089,6 +1097,7 @@
     }
   },
   "ServiceTrustKey": "Trust the new key",
+  "ServiceUnreadable": "The connection ended: the other computer sent something Kyokai could not read.",
   "ServiceUser": "User name",
   "ServiceUserMac": "User name (on the Mac)",
   "ServiceVNC": "VNC",
@@ -1102,6 +1111,14 @@
     }
   },
   "ServiceVNCUnsupported": "That VNC server asks for a kind of sign-in Kyokai does not support. On that computer, turn on VNC password authentication (RealVNC Server: VNC password, with encryption allowed off; UltraVNC: MS-Logon off).",
+  "ServiceVNCWeakSignIn": "That VNC server offers no secure way to sign in with a user name and password, so Kyokai sent it no password. If it has a VNC password, choose “{method}”.",
+  "@ServiceVNCWeakSignIn": {
+    "placeholders": {
+      "method": {
+        "type": "String"
+      }
+    }
+  },
   "ServiceWrongSignIn": "The user name or password was not accepted.",
   "SessionClosed": "Ended",
   "SessionConfirmingHere": "Waiting for you to allow it",
@@ -1852,6 +1869,8 @@
   "FilesErrDenied": "That account may not do this there.",
   "FilesErrGone": "It is no longer there.",
   "FilesErrTaken": "That name is taken there.",
+  "FilesErrBadName": "A name there can't be a file name on this computer.",
+  "FilesNoCd": "This folder's name can't be typed safely into the terminal.",
   "FilesErrSCPFolder": "SCP copies files only, not folders.",
   "FilesErrServer": "The server refused: {why}",
   "@FilesErrServer": {

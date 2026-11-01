@@ -19,3 +19,8 @@ func secureSocket(path string, mode os.FileMode, _ int) error {
 	}
 	return nil
 }
+
+// checkSocketDir checks nothing on Windows: the user engine's folder is in
+// the user's own %TEMP%, and the helper checks its own folder's owner and
+// access before it starts (helper.CheckState).
+func checkSocketDir(string, bool) error { return nil }

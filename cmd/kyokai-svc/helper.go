@@ -64,7 +64,13 @@ func helperCmd(args []string) error {
 
 // runHelper runs the engine as the privileged helper until ctx ends: the
 // helper's state and socket, serving its operator and the kyokai group.
+// Notes: refuses to start on a state folder someone else could have made
+// or may change (helper.CheckState): helper.json there names the operator,
+// and the helper runs and serves what is there.
 func runHelper(ctx context.Context, opts engine.Options) error {
+	if err := helper.CheckState(); err != nil {
+		return fmt.Errorf("the helper's folders are not safe: %w (install the helper again)", err)
+	}
 	s, err := helper.ReadSettings()
 	if err != nil {
 		return err

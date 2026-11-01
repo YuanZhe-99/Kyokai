@@ -87,6 +87,9 @@ cargo deny --manifest-path core/Cargo.toml check
 Run cargo from the repository root: `rust-toolchain.toml` and `.cargo/config.toml` are read from
 the current directory, not from `--manifest-path`.
 
+Go's race detector (`go test -race ./...`) does not run on Windows on ARM: run it under WSL, or on
+Linux or macOS, after a change to what goroutines hand the main thread. CI runs it on Linux.
+
 ## Dev loop
 
 ```bash

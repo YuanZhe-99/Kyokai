@@ -5,15 +5,14 @@
 package engine
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -27,10 +26,6 @@ import (
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	"github.com/YuanZhe-99/Kyokai/internal/version"
 )
-
-// statusPoll is how often a session's status is re-read for network
-// changes, which the core does not announce.
-const statusPoll = 2 * time.Second
 
 // Options configure Run.
 type Options struct {
@@ -56,8 +51,9 @@ type Options struct {
 	// socket is open to every local user and this authorizer decides who
 	// is served (the operator and the kyokai group).
 	Helper *localapi.Authorizer
-	// Update installs the signed bundle in a folder into the helper and
-	// restarts it (helper.update); nil outside the helper.
+	// Update installs the signed bundle of the app folder recorded at install
+	// into the helper and restarts it (helper.update; a folder the request
+	// names must be that one); nil outside the helper.
 	Update func(from string) error
 	// Remove removes the helper itself, its identity included, once the
 	// store has moved out (helper.remove); nil where removing needs the
@@ -141,7 +137,8 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		started.Store(true)
 		logf("engine %s started: device %s, secrets %s", opts.Version, st.DeviceID, st.Persistence)
-		h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan struct{}]bool{}, runMode: runMode, stateDir: opts.StateDir, update: opts.Update, remove: opts.Remove}
+		h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan localapi.Response]bool{}, poke: make(chan struct{}, 1),
+			runMode: runMode, stateDir: opts.StateDir, update: opts.Update, remove: opts.Remove}
 		if runMode == "helper" {
 			var m struct {
 				Background bool `json:"background"`
@@ -151,6 +148,7 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		h.updateServe()
 		_, _ = h.status() // reads protected mode
+		go h.publish(ctx)
 		return h, nil
 	}
 	switch {
@@ -200,7 +198,28 @@ var protectedAllows = map[localapi.RequestType]bool{
 	localapi.RequestAIModels: true, localapi.RequestAITaskStart: true, localapi.RequestAIDraft: true,
 	localapi.RequestAITaskReply: true, localapi.RequestAITaskPause: true, localapi.RequestAITaskResume: true,
 	localapi.RequestAITaskCancel: true, localapi.RequestAITaskDecide: true, localapi.RequestAITasks: true,
-	localapi.RequestAIHistoryClear: true, localapi.RequestAIStop: true,
+	localapi.RequestAIHistoryClear: true, localapi.RequestAIStop: true, localapi.RequestClipboardMine: true,
+}
+
+// ownerOnly are the requests served only to the engine's owner or the
+// helper's operator (localapi.IsOwner), never to the kyokai group: what
+// carries the identity out or in, replaces or forgets it, and what stops or
+// removes the engine itself. keys.sign, credentials.get and logs.read check
+// the same where they are served.
+var ownerOnly = map[localapi.RequestType]bool{
+	localapi.RequestIdentityExport: true, localapi.RequestIdentityImport: true, localapi.RequestIdentityReset: true, localapi.RequestStoreForgetMove: true,
+	localapi.RequestStoreExport: true, localapi.RequestStoreImport: true, localapi.RequestStoreClear: true,
+	localapi.RequestHelperRemove: true, localapi.RequestShutdown: true,
+}
+
+// refuseTier refuses an ownerOnly request from a caller that is not the
+// owner.
+// Returns: the refusal, and whether req was refused.
+func refuseTier(ctx context.Context, req localapi.Request) (localapi.Response, bool) {
+	if ownerOnly[req.Type] && !localapi.IsOwner(ctx) {
+		return localapi.Fail(localapi.CodeInvalid, "only this computer's owner may do this"), true
+	}
+	return localapi.Response{}, false
 }
 
 // handler answers the local API from the core.
@@ -224,12 +243,27 @@ type handler struct {
 	// protected: protected mode is on (protectedAllows), as the core's
 	// status said last.
 	protected atomic.Bool
+	// streams and videos count the open streams (Media).
+	streams, videos atomic.Int32
 
-	mu       sync.Mutex
-	sessions map[chan struct{}]bool // each is poked when the status changes
+	// poke asks the status producer (publish) for a new status soon.
+	poke chan struct{}
+
+	mu sync.Mutex
+	// sessions are the attached sessions' mailboxes, each holding the
+	// newest status frame it has not sent yet; true while the session still
+	// waits for its first frame.
+	sessions map[chan localapi.Response]bool
+	// last is the status frame sent last, encoded.
+	last []byte
 }
 
+// Handle answers one request: the caller's tier (refuseTier) and protected
+// mode (protectedAllows) are checked first, then the core is asked.
 func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Response {
+	if resp, refused := refuseTier(ctx, req); refused {
+		return resp
+	}
 	if h.protected.Load() && !protectedAllows[req.Type] {
 		return localapi.Fail(localapi.CodeInvalid, "protected mode is on: turn it off with the permanent password first")
 	}
@@ -538,7 +572,9 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 	case localapi.RequestIdentityReset:
 		return h.command("identity.reset", nil)
 	case localapi.RequestHelperUpdate:
-		if h.update == nil || req.From == "" {
+		// The helper reads the app folder it was installed from; From, when
+		// given, must name that folder (helper.SelfUpdate).
+		if h.update == nil {
 			return localapi.Fail(localapi.CodeInvalid, "only the helper updates itself")
 		}
 		if err := h.update(req.From); err != nil {
@@ -638,6 +674,15 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 		return h.command("ai.history.clear", nil)
 	case localapi.RequestAIStop:
 		return h.command("ai.stop", nil)
+	case localapi.RequestClipboardMine:
+		if !isDigest(req.Digest) {
+			return localapi.Fail(localapi.CodeInvalid, "digest is not a lowercase hex SHA-256")
+		}
+		// Changes nothing the status shows: no push.
+		if err := h.lib.Call("clipboard.mine", map[string]string{"digest": req.Digest}, nil); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true}
 	case localapi.RequestShutdown:
 		h.stop()
 		return localapi.Response{OK: true}
@@ -649,13 +694,45 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 // notices a closed GUI connection soon.
 const mediaPoll = 500 * time.Millisecond
 
+// Limits of the streams one engine carries at once (an authorized client
+// could otherwise open them until memory runs out), and of their packets.
+const (
+	// maxStreams bounds the media streams and tunnels open together;
+	// maxVideoStreams the media streams among them, each with a buffer of
+	// localapi.MaxPacket for the core's video.
+	maxStreams      = 64
+	maxVideoStreams = 16
+	// videoInMax is the longest packet a client sends on a media stream: a
+	// control message, which the session carries up to 4 MiB.
+	videoInMax = 8 << 20
+	// tunnelMax is the longest tunnel packet either way: the core gives a
+	// session frame's bytes (under 64 KiB), the client pieces of 64 KiB.
+	tunnelMax = 1 + 128<<10
+)
+
 // Media pumps a controller session's media between the core and the GUI:
 // packets from the core (video) go to the GUI, packets from the GUI
-// (control messages) go to the core, until either side ends.
+// (control messages) go to the core, until either side ends. A tunnel's
+// bytes go the same way (tunnel.open).
+// Notes: refused in protected mode like any request protectedAllows does
+// not name, and beyond maxStreams (maxVideoStreams for media).
 func (h *handler) Media(ctx context.Context, req localapi.Request, open func() io.ReadWriter) localapi.Response {
+	if h.protected.Load() && !protectedAllows[req.Type] {
+		return localapi.Fail(localapi.CodeInvalid, "protected mode is on: turn it off with the permanent password first")
+	}
+	if h.streams.Add(1) > maxStreams {
+		h.streams.Add(-1)
+		return localapi.Fail(localapi.CodeInvalid, "too many streams are open")
+	}
+	defer h.streams.Add(-1)
 	if req.Type == localapi.RequestTunnelOpen {
 		return h.tunnel(ctx, req, open)
 	}
+	if h.videos.Add(1) > maxVideoStreams {
+		h.videos.Add(-1)
+		return localapi.Fail(localapi.CodeInvalid, "too many media streams are open")
+	}
+	defer h.videos.Add(-1)
 	st, err := h.status()
 	if err != nil {
 		return localapi.Fail(localapi.CodeInternal, "%v", err)
@@ -666,21 +743,23 @@ func (h *handler) Media(ctx context.Context, req localapi.Request, open func() i
 	if !live {
 		return localapi.Fail(localapi.CodeInvalid, "no live session %d", req.ID)
 	}
-	h.pump(ctx, req.ID, open())
+	h.pump(ctx, req.ID, open(), localapi.MaxPacket, videoInMax)
 	return localapi.Response{OK: true}
 }
 
 // pump carries a controller session's packets between the core and a
 // client until either ends: the core's (video, a tunnel's bytes) to the
 // client, the client's (control messages, a tunnel's bytes) to the core.
-func (h *handler) pump(ctx context.Context, session uint64, rw io.ReadWriter) {
+// Inputs: out, the longest packet taken from the core (a longer one is
+// dropped); in, the longest the client may send (a longer one ends it).
+func (h *handler) pump(ctx context.Context, session uint64, rw io.ReadWriter, out, in int) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
 		defer cancel()
 		var buf []byte
 		for {
-			p, err := localapi.ReadPacket(rw, buf)
+			p, err := localapi.ReadPacketLimit(rw, buf, in)
 			if err != nil {
 				return
 			}
@@ -690,7 +769,7 @@ func (h *handler) pump(ctx context.Context, session uint64, rw io.ReadWriter) {
 			}
 		}
 	}()
-	buf := make([]byte, localapi.MaxPacket)
+	buf := make([]byte, out)
 	for ctx.Err() == nil {
 		n, err := h.lib.MediaRead(session, buf, mediaPoll)
 		switch {
@@ -736,18 +815,21 @@ func (h *handler) command(method string, params any) localapi.Response {
 	return localapi.Response{OK: true}
 }
 
-// Stream pushes the status now, after every command that changes it, and
-// whenever the network's state moves (re-read every statusPoll), until the
-// client leaves.
+// Stream sends the session the status as the producer (publish) makes it:
+// at once, after every command that changes it, and whenever it moves,
+// until the client leaves.
+// Notes: a slow client falls behind on its own: its mailbox keeps only the
+// newest frame, and nobody waits for it.
 func (h *handler) Stream(ctx context.Context, _ localapi.Request, send func(localapi.Response) error) {
-	poke := make(chan struct{}, 1)
+	box := make(chan localapi.Response, 1)
 	h.mu.Lock()
-	h.sessions[poke] = true
+	h.sessions[box] = true
 	h.mu.Unlock()
 	h.updateServe()
+	h.changed()
 	defer func() {
 		h.mu.Lock()
-		delete(h.sessions, poke)
+		delete(h.sessions, box)
 		h.mu.Unlock()
 		h.updateServe()
 		// The helper's controller sessions belong to a GUI: one that went
@@ -757,26 +839,92 @@ func (h *handler) Stream(ctx context.Context, _ localapi.Request, send func(loca
 			time.AfterFunc(controllersGrace, h.closeOrphans)
 		}
 	}()
-	tick := time.NewTicker(statusPoll)
-	defer tick.Stop()
-	var last *localapi.Status
 	for {
-		st, err := h.status()
-		if err != nil {
-			return
-		}
-		if last == nil || !reflect.DeepEqual(*st, *last) {
-			if send(localapi.Response{OK: true, Status: st}) != nil {
-				return
-			}
-			last = st
-		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-poke:
-		case <-tick.C:
+		case frame := <-box:
+			// A status that could not be read ends the session, so the GUI
+			// attaches anew and says why instead of showing the last one.
+			if send(frame) != nil || !frame.OK {
+				return
+			}
 		}
+	}
+}
+
+// statusPoll is how often the producer re-reads the status for what the
+// core does not announce (the network's state, a new connection request);
+// statusSettle is how long it lets a burst of commands settle first.
+const (
+	statusPoll   = 500 * time.Millisecond
+	statusSettle = 100 * time.Millisecond
+)
+
+// publish is the engine's one status producer: on a poke (changed), after
+// statusSettle, and every statusPoll it reads the status once and hands the
+// same encoded frame to every attached session (deliver), until ctx ends.
+// Notes: reads nothing while no session is attached.
+func (h *handler) publish(ctx context.Context) {
+	tick := time.NewTicker(statusPoll)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		case <-h.poke:
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(statusSettle):
+			}
+			// A poke that came meanwhile is answered by this read.
+			select {
+			case <-h.poke:
+			default:
+			}
+		}
+		h.mu.Lock()
+		attached := len(h.sessions) > 0
+		h.mu.Unlock()
+		if !attached {
+			continue
+		}
+		st, err := h.status()
+		resp := localapi.Response{OK: true, Status: st}
+		if err != nil {
+			// Never stale data as current: the sessions end with the error.
+			resp = localapi.Fail(localapi.CodeInternal, "%v", err)
+		}
+		frame, err := localapi.Encode(resp)
+		if err != nil {
+			continue
+		}
+		h.deliver(frame)
+	}
+}
+
+// deliver hands frame to every session that has not had it: all of them
+// when it differs from the last one, else those waiting for their first.
+// Side effects: replaces a frame a session has not taken yet; never waits.
+func (h *handler) deliver(frame localapi.Response) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	changed := !bytes.Equal(frame.Encoded(), h.last)
+	h.last = frame.Encoded()
+	for box, first := range h.sessions {
+		if !changed && !first {
+			continue
+		}
+		h.sessions[box] = false
+		// deliver is the only sender, under h.mu: after the stale frame is
+		// taken out there is room.
+		select {
+		case <-box:
+		default:
+		}
+		box <- frame
 	}
 }
 
@@ -817,50 +965,62 @@ func (h *handler) updateServe() {
 	}
 }
 
+// changed asks the producer (publish) for a new status: the attached
+// sessions receive it after every command that changes it.
+// Notes: never waits; pokes that come together make one status.
 func (h *handler) changed() {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for poke := range h.sessions {
-		select {
-		case poke <- struct{}{}:
-		default:
-		}
+	select {
+	case h.poke <- struct{}{}:
+	default:
 	}
 }
 
+// coreStatus is the core's status decoded once: core.Status with the parts
+// it leaves raw decoded straight into the local API's types (these
+// shallower fields take the same JSON names).
+type coreStatus struct {
+	core.Status
+	Network     localapi.NetworkStatus  `json:"network"`
+	Requests    []localapi.HostRequest  `json:"requests"`
+	Sessions    []localapi.SessionInfo  `json:"sessions"`
+	Recent      []localapi.RecentDevice `json:"recent"`
+	AI          *localapi.AIActive      `json:"ai"`
+	About       localapi.About          `json:"about"`
+	Permissions *localapi.Permissions   `json:"permissions"`
+	ByAddress   localapi.ByAddress      `json:"by_address"`
+	Watching    []localapi.Watched      `json:"watching"`
+	Watchers    []localapi.Watcher      `json:"watchers"`
+}
+
+// status reads the core's status as the local API's.
+// Side effects: notes whether protected mode is on.
 func (h *handler) status() (*localapi.Status, error) {
-	var st core.Status
+	var st coreStatus
 	if err := h.lib.Call("status", nil, &st); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("status: %w", err)
 	}
 	h.protected.Store(st.Protected)
-	var network localapi.NetworkStatus
-	var requests []localapi.HostRequest
-	var sessions []localapi.SessionInfo
-	var recent []localapi.RecentDevice
-	var ai *localapi.AIActive
-	var about localapi.About
-	var permissions *localapi.Permissions
-	var byAddress localapi.ByAddress
-	var watching []localapi.Watched
-	var watchers []localapi.Watcher
-	for _, part := range []struct {
-		name string
-		raw  json.RawMessage
-		dst  any
-	}{{"network", st.Network, &network}, {"requests", st.Requests, &requests}, {"sessions", st.Sessions, &sessions}, {"recent", st.Recent, &recent}, {"ai", st.AI, &ai}, {"about", st.About, &about}, {"permissions", st.Permissions, &permissions}, {"by_address", st.ByAddress, &byAddress}, {"watching", st.Watching, &watching}, {"watchers", st.Watchers, &watchers}} {
-		if err := json.Unmarshal(part.raw, part.dst); err != nil {
-			return nil, fmt.Errorf("%s status: %w", part.name, err)
-		}
-	}
 	return &localapi.Status{
 		Version: st.Version, Build: version.Build(), ABI: st.ABI, DeviceID: st.DeviceID, Fingerprint: st.Fingerprint,
 		StateDir: st.StateDir, RunMode: h.runMode, Background: h.isBackground(), Persistence: st.Persistence,
-		PasswordSerial: st.PasswordSerial, Network: network, PermanentPassword: st.PermanentPassword,
-		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, ByAddress: byAddress, ServicePorts: localapi.ServicePorts(st.ServicePorts), Nanokvm: (*localapi.Nanokvm)(st.Nanokvm), LogsOff: LogsOff(h.stateDir) || !st.KeepsHistory, Protected: st.Protected, AIDraft: st.AIDraft, Permissions: permissions,
-		Requests: requests, Sessions: sessions, Recent: recent, AI: ai, Started: h.started,
-		Name: st.Name, PublishName: st.PublishName, About: about, Watching: watching, Watchers: watchers,
+		PasswordSerial: st.PasswordSerial, Network: st.Network, PermanentPassword: st.PermanentPassword,
+		PasswordGrants: st.PasswordGrants, PasswordMode: st.PasswordMode, WithoutAsking: st.WithoutAsking, ByAddress: st.ByAddress, ServicePorts: localapi.ServicePorts(st.ServicePorts), Nanokvm: (*localapi.Nanokvm)(st.Nanokvm), LogsOff: LogsOff(h.stateDir) || !st.KeepsHistory, Protected: st.Protected, AIDraft: st.AIDraft, Permissions: st.Permissions,
+		Requests: st.Requests, Sessions: st.Sessions, Recent: st.Recent, AI: st.AI, Started: h.started,
+		Name: st.Name, PublishName: st.PublishName, About: st.About, Watching: st.Watching, Watchers: st.Watchers,
 	}, nil
+}
+
+// isDigest reports whether s is a SHA-256 in lowercase hex.
+func isDigest(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // noLogs is the marker in a state directory that keeps every process

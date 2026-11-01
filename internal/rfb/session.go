@@ -2,7 +2,7 @@
 // internal/rfb/session.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: import paths.
+// prior consent. Modified by Kyokai: import paths, session selection length checked.
 
 package rfb
 
@@ -53,6 +53,10 @@ func (c *Client) selectSession() error {
 		return err
 	}
 	length := int(binary.BigEndian.Uint16(prompt))
+	// Kyokai: the length counts the 2 bytes after it that are already read.
+	if length < 2 {
+		return E.New("rfb: session selection declares ", length, " bytes, want at least 2")
+	}
 	rest, err := c.stream.bytes(length - 2)
 	if err != nil {
 		return err

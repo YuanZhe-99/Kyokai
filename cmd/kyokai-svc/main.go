@@ -23,7 +23,8 @@
 //	kyokai-svc ctl no-logs [--on]        (keep no logs, crash traces or connection history, or keep them again)
 //	kyokai-svc ctl protect [--on]        (protected mode on, or off with KYOKAI_PERMANENT_PASSWORD)
 //	kyokai-svc ctl move --to SOCKET       (moves the whole store to another engine of this device, which stops this one)
-//	kyokai-svc ctl helper-update --from DIR (the helper installs the signed bundle in DIR)
+//	kyokai-svc ctl helper-update [--from DIR] (the helper installs the signed bundle of the app it was installed from, which DIR must name)
+//	kyokai-svc ctl clipboard-mine --digest SHA256   (the clipboard holds what this device put there: the hex SHA-256 of its content)
 //	kyokai-svc ctl backup --file F | restore --file F | reset-identity --yes
 //	kyokai-svc ctl ai | ai-tasks | ai-clear | ai-stop
 //	kyokai-svc ctl ai-set [--model SOURCE:MODEL] [--approval A] [--sources-file F.json]
@@ -170,6 +171,8 @@ const (
 
 // ctl sends one request to a running engine and prints the answer.
 func ctl(args []string) error {
+	// Nothing goes to the helper's socket unless the helper listens there.
+	localapi.RequireServer(helper.SocketPath, helper.IsHelper)
 	fs := flag.NewFlagSet("ctl", flag.ExitOnError)
 	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "local API socket path")
 	var servers []string
@@ -196,7 +199,8 @@ func ctl(args []string) error {
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
 	file := fs.String("file", "", "backup, restore: the backup file")
 	yes := fs.Bool("yes", false, "reset-identity: confirm a new Device ID")
-	from := fs.String("from", "", "helper-update: the app folder holding the signed bundle")
+	from := fs.String("from", "", "helper-update: the app folder holding the signed bundle (must be the one the helper was installed from)")
+	digest := fs.String("digest", "", "clipboard-mine: the SHA-256 of the clipboard's content, lowercase hex")
 	to := fs.String("to", "", "move: the socket of the engine that takes over this device's store")
 	mode := fs.String("mode", "", "access: which passwords open this host (temporary, permanent, both)")
 	withoutAsking := fs.String("without-asking", "", "access: whether an accepted password admits without asking (true, false)")
@@ -248,7 +252,7 @@ func ctl(args []string) error {
 		"status": localapi.RequestStatus, "password": localapi.RequestPasswordReveal,
 		"regenerate": localapi.RequestPasswordRegenerate, "shutdown": localapi.RequestShutdown,
 		"network": localapi.RequestNetworkGet, "network-set": localapi.RequestNetworkSet,
-		"networks": localapi.RequestNetworkProfiles, "network-profile": localapi.RequestNetworkProfileSet, "network-remove": localapi.RequestNetworkProfileRemove, "network-direct": localapi.RequestNetworkDirect, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "capture-show": localapi.RequestCaptureShow, "no-logs": localapi.RequestLogs, "protect": localapi.RequestProtect, "helper-update": localapi.RequestHelperUpdate, "network-backend": localapi.RequestNetworkBackend, "cores": localapi.RequestCores, "core-install": localapi.RequestCoreInstall,
+		"networks": localapi.RequestNetworkProfiles, "network-profile": localapi.RequestNetworkProfileSet, "network-remove": localapi.RequestNetworkProfileRemove, "network-direct": localapi.RequestNetworkDirect, "name-set": localapi.RequestNameSet, "access": localapi.RequestAccessSettings, "password-grants": localapi.RequestPasswordGrants, "background": localapi.RequestBackground, "capture-show": localapi.RequestCaptureShow, "no-logs": localapi.RequestLogs, "protect": localapi.RequestProtect, "helper-update": localapi.RequestHelperUpdate, "clipboard-mine": localapi.RequestClipboardMine, "network-backend": localapi.RequestNetworkBackend, "cores": localapi.RequestCores, "core-install": localapi.RequestCoreInstall,
 		"permanent": localapi.RequestPermanentSet, "connect": localapi.RequestConnect,
 		"close": localapi.RequestClose, "allow": localapi.RequestDecide, "deny": localapi.RequestDecide,
 		"trusted": localapi.RequestTrustedList, "untrust": localapi.RequestTrustedRemove,
@@ -333,6 +337,8 @@ func ctl(args []string) error {
 		req.Protect = &localapi.ProtectRequest{On: *on, Password: os.Getenv(permanentEnv)}
 	case "helper-update":
 		req.From = *from
+	case "clipboard-mine":
+		req.Digest = *digest
 	case "network-set":
 		req.Network = &localapi.NetworkSettings{Servers: servers, Name: *name}
 		fs.Visit(func(f *flag.Flag) {

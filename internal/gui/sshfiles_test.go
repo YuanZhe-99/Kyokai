@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -155,6 +156,66 @@ func TestRemoteFilesOverSFTP(t *testing.T) {
 	}
 }
 
+// TestServerNamesStayInside: a name the server gives is only ever a plain
+// name here. A backslash (a folder separator on Windows), "..", or a name
+// Windows would read otherwise fails the download and writes nothing
+// outside the folder chosen (regression: a Linux server's file named
+// ..\..\x.bat landed beside the Downloads folder). A file never replaces a
+// folder (regression: Replace removed the folder ".." named).
+func TestServerNamesStayInside(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		ok   bool
+	}{{"a.txt", true}, {".hidden", true}, {"", false}, {".", false}, {"..", false}, {`..\..\x.bat`, false}, {"a/b", false}, {"a\x00b", false}} {
+		if localName(c.name) != c.ok {
+			t.Errorf("localName(%q) = %v", c.name, !c.ok)
+		}
+	}
+	if runtime.GOOS == "windows" {
+		for _, n := range []string{"NUL", "com1", "a:stream", "trail.", "trail "} {
+			if localName(n) {
+				t.Errorf("localName(%q) on Windows", n)
+			}
+		}
+	}
+
+	// Every name below a folder downloaded (the test server here cannot
+	// hold a backslash on Windows, so the walk's own check is tested).
+	top := filepath.Join("down", "proj")
+	for _, rel := range []string{`..\..\evil.txt`, "src/../../x", "src/a\\b", "/x", "src//x"} {
+		if p, err := localPath(top, rel); !errors.Is(err, errBadName) {
+			t.Errorf("localPath(%q) = %q, %v", rel, p, err)
+		}
+	}
+	if p, err := localPath(top, "src/main.go"); err != nil || p != filepath.Join(top, "src", "main.go") {
+		t.Errorf("localPath: %q, %v", p, err)
+	}
+
+	// A single file whose name is not plain fails, writing nothing.
+	r := memFiles(t)
+	f, _ := r.sftp.Create("/ok.txt")
+	_, _ = f.Write([]byte("x"))
+	_ = f.Close()
+	down := t.TempDir()
+	r.send([]*fileXfer{{name: "..", src: "/ok.txt", dst: down}})
+	for _, x := range settle(t, r, nil) {
+		if x.state != xferFailed {
+			t.Errorf("%s: %s, want failed", x.name, x.state)
+		}
+	}
+
+	// A file coming where a folder of its name is, with Replace: the
+	// folder stays, the file goes beside it.
+	_ = os.MkdirAll(filepath.Join(down, "ok.txt", "keep"), 0o755)
+	r.clearFinished()
+	r.download([]string{"/ok.txt"}, down)
+	settle(t, r, &fileAnswer{policy: policyReplace})
+	if _, err := os.Stat(filepath.Join(down, "ok.txt", "keep")); err != nil {
+		t.Fatal("Replace removed a folder for a file")
+	}
+	wantFile(t, filepath.Join(down, "ok (2).txt"), "x")
+}
+
 // TestCancelEndsATransfer: a transfer canceled ends as canceled, and a
 // download canceled leaves no file.
 func TestCancelEndsATransfer(t *testing.T) {
@@ -269,11 +330,20 @@ func TestPathWords(t *testing.T) {
 			t.Errorf("scpQuote(%q, %v) = %s, want %s", c.p, c.windows, got, c.want)
 		}
 	}
-	if got := cdCommand("/C:/Users/me", true); got != `cd "C:\Users\me"` {
+	if got, ok := cdCommand("/C:/Users/me", true); !ok || got != `cd "C:\Users\me"` {
 		t.Errorf("cd on Windows: %s", got)
 	}
-	if got := cdCommand("/home/me/a b", false); got != `cd '/home/me/a b'` {
+	if got, ok := cdCommand("/home/me/a b", false); !ok || got != `cd '/home/me/a b'` {
 		t.Errorf("cd: %s", got)
+	}
+	// A folder name may not smuggle keys or expansions into the shell.
+	for _, c := range []struct {
+		folder  string
+		windows bool
+	}{{"/srv/x\x15id>/tmp/p\r", false}, {"/srv/a\nb", false}, {"/srv/\u009bx", false}, {"/C:/a$(calc)", true}, {"/C:/a`b", true}, {"/C:/a\u201d;calc;\u201d", true}, {"/C:/%PATH%", true}, {`/C:/a"b`, true}} {
+		if got, ok := cdCommand(c.folder, c.windows); ok {
+			t.Errorf("cdCommand(%q) = %q, want refused", c.folder, got)
+		}
 	}
 	for _, c := range []struct {
 		name string

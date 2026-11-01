@@ -93,8 +93,10 @@ type aiEdit struct {
 	src      localapi.AISource
 	key      string
 	newModel string
-	// fetched are the models the source listed; pick is the chosen one.
+	// fetched are the models the source listed, labels their names as
+	// shown (made once, modelLabels); pick is the chosen one.
 	fetched []localapi.AIModel
+	labels  []string
 	pick    string
 }
 
@@ -353,13 +355,9 @@ func (a *App) aiSourceEditor(c *ui.Context, e *aiEdit, busy bool) {
 		if !f.isNew {
 			ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
 				if ui.Button(c.Key("ai-ed-list"), L.AIListModels()).Disabled(busy).Clicked() {
-					a.listAIModels(f.src.ID)
+					a.listAIModels(f.src.ID, f.src.Name)
 				}
-				if len(f.fetched) > 0 {
-					labels := make([]string, len(f.fetched))
-					for i, m := range f.fetched {
-						labels[i] = friendlyModelName(m.ID, m.Name, f.src.Name)
-					}
+				if labels := f.labels; len(labels) > 0 {
 					pick := f.pick
 					if pick == "" {
 						pick = labels[0]
@@ -461,11 +459,17 @@ func (a *App) saveAISettings(change *localapi.AISettings, key string, source ...
 	}()
 }
 
-// listAIModels asks a source for its models (only on this request).
-func (a *App) listAIModels(source string) {
+// listAIModels asks a source for its models (only on this request), and
+// names them once here, not in every frame (modelLabels); name is the
+// source's.
+func (a *App) listAIModels(source, name string) {
 	a.update(func() { a.busy["ai"] = true })
 	go func() {
 		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestAIModels, Source: source})
+		var labels []string
+		if err == nil {
+			labels = modelLabels(resp.AIModels, name)
+		}
 		a.update(func() {
 			delete(a.busy, "ai")
 			var refused *localapi.RequestError
@@ -475,11 +479,21 @@ func (a *App) listAIModels(source string) {
 			case err != nil:
 				a.setToast(L.EngineDown(), true)
 			case a.ai.edit != nil:
-				a.ai.edit.fetched, a.ai.edit.pick = resp.AIModels, ""
+				a.ai.edit.fetched, a.ai.edit.labels, a.ai.edit.pick = resp.AIModels, labels, ""
 				if len(resp.AIModels) == 0 {
 					a.setToast(L.AINoModelsListed(), true)
 				}
 			}
 		})
 	}()
+}
+
+// modelLabels are the names the provider editor shows for the models a
+// source listed (friendlyModelName, a dozen patterns each).
+func modelLabels(models []localapi.AIModel, source string) []string {
+	labels := make([]string, len(models))
+	for i, m := range models {
+		labels[i] = friendlyModelName(m.ID, m.Name, source)
+	}
+	return labels
 }

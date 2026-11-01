@@ -779,32 +779,36 @@ const (
 // stands; notes in the log when it starts letting keys pass and when it
 // takes them again; asks for a renewal where one helps (the tap or hook
 // off, the grab gone or another window's); and has the window drawn again
-// to ask once more while the grab lasts.
+// to ask once more while the grab lasts. The core is asked on a timer's
+// goroutine, never on the main thread (it may take a while).
 // Notes: call on the main thread while the viewer grabs.
 func (v *viewer) askGrabState(now time.Time) {
 	v.mu.Lock()
-	due, window := now.Sub(v.kb.at) >= grabAskEvery, v.window
-	v.mu.Unlock()
-	if due {
-		if lib, err := coreLib(); err == nil {
-			if s, err := lib.KeyboardState(window); err == nil {
-				v.noteGrabState(s, now)
-			}
-		}
-	}
-	v.mu.Lock()
-	again := !v.kb.asking
+	due, again := now.Sub(v.kb.at) >= grabAskEvery, !v.kb.asking
 	v.kb.asking = true
 	v.mu.Unlock()
-	if again {
-		time.AfterFunc(grabAskEvery, func() {
-			v.update(func() {
-				v.mu.Lock()
-				v.kb.asking = false
-				v.mu.Unlock()
-			})
-		})
+	if !again {
+		return
 	}
+	wait := grabAskEvery
+	if due {
+		wait = 0
+	}
+	time.AfterFunc(wait, func() {
+		v.mu.Lock()
+		window, grabbed := v.window, v.grabbed
+		v.mu.Unlock()
+		if lib, err := coreLib(); err == nil && grabbed != "" {
+			if s, err := lib.KeyboardState(window); err == nil {
+				v.noteGrabState(s, time.Now())
+			}
+		}
+		v.update(func() {
+			v.mu.Lock()
+			v.kb.asking = false
+			v.mu.Unlock()
+		})
+	})
 }
 
 // noteGrabState keeps what the core said of the grab (askGrabState).
@@ -953,7 +957,10 @@ func (v *viewer) endGrab() {
 		v.ungrabbed = time.Now()
 	}
 	v.mu.Unlock()
-	if lib, err := coreLib(); err == nil && grabbed != "" {
+	if grabbed == "" {
+		return // nothing to let go: the core library need not load here
+	}
+	if lib, err := coreLib(); err == nil {
 		_ = v.app.grabKeyboard(lib, window, v, "off")
 	}
 }

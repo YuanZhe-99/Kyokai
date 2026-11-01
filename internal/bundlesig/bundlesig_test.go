@@ -49,3 +49,30 @@ func TestReleaseKey(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestReadRegular: only regular files within the limit are read
+// (regression: a manifest linked to /dev/zero exhausted the helper's
+// memory).
+func TestReadRegular(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "f")
+	if err := os.WriteFile(p, []byte("12345"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := readRegular(p, 5); err != nil || string(b) != "12345" {
+		t.Fatalf("a regular file: %q, %v", b, err)
+	}
+	if _, err := readRegular(p, 4); err == nil {
+		t.Error("a file over the limit was read")
+	}
+	if _, err := readRegular(dir, 1<<20); err == nil {
+		t.Error("a folder was read")
+	}
+	link := filepath.Join(dir, "l")
+	if err := os.Symlink(p, link); err != nil {
+		t.Skipf("no symbolic links here: %v", err)
+	}
+	if _, err := readRegular(link, 1<<20); err == nil {
+		t.Error("a symbolic link was followed")
+	}
+}

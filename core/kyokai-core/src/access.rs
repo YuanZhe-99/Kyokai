@@ -311,12 +311,14 @@ const ADDRESS_BLOCK: Duration = Duration::from_secs(10 * 60);
 /// Failed logins of all sources per minute before unpinned controllers wait.
 const GLOBAL_FAILS: usize = 20;
 const GLOBAL_WAIT: Duration = Duration::from_secs(30);
+/// Source addresses the login limits remember at most, in each table.
+const MAX_SOURCES: usize = 1024;
 /// How long the host's user has to answer a confirmation.
 pub const CONFIRM_TIMEOUT: Duration = Duration::from_secs(60);
 /// Open confirmations in total.
 const MAX_PENDING: usize = 4;
-/// How long a resume token stays valid after it was issued.
-const RESUME_WINDOW: Duration = Duration::from_secs(120);
+/// How long a resume token stays valid after its session dropped.
+const RESUME_WINDOW: Duration = Duration::from_secs(60);
 /// Resume tokens kept at most; the oldest go first.
 const MAX_RESUMES: usize = 64;
 /// Recent devices listed at most.
@@ -534,13 +536,23 @@ pub struct Credentials {
     pub host_key: String,
 }
 
-/// A resume token's grant: who may resume, with what, until when, and
-/// the session it resumes (which the new connection replaces).
+/// A resume token's grant: who may resume, with what, and the session it
+/// resumes (which the new connection replaces).
+/// Notes: `until` is None while that session lives (a resume then
+/// supersedes it), and RESUME_WINDOW after the host saw it drop.
 struct Resume {
     key: String,
     granted: Vec<Permission>,
-    until: Instant,
+    issued: Instant,
+    until: Option<Instant>,
     session: u64,
+}
+
+impl Resume {
+    /// Whether the token may still be redeemed at `now`.
+    fn valid(&self, now: Instant) -> bool {
+        self.until.is_none_or(|u| u > now)
+    }
 }
 
 /// A confirmation waiting for the host's user.
@@ -579,6 +591,33 @@ struct Limits {
     blocked: HashMap<Source, Instant>,
     global: VecDeque<Instant>,
     global_until: Option<Instant>,
+}
+
+/// Forgets failures past FAIL_WINDOW and blocks that ran out, and keeps
+/// the failures below MAX_SOURCES (the stalest go first), so that guesses
+/// from ever new addresses cannot fill memory.
+/// Notes: a block that has not run out is never evicted, or an attacker
+/// cycling more sources than the table holds would clear its own; `failed`
+/// adds none to a full table.
+fn prune(l: &mut Limits, now: Instant) {
+    l.fails.retain(|_, list| {
+        while list.front().is_some_and(|t| now - *t > FAIL_WINDOW) {
+            list.pop_front();
+        }
+        !list.is_empty()
+    });
+    l.blocked.retain(|_, until| *until > now);
+    while l.fails.len() >= MAX_SOURCES {
+        let Some(stalest) = l
+            .fails
+            .iter()
+            .min_by_key(|(_, list)| list.back().copied())
+            .map(|(k, _)| *k)
+        else {
+            break;
+        };
+        l.fails.remove(&stalest);
+    }
 }
 
 /// The host's access state, shared by the core and every session task.
@@ -950,19 +989,31 @@ impl Access {
 
     /// Counts one failed login from a source.
     /// Side effects: may block the source or start the global backoff.
+    /// Notes: with MAX_SOURCES blocks running, the source is not blocked
+    /// (no block is evicted for it): it keeps its failures, to be blocked
+    /// once a block runs out, and the global backoff starts.
     pub fn failed(&self, from: Source) {
-        let Ok(mut l) = self.limits.lock() else {
+        let Ok(mut guard) = self.limits.lock() else {
             return;
         };
+        let l = &mut *guard;
         let now = Instant::now();
+        prune(l, now);
         let list = l.fails.entry(from).or_default();
         list.push_back(now);
         while list.front().is_some_and(|t| now - *t > FAIL_WINDOW) {
             list.pop_front();
         }
         if list.len() >= FAILS_PER_ADDRESS {
-            list.clear();
-            l.blocked.insert(from, now + ADDRESS_BLOCK);
+            if l.blocked.len() < MAX_SOURCES {
+                list.clear();
+                l.blocked.insert(from, now + ADDRESS_BLOCK);
+            } else {
+                while list.len() > FAILS_PER_ADDRESS {
+                    list.pop_front();
+                }
+                l.global_until = Some(now + GLOBAL_WAIT);
+            }
         }
         l.global.push_back(now);
         while l
@@ -1137,11 +1188,11 @@ impl Access {
         let token = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes);
         if let Ok(mut r) = self.resumes.lock() {
             let now = Instant::now();
-            r.retain(|_, v| v.until > now);
+            r.retain(|_, v| v.valid(now));
             if r.len() >= MAX_RESUMES
                 && let Some(oldest) = r
                     .iter()
-                    .min_by_key(|(_, v)| v.until)
+                    .min_by_key(|(_, v)| v.issued)
                     .map(|(k, _)| k.clone())
             {
                 r.remove(&oldest);
@@ -1151,7 +1202,8 @@ impl Access {
                 Resume {
                     key: key.to_owned(),
                     granted: granted.to_vec(),
-                    until: now + RESUME_WINDOW,
+                    issued: now,
+                    until: None,
                     session,
                 },
             );
@@ -1164,7 +1216,27 @@ impl Access {
     /// None for an unknown, used, expired or foreign token.
     pub fn take_resume(&self, token: &str, key: &str) -> Option<(Vec<Permission>, u64)> {
         let r = self.resumes.lock().ok()?.remove(token)?;
-        (r.key == key && r.until > Instant::now()).then_some((r.granted, r.session))
+        (r.key == key && r.valid(Instant::now())).then_some((r.granted, r.session))
+    }
+
+    /// Starts the resume window of a host session whose connection dropped:
+    /// its tokens stay valid for RESUME_WINDOW from now.
+    pub fn resume_dropped(&self, session: u64) {
+        if let Ok(mut r) = self.resumes.lock() {
+            let until = Instant::now() + RESUME_WINDOW;
+            for v in r.values_mut().filter(|v| v.session == session) {
+                v.until.get_or_insert(until);
+            }
+        }
+    }
+
+    /// Drops the resume tokens of a host session that ended otherwise than
+    /// by a dropped connection (a goodbye, the host's user closing it, a
+    /// revoked device): nothing resumes it.
+    pub fn drop_resumes(&self, session: u64) {
+        if let Ok(mut r) = self.resumes.lock() {
+            r.retain(|_, v| v.session != session);
+        }
     }
 
     /// The host key pinned for a Device ID, if any (controller side).
@@ -1688,6 +1760,101 @@ mod tests {
             Some((vec![Permission::ViewScreen], 7))
         );
         assert_eq!(a.take_resume(&t, "key-A"), None, "used once");
+    }
+
+    /// Regression: a token expired two minutes after it was issued, so a
+    /// session connected for longer could never resume, and a session the
+    /// host's user ended could still be resumed.
+    #[test]
+    fn resume_tokens_count_from_the_drop_and_die_with_a_host_side_end() {
+        let a = access();
+        let t = a.issue_resume("key-A", &[Permission::ViewScreen], 7);
+        // However long connected: no expiry while the session lives.
+        assert_eq!(a.resumes.lock().unwrap()[&t].until, None);
+        a.resume_dropped(7);
+        let until = a.resumes.lock().unwrap()[&t].until.unwrap();
+        assert!(until > Instant::now() + RESUME_WINDOW - Duration::from_secs(5));
+        assert_eq!(
+            a.take_resume(&t, "key-A"),
+            Some((vec![Permission::ViewScreen], 7))
+        );
+        // Ended by the host: its tokens go, others stay.
+        let t7 = a.issue_resume("key-A", &[Permission::ViewScreen], 7);
+        let t8 = a.issue_resume("key-A", &[Permission::ViewScreen], 8);
+        a.drop_resumes(7);
+        assert_eq!(a.take_resume(&t7, "key-A"), None);
+        assert!(a.take_resume(&t8, "key-A").is_some());
+        // Dropped, and the window passed.
+        let t9 = a.issue_resume("key-A", &[Permission::ViewScreen], 9);
+        a.resume_dropped(9);
+        if let Ok(mut r) = a.resumes.lock() {
+            r.get_mut(&t9).unwrap().until = Some(Instant::now());
+        }
+        assert_eq!(a.take_resume(&t9, "key-A"), None);
+    }
+
+    /// Regression: with the block table full, the block that ran out
+    /// soonest was evicted for a new one, so an attacker cycling more than
+    /// MAX_SOURCES sources cleared its own first block.
+    #[test]
+    fn a_full_block_table_keeps_its_blocks() {
+        let a = access();
+        let source = |i: u64| Source {
+            network: i,
+            ip: IpAddr::from([10, 0, 0, 3]),
+        };
+        for i in 0..=MAX_SOURCES as u64 {
+            for _ in 0..FAILS_PER_ADDRESS {
+                a.failed(source(i));
+            }
+        }
+        assert_eq!(a.limits.lock().unwrap().blocked.len(), MAX_SOURCES);
+        assert_eq!(a.admit(source(0), true), Err(Refusal::RateLimited));
+        // The source past the table is not blocked of its own, but its
+        // failures stay and unpinned controllers wait.
+        let last = source(MAX_SOURCES as u64);
+        assert!(!a.limits.lock().unwrap().blocked.contains_key(&last));
+        assert_eq!(a.admit(last, false), Err(Refusal::RateLimited));
+    }
+
+    /// Regression: the per-address tables kept every source that ever
+    /// failed, so guesses from ever new addresses grew them without end.
+    #[test]
+    fn the_login_limits_stay_bounded() {
+        let a = access();
+        for i in 0..(MAX_SOURCES * 2) as u64 {
+            a.failed(Source {
+                network: i,
+                ip: IpAddr::from([10, 0, 0, 1]),
+            });
+        }
+        {
+            let l = a.limits.lock().unwrap();
+            assert!(l.fails.len() <= MAX_SOURCES, "{}", l.fails.len());
+            assert!(l.blocked.len() <= MAX_SOURCES);
+        }
+        // Expired entries go at the next failure.
+        let old = Source {
+            network: 1,
+            ip: IpAddr::from([10, 0, 0, 2]),
+        };
+        // (A test machine up for less than FAIL_WINDOW has no such past.)
+        let Some(long_ago) = Instant::now().checked_sub(FAIL_WINDOW + Duration::from_secs(1))
+        else {
+            return;
+        };
+        {
+            let mut l = a.limits.lock().unwrap();
+            l.fails.clear();
+            l.fails.insert(old, VecDeque::from([long_ago]));
+            l.blocked.insert(old, long_ago);
+        }
+        a.failed(Source {
+            network: 2,
+            ip: IpAddr::from([10, 0, 0, 3]),
+        });
+        let l = a.limits.lock().unwrap();
+        assert!(!l.fails.contains_key(&old) && !l.blocked.contains_key(&old));
     }
 
     /// Forgetting what is saved for a host forgets its password and its

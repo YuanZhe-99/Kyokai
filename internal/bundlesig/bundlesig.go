@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -106,16 +107,18 @@ func (b Bundle) Names() []string {
 // every listed file's hash, and returns the verified contents.
 // Inputs: dir, a possibly user-writable app folder; key, the release key.
 // Returns: the bundle when everything matches.
-// Notes: each file is read once and hashed in memory. Callers install
+// Notes: reads only regular files (never a link, a device or a pipe), each
+// at most MaxFile (the manifest and signature maxManifest). Each file is
+// read once and hashed in memory. Callers install
 // Bundle.Data and never read the files from dir again: whoever can write
 // dir could swap a file between the check and a second read.
 func Read(dir string, key ed25519.PublicKey) (Bundle, error) {
 	var b Bundle
-	data, err := os.ReadFile(filepath.Join(dir, "bundle.json"))
+	data, err := readRegular(filepath.Join(dir, "bundle.json"), maxManifest)
 	if err != nil {
 		return b, fmt.Errorf("unsigned bundle: %w", err)
 	}
-	sigText, err := os.ReadFile(filepath.Join(dir, "bundle.sig"))
+	sigText, err := readRegular(filepath.Join(dir, "bundle.sig"), maxManifest)
 	if err != nil {
 		return b, fmt.Errorf("unsigned bundle: %w", err)
 	}
@@ -133,7 +136,7 @@ func Read(dir string, key ed25519.PublicKey) (Bundle, error) {
 		if n == "" || n == "." || n == ".." || strings.ContainsAny(n, `/\:`) {
 			return b, fmt.Errorf("bad file name %q in manifest", n)
 		}
-		content, err := os.ReadFile(filepath.Join(dir, n))
+		content, err := readRegular(filepath.Join(dir, n), MaxFile)
 		if err != nil {
 			return b, err
 		}
@@ -145,4 +148,49 @@ func Read(dir string, key ed25519.PublicKey) (Bundle, error) {
 	}
 	b.Data = files
 	return b, nil
+}
+
+// Size limits of what Read reads: a bundle's file, and its manifest or
+// signature.
+const (
+	MaxFile     = 512 << 20
+	maxManifest = 1 << 20
+)
+
+// readRegular reads the regular file at p, refusing anything else (a
+// symbolic link, a junction, a device such as /dev/zero, a pipe) and
+// anything longer than limit.
+// Notes: the file opened is checked to be the one inspected, so a link
+// swapped in between is refused too.
+func readRegular(p string, limit int64) ([]byte, error) {
+	before, err := os.Lstat(p)
+	if err != nil {
+		return nil, err
+	}
+	if !before.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", filepath.Base(p))
+	}
+	if before.Size() > limit {
+		return nil, fmt.Errorf("%s is larger than %d bytes", filepath.Base(p), limit)
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	opened, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(before, opened) {
+		return nil, fmt.Errorf("%s changed while it was read", filepath.Base(p))
+	}
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%s is larger than %d bytes", filepath.Base(p), limit)
+	}
+	return data, nil
 }

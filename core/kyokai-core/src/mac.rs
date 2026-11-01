@@ -1046,15 +1046,32 @@ pub(crate) fn front_app() -> Option<i32> {
 /// The owner of the frontmost on-screen window at `at` (points), or of the
 /// frontmost normal window (the focused application's) when None.
 pub(crate) fn window_owner(at: Option<CGPoint>) -> Option<i32> {
-    let list = CGWindowListCopyWindowInfo(
+    owner_in(&shown_windows(), at)
+}
+
+/// An on-screen window as the input guard reads it: its process, whether
+/// it is a normal window (layer 0), and its bounds (points) when they read.
+#[derive(Clone, Copy)]
+struct Shown {
+    pid: i32,
+    normal: bool,
+    bounds: Option<CGRect>,
+}
+
+/// The on-screen windows, front to back.
+fn shown_windows() -> Vec<Shown> {
+    let Some(list) = CGWindowListCopyWindowInfo(
         CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements,
         0,
-    )?;
+    ) else {
+        return Vec::new();
+    };
     // SAFETY: the window list holds dictionaries with string keys.
     let windows = unsafe { list.cast_unchecked::<CFDictionary<CFString, CFType>>() };
     // SAFETY: immutable constants of the framework.
     let (pid_key, layer_key, bounds_key) =
         unsafe { (kCGWindowOwnerPID, kCGWindowLayer, kCGWindowBounds) };
+    let mut out = Vec::new();
     for w in windows.iter() {
         let number = |key: &CFString| {
             w.get(key)
@@ -1064,27 +1081,36 @@ pub(crate) fn window_owner(at: Option<CGPoint>) -> Option<i32> {
         let Some(pid) = number(pid_key) else {
             continue;
         };
-        let hit = match at {
-            None => number(layer_key) == Some(0),
-            Some(p) => {
-                let mut r = CGRect::default();
-                w.get(bounds_key)
-                    .and_then(|v| v.downcast::<CFDictionary>().ok())
-                    // SAFETY: a bounds dictionary and a rectangle to fill.
-                    .is_some_and(|b| unsafe {
-                        CGRectMakeWithDictionaryRepresentation(Some(&b), &mut r)
-                    })
-                    && p.x >= r.origin.x
+        let mut r = CGRect::default();
+        let read = w
+            .get(bounds_key)
+            .and_then(|v| v.downcast::<CFDictionary>().ok())
+            // SAFETY: a bounds dictionary and a rectangle to fill.
+            .is_some_and(|b| unsafe { CGRectMakeWithDictionaryRepresentation(Some(&b), &mut r) });
+        out.push(Shown {
+            pid: pid as i32,
+            normal: number(layer_key) == Some(0),
+            bounds: read.then_some(r),
+        });
+    }
+    out
+}
+
+/// The owner of the frontmost window of `windows` at `at` (points), or of
+/// the frontmost normal window when None.
+fn owner_in(windows: &[Shown], at: Option<CGPoint>) -> Option<i32> {
+    windows
+        .iter()
+        .find(|w| match at {
+            None => w.normal,
+            Some(p) => w.bounds.is_some_and(|r| {
+                p.x >= r.origin.x
                     && p.y >= r.origin.y
                     && p.x < r.origin.x + r.size.width
                     && p.y < r.origin.y + r.size.height
-            }
-        };
-        if hit {
-            return Some(pid as i32);
-        }
-    }
-    None
+            }),
+        })
+        .map(|w| w.pid)
 }
 
 /// The program holding Secure Event Input, while one has it on: macOS then
@@ -1163,7 +1189,15 @@ pub struct Injector {
     /// The last window owner asked about: its process, whether it is
     /// Kyokai's, and when (`kyokai_owner`).
     owner: (i32, bool, Instant),
+    /// The on-screen windows the last hover was guarded with, and when
+    /// they were read: reused by hovers within HOVER_TTL, forgotten at any
+    /// other event (a press, a drag, a key may change them).
+    hover_windows: Option<(Instant, Vec<Shown>)>,
 }
+
+/// How long a hover (a pointer move with no button held) reuses the window
+/// list the guard read: the 60 Hz moves no longer read it each.
+const HOVER_TTL: Duration = Duration::from_millis(100);
 
 impl Default for Injector {
     fn default() -> Self {
@@ -1177,6 +1211,7 @@ impl Default for Injector {
             scroll: (0.0, 0.0),
             // No process has this number: the first owner is asked about.
             owner: (i32::MIN, false, Instant::now()),
+            hover_windows: None,
         }
     }
 }
@@ -1244,12 +1279,27 @@ impl Injector {
         kyokai
     }
 
-    /// Whether the window `guard` names is one of Kyokai's.
-    fn blocked(&mut self, guard: Guard) -> bool {
+    /// Whether the window `guard` names is one of Kyokai's; a `hover`
+    /// reuses the window list of the hovers within HOVER_TTL.
+    fn blocked(&mut self, guard: Guard, hover: bool) -> bool {
         let owner = match guard {
             Guard::None => return false,
             Guard::At(x, y) => {
-                window_owner(Some(point_in(self.area.unwrap_or_else(main_area), x, y)))
+                let p = point_in(self.area.unwrap_or_else(main_area), x, y);
+                if hover {
+                    if self
+                        .hover_windows
+                        .as_ref()
+                        .is_none_or(|(at, _)| at.elapsed() >= HOVER_TTL)
+                    {
+                        self.hover_windows = Some((Instant::now(), shown_windows()));
+                    }
+                    self.hover_windows
+                        .as_ref()
+                        .and_then(|(_, list)| owner_in(list, Some(p)))
+                } else {
+                    window_owner(Some(p))
+                }
             }
             Guard::Pointer => {
                 let Some(event) = CGEvent::new(None) else {
@@ -1270,7 +1320,20 @@ impl Injector {
         if let (Some(id), Some(link)) = (self.remote, crate::agent::link()) {
             return link.inject(id, e, self.area, kyokai_ok);
         }
-        if !e.valid() || (!kyokai_ok && self.blocked(e.guard())) {
+        // Only a pointer move with no button held reuses the hovers' window
+        // list; any other event may change the windows.
+        let hover = self.buttons.is_empty()
+            && matches!(
+                e,
+                Event::Pointer {
+                    action: PointerAction::Move,
+                    ..
+                }
+            );
+        if !hover {
+            self.hover_windows = None;
+        }
+        if !e.valid() || (!kyokai_ok && self.blocked(e.guard(), hover)) {
             return false;
         }
         match e {

@@ -53,10 +53,10 @@ integers and pointers only:
 |---|---|
 | `kyokai_abi_version() -> u32` | ABI version (7); hosts refuse a mismatch |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | Starts the core with `{version, state_dir, profile}` |
-| `kyokai_call(json, len, *out, *out_len) -> i32` | Answers `{method, params}` |
+| `kyokai_call(json, len, *out, *out_len) -> i32` | Answers `{method, params}`; calls run concurrently (the Go binding gives each its own response slot; `kyokai_stop` waits for them). What takes time — the networks' views (refreshed in the background every 2 s; one older than 10 s shows as connecting), exports and their key derivation, the permanent password, `protect.set`, `keys.sign`, the macOS helper's permissions, the Keychain prompt — runs without the core's lock, which is taken only to read and swap; rebuilding the core still holds it |
 | `kyokai_free(ptr, len)` | Frees a response buffer |
 | `kyokai_stop()` | Ends every session (each connected one with a goodbye, waiting up to a second), then drops the core's state, including its in-memory secrets |
-| `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | Waits for a controller session's next media packet (a tunnel's session: its bytes, packet 14) and copies it into the caller's buffer; -1 timeout, -2 ended, -3 too large |
+| `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | Waits for a controller session's next media packet (this and `kyokai_media_write` find the session without the core's lock, so no call delays video, input or a tunnel) (a tunnel's session: its bytes, packet 14) and copies it into the caller's buffer; -1 timeout, -2 ended, -3 too large |
 | `kyokai_media_write(session, ptr, len) -> i32` | Passes a control packet from the GUI (input, key-frame request) to the session: 0, -1 malformed, -2 ended, -3 refused as behind; input never waits — moves, presses, clicks and text are refused while the session cannot take input, releases never are (`session::InputGate`) — and other messages wait 200 ms at most; a tunnel's bytes (packet 14) always wait for room |
 | `kyokai_decoder_open(json, len) -> u64` | Opens a viewer decoder for a stream (`{codec, width, height}`); 0 when the codec is not available. Needs no started core |
 | `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | Decodes one frame into the caller's RGBA buffer: 1 picture, 0 needs more input, -1 error, -3 too large |
@@ -151,7 +151,7 @@ runtime statically, so nothing is resolved through the search path.
   `trusted.remove`, `host.forget`, `keys.list`, `keys.add`, `keys.remove`, `keys.sign`,
   `authorized.list`, `authorized.add`, `authorized.set`, `authorized.remove`, `credentials.get` (owner or operator
   only), `credentials.set`, `credentials.forget`, `watch.set`, `tunnel.open` (streaming, below), `identity.export`, `identity.import`, `identity.reset`,
-  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it once an attached engine reports a running core — not parked —, again each second until it arrives, and when the setting changes), `input.kyokai` (`{kyokai_input}`; sent with `capture.show`; an engine that does not know it keeps Kyokai's windows guarded), `kyokai.shown` (`{shown}`; Linux on Wayland), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `nanokvm.devices` (→ `nanokvm_devices`), `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; after the store moved out), `store.forget_move` (a parked engine starts over), `sessions.close_controllers`, `store.export`,
+  `device.set_name`, `access.settings`, `system.permission` (`{permission}`, macOS), `capture.show` (`{show}`; the GUI sends it once an attached engine reports a running core — not parked —, again each second until it arrives, and when the setting changes), `input.kyokai` (`{kyokai_input}`; sent with `capture.show`; an engine that does not know it keeps Kyokai's windows guarded), `kyokai.shown` (`{shown}`; Linux on Wayland), `sound.source` (`{sound_source}`, likewise), `sound.devices` (→ `sound_devices`), `nanokvm.devices` (→ `nanokvm_devices`), `clipboard.mine`, `secrets.start_over`, `helper.background`, `helper.agent_restart` and `helper.remove` (the helper only; after the store moved out), `store.forget_move` (a parked engine starts over), `sessions.close_controllers`, `store.export`,
   `store.import`, `store.clear` (stops the engine after), `session.attach`,
   `session.media`, `shutdown`, and the AI requests named after the core's
   methods (`ai.settings.get` … `ai.stop`, `ai.draft.set`). `session.media` (`{id}` of a live controller
@@ -167,7 +167,11 @@ runtime statically, so nothing is resolved through the search path.
   older GUI ignores packets 13 and 15. The status includes the open host
   confirmations and the sessions; secrets travel only towards the engine (the network secret, the
   permanent password, a typed password, a provider's API key). A session receives the status after every command that changes it
-  and whenever the network's status moves.
+  and whenever the network's status moves: one producer per engine builds it, 100 ms after a change
+  and every 500 ms while a session is attached, and hands each session the newest without waiting
+  for a slow reader. `clipboard.mine` (`{digest}`, the SHA-256 of a text the GUI is about to copy,
+  64 lowercase hex characters) tells the core not to offer that text to controllers; every tier and
+  protected mode may send it.
 - Authorization comes from the operating system's peer credentials (`LOCAL_PEERCRED` on macOS;
   `SO_PEERCRED` and `SO_PEERGROUPS` on Linux;
   `SIO_AF_UNIX_GETPEERPID` and the process token's SID on Windows), never from the request: only
@@ -196,6 +200,11 @@ runtime statically, so nothing is resolved through the search path.
 - **Never show stale data as current.** The GUI shows the engine's state only while its session is
   attached and says "starting" or why the engine is not running otherwise.
 - **Versioned boundaries.** The ABI and the local API carry versions; enums cross as names.
+- **The main thread does no slow work.** `gui.json` is written by one writer goroutine that keeps
+  the last change last and is flushed on quit (`setPrefsNow` where a caller needs the result); key
+  generation, the core library's first load and the keyboard grab's state run off it; long lists
+  (the SSH files tree, transfers) build only their rows in view. Text Kyokai copies is announced
+  with `clipboard.mine` before the write (`App.copyText`).
 - **Nothing waits for the main thread under the app lock.** MyGo's notifications, clipboard and
   window calls wait for the main thread, which takes the GUI's lock to draw: they are made after
   the lock is let go (`statusPushed`, `revealPassword`); a watchdog writes every goroutine's stack

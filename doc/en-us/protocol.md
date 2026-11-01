@@ -31,7 +31,12 @@ frame 2, checks its signature and closes the connection (`session.identify`; als
 controller looks at a known host's addresses, [networking.md](networking.md), "Routes"); the host
 keeps no session for it. Which route a controller takes changes nothing on the wire. The controller refuses a host whose device key does not derive the Device
 ID it dialed, or that differs from the key it pinned for that ID
-([identity-and-access.md](identity-and-access.md)). `host_hello` carries the host's source URL,
+([identity-and-access.md](identity-and-access.md)). With a password typed it offers sign-in keys only to a host
+whose key it has pinned, and takes an acceptance only when it asked without a password, the host
+proved the password (its own OPAQUE finish succeeded) or the host's key was pinned already: a key
+login never proves the host. Otherwise the attempt fails as `wrong-device` and the next route is
+tried. Frame acknowledgements and the cursor wait to be sent as their newest value only, a pong or a
+delay echo once; other urgent messages are bounded at 32 MiB, and filling that breaks the session. It holds only the permissions it asked for, whatever the verdict grants. `host_hello` carries the host's source URL,
 which the controller shows (AGPL-3.0 §13).
 
 ## Password authentication
@@ -73,7 +78,9 @@ answer as long as for a confirmation.
 
 A dropped connection (not a `bye`) can be resumed for 60 seconds from that drop (a session that resumed and drops again has 60 seconds anew): the controller dials again
 every 3 seconds and sends the token from the last verdict. A token is single-use, bound to the
-controller's device key, kept in the host's memory only and valid for 2 minutes; a valid one
+controller's device key, kept in the host's memory only and valid while its session lives and for
+60 seconds after the host saw it drop; a goodbye, the host's Disconnect, a revocation or a session
+replaced voids it, even while that session is still closing. A valid one
 answers frame 3 with an accepting verdict at once (same permissions, no password, no
 confirmation, a new token) and ends the session it resumes, which the host may not have noticed
 dropping (it would keep its capture and encoder until its idle limit; as after any drop, an AI

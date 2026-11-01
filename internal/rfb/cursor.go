@@ -2,7 +2,7 @@
 // internal/rfb/cursor.go, commit ce6408d4fcb27a68974b7f374b1f55283aa75ac9.
 // Copyright (C) 2026 nekohasekai. License: GPL-3.0-or-later, with the additional term that no
 // derivative work may use the name of that application or imply association with it without
-// prior consent. Modified by Kyokai: import paths.
+// prior consent. Modified by Kyokai: import paths, rich cursor size limit.
 
 package rfb
 
@@ -95,6 +95,10 @@ func (c *Client) clearCursor(id uint32) {
 
 func (c *Client) receiveRichCursor(rectangle Rectangle) error {
 	width, height := rectangle.Width, rectangle.Height
+	// Kyokai: the size is checked before it allocates.
+	if width > maximumCursorSize || height > maximumCursorSize {
+		return E.New("rfb: rich cursor of ", width, "x", height, " is over the ", maximumCursorSize, "-pixel limit")
+	}
 	pixels, err := c.stream.bytes(width * height * 4)
 	if err != nil {
 		return err

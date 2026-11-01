@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -43,7 +44,27 @@ var (
 	// errNoAnswer: the service went quiet during the handshake or sign-in
 	// (an SSH server holding failed or penalized sign-ins).
 	errNoAnswer = errors.New("the service did not answer")
+	// errNoSecureSignIn: a user name and password met a server offering
+	// no sign-in that protects them (Remote Desktop without Network Level
+	// Authentication, VNC without Apple's SRP); nothing was sent.
+	errNoSecureSignIn = errors.New("the server offers no secure sign-in for a password")
+	// errUnreadable: a client's protocol code panicked on what the other
+	// computer sent (see guard).
+	errUnreadable = errors.New("the service sent something unreadable")
 )
+
+// guard runs fn, a protocol client's dial or session, and turns a panic in
+// it into errUnreadable, so a hostile or broken server ends only its own
+// pane rather than the whole app.
+// Notes: covers fn's own goroutine only, where the clients decode.
+func guard(fn func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%w: %v", errUnreadable, r)
+		}
+	}()
+	return fn()
+}
 
 // credForm is a service tab's sign-in form while it shows. The password is
 // handed to the client as the form is sent and cleared here.
@@ -301,7 +322,11 @@ func (s *serviceTab) connect(typed *credForm) {
 	dial := serviceDials[s.service]
 	s.mu.Unlock()
 	go func() {
-		client, err := dial(ctx, s, typed)
+		var client serviceClient
+		err := guard(func() (err error) {
+			client, err = dial(ctx, s, typed)
+			return err
+		})
 		s.update(func() {
 			s.mu.Lock()
 			defer s.mu.Unlock()
@@ -328,6 +353,14 @@ func (s *serviceTab) settle(client serviceClient, err error, typed *credForm) {
 		s.phase, s.note = svcForm, L.ServiceWrongSignIn()
 	case errors.Is(err, errSignInRequired):
 		s.phase, s.note = svcForm, L.ServiceNeedsSignIn()
+	case errors.Is(err, errNoSecureSignIn):
+		// The note names the method that sends no password this way.
+		s.phase, s.note = svcForm, L.ServiceVNCWeakSignIn(methodLabel(serviceVNC, methodPassword))
+		if s.service == serviceRDP {
+			s.note = L.ServiceRDPNoNLA(methodLabel(serviceRDP, methodNone))
+		}
+	case errors.Is(err, errUnreadable):
+		s.phase, s.note = svcEnded, L.ServiceUnreadable()
 	case errors.Is(err, errHostKeyChanged):
 		s.phase, s.note = svcEnded, L.ServiceHostKeyChanged()
 	case errors.Is(err, errNoAnswer):
@@ -526,12 +559,17 @@ func (s *serviceTab) syncGrab(inPane bool) {
 }
 
 // endGrab ends the tab's keyboard grab, which releases the keys it held.
+// Notes: with nothing grabbed it returns at once, so it never loads the
+// core library (on the main thread) just to find that out.
 func (s *serviceTab) endGrab() {
 	s.mu.Lock()
 	window, grabbed := s.win, s.grabbed
 	s.grabbed = ""
 	s.mu.Unlock()
-	if lib, err := coreLib(); err == nil && grabbed != "" {
+	if grabbed == "" {
+		return
+	}
+	if lib, err := coreLib(); err == nil {
 		_ = s.app.grabKeyboard(lib, window, s, "off")
 	}
 }

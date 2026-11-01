@@ -48,14 +48,22 @@ func (a *App) backUp(passphrase, deviceID string) {
 	if err != nil || path == "" {
 		return
 	}
+	// The file is written after the request, outside a.mu (identityRequest
+	// runs then under it, on this goroutine).
+	var doc []byte
 	a.identityRequest(localapi.Request{Type: localapi.RequestIdentityExport, Backup: &localapi.IdentityBackup{Passphrase: passphrase}},
-		func(resp *localapi.Response) {
-			if err := os.WriteFile(path, []byte(resp.Document), 0o600); err != nil {
-				a.setToast(err.Error(), true)
-				return
-			}
-			a.setToast(L.BackupSaved(), false)
-		})
+		func(resp *localapi.Response) { doc = []byte(resp.Document) })
+	if doc == nil {
+		return
+	}
+	err = os.WriteFile(path, doc, 0o600)
+	a.update(func() {
+		if err != nil {
+			a.setToast(err.Error(), true)
+			return
+		}
+		a.setToast(L.BackupSaved(), false)
+	})
 }
 
 // restore asks for a backup file and replaces this device's identity.
@@ -98,8 +106,9 @@ func (a *App) confirm(message, action string) bool {
 	return err == nil && res.Button == 0
 }
 
-// identityRequest sends one identity request; then runs on success (on the
-// main thread). The passphrase field is cleared either way.
+// identityRequest sends one identity request; then runs on success, under
+// a.mu on the calling goroutine (a.update), so it does no I/O. The
+// passphrase field is cleared either way.
 func (a *App) identityRequest(req localapi.Request, then func(*localapi.Response)) {
 	a.update(func() { a.busy["identity"] = true })
 	resp, err := a.requestWith(req)

@@ -174,8 +174,10 @@ func (a *App) hideMain() {
 	w := a.window
 	a.window, a.main.win = nil, nil
 	first := !a.prefs.TrayHintShown
-	a.prefs.TrayHintShown = true
-	p := a.prefs
+	if first {
+		a.prefs.TrayHintShown = true
+		a.prefsChangedLocked()
+	}
 	a.mu.Unlock()
 	a.main.mu.Lock()
 	a.main.full = false
@@ -185,7 +187,6 @@ func (a *App) hideMain() {
 	}
 	a.SetVisible(false)
 	if first {
-		_ = savePrefs(a.stateDir, p)
 		a.notify("tray-hint", L.NotifyStillRunningTitle(), L.NotifyStillRunningBody())
 	}
 }
@@ -232,10 +233,11 @@ func (a *App) confirmClose(vw *viewerWindow, quit bool, names []string) bool {
 const closeControllersWait = time.Second
 
 // BeforeQuit runs as the app quits: it no longer hides windows into the
-// tray, and asks the engine to end this GUI's connections (in the helper
+// tray, saves the preferences not written yet, and asks the engine to end this GUI's connections (in the helper
 // modes the helper outlives the GUI), waiting closeControllersWait at most.
 func (a *App) BeforeQuit() {
 	a.MarkQuitting()
+	_ = a.writePrefs() // the preferences the writer has not saved yet
 	ctx, cancel := context.WithTimeout(context.Background(), closeControllersWait)
 	defer cancel()
 	_, _ = localapi.NewClient(a.sock()).Do(ctx, localapi.Request{Type: localapi.RequestCloseControllers})

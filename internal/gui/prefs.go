@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"log"
 	"maps"
 	"path/filepath"
 	"time"
@@ -168,6 +169,9 @@ func savePrefs(stateDir string, p Prefs) error {
 	return fsutil.WriteJSON(prefsPath(stateDir), p)
 }
 
+// prefsSaver writes gui.json for writePrefs; tests replace it.
+var prefsSaver = savePrefs
+
 // ThemePref is the remembered appearance.
 func (a *App) ThemePref() string {
 	a.mu.Lock()
@@ -248,12 +252,71 @@ func (a *App) setAlias(device, name string) {
 	a.setPrefs(p)
 }
 
-// setPrefs stores new prefs (caller does not hold a.mu).
+// setPrefs stores new prefs (caller does not hold a.mu); the preferences'
+// writer saves them soon after, off the main thread (prefsChangedLocked).
+// Returns: nil; a caller that needs to know whether gui.json took the
+// change uses setPrefsNow.
+func (a *App) setPrefs(p Prefs) error {
+	a.update(func() {
+		a.prefs = p
+		a.prefsChangedLocked()
+	})
+	return nil
+}
+
+// setPrefsNow stores new prefs and writes gui.json before it returns
+// (caller does not hold a.mu; not on the main thread for long: the write
+// syncs to disk).
 // Returns: the error writing gui.json, if any (the change holds for this
 // run).
-func (a *App) setPrefs(p Prefs) error {
-	a.update(func() { a.prefs = p })
-	return savePrefs(a.stateDir, p)
+func (a *App) setPrefsNow(p Prefs) error {
+	a.update(func() {
+		a.prefs = p
+		a.prefsGen++
+	})
+	return a.writePrefs()
+}
+
+// prefsChangedLocked records a change of a.prefs and wakes the preferences'
+// writer, started here the first time: changes made while it writes
+// become one write after it, so the last change is always the one saved.
+// Notes: the caller holds a.mu; never blocks.
+func (a *App) prefsChangedLocked() {
+	a.prefsGen++
+	if a.prefsDirty == nil {
+		a.prefsDirty = make(chan struct{}, 1)
+		go func(dirty <-chan struct{}) {
+			for range dirty {
+				_ = a.writePrefs()
+			}
+		}(a.prefsDirty)
+	}
+	select {
+	case a.prefsDirty <- struct{}{}:
+	default: // a write is already due, and takes this change too
+	}
+}
+
+// writePrefs writes the prefs as they are now to gui.json, unless the file
+// has them already; the writer, setPrefsNow and quitting call it.
+// Returns: the write's error.
+// Side effects: writes and syncs gui.json outside a.mu; writes go one at
+// a time, each with the newest prefs when it starts.
+func (a *App) writePrefs() error {
+	a.prefsMu.Lock()
+	defer a.prefsMu.Unlock()
+	a.mu.Lock()
+	p, gen := a.prefs, a.prefsGen
+	a.mu.Unlock()
+	if gen == a.prefsSaved {
+		return nil
+	}
+	err := prefsSaver(a.stateDir, p)
+	a.prefsSaved = gen
+	if err != nil {
+		log.Printf("gui: saving the preferences: %v", err)
+	}
+	return err
 }
 
 // noteUse counts a use of a device card's action (Prefs.Uses).

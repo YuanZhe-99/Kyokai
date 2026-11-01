@@ -151,7 +151,7 @@ func (a *App) checkApp(manual bool) {
 			a.prefs.AnnouncedApp = up.Version
 			announce = true
 		}
-		_ = savePrefs(a.stateDir, a.prefs)
+		a.prefsChangedLocked()
 	})
 	if announce {
 		a.notify("app-update", L.NotifyAppUpdateTitle(), L.AppUpdateAvailable(up.Version))

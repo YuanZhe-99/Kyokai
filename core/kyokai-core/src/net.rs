@@ -72,6 +72,14 @@ const RESUME_RETRY: Duration = Duration::from_secs(3);
 const MAX_CANDIDATES: usize = 3;
 /// How long stopping the nodes may take before they are dropped.
 const STOP_TIMEOUT: Duration = Duration::from_secs(3);
+/// How often each node's view of its network is read again for the status.
+const SEEN_EVERY: Duration = Duration::from_secs(2);
+/// Longest one reading of a node's view may take (an official core's
+/// `easytier-cli` has its own, shorter limit).
+const SEEN_TIMEOUT: Duration = Duration::from_secs(5);
+/// A view older than this is not shown as current: the network shows as
+/// one whose node did not answer.
+const SEEN_STALE: Duration = Duration::from_secs(10);
 
 /// A network the user keeps: its servers, EasyTier network name and secret,
 /// the name Kyokai shows for it, and whether this device joins it.
@@ -203,15 +211,22 @@ struct Node {
     failed: Arc<Mutex<Option<String>>>,
     /// The port it listens on for other devices, if it does.
     listen: Option<u16>,
+    /// The latest reading of its view of the network and when it was taken
+    /// (None in it: the node did not answer), kept by `refresh_seen`.
+    seen: Arc<Mutex<Option<Reading>>>,
 }
 
-/// What the status reads of a node: its network, the node, why it stopped
-/// and the port it listens on.
+/// A reading of a node's view of its network: when it was taken, and the
+/// view (None: the node did not answer).
+type Reading = (Instant, Option<Seen>);
+
+/// What the status reads of a node: its network, why it stopped, the port
+/// it listens on, and its view of the network unless that is stale.
 struct NodeView {
     id: String,
-    node: Option<Core>,
     failed: Option<String>,
     listen: Option<u16>,
+    seen: Option<Seen>,
 }
 
 /// The joined networks' nodes, shared with the connections, which dial
@@ -229,6 +244,7 @@ enum Core {
 /// What a node knows of its network now: its own address and NAT, whether
 /// it reaches anyone, and every other node by hostname with its address,
 /// path and latency.
+#[derive(Clone)]
 struct Seen {
     address: Option<Ipv4Addr>,
     nat: &'static str,
@@ -237,6 +253,7 @@ struct Seen {
 }
 
 /// Another node of the network as `Seen` lists it.
+#[derive(Clone)]
 struct SeenPeer {
     hostname: String,
     ip: Option<Ipv4Addr>,
@@ -356,6 +373,8 @@ pub struct Network {
     /// another program or another Kyokai): other devices cannot reach this
     /// one, while it still reaches them. Safe to show.
     local_error: Option<String>,
+    /// Keeps the nodes' views of their networks current (`refresh_seen`).
+    refresher: Option<JoinHandle<()>>,
 }
 
 impl Network {
@@ -392,6 +411,7 @@ impl Network {
             state_dir: state_dir.to_owned(),
             local: None,
             local_error: None,
+            refresher: None,
         };
         let joined: Vec<Profile> = net
             .stored
@@ -404,6 +424,7 @@ impl Network {
             net.start_node(p);
         }
         net.accept_by_address();
+        net.refresher = Some(net.rt.spawn(refresh_seen(net.nodes.clone())));
         Ok(net)
     }
 
@@ -608,10 +629,13 @@ impl Network {
             .is_ok_and(|n| n.iter().any(|n| n.id == id))
     }
 
-    /// Every network's status, then all of them together (never a secret,
-    /// never stale: read when asked).
+    /// Every network's status, then all of them together (never a secret).
+    /// Notes: a node's view of its network is the latest that
+    /// `refresh_seen` read (every SEEN_EVERY), never one older than
+    /// SEEN_STALE: such a network shows as connecting, as one whose node
+    /// does not answer. Waits for no node.
     pub fn status(&self) -> Value {
-        // What each node is, then their snapshots in one go.
+        let now = Instant::now();
         let nodes: Vec<NodeView> = self
             .nodes
             .lock()
@@ -619,23 +643,13 @@ impl Network {
                 n.iter()
                     .map(|n| NodeView {
                         id: n.id.clone(),
-                        node: n.node.clone(),
                         failed: n.failed.lock().ok().and_then(|f| f.clone()),
                         listen: n.listen,
+                        seen: n.seen.lock().ok().and_then(|s| current(s.as_ref(), now)),
                     })
                     .collect()
             })
             .unwrap_or_default();
-        let snapshots = self.rt.block_on(async {
-            let mut out = Vec::new();
-            for NodeView { node, .. } in &nodes {
-                out.push(match node {
-                    Some(n) => n.seen().await,
-                    None => None,
-                });
-            }
-            out
-        });
         let networks: Vec<Value> = self
             .stored
             .profiles
@@ -644,7 +658,7 @@ impl Network {
                 let mut entry = match nodes.iter().position(|n| n.id == p.id) {
                     _ if !p.joined => json!({"state": "off"}),
                     None => json!({"state": "off"}),
-                    Some(i) => match (&nodes[i].failed, &snapshots[i]) {
+                    Some(i) => match (&nodes[i].failed, &nodes[i].seen) {
                         (Some(error), _) => json!({"state": "error", "error": error}),
                         (None, Some(seen)) => {
                             let devices: Vec<Value> = seen
@@ -688,9 +702,9 @@ impl Network {
             })
             .collect();
         // The names the devices show, looked at again now and then.
-        let ids: Vec<String> = snapshots
+        let ids: Vec<String> = nodes
             .iter()
-            .flatten()
+            .filter_map(|n| n.seen.as_ref())
             .flat_map(|s| &s.peers)
             .filter_map(|r| r.hostname.strip_prefix("Kyokai-"))
             .filter(|id| *id != self.device_id)
@@ -726,6 +740,7 @@ impl Network {
             serving: None,
             failed: failed.clone(),
             listen,
+            seen: Arc::default(),
         };
         if let Some(tag) = self.stored.easytier.clone() {
             let slot = Arc::new(std::sync::OnceLock::new());
@@ -988,9 +1003,13 @@ impl Network {
 
 impl Drop for Network {
     fn drop(&mut self) {
-        for task in [self.by_address.take(), self.local.take()]
-            .into_iter()
-            .flatten()
+        for task in [
+            self.by_address.take(),
+            self.local.take(),
+            self.refresher.take(),
+        ]
+        .into_iter()
+        .flatten()
         {
             task.abort();
         }
@@ -1000,6 +1019,47 @@ impl Drop for Network {
             .map(|n| n.iter().map(|n| n.id.clone()).collect())
             .unwrap_or_default();
         self.stop_nodes(&all);
+    }
+}
+
+/// A node's latest view of its network as the status may show it at `now`:
+/// None when there is none, the node did not answer, or it is older than
+/// SEEN_STALE.
+fn current(seen: Option<&Reading>, now: Instant) -> Option<Seen> {
+    match seen {
+        Some((at, Some(s))) if now.saturating_duration_since(*at) <= SEEN_STALE => Some(s.clone()),
+        _ => None,
+    }
+}
+
+/// Reads every running node's view of its network again, all at once, every
+/// SEEN_EVERY, so that the status never waits for a node (an official
+/// core's view starts an `easytier-cli` process).
+/// Side effects: writes each node's `seen`; runs until aborted.
+async fn refresh_seen(nodes: Nodes) {
+    loop {
+        let reading: Vec<_> = nodes
+            .lock()
+            .map(|n| {
+                n.iter()
+                    .filter_map(|n| Some((n.node.clone()?, n.seen.clone())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut all = tokio::task::JoinSet::new();
+        for (node, slot) in reading {
+            all.spawn(async move {
+                let seen = tokio::time::timeout(SEEN_TIMEOUT, node.seen())
+                    .await
+                    .ok()
+                    .flatten();
+                if let Ok(mut s) = slot.lock() {
+                    *s = Some((Instant::now(), seen));
+                }
+            });
+        }
+        all.join_all().await;
+        tokio::time::sleep(SEEN_EVERY).await;
     }
 }
 
@@ -1824,6 +1884,9 @@ impl Dialer {
                     Dialed::Outcome(session::Outcome::WrongDevice) => {
                         (session::Failure::WrongDevice, false)
                     }
+                    Dialed::Outcome(session::Outcome::KeyChanged) => {
+                        (session::Failure::KeyChanged, false)
+                    }
                     Dialed::Nothing(f, token) => {
                         resume = token;
                         (f, false)
@@ -1832,7 +1895,9 @@ impl Dialer {
                 // Keep resuming only while a token is held and the window lasts.
                 let (since, keep) = keep_resuming(lost_at, connected, std::time::Instant::now());
                 lost_at = Some(since);
-                if resume.is_none() || !keep {
+                // A changed key ends it at once, a resume too (as it did
+                // before routes were tried past it).
+                if resume.is_none() || !keep || matches!(failure, session::Failure::KeyChanged) {
                     return session::give_up(&ctx, id, failure);
                 }
             }
@@ -1967,9 +2032,11 @@ async fn dial(
             resume.clone(),
         )
         .await;
-        // A squatter with another key fails the handshake: try the rest.
-        if matches!(outcome, session::Outcome::WrongDevice) {
-            failure = session::Failure::WrongDevice;
+        // A squatter with another key fails the handshake, and so does a
+        // device whose key is not the one pinned: try the rest. The pinned
+        // host not reached anywhere is told as a changed key.
+        if let Some(f) = passed_by(&outcome, &failure) {
+            failure = f;
             if let Target::Addr(a) = &target {
                 let _ = ctx.access.note_route(device_id, a, None);
             }
@@ -1985,6 +2052,22 @@ async fn dial(
         return Dialed::Outcome(outcome);
     }
     Dialed::Nothing(failure, resume)
+}
+
+/// Whether a session's outcome on one route passes on to the next route,
+/// and the failure to report if no route reaches the device: a changed key
+/// outranks a wrong device (one route reached a device that proved the
+/// Device ID with a key other than the pinned one).
+/// Returns: None when the outcome ends the dialing.
+fn passed_by(outcome: &session::Outcome, so_far: &session::Failure) -> Option<session::Failure> {
+    match outcome {
+        session::Outcome::KeyChanged => Some(session::Failure::KeyChanged),
+        session::Outcome::WrongDevice if matches!(so_far, session::Failure::KeyChanged) => {
+            Some(session::Failure::KeyChanged)
+        }
+        session::Outcome::WrongDevice => Some(session::Failure::WrongDevice),
+        session::Outcome::Done | session::Outcome::Lost { .. } => None,
+    }
 }
 
 /// A route to a device in one of the joined networks: the node it goes
@@ -2196,6 +2279,53 @@ fn nat_name(n: i32) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A changed host key, like a wrong device, passes on to the next route
+    /// (regression: it ended the dialing, though the pinned host might
+    /// answer on another route); reached nowhere, the changed key is told,
+    /// whatever wrong devices answered on other routes.
+    #[test]
+    fn a_changed_key_tries_the_next_route_and_is_told_last() {
+        use session::{Failure as F, Outcome as O};
+        let lost = || O::Lost {
+            token: zeroize::Zeroizing::new("t".into()),
+            connected: false,
+        };
+        for (outcome, so_far, next) in [
+            (O::KeyChanged, F::Unreachable, Some(F::KeyChanged)),
+            (O::KeyChanged, F::WrongDevice, Some(F::KeyChanged)),
+            (O::WrongDevice, F::KeyChanged, Some(F::KeyChanged)),
+            (O::WrongDevice, F::Unreachable, Some(F::WrongDevice)),
+            (O::Done, F::KeyChanged, None),
+            (lost(), F::WrongDevice, None),
+        ] {
+            assert_eq!(passed_by(&outcome, &so_far), next);
+        }
+    }
+
+    /// The status shows a node's view only while it is recent and the node
+    /// answered (never stale data as current).
+    #[test]
+    fn a_stale_or_unanswered_view_is_not_shown() {
+        let now = Instant::now() + Duration::from_secs(60);
+        let view = Seen {
+            address: None,
+            nat: "unknown",
+            reached: true,
+            peers: Vec::new(),
+        };
+        for (age, answered, shown) in [
+            (Duration::ZERO, true, true),
+            (SEEN_EVERY, true, true),
+            (SEEN_STALE, true, true),
+            (SEEN_STALE + Duration::from_millis(1), true, false),
+            (Duration::ZERO, false, false),
+        ] {
+            let reading = (now - age, answered.then(|| view.clone()));
+            assert_eq!(current(Some(&reading), now).is_some(), shown, "{age:?}");
+        }
+        assert!(current(None, now).is_none());
+    }
 
     /// A host started again listens at once although its last listener
     /// closed a connection (TIME-WAIT on the port); regression: a Linux host

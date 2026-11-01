@@ -15,7 +15,7 @@ runs:
     # binary cache misses whenever a runner image changes a tool its ABI hash
     # covers. Only main saves them; a release tag restores main's.
     - id: trees
-      uses: actions/cache/restore@v5
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       with:
         path: core/vcpkg_installed
         key: codecs-${{ runner.os }}-${{ runner.arch }}-${{ inputs.targets }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}
@@ -48,7 +48,7 @@ runs:
     # release tag restores main's: the key leaves the targets out, and vcpkg
     # keeps each triplet apart) and saves a new one only when it built
     # something.
-    - uses: actions/cache/restore@v5
+    - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       if: steps.trees.outputs.cache-hit != 'true'
       with:
         path: ${{ runner.temp }}/vcpkg-cache
@@ -65,12 +65,12 @@ runs:
         after=$(find "$dir" -type f | wc -l)
         echo "vcpkg binary cache: $before files before, $after after"
         echo "VCPKG_CACHE_NEW=$([ "$after" -gt "$before" ] && echo true || echo false)" >> "$GITHUB_ENV"
-    - uses: actions/cache/save@v5
+    - uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       if: env.VCPKG_CACHE_NEW == 'true'
       with:
         path: ${{ runner.temp }}/vcpkg-cache
         key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('core/vcpkg.json', 'core/vcpkg-configuration.json', 'core/vcpkg-triplets/*') }}-${{ github.run_id }}
-    - uses: actions/cache/save@v5
+    - uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
       if: steps.trees.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
       with:
         path: core/vcpkg_installed
