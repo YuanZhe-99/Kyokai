@@ -6,6 +6,7 @@
 //! round.
 
 use crate::annexb::{self, Syntax};
+use crate::convert::{Sink, Want};
 use crate::video::{self, Picture};
 use objc2_core_foundation::{
     CFArray, CFBoolean, CFDictionary, CFNumber, CFRetained, CFString, CFType, kCFAllocatorNull,
@@ -31,8 +32,6 @@ use objc2_video_toolbox::{
     VTIsHardwareDecodeSupported, VTSessionCopyProperty, VTSessionSetProperty,
     kVTCompressionPropertyKey_AllowFrameReordering, kVTCompressionPropertyKey_AverageBitRate,
     kVTCompressionPropertyKey_DataRateLimits, kVTCompressionPropertyKey_ExpectedFrameRate,
-    kVTCompressionPropertyKey_MaxKeyFrameInterval,
-    kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
     kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality,
     kVTCompressionPropertyKey_ProfileLevel, kVTCompressionPropertyKey_RealTime,
     kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder,
@@ -234,8 +233,8 @@ pub struct Encoder {
     out: Box<Encoded>,
     width: usize,
     height: usize,
-    fps: i32,
-    /// Frames encoded: the next presentation time, in frames.
+    /// The last frame's presentation time in milliseconds: the
+    /// capture's, so the rate control sees the real spacing.
     n: i64,
     /// The picture to encode next, from the session's pool.
     picture: Option<CFRetained<CVPixelBuffer>>,
@@ -303,24 +302,16 @@ impl Encoder {
                 kVTCompressionPropertyKey_ExpectedFrameRate,
                 &CFNumber::new_i32(fps),
             );
-            set(
-                &session,
-                kVTCompressionPropertyKey_MaxKeyFrameInterval,
-                &CFNumber::new_i32(fps * 4),
-            );
-            set(
-                &session,
-                kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
-                &CFNumber::new_f64(4.0),
-            );
+            // No maximum key-frame interval (VideoToolbox's default, no
+            // limit): key frames come when the viewer asks, as with the
+            // other encoders.
         }
         let enc = Encoder {
             session,
             out,
             width: width as usize,
             height: height as usize,
-            fps,
-            n: 0,
+            n: -1,
             picture: None,
             hardware,
         };
@@ -424,18 +415,24 @@ impl Encoder {
         self.picture.is_some()
     }
 
-    /// Encodes the last picture; `key` forces a key frame.
+    /// Encodes the last picture, taken `at` (since the stream started);
+    /// `key` forces a key frame.
     /// Returns: the frames that came out (Annex B), each with whether it is
     /// a key frame.
     /// Notes: waits until the frame is out, which without reordering is at
     /// once.
-    pub fn encode(&mut self, key: bool) -> Result<Vec<(Vec<u8>, bool)>, String> {
+    pub fn encode(
+        &mut self,
+        key: bool,
+        at: std::time::Duration,
+    ) -> Result<Vec<(Vec<u8>, bool)>, String> {
         let Some(picture) = &self.picture else {
             return Ok(Vec::new());
         };
+        self.n = (at.as_millis() as i64).max(self.n + 1);
         let pts = CMTime {
             value: self.n,
-            timescale: self.fps,
+            timescale: 1000,
             flags: CMTimeFlags::Valid,
             epoch: 0,
         };
@@ -460,7 +457,6 @@ impl Encoder {
         // SAFETY: waits for the frames up to this one; the callback has run
         // for them when it returns.
         unsafe { self.session.complete_frames(pts) };
-        self.n += 1;
         let mut units = self.out.units.lock().map_err(|_| "encoder poisoned")?;
         Ok(std::mem::take(&mut *units))
     }
@@ -647,15 +643,11 @@ impl Decoder {
         })
     }
 
-    /// Decodes one Annex B frame into `rgba` (resized to width×height×4).
+    /// Decodes one Annex B frame into `out` (as it wants the picture).
     /// Returns: the picture's size, None for a frame before the first key
     /// frame with its parameter sets, or an error for a key frame that comes
-    /// before any parameter set.
-    pub fn decode(
-        &mut self,
-        frame: &[u8],
-        rgba: &mut Vec<u8>,
-    ) -> Result<Option<(u32, u32)>, String> {
+    /// before any parameter set or a picture that does not fit.
+    pub fn decode(&mut self, frame: &[u8], out: &mut Sink) -> Result<Option<(u32, u32)>, String> {
         let syntax = self.syntax;
         let sets: Vec<&[u8]> = annexb::units(frame)
             .filter(|u| syntax.parameter_set(u))
@@ -741,10 +733,13 @@ impl Decoder {
             return Ok(None);
         };
         let (w, h) = (CVPixelBufferGetWidth(&pb), CVPixelBufferGetHeight(&pb));
-        with_planes(&pb, CVPixelBufferLockFlags::ReadOnly, |y, ys, uv, uvs| {
-            video::nv12_planes_to_rgba(y, ys, uv, uvs, w, h, rgba);
-        })
-        .ok_or("VideoToolbox: the picture cannot be read")?;
+        // A picture not wanted (a newer one waits) is not even locked.
+        if out.want() != Want::Skip {
+            with_planes(&pb, CVPixelBufferLockFlags::ReadOnly, |y, ys, uv, uvs| {
+                out.nv12(y, ys, uv, uvs, w, h)
+            })
+            .ok_or("VideoToolbox: the picture cannot be read")??;
+        }
         Ok(Some((w as u32, h as u32)))
     }
 
@@ -920,7 +915,9 @@ mod tests {
                 for n in 0..10 {
                     let bgra = picture(w as usize, h as usize, n);
                     enc.picture(&bgra, w as usize, h as usize, w as usize * 4);
-                    let units = enc.encode(n == 0).unwrap();
+                    let units = enc
+                        .encode(n == 0, std::time::Duration::from_millis(n as u64 * 33))
+                        .unwrap();
                     if n == 0 {
                         let (first, key) = &units[0];
                         assert!(key, "{codec:?}: the first frame is a key frame");
@@ -928,7 +925,9 @@ mod tests {
                         assert!(annexb::units(first).any(|u| syntax.parameter_set(u)));
                     }
                     for (unit, _) in units {
-                        if let Some((pw, ph)) = dec.decode(&unit, &mut rgba).unwrap() {
+                        if let Some((pw, ph)) =
+                            dec.decode(&unit, &mut Sink::vec(&mut rgba)).unwrap()
+                        {
                             assert_eq!((pw, ph), (w, h));
                             shown += 1;
                         }
@@ -975,9 +974,9 @@ mod tests {
         }
         let mut dec = Decoder::new(Codec::H264);
         let mut rgba = Vec::new();
-        assert!(dec.decode(&bare, &mut rgba).is_err());
+        assert!(dec.decode(&bare, &mut Sink::vec(&mut rgba)).is_err());
         assert_eq!(
-            dec.decode(&key, &mut rgba).unwrap(),
+            dec.decode(&key, &mut Sink::vec(&mut rgba)).unwrap(),
             Some((w as u32, h as u32))
         );
     }

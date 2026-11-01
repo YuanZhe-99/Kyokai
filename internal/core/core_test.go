@@ -146,8 +146,16 @@ func TestRealLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	pic := make([]byte, 8)
-	if w, h, ok, err := dec.Decode([]byte{1, 2, 3, 4, 5, 6, 7, 8}, pic); !ok || err != nil || w != 2 || h != 1 || pic[7] != 8 {
+	if w, h, ok, err := dec.Decode([]byte{1, 2, 3, 4, 5, 6, 7, 8}, pic, Full); !ok || err != nil || w != 2 || h != 1 || pic[7] != 8 {
 		t.Fatalf("decode: %d×%d %v %v %v", w, h, ok, err, pic)
+	}
+	// At half size the 2×1 picture is one pixel, the average; a buffer too
+	// small for the full one says so.
+	if w, _, ok, err := dec.Decode([]byte{1, 2, 3, 4, 5, 6, 7, 8}, pic[:4], Half); !ok || err != nil || w != 2 || pic[0] != 3 {
+		t.Fatalf("half: %v %v %v", ok, err, pic)
+	}
+	if _, _, _, err := dec.Decode([]byte{1, 2, 3, 4, 5, 6, 7, 8}, pic[:4], Full); err == nil {
+		t.Fatal("a picture larger than its buffer")
 	}
 	dec.Close()
 	if _, err := l.OpenDecoder([]byte(`{"codec":"none","width":2,"height":1}`)); err == nil {

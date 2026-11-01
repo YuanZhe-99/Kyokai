@@ -15,6 +15,7 @@ mod audio;
 mod auth;
 mod backup;
 mod clipboard;
+mod convert;
 mod decode;
 mod external;
 #[cfg(target_os = "linux")]
@@ -43,6 +44,10 @@ mod session;
 mod soft;
 mod store;
 mod system;
+#[cfg(test)]
+mod testproxy;
+#[cfg(test)]
+mod threenode;
 mod tunnel;
 #[cfg(target_os = "linux")]
 mod va;
@@ -61,7 +66,7 @@ use std::sync::{Arc, Mutex};
 
 /// Version of the C ABI. Hosts compare it with their own before any other
 /// call; changing an export's signature or meaning bumps it.
-pub const ABI_VERSION: u32 = 7;
+pub const ABI_VERSION: u32 = 8;
 
 /// The running core: what `kyokai_start` set up, until `kyokai_stop`.
 struct Core {
@@ -402,26 +407,25 @@ pub unsafe extern "C" fn kyokai_decoder_open(start: *const u8, len: usize) -> u6
     catch_unwind(|| decode::open(start).unwrap_or(0)).unwrap_or(0)
 }
 
-thread_local! {
-    /// The calling thread's picture buffer, reused between frames.
-    static PICTURE: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
-/// Decodes one frame; a finished picture is written as RGBA into `out`.
+/// Decodes one frame; a finished picture is converted straight into `out`,
+/// as `want` asks: 0 RGBA at its size, 1 RGBA at half its size (each side
+/// rounded up), 2 not at all (a newer frame waits; nothing is written).
 /// Inputs: `frame`/`len` — the encoded frame, borrowed; `out`/`cap` —
-/// memory the caller owns.
-/// Returns: 1 with the picture's size in `*width`/`*height`; 0 when the
-/// decoder needs more input; -1 on an error; -3 when the picture does not
-/// fit `cap`.
+/// memory the caller owns, written from its start.
+/// Returns: 1 with the picture's full size in `*width`/`*height`; 0 when
+/// the decoder needs more input; -1 on an error or an unknown `want`; -3
+/// when the picture as wanted does not fit `cap`.
 ///
 /// # Safety
-/// `frame` points to `len` readable bytes; `out` is valid for `cap` bytes
-/// of writes; `width` and `height` are valid for writes.
+/// `frame` points to `len` readable bytes; `out` points to `cap`
+/// initialized bytes, valid for reads and writes and not otherwise
+/// accessed during the call; `width` and `height` are valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn kyokai_decoder_decode(
     id: u64,
     frame: *const u8,
     len: usize,
+    want: u32,
     out: *mut u8,
     cap: usize,
     width: *mut u32,
@@ -430,27 +434,35 @@ pub unsafe extern "C" fn kyokai_decoder_decode(
     if frame.is_null() || out.is_null() || width.is_null() || height.is_null() {
         return -1;
     }
-    // SAFETY: the caller guarantees `len` readable bytes at `frame`.
-    let frame = unsafe { std::slice::from_raw_parts(frame, len) };
+    let want = match want {
+        0 => convert::Want::Full,
+        1 => convert::Want::Half,
+        2 => convert::Want::Skip,
+        _ => return -1,
+    };
+    // SAFETY: the caller guarantees `len` readable bytes at `frame`, and
+    // `cap` initialized bytes at `out` that nothing else touches meanwhile.
+    let (frame, out) = unsafe {
+        (
+            std::slice::from_raw_parts(frame, len),
+            std::slice::from_raw_parts_mut(out, cap),
+        )
+    };
     let result = catch_unwind(AssertUnwindSafe(|| {
-        PICTURE.with_borrow_mut(|pic| match decode::decode(id, frame, pic) {
-            Ok(Some((w, h))) if pic.len() > cap => {
-                let _ = (w, h);
-                -3
-            }
+        let mut sink = convert::Sink::new(want, out);
+        match decode::decode(id, frame, &mut sink) {
             Ok(Some((w, h))) => {
-                // SAFETY: `out` has `cap >= pic.len()` writable bytes; the
-                // size pointers are valid, per the contract.
+                // SAFETY: the size pointers are valid, per the contract.
                 unsafe {
-                    std::ptr::copy_nonoverlapping(pic.as_ptr(), out, pic.len());
                     *width = w;
                     *height = h;
                 }
                 1
             }
             Ok(None) => 0,
+            Err(_) if sink.short() => -3,
             Err(_) => -1,
-        })
+        }
     }));
     result.unwrap_or(-1)
 }

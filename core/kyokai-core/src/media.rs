@@ -85,6 +85,11 @@ pub struct VideoStart {
     /// screen, while it keeps trying the screen; left out for the screen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<String>,
+    /// The size the viewer chose that is in force (`video::Size`'s names),
+    /// from a host that takes the choice (`resolution`); left out by older
+    /// hosts, whose viewers then offer no choice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<String>,
 }
 
 /// Splits one frame into chunks that each fit one Noise message.
@@ -211,7 +216,13 @@ struct Inner {
 /// How long after its last packet a reader counts as gone.
 const READER_GONE: Duration = Duration::from_secs(2);
 
-/// Frames kept for a slow reader; older ones are dropped first.
+/// Frames kept for a slow reader; older ones are dropped first. As many as
+/// the host may send ahead (`video::MAX_IN_FLIGHT`): a burst after a stall
+/// on a long round trip is not taken for a reader that fell behind.
+#[cfg(not(test))]
+const KEEP_FRAMES: usize = crate::video::MAX_IN_FLIGHT as usize;
+/// The tests' queue keeps the old 3, which their frame counts are built on.
+#[cfg(test)]
 const KEEP_FRAMES: usize = 3;
 /// Sound packets kept for a reader that fell behind: 200 ms; older ones go.
 const KEEP_SOUND: usize = 20;

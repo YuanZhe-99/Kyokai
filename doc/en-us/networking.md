@@ -29,7 +29,12 @@ Sessions run over the data plane's TCP (smoltcp). Its flush waits until the peer
 everything sent, so a session never flushes after a message, which would allow one message per
 round trip (with the peer's delayed acknowledgement, about 90 a second on a LAN, shared by video,
 sound and input): the bytes leave as they are written. Only a goodbye waits, briefly, for the peer
-([protocol.md](protocol.md)). The send and receive buffers are 128 KiB each.
+([protocol.md](protocol.md)). The send and receive buffers are 128 KiB each. Kyokai builds smoltcp
+with CUBIC congestion control (its `socket-tcp-cubic` feature, switched on from `kyokai-core`'s
+manifest, which every socket EasyTier makes then gets) and from its own vendored copy
+(`core/third_party/smoltcp`, smoltcp 0.14.0 through `[patch.crates-io]`), whose retransmission
+timeout has a floor of 200 ms (Linux's) instead of a second, so a segment lost on a fast path goes
+again after a fifth of a second; `kyokai-core/tests/smoltcp.rs` checks both.
 
 ## Settings
 
@@ -117,7 +122,8 @@ part unchanged.
   network's latency and direct or relayed path come from EasyTier's routes, with nothing dialed;
   each address is looked at, all at once within 3 seconds, by timing its TCP handshake and
   reading the host's hello, which names the device there (`ok`, `unreachable`, `other-device`,
-  `incompatible`, `broken`). `rank_routes` orders them: those that answer as the device, then
+  `incompatible`, `broken`). A redial after a drop does not wait for the looks: it ranks by the
+  last ones and takes new looks beside it. `rank_routes` orders them: those that answer as the device, then
   those that did not fail their last two dials, then those not remembered slow (below 8 Mbit/s and
   below half the best route's), by round trip (unknown last), direct before relayed. Dialing
   follows that order with happy eyeballs: the next route starts 300 ms after the one before it
@@ -130,12 +136,55 @@ part unchanged.
   quality control settled on over it (`RouteMeter`), in the known host (`routes`, `network`,
   `prefer`). The latest looks at the addresses are kept in memory only; Home asks for them
   (`routes.probe`) every 60 seconds while it shows devices that have addresses.
-- **No moves:** a healthy session never changes route. When its connection drops, the resume
-  attempts rank again under Auto and may resume over another route. The status names the route a
-  controller session takes (`sessions[].route`: an address, or empty for the network).
+- **Moves:** when a session's connection drops or falls silent, the resume attempts rank again
+  under Auto and may resume over another route; under Auto a healthy session to a host that
+  announced `move` also moves when another route is clearly better (see
+  [Switching paths](#switching-paths)). The status names the route a controller session takes
+  (`sessions[].route`: an address, or empty for the network).
 
 An address kept from before 0.5.0 becomes the first route, and a connection by Device ID no
 longer forgets the addresses.
+
+## Switching paths
+
+A path can die without a word: a Wi-Fi network left, a cable pulled, a NAT mapping gone. Neither
+EasyTier nor TCP notices quickly, so a session watches for silence itself.
+
+- **Silence.** A session pings a peer it has not heard from for a second ([protocol.md](protocol.md),
+  "Session messages"). A controller whose ping then stays unanswered for 2 seconds, nothing else
+  heard and nothing waiting to be read (about 3 seconds in all; 6 to a host that did not announce
+  `move`, for which a resume restarts more and which opens its video inside its session loop)
+  lets the connection go and redials at once: the first redial after a drop does not wait the
+  3 seconds the later ones do, and under Auto it ranks the routes by the last looks at the
+  addresses and takes new looks beside it ([Routes](#routes)). A host whose ping stays unanswered
+  for 2 seconds the same way drops its direct link to the controller, once per silent spell, so the
+  resume finds the relay already in place.
+- **Dropping a direct link.** On Kyokai Network, dropping means closing this node's direct
+  EasyTier connections to that peer (`net::drop_direct`, `close_direct`), at most once in
+  30 seconds per peer, so a path that keeps failing is not fought over with EasyTier's own
+  connector. EasyTier then carries the peer through the server's relay at once, and its connector
+  brings the direct link back by itself once it works again (within about 0.1 seconds after a cut
+  healed, in the test below). When the connection a controller let go ran over Kyokai Network, the
+  controller drops its direct link to the host as well. With an official EasyTier core, paths are
+  left to EasyTier.
+- **Without dropping.** Measured with three EasyTier nodes in one process on this computer (a
+  server and two peers, the direct link between the peers cut; test `threenode`): EasyTier drops
+  the dead direct link by itself after about 12 seconds, and a fresh connection reaches the peer
+  over the relay after about 14.5 seconds; a TCP connection open before the cut never carries on
+  (it ends at about 25.5 seconds). With the direct links dropped 2 seconds after the cut, a fresh
+  connection reaches the peer 3.1 seconds after it ([platform-notes.md](platform-notes.md)).
+- **Healthy sessions move.** Under Auto, to a host that announced `move`, every 30 seconds the
+  addresses are looked at and the network's path read. When another route is clearly better twice
+  in a row — under half the current round trip and at least 20 ms less, or direct where the
+  current one is relayed and no slower — the connection is let go and the session redials there;
+  at most once a minute.
+- **What moves.** A desktop session resumes ([protocol.md](protocol.md), "Resuming"): to a host
+  that announced `move` the controller says `move`, and the host does not pause that controller's
+  AI task as the old session ends; the video starts again (capture and encoder), and nothing
+  else of the old connection is handed over. A tunnel to a controller that announced `move`
+  carries on over the new connection with no byte lost or repeated ([protocol.md](protocol.md),
+  "Tunnels"): the host keeps the service's connection open meanwhile. Between older peers
+  sessions resume and tunnels end as before.
 
 ## Status
 
@@ -149,7 +198,7 @@ together, as older GUIs, Home and the viewer read it; its `networks` lists each:
 | `address` | the virtual IPv4 address, once assigned (together: the first online network's) |
 | `nat` | the NAT type found through STUN: `unknown`, `open`, `no-pat`, `full-cone`, `restricted`, `port-restricted`, `symmetric`, `symmetric-easy`, `symmetric-firewall` (together: the first online network's) |
 | `listen_port` | the port other devices' nodes connect to directly, when it listens (direct connections on; together: the first online network's) |
-| `devices` | other Kyokai devices the network routes to: announced Device ID, `direct` or `relay` path, latency in ms, and `name`, the friendly name the device shows in its networks if it does (see Trust); together, each device once, by its best path (direct first, then the lowest latency) |
+| `devices` | other Kyokai devices the network routes to: announced Device ID, `direct` or `relay` path, latency in ms, and `name`, the friendly name the device shows in its networks if it does (see Trust); together, each device once, by its best path (direct first, then the lowest latency). `lan` is true when the path is relayed yet the device is on this device's LAN: one of the interface addresses it reports through EasyTier's direct connector (`GetIpList`, which every node answers, direct connections on or not) lies in one of this device's private IPv4 subnets (loopback, link-local, `100.64.0.0/10`, the network's virtual subnet and this device's own address never count, nor a subnet wider than /8). It is looked at beside the 2-second status reading, at most once a minute per relayed peer, with a 3-second timeout (`net::look_lan`, `mark_lan`); it is left out otherwise, and always through an official core. Two places that use the same private subnet look like one LAN (with direct connections off there is no public address to compare) |
 | `networks` | each network kept, in the order added: its `id`, `label` (the name it is shown by), `joined` and the fields above (`off` while it is not joined) |
 | `unreachable` | with an official EasyTier core, why other devices cannot reach this one (its loopback port taken) while it still reaches them |
 

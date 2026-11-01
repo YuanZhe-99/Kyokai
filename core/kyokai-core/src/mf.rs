@@ -14,6 +14,7 @@
 //! into input samples used again, output samples are used again, and a
 //! decoded picture is read in place (a GPU surface mapped).
 
+use crate::convert::{Sink, Want};
 use std::mem::ManuallyDrop;
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::{
@@ -356,10 +357,18 @@ const HARDWARE_WAIT: std::time::Duration = std::time::Duration::from_millis(12);
 /// Frames a hardware transform may take before its first output, when it
 /// is tried at start.
 const HARDWARE_TRIAL: usize = 30;
+/// Frames between key frames the encoder may go: as good as never. Key
+/// frames come when the viewer asks (it joined, lost a frame or could not
+/// decode one), as RustDesk's do; a periodic one re-coded the whole screen
+/// on one frame's bits every 4 seconds, a blur and a hitch.
+const GOP: u32 = u16::MAX as u32;
+/// The coarsest quantizer the rate control may use, as VA-API's: a key
+/// frame goes over the bitrate for a moment instead of turning to noise.
+const MAX_QP: u32 = 38;
 
 impl Encoder {
     /// Opens an encoder for `width`×`height` (even) at `fps` and a target
-    /// bitrate, tuned for low latency (no B-frames, frequent key frames):
+    /// bitrate, tuned for low latency (no B-frames, key frames only when asked):
     /// the GPU's when `hardware` allows it and one is free, else the
     /// software one.
     /// Returns: an error when this system has no encoder for the codec
@@ -510,7 +519,7 @@ impl Encoder {
                 out.SetUINT32(&MF_MT_AVG_BITRATE, bitrate)?;
                 match codec {
                     Codec::H264 => {
-                        out.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Main.0 as u32)?
+                        out.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High.0 as u32)?
                     }
                     Codec::Hevc => {
                         out.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH265VProfile_Main_420_8.0 as u32)?
@@ -528,8 +537,15 @@ impl Encoder {
                 false,
             );
             codec_value(&t, &CODECAPI_AVEncCommonMeanBitRate, bitrate, false);
-            codec_value(&t, &CODECAPI_AVEncMPVGOPSize, fps * 4, false);
+            codec_value(&t, &CODECAPI_AVEncMPVGOPSize, GOP, false);
             codec_value(&t, &CODECAPI_AVEncMPVDefaultBPictureCount, 0, false);
+            codec_value(&t, &CODECAPI_AVEncVideoMaxQP, MAX_QP, false);
+            codec_value(
+                &t,
+                &CODECAPI_AVScenarioInfo,
+                eAVScenarioInfo_DisplayRemoting.0 as u32,
+                false,
+            );
             // SAFETY: streaming messages on the configured transform.
             unsafe {
                 t.ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)?;
@@ -604,6 +620,12 @@ impl Encoder {
     /// Whether a picture was taken yet.
     pub fn has_picture(&self) -> bool {
         self.next.is_some()
+    }
+
+    /// How many pictures given are still inside the transform (a hardware
+    /// one may run a frame behind its input).
+    pub fn inside(&self) -> u32 {
+        (self.n - 1 - self.out_frame).max(0) as u32
     }
 
     /// Encodes the last picture; `key` forces a key frame.
@@ -884,17 +906,25 @@ fn gpu(profile: &GUID) -> windows::core::Result<IMFDXGIDeviceManager> {
     }
 }
 
-/// Converts a decoded NV12 sample into RGBA of `w`×`h`, reading it in place:
-/// a 2D buffer (a GPU surface, mapped) with its own pitch and plane height,
-/// else the contiguous bytes, `stride` per row with the chroma after `rows`
-/// rows (the output type's).
+/// Converts a decoded NV12 sample of `w`×`h` into `out`, reading it in
+/// place: a 2D buffer (a GPU surface, mapped) with its own pitch and plane
+/// height, else the contiguous bytes, `stride` per row with the chroma after
+/// `rows` rows (the output type's). A picture not wanted is not mapped.
 fn sample_to_rgba(
     sample: &IMFSample,
     (w, h): (u32, u32),
     (stride, rows): (u32, u32),
-    rgba: &mut Vec<u8>,
+    out: &mut Sink,
 ) -> windows::core::Result<()> {
+    if out.want() == Want::Skip {
+        return Ok(());
+    }
     let (w, h) = (w as usize, h as usize);
+    let convert = |out: &mut Sink, bytes: &[u8], stride: usize, rows: usize| {
+        let (y, uv) = bytes.split_at(stride * rows);
+        out.nv12(y, stride, uv, stride, w, h)
+            .map_err(|e| windows::core::Error::new(MF_E_INVALIDMEDIATYPE, e))
+    };
     // SAFETY: a decoder's sample holds one buffer, returned as it is; each
     // lock is released below, and the bytes are read only within the length
     // it reports while it is held.
@@ -915,32 +945,28 @@ fn sample_to_rgba(
             let pitch = pitch.max(0) as usize;
             let rows = (len as usize).checked_div(pitch).unwrap_or(0) * 2 / 3;
             let fits = scan0 == start && pitch >= w && rows >= h;
-            if fits {
+            let done = if fits {
                 let bytes = std::slice::from_raw_parts(start, len as usize);
-                crate::video::nv12_to_rgba(bytes, w, h, pitch, rows, rgba);
-            }
-            planes.Unlock2D()?;
-            return if fits {
-                Ok(())
+                convert(out, bytes, pitch, rows)
             } else {
                 Err(MF_E_INVALIDMEDIATYPE.into())
             };
+            planes.Unlock2D()?;
+            return done;
         }
         let mut ptr = std::ptr::null_mut();
         let mut len = 0u32;
         buffer.Lock(&mut ptr, None, Some(&mut len))?;
         let (stride, rows) = (stride as usize, rows as usize);
         let fits = len as usize >= stride * rows * 3 / 2 && stride >= w && rows >= h;
-        if fits {
+        let done = if fits {
             let bytes = std::slice::from_raw_parts(ptr, len as usize);
-            crate::video::nv12_to_rgba(bytes, w, h, stride, rows, rgba);
-        }
-        buffer.Unlock()?;
-        if fits {
-            Ok(())
+            convert(out, bytes, stride, rows)
         } else {
             Err(MF_E_INVALIDMEDIATYPE.into())
-        }
+        };
+        buffer.Unlock()?;
+        done
     }
 }
 
@@ -1070,7 +1096,7 @@ impl Decoder {
     }
 
     /// Decodes one access unit (Annex B for H.264 and HEVC, a frame for VP9)
-    /// into RGBA of the stream's `width`×`height` (the decoder pads to whole
+    /// into `out`, of the stream's `width`×`height` (the decoder pads to whole
     /// macroblocks).
     /// Returns: the picture's size when one came out, None while the decoder
     /// needs more input.
@@ -1079,7 +1105,7 @@ impl Decoder {
         unit: &[u8],
         width: u32,
         height: u32,
-        rgba: &mut Vec<u8>,
+        out: &mut Sink,
     ) -> Result<Option<(u32, u32)>, String> {
         // A key frame before any parameter set cannot start the decoder,
         // which would take it and the frames after it and give nothing, for
@@ -1096,21 +1122,21 @@ impl Decoder {
                 return Err("decoder: a key frame without its parameter sets".into());
             }
         }
-        let out = self
-            .decode_unit(unit, width, height, rgba)
+        let picture = self
+            .decode_unit(unit, width, height, out)
             .map_err(|e| format!("decoder: {e}"))?;
         self.n += 1;
-        Ok(out)
+        Ok(picture)
     }
 
     /// Feeds one access unit and converts every picture that comes out (the
-    /// newest stays in `rgba`).
+    /// newest stays in `out`).
     fn decode_unit(
         &mut self,
         unit: &[u8],
         width: u32,
         height: u32,
-        rgba: &mut Vec<u8>,
+        out: &mut Sink,
     ) -> windows::core::Result<Option<(u32, u32)>> {
         let sample = sample_from(unit, self.n * 166_666, 166_666)?;
         // SAFETY: the transform takes its own reference to the sample.
@@ -1121,7 +1147,7 @@ impl Decoder {
                 Output::Sample(s) => {
                     if let Some((pw, ph, stride)) = self.format {
                         let size = (width.min(pw), height.min(ph));
-                        sample_to_rgba(&s, size, (stride, ph), rgba)?;
+                        sample_to_rgba(&s, size, (stride, ph), out)?;
                         shown = Some(size);
                     }
                 }
@@ -1280,9 +1306,10 @@ mod tests {
                 let mut d = Decoder::new(codec, w, h).expect("a decoder");
                 let mut rgba = Vec::new();
                 assert!(
-                    stream[keys[1]..]
-                        .iter()
-                        .any(|(unit, _)| matches!(d.decode(unit, w, h, &mut rgba), Ok(Some(_)))),
+                    stream[keys[1]..].iter().any(|(unit, _)| matches!(
+                        d.decode(unit, w, h, &mut Sink::vec(&mut rgba)),
+                        Ok(Some(_))
+                    )),
                     "{what}: no picture from the second key frame"
                 );
             }
@@ -1370,12 +1397,12 @@ mod tests {
             crate::annexb::append_annexb(u, &mut bare);
         }
         let mut rgba = Vec::new();
-        assert!(d.decode(&bare, w, h, &mut rgba).is_err());
-        let mut shown = d.decode(&key, w, h, &mut rgba).unwrap();
+        assert!(d.decode(&bare, w, h, &mut Sink::vec(&mut rgba)).is_err());
+        let mut shown = d.decode(&key, w, h, &mut Sink::vec(&mut rgba)).unwrap();
         for n in 1..5 {
             give(&mut e, &moving(w, h, n), w, h);
             for (unit, _) in e.encode(false).unwrap() {
-                shown = shown.or(d.decode(&unit, w, h, &mut rgba).unwrap());
+                shown = shown.or(d.decode(&unit, w, h, &mut Sink::vec(&mut rgba)).unwrap());
             }
         }
         assert_eq!(shown, Some((w, h)), "no picture after the whole key frame");
@@ -1388,7 +1415,10 @@ mod tests {
         for n in 0..30usize {
             give(&mut encoder, &moving(w, h, n), w, h);
             for (unit, _) in encoder.encode(n == 0).unwrap() {
-                if let Some(size) = decoder.decode(&unit, w, h, &mut rgba).unwrap() {
+                if let Some(size) = decoder
+                    .decode(&unit, w, h, &mut Sink::vec(&mut rgba))
+                    .unwrap()
+                {
                     shown = Some(size);
                 }
             }

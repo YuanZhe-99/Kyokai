@@ -862,6 +862,9 @@ type NetworkDevice struct {
 	// Name is the friendly name the device shows in its networks before any
 	// login, if it does: its claim, shown beside its Device ID.
 	Name string `json:"name,omitempty"`
+	// LAN: the path is relayed, yet the device is on this device's LAN
+	// (one of its interface addresses in one of this device's subnets).
+	LAN bool `json:"lan,omitempty"`
 }
 
 // Status is the engine's state: product and ABI version, the device

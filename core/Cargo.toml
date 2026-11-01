@@ -1,6 +1,9 @@
 [workspace]
 members = ["kyokai-core", "third_party/rustdesk-codec", "third_party/rustdesk-dxgi", "third_party/rustdesk-qos"]
 resolver = "3"
+# Vendored as published, outside the workspace: not built, tested or linted
+# as Kyokai's own code (third_party/smoltcp/KYOKAI.md).
+exclude = ["third_party/smoltcp"]
 
 [workspace.package]
 edition = "2024"
@@ -23,3 +26,9 @@ strip = "symbols"
 # Windows 7; Kyokai replaces it with a no-op (core/third_party/thunk-noop).
 [patch."https://github.com/EasyTier/thunk.git"]
 thunk-rs = { path = "third_party/thunk-noop" }
+
+# smoltcp 0.14.0, EasyTier's in-process TCP/IP stack, with the retransmission
+# timeout's floor at 200 ms instead of 1 second; nothing else differs
+# (core/third_party/smoltcp/KYOKAI.md).
+[patch.crates-io]
+smoltcp = { path = "third_party/smoltcp" }

@@ -1,5 +1,37 @@
 # Version history
 
+## 0.6.15 (2026-11-01)
+
+A sharper, steadier picture, paths that switch in time, corners that line up.
+
+- The picture: no key frame unless the viewer asks (every encoder made one every 4 seconds, a blur
+  and a hitch); encoders open at the session's own bitrate, not 4 Mbit/s that fell a second later;
+  RustDesk's adaptive bitrate is on, with its extra for hardware H.264 and HEVC; libvpx, libaom and
+  VideoToolbox get the capture's real times; Media Foundation's DisplayRemoting scenario, High
+  profile and a quantizer cap; a hardware encoder's last frame comes out on a still screen.
+- The controller chooses the resolution: Auto, Native, 4K, 1440p, 1080p, 720p (Auto: native up to
+  4K where both sides work in hardware, else 1080p as before).
+- More frames ahead of the acknowledgements on long round trips (3 to 12, from the path's lowest
+  round trip): a 230 ms path was held at 13 fps.
+- Recovery waits for real trouble: a viewer's key-frame requests no longer restart the video, a
+  reopen no longer stalls the session, and a stream that stepped to another codec tries its first
+  again after a quiet minute.
+- The viewer keeps up: it never drops a key frame, decodes frames behind without converting them,
+  decodes panes side by side, converts straight into the picture (NEON on ARM, half size folded
+  in) and asks the host for fewer frames when it cannot decode them all. FFI ABI 8.
+- EasyTier's TCP gets CUBIC congestion control and a 200 ms retransmission floor (a vendored
+  smoltcp 0.14.0), where a lost segment waited at least a second.
+- The engine is not slowed by Windows' power throttling or macOS's App Nap while video flows.
+- Paths: a silent path is left within about 3 seconds and redialed at once; its EasyTier direct link is
+  dropped on both sides so the relay carries it (a fresh connection 3.1 s after a cut, against
+  14.5 s); a healthy session moves to a clearly better route; with `move` the host keeps the
+  controller's AI task going, and SSH, Remote Desktop and VNC tunnels carry on over the new
+  connection with nothing lost or repeated.
+- On one LAN with default settings the viewer offers a direct connection in one click.
+- Windows and Linux: a pane's corner that meets the window's is 4 points, inside the system's own.
+- Upstreams: MyGo v0.7.3 → v0.7.4; checked, unchanged: EasyTier v2.7.0 (`8b7f1f0`), RustDesk 1.5.0,
+  vcpkg 2026.10.16, Rust 1.99.1; smoltcp 0.14.0 vendored.
+
 ## 0.6.14 (2026-10-31)
 
 A security and performance pass before the AI update.

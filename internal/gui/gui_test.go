@@ -393,6 +393,13 @@ func TestViewerRenders(t *testing.T) {
 		"viewer-original-large": func(v *viewer) {
 			v.start, v.bm, v.original = videoStart{Codec: "h264", Width: 1600, Height: 900}, ui.NewBitmap(big), true
 		},
+		// Relayed to a device on this LAN: the offer to connect directly.
+		"viewer-direct-offer": func(v *viewer) {
+			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
+			v.app = &App{status: &localapi.Status{}}
+			v.app.status.Network.Devices = []localapi.NetworkDevice{{DeviceID: "657365333", Path: "relay", LatencyMS: 40, LAN: true}}
+			v.app.net.loaded = true
+		},
 		"viewer-actions": func(v *viewer) {
 			v.start, v.bm = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic)
 			v.app, v.control, v.actions = &App{}, true, &hostActions{CtrlAltDel: true}
@@ -459,6 +466,105 @@ func TestViewerOffersReconnect(t *testing.T) {
 		if got := tt.HasText(L.ViewerReconnect()); got != c.want {
 			t.Errorf("%s: Reconnect shown %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// directEngine keeps the requests and answers network.direct with the
+// networks as it leaves them.
+type directEngine struct{ *recordEngine }
+
+func (e directEngine) Handle(ctx context.Context, req localapi.Request) localapi.Response {
+	resp := e.recordEngine.Handle(ctx, req)
+	if req.Type == localapi.RequestNetworkDirect && req.Direct != nil {
+		resp.Networks = &localapi.NetworkProfiles{Direct: *req.Direct}
+	}
+	return resp
+}
+
+// TestViewerOffersDirect: the viewer offers Connect directly only while
+// its device is on this LAN, the path to it is relayed and this device does
+// not try direct connections; the click turns them on in the engine and the
+// offer goes, as Not now sends it away.
+func TestViewerOffersDirect(t *testing.T) {
+	i18n.SetLocaleFunc(func() string { return "en" })
+	defer i18n.SetLocaleFunc(nil)
+	dir, err := os.MkdirTemp("", "ky")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	sock := filepath.Join(dir, "e.sock")
+	ln, err := localapi.ListenWith(localapi.ListenOptions{Path: sock})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	engine := directEngine{&recordEngine{}}
+	go localapi.ServeWith(ctx, ln, engine, localapi.Authorizer{OwnerUID: uint32(os.Getuid()), OwnerSID: localapi.CurrentSID()})
+
+	pic := image.NewRGBA(image.Rect(0, 0, 320, 180))
+	open := func(path string, lan, direct bool) (*App, *viewer, *ui.Tester) {
+		a := New("", t.TempDir(), sock)
+		t.Cleanup(func() { _ = a.writePrefs() })
+		a.connected = true
+		a.status = &localapi.Status{DeviceID: "482916735"}
+		a.status.Network.Devices = []localapi.NetworkDevice{{DeviceID: "657365333", Path: path, LatencyMS: 40, LAN: lan}}
+		a.net.loaded, a.net.direct = true, direct
+		v := &viewer{app: a, device: "657365333", preset: 1, fpsCap: "30 fps", pumping: true,
+			start: videoStart{Codec: "h264", Width: 320, Height: 180}, bm: ui.NewBitmap(pic)}
+		tt := ui.NewTester(v.view, 1100, 560)
+		tt.Frame()
+		return a, v, tt
+	}
+	for _, c := range []struct {
+		name        string
+		path        string
+		lan, direct bool
+		want        bool
+	}{
+		{"relayed on this LAN", "relay", true, false, true},
+		{"relayed elsewhere", "relay", false, false, false},
+		{"direct already", "direct", false, false, false},
+		{"relayed on this LAN, direct connections on", "relay", true, true, false},
+	} {
+		_, _, tt := open(c.path, c.lan, c.direct)
+		if got := tt.HasText(L.ViewerDirectConnect()); got != c.want {
+			t.Errorf("%s: offer shown %v, want %v", c.name, got, c.want)
+		}
+	}
+
+	a, _, tt := open("relay", true, false)
+	if err := tt.Click(L.ViewerDirectConnect()); err != nil {
+		t.Fatalf("%v: %q", err, tt.Texts())
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		a.mu.Lock()
+		busy := a.busy["network"]
+		a.mu.Unlock()
+		if !busy {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no answer")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if req, ok := engine.last(localapi.RequestNetworkDirect); !ok || req.Direct == nil || !*req.Direct {
+		t.Fatalf("network.direct sent %v: %+v", ok, req.Direct)
+	}
+	tt.Frame()
+	if tt.HasText(L.ViewerDirectConnect()) {
+		t.Error("the offer stays once direct connections are on")
+	}
+
+	_, _, tt = open("relay", true, false)
+	if err := tt.Click(L.ViewerDirectLater()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tt.HasText(L.ViewerDirectConnect()) {
+		t.Error("the offer stays after Not now")
 	}
 }
 
@@ -675,7 +781,7 @@ func TestCodecChoice(t *testing.T) {
 	v := &viewer{preset: 2, fpsCap: "60 fps", full: true, codec: "auto"}
 	got := v.choicePackets()
 	// The clipboard choice goes last; it stays with this side's engine.
-	if len(got) != 3 || !strings.Contains(string(got[0]), `"fps":60`) || !strings.Contains(string(got[0]), `"preset":"best"`) || !strings.Contains(string(got[0]), `"i444":true`) || string(got[1][1:]) != `{"on":true,"type":"audio"}` ||
+	if len(got) != 3 || !strings.Contains(string(got[0]), `"fps":60`) || !strings.Contains(string(got[0]), `"size":"auto"`) || !strings.Contains(string(got[0]), `"preset":"best"`) || !strings.Contains(string(got[0]), `"i444":true`) || string(got[1][1:]) != `{"on":true,"type":"audio"}` ||
 		string(got[2][1:]) != `{"front":false,"share":true,"type":"clipboard-use"}` {
 		t.Fatalf("auto: %q", got)
 	}
@@ -1189,8 +1295,33 @@ func TestViewerToolbarMenus(t *testing.T) {
 	if v.preset != 2 {
 		t.Errorf("chose Sharper: preset %d", v.preset)
 	}
+	// Resolution is offered only by a host whose stream says which applies.
+	if err := tt.Click(L.ViewerQuality()); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem(L.ViewerResolution(), "1080p"); err == nil {
+		t.Error("Resolution offered by a host that does not take it")
+	}
+	v.mu.Lock()
+	v.start.Size = "auto"
+	v.mu.Unlock()
+	tt.Frame()
+	if err := tt.Click(L.ViewerQuality()); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem(L.ViewerResolution(), "1080p"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if v.size != "1080" {
+		t.Errorf("chose 1080p: %q", v.size)
+	}
+	var sent string
 	for len(v.out) > 0 {
-		<-v.out
+		sent = string(<-v.out)
+	}
+	if !strings.Contains(sent, `"size":"1080"`) {
+		t.Errorf("chose 1080p, sent %q", sent)
 	}
 	if err := tt.Click(L.ViewerActions()); err != nil {
 		t.Fatal(err)
@@ -1213,16 +1344,17 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 	v := a.newViewer("482916735", localapi.About{}, nil, false)
 	v.setQuality(2, "60 fps", true)
 	v.setCodec("av1")
+	v.setSize("1440")
 	v.setSwap(false)
 	v.mu.Lock()
 	v.folded = true
 	v.mu.Unlock()
 	v.keepSettings()
 	again := a.newViewer("482916735", localapi.About{}, nil, false)
-	if again.preset != 2 || again.fpsCap != "60 fps" || !again.full || again.codec != "av1" || again.swap == nil || *again.swap || !again.folded {
+	if again.preset != 2 || again.fpsCap != "60 fps" || !again.full || again.codec != "av1" || again.size != "1440" || again.swap == nil || *again.swap || !again.folded {
 		t.Errorf("reopened %d %q %v %q %v %v", again.preset, again.fpsCap, again.full, again.codec, again.swap, again.folded)
 	}
-	if other := a.newViewer("123456789", localapi.About{}, nil, false); other.preset != 1 || other.codec != "auto" || other.swap != nil {
+	if other := a.newViewer("123456789", localapi.About{}, nil, false); other.preset != 1 || other.codec != "auto" || other.size != "auto" || other.swap != nil {
 		t.Errorf("another device %d %q", other.preset, other.codec)
 	}
 	_ = a.writePrefs() // as quitting does
@@ -1235,52 +1367,138 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 // ends when closed; what waits to be heard stays within a target that grows
 // when playing runs dry while sound comes (up to 300 ms), shrinks after a
 // calm spell, and drops the oldest sound beyond it.
-// A full video queue or a decoder error leaves frames out until a key
-// frame, which alone opens the gate again; the host is asked for one at
-// once and again each second while it does not come (regression: asked
-// once, a lost key frame stopped the picture for good).
+// TestVideoGate: a full video queue or a decoder error leaves frames out
+// until a key frame, which alone opens the gate again; the host is asked
+// for one at once and again each second while it does not come
+// (regression: asked once, a lost key frame stopped the picture for good).
+// A key frame is never left out: the frames waiting give way to it
+// (regression: a decoder behind dropped key frames too). The same stream
+// description is passed once; another always is, in order, without
+// waiting on a full queue.
 func TestVideoGate(t *testing.T) {
-	video := make(chan []byte, 1)
-	var g videoGate
 	key, delta := []byte{packetFrame, keyFrame}, []byte{packetFrame, 0}
+	startA := append([]byte{packetVideoStart}, `{"codec":"h264","width":8}`...)
+	startB := append([]byte{packetVideoStart}, `{"codec":"h264","width":16}`...)
 	t0 := time.Unix(1000, 0)
-	for i, c := range []struct {
+	type step struct {
 		p         []byte
 		at        time.Duration
-		drain     bool
 		sent, ask bool
+	}
+	for _, c := range []struct {
+		name  string
+		room  int
+		steps []step
+		// queued is what the decoder finds, in order; given back, how
+		// many buffers went back to the pool.
+		queued    [][]byte
+		givenBack int
 	}{
-		{delta, 0, false, true, false},                       // room: queued
-		{delta, 0, false, false, true},                       // full: left out, a key frame asked for
-		{delta, 100 * time.Millisecond, false, false, false}, // left out
-		{key, 200 * time.Millisecond, false, false, false},   // the key frame finds it full: too soon to ask
-		{key, 1200 * time.Millisecond, false, false, true},   // full again: asked again
-		{delta, 1300 * time.Millisecond, true, false, false}, // room again, but it needs its reference
-		{key, 1400 * time.Millisecond, false, true, false},   // a key frame starts over
-		{delta, 1500 * time.Millisecond, true, true, false},
+		{"frames", 2, []step{
+			{delta, 0, true, false},
+			{delta, 0, true, false},
+			{delta, 0, false, true},                       // full: left out, a key frame asked for
+			{delta, 100 * time.Millisecond, false, false}, // left out: it needs its reference
+			{key, 200 * time.Millisecond, true, false},    // the waiting frames give way
+			{delta, 300 * time.Millisecond, true, false},
+		}, [][]byte{key, delta}, 2},
+		{"descriptions", 3, []step{
+			{startA, 0, true, false},
+			{startA, 0, false, false}, // the same again: left out
+			{delta, 0, true, false},
+			{delta, 0, true, false},
+			{startB, 0, true, true},                       // another, on a full queue: the frames give way
+			{delta, 100 * time.Millisecond, false, false}, // the new stream starts at a key frame
+			{key, 200 * time.Millisecond, true, false},
+			{startB, 300 * time.Millisecond, false, false},
+		}, [][]byte{startA, startB, key}, 2},
 	} {
-		if c.drain {
-			<-video
+		video, pool := make(chan []byte, c.room), make(packetPool, 8)
+		var g videoGate
+		for i, s := range c.steps {
+			var sent, ask bool
+			if s.p[0] == packetVideoStart {
+				sent, ask = g.start(s.p, video, pool, t0.Add(s.at))
+			} else {
+				sent, ask = g.pass(s.p, video, pool, t0.Add(s.at))
+			}
+			if sent != s.sent || ask != s.ask {
+				t.Fatalf("%s, step %d: sent %v ask %v", c.name, i, sent, ask)
+			}
 		}
-		sent, ask := g.pass(c.p, video, t0.Add(c.at))
-		if sent != c.sent || ask != c.ask {
-			t.Fatalf("step %d: sent %v ask %v", i, sent, ask)
+		var got [][]byte
+		for len(video) > 0 {
+			got = append(got, <-video)
+		}
+		if !slices.EqualFunc(got, c.queued, bytes.Equal) || len(pool) != c.givenBack {
+			t.Errorf("%s: queued %q, %d given back", c.name, got, len(pool))
 		}
 	}
-	<-video
+	// A new connection's decoder starts afresh: the same description
+	// passes again.
+	video, pool := make(chan []byte, 3), make(packetPool, 8)
+	var g videoGate
+	g.start(startA, video, pool, t0)
+	g.restart()
+	if sent, _ := g.start(startA, video, pool, t0); !sent {
+		t.Fatal("a new connection's first description is left out")
+	}
 	// A frame the decoder failed on closes the gate; the watchdog asks
 	// again each second until a key frame comes.
 	if !g.broke(t0.Add(3 * time.Second)) {
 		t.Fatal("a decoder error asks for a key frame")
 	}
-	if sent, _ := g.pass(delta, video, t0.Add(3100*time.Millisecond)); sent {
+	if sent, _ := g.pass(delta, video, pool, t0.Add(3100*time.Millisecond)); sent {
 		t.Fatal("a delta frame after a decoder error")
 	}
 	if g.again(false, t0.Add(3500*time.Millisecond)) || !g.again(false, t0.Add(4*time.Second)) {
 		t.Fatal("the watchdog asks once a second while the gate is closed")
 	}
-	if sent, _ := g.pass(key, video, t0.Add(4100*time.Millisecond)); !sent || g.again(false, t0.Add(9*time.Second)) {
+	if sent, _ := g.pass(key, video, pool, t0.Add(4100*time.Millisecond)); !sent || g.again(false, t0.Add(9*time.Second)) {
 		t.Fatal("a key frame opens the gate, and nothing more is asked")
+	}
+}
+
+// TestDecodeRate: when this computer cannot decode the frame-rate cap, the
+// host is asked for about 90 % of the rate it keeps, never below 5, and
+// for the cap again once decoding keeps up; small changes and a still
+// screen's few frames ask nothing.
+func TestDecodeRate(t *testing.T) {
+	t0 := time.Unix(1000, 0)
+	r := decodeRate{since: t0}
+	for i, c := range []struct {
+		frames  int
+		took    time.Duration
+		limit   int
+		changed bool
+	}{
+		{30, 10 * time.Millisecond, 0, false},  // keeps 100 a second: the cap
+		{30, 50 * time.Millisecond, 18, true},  // keeps 20: asks for 18
+		{18, 50 * time.Millisecond, 18, false}, // the same
+		{18, 52 * time.Millisecond, 18, false}, // 17: too small a change
+		{18, 10 * time.Millisecond, 0, true},   // keeps up again: the cap
+		{30, 400 * time.Millisecond, 5, true},  // never below 5
+		{3, 300 * time.Millisecond, 5, false},  // a still screen says nothing
+	} {
+		var limit int
+		var changed bool
+		for n := range c.frames {
+			l, ch := r.add(c.took, t0.Add(time.Duration(n+1)*time.Second/time.Duration(c.frames)), 30)
+			limit, changed = l, changed || ch
+		}
+		t0 = t0.Add(time.Second)
+		if limit != c.limit || changed != c.changed {
+			t.Fatalf("second %d: limit %d changed %v", i, limit, changed)
+		}
+	}
+	// The limit goes out in the quality message, below the cap only.
+	v := &viewer{preset: 1, fpsCap: "30 fps", size: "1080", fpsLimit: 18}
+	if q := string(v.qualityPacket()[1:]); q != `{"fps":18,"i444":false,"preset":"balanced","size":"1080","type":"quality"}` {
+		t.Errorf("quality %s", q)
+	}
+	v.fpsLimit, v.fpsCap = 18, "15 fps"
+	if q := string(v.qualityPacket()[1:]); !strings.Contains(q, `"fps":15`) {
+		t.Errorf("quality %s", q)
 	}
 }
 

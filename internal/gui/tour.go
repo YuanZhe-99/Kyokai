@@ -3,6 +3,7 @@ package gui
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -192,7 +193,8 @@ func (a *App) finishTour() {
 // tourShell is the main window during the first run: no sidebar; the
 // step's illustration on the window's material (the traffic lights over
 // it on macOS), and beside it a pane with the step, the cards that need
-// the person above it.
+// the person above it. The pane's and the first card's corners that meet
+// the window's right ones follow paneRadii.
 func (a *App) tourShell(c *ui.Context, vw *viewerWindow) {
 	t := c.Theme()
 	top := c.TitleBar().Height
@@ -201,8 +203,10 @@ func (a *App) tourShell(c *ui.Context, vw *viewerWindow) {
 			a.tourArt(c)
 		})
 		ui.Column(c.Key("tour-main")).Grow(1).MinWidth(0).MinHeight(0).Padding(paneMargin, paneMargin, paneMargin, 0).Children(func() {
-			a.bannersView(c)
-			ui.Column(c.Key("tour-pane")).Grow(1).FillWidth().MinHeight(0).Radius(paneRadius).Clip().
+			// The illustration is on the left, as the sidebar is beside the panes.
+			cards := a.bannersView(c, vw, panesCorners(false, false))
+			r := paneRadii(runtime.GOOS, panesCorners(false, cards))
+			ui.Column(c.Key("tour-pane")).Grow(1).FillWidth().MinHeight(0).Radius(r[:]...).Clip().
 				Background(t.Background).Border(1, t.Border).Shadow(0, 6, 18, 0, paneShadow).Children(func() {
 				a.tourBody(c, vw.win)
 				a.toastView(c)

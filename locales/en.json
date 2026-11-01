@@ -1567,6 +1567,10 @@
       }
     }
   },
+  "ViewerDirectConnect": "Connect directly",
+  "ViewerDirectFirewall": "Windows may ask once to allow Kyokai.",
+  "ViewerDirectLater": "Not now",
+  "ViewerDirectOffer": "This device is on your network, but the connection goes through the server.",
   "ViewerDisplay": "Display",
   "ViewerDisplayN": "Display {number}",
   "@ViewerDisplayN": {
@@ -1655,6 +1659,8 @@
   "ViewerReconnect": "Reconnect",
   "ViewerRecovering": "Recovering the picture…",
   "ViewerRelayedHint": "The connection goes through the server. For a faster path, turn on Try direct connections (Network) on both devices.",
+  "ViewerResolution": "Resolution",
+  "ViewerResolutionNative": "Native",
   "ViewerShowBar": "Show controls",
   "ViewerSound": "Sound",
   "ViewerSoundHint": "Plays what the other computer plays. Remembered for this device.",

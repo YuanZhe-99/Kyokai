@@ -56,3 +56,30 @@ func luminance(c ui.Color) float64 {
 	}
 	return 0.2126*lin(c.R) + 0.7152*lin(c.G) + 0.0722*lin(c.B)
 }
+
+// TestPaneRadii: on Windows and Linux a corner that meets the window's
+// takes the smaller radius and every other keeps a pane's; macOS keeps a
+// pane's everywhere. Radii come in Radius's order: top-left, top-right,
+// bottom-right, bottom-left.
+func TestPaneRadii(t *testing.T) {
+	p, o := paneRadius, paneOuterRadius
+	for _, tc := range []struct {
+		goos string
+		at   corners
+		want [4]float32
+	}{
+		{"windows", 0, [4]float32{p, p, p, p}},
+		{"windows", cornersAll, [4]float32{o, o, o, o}},
+		{"windows", cornerTR | cornerBR, [4]float32{p, o, o, p}},
+		{"linux", cornerTL, [4]float32{o, p, p, p}},
+		{"linux", cornerBL | cornerBR, [4]float32{p, p, o, o}},
+		{"darwin", cornersAll, [4]float32{p, p, p, p}},
+	} {
+		if got := paneRadii(tc.goos, tc.at); got != tc.want {
+			t.Errorf("%s %04b: %v, want %v", tc.goos, tc.at, got, tc.want)
+		}
+	}
+	if o >= p || o <= 0 {
+		t.Errorf("the radius at the window's corners (%v) is not rounder than none and less than a pane's (%v)", o, p)
+	}
+}

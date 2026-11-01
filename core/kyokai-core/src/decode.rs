@@ -2,9 +2,10 @@
 //! (doc/en-us/architecture.md, "FFI"): encoded frames in, RGBA out. They
 //! need no started core; each lives under a handle until closed.
 
+use crate::convert::Sink;
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// One stream's decoder.
 enum Decoder {
@@ -27,22 +28,31 @@ enum Decoder {
     Ff(crate::ff::Decoder),
     /// A NanoKVM's own pictures (Raw), each a JPEG.
     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-    Jpeg(crate::kvm::JpegDecoder),
+    /// Each picture is decoded into its own buffer first.
+    Jpeg(crate::kvm::JpegDecoder, Vec<u8>),
 }
 
-/// A decoder kept between calls.
-struct Kept(Decoder);
+/// A decoder kept between calls, under its own lock: viewers decode side
+/// by side, and the map's lock is held only to find one.
+struct Kept(Mutex<Decoder>);
 
 // SAFETY: the Media Foundation decoder is created in the multithreaded
 // apartment, whose objects may be called from any of its threads; libvpx
 // and libaom decoders, FFmpeg's contexts and VideoToolbox sessions keep no
-// thread affinity; the GUI
-// drives each decoder from one goroutine at a time (locked to an OS thread
-// it initialized), and the map's lock serializes every call.
+// thread affinity; the GUI drives each decoder from one goroutine at a time
+// (locked to an OS thread it initialized), and its own lock serializes
+// every call into it.
 unsafe impl Send for Kept {}
+// SAFETY: as for Send: every use of the decoder goes through its lock.
+unsafe impl Sync for Kept {}
 
-static DECODERS: Mutex<Option<HashMap<u64, Kept>>> = Mutex::new(None);
+static DECODERS: Mutex<Option<HashMap<u64, Arc<Kept>>>> = Mutex::new(None);
 static NEXT: AtomicU64 = AtomicU64::new(1);
+
+/// The decoder under a handle, out of the map (whose lock is let go).
+fn find(id: u64) -> Option<Arc<Kept>> {
+    DECODERS.lock().ok()?.as_ref()?.get(&id).cloned()
+}
 
 /// Opens a decoder for a stream (`media::VideoStart` JSON).
 /// Returns: its handle, or why it cannot be opened.
@@ -58,7 +68,7 @@ pub fn open(start: &[u8]) -> Result<u64, String> {
             height: s.height,
         },
         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-        crate::kvm::RAW => Decoder::Jpeg(crate::kvm::JpegDecoder),
+        crate::kvm::RAW => Decoder::Jpeg(crate::kvm::JpegDecoder, Vec::new()),
         name if crate::soft::Codec::from_name(name).is_some() => Decoder::Soft(
             crate::soft::Decoder::new(crate::soft::Codec::from_name(name).expect("checked"))?,
         ),
@@ -85,37 +95,42 @@ pub fn open(start: &[u8]) -> Result<u64, String> {
         .lock()
         .map_err(|_| "decoders poisoned")?
         .get_or_insert_with(HashMap::new)
-        .insert(id, Kept(d));
+        .insert(id, Arc::new(Kept(Mutex::new(d))));
     Ok(id)
 }
 
-/// Decodes one frame into `rgba` (resized to width×height×4).
-/// Returns: the picture's size when one is ready, None while the decoder
-/// waits for more input.
-pub fn decode(id: u64, frame: &[u8], rgba: &mut Vec<u8>) -> Result<Option<(u32, u32)>, String> {
-    let mut all = DECODERS.lock().map_err(|_| "decoders poisoned")?;
-    let d = all
-        .as_mut()
-        .and_then(|m| m.get_mut(&id))
-        .ok_or("no such decoder")?;
-    match &mut d.0 {
+/// Decodes one frame into `out` (as its `Want` says: RGBA at full or half
+/// size, or not converted).
+/// Returns: the picture's full size when one is ready, None while the
+/// decoder waits for more input; an error also when the picture does not
+/// fit (`out.short()`).
+pub fn decode(id: u64, frame: &[u8], out: &mut Sink) -> Result<Option<(u32, u32)>, String> {
+    let kept = find(id).ok_or("no such decoder")?;
+    let mut d = kept.0.lock().map_err(|_| "decoder poisoned")?;
+    match &mut *d {
         Decoder::Raw { width, height } => {
-            if frame.len() != (*width * *height * 4) as usize {
+            let (w, h) = (*width as usize, *height as usize);
+            if frame.len() != w * h * 4 {
                 return Err("frame size does not match the stream".into());
             }
-            rgba.clear();
-            rgba.extend_from_slice(frame);
+            out.rgba(frame, w, h)?;
             Ok(Some((*width, *height)))
         }
-        Decoder::Soft(dec) => dec.decode(frame, rgba),
+        Decoder::Soft(dec) => dec.decode(frame, out),
         #[cfg(windows)]
-        Decoder::Mf { dec, width, height } => dec.decode(frame, *width, *height, rgba),
+        Decoder::Mf { dec, width, height } => dec.decode(frame, *width, *height, out),
         #[cfg(target_os = "macos")]
-        Decoder::Vt(dec) => dec.decode(frame, rgba),
+        Decoder::Vt(dec) => dec.decode(frame, out),
         #[cfg(target_os = "linux")]
-        Decoder::Ff(dec) => dec.decode(frame, rgba),
+        Decoder::Ff(dec) => dec.decode(frame, out),
         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-        Decoder::Jpeg(dec) => dec.decode(frame, rgba),
+        Decoder::Jpeg(dec, rgba) => {
+            let Some((w, h)) = dec.decode(frame, rgba)? else {
+                return Ok(None);
+            };
+            out.rgba(rgba, w as usize, h as usize)?;
+            Ok(Some((w, h)))
+        }
     }
 }
 
@@ -124,8 +139,9 @@ pub fn decode(id: u64, frame: &[u8], rgba: &mut Vec<u8>) -> Result<Option<(u32, 
 /// in hardware, as it reports.
 /// Returns: None for an unknown handle.
 pub fn info(id: u64) -> Option<(&'static str, bool)> {
-    let all = DECODERS.lock().ok()?;
-    Some(match &all.as_ref()?.get(&id)?.0 {
+    let kept = find(id)?;
+    let d = kept.0.lock().ok()?;
+    Some(match &*d {
         Decoder::Raw { .. } => ("", false),
         Decoder::Soft(dec) => (dec.library(), false),
         #[cfg(windows)]
@@ -135,7 +151,7 @@ pub fn info(id: u64) -> Option<(&'static str, bool)> {
         #[cfg(target_os = "linux")]
         Decoder::Ff(_) => ("ffmpeg", false),
         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-        Decoder::Jpeg(_) => ("jpeg", false),
+        Decoder::Jpeg(..) => ("jpeg", false),
     })
 }
 
@@ -186,20 +202,51 @@ pub fn close(id: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::convert::Want;
 
     #[test]
     fn raw_frames_pass_through_and_handles_close() {
         let id = open(br#"{"codec":"raw-rgba","width":2,"height":1}"#).unwrap();
         let mut rgba = Vec::new();
         assert_eq!(
-            decode(id, &[1, 2, 3, 4, 5, 6, 7, 8], &mut rgba).unwrap(),
+            decode(id, &[1, 2, 3, 4, 5, 6, 7, 8], &mut Sink::vec(&mut rgba)).unwrap(),
             Some((2, 1))
         );
         assert_eq!(rgba, [1, 2, 3, 4, 5, 6, 7, 8]);
-        assert!(decode(id, &[1, 2, 3], &mut rgba).is_err());
+        // At half size, the 2×1 picture is one pixel, the average.
+        let mut half = [0; 4];
+        let mut sink = Sink::new(Want::Half, &mut half);
+        assert_eq!(
+            decode(id, &[1, 2, 3, 4, 5, 6, 7, 8], &mut sink).unwrap(),
+            Some((2, 1))
+        );
+        assert_eq!(half, [3, 4, 5, 6]);
+        // A buffer too small says so.
+        let mut small = [0; 4];
+        let mut sink = Sink::new(Want::Full, &mut small);
+        assert!(decode(id, &[1, 2, 3, 4, 5, 6, 7, 8], &mut sink).is_err() && sink.short());
+        assert!(decode(id, &[1, 2, 3], &mut Sink::vec(&mut rgba)).is_err());
         close(id);
-        assert!(decode(id, &[0; 8], &mut rgba).is_err());
+        assert!(decode(id, &[0; 8], &mut Sink::vec(&mut rgba)).is_err());
         assert!(open(br#"{"codec":"av9","width":2,"height":1}"#).is_err());
+    }
+
+    /// Regression: one lock over every decoder made each viewer wait for
+    /// the others' decoding. A decoder held (decoding) leaves the rest free.
+    #[test]
+    fn a_busy_decoder_leaves_the_others_free() {
+        let start = br#"{"codec":"raw-rgba","width":1,"height":1}"#;
+        let (busy, free) = (open(start).unwrap(), open(start).unwrap());
+        let held = find(busy).unwrap();
+        let _decoding = held.0.lock().unwrap();
+        let mut rgba = Vec::new();
+        assert_eq!(
+            decode(free, &[9, 8, 7, 6], &mut Sink::vec(&mut rgba)).unwrap(),
+            Some((1, 1))
+        );
+        assert_eq!(info(free), Some(("", false)));
+        close(free);
+        close(busy);
     }
 
     #[test]

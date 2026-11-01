@@ -49,6 +49,12 @@ pub mod feature {
     /// Sessions of the computer wired to the host's NanoKVM USB
     /// (doc/en-us/remote-services.md, "NanoKVM USB").
     pub const NANOKVM: &str = "nanokvm";
+    /// The viewer chooses the stream's size (`quality`'s `size`); the
+    /// host says the size in force in `video-start`.
+    pub const RESOLUTION: &str = "resolution";
+    /// A resume that moves a session to another connection: the host keeps
+    /// the controller's AI task going (`client_hello`'s `move`).
+    pub const MOVE: &str = "move";
 }
 
 /// The features this build announces.
@@ -60,6 +66,8 @@ pub const FEATURES: &[&str] = &[
     feature::WAKE,
     feature::RECOVERY,
     feature::NANOKVM,
+    feature::RESOLUTION,
+    feature::MOVE,
 ];
 
 /// What the other side of a session announced: its features, none for
@@ -165,6 +173,10 @@ struct ClientHello {
     /// desktop, only to a host announcing `nanokvm`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     nanokvm: bool,
+    /// With a resume token, to a host announcing `move`: the session moves
+    /// to this connection, and the controller's AI task goes on.
+    #[serde(default, rename = "move", skip_serializing_if = "std::ops::Not::not")]
+    moves: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -258,12 +270,15 @@ enum Message {
     },
     /// controller → host: the viewer's image quality (`best`, `balanced`,
     /// `speed`), frame-rate cap (RustDesk's presets) and whether it wants
-    /// full colour (4:4:4) where both sides do it.
+    /// full colour (4:4:4) where both sides do it; to a host that announced
+    /// `resolution`, the stream's size (`video::Size`'s names).
     Quality {
         preset: String,
         fps: u32,
         #[serde(default)]
         i444: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        size: Option<String>,
     },
     /// host → controller: what QoS measured and chose, for the viewer, how
     /// long the host took from a picture to its frame (the average of the
@@ -646,6 +661,23 @@ const KEY_UNUSED: Duration = Duration::from_secs(2);
 /// How long a stream must go without trouble for the recovery to start over
 /// from its first step.
 const RECOVERED: Duration = Duration::from_secs(10);
+/// How long a stream that stepped to the next codec runs without trouble
+/// before the first codec is tried again.
+const CODEC_BACK: Duration = Duration::from_secs(60);
+/// Delay probes (one a second) whose lowest sets the frame window.
+const RTTS: usize = 10;
+/// How often a session looks for silence.
+const WATCH_EVERY: Duration = Duration::from_millis(250);
+/// How long a peer may be quiet before it is pinged.
+const QUIET: Duration = Duration::from_secs(1);
+/// How long a ping sent after QUIET may go unanswered, nothing heard, before
+/// the path counts as silent (about 3 seconds in all): the controller lets
+/// the connection go and redials, the host drops its direct link
+/// (doc/en-us/networking.md, "Switching paths"). A host without `move`
+/// gets SILENT_OLD: a resume restarts its session, and it opens its video
+/// inside its session loop, for seconds at times.
+const SILENT: Duration = Duration::from_secs(2);
+const SILENT_OLD: Duration = Duration::from_secs(6);
 /// The pause before the second reopening, and how often the screen is tried
 /// again while the placeholder shows: sooner at first, then every
 /// PROBE_MAX.
@@ -798,6 +830,9 @@ struct Entry {
     /// Host side: notified when a resumed connection replaces this session,
     /// which then ends at once (`Sessions::supersede`).
     cut: Arc<Notify>,
+    /// Host side: the connection that replaced it moved the session
+    /// (`move`): its controller's AI task is not paused as it ends.
+    moved: Arc<AtomicBool>,
     /// Controller side: media for the GUI, and the GUI's control messages.
     media: Arc<media::Queue>,
     control_tx: mpsc::Sender<Value>,
@@ -1111,6 +1146,7 @@ impl Sessions {
             features: Peer::default(),
             stop: stop.clone(),
             cut: Arc::default(),
+            moved: Arc::default(),
             media: Arc::default(),
             control_tx,
             control_rx: Arc::new(tokio::sync::Mutex::new(control_rx)),
@@ -1169,6 +1205,30 @@ impl Sessions {
         let s = self.inner.lock().ok()?;
         let e = s.1.iter().find(|e| e.id == id)?;
         e.wire.lock().ok()?.take()
+    }
+
+    /// Gives a tunnel's ends back to its session, to carry on over its next
+    /// connection.
+    fn put_wire(&self, id: u64, wire: crate::tunnel::Wire) {
+        if let Ok(s) = self.inner.lock()
+            && let Some(e) = s.1.iter().find(|e| e.id == id)
+            && let Ok(mut w) = e.wire.lock()
+        {
+            *w = Some(wire);
+        }
+    }
+
+    /// Whether the other device of session `id` announced `feature`.
+    fn peer_has(&self, id: u64, feature: &str) -> bool {
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|s| {
+                s.1.iter()
+                    .find(|e| e.id == id)
+                    .map(|e| e.features.has(feature))
+            })
+            .unwrap_or(false)
     }
 
     /// How many host sessions of the kinds `of` picks are connected.
@@ -1311,7 +1371,7 @@ impl Sessions {
     /// Ends a live host session that a resumed connection replaces, at once
     /// and without a goodbye: its connection is gone, though this host has
     /// not noticed yet.
-    fn supersede(&self, id: u64) {
+    fn supersede(&self, id: u64, moved: bool) {
         if let Ok(s) = self.inner.lock()
             && let Some(e) = s.1.iter().find(|e| {
                 e.id == id
@@ -1319,8 +1379,22 @@ impl Sessions {
                     && !matches!(e.state, State::Closed | State::Failed)
             })
         {
+            e.moved.store(moved, Ordering::Relaxed);
             e.cut.notify_one();
         }
+    }
+
+    /// Whether a host session was replaced by a connection it moved to.
+    fn moved(&self, id: u64) -> bool {
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|s| {
+                s.1.iter()
+                    .find(|e| e.id == id)
+                    .map(|e| e.moved.load(Ordering::Relaxed))
+            })
+            .unwrap_or(false)
     }
 
     /// What tells a host session that a resumed connection replaced it
@@ -1701,6 +1775,17 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     match login {
         // A tunnel carries the service's bytes until either side ends; the
         // host stays awake meanwhile.
+        // A resumed tunnel's connection goes to the session that carries it
+        // on; this one ends unseen.
+        Ok(Admitted {
+            resumes: Some(old), ..
+        }) => {
+            let Channel { stream, noise, .. } = ch;
+            if !crate::tunnel::hand_over(old, (Box::new(stream), noise)) {
+                log::info!("host session: a resumed tunnel found its session gone");
+            }
+            ctx.sessions.forget(id);
+        }
         Ok(Admitted {
             granted,
             peer,
@@ -1714,10 +1799,43 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             });
             let _awake = crate::power::keep_awake();
             let (from_service, to_service, reading) = crate::tunnel::bridge(service);
+            let mut wire = crate::tunnel::Wire::new(from_service, to_service);
+            // With `move` the tunnel outlives its connection: it waits for
+            // the controller to resume it, the service connection open.
+            let resumable = client.features.iter().any(|f| f == feature::MOVE);
+            let mut taken = resumable.then(|| crate::tunnel::wait_for(id));
+            let cut = ctx.sessions.cut(id);
             let Channel { stream, noise, .. } = ch;
-            let failure = crate::tunnel::relay(stream, noise, &stop, from_service, to_service)
-                .await
-                .err();
+            let mut conn: crate::tunnel::Taken = (Box::new(stream), noise);
+            let failure = loop {
+                let how = crate::tunnel::Relay {
+                    stop: &stop,
+                    cut: Some(&cut),
+                    resumable,
+                    watches: false,
+                };
+                let Err(f) = crate::tunnel::relay(conn.0, conn.1, how, &mut wire).await else {
+                    break None;
+                };
+                let Some(rx) = taken.as_mut() else {
+                    break Some(f);
+                };
+                let next = tokio::select! {
+                    _ = stop.notified() => None,
+                    n = tokio::time::timeout(crate::tunnel::RESUME_WAIT, rx.recv()) => n.ok().flatten(),
+                };
+                let Some(next) = next else {
+                    break Some(f);
+                };
+                // The cut that brought this connection is spent.
+                let _ = tokio::time::timeout(Duration::ZERO, cut.notified()).await;
+                conn = next;
+            };
+            if resumable {
+                crate::tunnel::done(id);
+                // Nothing resumes it any more.
+                ctx.access.drop_resumes(id);
+            }
             reading.abort();
             ctx.sessions.end(id, failure);
         }
@@ -1775,6 +1893,8 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         input,
                         ai,
                         access: ctx.access.clone(),
+                        says_no_picture: client.features.iter().any(|f| f == feature::RECOVERY),
+                        path: Some(from),
                         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
                         kvm,
                     },
@@ -1786,14 +1906,22 @@ pub async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 () = cut.notified() => None,
             };
             // The controller's AI task does not go on without it (as after
-            // any drop, a resumed one too).
-            ctx.ai.controller_left(&device_id);
+            // any drop, a resumed one too), unless the session moved to
+            // another connection (`move`).
+            if !ctx.sessions.moved(id) {
+                ctx.ai.controller_left(&device_id);
+            }
             end_host(&ctx, id, failure);
         }
         Err(f) => {
             // A refusal reaches the controller before the connection closes.
             if matches!(f, Failure::Refused(_)) {
                 ch.linger().await;
+            }
+            // A move that failed here may have ended the session it moved
+            // from without pausing the controller's AI task: paused now.
+            if client.moves && client.resume.is_some() {
+                ctx.ai.controller_left(&device_id);
             }
             end_host(&ctx, id, Some(f));
             if kind.hidden() {
@@ -1838,6 +1966,9 @@ struct Admitted {
     peer: About,
     /// A tunnel's connection to the host's own service.
     service: Option<tokio::net::TcpStream>,
+    /// A tunnel resumed: the host session that carries it on, which takes
+    /// this connection (`tunnel::hand_over`).
+    resumes: Option<u64>,
     /// A NanoKVM session's devices, its serial port open.
     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     kvm: Option<Wired>,
@@ -1885,13 +2016,21 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     // yet: it would hold its capture and the hardware encoder until its idle
     // limit. A resume takes that session's place, so it is never busy. A
     // session this host is closing is not resumed.
+    // A tunnel resumes into the session that carries it, which waits for
+    // the connection (`tunnel::hand_over`); its next token is that
+    // session's too.
+    let tunnel = matches!(kind, Kind::Tunnel(_));
     if let Some(token) = &client.resume
-        && kind == Kind::Desktop
+        && (kind == Kind::Desktop || tunnel)
         && let Some((granted, old)) = ctx.access.take_resume(token, &key_b64)
         && !ctx.sessions.closing(old)
+        // A tunnel resumes only into its session while that still waits.
+        && (!tunnel || crate::tunnel::waiting(old))
     {
-        ctx.sessions.supersede(old);
-        let resume = ctx.access.issue_resume(&key_b64, &granted, id);
+        ctx.sessions.supersede(old, client.moves);
+        let resume = ctx
+            .access
+            .issue_resume(&key_b64, &granted, if tunnel { old } else { id });
         step(ch.send(&Verdict {
             accepted: true,
             granted: granted.clone(),
@@ -1913,6 +2052,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             granted,
             peer,
             service: None,
+            resumes: tunnel.then_some(old),
             #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
             kvm: None,
         });
@@ -2134,7 +2274,11 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
     if kind != Kind::Watch {
         let _ = ctx.access.trust(&key_b64, &device_id, &granted, &peer);
     }
-    let resume = (kind == Kind::Desktop).then(|| ctx.access.issue_resume(&key_b64, &granted, id));
+    // A desktop always gets a resume token; a tunnel when the controller
+    // can carry it on (`move`).
+    let resumable = kind == Kind::Desktop
+        || (matches!(kind, Kind::Tunnel(_)) && client.features.iter().any(|f| f == feature::MOVE));
+    let resume = resumable.then(|| ctx.access.issue_resume(&key_b64, &granted, id));
     step(ch.send(&Verdict {
         accepted: true,
         granted: granted.clone(),
@@ -2149,6 +2293,7 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
         granted,
         peer,
         service,
+        resumes: None,
         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
         kvm,
     })
@@ -2281,6 +2426,8 @@ pub fn local_kvm(
                 approve: false,
             },
             access: ctx.access.clone(),
+            says_no_picture: true,
+            path: None,
             kvm: Some(Wired {
                 chosen,
                 hid,
@@ -2470,6 +2617,8 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             tunnel: kind.service(),
             watch: kind == Kind::Watch,
             nanokvm: kind == Kind::Nanokvm,
+            // A resume to a host that moves sessions keeps it going there.
+            moves: resume.is_some() && peer.has(feature::MOVE),
         };
         let offered_keys = !hello.keys.is_empty();
         let asked = hello.want.clone();
@@ -2578,6 +2727,15 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             }
             Some(Via::Resume | Via::Unknown) | None => {}
         }
+        // A tunnel resumed carries on its old bytes: one the host admitted
+        // afresh (its token gone, the host restarted) would splice them into
+        // a new service connection, so it ends instead.
+        if matches!(kind, Kind::Tunnel(_))
+            && resume.is_some()
+            && !matches!(verdict.via, Some(Via::Resume))
+        {
+            return Err(Failure::Broken);
+        }
         // A password is kept only once it admitted (an older host does not
         // say how; a password it accepted did).
         let mut remember = Remember::default();
@@ -2605,20 +2763,38 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         r = result => r,
     };
     match result {
-        // A tunnel carries the GUI's bytes until either side ends; it is
-        // never resumed.
-        Ok((ch, granted, _, Kind::Tunnel(_))) => {
+        // A tunnel carries the GUI's bytes until either side ends; with a
+        // token from a host that moves sessions, a connection that fails or
+        // falls silent is resumed with nothing lost or repeated.
+        Ok((ch, granted, token, Kind::Tunnel(_))) => {
             ctx.sessions.update(id, |e| {
                 e.state = State::Connected;
                 e.granted = granted;
             });
-            let result = match ctx.sessions.take_wire(id) {
-                Some(wire) => {
-                    let Channel { stream, noise, .. } = ch;
-                    crate::tunnel::relay(stream, noise, &stop, wire.up, wire.down).await
-                }
-                None => Err(Failure::Broken),
+            let resumable = token.is_some() && ctx.sessions.peer_has(id, feature::MOVE);
+            let Some(mut wire) = ctx.sessions.take_wire(id) else {
+                ctx.sessions.end(id, Some(Failure::Broken));
+                return Outcome::Done;
             };
+            let Channel { stream, noise, .. } = ch;
+            let how = crate::tunnel::Relay {
+                stop: &stop,
+                cut: None,
+                resumable,
+                watches: true,
+            };
+            let result = crate::tunnel::relay(stream, noise, how, &mut wire).await;
+            // Counted as connected only when it got as far as the host's
+            // count: one that carried nothing does not restart the resume
+            // window.
+            let connected = wire.take_synced();
+            if let (Err(_), true, Some(token)) = (&result, resumable, token) {
+                ctx.sessions.put_wire(id, wire);
+                return Outcome::Lost {
+                    token: token.into(),
+                    connected,
+                };
+            }
             ctx.sessions.end(id, result.err());
             Outcome::Done
         }
@@ -2740,6 +2916,12 @@ pub struct RouteMeter {
     delay_ms: AtomicU32,
     kbps_sum: AtomicU64,
     samples: AtomicU32,
+    /// The connection was let go because it fell silent (`SILENT`): the
+    /// dialer drops the direct link it ran over and redials at once.
+    silent: AtomicBool,
+    /// Told by the dialer when a clearly better route answers: the
+    /// connection is let go and the session moves there (`reroute`).
+    reroute: Notify,
 }
 
 impl RouteMeter {
@@ -2765,6 +2947,42 @@ impl RouteMeter {
         };
         (delay > 0 || kbps > 0).then_some((delay, kbps))
     }
+}
+
+/// Moves a healthy controller session to a better route: its connection
+/// is let go and the dialer redials, the better route first.
+pub fn reroute(ctx: &Ctx, id: u64) {
+    if let Ok(s) = ctx.sessions.inner.lock()
+        && let Some(e) = s.1.iter().find(|e| e.id == id)
+    {
+        // Only a connection running now: a stored permit would end the
+        // next one at once.
+        e.meter.reroute.notify_waiters();
+    }
+}
+
+/// The route a controller session's connection takes (an address, or
+/// empty for the network) and the round trip its delay probes measured
+/// last (0: none yet).
+pub fn route_now(ctx: &Ctx, id: u64) -> Option<(String, u32)> {
+    let s = ctx.sessions.inner.lock().ok()?;
+    let e = s.1.iter().find(|e| e.id == id)?;
+    Some((e.address.clone(), e.meter.delay_ms.load(Ordering::Relaxed)))
+}
+
+/// Whether a controller session's last connection was let go because it
+/// fell silent (`SILENT`), and forgets it.
+pub fn went_silent(ctx: &Ctx, id: u64) -> bool {
+    ctx.sessions
+        .inner
+        .lock()
+        .ok()
+        .and_then(|s| {
+            s.1.iter()
+                .find(|e| e.id == id)
+                .map(|e| e.meter.silent.swap(false, Ordering::Relaxed))
+        })
+        .unwrap_or(false)
 }
 
 /// What a controller session saw of the route its last connection took
@@ -2854,6 +3072,13 @@ pub enum Side {
             allow(dead_code)
         )]
         access: Arc<Access>,
+        /// Whether the controller says itself when its viewer shows no
+        /// picture (`recovery`): its key-frame requests then are only
+        /// requests, never taken for key frames it could not use.
+        says_no_picture: bool,
+        /// Where the controller's connection comes from, to drop the
+        /// direct link to it when it falls silent (None in tests).
+        path: Option<Source>,
         /// A NanoKVM session's devices and its serial port: the picture is
         /// the capture card's and the input goes to the wired computer.
         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
@@ -3306,6 +3531,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let (frames_tx, mut frames) = mpsc::channel::<Vec<u8>>(64);
     // A host stays awake while someone is connected.
     let _awake = matches!(side, Side::Host { .. }).then(crate::power::keep_awake);
+    // Sending or showing video: the system does not slow the process.
+    let _busy = matches!(
+        side,
+        Side::Host { video: true, .. } | Side::Controller { .. }
+    )
+    .then(crate::power::busy);
     let _reader = AbortOnDrop(tokio::spawn(async move {
         while let Ok(f) = read_frame(&mut rd).await {
             if frames_tx.send(f).await.is_err() {
@@ -3317,6 +3548,15 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // decodes (or after CODECS_WAIT, in H.264): the codec decides which
     // encoder it takes.
     let wants_video = matches!(side, Side::Host { video: true, .. });
+    // A viewer that says when it shows no picture (`recovery`): its key-frame
+    // requests are never counted as key frames it could not use.
+    let viewer_says = matches!(
+        side,
+        Side::Host {
+            says_no_picture: true,
+            ..
+        }
+    );
     let may_hear = matches!(side, Side::Host { sound: true, .. });
     let mut source: Option<video::Source> = None;
     // The host's sound, while the controller asks for it.
@@ -3452,6 +3692,16 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let host_wakes = matches!(&side, Side::Controller { host, .. } if host.has(feature::WAKE));
     let host_recovers =
         matches!(&side, Side::Controller { host, .. } if host.has(feature::RECOVERY));
+    // How long a controller waits on a silent path before it lets it go.
+    let silent_after = match &side {
+        Side::Controller { host, .. } if host.has(feature::MOVE) => SILENT,
+        _ => SILENT_OLD,
+    };
+    // Where a host's controller comes from (`net::drop_direct`).
+    let path = match &side {
+        Side::Host { path, .. } => *path,
+        Side::Controller { .. } => None,
+    };
     let meter = match &side {
         Side::Controller { meter, .. } => Some(meter.clone()),
         Side::Host { .. } => None,
@@ -3552,6 +3802,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut stepped_at: Option<Instant> = None;
     let mut reopen_at: Option<tokio::time::Instant> = None;
     let mut next_codec = false;
+    // When the stream last stepped to the next codec, and how often it went
+    // back to the first: a codec that failed once is tried again after
+    // CODEC_BACK without trouble (twice at most), so one bad moment does
+    // not keep a stream on a worse codec for good.
+    let mut stepped_codec: Option<Instant> = None;
+    let mut codec_returns = 0u8;
     // The display the viewer chose (None: the primary), kept while the
     // stream is closed or the placeholder shows.
     let mut want_display: Option<video::Display> = None;
@@ -3566,7 +3822,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // RustDesk's QoS on the host: one probe a second, frames counted per
     // second, frame rate and bitrate applied to the source.
     let mut qos = rustdesk_qos::VideoQoS::default();
-    let mut base_kbps = 0;
+    // The stream's size the viewer chose (`quality`'s `size`).
+    let mut size = video::Size::Auto;
     // The host's codec choice: what the controller decodes (and in full
     // colour), whether its viewer wants full colour, whether this host had a
     // free hardware HEVC encoder when the codecs came (kept, so the stream's
@@ -3582,10 +3839,18 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     if wants_video {
         qos.on_connection_open(QOS_VIEWER);
         qos.new_display(QOS_DISPLAY.into());
+        // RustDesk's adaptive bitrate: the ratio follows how busy the
+        // screen is and what the path takes, instead of staying the
+        // preset's (which held 1080p at about 1.4 Mbit/s).
+        qos.set_support_changing_quality(QOS_DISPLAY, true);
     }
     let mut probe = tokio::time::interval(Duration::from_secs(1));
     let mut probe_sent: Option<Instant> = None;
     let mut last_delay = 0u32;
+    // The frames that may go ahead of the acknowledgements (`video::window`),
+    // from the lowest of the last RTTS delay probes.
+    let mut window = IN_FLIGHT;
+    let mut rtts: std::collections::VecDeque<u32> = std::collections::VecDeque::new();
     // The viewer's frame-rate cap, when a person's input last came, and the
     // bitrate last set (kbit/s), for the input boost.
     let mut fps_cap = rustdesk_qos::FPS;
@@ -3617,6 +3882,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     let mut pointer_at = (0.5f32, 0.5f32);
     let mut heard = Instant::now();
     let mut plain = vec![0u8; MAX_FRAME];
+    // A ping sent because the peer had been quiet for QUIET, unanswered
+    // since; and whether the host dropped its direct link for this
+    // silent spell already.
+    let mut ping_out: Option<Instant> = None;
+    let mut dropped_link = false;
+    let mut watch = tokio::time::interval(WATCH_EVERY);
     // Whether this session holds the block or privacy mode; checked every
     // second, since the host user can lift them.
     #[cfg_attr(not(windows), allow(unused_mut))]
@@ -3661,6 +3932,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
                 Recovery::NextCodec => {
                     log::info!("host session: {why}: opening the video again in the next codec");
+                    stepped_codec = Some(now);
                     source = None;
                     next_codec = true;
                     reopen_at = Some(tokio::time::Instant::now());
@@ -3671,7 +3943,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         let p = video::Source::pattern("retrying", &why);
                         announce(&out, &p, &displays)?;
                         acked = frame_no;
-                        p.set_room(IN_FLIGHT);
+                        p.set_room(window);
                         source = Some(p);
                     }
                     reopen_at = Some(tokio::time::Instant::now() + after);
@@ -3679,38 +3951,76 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             }
         }};
     }
+    // Opening the video: the newest open asked for (`opening`, by number),
+    // its result coming back through `opened` while the session goes on.
+    let (opened_tx, mut opened_rx) =
+        tokio::sync::mpsc::unbounded_channel::<(u64, video::Source, Vec<video::Display>)>();
+    let mut opening: Option<u64> = None;
+    let mut reopen_again = false;
+    let mut opens: u64 = 0;
     // Opens the video on a display (None: the primary) from the chosen
     // candidates (without the first after NextCodec), once the old capture
     // let go of its encoder (dropping it parks its thread, which
-    // Source::open waits for), and describes it to the controller, with the
-    // displays as they are now. Opening blocks for as long as a second: it
-    // runs off the network's two threads. A source that is the placeholder
-    // (it did not open, or panicked) is trouble for the recovery.
+    // Source::open waits for). Opening blocks for as long as a second: it
+    // runs off the network's threads and beside this loop, so input,
+    // acknowledgements and probes go on meanwhile; `opened!` takes the
+    // result. A newer open makes an older one's result void.
     macro_rules! reopen {
         ($display:expr) => {{
             let display = $display;
             want_display = display;
             source = None;
-            let mut wanted = chosen.clone();
-            if std::mem::take(&mut next_codec) && wanted.len() > 1 {
-                wanted.remove(0);
-            }
-            #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-            let card = card.clone();
-            let (s, list) = tokio::task::spawn_blocking(move || {
-                #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-                if let Some(card) = card {
-                    return (video::Source::kvm(&card, &wanted), Vec::new());
+            // One open at a time: the capture and the encoder of one may
+            // not be let go yet; another asked for meanwhile follows it.
+            if opening.is_some() {
+                reopen_again = true;
+            } else {
+                let mut wanted = chosen.clone();
+                if std::mem::take(&mut next_codec) && wanted.len() > 1 {
+                    wanted.remove(0);
                 }
-                (video::Source::open(display, &wanted), video::displays())
-            })
-            .await
-            .unwrap_or_else(|_| {
-                (
-                    video::Source::pattern("retrying", "the capture failed"),
-                    Vec::new(),
-                )
-            });
+                #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                let card = card.clone();
+                // The encoder opens at the frame rate and bitrate the session
+                // keeps, at the size the viewer chose.
+                let want = video::Want {
+                    fps: qos.fps(),
+                    ratio: qos.ratio(),
+                    size,
+                };
+                opens += 1;
+                opening = Some(opens);
+                reopen_at = None;
+                let (tx, number) = (opened_tx.clone(), opens);
+                tokio::spawn(async move {
+                    let (s, list) = tokio::task::spawn_blocking(move || {
+                        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+                        if let Some(card) = card {
+                            return (video::Source::kvm(&card, &wanted), Vec::new());
+                        }
+                        (
+                            video::Source::open(display, &wanted, want),
+                            video::displays(),
+                        )
+                    })
+                    .await
+                    .unwrap_or_else(|_| {
+                        (
+                            video::Source::pattern("retrying", "the capture failed"),
+                            Vec::new(),
+                        )
+                    });
+                    let _ = tx.send((number, s, list));
+                });
+            }
+        }};
+    }
+    // Takes an opened stream: describes it to the controller with the
+    // displays as they are now. A source that is the placeholder (it did
+    // not open, or panicked) is trouble for the recovery.
+    macro_rules! opened {
+        ($s:expr, $list:expr) => {{
+            let (mut s, list): (video::Source, Vec<video::Display>) = ($s, $list);
             if !list.is_empty() {
                 displays = list;
             }
@@ -3718,15 +4028,15 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             if let Some(inj) = injector.as_mut() {
                 inj.set_area(s.display.map(area));
             }
+            s.start.size = Some(size.name());
             announce(&out, &s, &displays)?;
-            base_kbps = rustdesk_qos::base_bitrate(s.start.width, s.start.height);
             if let Some(p) = pointer.as_mut() {
                 p.show(s.display.map(area));
             }
             // The new stream starts with the window open: frames of the
             // old one still unacknowledged are not waited for.
             acked = frame_no;
-            s.set_room(IN_FLIGHT);
+            s.set_room(window);
             // A host without screen capture (no capture code for this
             // system) never gets a picture by trying again.
             let why = s
@@ -3761,6 +4071,22 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 })
                 .await;
                 return Ok(());
+            }
+            Some((number, s, list)) = opened_rx.recv() => {
+                // An open a newer one replaced: its source is dropped here,
+                // which stops its capture.
+                if opening != Some(number) {
+                    continue;
+                }
+                opening = None;
+                // Asked for again while it opened: that one goes now, this
+                // one is let go (dropping it stops its capture).
+                if std::mem::take(&mut reopen_again) {
+                    drop((s, list));
+                    reopen!(want_display);
+                    continue;
+                }
+                opened!(s, list);
             }
             _ = ai_sync.tick(), if host_ai.is_some() => {
                 // The host's task as it is now, the same for every
@@ -3874,6 +4200,49 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     out.json(&offered(inj))?;
                 }
             }
+            // The dialer found a clearly better route: the connection is let
+            // go and the session moves there.
+            () = async {
+                match &meter {
+                    Some(m) => m.reroute.notified().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                log::info!("session: a clearly better route answers: the session moves there");
+                return Err(Failure::Broken);
+            }
+            _ = watch.tick() => {
+                let quiet = heard.elapsed();
+                if quiet >= QUIET && ping_out.is_none() {
+                    out.json(&Message::Ping)?;
+                    ping_out = Some(Instant::now());
+                }
+                match &meter {
+                    // A controller lets a silent connection go: the dialer
+                    // drops its direct link and redials at once.
+                    Some(m) => {
+                        // The ping has had silent_after to come back, and no
+                        // frame already waits to be read.
+                        if ping_out.is_some_and(|t| t.elapsed() >= silent_after) && frames.is_empty() {
+                            m.silent.store(true, Ordering::Relaxed);
+                            log::info!("session: nothing heard for {} ms: the connection is let go", quiet.as_millis());
+                            return Err(Failure::Broken);
+                        }
+                    }
+                    // A host drops its direct link to the controller once
+                    // per silent spell, and waits for it to come back.
+                    None => {
+                        if !dropped_link
+                            && ping_out.is_some_and(|t| t.elapsed() >= SILENT)
+                            && frames.is_empty()
+                            && let Some(p) = path
+                        {
+                            dropped_link = true;
+                            crate::net::drop_direct(p.network, p.ip);
+                        }
+                    }
+                }
+            }
             _ = ping.tick() => {
                 if heard.elapsed() > IDLE_LIMIT {
                     return Err(Failure::Broken);
@@ -3925,7 +4294,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 sent_this_second = 0;
                 took_this_second = 0;
                 let fps = boosted(qos.fps(), fps_cap, input_at, last_delay);
-                let kbps = (base_kbps as f32 * qos.ratio()) as u32;
+                // RustDesk's base for the stream's size times the ratio, with
+                // its extra for hardware H.264 and HEVC.
+                let ratio = qos.ratio();
+                let kbps = source.as_ref().map_or(0, |s| {
+                    video::bitrate_kbps(s.start.width, s.start.height, ratio, &s.start.codec, s.start.hardware)
+                });
                 last_kbps = kbps;
                 qos.store_bitrate(kbps);
                 if let Some(s) = &source {
@@ -3952,7 +4326,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     && due_since.is_some_and(|t| t.elapsed() >= NO_PICTURE)
                     // Frames that wait for room are held by the path, not
                     // missing from the capture.
-                    && frame_no.wrapping_sub(acked) < IN_FLIGHT
+                    && frame_no.wrapping_sub(acked) < window
                 {
                     trouble!(format!("no frame for {} s although a picture was due", NO_PICTURE.as_secs()));
                 } else if trouble > 0
@@ -3962,6 +4336,15 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 {
                     trouble = 0;
                     log::info!("host session: the picture is back");
+                } else if trouble == 0
+                    && !placeholder
+                    && codec_returns < 2
+                    && stepped_codec.is_some_and(|t| t.elapsed() >= CODEC_BACK)
+                {
+                    stepped_codec = None;
+                    codec_returns += 1;
+                    log::info!("host session: trying the first codec again");
+                    reopen!(want_display);
                 }
                 let video = match () {
                     _ if source.as_ref().is_some_and(|s| s.why.is_some()) => "placeholder",
@@ -3985,7 +4368,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Some(s) => s.frames.recv().await,
                     None => std::future::pending().await,
                 }
-            }, if frame_no.wrapping_sub(acked) < IN_FLIGHT => {
+            }, if frame_no.wrapping_sub(acked) < window => {
                 let Some(f) = f else {
                     // The capture ended by itself (its encoder failed twice,
                     // its thread could not follow the input desktop, the
@@ -3998,7 +4381,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 }
                 frame_no = frame_no.wrapping_add(1);
                 if let Some(s) = &source {
-                    s.set_room(IN_FLIGHT.saturating_sub(frame_no.wrapping_sub(acked)));
+                    s.set_room(window.saturating_sub(frame_no.wrapping_sub(acked)));
                 }
                 due_since = None;
                 if f.flags & media::KEY_FRAME != 0 {
@@ -4092,6 +4475,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             frame = frames.recv() => {
                 let frame = frame.ok_or(Failure::Broken)?;
                 heard = Instant::now();
+                (ping_out, dropped_link) = (None, false);
                 // The gate refuses input once a host that sends video falls
                 // silent (InputGate::takes).
                 if host_sends_video && let Some((g, _)) = &gate {
@@ -4152,7 +4536,16 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // A newer peer's message: ignored, never the end of the session.
                     Message::Unknown => {}
                     Message::Pong => {}
-                    Message::Quality { preset, fps, i444 } => {
+                    Message::Quality { preset, fps, i444, size: wanted_size } => {
+                        // A size the viewer chose: the video opens again at it.
+                        if let Some(next) = wanted_size.as_deref().and_then(video::Size::parse)
+                            && next != size
+                        {
+                            size = next;
+                            if wants_video && (source.is_some() || opening.is_some()) {
+                                reopen!(want_display);
+                            }
+                        }
                         // Full colour switched: the video restarts when that
                         // changes the codec or its chroma.
                         if i444 != full_colour {
@@ -4160,7 +4553,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             let c = pick(&decodes, full_colour, hevc_first, preferred.as_deref(), raw);
                             let first_changed = c.first() != chosen.first();
                             chosen = c;
-                            if wants_video && source.is_some() && first_changed {
+                            if wants_video && (source.is_some() || opening.is_some()) && first_changed {
                                 reopen!(want_display);
                             }
                         }
@@ -4190,7 +4583,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                                 due_since = Some(Instant::now());
                             }
                             if let Some(s) = &source {
-                                s.set_room(IN_FLIGHT.saturating_sub(frame_no.wrapping_sub(acked)));
+                                s.set_room(window.saturating_sub(frame_no.wrapping_sub(acked)));
                             }
                         }
                     }
@@ -4221,6 +4614,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::TestDelay { reply: true } => {
                         if let Some(t) = probe_sent.take() {
                             last_delay = t.elapsed().as_millis() as u32;
+                            if rtts.len() == RTTS {
+                                rtts.pop_front();
+                            }
+                            rtts.push_back(last_delay);
+                            window = video::window(fps_cap, rtts.iter().copied().min().unwrap_or(0));
                             if let Some(m) = &meter {
                                 m.delay(last_delay);
                             }
@@ -4231,6 +4629,11 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         host_sends_video = true;
                         if let Some(m) = &meter {
                             m.bitrate(bitrate / 1000);
+                            // The round trip the host's probes measured: the
+                            // route's, for Auto and for a move to a better one.
+                            if delay_ms > 0 {
+                                m.delay(delay_ms);
+                            }
                         }
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::STATS];
@@ -4388,7 +4791,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             let c = pick(&decodes, full_colour, hevc_first, preferred.as_deref(), raw);
                             let first_changed = c.first() != chosen.first();
                             chosen = c;
-                            if source.is_some() && first_changed {
+                            if (source.is_some() || opening.is_some()) && first_changed {
                                 reopen!(want_display);
                             }
                         }
@@ -4414,21 +4817,25 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     Message::KeyFrame => {
                         let mut unused = false;
                         if let Some(s) = &source {
-                            if !key_in_flight(key_sent, acked) {
+                            // A key frame already on its way answers this ask:
+                            // no new one, and no picture counted as due.
+                            let in_flight = key_in_flight(key_sent, acked);
+                            if !in_flight {
                                 s.key_frame();
                             }
                             announce(&out, s, &displays)?;
                             if !offer.is_empty() {
                                 out.json(&Message::CodecOffer { codecs: offer.clone() })?;
                             }
-                            if s.why.is_none() {
+                            if s.why.is_none() && !in_flight {
                                 due_since.get_or_insert_with(Instant::now);
                                 // A key frame that arrived (acknowledged) and
                                 // was asked for again a while later is one
                                 // the viewer could not use: after three, the
                                 // next recovery step (for viewers that do
                                 // not say so themselves).
-                                if let Some((no, at)) = key_sent
+                                if !viewer_says
+                                    && let Some((no, at)) = key_sent
                                     && at.elapsed() >= KEY_UNUSED
                                     && (acked.wrapping_sub(no) as i32) >= 0
                                     && stepped_at.is_none_or(|t| t.elapsed() >= STEP_GRACE)
@@ -4736,6 +5143,7 @@ mod compat_tests {
             tunnel: Some(crate::tunnel::Service::Ssh),
             watch: true,
             nanokvm: false,
+            moves: false,
         };
         let old: legacy::ClientHello =
             serde_json::from_value(serde_json::to_value(&client).unwrap()).unwrap();
@@ -6880,6 +7288,8 @@ mod tests {
                 approve: false,
             },
             access: host.access.clone(),
+            says_no_picture: true,
+            path: None,
             kvm: None,
         };
         let stopped = stop.clone();
@@ -6935,6 +7345,8 @@ mod tests {
                 approve: false,
             },
             access: host.access.clone(),
+            says_no_picture: true,
+            path: None,
             kvm: None,
         };
         let stopped = stop.clone();
@@ -7218,6 +7630,8 @@ mod tests {
                 approve: false,
             },
             access: host.access.clone(),
+            says_no_picture: true,
+            path: None,
             kvm: None,
         };
         let shared = Shared {

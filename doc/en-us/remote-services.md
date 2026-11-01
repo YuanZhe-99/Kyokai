@@ -33,7 +33,13 @@ refused (`absent`). A controller with neither a saved password nor a key asks wi
 A tunnel is admitted only once the host reached its service, within 3 seconds; otherwise it is
 refused as `service-down`. A host serves at most 8 tunnels besides its 4 desktop sessions (more
 are refused as `busy`); each keeps the host awake like a desktop session and shows in Connected
-here with its service. A tunnel is never resumed: a dropped one ends, and the client reconnects.
+here with its service. Between two devices that both announce `move` (0.6.15 and later), a tunnel
+survives a dropped or silent connection: the controller resumes it over a new connection within
+60 seconds, the host keeping its connection to the service open meanwhile, and the bytes either
+side missed go again first, so an SSH shell, a file copy or a Remote Desktop screen carries on
+without its client noticing more than a pause ([protocol.md](protocol.md), "Tunnels";
+[networking.md](networking.md), "Switching paths"). With an older peer a dropped tunnel ends, and
+the client reconnects.
 
 ## Tunnels
 

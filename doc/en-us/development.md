@@ -137,6 +137,12 @@ screen, which sends none), and at the end the longest gap of the watch. `ctl log
 fast path into a slow, uneven one for trying sessions over high latency on one machine: a TCP
 proxy that delays each direction by half the round trip, limits it to a rate, adds random jitter
 and freezes the path now and then, keeping the bytes in order and the bytes waiting bounded.
+`-cut AFTER/FOR` (such as `20s/5s`; FOR `0` for good) cuts the path once, both ways, AFTER past its
+start: a black hole, not a close, so nothing passes and nothing is closed, the bytes sent wait and
+arrive in order when the cut heals, and a connection accepted during the cut reaches its target
+then. It shows how sessions and tunnels switch paths ([networking.md](networking.md), "Switching
+paths"); the core's `threenode` test (`cargo test -p kyokai-core threenode -- --ignored`, about a
+minute, on the LAN address) measures the same with three EasyTier nodes in one process.
 With a development host accepting connections by address (including `127.0.0.1/32`):
 
 ```bash

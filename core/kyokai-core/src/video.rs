@@ -224,6 +224,7 @@ pub fn bgra_to_planar(
 
 /// The chroma terms of a BT.601 limited-range U, V pair, shared by the
 /// pixels the pair covers.
+#[cfg(test)]
 #[inline(always)]
 fn chroma_terms(u: u8, v: u8) -> (i32, i32, i32) {
     let (d, e) = (u as i32 - 128, v as i32 - 128);
@@ -231,6 +232,7 @@ fn chroma_terms(u: u8, v: u8) -> (i32, i32, i32) {
 }
 
 /// The RGBA pixel of a luma sample with its chroma terms.
+#[cfg(test)]
 #[inline(always)]
 fn pixel(y: u8, (r, g, b): (i32, i32, i32)) -> [u8; 4] {
     let c = 298 * (y as i32 - 16) + 128;
@@ -240,6 +242,7 @@ fn pixel(y: u8, (r, g, b): (i32, i32, i32)) -> [u8; 4] {
 
 /// Converts planar YUV (I420, or I444 with `i444`; planes Y, U, V with
 /// their strides) into RGBA of width×height.
+#[cfg(test)]
 pub fn planar_to_rgba(
     planes: [&[u8]; 3],
     strides: [usize; 3],
@@ -284,6 +287,7 @@ pub fn planar_to_rgba(
 
 /// Converts NV12 (`stride` bytes per luma row; chroma follows the luma
 /// plane of `stride` × `rows`) into RGBA of width×height.
+#[cfg(test)]
 pub fn nv12_to_rgba(
     nv12: &[u8],
     width: usize,
@@ -298,6 +302,7 @@ pub fn nv12_to_rgba(
 
 /// Converts NV12 planes (`y`, and `uv` with U and V interleaved, with their
 /// strides) into RGBA of width×height.
+#[cfg(test)]
 pub fn nv12_planes_to_rgba(
     y: &[u8],
     y_stride: usize,
@@ -344,15 +349,171 @@ use tokio::sync::mpsc;
 pub const FPS: u32 = 30;
 /// Highest frame-rate cap a viewer may choose.
 pub const MAX_FPS: u32 = 60;
-/// Largest picture sent; bigger screens are scaled down.
+/// Largest picture a NanoKVM USB's card is sent at; bigger ones are scaled
+/// down.
 pub(crate) const MAX_SIZE: (u32, u32) = (1920, 1080);
-/// Starting target bitrate (RustDesk's QoS adapts it later).
+/// Target bitrate before a session sets one (a stream opens at the
+/// session's own, `Want`).
 const BITRATE: u32 = 4_000_000;
+/// The QoS ratio of the Balanced preset (RustDesk's), for a stream opened
+/// without a session's.
+const BALANCED: f32 = 0.67;
+/// The ceilings a stream falls back through when an encoder refuses a
+/// larger picture, largest first (the shorter side, in pixels).
+const STEPS: [u32; 3] = [2160, 1440, 1080];
+/// The ceiling where the host encodes or the viewer decodes in software:
+/// what every stream had before the controller chose (1080p).
+const SOFT_SHORT: u32 = 1080;
+
+/// How large a picture the controller wants (`quality`'s `size`): Auto,
+/// the display as it is, or a ceiling on the picture's shorter side. A
+/// picture is only ever scaled down, its shape kept.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Size {
+    /// The display as it is up to 2160 where the host encodes and the
+    /// viewer decodes in hardware, else 1080.
+    #[default]
+    Auto,
+    /// The display as it is.
+    Native,
+    /// At most this many pixels on the shorter side: 2160, 1440, 1080 or
+    /// 720.
+    Max(u32),
+}
+
+impl Size {
+    /// The size a wire name stands for (`auto`, `native`, `2160`, `1440`,
+    /// `1080`, `720`), None for anything else.
+    pub fn parse(name: &str) -> Option<Size> {
+        match name {
+            "auto" => Some(Size::Auto),
+            "native" => Some(Size::Native),
+            "2160" => Some(Size::Max(2160)),
+            "1440" => Some(Size::Max(1440)),
+            "1080" => Some(Size::Max(1080)),
+            "720" => Some(Size::Max(720)),
+            _ => None,
+        }
+    }
+
+    /// The size's wire name.
+    pub fn name(self) -> String {
+        match self {
+            Size::Auto => "auto".into(),
+            Size::Native => "native".into(),
+            Size::Max(n) => n.to_string(),
+        }
+    }
+
+    /// The ceilings to try, largest first: the next ones are taken when an
+    /// encoder refuses a picture that large.
+    /// Inputs: `hardware`, whether the viewer decodes the codec in hardware
+    /// (Auto's rule; the host's own encoder is checked once it opens).
+    pub fn ceilings(self, hardware: bool) -> Vec<u32> {
+        match self {
+            Size::Auto if hardware => STEPS.to_vec(),
+            Size::Auto => vec![SOFT_SHORT],
+            Size::Native => std::iter::once(u32::MAX).chain(STEPS).collect(),
+            Size::Max(n) => std::iter::once(n)
+                .chain(STEPS.into_iter().filter(|s| *s < n))
+                .collect(),
+        }
+    }
+}
+
+impl Serialize for Size {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.name())
+    }
+}
+
+impl<'de> Deserialize<'de> for Size {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Size, D::Error> {
+        let name = String::deserialize(d)?;
+        Ok(Size::parse(&name).unwrap_or_default())
+    }
+}
+
+/// The encoded size for a captured screen under a ceiling on its shorter
+/// side: scaled down so that the shorter side is at most `short` and the
+/// longer at most 32/9 of that (room for ultrawide displays), its aspect
+/// kept, with even sides (4:2:0 needs them).
+pub fn fit_short(width: u32, height: u32, short: u32) -> (u32, u32) {
+    let (s, l) = (width.min(height).max(1), width.max(height).max(1));
+    let short = f64::from(short);
+    let scale = (short / f64::from(s))
+        .min(short * 32.0 / 9.0 / f64::from(l))
+        .min(1.0);
+    let even = |v: f64| ((v.round() as u32) & !1).max(2);
+    (
+        even(f64::from(width) * scale),
+        even(f64::from(height) * scale),
+    )
+}
+
+/// The bitrate a stream of `width`×`height` gets at QoS `ratio`, in kbit/s:
+/// RustDesk's base for the size times the ratio, and for hardware H.264 and
+/// HEVC RustDesk's extra (×2 and ×1.5 below a 2 Mbit/s base, falling
+/// towards ×1 above), since a GPU encoder spends its bits less well than
+/// libvpx.
+pub fn bitrate_kbps(width: u32, height: u32, ratio: f32, codec: &str, hardware: bool) -> u32 {
+    let base = rustdesk_qos::base_bitrate(width, height) as f32 * ratio;
+    let extra = match (hardware, codec) {
+        (true, "h264") => 1.0,
+        (true, "hevc") => 0.5,
+        _ => 0.0,
+    };
+    let factor = if base > 2000.0 {
+        1.0 + extra / (1.0 + (base - 2000.0) * 0.001)
+    } else {
+        1.0 + extra
+    };
+    (base * factor) as u32
+}
+
+/// What a stream opens with: the session's frame rate and QoS ratio, so
+/// that the encoder starts at the bitrate the session keeps (not at a
+/// guess it drops from a second later, a sharp first picture and blurred
+/// ones after), and the size the controller chose.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct Want {
+    pub fps: u32,
+    pub ratio: f32,
+    #[serde(default)]
+    pub size: Size,
+}
+
+impl Default for Want {
+    fn default() -> Self {
+        Want {
+            fps: FPS,
+            ratio: BALANCED,
+            size: Size::Auto,
+        }
+    }
+}
 /// How many frames the host sends ahead of the controller's
 /// acknowledgements: enough for the frame-rate cap over a relay's round
 /// trip, few enough that a slow path delays the picture by a few frames,
 /// not seconds. The helper's channel from its agent holds as many.
 pub const IN_FLIGHT: u32 = 3;
+/// The most frames the host sends ahead on a long round trip (`window`).
+pub const MAX_IN_FLIGHT: u32 = 12;
+
+/// How many frames the host may send ahead of the acknowledgements: enough
+/// for `fps` over the path's round trip `rtt_ms` (its lowest of late, so
+/// that frames waiting in the path do not widen the window that made them
+/// wait), plus one, between IN_FLIGHT and MAX_IN_FLIGHT. Three frames a
+/// round trip held a 230 ms path at 13 fps whatever its bandwidth.
+pub fn window(fps: u32, rtt_ms: u32) -> u32 {
+    (fps.saturating_mul(rtt_ms).saturating_mul(5) / 4)
+        .div_ceil(1000)
+        .saturating_add(1)
+        .clamp(IN_FLIGHT, MAX_IN_FLIGHT)
+}
+/// Times a still screen's last picture goes into the encoder again to
+/// bring out a frame it still held (RustDesk re-encodes up to 10).
+const DRAIN: u32 = 3;
 
 /// One encoded frame.
 pub struct Encoded {
@@ -678,7 +839,7 @@ impl Default for Targets {
 impl Targets {
     /// Sets how many frames the session may send now, waking the capture.
     pub fn set_room(&self, room: u32) {
-        self.room.store(room.min(IN_FLIGHT), Ordering::Relaxed);
+        self.room.store(room.min(MAX_IN_FLIGHT), Ordering::Relaxed);
         self.wake();
     }
 
@@ -720,19 +881,23 @@ impl Source {
     /// sleeps), no encoder opened, or this computer cannot capture at all.
     /// Notes: waits first for the capture threads of dropped sources
     /// (`wait_stopped`), and opening a capture can take a second: call it
-    /// off the async runtime.
-    pub fn open(display: Option<Display>, choices: &[Choice]) -> Source {
+    /// off the async runtime. `want` is the session's frame rate, QoS
+    /// ratio and the controller's size (`Want`).
+    pub fn open(display: Option<Display>, choices: &[Choice], want: Want) -> Source {
         wait_stopped();
         let key = Arc::new(AtomicBool::new(true));
         let stop = Arc::new(AtomicBool::new(false));
         let targets = Arc::new(Targets::default());
+        targets
+            .fps
+            .store(want.fps.clamp(1, MAX_FPS), Ordering::Relaxed);
         // One frame waits for the session at most: the capture loop takes a
         // picture only once the session has room for it (`Targets::room`).
         // Frames from the helper's agent arrive as it captures, a little
         // behind the room the session reports: they get the whole window.
         let link = crate::agent::link();
         let (tx, frames) = mpsc::channel(if link.is_some() {
-            IN_FLIGHT as usize
+            MAX_IN_FLIGHT as usize
         } else {
             1
         });
@@ -740,6 +905,7 @@ impl Source {
             let opened = link.open_video(
                 display,
                 choices,
+                want,
                 tx,
                 key.clone(),
                 targets.clone(),
@@ -806,6 +972,7 @@ impl Source {
                     targets.clone(),
                     d,
                     c,
+                    want,
                 ) {
                     Ok((start, done)) => {
                         return Source {
@@ -969,8 +1136,12 @@ pub(crate) type Take<'a> = dyn FnMut(&[u8], usize, usize, usize) + 'a;
 #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 pub(crate) trait Grab: Sized {
     /// Opens a display.
+    /// Inputs: `short`, the ceiling on the stream's shorter side
+    /// (`fit_short`): a capturer that scales (desktop duplication,
+    /// ScreenCaptureKit) gives its pictures that size, others the display's,
+    /// which the encode loop scales.
     /// Returns: the capturer and its pictures' size in pixels.
-    fn open(display: Display) -> Result<(Self, u32, u32), String>;
+    fn open(display: Display, short: u32) -> Result<(Self, u32, u32), String>;
 
     /// Waits up to `timeout` for a picture newer than the last one and hands
     /// it to `take` (top-down BGRA, width, height, bytes per row).
@@ -1080,14 +1251,16 @@ pub(crate) mod capture {
     }
 
     impl Encoder {
-        /// Opens the encoder a choice names for `width`×`height`; with
-        /// `hardware` false, Media Foundation's software encoder, never the
-        /// GPU's.
+        /// Opens the encoder a choice names for `width`×`height` at `fps` and
+        /// `bitrate` (bit/s); with `hardware` false, Media Foundation's
+        /// software encoder, never the GPU's.
         pub(crate) fn open(
             choice: Choice,
             width: u32,
             height: u32,
             hardware: bool,
+            fps: u32,
+            bitrate: u32,
         ) -> Result<Encoder, String> {
             #[cfg(test)]
             if let Some(kind) = choice.codec.strip_prefix("mute-") {
@@ -1099,24 +1272,24 @@ pub(crate) mod capture {
                 });
             }
             if let Some(c) = crate::soft::Codec::from_name(choice.codec) {
-                return crate::soft::Encoder::new(c, width, height, FPS, BITRATE, choice.i444)
+                return crate::soft::Encoder::new(c, width, height, fps, bitrate, choice.i444)
                     .map(|e| Encoder::Soft(Box::new(e)));
             }
             #[cfg(windows)]
             {
                 let c = crate::mf::Codec::from_name(choice.codec).ok_or("unknown codec")?;
-                crate::mf::Encoder::new(c, width, height, FPS, BITRATE, hardware).map(Encoder::Mf)
+                crate::mf::Encoder::new(c, width, height, fps, bitrate, hardware).map(Encoder::Mf)
             }
             #[cfg(target_os = "macos")]
             {
                 let _ = hardware;
                 let c = crate::vt::Codec::from_name(choice.codec).ok_or("unknown codec")?;
-                crate::vt::Encoder::new(c, width, height, FPS, BITRATE).map(Encoder::Vt)
+                crate::vt::Encoder::new(c, width, height, fps, bitrate).map(Encoder::Vt)
             }
             #[cfg(target_os = "linux")]
             {
                 let _ = hardware;
-                crate::va::Encoder::new(choice.codec, width, height, FPS, BITRATE)
+                crate::va::Encoder::new(choice.codec, width, height, fps, bitrate)
                     .map(|e| Encoder::Va(Box::new(e)))
             }
         }
@@ -1187,14 +1360,34 @@ pub(crate) mod capture {
             }
         }
 
-        /// Encodes the last picture; `key` asks for a key frame.
-        pub(crate) fn encode(&mut self, key: bool) -> Result<Vec<(Vec<u8>, bool)>, String> {
+        /// How many pictures are still inside the encoder: Media
+        /// Foundation's hardware transforms may run a frame behind, so a
+        /// still screen's last change waits in it until fed again; the
+        /// others give each picture's frame at once.
+        fn inside(&self) -> u32 {
+            match self {
+                #[cfg(windows)]
+                Encoder::Mf(e) => e.inside(),
+                _ => 0,
+            }
+        }
+
+        /// Encodes the last picture, taken `at` since the stream started;
+        /// `key` asks for a key frame. libvpx, libaom and VideoToolbox time
+        /// their rate control by `at`; Media Foundation matches its outputs
+        /// to its inputs by frame-numbered times, and VA-API plans by the
+        /// frame rate, so those two leave it.
+        pub(crate) fn encode(
+            &mut self,
+            key: bool,
+            at: Duration,
+        ) -> Result<Vec<(Vec<u8>, bool)>, String> {
             match self {
                 #[cfg(windows)]
                 Encoder::Mf(e) => e.encode(key),
-                Encoder::Soft(e) => e.encode(key),
+                Encoder::Soft(e) => e.encode(key, at),
                 #[cfg(target_os = "macos")]
-                Encoder::Vt(e) => e.encode(key),
+                Encoder::Vt(e) => e.encode(key, at),
                 #[cfg(target_os = "linux")]
                 Encoder::Va(e) => e.encode(key),
                 #[cfg(test)]
@@ -1234,20 +1427,42 @@ pub(crate) mod capture {
         targets: Arc<Targets>,
         display: Display,
         choice: Choice,
+        want: Want,
     ) -> Result<(VideoStart, std::thread::JoinHandle<()>), String> {
         let (ready_tx, ready) = std::sync::mpsc::channel();
         let thread = std::thread::spawn(move || {
             // A dark display is woken before anything opens: desktop
             // duplication and the GPU's encoder both want it on.
             let mut gpu_wanted = display_on(&stop);
+            // The ceilings the controller's size allows, largest first: an
+            // encoder that refuses a picture that large is tried at the
+            // next, and Auto goes above 1080p only through a hardware
+            // encoder. The encoder opens at the session's frame rate and
+            // bitrate for its size.
             let opened = (|| {
-                let (capturer, dw, dh) = G::open(display)?;
-                let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
-                let encoder = Encoder::open(choice, w, h, gpu_wanted)?;
-                Ok::<_, String>((capturer, encoder, w, h))
+                let mut why = String::from("no size opened");
+                // A viewer decodes H.264, HEVC and Media Foundation's VP9
+                // through its system (in hardware where it has it).
+                let viewer_hw = matches!(choice.codec, "h264" | "hevc" | "vp9");
+                for short in want.size.ceilings(viewer_hw) {
+                    let (capturer, dw, dh) = G::open(display, short)?;
+                    let (w, h) = fit_short(dw, dh, short);
+                    let kbps = bitrate_kbps(w, h, want.ratio, choice.codec, gpu_wanted);
+                    let bitrate = kbps.saturating_mul(1000).clamp(100_000, 50_000_000);
+                    match Encoder::open(choice, w, h, gpu_wanted, want.fps, bitrate) {
+                        Ok(e)
+                            if want.size == Size::Auto && w.min(h) > SOFT_SHORT && !e.kind().1 =>
+                        {
+                            why = format!("{w}x{h} would be encoded in software");
+                        }
+                        Ok(e) => return Ok::<_, String>((capturer, e, w, h, short, bitrate)),
+                        Err(e) => why = format!("{w}x{h}: {e}"),
+                    }
+                }
+                Err(why)
             })();
             let colour = if choice.i444 { " 4:4:4" } else { "" };
-            let (capturer, mut encoder, w, h) = match opened {
+            let (capturer, mut encoder, w, h, short, opened_bitrate) = match opened {
                 Ok(v) => v,
                 Err(e) => {
                     log::info!("video: {}{colour} did not open: {e}", choice.codec);
@@ -1269,13 +1484,19 @@ pub(crate) mod capture {
                 encoder: name.into(),
                 hardware,
                 placeholder: None,
+                size: None,
             }));
             let t0 = Instant::now();
-            let mut bitrate = BITRATE;
+            // The session sets its own each second from now on.
+            targets.bitrate.store(opened_bitrate, Ordering::Relaxed);
+            let mut bitrate = opened_bitrate;
             // Frames the encoder took without giving output yet: it holds a
             // few before its first output, so a still screen repeats the last
             // picture until they come out.
             let mut held = 0u32;
+            // Times the last picture went in again to bring out the frames
+            // a hardware encoder still held (DRAIN at most per still spell).
+            let mut drained = 0u32;
             // A key frame was asked for and has not come out yet: the last
             // picture is encoded again on a still screen until it does, and
             // the encoder is asked again every KEY_FORCE_AGAIN (an
@@ -1332,7 +1553,14 @@ pub(crate) mod capture {
                     && encoder.kind() == ("media-foundation", false)
                 {
                     gpu_wanted = true;
-                    match Encoder::open(choice, w, h, true) {
+                    match Encoder::open(
+                        choice,
+                        w,
+                        h,
+                        true,
+                        targets.fps.load(Ordering::Relaxed),
+                        bitrate,
+                    ) {
                         Ok(e) => {
                             log::info!(
                                 "video: the display is on: {} back on the GPU's encoder",
@@ -1361,7 +1589,7 @@ pub(crate) mod capture {
                         log::info!("capture: ends to start again on a fresh thread");
                         return;
                     }
-                    capturer = match G::open(display) {
+                    capturer = match G::open(display, short) {
                         Ok((c, _, _)) => {
                             open_failed.clear();
                             Some(c)
@@ -1424,13 +1652,21 @@ pub(crate) mod capture {
                         encoder.picture(bgra, width, height, stride)
                     },
                 );
+                // On a still screen the last picture goes in again while the
+                // encoder still holds its frame, so the last change shows.
+                let drain = matches!(got, Got::Nothing) && encoder.inside() > 0 && drained < DRAIN;
+                if drain {
+                    drained += 1;
+                }
                 match got {
                     // The encode time counts from the capture's own copy.
                     Got::Picture => {
                         taken = cap.taken().or(taken);
                         dark_since = None;
+                        drained = 0;
                     }
-                    Got::Nothing if (key_pending || held > 0) && encoder.has_picture() => {}
+                    Got::Nothing if (key_pending || held > 0 || drain) && encoder.has_picture() => {
+                    }
                     Got::Lost => {
                         capturer = None;
                         dark_since.get_or_insert_with(Instant::now);
@@ -1450,7 +1686,7 @@ pub(crate) mod capture {
                 // opened while the display was off answered nothing for
                 // good, which looked like a still screen, and the viewer
                 // waited forever).
-                let encoded = encoder.encode(force).and_then(|units| {
+                let encoded = encoder.encode(force, t0.elapsed()).and_then(|units| {
                     if !units.is_empty() {
                         silent_since = None;
                     } else if silent_since.get_or_insert_with(Instant::now).elapsed()
@@ -1484,7 +1720,14 @@ pub(crate) mod capture {
                             gpu_ok = false;
                         }
                         gpu_wanted = gpu_ok && display_on(&stop);
-                        match Encoder::open(choice, w, h, gpu_wanted) {
+                        match Encoder::open(
+                            choice,
+                            w,
+                            h,
+                            gpu_wanted,
+                            targets.fps.load(Ordering::Relaxed),
+                            bitrate,
+                        ) {
                             Ok(e) => encoder = e,
                             Err(e) => {
                                 log::info!(
@@ -1613,7 +1856,7 @@ mod screen {
         /// hands a Mac host its pictures. GDI, a desktop image kept in
         /// system memory and a GPU the pass fails on deliver the display's
         /// size, which the encoder scales.
-        fn open(want: Display) -> Result<(Self, u32, u32), String> {
+        fn open(want: Display, short: u32) -> Result<(Self, u32, u32), String> {
             if crate::agent::follow_input_desktop() == crate::agent::Desk::Failed {
                 return Err("this thread cannot move to the input desktop".into());
             }
@@ -1629,7 +1872,7 @@ mod screen {
             if crate::agent::input_desktop_moved() {
                 return Err("the input desktop moved while the display opened".into());
             }
-            let (w, h) = fit(dw, dh, MAX_SIZE.0, MAX_SIZE.1);
+            let (w, h) = fit_short(dw, dh, short);
             let size = (w as usize, h as usize);
             cap.scale_to(size.0, size.1);
             log::info!(
@@ -1828,6 +2071,7 @@ mod screen_tests {
                 Arc::new(Targets::default()),
                 display,
                 choice,
+                Want::default(),
             ) {
                 Ok((s, _)) => s,
                 Err(e) => return eprintln!("skipped: {e}"),
@@ -1844,6 +2088,58 @@ mod screen_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The controller's size choice: names round-trip, each ceiling caps
+    /// the shorter side (ultrawide and portrait kept whole), nothing is
+    /// scaled up, and a refused size falls back through the steps.
+    #[test]
+    fn sizes_cap_the_shorter_side_and_fall_back() {
+        for name in ["auto", "native", "2160", "1440", "1080", "720"] {
+            assert_eq!(Size::parse(name).unwrap().name(), name);
+        }
+        assert_eq!(Size::parse("8k"), None);
+        let cases = [
+            ((3840, 2160), 1080, (1920, 1080)),
+            ((3840, 2160), 2160, (3840, 2160)),
+            ((2560, 1600), 1440, (2304, 1440)),
+            ((1920, 1080), 2160, (1920, 1080)),
+            ((3440, 1440), 1080, (2580, 1080)),
+            ((1080, 1920), 1080, (1080, 1920)),
+            ((5120, 1440), 720, (2560, 720)),
+            ((2560, 1600), u32::MAX, (2560, 1600)),
+        ];
+        for ((w, h), short, want) in cases {
+            assert_eq!(fit_short(w, h, short), want, "{w}x{h} at {short}");
+        }
+        assert_eq!(Size::Auto.ceilings(true), [2160, 1440, 1080]);
+        assert_eq!(Size::Auto.ceilings(false), [1080]);
+        assert_eq!(Size::Native.ceilings(false), [u32::MAX, 2160, 1440, 1080]);
+        assert_eq!(Size::Max(1440).ceilings(true), [1440, 1080]);
+        assert_eq!(Size::Max(720).ceilings(true), [720]);
+    }
+
+    /// Hardware H.264 and HEVC get RustDesk's extra below a 2 Mbit/s base;
+    /// software codecs the base times the ratio.
+    #[test]
+    fn hardware_codecs_get_more_bits() {
+        let soft = bitrate_kbps(1920, 1080, 0.67, "vp9-sw", false);
+        assert_eq!(soft, (2073.0f32 * 0.67) as u32);
+        assert!(bitrate_kbps(1920, 1080, 0.67, "h264", true).abs_diff(soft * 2) <= 1);
+        let hevc = bitrate_kbps(1920, 1080, 0.67, "hevc", true);
+        assert!(hevc > soft * 3 / 2 - 2 && hevc < soft * 3 / 2 + 2);
+        assert!(bitrate_kbps(3840, 2160, 1.0, "h264", true) < 5000 * 2);
+    }
+
+    /// The window covers the frame-rate cap over the round trip, never
+    /// fewer than IN_FLIGHT or more than MAX_IN_FLIGHT.
+    #[test]
+    fn the_window_follows_the_round_trip() {
+        assert_eq!(window(30, 0), IN_FLIGHT);
+        assert_eq!(window(30, 20), IN_FLIGHT);
+        assert_eq!(window(30, 230), 10);
+        assert_eq!(window(60, 150), 13.min(MAX_IN_FLIGHT));
+        assert_eq!(window(60, 1000), MAX_IN_FLIGHT);
+    }
 
     #[test]
     fn displays_are_numbered_primary_first_then_left_to_right() {
@@ -2125,7 +2421,7 @@ mod tests {
 
     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     impl Grab for Fake {
-        fn open(_: Display) -> Result<(Self, u32, u32), String> {
+        fn open(_: Display, _: u32) -> Result<(Self, u32, u32), String> {
             FAKE_OPEN.store(true, Ordering::SeqCst);
             Ok((Fake, 64, 48))
         }
@@ -2173,6 +2469,7 @@ mod tests {
             targets.clone(),
             display,
             choice,
+            Want::default(),
         )
         .expect("VP8 opens");
         let source = Source {
@@ -2202,7 +2499,7 @@ mod tests {
 
     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     impl Grab for Still {
-        fn open(_: Display) -> Result<(Self, u32, u32), String> {
+        fn open(_: Display, _: u32) -> Result<(Self, u32, u32), String> {
             Ok((Still(false), 64, 48))
         }
 
@@ -2241,8 +2538,16 @@ mod tests {
             primary: true,
         };
         let choice = Choice { codec, i444: false };
-        capture::start::<G>(tx, key.clone(), stop.clone(), targets, display, choice)
-            .expect("the encoder opens");
+        capture::start::<G>(
+            tx,
+            key.clone(),
+            stop.clone(),
+            targets,
+            display,
+            choice,
+            Want::default(),
+        )
+        .expect("the encoder opens");
         (frames, key, stop)
     }
 

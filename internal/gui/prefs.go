@@ -128,7 +128,8 @@ func (p Prefs) named(device string, about localapi.About) localapi.About {
 
 // ViewerPrefs are the settings a device's viewer opens with: the quality
 // preset (0 Faster, 1 Balanced, 2 Sharper), the frame-rate cap ("30 fps"),
-// full colour, the codec ("auto" or a codec's name), whether the host's
+// full colour, the codec ("auto" or a codec's name), the resolution
+// ("auto", "native", "2160", "1440", "1080", "720"), whether the host's
 // sound is muted, and whether Ctrl and
 // Cmd (the Windows key) are swapped (nil: the default, swapped between a
 // Mac and Windows).
@@ -137,6 +138,7 @@ type ViewerPrefs struct {
 	FPS    string `json:"fps,omitempty"`
 	Full   bool   `json:"full,omitempty"`
 	Codec  string `json:"codec,omitempty"`
+	Size   string `json:"size,omitempty"`
 	Swap   *bool  `json:"swap,omitempty"`
 	// Mute: the host's sound is not played.
 	Mute bool `json:"mute,omitempty"`

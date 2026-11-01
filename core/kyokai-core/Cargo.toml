@@ -27,6 +27,14 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # magic DNS, CLI or web.
 easytier = { version = "2.7.0", git = "https://github.com/EasyTier/EasyTier", rev = "8b7f1f0196edb5b580829ed5f135050fb5853478", default-features = false, features = ["smoltcp", "aes-gcm", "dhcp-ipv4", "dns-resolver", "websocket", "quic", "wireguard"] }
 easytier-core = { version = "2.7.0", git = "https://github.com/EasyTier/EasyTier", rev = "8b7f1f0196edb5b580829ed5f135050fb5853478", default-features = false }
+# EasyTier's in-process TCP/IP stack (vendored, core/Cargo.toml [patch]):
+# named here only to switch on CUBIC congestion control, which Cargo's
+# feature unification gives every socket EasyTier makes (tests/smoltcp.rs
+# checks it).
+smoltcp = { version = "0.14.0", default-features = false, features = ["std", "socket-tcp", "socket-tcp-cubic"] }
+# This device's interface addresses and netmasks, to tell a relayed peer on
+# the same LAN (net.rs, `on_lan`); in the tree already through EasyTier.
+network-interface = "2.0.5"
 base64 = "0.23.1"
 chacha20poly1305 = "0.11.0"
 ed25519-dalek = "3.0.0"

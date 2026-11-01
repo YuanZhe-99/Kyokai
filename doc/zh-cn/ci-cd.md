@@ -40,6 +40,8 @@ secrets），也不会在 `main` 的 CI 中运行（发布会恢复 CI 保存的
 4. vcpkg：一起移动 `third_party/upstream.json`（标签与提交）和 `core/vcpkg-configuration.json` 中的 baseline
    （`tools/deps` 会检查两者一致）；运行 `scripts/codecs.sh`，重新生成绑定（[development.md](development.md)），审阅
    libvpx 与 libaom 的发布说明和许可证文件（`third_party/licenses`），并运行编解码往返测试（`cargo test -p kyokai-core soft`）。
-5. Rust：修改 `rust-toolchain.toml` 与工作流中的工具链。
-6. 运行完整检查，并在 [version-history.md](version-history.md) 记录“MyGo vX / EasyTier vY / RustDesk Z / vcpkg V / Rust W
+5. smoltcp：把新发布的 `.crate` 解包到 `core/third_party/smoltcp`，重新做 Kyokai 的那一处修改（`KYOKAI.md`），
+   并运行 `cargo test --manifest-path core/Cargo.toml --workspace`（`kyokai-core/tests/smoltcp.rs`）。
+6. Rust：修改 `rust-toolchain.toml` 与工作流中的工具链。
+7. 运行完整检查，并在 [version-history.md](version-history.md) 记录“MyGo vX / EasyTier vY / RustDesk Z / vcpkg V / Rust W
    （YYYY-MM-DD 检查）”，没有变化时也要记录。

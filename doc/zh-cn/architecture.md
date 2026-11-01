@@ -34,11 +34,12 @@
 | `internal/core` | 通过 purego 绑定 Rust 核心 |
 | `internal/fsutil` | 原子写入与 JSON 文档 |
 | `internal/version` | 唯一的产品版本 |
-| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`）、屏幕采集与编解码器（`video`；Media Foundation 为 `mf`，VideoToolbox 为 `vt`，VA-API 的 H.264 与 HEVC 为 `va`，系统的 FFmpeg 为 `ff`，libvpx 与 libaom 为 `soft`，H.264 与 HEVC 的封装格式为 `annexb`）、被控端的声音（`audio`、`opus`）、输入服务（`input`）、查看窗口的键盘抓取（`keyboard`）、NanoKVM USB（`kvm`：它的采集卡、经串口的键盘和鼠标）、AI 任务（`ai`：服务商、任务运行时及其驱动的桌面）、登录密钥（`keys`）、通往被控端自身服务的隧道（`tunnel`）、被控端的状态（`system`）及其查看者（`watch`） |
+| `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`）、屏幕采集与编解码器（`video`；Media Foundation 为 `mf`，VideoToolbox 为 `vt`，VA-API 的 H.264 与 HEVC 为 `va`，系统的 FFmpeg 为 `ff`，libvpx 与 libaom 为 `soft`，H.264 与 HEVC 的封装格式为 `annexb`，查看窗口把解码后的画面转换进界面缓冲区为 `convert`）、被控端的声音（`audio`、`opus`）、输入服务（`input`）、查看窗口的键盘抓取（`keyboard`）、NanoKVM USB（`kvm`：它的采集卡、经串口的键盘和鼠标）、AI 任务（`ai`：服务商、任务运行时及其驱动的桌面）、登录密钥（`keys`）、通往被控端自身服务的隧道（`tunnel`）、被控端的状态（`system`）及其查看者（`watch`） |
 | `core/third_party/rustdesk-codec` | 复用的 RustDesk libvpx 与 libaom 编解码器，以及 vcpkg 构建的静态库（[computer-use.md](computer-use.md)） |
 | `core/third_party/rustdesk-dxgi` | 复用的 RustDesk DXGI 与 GDI 屏幕采集（[computer-use.md](computer-use.md)） |
 | `core/third_party/rustdesk-qos` | 复用的 RustDesk 视频 QoS |
 | `core/third_party/thunk-noop` | 替代 EasyTier 的 `thunk-rs` 构建步骤，使 Windows 构建保持静态 C 运行时 |
+| `core/third_party/smoltcp` | 内置的 smoltcp 0.14.0（EasyTier 的进程内 TCP/IP 协议栈），重传超时的下限改为 200 毫秒（[networking.md](networking.md)） |
 
 ## FFI
 
@@ -47,7 +48,7 @@
 
 | 导出 | 作用 |
 |---|---|
-| `kyokai_abi_version() -> u32` | ABI 版本（7）；不一致时宿主拒绝加载 |
+| `kyokai_abi_version() -> u32` | ABI 版本（8）；不一致时宿主拒绝加载 |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | 以 `{version, state_dir, profile}` 启动核心 |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | 应答 `{method, params}`；调用可并发进行（Go 绑定为每个调用提供自己的响应槽；`kyokai_stop` 会等待它们）。耗时的工作——各网络的视图（每 2 秒在后台刷新；超过 10 秒的视图显示为正在连接）、导出及其密钥派生、固定密码、`protect.set`、`keys.sign`、macOS 助手的权限、钥匙串提示——都不持有核心的锁，只在读取与替换时才取锁；重建核心仍持有它 |
 | `kyokai_free(ptr, len)` | 释放响应缓冲区 |
@@ -55,7 +56,7 @@
 | `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | 等待控制端会话的下一个媒体包（它与 `kyokai_media_write` 查找会话时不取核心的锁，因此任何调用都不会拖慢视频、输入或隧道）（隧道会话为其字节，包 14），并复制到调用方的缓冲区；-1 超时，-2 已结束，-3 过大 |
 | `kyokai_media_write(session, ptr, len) -> i32` | 把界面发来的控制包（输入、关键帧请求）交给会话：0，-1 格式错误，-2 已结束，-3 因落后而被拒绝；输入从不等待——会话无法接收输入时，移动、按下、点击与文字被拒绝，松开从不被拒绝（`session::InputGate`）——其他消息最多等待 200 毫秒；隧道的字节（包 14）总是等待空间 |
 | `kyokai_decoder_open(json, len) -> u64` | 为视频流（`{codec, width, height}`）打开查看用的解码器；编解码器不可用时返回 0。不需要已启动的核心 |
-| `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | 把一帧解码到调用方的 RGBA 缓冲区：1 有画面，0 需要更多输入，-1 错误，-3 过大 |
+| `kyokai_decoder_decode(id, frame, len, want, out, cap, *w, *h) -> i32` | 解码一帧；完成的画面按 `want` 直接转换进调用方的缓冲区（借用，从开头写入）：0 原尺寸 RGBA，1 一半尺寸 RGBA（每边向上取整），2 不转换（后面还有更新的帧在等待；不写入任何内容）。1 有画面，其完整尺寸写入 `*w`、`*h`；0 需要更多输入；-1 错误或未知的 `want`；-3 按所要的方式放不进 `cap` |
 | `kyokai_decoder_info(id, out, cap) -> i32` | 把 `{decoder, hardware}` JSON 写入调用方的缓冲区：它是哪个解码器（`videotoolbox`、`media-foundation`、`libvpx`、`libaom`）以及是否用硬件解码，由解码器自己报告；返回长度，-1 未知句柄，-3 放不下 |
 | `kyokai_decoder_close(id)` | 释放解码器 |
 | `kyokai_audio_open() -> u64` | 打开被控端声音（Opus）的解码器；无法打开时为 0。不需要已启动的核心 |

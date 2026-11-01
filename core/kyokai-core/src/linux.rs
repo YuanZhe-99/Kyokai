@@ -703,7 +703,7 @@ impl Drop for XCapture {
 }
 
 impl Grab for XCapture {
-    fn open(display: Display) -> Result<(Self, u32, u32), String> {
+    fn open(display: Display, _short: u32) -> Result<(Self, u32, u32), String> {
         // The display as it is now: a mode change since the list was read
         // gives the new size.
         let now = displays()
@@ -1517,10 +1517,10 @@ pub enum Capture {
 }
 
 impl Grab for Capture {
-    fn open(display: Display) -> Result<(Self, u32, u32), String> {
+    fn open(display: Display, short: u32) -> Result<(Self, u32, u32), String> {
         match session() {
             Session::X11 => {
-                XCapture::open(display).map(|(c, w, h)| (Capture::X(Box::new(c)), w, h))
+                XCapture::open(display, short).map(|(c, w, h)| (Capture::X(Box::new(c)), w, h))
             }
             Session::Wayland => {
                 crate::wayland::Capture::open(display).map(|(c, w, h)| (Capture::Wayland(c), w, h))

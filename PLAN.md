@@ -83,6 +83,25 @@ system's FFmpeg ([computer-use.md](doc/en-us/computer-use.md), "Linux"). Left:
 |---|---|---|
 | Seen across platforms | a Linux host's NanoKVM and screen in H.264 and HEVC to a Windows and a Mac controller; a Linux controller of a Windows and a Mac host; AMD (Mesa) and NVIDIA drivers | in platform-notes, with encode time and CPU against software VP9 |
 
+## 0.6.15: left to see
+
+Built 2026-11-01 (version-history; computer-use, networking, protocol, remote-services, gui).
+What only real machines can show:
+
+| Item | Done when |
+|---|---|
+| Video baseline, before and after | 10-minute sessions while dragging windows and typing, this computer with a LAN device (direct, relayed, by address) and the test VM over its relay, RustDesk side by side: `ctl watch` gaps, the tooltip's encode and decode ms, kbit/s and fps, the host's recovery lines, a capture of small text; recorded in platform-notes |
+| Resolution | each choice's size on a 4K and a 2560×1600 host; encode and decode within a frame time at 4K in hardware |
+| Paths on real machines | an address cut and a direct-link cut on two devices: the picture back within about 3 seconds; an SSH shell and an SFTP copy (its checksum) carry on; a healthy session moves once to a LAN address that starts answering; no session moves in 10 minutes of jitter (`netdelay -stall`) |
+| LAN offer | on a LAN pair with default settings the offer shows, one click brings the path to Direct and the session carries on; none for the test VM |
+| Corners | the real app's window corners on Windows 11 at 100 % and 200 %, light and dark, and on GNOME and KDE, shown to the user |
+| Engine priority | encode and decode ms the same on battery; no Efficiency mode during a session |
+| MyGo 0.7.4 keys | Ctrl+C and Ctrl+V in the picture, the terminal, Remote Desktop and VNC panes on Windows and macOS |
+
+Not built as planned: a move hands the session to the new connection only in part (the host keeps
+the controller's AI task; capture and the encoder start again with a key frame), since the Noise
+state cannot be moved under a running session safely.
+
 ## 0.7.0
 
 The AI update.
@@ -168,6 +187,14 @@ lead to the rows above. What they found that the rows rely on:
 
 ## Decided
 
+- 0.6.15 (2026-11-01): one release for the picture, the paths and the corners. A session leaves a
+  silent path within seconds and may also move, while healthy, to a clearly better route
+  (replacing 0.5.0's "a healthy session never moves"); tunnels survive a move. Screens are sent at
+  their native resolution where both sides work in hardware, and the controller chooses the
+  resolution (Auto, Native, 4K, 1440p, 1080p, 720p). Direct connections stay off by default, and a
+  relayed session on one LAN is offered a direct connection in one click. On Windows and Linux a
+  pane's corner that meets the window's is 4 points, inside the system's own corner (never square;
+  macOS unchanged).
 - Linux (2026-10-29): 0.6.7 brings Linux as host and controller with all three run modes (the
   privileged helper included); on Wayland Kyokai's windows hide to the tray while a remote session
   controls the host, requests and approvals as notifications plus a small window remote input never
@@ -204,7 +231,7 @@ lead to the rows above. What they found that the rows rely on:
   account-like goes there); connection requests stay a card above the panes; several AI sessions
   per device in the interface, recent tasks including the devices connected before, Pi as the
   agent later; released as 0.6.0.
-- 0.5.0 (2026-10-21): a device has routes — the Kyokai network and any number of addresses; Auto picks by latency now and throughput remembered per route, at connect and on resume only (a healthy session never moves); a route can be fixed by hand. Addresses are edited from the card (⋯ → Addresses…), its path line is a route picker, and the connect form adds addresses. KCP/QUIC switches stay out (EasyTier's proxies never carry Kyokai's sessions; `quic://` server URLs already work).
+- 0.5.0 (2026-10-21): a device has routes — the Kyokai network and any number of addresses; Auto picks by latency now and throughput remembered per route, at connect and on resume only (a healthy session never moves; superseded 2026-11-01, above); a route can be fixed by hand. Addresses are edited from the card (⋯ → Addresses…), its path line is a route picker, and the connect form adds addresses. KCP/QUIC switches stay out (EasyTier's proxies never carry Kyokai's sessions; `quic://` server URLs already work).
 - 0.4.1 (2026-10-21): SSH, RDP and VNC run in built-in clients through tunnels inside Kyokai sessions to the host's own ports, each a permission like the others, off by default; saved service passwords stay in the engine's store and reach the GUI's client only at sign-in, private keys never leave the engine. A controller with a saved password or key watches a host's status quietly. KCP/QUIC proxies are not used (they never carry Kyokai's sessions). Home is a grid of rich device cards. Remote control is a stream: stale frames and input are skipped, key state stays in step, a stalled session never traps the controller's keyboard.
 - Kyokai's windows follow Hide Kyokai from capture: with it off, a person controlling this device
   may use them too (never the host's AI, nobody while a connection request or an AI approval

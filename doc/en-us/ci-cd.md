@@ -49,6 +49,9 @@ Every change set starts with `go run ./tools/deps check`. When an upstream has m
    `scripts/codecs.sh`, regenerate the bindings ([development.md](development.md)), review the
    libvpx and libaom release notes and license files (`third_party/licenses`), and run the codec
    round-trip tests (`cargo test -p kyokai-core soft`).
-5. Rust: change `rust-toolchain.toml` and the toolchain in the workflows.
-6. Run the full gate and record "MyGo vX / EasyTier vY / RustDesk Z / vcpkg V / Rust W (checked YYYY-MM-DD)"
+5. smoltcp: unpack the new release's `.crate` into `core/third_party/smoltcp`, make Kyokai's one change
+   again (`KYOKAI.md`) and run `cargo test --manifest-path core/Cargo.toml --workspace`
+   (`kyokai-core/tests/smoltcp.rs`).
+6. Rust: change `rust-toolchain.toml` and the toolchain in the workflows.
+7. Run the full gate and record "MyGo vX / EasyTier vY / RustDesk Z / vcpkg V / Rust W (checked YYYY-MM-DD)"
    in [version-history.md](version-history.md), also when nothing changed.

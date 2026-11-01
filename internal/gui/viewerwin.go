@@ -109,6 +109,12 @@ type viewerWindow struct {
 	// focusGen counts the times the window became active: a grab taken
 	// before the last one is renewed (viewer.syncGrab).
 	focusGen uint64
+	// While the main window's cards above the panes are built
+	// (bannersView), on the main thread only: cardAt, the window's corners
+	// the next card meets, which only the first one takes; cards, how many
+	// were built.
+	cardAt corners
+	cards  int
 }
 
 // pointerOver reports whether the pointer is in t's pane in the frame
@@ -875,13 +881,25 @@ func (vw *viewerWindow) view(c *ui.Context) {
 // paneDraw is how the panes of the group shown draw: the group, the pane
 // whose header starts with the sidebar's button while the sidebar is hidden,
 // the one whose header ends with the window's buttons, whether a pane is
-// dragged over them, and their room as the last frame laid it out.
+// dragged over them, their room as the last frame laid it out, and the
+// window's corners they reach together (panesCorners).
 type paneDraw struct {
 	g        group
 	topLeft  tab
 	topRight tab
 	dragging bool
 	area     size
+	at       corners
+}
+
+// paneCorners is which of the window's corners v's pane meets: those of
+// the panes' room it reaches in the split, or all of them for the pane
+// maximized.
+func (d paneDraw) paneCorners(v tab) corners {
+	if d.g.zoom != nil {
+		return d.at
+	}
+	return d.g.split.corners(v, d.at)
 }
 
 // splits reports whether v's pane has room to split side by side and above
@@ -897,7 +915,9 @@ func (d paneDraw) splits(v tab) (across, down bool) {
 
 // panesView is the group shown: its panes with their dividers, or the one
 // maximized alone; while a pane is dragged over them, where it may go.
-func (vw *viewerWindow) panesView(c *ui.Context, g group) {
+// Inputs: at, the window's corners the panes reach together
+// (panesCorners).
+func (vw *viewerWindow) panesView(c *ui.Context, g group, at corners) {
 	area := ui.Column(c.Key("panes")).Grow(1).FillWidth().MinHeight(0)
 	_, over := ui.DragOver[tabDrag](area)
 	r := area.LayoutBounds()
@@ -906,7 +926,7 @@ func (vw *viewerWindow) panesView(c *ui.Context, g group) {
 	vw.dragging = over
 	vw.area = size{r.W, r.H}
 	vw.mu.Unlock()
-	d := paneDraw{g: g, topLeft: g.split.topLeft(), topRight: g.split.topRight(), dragging: dragging, area: size{r.W, r.H}}
+	d := paneDraw{g: g, topLeft: g.split.topLeft(), topRight: g.split.topRight(), dragging: dragging, area: size{r.W, r.H}, at: at}
 	if g.zoom != nil {
 		d.topLeft, d.topRight = g.zoom, g.zoom
 	}
@@ -963,7 +983,8 @@ func (vw *viewerWindow) paneView(c *ui.Context, d paneDraw, p *pane, path string
 // half round the panes (shellView): a split's divider is a line where its
 // two sides meet, which then runs in the middle of the gap (paneView). A
 // window of its own is its pane alone: no margin, corners or border round
-// it, which would only show the window's material.
+// it, which would only show the window's material. A corner that meets
+// the window's takes paneRadii's radius.
 func (vw *viewerWindow) tabPane(c *ui.Context, d paneDraw, v tab) {
 	t := c.Theme()
 	key := v.tabKey()
@@ -974,8 +995,9 @@ func (vw *viewerWindow) tabPane(c *ui.Context, d paneDraw, v tab) {
 	several := d.g.split.root != nil && d.g.split.root.first != nil && d.g.zoom == nil
 	holder := ui.Column(c.Key("pane-at-" + key)).Fill().MinWidth(0).MinHeight(0).Padding(paneMargin / 2)
 	var box ui.Element
+	r := paneRadii(runtime.GOOS, d.paneCorners(v))
 	holder.Children(func() {
-		box = ui.Column(c.Key("pane-"+key)).Grow(1).FillWidth().MinWidth(0).MinHeight(0).Radius(paneRadius).Clip().
+		box = ui.Column(c.Key("pane-"+key)).Grow(1).FillWidth().MinWidth(0).MinHeight(0).Radius(r[:]...).Clip().
 			Background(t.Background).Border(1, t.Border).Shadow(0, 6, 18, 0, paneShadow)
 		vw.paneBox(c, d, v, box, several)
 	})

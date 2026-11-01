@@ -172,6 +172,14 @@ and Latin words only where it helps readability.
 | happy eyeballs | 快速回退并行连接（happy eyeballs） |
 | sign-in method (Key, Password only, User name and password, No sign-in, On the remote screen) | 登录方式（密钥、仅密码、用户名和密码、无需登录、在远程屏幕上） |
 | Ports of this computer's services | 本机服务的端口 |
+| Resolution / Native / Auto (the viewer's resolution choice) | 分辨率 / 原生 / 自动 |
+| frame window (frames sent ahead of acknowledgements) | 窗口 |
+| decode rate (the viewer's) | 解码速率 |
+| switching paths / silent (a path) / drop a direct link | 切换路径 / 静默 / 断开直连 |
+| move (a session or tunnel to another connection) | 迁移 |
+| congestion control / retransmission timeout | 拥塞控制 / 重传超时 |
+| Connect directly / Not now / on your network (the LAN offer) | 直接连接 / 暂不 / 在你的网络中 |
+| corners at the window's (a pane's corner meeting the window's) | 与窗口相接的圆角 |
 
 ## 6. Review checklist
 

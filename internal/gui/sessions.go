@@ -107,7 +107,7 @@ func (a *App) requestsView(c *ui.Context) {
 		if !ok {
 			chosen = slices.Clone(r.Want)
 		}
-		noticeCard(c, key, t.Accent, func() {
+		a.noticeCard(c, key, t.Accent, func() {
 			ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
 				deviceAvatar(c, r.About)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
@@ -200,7 +200,7 @@ func (a *App) hostBanner(c *ui.Context) {
 		key := "here-" + itoa(s.ID)
 		name, facts := whoIs(prefs.named(s.DeviceID, s.Peer), s.DeviceID)
 		facts = append(facts, sessionState(s, a.outdatedHelper()))
-		noticeCard(c, key, t.Warning, func() {
+		a.noticeCard(c, key, t.Warning, func() {
 			ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
 				deviceAvatar(c, s.Peer)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
@@ -585,7 +585,7 @@ func (a *App) protectedCard(c *ui.Context) {
 	a.mu.Lock()
 	password, busy := a.unlock, a.busy["access"]
 	a.mu.Unlock()
-	noticeCard(c, "protected-card", ui.Color{}, func() {
+	a.noticeCard(c, "protected-card", ui.Color{}, func() {
 		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
 			noticeIcon(c, aiShield, t.Accent)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {

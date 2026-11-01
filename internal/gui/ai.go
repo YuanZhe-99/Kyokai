@@ -116,7 +116,7 @@ func (a *App) aiBanner(c *ui.Context) {
 	if active.Origin != "" && active.State != "approval" {
 		text, tone = L.AIRemoteBanner(a.deviceName(active.Origin)), t.Warning
 	}
-	noticeCard(c, "ai-banner", tone, func() {
+	a.noticeCard(c, "ai-banner", tone, func() {
 		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
 			noticeIcon(c, navAI, tone)
 			ui.Text(c, text).FontWeight(500).Grow(1).MinWidth(0)

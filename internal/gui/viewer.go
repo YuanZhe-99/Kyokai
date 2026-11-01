@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -99,6 +100,10 @@ type videoStart struct {
 	// "no-encoder", "retrying", "no-codec", "cannot-capture"; empty for the
 	// screen, and from 0.5.2 and older.
 	Placeholder string `json:"placeholder"`
+	// Size is the resolution choice in force on the host (resolutions);
+	// only a host that takes the viewer's choice says it (0.6.15 and
+	// later).
+	Size string `json:"size"`
 }
 
 // codecImpl is which encoder or decoder handles a stream ("" unknown) and
@@ -162,6 +167,9 @@ type viewer struct {
 	// too.
 	inHead, barShown bool
 	headW            float32
+	// directLater: Not now was chosen in the offer to connect directly
+	// (directOffer), which stays away for this pane; on the main thread.
+	directLater bool
 	// address is where the connection dials the device (an IP address
 	// or domain name), empty over the network; guarded by mu.
 	address string
@@ -169,16 +177,19 @@ type viewer struct {
 	home atomic.Pointer[viewerWindow]
 	// fit is how many times smaller than the stream the fitted picture
 	// shows on screen, a power of two (0 or 1: full size), as the view last
-	// drew it: the decoder box-filters each picture by it (shrinkInto), so
+	// drew it: the core converts each picture at half size from 2 on, and
+	// the decoder box-filters that further from 4 on (show, shrinkInto), so
 	// that the main thread never has to. builtAt is when the view was last
 	// built (UnixNano): a tab neither built lately nor shown keeps its
 	// newest picture for its next build (show).
 	fit     atomic.Int32
 	builtAt atomic.Int64
-	// The video goroutine's own: the full-size picture it decodes into
-	// while the picture shows smaller, and its row sums (shrinkInto).
+	// The video goroutine's own: the half-size picture it decodes into
+	// while the picture shows smaller still, its row sums (shrinkInto),
+	// and its decode rate (decodeRate).
 	whole *image.RGBA
 	sums  []uint32
+	rate  decodeRate
 	conn  net.Conn
 	// out queues control packets (input) for the media connection's writer.
 	out chan []byte
@@ -212,6 +223,13 @@ type viewer struct {
 	// choice among them ("auto" or a codec's name).
 	offer []string
 	codec string
+	// size is the viewer's ceiling for the host's picture (resolutions), sent
+	// in its quality message; the menu offers it once the host's stream
+	// says which one applies (videoStart.Size).
+	size string
+	// fpsLimit is the frame rate this computer decodes in time (decodeRate),
+	// asked of the host below the cap; 0 while decoding keeps up.
+	fpsLimit int
 	// decoder is this computer's decoder of the stream, as it reports
 	// after its first picture.
 	decoder codecImpl
@@ -389,7 +407,7 @@ func (a *App) newViewer(device string, about localapi.About, want []string, kvm 
 		title = L.PickThisComputer()
 	}
 	v := &viewer{app: a, device: device, kvm: kvm, own: own, title: title, want: want,
-		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto"}
+		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto", size: "auto"}
 	// The settings chosen for this connection last time.
 	if vp, ok := a.viewerPrefs(v.tabKey()); ok {
 		v.preset, v.full, v.swap, v.mute, v.folded = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap, vp.Mute, vp.Folded
@@ -399,6 +417,9 @@ func (a *App) newViewer(device string, about localapi.About, want []string, kvm 
 		}
 		if vp.Codec != "" {
 			v.codec = vp.Codec
+		}
+		if slices.Contains(resolutions, vp.Size) {
+			v.size = vp.Size
 		}
 	}
 	a.mu.Lock()
@@ -662,7 +683,10 @@ func (v *viewer) pump() {
 	v.mu.Lock()
 	v.conn = conn
 	v.pictureAt, v.heardAt, v.screenAt, v.screenLost = time.Now(), time.Now(), time.Now(), false
+	// The decode rate is measured again for the new connection.
+	v.fpsLimit = 0
 	v.mu.Unlock()
+	v.gate.restart()
 	defer conn.Close()
 	keyRequest := append([]byte{packetControl}, `{"type":"key-frame"}`...)
 	_ = localapi.WritePacket(conn, keyRequest)
@@ -703,12 +727,19 @@ func (v *viewer) pump() {
 		}
 		switch p[0] {
 		case packetVideoStart:
-			// A new stream always reaches the decoder (which starts it at
-			// its key frame; only a key frame clears the gate).
-			video <- p
+			// A new stream always reaches the decoder, in order (which
+			// starts it at its key frame; only a key frame clears the
+			// gate); the same one again is left out.
+			sent, ask := v.gate.start(p, video, pool, time.Now())
+			if !sent {
+				pool.put(p)
+			}
+			if ask {
+				v.askKey(keyRequest)
+			}
 			continue
 		case packetFrame:
-			sent, ask := v.gate.pass(p, video, time.Now())
+			sent, ask := v.gate.pass(p, video, pool, time.Now())
 			if !sent {
 				pool.put(p)
 			}
@@ -798,12 +829,20 @@ func (v *viewer) pump() {
 // too, until a key frame, which alone opens the gate again; the host is
 // asked for one at once and again every keyAgain until it comes
 // (regression: it was asked once, and a key frame lost too stopped the
-// picture for good).
-// Notes: the pump, the decoder and the watchdog share it, under mu.
+// picture for good). A key frame is never left out: the frames waiting
+// before it give way (regression: a decoder 4 frames behind dropped key
+// frames too, and the host, asked again and again, reopened its video). A
+// stream description the same as the last one passed (a key frame was
+// asked for) is not queued again; another always is, in order, without
+// waiting on a full queue (regression: the reader waited on the decoder).
+// Notes: the pump, the decoder and the watchdog share it, under mu; only
+// the pump queues.
 type videoGate struct {
 	mu    sync.Mutex
 	lost  bool
 	asked time.Time
+	// last is the stream description passed last (its packet's bytes).
+	last []byte
 }
 
 // Picture health (viewer.watchdog): how often the viewer asks the host for
@@ -819,24 +858,102 @@ const (
 	reconnectAfter = 10 * time.Second
 )
 
-// pass queues frame p unless it must be left out.
+// pass queues frame p unless it must be left out; a key frame on a full
+// queue takes the place of the frames waiting there (whose buffers go back
+// to pool).
 // Returns: whether it was queued (the caller keeps it otherwise), and
 // whether to ask the host for a key frame now.
-func (g *videoGate) pass(p []byte, video chan<- []byte, now time.Time) (sent, ask bool) {
-	g.mu.Lock()
-	defer g.mu.Unlock()
+func (g *videoGate) pass(p []byte, video chan []byte, pool packetPool, now time.Time) (sent, ask bool) {
 	key := len(p) > 1 && p[1]&keyFrame != 0
+	g.mu.Lock()
 	if g.lost && !key {
+		g.mu.Unlock()
 		return false, false
 	}
 	select {
 	case video <- p:
 		g.lost = false
+		g.mu.Unlock()
 		return true, false
 	default:
-		g.lost = true
-		return false, g.ask(now)
 	}
+	if !key {
+		g.lost = true
+		ask = g.ask(now)
+		g.mu.Unlock()
+		return false, ask
+	}
+	g.mu.Unlock()
+	flush(p, video, pool)
+	g.mu.Lock()
+	g.lost = false
+	g.mu.Unlock()
+	return true, false
+}
+
+// start queues stream description p unless it is the one passed last. On
+// a full queue the frames waiting there give way to it (the new stream
+// starts at a key frame); if any did, the gate waits for a key frame.
+// Returns: whether it was queued (the caller keeps it otherwise), and
+// whether to ask the host for a key frame now.
+func (g *videoGate) start(p []byte, video chan []byte, pool packetPool, now time.Time) (sent, ask bool) {
+	g.mu.Lock()
+	same := bytes.Equal(p, g.last)
+	if !same {
+		g.last = append(g.last[:0], p...)
+	}
+	g.mu.Unlock()
+	if same {
+		return false, false
+	}
+	select {
+	case video <- p:
+		return true, false
+	default:
+	}
+	if flush(p, video, pool) == 0 {
+		return true, false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.lost = true
+	return true, g.ask(now)
+}
+
+// restart forgets the stream description passed last, for a new media
+// connection, whose decoder starts afresh.
+func (g *videoGate) restart() {
+	g.mu.Lock()
+	g.last = g.last[:0]
+	g.mu.Unlock()
+}
+
+// flush queues p after the packets waiting in video: the frames give way
+// (their buffers go back to pool), stream descriptions stay, in order.
+// Returns: how many frames gave way.
+// Notes: the pump alone sends on video, so the room the frames left is
+// there; waits only while descriptions fill the queue, which the decoder
+// takes at once.
+func flush(p []byte, video chan []byte, pool packetPool) (dropped int) {
+	var starts [][]byte
+	for drained := false; !drained; {
+		select {
+		case q := <-video:
+			if q[0] == packetVideoStart {
+				starts = append(starts, q)
+			} else {
+				pool.put(q)
+				dropped++
+			}
+		default:
+			drained = true
+		}
+	}
+	for _, q := range starts {
+		video <- q
+	}
+	video <- p
+	return dropped
 }
 
 // broke closes the gate after the decoder failed on a frame.
@@ -972,6 +1089,7 @@ func (v *viewer) decodeVideo(lib *core.Lib, video <-chan []byte, pool packetPool
 	}()
 	// fresh: the decoder has not had a key frame yet.
 	fresh := false
+	v.rate = decodeRate{}
 	for p := range video {
 		switch p[0] {
 		case packetVideoStart:
@@ -995,6 +1113,8 @@ func (v *viewer) decodeVideo(lib *core.Lib, video <-chan []byte, pool packetPool
 			d, err := lib.OpenDecoder(p[1:])
 			if err != nil {
 				v.setState(L.ViewerUnsupported(codecLabel(s.Codec)))
+				// The host's next description, the same, tries again.
+				v.gate.restart()
 				break
 			}
 			dec, fresh = d, true
@@ -1008,7 +1128,9 @@ func (v *viewer) decodeVideo(lib *core.Lib, video <-chan []byte, pool packetPool
 			}
 			first := fresh
 			fresh = false
-			if v.show(dec, p[10:]) != nil {
+			// With more waiting, the picture is decoded but not converted:
+			// only the newest is shown.
+			if v.show(dec, p[10:], len(video) > 0) != nil {
 				fresh = true
 				v.mu.Lock()
 				v.decodeFailed = true
@@ -1074,17 +1196,22 @@ func (v *viewer) begin(s videoStart) {
 // show decodes one frame into the picture neither shown nor waiting, which
 // becomes the waiting one, and has the main thread show the newest one
 // waiting: decoding never waits for drawing, and a picture not drawn yet
-// gives way to a newer one. Frames the decoder holds show nothing.
-// While the fitted picture shows at half its size or less (fit), the frame
-// is decoded into the goroutine's full-size picture and box-filtered into
-// the waiting one, here rather than on the main thread (MyGo filters a
-// bitmap drawn that small after every update). A tab not built lately and
-// not shown is not redrawn; its next build shows the newest picture
-// (present).
+// gives way to a newer one. Frames the decoder holds show nothing, and a
+// frame with more waiting behind it (behind) is decoded but not converted.
+// The core converts straight into the picture: while the fitted picture
+// shows at half its size or less (fit), at half size, and further
+// box-filtered into the waiting one from the goroutine's half-size picture
+// while it shows at a quarter or less, here rather than on the main thread
+// (MyGo filters a bitmap drawn that small after every update). A tab not
+// built lately and not shown is not redrawn; its next build shows the
+// newest picture (present).
 // Returns: the decoder's error (a picture of another size is one too).
+// Side effects: counts the frame for the toolbar's numbers and the decode
+// rate, and asks the host for another frame rate when decoding falls
+// behind or keeps up again (decodeRate).
 // Notes: the bitmap takes a picture without a copy, so the one shown is
 // never decoded into. Runs on the video goroutine.
-func (v *viewer) show(dec *core.Decoder, data []byte) error {
+func (v *viewer) show(dec *core.Decoder, data []byte, behind bool) error {
 	f := max(int(v.fit.Load()), 1)
 	v.mu.Lock()
 	free := 0
@@ -1102,19 +1229,26 @@ func (v *viewer) show(dec *core.Decoder, data []byte) error {
 		}
 	}
 	v.bytes += len(data)
+	fpsCap := v.fpsCap
 	v.mu.Unlock()
 	if pic == nil {
 		return nil
 	}
-	into := pic
-	if f > 1 {
-		if v.whole == nil || v.whole.Rect.Dx() != sw || v.whole.Rect.Dy() != sh {
-			v.whole = image.NewRGBA(image.Rect(0, 0, sw, sh))
+	into, want := pic, core.Full
+	switch {
+	case behind:
+		want = core.Skip
+	case f > 2:
+		hw, hh := shrunk(sw, 2), shrunk(sh, 2)
+		if v.whole == nil || v.whole.Rect.Dx() != hw || v.whole.Rect.Dy() != hh {
+			v.whole = image.NewRGBA(image.Rect(0, 0, hw, hh))
 		}
-		into = v.whole
+		into, want = v.whole, core.Half
+	case f == 2:
+		want = core.Half
 	}
 	began := time.Now()
-	w, h, ok, err := dec.Decode(data, into.Pix)
+	w, h, ok, err := dec.Decode(data, into.Pix, want)
 	switch {
 	case err != nil:
 		return err
@@ -1123,16 +1257,19 @@ func (v *viewer) show(dec *core.Decoder, data []byte) error {
 	case w != sw || h != sh:
 		return fmt.Errorf("a %d×%d picture in a %d×%d stream", w, h, sw, sh)
 	}
-	if f > 1 {
-		v.sums = shrinkInto(pic, into, f, v.sums)
+	if want == core.Half && f > 2 {
+		v.sums = shrinkInto(pic, into, f/2, v.sums)
 	}
 	decoded := time.Now()
+	limit, changed := v.rate.add(decoded.Sub(began), decoded, capOf(fpsCap))
 	v.mu.Lock()
 	v.frames++
 	v.pictureAt = decoded
 	v.decodeFailed = false
 	v.decoding += decoded.Sub(began)
-	v.ready, v.readyAt = free, decoded
+	if !behind {
+		v.ready, v.readyAt = free, decoded
+	}
 	if el := decoded.Sub(v.counted); el >= time.Second {
 		v.fps = float64(v.frames) / el.Seconds()
 		v.kbps = float64(v.bytes) * 8 / 1000 / el.Seconds()
@@ -1141,11 +1278,71 @@ func (v *viewer) show(dec *core.Decoder, data []byte) error {
 		v.frames, v.drawn, v.bytes, v.counted = 0, 0, 0, decoded
 		v.decoding, v.drawing = 0, 0
 	}
+	if changed {
+		v.fpsLimit = limit
+	}
 	v.mu.Unlock()
-	if v.seen(decoded) {
+	if changed {
+		v.sendQuality()
+	}
+	if !behind && v.seen(decoded) {
 		v.update(v.present)
 	}
 	return nil
+}
+
+// decodeRate measures how many frames a second this computer decodes, as
+// RustDesk's fps_control does: when decoding cannot keep the viewer's
+// frame-rate cap, the host is asked for about 90 % of the rate it keeps
+// (never below fpsFloor), and for the cap again once it keeps up.
+// Notes: the video goroutine's own.
+type decodeRate struct {
+	frames int
+	busy   time.Duration
+	since  time.Time
+	// limit is the frame rate asked for now, 0 for the cap.
+	limit int
+}
+
+// The decode rate's rules: the lowest frame rate asked for, how many
+// frames a measure needs (a still screen sends few, which say nothing),
+// and how long a measure waits for them.
+const (
+	fpsFloor     = 5
+	rateFrames   = 10
+	rateLongest  = 5 * time.Second
+	rateHeadroom = 0.9
+)
+
+// add counts a frame decoded in took (with its conversion), now; once a
+// second (rateFrames at least) it compares the rate decoding keeps with
+// the cap.
+// Returns: the frame rate to ask the host for (0: the cap), and whether it
+// changed. Small changes (under a tenth, or 2 fps) wait, so that the host
+// is not asked every second.
+func (r *decodeRate) add(took time.Duration, now time.Time, capFPS int) (int, bool) {
+	r.frames++
+	r.busy += took
+	el := now.Sub(r.since)
+	if el < time.Second || r.frames < rateFrames && el < rateLongest {
+		return r.limit, false
+	}
+	frames, busy := r.frames, r.busy
+	r.frames, r.busy, r.since = 0, 0, now
+	if frames < rateFrames || busy <= 0 {
+		return r.limit, false
+	}
+	keeps := float64(frames) / busy.Seconds() * rateHeadroom
+	want := 0
+	if keeps < float64(capFPS) {
+		want = max(fpsFloor, int(keeps))
+	}
+	step := want - r.limit
+	if want == r.limit || want != 0 && r.limit != 0 && max(step, -step) < max(2, r.limit/10) {
+		return r.limit, false
+	}
+	r.limit = want
+	return want, true
 }
 
 // builtLately is how long after its last build a tab still counts as on
@@ -1328,7 +1525,7 @@ func (v *viewer) barState() (bar, *hostActions, bool) {
 	v.mu.Lock()
 	control := v.control
 	b := bar{start: v.start, fps: v.fps, kbps: v.kbps, decodeMS: v.decodeMS, drawMS: v.drawMS, host: v.host,
-		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec, decoder: v.decoder, paused: v.paused && control}
+		preset: v.preset, fpsCap: v.fpsCap, full: v.full, displays: v.displays, offer: v.offer, codec: v.codec, size: v.size, decoder: v.decoder, paused: v.paused && control}
 	actions := v.actions
 	v.mu.Unlock()
 	b.showPtr = v.app == nil || v.app.showPointer()
@@ -1538,8 +1735,60 @@ func (v *viewer) picture(c *ui.Context, bm *ui.Bitmap, state string, start video
 						}
 					})
 				})
+			} else if v.offersDirect() {
+				v.directOffer(c)
 			}
 		}
+	})
+}
+
+// offersDirect reports whether the pane offers to connect directly: its
+// device is on this device's LAN while the network's path to it is relayed,
+// this device does not try direct connections, and the session runs over
+// the network (not by address, not to a NanoKVM), until Not now.
+// Notes: reads the networks' settings once if they were not read yet; no
+// offer until they are.
+func (v *viewer) offersDirect() bool {
+	if v.app == nil || v.kvm || v.directLater {
+		return false
+	}
+	path := v.app.pathTo(v.device)
+	if path.Path != "relay" || !path.LAN || v.app.routeOf(v.device) != "" {
+		return false
+	}
+	a := v.app
+	a.mu.Lock()
+	loaded, busy, direct := a.net.loaded, a.busy["network"], a.net.direct
+	a.mu.Unlock()
+	if !loaded {
+		if !busy {
+			a.loadNetworks()
+		}
+		return false
+	}
+	return !direct
+}
+
+// directOffer is the offer over the picture to connect directly
+// (offersDirect): Connect directly turns on Try direct connections, as the
+// Network page's switch does, after which the path moves to Direct; on
+// Windows it says that the firewall may ask once.
+func (v *viewer) directOffer(c *ui.Context) {
+	ui.Column(c.Key("direct-offer")).Absolute().Bottom(noticeBottom).Left(0).Right(0).AlignItems(ui.Center).PassThrough().Children(func() {
+		notice(c, func() {
+			ui.Column(c).Gap(2).Shrink(1).Children(func() {
+				ui.Text(c, L.ViewerDirectOffer()).TextColor(ui.Hex("#ffffff"))
+				if runtime.GOOS == "windows" {
+					ui.Text(c, L.ViewerDirectFirewall()).FontSize(sizeSmall).TextColor(ui.RGBA(255, 255, 255, 0.7))
+				}
+			})
+			if ui.Button(c.Key("direct-on"), L.ViewerDirectConnect()).Clicked() {
+				v.app.setDirect(true)
+			}
+			if ui.Button(c.Key("direct-later"), L.ViewerDirectLater()).Clicked() {
+				v.directLater = true
+			}
+		})
 	})
 }
 
@@ -1644,7 +1893,7 @@ type bar struct {
 	full, showPtr               bool
 	displays                    hostDisplays
 	offer                       []string
-	codec                       string
+	codec, size                 string
 	decoder                     codecImpl
 	// path is the device's entry in the network status ("" Path when the
 	// network lists no route to it).
@@ -1853,6 +2102,18 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 				}
 			}
 		})
+		// The resolution, from a host that takes the viewer's choice (its
+		// stream says which applies).
+		if b.start.Size != "" {
+			m.Submenu(L.ViewerResolution(), func(m *ui.Menu) {
+				for _, size := range resolutions {
+					if m.Item(resolutionLabel(size)).Checked(size == b.size).Chosen() {
+						v.setSize(size)
+						back()
+					}
+				}
+			})
+		}
 		if names, labels := codecChoices(b.offer); len(names) > 2 {
 			m.Submenu(L.ViewerCodec(), func(m *ui.Menu) {
 				for i, label := range labels {

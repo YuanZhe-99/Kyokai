@@ -3,7 +3,7 @@
 Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版本的源码或官方文档核实。Phase 0 可行性验证运行后，
 会把实测结果补充到对应小节；这里没有列出的内容一律不作假设。
 
-## MyGo v0.6.3
+## MyGo v0.7.4
 
 - **Windows 窗口外观与材质（验证，2026-10-23）。** 以 `Vibrancy` 创建的窗口，在界面不画背景的地方显示材质
   （Windows 11 上 `Context.Vibrancy` 为 true；根元素须为 `ui.Transparent`）；`PrintWindow` 截图不包含背景材质。
@@ -12,6 +12,9 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   阴影与圆角；界面随后自己画按钮，调用 `Minimize`、`Maximize`、`Unmaximize` 与 `Close`，`Element.MaximizeButton`
   让它的最大化按钮带上 Windows 11 的贴靠布局。会话锁定时，向界面的子窗口（最大的那个）投递消息可以点击它。
   `Bitmap.Update` 只重绘、不重建界面，因此圆角裁剪元素中的实时画面不会引起界面重建。
+- **0.7.4（2026-11-01 核实）。** “编辑”菜单跟随焦点，带 `HandleInput` 的元素（桌面的画面、远程桌面或 VNC 小窗、终端）算作能接收其命令，
+  因此在那里“复制”与“粘贴”保持可用；在 Windows 与 Linux 上，按键仍先到达窗口、再到菜单。原生窗口打开时已完整绘制（Kyokai 仍以
+  `Hidden` 打开自己的窗口再调用 `Show`）。网格的百分比相对于它自己的单元格；Kyokai 的网格显示不变。
 - **0.6.3（2026-10-23 核实）。** Kyokai 依赖的行为没有变化。Windows 上消息对话框的结果不再放在会移动的 Go
   栈上，Direct3D 对没有变化的帧按显示器刷新率限速；按下可以穿过隐藏滚动条的轨道；获得焦点的文本框接收自己的
   按键，因此 Windows 上“编辑 › 粘贴”的 Ctrl+V 只粘贴一次（画面不是文本框，其按键不变）；WebKit 内容规则引入了
@@ -43,7 +46,7 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
 - **应用的窗口。** 多窗口、全屏、位置尺寸、置顶、`SetContentProtection`，以及 `NativeHandle()`（HWND / NSWindow）。
 - **应用服务。** 托盘（菜单、图标）、通知（Windows 上为气泡）、剪贴板（文本、HTML、PNG 图片；没有变化事件）、
   对话框、外部打开、按应用名称区分的单实例锁、登录时启动、电源事件（锁定/解锁、空闲时间）、`App.Path`
-  的各种目录（没有单独的 config 类）、`Relaunch`、可取消的退出钩子。macOS 上 `App.WasOpenedAtLogin`（截至 v0.7.3）
+  的各种目录（没有单独的 config 类）、`Relaunch`、可取消的退出钩子。macOS 上 `App.WasOpenedAtLogin`（截至 v0.7.4）
   在 `applicationWillFinishLaunching:` 中读取启动的 Apple 事件，那时 AppKit 还没有分派它，所以登录项总是读到“否”；
   该事件只在 `applicationDidFinishLaunching:` 运行期间是当前事件，`WhenReady` 的函数也在那里运行，因此 Kyokai
   自己在那里读取（`gui.LaunchedAsLoginItem`）。

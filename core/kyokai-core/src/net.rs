@@ -214,7 +214,20 @@ struct Node {
     /// The latest reading of its view of the network and when it was taken
     /// (None in it: the node did not answer), kept by `refresh_seen`.
     seen: Arc<Mutex<Option<Reading>>>,
+    /// Which relayed peers are on this device's LAN, kept by `refresh_seen`.
+    lan: Lan,
 }
+
+/// Whether each relayed peer of a node is on this device's LAN, by peer id:
+/// when it was last looked at (a look starts then) and what the last look
+/// found. Only the embedded node's peers are looked at (`mark_lan`).
+type Lan = Arc<Mutex<std::collections::HashMap<u32, (Instant, bool)>>>;
+
+/// How long what a look found of a peer's LAN stands before it is looked at
+/// again.
+const LAN_AGAIN: Duration = Duration::from_secs(60);
+/// Longest a peer may take to answer with its interface addresses.
+const LAN_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// A reading of a node's view of its network: when it was taken, and the
 /// view (None: the node did not answer).
@@ -255,10 +268,15 @@ struct Seen {
 /// Another node of the network as `Seen` lists it.
 #[derive(Clone)]
 struct SeenPeer {
+    /// Its EasyTier peer id (0 through an official core, which never looks
+    /// at a peer's LAN).
+    id: u32,
     hostname: String,
     ip: Option<Ipv4Addr>,
     direct: bool,
     latency: i32,
+    /// Relayed, yet on this device's LAN (`mark_lan`).
+    lan: bool,
 }
 
 impl Core {
@@ -278,6 +296,8 @@ impl Core {
                     .into_iter()
                     .filter(|r| r.peer_id != my_peer)
                     .map(|r| SeenPeer {
+                        id: r.peer_id,
+                        lan: false,
                         direct: peers.iter().any(|p| {
                             p.peer_id == r.peer_id && !p.directly_connected_conns.is_empty()
                         }),
@@ -307,6 +327,8 @@ impl Core {
                         .iter()
                         .filter(|r| !r.local())
                         .map(|r| SeenPeer {
+                            id: 0,
+                            lan: false,
                             hostname: r.hostname.clone(),
                             ip: r.ip(),
                             direct: r.direct(),
@@ -674,6 +696,9 @@ impl Network {
                                     if let Some(name) = self.names.of(id) {
                                         d["name"] = json!(name);
                                     }
+                                    if r.lan && !r.direct {
+                                        d["lan"] = json!(true);
+                                    }
                                     Some(d)
                                 })
                                 .collect();
@@ -741,6 +766,7 @@ impl Network {
             failed: failed.clone(),
             listen,
             seen: Arc::default(),
+            lan: Arc::default(),
         };
         if let Some(tag) = self.stored.easytier.clone() {
             let slot = Arc::new(std::sync::OnceLock::new());
@@ -1034,25 +1060,31 @@ fn current(seen: Option<&Reading>, now: Instant) -> Option<Seen> {
 
 /// Reads every running node's view of its network again, all at once, every
 /// SEEN_EVERY, so that the status never waits for a node (an official
-/// core's view starts an `easytier-cli` process).
-/// Side effects: writes each node's `seen`; runs until aborted.
+/// core's view starts an `easytier-cli` process). Beside each reading of
+/// an embedded node, which of its relayed peers are on this device's LAN
+/// (`mark_lan`).
+/// Side effects: writes each node's `seen` and `lan`; starts LAN looks;
+/// runs until aborted.
 async fn refresh_seen(nodes: Nodes) {
     loop {
         let reading: Vec<_> = nodes
             .lock()
             .map(|n| {
                 n.iter()
-                    .filter_map(|n| Some((n.node.clone()?, n.seen.clone())))
+                    .filter_map(|n| Some((n.node.clone()?, n.seen.clone(), n.lan.clone())))
                     .collect()
             })
             .unwrap_or_default();
         let mut all = tokio::task::JoinSet::new();
-        for (node, slot) in reading {
+        for (node, slot, lan) in reading {
             all.spawn(async move {
-                let seen = tokio::time::timeout(SEEN_TIMEOUT, node.seen())
+                let mut seen = tokio::time::timeout(SEEN_TIMEOUT, node.seen())
                     .await
                     .ok()
                     .flatten();
+                if let (Core::Native(n), Some(s)) = (&node, seen.as_mut()) {
+                    mark_lan(n, s, &lan);
+                }
                 if let Ok(mut s) = slot.lock() {
                     *s = Some((Instant::now(), seen));
                 }
@@ -1061,6 +1093,213 @@ async fn refresh_seen(nodes: Nodes) {
         all.join_all().await;
         tokio::time::sleep(SEEN_EVERY).await;
     }
+}
+
+/// Marks the relayed peers of `seen` that the latest look found on this
+/// device's LAN, and starts a look (`look_lan`) at each relayed peer not
+/// looked at in LAN_AGAIN; a peer keeps what its last look found while the
+/// next one runs. Direct peers are never looked at.
+/// Side effects: forgets the peers no longer relayed; spawns the looks.
+fn mark_lan(node: &Arc<NativeCoreInstance>, seen: &mut Seen, lan: &Lan) {
+    let Ok(mut known) = lan.lock() else {
+        return;
+    };
+    known.retain(|id, _| seen.peers.iter().any(|p| p.id == *id && !p.direct));
+    let now = Instant::now();
+    for p in seen.peers.iter_mut().filter(|p| !p.direct) {
+        let (at, on) = known.entry(p.id).or_insert((now, false));
+        if *at == now || now.saturating_duration_since(*at) >= LAN_AGAIN {
+            *at = now;
+            tokio::spawn(look_lan(node.clone(), p.id, lan.clone()));
+        }
+        p.lan = *on;
+    }
+}
+
+/// Looks whether a peer is on this device's LAN: asks it for its interface
+/// addresses, as EasyTier's direct connector does before it dials (its
+/// `GetIpList`, which every node answers, direct connections on or not),
+/// and compares them with this device's own subnets (`on_lan`). A peer
+/// that does not answer within LAN_TIMEOUT is not on it.
+/// Side effects: stores what it found in `lan`, unless the peer was
+/// forgotten meanwhile.
+async fn look_lan(node: Arc<NativeCoreInstance>, peer: u32, lan: Lan) {
+    use easytier::proto::peer_rpc::{
+        DirectConnectorRpc, DirectConnectorRpcClientFactory, GetIpListRequest,
+    };
+    use easytier::proto::rpc_types::controller::BaseController;
+    let pm = node.peer_manager();
+    let rpc = pm
+        .get_peer_rpc_mgr()
+        .rpc_client()
+        .scoped_client::<DirectConnectorRpcClientFactory<BaseController>>(
+            pm.my_peer_id(),
+            peer,
+            pm.network_name().to_owned(),
+        );
+    let theirs: Vec<Ipv4Addr> = match tokio::time::timeout(
+        LAN_TIMEOUT,
+        rpc.get_ip_list(BaseController::default(), GetIpListRequest {}),
+    )
+    .await
+    {
+        Ok(Ok(list)) => list
+            .interface_ipv4s
+            .into_iter()
+            .map(Ipv4Addr::from)
+            .collect(),
+        _ => Vec::new(),
+    };
+    let virtual_net = node
+        .node_snapshot()
+        .await
+        .ipv4_addr
+        .map(|a| (a.address(), a.network_length()));
+    let ours = tokio::task::spawn_blocking(local_subnets)
+        .await
+        .unwrap_or_default();
+    let on = on_lan(&theirs, &ours, virtual_net);
+    if let Ok(mut known) = lan.lock()
+        && let Some(entry) = known.get_mut(&peer)
+    {
+        entry.1 = on;
+    }
+}
+
+/// This device's own IPv4 addresses with their netmasks, loopback and
+/// other internal interfaces left out (none when they cannot be read).
+fn local_subnets() -> Vec<(Ipv4Addr, Ipv4Addr)> {
+    use network_interface::{Addr, NetworkInterface, NetworkInterfaceConfig};
+    NetworkInterface::show()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|i| !i.internal)
+        .flat_map(|i| i.addr)
+        .filter_map(|a| match a {
+            Addr::V4(v4) => Some((v4.ip, v4.netmask?)),
+            Addr::V6(_) => None,
+        })
+        .collect()
+}
+
+/// Whether a peer is on this device's LAN: one of its interface addresses
+/// (`theirs`) lies in one of this device's private IPv4 subnets (`ours`,
+/// address and netmask) and is not this device's own address.
+/// Inputs: `virtual_net`, EasyTier's virtual subnet (an address and its
+/// prefix length), whose addresses never count, on either side.
+/// Notes: loopback, link-local and shared (CGNAT, Tailscale's 100.64/10)
+/// addresses never count, nor a subnet wider than /8. Two places that use
+/// the same private subnet look alike from here.
+fn on_lan(
+    theirs: &[Ipv4Addr],
+    ours: &[(Ipv4Addr, Ipv4Addr)],
+    virtual_net: Option<(Ipv4Addr, u8)>,
+) -> bool {
+    let within =
+        |ip: Ipv4Addr, net: Ipv4Addr, mask: u32| u32::from(ip) & mask == u32::from(net) & mask;
+    let counts = |ip: &Ipv4Addr| {
+        let virtual_one = virtual_net.is_some_and(|(net, len)| {
+            let mask = u32::MAX
+                .checked_shl(32 - u32::from(len.min(32)))
+                .unwrap_or(0);
+            within(*ip, net, mask)
+        });
+        !ip.is_loopback()
+            && !ip.is_link_local()
+            && !ip.is_unspecified()
+            && u32::from(*ip) & 0xffc0_0000 != 0x6440_0000
+            && !virtual_one
+    };
+    ours.iter()
+        .filter(|(ip, mask)| ip.is_private() && counts(ip) && u32::from(*mask).leading_ones() >= 8)
+        .any(|(ip, mask)| {
+            theirs
+                .iter()
+                .filter(|t| counts(t) && *t != ip)
+                .any(|t| within(*t, *ip, u32::from(*mask)))
+        })
+}
+
+/// The embedded nodes serving sessions, by the number their sessions are
+/// counted under (`Source::network`): where a session that fell silent
+/// finds the node whose direct link to drop (`drop_direct`).
+static SERVING: Mutex<Vec<(u64, std::sync::Weak<NativeCoreInstance>)>> = Mutex::new(Vec::new());
+
+/// When this device last dropped its direct links to a peer, by node and
+/// address: at most once in DROP_AGAIN, so a path that keeps failing is not
+/// fought over with EasyTier's own connector.
+static DROPPED: Mutex<Vec<(usize, Ipv4Addr, std::time::Instant)>> = Mutex::new(Vec::new());
+
+/// How long after dropping a peer's direct links they are not dropped again.
+const DROP_AGAIN: Duration = Duration::from_secs(30);
+
+/// Closes this device's direct links to the peer a silent session runs to
+/// (doc/en-us/networking.md, "Switching paths"): EasyTier then carries it
+/// through the server's relay at once, instead of after the 5 lost pings
+/// (about 10 seconds) it waits for, and its connector brings the direct
+/// link back by itself once it works. Only on Kyokai Network (an official
+/// core is left to itself), at most once in DROP_AGAIN per peer.
+/// Inputs: `network`, the node's number; `ip`, the peer's virtual address.
+/// Side effects: spawns the closing on the runtime.
+pub fn drop_direct(network: u64, ip: IpAddr) {
+    let IpAddr::V4(ip) = ip else {
+        return;
+    };
+    let node = SERVING.lock().ok().and_then(|s| {
+        s.iter()
+            .find(|(n, _)| *n == network)
+            .and_then(|(_, w)| w.upgrade())
+    });
+    if let Some(node) = node {
+        drop_links(node, ip);
+    }
+}
+
+/// Closes `node`'s direct links to the peer at `ip` (`drop_direct`), unless
+/// it did so less than DROP_AGAIN ago.
+/// Side effects: spawns the closing on the runtime.
+fn drop_links(node: Arc<NativeCoreInstance>, ip: Ipv4Addr) {
+    let key = Arc::as_ptr(&node) as usize;
+    if let Ok(mut d) = DROPPED.lock() {
+        let now = std::time::Instant::now();
+        d.retain(|(_, _, at)| now.duration_since(*at) < DROP_AGAIN);
+        if d.iter().any(|(n, a, _)| *n == key && *a == ip) {
+            return;
+        }
+        d.push((key, ip, now));
+    }
+    tokio::spawn(async move {
+        if close_direct(&node, ip).await > 0 {
+            log::info!(
+                "network: a session to {ip} fell silent: its direct link was dropped for the relay"
+            );
+        }
+    });
+}
+
+/// Closes `node`'s direct links to the peer at `ip` now.
+/// Returns: how many it closed (0 when it has none, or no such peer).
+pub(crate) async fn close_direct(node: &NativeCoreInstance, ip: Ipv4Addr) -> usize {
+    let Some(peer) = node
+        .route_snapshots()
+        .await
+        .into_iter()
+        .find(|r| r.ipv4_addr.and_then(|a| a.address).map(Ipv4Addr::from) == Some(ip))
+        .map(|r| r.peer_id)
+    else {
+        return 0;
+    };
+    let conns: Vec<_> = node
+        .peer_snapshots()
+        .await
+        .into_iter()
+        .filter(|p| p.peer_id == peer)
+        .flat_map(|p| p.directly_connected_conns)
+        .collect();
+    for c in &conns {
+        let _ = node.peer_manager().close_peer_conn(peer, c).await;
+    }
+    conns.len()
 }
 
 /// Starts a network's node, then accepts sessions on its data plane,
@@ -1072,6 +1311,10 @@ async fn serve_node(
     network: u64,
     failed: Arc<Mutex<Option<String>>>,
 ) {
+    if let Ok(mut s) = SERVING.lock() {
+        s.retain(|(n, w)| *n != network && w.strong_count() > 0);
+        s.push((network, Arc::downgrade(&node)));
+    }
     if let Err(e) = node.start().await {
         if let Ok(mut f) = failed.lock() {
             *f = Some(format!("{e:#}"));
@@ -1781,6 +2024,63 @@ fn keep_resuming(
     (since, now.duration_since(since) <= RESUME_FOR)
 }
 
+/// How often a running session's other routes are looked at.
+const BETTER_EVERY: Duration = Duration::from_secs(30);
+
+/// Whether another route is clearly better than the one a session takes:
+/// under half its round trip and at least 20 ms less, or direct where the
+/// current one is relayed and no slower.
+/// Inputs: the current round trip and whether its path is direct; the
+/// other route's round trip and whether it is direct.
+fn clearly_better(now_ms: u32, now_direct: bool, other_ms: u32, other_direct: bool) -> bool {
+    (other_ms * 2 < now_ms && now_ms - other_ms >= 20)
+        || (!now_direct && other_direct && other_ms <= now_ms)
+}
+
+/// Watches a running session's other routes (doc/en-us/networking.md,
+/// "Switching paths"): every BETTER_EVERY the addresses are looked at and
+/// the network's path read, and when one route was clearly better twice
+/// in a row (`clearly_better`) the session moves there (`session::reroute`);
+/// the dialer ends the watch with the connection.
+async fn better_routes(dialer: Dialer, id: u64, device_id: String) {
+    let mut ahead = 0u8;
+    loop {
+        tokio::time::sleep(BETTER_EVERY).await;
+        let Some((current, now_ms)) = session::route_now(&dialer.ctx, id) else {
+            return;
+        };
+        if now_ms == 0 {
+            continue;
+        }
+        let nodes = running(&dialer.nodes);
+        let (probes, cands) =
+            tokio::join!(dialer.probe(&device_id), candidates(&nodes, &device_id));
+        let net = cands.first().map(|c| (c.latency.max(0) as u32, c.direct));
+        let now_direct = if current.is_empty() {
+            net.is_some_and(|(_, d)| d)
+        } else {
+            true
+        };
+        let mut others: Vec<(u32, bool)> = probes
+            .iter()
+            .filter(|p| p.state == "ok" && p.address != current)
+            .filter_map(|p| p.rtt_ms.map(|r| (r, true)))
+            .collect();
+        if !current.is_empty() {
+            others.extend(net);
+        }
+        let better = others
+            .iter()
+            .any(|&(ms, direct)| clearly_better(now_ms, now_direct, ms, direct));
+        ahead = if better { ahead + 1 } else { 0 };
+        if ahead >= 2 {
+            log::info!("network: a clearly better route answers: the session moves there");
+            session::reroute(&dialer.ctx, id);
+            ahead = 0;
+        }
+    }
+}
+
 /// A session to start: with whom, by which routes, the password (empty
 /// asks without one, or relies on a sign-in key), what to ask for, what to
 /// do with the password, and what the session carries.
@@ -1852,17 +2152,34 @@ impl Dialer {
             let ctx = dialer.ctx.clone();
             let mut resume: Option<zeroize::Zeroizing<String>> = None;
             let mut lost_at = None;
+            // A connection that ran and dropped is dialed again at once;
+            // attempts that found nothing wait RESUME_RETRY between them.
+            let mut again_now = false;
             loop {
                 if resume.is_some() {
                     session::reconnecting(&ctx, id);
-                    // Between attempts a local stop ends the session at once.
-                    tokio::select! {
-                        _ = stop.notified() => return session::give_up(&ctx, id, session::Failure::Broken),
-                        _ = tokio::time::sleep(RESUME_RETRY) => {}
+                    if !std::mem::take(&mut again_now) {
+                        // Between attempts a local stop ends the session at once.
+                        tokio::select! {
+                            _ = stop.notified() => return session::give_up(&ctx, id, session::Failure::Broken),
+                            _ = tokio::time::sleep(RESUME_RETRY) => {}
+                        }
                     }
                 }
                 let nodes = running(&dialer.nodes);
-                let targets = dialer.targets(&nodes, &device_id, &route).await;
+                let targets = dialer
+                    .targets(&nodes, &device_id, &route, resume.is_some())
+                    .await;
+                // Under Auto, to a host that moves sessions, a better route
+                // that starts answering takes the session (a watch starts
+                // with each connection and needs two looks BETTER_EVERY
+                // apart: at most a move a minute).
+                let watcher = (route == Choice::Auto
+                    && ctx
+                        .access
+                        .known(&device_id)
+                        .is_some_and(|h| h.features.iter().any(|f| f == session::feature::MOVE)))
+                .then(|| tokio::spawn(better_routes(dialer.clone(), id, device_id.clone())));
                 let dialed = dial(
                     &ctx,
                     id,
@@ -1875,6 +2192,9 @@ impl Dialer {
                     resume.take(),
                 )
                 .await;
+                if let Some(w) = watcher {
+                    w.abort();
+                }
                 let (failure, connected) = match dialed {
                     Dialed::Outcome(session::Outcome::Done) => return,
                     Dialed::Outcome(session::Outcome::Lost { token, connected }) => {
@@ -1892,6 +2212,7 @@ impl Dialer {
                         (f, false)
                     }
                 };
+                again_now = connected;
                 // Keep resuming only while a token is held and the window lasts.
                 let (since, keep) = keep_resuming(lost_at, connected, std::time::Instant::now());
                 lost_at = Some(since);
@@ -1909,8 +2230,15 @@ impl Dialer {
     /// the device (direct first, then the lowest latency) and the addresses
     /// chosen; under Auto every kept address is looked at first
     /// (`probe_address`, all at once) and the routes ranked
-    /// (`rank_routes`).
-    async fn targets(&self, nodes: &[Core], device_id: &str, route: &Choice) -> Vec<Target> {
+    /// (`rank_routes`). `again`: a redial, which ranks by the last looks and
+    /// takes new ones beside it rather than waiting for them.
+    async fn targets(
+        &self,
+        nodes: &[Core],
+        device_id: &str,
+        route: &Choice,
+        again: bool,
+    ) -> Vec<Target> {
         match route {
             Choice::Network => candidates(nodes, device_id)
                 .await
@@ -1920,8 +2248,19 @@ impl Dialer {
             Choice::Address(a) => vec![Target::Addr(a.clone())],
             Choice::Auto => {
                 let host = self.ctx.access.known(device_id);
-                let (probes, cands) =
-                    tokio::join!(self.probe(device_id), candidates(nodes, device_id));
+                // A redial does not wait for new looks: the last ones rank
+                // the routes (the dial itself proves the device), and new
+                // looks are taken beside it.
+                let kept = self.probes.of(device_id);
+                let (probes, cands) = if again && !kept.is_empty() {
+                    let (me, id) = (self.clone(), device_id.to_owned());
+                    tokio::spawn(async move {
+                        me.probe(&id).await;
+                    });
+                    (kept, candidates(nodes, device_id).await)
+                } else {
+                    tokio::join!(self.probe(device_id), candidates(nodes, device_id))
+                };
                 let mut standing = Vec::new();
                 if !nodes.is_empty() {
                     let best = cands.first();
@@ -2032,6 +2371,14 @@ async fn dial(
             resume.clone(),
         )
         .await;
+        // A connection let go for silence over the network: its direct link
+        // goes too, so the redial and the host's answers take the relay.
+        if session::went_silent(ctx, id)
+            && let Target::Net(c) = &target
+            && let Some(Core::Native(n)) = nodes.get(c.node)
+        {
+            drop_links(n.clone(), c.ip);
+        }
         // A squatter with another key fails the handshake, and so does a
         // device whose key is not the one pinned: try the rest. The pinned
         // host not reached anywhere is told as a changed key.
@@ -2279,6 +2626,95 @@ fn nat_name(n: i32) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A peer is on this LAN when one of its addresses lies in one of this
+    /// device's private subnets, never through loopback, link-local,
+    /// Tailscale's 100.64/10, EasyTier's virtual subnet, this device's own
+    /// address or a subnet wider than /8.
+    #[test]
+    fn a_peer_is_on_the_lan_only_in_a_private_subnet_of_this_device() {
+        let ip = |s: &str| s.parse::<Ipv4Addr>().unwrap();
+        let home = [(ip("192.168.1.10"), ip("255.255.255.0"))];
+        let virt = Some((ip("10.126.126.1"), 24));
+        for (name, theirs, ours, virtual_net, want) in [
+            ("same /24", vec!["192.168.1.20"], &home[..], virt, true),
+            (
+                "one of several",
+                vec!["172.17.0.1", "192.168.1.20"],
+                &home[..],
+                virt,
+                true,
+            ),
+            ("another /24", vec!["192.168.2.20"], &home[..], virt, false),
+            ("no addresses", vec![], &home[..], virt, false),
+            (
+                "this device's own address",
+                vec!["192.168.1.10"],
+                &home[..],
+                virt,
+                false,
+            ),
+            (
+                "loopback",
+                vec!["127.0.0.1"],
+                &[(ip("127.0.0.2"), ip("255.0.0.0"))][..],
+                None,
+                false,
+            ),
+            (
+                "link-local",
+                vec!["169.254.3.4"],
+                &[(ip("169.254.1.1"), ip("255.255.0.0"))][..],
+                None,
+                false,
+            ),
+            (
+                "Tailscale",
+                vec!["100.64.0.7"],
+                &[(ip("100.64.0.3"), ip("255.192.0.0"))][..],
+                None,
+                false,
+            ),
+            (
+                "public",
+                vec!["8.8.4.4"],
+                &[(ip("8.8.8.8"), ip("255.255.0.0"))][..],
+                None,
+                false,
+            ),
+            (
+                "virtual subnet",
+                vec!["10.126.126.2"],
+                &[(ip("10.126.126.5"), ip("255.0.0.0"))][..],
+                virt,
+                false,
+            ),
+            (
+                "10/8 beside the virtual subnet",
+                vec!["10.1.2.3"],
+                &[(ip("10.1.2.4"), ip("255.0.0.0"))][..],
+                virt,
+                true,
+            ),
+            (
+                "wider than /8",
+                vec!["10.1.2.3"],
+                &[(ip("10.1.2.4"), ip("254.0.0.0"))][..],
+                None,
+                false,
+            ),
+            (
+                "no local addresses",
+                vec!["192.168.1.20"],
+                &[][..],
+                None,
+                false,
+            ),
+        ] {
+            let theirs: Vec<Ipv4Addr> = theirs.iter().map(|s| ip(s)).collect();
+            assert_eq!(on_lan(&theirs, ours, virtual_net), want, "{name}");
+        }
+    }
 
     /// A changed host key, like a wrong device, passes on to the next route
     /// (regression: it ended the dialing, though the pinned host might
@@ -2623,6 +3059,25 @@ mod tests {
 
     /// Direct paths first, then the lowest latency; the networks' order
     /// for the rest.
+    #[test]
+    /// A healthy session moves only for a clearly better route.
+    fn better_routes_must_be_clearly_better() {
+        for (now, now_direct, other, other_direct, want) in [
+            (100, true, 40, true, true),
+            (100, true, 60, true, false),
+            (30, true, 12, true, false),
+            (60, false, 55, true, true),
+            (60, false, 70, true, false),
+            (60, true, 55, true, false),
+        ] {
+            assert_eq!(
+                clearly_better(now, now_direct, other, other_direct),
+                want,
+                "{now} {now_direct} {other} {other_direct}"
+            );
+        }
+    }
+
     #[test]
     fn candidates_go_direct_first_then_by_latency() {
         let c = |node, last, direct, latency| Candidate {

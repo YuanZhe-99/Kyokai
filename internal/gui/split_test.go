@@ -370,3 +370,69 @@ func TestBarInHead(t *testing.T) {
 		t.Error("no picture, no toolbar in the header")
 	}
 }
+
+// TestWindowCorners: which of the window's corners each pane of the main
+// window meets, by layout, sidebar (shown, folded to the rail, hidden)
+// and whether cards show above the panes — a pane's left corners face the
+// sidebar unless it is hidden, its top ones the cards while they show,
+// and a pane maximized meets what the panes' room meets.
+func TestWindowCorners(t *testing.T) {
+	a, b, c := fakeTab("a"), fakeTab("b"), fakeTab("c")
+	name := func(k corners) string {
+		out := ""
+		for i, n := range []string{"TL", "TR", "BR", "BL"} {
+			if k&(1<<i) != 0 {
+				out += n + " "
+			}
+		}
+		return strings.TrimSpace(out)
+	}
+	layouts := map[string]func(s *split){
+		"a":         func(s *split) { s.single(a) },
+		"(a|b)":     func(s *split) { s.single(a); s.place(b, a, zoneRight) },
+		"(a/b)":     func(s *split) { s.single(a); s.place(b, a, zoneBottom) },
+		"(a|(b/c))": func(s *split) { s.single(a); s.place(b, a, zoneRight); s.place(c, b, zoneBottom) },
+		"((a/c)|b)": func(s *split) { s.single(a); s.place(b, a, zoneRight); s.place(c, a, zoneBottom) },
+	}
+	for _, tc := range []struct {
+		layout  string
+		sidebar string // shown, rail or hidden
+		cards   bool
+		want    map[tab]string
+	}{
+		{"a", "shown", false, map[tab]string{a: "TR BR"}},
+		{"a", "rail", false, map[tab]string{a: "TR BR"}},
+		{"a", "hidden", false, map[tab]string{a: "TL TR BR BL"}},
+		{"a", "shown", true, map[tab]string{a: "BR"}},
+		{"a", "hidden", true, map[tab]string{a: "BR BL"}},
+		{"(a|b)", "shown", false, map[tab]string{a: "", b: "TR BR"}},
+		{"(a|b)", "hidden", false, map[tab]string{a: "TL BL", b: "TR BR"}},
+		{"(a|b)", "hidden", true, map[tab]string{a: "BL", b: "BR"}},
+		{"(a/b)", "rail", false, map[tab]string{a: "TR", b: "BR"}},
+		{"(a/b)", "hidden", false, map[tab]string{a: "TL TR", b: "BR BL"}},
+		{"(a/b)", "hidden", true, map[tab]string{a: "", b: "BR BL"}},
+		{"(a|(b/c))", "shown", false, map[tab]string{a: "", b: "TR", c: "BR"}},
+		{"(a|(b/c))", "hidden", false, map[tab]string{a: "TL BL", b: "TR", c: "BR"}},
+		{"(a|(b/c))", "hidden", true, map[tab]string{a: "BL", b: "", c: "BR"}},
+		{"((a/c)|b)", "hidden", false, map[tab]string{a: "TL", c: "BL", b: "TR BR"}},
+		{"((a/c)|b)", "rail", true, map[tab]string{a: "", c: "", b: "BR"}},
+	} {
+		var s split
+		layouts[tc.layout](&s)
+		d := paneDraw{g: group{split: s}, at: panesCorners(tc.sidebar == "hidden", tc.cards)}
+		for v, want := range tc.want {
+			if got := name(d.paneCorners(v)); got != want {
+				t.Errorf("%s, sidebar %s, cards %v: %s meets %q, want %q", tc.layout, tc.sidebar, tc.cards, v.tabKey(), got, want)
+			}
+		}
+		// Maximized, a pane meets every corner the panes' room meets.
+		d.g.zoom = a
+		if got, want := d.paneCorners(a), d.at; got != want {
+			t.Errorf("%s, sidebar %s, cards %v: a maximized meets %q, want %q", tc.layout, tc.sidebar, tc.cards, name(got), name(want))
+		}
+	}
+	var none split
+	if got := none.corners(a, cornersAll); got != 0 {
+		t.Errorf("a tab not shown meets %q", name(got))
+	}
+}

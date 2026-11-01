@@ -882,7 +882,7 @@ func watch(socket string, id uint64, d time.Duration, snapshot, quality string, 
 			}
 			fresh = false
 			if dec != nil {
-				switch _, _, ok, err := dec.Decode(p[10:], pic.Pix); {
+				switch _, _, ok, err := dec.Decode(p[10:], pic.Pix, core.Full); {
 				case err != nil && decodeErr == nil:
 					decodeErr = err
 				case err == nil && ok:

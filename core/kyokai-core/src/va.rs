@@ -27,8 +27,10 @@ use cros_codecs::{Fourcc, FrameLayout, Resolution};
 use crate::annexb::Syntax;
 use crate::video::Picture;
 
-/// Frames between key frames: one every 4 seconds, as the other encoders.
-const KEY_EVERY: u16 = 4 * crate::video::FPS as u16;
+/// Frames between key frames: the most the encoder takes, as good as
+/// never. Key frames come when the viewer asks, as with the other encoders
+/// (a periodic one re-coded the whole screen on one frame's bits).
+const KEY_EVERY: u16 = u16::MAX;
 /// The coarsest quantizer the rate control may use. Uncapped, the driver
 /// (Intel's iHD) squeezed a busy screen's key frame into a few frames' bits
 /// and sent noise; capped, a key frame goes over the bitrate for a moment
@@ -405,8 +407,8 @@ mod tests {
             .collect()
     }
 
-    /// The stream a viewer can join: an IDR with its parameter sets first,
-    /// on request and every KEY_EVERY frames; P frames between. Runs where
+    /// The stream a viewer can join: an IDR with its parameter sets first
+    /// and on request; P frames between, with no key frame unasked. Runs where
     /// the GPU encodes H.264 through VA-API (nothing to check elsewhere).
     #[test]
     fn key_frames_are_idrs_with_their_parameter_sets() {
@@ -450,10 +452,8 @@ mod tests {
         assert!(!key);
         assert_eq!(kinds(&again), [1]);
         enc.set_bitrate(500_000);
-        // Frames 2 and 3 were the encoder's first two since it opened again.
-        let keys: Vec<usize> = (4..=2 * KEY_EVERY as usize + 3)
-            .filter(|&i| frame(&mut enc, i, false).1)
-            .collect();
-        assert_eq!(keys, [KEY_EVERY as usize + 2, 2 * KEY_EVERY as usize + 2]);
+        // Ten seconds of changing frames bring no key frame unasked.
+        let keys: Vec<usize> = (4..304).filter(|&i| frame(&mut enc, i, false).1).collect();
+        assert!(keys.is_empty(), "key frames unasked: {keys:?}");
     }
 }

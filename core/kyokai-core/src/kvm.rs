@@ -864,8 +864,12 @@ pub fn start(
             } else {
                 let (ew, eh) =
                     crate::video::fit(w, h, crate::video::MAX_SIZE.0, crate::video::MAX_SIZE.1);
+                // The session's own rate comes with its first second.
+                let want = crate::video::Want::default();
+                let bitrate = crate::video::bitrate_kbps(ew, eh, want.ratio, choice.codec, true)
+                    .saturating_mul(1000);
                 Some((
-                    crate::video::capture::Encoder::open(choice, ew, eh, true)?,
+                    crate::video::capture::Encoder::open(choice, ew, eh, true, want.fps, bitrate)?,
                     ew,
                     eh,
                 ))
@@ -899,6 +903,7 @@ pub fn start(
             encoder: name.into(),
             hardware,
             placeholder: None,
+            size: None,
         }));
         let t0 = Instant::now();
         let mut bitrate = 0u32;
@@ -992,7 +997,7 @@ pub fn start(
                     bitrate = wanted;
                     enc.set_bitrate(bitrate);
                 }
-                match enc.encode(key_pending) {
+                match enc.encode(key_pending, taken.duration_since(t0)) {
                     Ok(u) if u.is_empty() => {
                         if silent_since.get_or_insert(taken).elapsed() >= ENCODER_SILENT {
                             log::info!(
@@ -1439,7 +1444,9 @@ mod tests {
                     took += u64::from(e.took_us);
                     bytes += e.data.len();
                     keys.push(e.flags & crate::media::KEY_FRAME != 0);
-                    let size = dec.decode(&e.data, &mut rgba).unwrap();
+                    let size = dec
+                        .decode(&e.data, &mut crate::convert::Sink::vec(&mut rgba))
+                        .unwrap();
                     assert_eq!(size, Some((start.width, start.height)), "{codec}");
                 } else {
                     std::thread::sleep(Duration::from_millis(2));

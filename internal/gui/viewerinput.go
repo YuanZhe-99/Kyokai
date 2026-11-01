@@ -169,6 +169,61 @@ var qualityPresets = []string{"speed", "balanced", "best"}
 // (setQuality reads the number).
 var fpsCaps = []string{"15 fps", "30 fps", "60 fps"}
 
+// resolutions are the ceilings the viewer offers for the host's picture,
+// as its quality message names them: Auto (the host's choice), Native, and
+// the host's display scaled down to fit 4K, 1440p, 1080p or 720p, its
+// shape kept.
+var resolutions = []string{"auto", "native", "2160", "1440", "1080", "720"}
+
+// resolutionLabel is how the viewer names a resolution choice.
+func resolutionLabel(size string) string {
+	switch size {
+	case "auto", "":
+		return L.ViewerCodecAuto()
+	case "native":
+		return L.ViewerResolutionNative()
+	case "2160":
+		return "4K"
+	}
+	return size + "p"
+}
+
+// capOf is the frame rate a cap names ("30 fps": 30).
+func capOf(fpsCap string) int {
+	fps := 30
+	_, _ = fmt.Sscan(fpsCap, &fps)
+	return fps
+}
+
+// qualityPacket is the viewer's quality message for the host's QoS: its
+// preset, the frame rate (the cap, or less while this computer cannot
+// decode that many: decodeRate), full colour (4:4:4) and the resolution.
+// Notes: the caller holds v.mu.
+func (v *viewer) qualityPacket() []byte {
+	fps := capOf(v.fpsCap)
+	if v.fpsLimit > 0 {
+		fps = min(fps, v.fpsLimit)
+	}
+	size := v.size
+	if size == "" {
+		size = "auto"
+	}
+	body, _ := json.Marshal(map[string]any{"type": "quality", "preset": qualityPresets[min(max(v.preset, 0), 2)], "fps": fps, "i444": v.full, "size": size})
+	return append([]byte{packetControl}, body...)
+}
+
+// sendQuality sends the viewer's quality message; a full queue leaves it
+// out, as other control messages.
+func (v *viewer) sendQuality() {
+	v.mu.Lock()
+	p := v.qualityPacket()
+	v.mu.Unlock()
+	select {
+	case v.out <- p:
+	default:
+	}
+}
+
 // setQuality sends the viewer's quality preset and frame-rate cap to the
 // host's QoS, and whether it wants full colour (4:4:4) where both sides
 // do it, which may restart the video in another codec.
@@ -177,13 +232,17 @@ func (v *viewer) setQuality(preset int, fpsCap string, full bool) {
 	v.preset, v.fpsCap, v.full = preset, fpsCap, full
 	v.mu.Unlock()
 	v.keepSettings()
-	fps := 30
-	_, _ = fmt.Sscan(fpsCap, &fps)
-	body, _ := json.Marshal(map[string]any{"type": "quality", "preset": qualityPresets[min(max(preset, 0), 2)], "fps": fps, "i444": full})
-	select {
-	case v.out <- append([]byte{packetControl}, body...):
-	default:
-	}
+	v.sendQuality()
+}
+
+// setSize sends the viewer's resolution choice (resolutions); the host
+// restarts its video at the size it gives.
+func (v *viewer) setSize(size string) {
+	v.mu.Lock()
+	v.size = size
+	v.mu.Unlock()
+	v.keepSettings()
+	v.sendQuality()
 }
 
 // setCodec sends the viewer's codec choice ("auto" or one the host
@@ -203,7 +262,7 @@ func (v *viewer) keepSettings() {
 		return
 	}
 	v.mu.Lock()
-	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Swap: v.swap, Mute: v.mute, Folded: v.folded,
+	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Size: v.size, Swap: v.swap, Mute: v.mute, Folded: v.folded,
 		Original: v.original, NoClipboard: v.clip.off}
 	v.mu.Unlock()
 	v.app.setViewerPrefs(v.tabKey(), vp)
@@ -303,13 +362,10 @@ func commandEvents(command string) []inputEvent {
 // side's engine.
 func (v *viewer) choicePackets() [][]byte {
 	v.mu.Lock()
-	preset, fpsCap, full, codec, mute := v.preset, v.fpsCap, v.full, v.codec, v.mute
+	quality, codec, mute := v.qualityPacket(), v.codec, v.mute
 	clip := v.clipUsePacket()
 	v.mu.Unlock()
-	fps := 30
-	_, _ = fmt.Sscan(fpsCap, &fps)
-	quality, _ := json.Marshal(map[string]any{"type": "quality", "preset": qualityPresets[min(max(preset, 0), 2)], "fps": fps, "i444": full})
-	out := [][]byte{append([]byte{packetControl}, quality...)}
+	out := [][]byte{quality}
 	if codec != "" && codec != "auto" {
 		body, _ := json.Marshal(map[string]any{"type": "codec", "codec": codec})
 		out = append(out, append([]byte{packetControl}, body...))

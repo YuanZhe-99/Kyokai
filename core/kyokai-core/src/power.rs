@@ -10,6 +10,10 @@
 //! assertions on macOS; in the helper modes the session agent, in the
 //! user's session, holds one too while it streams video.
 //!
+//! While a session sends or shows video, the process also keeps the system
+//! from slowing it (`busy`): out of Windows' power throttling, in a
+//! latency-critical activity on macOS.
+//!
 //! A display that is dark gives the capture nothing to send: the capture
 //! wakes it (`wake_display`) when it has had no picture for a second, or
 //! Windows has reported the display off for a second (a dark display is
@@ -125,6 +129,54 @@ impl Drop for Awake {
 #[cfg(all(test, any(windows, target_os = "macos", target_os = "linux")))]
 fn awake() -> bool {
     AWAKE.lock().expect("power request").1.is_some()
+}
+
+/// Keeps the system from slowing this process down while held: a session
+/// sends or shows video. Every holder shares one opt-out.
+pub struct Busy(());
+
+/// How many hold `Busy`, and the system's activity while any does (None
+/// when the system refused it; never on Linux, which throttles nothing).
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+static BUSY: std::sync::Mutex<(usize, Option<imp::Activity>)> = std::sync::Mutex::new((0, None));
+
+/// Keeps the process at full speed until the guard is dropped.
+/// Side effects: the first guard opts the process out of power throttling
+/// (Windows: EcoQoS, the execution-speed throttling Task Manager shows as
+/// Efficiency mode) or begins a user-initiated, latency-critical activity
+/// (macOS: no App Nap, no timer coalescing); dropping the last one gives
+/// the system its default back. Linux: nothing.
+pub fn busy() -> Busy {
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+    {
+        let mut busy = BUSY.lock().expect("busy");
+        if busy.0 == 0 {
+            busy.1 = imp::begin();
+        }
+        busy.0 += 1;
+    }
+    Busy(())
+}
+
+impl Drop for Busy {
+    fn drop(&mut self) {
+        #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+        {
+            let mut busy = BUSY.lock().expect("busy");
+            busy.0 -= 1;
+            if busy.0 == 0
+                && let Some(a) = busy.1.take()
+            {
+                imp::end(a);
+            }
+        }
+    }
+}
+
+/// How many `Busy` guards are held now (for tests).
+#[cfg(all(test, any(windows, target_os = "macos", target_os = "linux")))]
+fn busy_holders() -> usize {
+    BUSY.lock().expect("busy").0
 }
 
 /// Pauses the AI task in progress whenever the computer goes to sleep,
@@ -252,10 +304,25 @@ mod linux_impl {
         Some(Request(Some(tx)))
     }
 
+    /// Lets the inhibitors go.
     pub fn release(mut r: Request) {
         if let Some(tx) = r.0.take() {
             let _ = tx.send(());
         }
+    }
+
+    /// Linux slows no process that a session keeps busy: there is never
+    /// an activity.
+    pub enum Activity {}
+
+    /// Begins nothing (see `Activity`).
+    pub fn begin() -> Option<Activity> {
+        None
+    }
+
+    /// Ends nothing: no `Activity` exists.
+    pub fn end(a: Activity) {
+        match a {}
     }
 
     /// Wakes the display (X11's DPMS; the desktop wakes it on Wayland when
@@ -332,7 +399,10 @@ mod windows_impl {
         PowerSettingRegisterNotification, PowerUnregisterSuspendResumeNotification,
     };
     use windows::Win32::System::Threading::{
-        POWER_REQUEST_CONTEXT_SIMPLE_STRING, REASON_CONTEXT, REASON_CONTEXT_0,
+        GetCurrentProcess, POWER_REQUEST_CONTEXT_SIMPLE_STRING,
+        PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+        PROCESS_POWER_THROTTLING_STATE, ProcessPowerThrottling, REASON_CONTEXT, REASON_CONTEXT_0,
+        SetProcessInformation,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         DEVICE_NOTIFY_CALLBACK, PBT_APMSUSPEND, PBT_POWERSETTINGCHANGE,
@@ -470,6 +540,68 @@ mod windows_impl {
         }
     }
 
+    /// The process opted out of execution-speed throttling (EcoQoS).
+    pub struct Activity(());
+
+    /// Opts the process out of execution-speed throttling.
+    /// Returns: None when Windows refused (logged).
+    pub fn begin() -> Option<Activity> {
+        throttling(PROCESS_POWER_THROTTLING_EXECUTION_SPEED).then_some(Activity(()))
+    }
+
+    /// Gives Windows its default back: it throttles the process when it
+    /// sees fit (in the background, on battery).
+    pub fn end(_: Activity) {
+        throttling(0);
+    }
+
+    /// Sets which kinds of power throttling the process controls itself
+    /// (`control`), all of them off; the others are Windows' to decide.
+    /// Returns: whether Windows took it.
+    fn throttling(control: u32) -> bool {
+        let state = PROCESS_POWER_THROTTLING_STATE {
+            Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+            ControlMask: control,
+            StateMask: 0,
+        };
+        // SAFETY: `state` lives through the call, which copies it, and the
+        // size is its own; the current-process pseudo handle needs no
+        // closing.
+        let r = unsafe {
+            SetProcessInformation(
+                GetCurrentProcess(),
+                ProcessPowerThrottling,
+                &state as *const PROCESS_POWER_THROTTLING_STATE as *const c_void,
+                size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+            )
+        };
+        if let Err(e) = &r {
+            log::info!("power: the throttling state was not set ({e})");
+        }
+        r.is_ok()
+    }
+
+    /// The process's power throttling as Windows has it: (control mask,
+    /// state mask) (for tests).
+    #[cfg(test)]
+    pub fn throttling_state() -> (u32, u32) {
+        let mut state = PROCESS_POWER_THROTTLING_STATE {
+            Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+            ..Default::default()
+        };
+        // SAFETY: `state` is a valid out buffer of the size given.
+        unsafe {
+            windows::Win32::System::Threading::GetProcessInformation(
+                GetCurrentProcess(),
+                ProcessPowerThrottling,
+                &mut state as *mut PROCESS_POWER_THROTTLING_STATE as *mut c_void,
+                size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+            )
+        }
+        .expect("GetProcessInformation");
+        (state.ControlMask, state.StateMask)
+    }
+
     /// A registration for sleep notifications; its context is a boxed
     /// `Weak<Ai>` freed after unregistering.
     pub struct Registration {
@@ -544,7 +676,10 @@ mod windows_impl {
 
 #[cfg(target_os = "macos")]
 mod mac_impl {
+    use objc2::rc::Retained;
+    use objc2::runtime::ProtocolObject;
     use objc2_core_foundation::CFString;
+    use objc2_foundation::{NSActivityOptions, NSObjectProtocol, NSProcessInfo, NSString};
 
     /// The idle system sleep and idle display sleep assertions' IDs; 0
     /// (kIOPMNullAssertionID) for one macOS refused.
@@ -611,6 +746,30 @@ mod mac_impl {
             }
         }
     }
+
+    /// The process's user-initiated, latency-critical activity.
+    pub struct Activity(Retained<ProtocolObject<dyn NSObjectProtocol>>);
+
+    // SAFETY: NSProcessInfo's activity methods are thread-safe, and the
+    // token is only handed back to `endActivity:`, once, from `end`.
+    unsafe impl Send for Activity {}
+
+    /// Begins the activity: no App Nap and no timer coalescing while it
+    /// lasts (NSActivityUserInteractive: user-initiated and latency-critical;
+    /// it also holds off idle system sleep, as `keep_awake` does anyway).
+    pub fn begin() -> Option<Activity> {
+        let reason = NSString::from_str("Kyokai: a session sends or shows video");
+        let token = NSProcessInfo::processInfo()
+            .beginActivityWithOptions_reason(NSActivityOptions::UserInteractive, &reason);
+        Some(Activity(token))
+    }
+
+    /// Ends the activity.
+    pub fn end(a: Activity) {
+        // SAFETY: the token came from `beginActivityWithOptions:reason:`
+        // and is ended once.
+        unsafe { NSProcessInfo::processInfo().endActivity(&a.0) };
+    }
 }
 
 #[cfg(test)]
@@ -650,6 +809,26 @@ mod tests {
         assert!(awake());
         drop(a);
         assert!(awake());
+        drop(b);
+    }
+
+    /// Every `Busy` guard counts, and the opt-out lasts while any is held;
+    /// on Windows the process is then out of execution-speed throttling.
+    /// (Sessions in other tests may hold guards too, so only holding is
+    /// checked.)
+    #[test]
+    fn the_engine_stays_unthrottled_while_any_busy_guard_does() {
+        let a = busy();
+        let b = busy();
+        assert!(busy_holders() >= 2);
+        drop(a);
+        assert!(busy_holders() >= 1);
+        #[cfg(windows)]
+        {
+            let (control, state) = windows_impl::throttling_state();
+            let speed = windows::Win32::System::Threading::PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+            assert_eq!((control & speed, state & speed), (speed, 0));
+        }
         drop(b);
     }
 }

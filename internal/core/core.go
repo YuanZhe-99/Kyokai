@@ -17,7 +17,7 @@ import (
 
 // ABIVersion is the C ABI this package speaks; the library must report the
 // same one.
-const ABIVersion = 7
+const ABIVersion = 8
 
 // LibraryName is the file name of the core library on this platform.
 func LibraryName() string {
@@ -337,15 +337,30 @@ func (l *Lib) OpenDecoder(start []byte) (*Decoder, error) {
 	return &Decoder{l: l, id: id}, nil
 }
 
-// Decode decodes one frame into out (RGBA, at least width×height×4 bytes).
-// Returns: the picture's size and true when one is ready; false while the
-// decoder needs more input.
-func (d *Decoder) Decode(frame, out []byte) (int, int, bool, error) {
+// Want is what a decoder makes of a picture (kyokai_decoder_decode).
+type Want uint32
+
+const (
+	// Full: RGBA at the picture's size.
+	Full Want = iota
+	// Half: RGBA at half its size, each side rounded up (each pixel one
+	// chroma sample with the average luma of the 2×2 it covers).
+	Half
+	// Skip: decoded but not converted, as when a newer frame waits.
+	Skip
+)
+
+// Decode decodes one frame and converts the picture straight into out as
+// want says (RGBA, at least the picture's size as wanted; nothing is
+// written for Skip).
+// Returns: the picture's full size and true when one is ready; false while
+// the decoder needs more input.
+func (d *Decoder) Decode(frame, out []byte, want Want) (int, int, bool, error) {
 	if len(frame) == 0 || len(out) == 0 {
 		return 0, 0, false, errors.New("empty frame or picture buffer")
 	}
 	rc := int32(syscallN(d.l.decDecode, uintptr(d.id),
-		uintptr(unsafe.Pointer(unsafe.SliceData(frame))), uintptr(len(frame)),
+		uintptr(unsafe.Pointer(unsafe.SliceData(frame))), uintptr(len(frame)), uintptr(want),
 		uintptr(unsafe.Pointer(unsafe.SliceData(out))), uintptr(len(out)),
 		uintptr(unsafe.Pointer(&d.size[0])), uintptr(unsafe.Pointer(&d.size[1]))))
 	runtime.KeepAlive(frame)

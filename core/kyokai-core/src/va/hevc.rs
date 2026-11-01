@@ -1035,7 +1035,8 @@ mod tests {
                 assert_eq!(k, [TRAIL], "frame {i}");
             }
             assert_eq!(
-                dec.decode(&frame, &mut rgba).unwrap(),
+                dec.decode(&frame, &mut crate::convert::Sink::vec(&mut rgba))
+                    .unwrap(),
                 Some((w as u32, h as u32)),
                 "frame {i}"
             );

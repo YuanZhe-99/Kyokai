@@ -7,6 +7,7 @@
 //! as the Media Foundation path).
 #![cfg_attr(not(windows), allow(dead_code))]
 
+use crate::convert::Sink;
 use crate::video;
 use rustdesk_codec::aom::{AomDecoder, AomEncoder, AomEncoderConfig};
 use rustdesk_codec::vpxcodec::{
@@ -65,8 +66,8 @@ pub struct Encoder {
     i444: bool,
     /// The picture to encode next, in `layout`.
     yuv: Vec<u8>,
-    /// Milliseconds per frame, the encoders' time base.
-    frame_ms: i64,
+    /// The last frame's time in milliseconds, the encoders' time base:
+    /// the capture's, so the rate control sees the real spacing.
     pts: i64,
 }
 
@@ -79,15 +80,16 @@ impl Encoder {
         codec: Codec,
         width: u32,
         height: u32,
-        fps: u32,
+        _fps: u32,
         bitrate: u32,
         i444: bool,
     ) -> Result<Encoder, String> {
         let i444 = i444 && codec.full_colour();
         let base = rustdesk_codec::base_bitrate(width, height).max(1);
         let quality = (bitrate / 1000) as f32 / base as f32;
-        // A key frame every 4 seconds, as the Media Foundation encoders.
-        let keyframe_interval = Some(4 * fps.max(1) as usize);
+        // No key frame unasked: they come when the viewer asks, as with
+        // the other encoders and RustDesk's.
+        let keyframe_interval = None;
         let inner = match codec {
             Codec::Vp8 | Codec::Vp9 => Inner::Vpx(
                 VpxEncoder::new(
@@ -128,8 +130,7 @@ impl Encoder {
             layout,
             i444,
             yuv: Vec::new(),
-            frame_ms: 1000 / fps.max(1) as i64,
-            pts: 0,
+            pts: -1,
         })
     }
 
@@ -165,11 +166,12 @@ impl Encoder {
         !self.yuv.is_empty()
     }
 
-    /// Encodes the last picture; `key` forces a key frame.
+    /// Encodes the last picture, taken `at` (since the stream started);
+    /// `key` forces a key frame.
     /// Returns: the frames that came out (libvpx and libaom in real-time
     /// mode give one per picture, or none when they drop it).
-    pub fn encode(&mut self, key: bool) -> Result<Vec<Unit>, String> {
-        self.pts += self.frame_ms;
+    pub fn encode(&mut self, key: bool, at: std::time::Duration) -> Result<Vec<Unit>, String> {
+        self.pts = (at.as_millis() as i64).max(self.pts + 1);
         let (pts, yuv) = (self.pts, &self.yuv);
         match &mut self.inner {
             Inner::Vpx(e) => Ok(e
@@ -227,28 +229,25 @@ impl Decoder {
         })
     }
 
-    /// Decodes one frame into `rgba` (resized to width×height×4).
+    /// Decodes one frame into `out` (as it wants the picture).
     /// Returns: the picture's size when one came out, None otherwise.
-    pub fn decode(
-        &mut self,
-        frame: &[u8],
-        rgba: &mut Vec<u8>,
-    ) -> Result<Option<(u32, u32)>, String> {
+    pub fn decode(&mut self, frame: &[u8], out: &mut Sink) -> Result<Option<(u32, u32)>, String> {
         match self {
             Decoder::Vpx(d) => {
                 let last = d.decode(frame).map_err(|e| format!("libvpx: {e}"))?.last();
-                Ok(last.map(|img| to_rgba(&img, rgba)))
+                last.map(|img| to_rgba(&img, out)).transpose()
             }
             Decoder::Aom(d) => {
                 let last = d.decode(frame).map_err(|e| format!("libaom: {e}"))?.last();
-                Ok(last.map(|img| to_rgba(&img, rgba)))
+                last.map(|img| to_rgba(&img, out)).transpose()
             }
         }
     }
 }
 
-/// Converts a decoded picture into RGBA.
-fn to_rgba(img: &impl GoogleImage, rgba: &mut Vec<u8>) -> (u32, u32) {
+/// Converts a decoded picture into `out`.
+/// Returns: its size, or an error when it does not fit.
+fn to_rgba(img: &impl GoogleImage, out: &mut Sink) -> Result<(u32, u32), String> {
     let (w, h) = (img.width(), img.height());
     let planes = img.planes();
     let stride = img.stride();
@@ -269,8 +268,8 @@ fn to_rgba(img: &impl GoogleImage, rgba: &mut Vec<u8>) -> (u32, u32) {
         ]
     };
     let strides = [stride[0] as usize, stride[1] as usize, stride[2] as usize];
-    video::planar_to_rgba([y, u, v], strides, w, h, i444, rgba);
-    (w as u32, h as u32)
+    out.planar([y, u, v], strides, w, h, i444)?;
+    Ok((w as u32, h as u32))
 }
 
 #[cfg(test)]
@@ -325,9 +324,12 @@ mod tests {
                 let mut first_key = None;
                 for n in 0..10 {
                     enc.picture(&bgra, 320, 192, 320 * 4);
-                    for (unit, key) in enc.encode(n == 0).unwrap() {
+                    for (unit, key) in enc
+                        .encode(n == 0, std::time::Duration::from_millis(n * 33))
+                        .unwrap()
+                    {
                         first_key.get_or_insert(key);
-                        if let Some(size) = dec.decode(&unit, &mut rgba).unwrap() {
+                        if let Some(size) = dec.decode(&unit, &mut Sink::vec(&mut rgba)).unwrap() {
                             shown = Some(size);
                         }
                     }
@@ -365,8 +367,11 @@ mod tests {
             let mut rgba = Vec::new();
             for n in 0..5 {
                 enc.picture(&bgra, w, h, w * 4);
-                for (unit, _) in enc.encode(n == 0).unwrap() {
-                    dec.decode(&unit, &mut rgba).unwrap();
+                for (unit, _) in enc
+                    .encode(n == 0, std::time::Duration::from_millis(n * 33))
+                    .unwrap()
+                {
+                    dec.decode(&unit, &mut Sink::vec(&mut rgba)).unwrap();
                 }
             }
             // Mean red of the even columns minus that of the odd ones.

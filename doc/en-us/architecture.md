@@ -37,11 +37,12 @@ described in [run-modes.md](run-modes.md).
 | `internal/core` | purego binding to the Rust core |
 | `internal/fsutil` | Atomic writes and JSON documents |
 | `internal/version` | The single product version |
-| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and codecs (`video`, `mf` for Media Foundation, `vt` for VideoToolbox, `va` for VA-API's H.264 and HEVC, `ff` for the system's FFmpeg, `soft` for libvpx and libaom, `annexb` for the H.264 and HEVC framing), the host's sound (`audio`, `opus`), the input service (`input`), the viewer's keyboard grab (`keyboard`), the NanoKVM USB (`kvm`: its capture card, its serial keyboard and mouse), AI tasks (`ai`: the providers, the task runtime, the desktop it drives), sign-in keys (`keys`), tunnels to the host's own services (`tunnel`), the host's status (`system`) and its watchers (`watch`) |
+| `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and codecs (`video`, `mf` for Media Foundation, `vt` for VideoToolbox, `va` for VA-API's H.264 and HEVC, `ff` for the system's FFmpeg, `soft` for libvpx and libaom, `annexb` for the H.264 and HEVC framing, `convert` for the viewer's conversion of decoded pictures into the GUI's buffer), the host's sound (`audio`, `opus`), the input service (`input`), the viewer's keyboard grab (`keyboard`), the NanoKVM USB (`kvm`: its capture card, its serial keyboard and mouse), AI tasks (`ai`: the providers, the task runtime, the desktop it drives), sign-in keys (`keys`), tunnels to the host's own services (`tunnel`), the host's status (`system`) and its watchers (`watch`) |
 | `core/third_party/rustdesk-codec` | RustDesk's libvpx and libaom codecs, vendored, with the static libraries vcpkg builds ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-dxgi` | RustDesk's DXGI and GDI screen capture, vendored ([computer-use.md](computer-use.md)) |
 | `core/third_party/rustdesk-qos` | RustDesk's video QoS, vendored |
 | `core/third_party/thunk-noop` | Stands in for EasyTier's `thunk-rs` build step, so Windows builds keep the static C runtime |
+| `core/third_party/smoltcp` | smoltcp 0.14.0, EasyTier's in-process TCP/IP stack, vendored with its retransmission timeout's floor at 200 ms ([networking.md](networking.md)) |
 
 ## FFI
 
@@ -51,7 +52,7 @@ integers and pointers only:
 
 | Export | Does |
 |---|---|
-| `kyokai_abi_version() -> u32` | ABI version (7); hosts refuse a mismatch |
+| `kyokai_abi_version() -> u32` | ABI version (8); hosts refuse a mismatch |
 | `kyokai_start(json, len, *out, *out_len) -> i32` | Starts the core with `{version, state_dir, profile}` |
 | `kyokai_call(json, len, *out, *out_len) -> i32` | Answers `{method, params}`; calls run concurrently (the Go binding gives each its own response slot; `kyokai_stop` waits for them). What takes time — the networks' views (refreshed in the background every 2 s; one older than 10 s shows as connecting), exports and their key derivation, the permanent password, `protect.set`, `keys.sign`, the macOS helper's permissions, the Keychain prompt — runs without the core's lock, which is taken only to read and swap; rebuilding the core still holds it |
 | `kyokai_free(ptr, len)` | Frees a response buffer |
@@ -59,7 +60,7 @@ integers and pointers only:
 | `kyokai_media_read(session, buf, cap, timeout_ms) -> i64` | Waits for a controller session's next media packet (this and `kyokai_media_write` find the session without the core's lock, so no call delays video, input or a tunnel) (a tunnel's session: its bytes, packet 14) and copies it into the caller's buffer; -1 timeout, -2 ended, -3 too large |
 | `kyokai_media_write(session, ptr, len) -> i32` | Passes a control packet from the GUI (input, key-frame request) to the session: 0, -1 malformed, -2 ended, -3 refused as behind; input never waits — moves, presses, clicks and text are refused while the session cannot take input, releases never are (`session::InputGate`) — and other messages wait 200 ms at most; a tunnel's bytes (packet 14) always wait for room |
 | `kyokai_decoder_open(json, len) -> u64` | Opens a viewer decoder for a stream (`{codec, width, height}`); 0 when the codec is not available. Needs no started core |
-| `kyokai_decoder_decode(id, frame, len, out, cap, *w, *h) -> i32` | Decodes one frame into the caller's RGBA buffer: 1 picture, 0 needs more input, -1 error, -3 too large |
+| `kyokai_decoder_decode(id, frame, len, want, out, cap, *w, *h) -> i32` | Decodes one frame; a finished picture is converted straight into the caller's buffer (borrowed, written from its start) as `want` asks: 0 RGBA at its size, 1 RGBA at half its size (each side rounded up), 2 not at all (a newer frame waits; nothing written). 1 picture, with its full size in `*w`, `*h`; 0 needs more input; -1 error or an unknown `want`; -3 the picture as wanted does not fit `cap` |
 | `kyokai_decoder_info(id, out, cap) -> i32` | Writes `{decoder, hardware}` JSON into the caller's buffer: which decoder it is (`videotoolbox`, `media-foundation`, `libvpx`, `libaom`) and whether it decodes in hardware, as it reports; the length, -1 unknown handle, -3 too large |
 | `kyokai_decoder_close(id)` | Releases a decoder |
 | `kyokai_audio_open() -> u64` | Opens a decoder of the host's sound (Opus); 0 when it cannot. Needs no started core |

@@ -77,7 +77,7 @@ answer as long as for a confirmation.
 ## Resuming
 
 A dropped connection (not a `bye`) can be resumed for 60 seconds from that drop (a session that resumed and drops again has 60 seconds anew): the controller dials again
-every 3 seconds and sends the token from the last verdict. A token is single-use, bound to the
+at once, then every 3 seconds, and sends the token from the last verdict. A token is single-use, bound to the
 controller's device key, kept in the host's memory only and valid while its session lives and for
 60 seconds after the host saw it drop; a goodbye, the host's Disconnect, a revocation or a session
 replaced voids it, even while that session is still closing. A valid one
@@ -87,10 +87,17 @@ dropping (it would keep its capture and encoder until its idle limit; as after a
 task that controller started pauses); a resume is never refused as busy, since it takes that
 session's place. Anything else falls back to the login. Nothing that was in flight is sent again.
 
+To a host that announced `move`, a resuming controller adds `move: true` to its `client_hello`:
+the session moves to this connection, and the host does not pause that controller's AI task when
+the old session ends. The session is otherwise a resume like any other: its video starts again
+(capture and encoder), and nothing of the old connection is handed over. Tunnels resume
+differently (see Tunnels).
+
 ## Session messages
 
 After an accepted verdict both sides exchange `{"type": …}` documents: `ping` / `pong` every
-5 seconds, and `bye`. A side that ends the session (closed, or its engine stopping: the engine ends
+5 seconds, and also as soon as the peer has been quiet for a second (so a silent path shows within
+about 3 seconds, [networking.md](networking.md), "Switching paths"), and `bye`. A side that ends the session (closed, or its engine stopping: the engine ends
 every session before it stops, waiting up to a second) sends `bye` and keeps the connection open
 until the other side, which ends its session on it, closes it, or 500 ms passed: closed first,
 the other side's next write would fail and it would take the connection for lost and resume it. A
@@ -125,9 +132,9 @@ while it is silent, the packets waiting when a frame's chunk was sent going out 
 chunk, [computer-use.md](computer-use.md), "Sound") (`auto`, or a name of the offer; another
 name changes nothing), and a resumed controller sends its viewer's `quality`, `codec` and `audio` again
 before its `codecs`. Before its first frame the host
-sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern; a `recovery` host adds `placeholder` to the test pattern's: `asleep`, `no-display`, `agent`, `no-encoder`, `retrying`, `no-codec`, `cannot-capture` or `nanokvm`). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer than 3 are unacknowledged, takes only an acknowledgement of a frame it sent and that was not acknowledged, and waits for acknowledgements however long they take: every controller (protocol 10) acknowledges every frame over an ordered, reliable stream, so a late one means a slow path, not a lost frame (a dead connection ends by the idle limit). The controller may send `{"type":
+sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern; a `recovery` host adds `placeholder` to the test pattern's: `asleep`, `no-display`, `agent`, `no-encoder`, `retrying`, `no-codec`, `cannot-capture` or `nanokvm`; a host that announced `resolution` adds `size`, the resolution choice in force: `auto`, `native`, `2160`, `1440`, `1080` or `720`). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer are unacknowledged than its window allows (3 to 12, from the frame rate and the path's round trip, [computer-use.md](computer-use.md), "Video"), takes only an acknowledgement of a frame it sent and that was not acknowledged, and waits for acknowledgements however long they take: every controller (protocol 10) acknowledges every frame over an ordered, reliable stream, so a late one means a slow path, not a lost frame (a dead connection ends by the idle limit). The controller may send `{"type":
 "key-frame"}` (the host then describes the stream, its displays and the codec offer again and
-sends a key frame, unless the last key frame it sent is not acknowledged yet: that one is waited for) — its GUI's requests (as it opens, after a frame it lost or failed to decode,
+sends a key frame, unless the last key frame it sent is not acknowledged yet: that one is waited for, and the request neither forces another nor makes a picture due) — its GUI's requests (as it opens, after a frame it lost or failed to decode,
 each second until a key frame comes), and the controller's own while its queue leaves frames out
 (at most once a second, on a timer of its own, so also while no frame comes), and to a host that announced `recovery`, `{"type": "no-picture", for_ms, why}` when its viewer has shown no picture for 5 seconds (`why`: `decode-error`, `waiting` or `stale`; at most once a second; the host takes it as trouble unless its last key frame is not acknowledged yet or a picture has been due for less than 5 seconds, [computer-use.md](computer-use.md), "Video") — and,
 with `control-input`, `{"type": "input", event}`; to a host that announced `input-sync` an
@@ -137,8 +144,10 @@ whatever else that session holds (at most 64 entries, all of them known, or it i
 "test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":
 "stats", delay_ms, fps, bitrate, encode_ms, frames}` (`encode_ms`: the last second's frames' average from
 picture to frame; `frames`: how many frames it sent that second, which 0.4.0 leaves out); a `recovery` host adds `video`: `live`, `dark`, `recovering` or `placeholder`) ([computer-use.md](computer-use.md)); the controller may set
-the quality with `{"type": "quality", preset, fps, i444}`, where `i444` asks for full colour
-(4:4:4) where both sides do it. With more than one display the host also sends `{"type": "displays", list, current}` (each
+the quality with `{"type": "quality", preset, fps, i444, size}`, where `fps` is the viewer's cap or
+less while it cannot decode that many, `i444` asks for full colour (4:4:4) where both sides do it,
+and `size`, to a host that announced `resolution`, chooses the resolution (`auto`, `native`,
+`2160`, `1440`, `1080` or `720`). With more than one display the host also sends `{"type": "displays", list, current}` (each
 display's place and size, the primary first) and the controller may ask for another with
 `{"type": "display", index}`. While it sends video the host also sends `{"type": "cursor", x, y, visible}`, its pointer as
 fractions of the picture, when it moves; `visible` says whether it is on the display shown. With `control-input` the host sends
@@ -166,11 +175,24 @@ the service in `client_hello` (`tunnel`: `ssh`, `rdp` or `vnc`) and asks for its
 `tunnel`, and stops after frame 2 instead (`unsupported`). The host admits it like any permission,
 then connects to its service on its loopback (127.0.0.1, then ::1) and sends the accepting verdict
 only once that connection is open; when the service does not answer within 3 seconds it refuses
-with `service-down`. A tunnel's verdict carries no resume token. After it the bytes travel as
-plaintexts that start with byte `0x05`, each followed by up to one frame's worth of the stream, in
-order, both ways, besides `ping`, `pong` and `bye`; there is no video, input or other message. A
-side whose service or client ends sends `bye` after the bytes it read, and the other side ends
-too. A tunnel with no frame from its peer for 60 seconds is closed.
+with `service-down`. After the verdict the bytes travel as plaintexts that start with byte `0x05`,
+each followed by up to one frame's worth of the stream, in order, both ways, besides `ping`,
+`pong` and `bye`; there is no video, input or other message. A side whose service or client ends
+sends `bye` after the bytes it read, and the other side ends too. A tunnel with no frame from its
+peer for 60 seconds is closed.
+
+A tunnel's verdict carries a resume token only to a controller that announced `move`; to any
+other the tunnel ends with its connection, as before. A resumable tunnel counts its bytes both
+ways. Each side keeps the bytes it sent that the other has not confirmed, up to 4 MiB, and stops
+reading its service (or the GUI) beyond that; it confirms what it received in all with
+`{"type": "got", n}` every 256 KiB or 250 ms, and at least once a second, so the peer always
+hears it. On each connection both sides send `got` first, and the bytes the other missed go again
+before anything new; a part is kept before it is written, so one a failed write took goes again.
+The controller, having heard nothing for 3 seconds (time spent handing the host's bytes to a
+slow GUI aside; the watch runs beside its writes), lets the connection go and resumes the tunnel with its token. The host's tunnel keeps its service
+connection open meanwhile and waits up to 60 seconds for the resumed connection, which it takes
+over; the session the resume opened ends unseen, and the next token stays bound to the tunnel's
+own session.
 
 ## NanoKVM sessions
 
@@ -241,6 +263,8 @@ outside the range this build speaks (10 to 10) is refused as incompatible.
 | `wake` | the `wake` session action (the host wakes its displays) |
 | `recovery` | the controller's `no-picture`; the host's `placeholder` in `video-start` and `video` in its stats |
 | `nanokvm` | sessions of the computer wired to the host's NanoKVM USB (`client_hello`'s `nanokvm`); permission `use-nanokvm` |
+| `resolution` | the controller's resolution choice (`quality`'s `size`); the host's `size` in `video-start` |
+| `move` | a resume that moves the session (`client_hello`'s `move`: the controller's AI task goes on); resumable tunnels and `got`; healthy sessions moving to a better route ([networking.md](networking.md), "Switching paths") |
 
 ## Decoders
 

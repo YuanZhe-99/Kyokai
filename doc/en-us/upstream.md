@@ -4,7 +4,7 @@ What Kyokai relies on from each upstream, verified by reading the pinned source 
 documentation on 2026-10-16. Measured results from the Phase 0 spikes are added to each section
 when they run; anything not listed here is not assumed.
 
-## MyGo v0.6.3
+## MyGo v0.7.4
 
 - **Windows chrome and materials (spike, 2026-10-23).** A window created with `Vibrancy` shows the
   material where the view draws no background (`Context.Vibrancy` true on Windows 11; the root
@@ -17,6 +17,12 @@ when they run; anything not listed here is not assumed.
   the view's child window (the largest) click it while the session is locked. `Bitmap.Update`
   redraws without rebuilding the view, so a live picture in a rounded, clipped element costs no
   view rebuilds.
+- **0.7.4 (checked 2026-11-01).** The Edit menu follows the focus, and an element with
+  `HandleInput` (the desktop's picture, a Remote Desktop or VNC pane, the terminal) counts as able
+  to take its commands, so Copy and Paste stay enabled there; on Windows and Linux keys still reach
+  the window before the menu. Native windows open fully drawn (Kyokai keeps opening its own
+  `Hidden` and calling `Show`). A grid's percentages are of its own cell; Kyokai's grids render the
+  same.
 - **0.6.3 (checked 2026-10-23).** Nothing Kyokai relies on changed. On Windows a message dialog's
   results stay off the moving Go stack, and Direct3D paces frames that change nothing by the
   display's refresh; presses go through a hidden scroll bar's track; a focused text field takes its
@@ -60,7 +66,7 @@ when they run; anything not listed here is not assumed.
   HTML, PNG image; no change event), dialogs, shell open, a single-instance lock keyed by the app
   name, open at login, power events (lock/unlock, idle time), `App.Path` kinds (no separate
   config kind), `Relaunch`, cancelable quit hooks. On macOS `App.WasOpenedAtLogin` (through
-  v0.7.3) reads the launch's Apple Event in `applicationWillFinishLaunching:`, before AppKit
+  v0.7.4) reads the launch's Apple Event in `applicationWillFinishLaunching:`, before AppKit
   dispatches it, so a login item always reads no; the event is current only while
   `applicationDidFinishLaunching:` runs, where `WhenReady`'s functions run too, so Kyokai reads
   it there itself (`gui.LaunchedAsLoginItem`).

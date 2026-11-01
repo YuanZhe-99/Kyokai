@@ -125,6 +125,16 @@ when `SCREENSHOT_DIR` is set.
   separator at the end of the top-right pane's header (`windowButtons`), maximize with Windows
   11's snap layouts; while Settings covers the panes they stay in that place, light over the
   dimmed window, never beside the sheet's × (an overlay; the header keeps their room unseen).
+- **Corners at the window's.** On Windows and Linux a corner of an element that meets a corner of
+  the main window — a pane of the group, the top card above the panes, protected mode's pane, the
+  tour's — takes 4 points instead of 14 (`paneRadii`, `paneOuterRadius`), so that its curve never
+  bulges past the window's own (Windows 11 rounds the window at 8). An element meets a corner
+  where it reaches the window's margin on both sides of it: the left corners only while the
+  sidebar is hidden altogether (shown or as the rail, the sidebar lies between); the top corners
+  only while no card shows above the panes (the first card then takes them); a maximized pane
+  meets every corner its group's room meets (`panesCorners`, `split.corners`). macOS keeps 14
+  everywhere, its window corners being larger; a window of its own and full screen are unchanged
+  (no corners).
 - **Full screen** shows the pane in focus alone, with no header or sidebar.
 
 ## Settings
@@ -474,8 +484,10 @@ when `SCREENSHOT_DIR` is set.
   back and forth, and floats again when the room runs out and in full screen, which has no
   header. Its icons, each named by its tooltip:
   Display (the display by number when the host has several; Fit or Original size), Quality (the
-  preset, Frame rate with the cap such as "30 fps", Codec with Auto and what both computers do, by
-  codec name only, when there is a choice, and Full colour), Keyboard (with `control-input`, on
+  preset, Frame rate with the cap such as "30 fps", Resolution — Auto, Native, 4K, 1440p, 1080p,
+  720p — only for a host whose stream says which applies (0.6.15 and later,
+  [computer-use.md](computer-use.md), "Quality and bandwidth"), Codec with Auto and what both
+  computers do, by codec name only, when there is a choice, and Full colour), Keyboard (with `control-input`, on
   Windows and macOS: the keyboard mode Map, Translate or Legacy, remembered for every viewer, and
   Swap Ctrl and Cmd where a Mac is on either side and on every NanoKVM pane (off there until chosen: the wired computer's system is not known); on a Mac without Kyokai's Accessibility
   permission the icon takes the warning colour and its tooltip says to allow it; in Map and
@@ -520,8 +532,15 @@ when `SCREENSHOT_DIR` is set.
   the warning colour, and the keyboard grab steps aside after half a second
   ([computer-use.md](computer-use.md), "Input"). After a choice in the toolbar the
   picture takes the keyboard again; the mouse, the wheel and the keyboard on the picture go to the
-  host ([computer-use.md](computer-use.md)), a press on the toolbar never does. The quality preset,
-  frame-rate cap, Fit or Original size, Full colour, Codec, Swap Ctrl and Cmd, the clipboard switch
+  host ([computer-use.md](computer-use.md)), a press on the toolbar never does. While the device's
+  path is relayed yet it is on this device's LAN (`lan` in the status,
+  [networking.md](networking.md), "Status") and Try direct connections is off, the viewer offers
+  over the picture, where "Recovering the picture…" goes and never with it, "This device is on your
+  network, but the connection goes through the server." with **Connect directly**, which turns Try
+  direct connections on as the Network page does (on Windows the offer adds that Windows may ask
+  once to allow Kyokai), and **Not now**, which hides it for that pane (`offersDirect`,
+  `directOffer`); never for a session by address or to a NanoKVM. The quality preset,
+  frame-rate cap, Resolution, Fit or Original size, Full colour, Codec, Swap Ctrl and Cmd, the clipboard switch
   and the folded toolbar are kept for each device (`viewers` in `gui.json`): a device's viewer
   opens with the settings chosen for it last.
 - The clipboard panel: "Share the clipboard with this device" (on unless switched off, kept for

@@ -130,9 +130,14 @@ it by its grip at the left end to wherever along the top edge suits you, and fol
 Kyokai remembers both. **Display** chooses the screen when the other computer has several, and
 **Fit** (the whole screen in the window) or **Original size** (one point per pixel of the other
 computer, with scroll bars to drag when it is larger than the window). **Quality** sets
-**Faster**, **Balanced** or **Sharper**, a frame-rate cap and the **Codec** (**Auto** lets the
+**Faster**, **Balanced** or **Sharper**, a frame-rate cap, the **Resolution** where the other
+computer runs 0.6.15 or later (**Auto** sends up to 4K where both computers handle it in hardware,
+else 1080p; **Native** sends the screen as it is; 4K, 1440p, 1080p and 720p are ceilings, never
+enlarging the picture) and the **Codec** (**Auto** lets the
 other computer choose; the list shows what both computers support). Beside the icons the toolbar
 says whether the connection is **Direct** or **Relayed**; its tooltip shows where the time goes.
+When the connection is relayed although the other computer is on your local network, the picture
+offers **Connect directly**, which turns on Try direct connections, or **Not now**.
 **Full screen** fills the display.
 Click the picture to use the mouse and keyboard there; Kyokai's own windows on the other computer take your input only
 where its user turned off **Hide Kyokai from screen capture**, and not while a connection request or an AI approval waits
@@ -163,7 +168,7 @@ clipboard panel: **Share the clipboard with this device** turns sharing off or o
 and below it is what crossed the clipboard while its pane was in front — from that device or from
 this computer, newest first, with **Copy** for text — kept only until the pane closes. With several
 devices connected, only the one whose pane is in front (in the Kyokai window you used last) shares
-the clipboard; switching to a pane sends what you copied meanwhile. Quality, frame rate, Fit or
+the clipboard; switching to a pane sends what you copied meanwhile. Quality, frame rate, resolution, Fit or
 Original size, codec, sound, the swap and the clipboard switch are remembered for each device. While you are connected the other computer does not go to
 sleep by itself, and a screen that was dark already is woken. If the picture does not come, the
 other computer keeps trying to bring it back by itself, and the picture area says what is happening

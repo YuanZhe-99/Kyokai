@@ -1,10 +1,16 @@
 // Command netdelay is a TCP proxy that makes a slow, uneven path out of a
 // fast one, for trying sessions over high latency on one machine
 // (doc/en-us/development.md): each direction is delayed by half the round
-// trip, limited to a rate, given random jitter, and frozen now and then.
+// trip, limited to a rate, given random jitter, frozen now and then, and
+// cut once if asked.
 //
 //	go run ./tools/netdelay -listen 127.0.0.1:47400 -to 127.0.0.1:47310 \
-//	    -rtt 230ms -rate 3mbit -jitter 20ms -stall 45s/3s
+//	    -rtt 230ms -rate 3mbit -jitter 20ms -stall 45s/3s -cut 20s/5s
+//
+// A cut is a black hole, not a close: from AFTER past the start the path
+// passes nothing either way and neither side sees its connection end; what
+// was sent waits and arrives, in order, when the cut heals after FOR (FOR 0:
+// never). A connection accepted during a cut reaches `to` once it heals.
 //
 // Bytes keep their order; what waits behind the rate is bounded (queue),
 // so a sender that outpaces the path is held back as by a real one.
@@ -38,7 +44,10 @@ type path struct {
 	// Every stallEvery the path freezes for stallFor (0: never), counted
 	// from start.
 	stallEvery, stallFor time.Duration
-	start                time.Time
+	// From cutAt past start the path passes nothing for cutFor (0: for
+	// good); cutAt 0 is no cut.
+	cutAt, cutFor time.Duration
+	start         time.Time
 }
 
 func main() {
@@ -48,6 +57,7 @@ func main() {
 	rate := flag.String("rate", "", "each direction's rate, as 3mbit, 500kbit or 1gbit (empty: unlimited)")
 	jitter := flag.Duration("jitter", 0, "random extra delay of each chunk, up to this")
 	stall := flag.String("stall", "", "freeze the path: EVERY/FOR, as 45s/3s (empty: never)")
+	cut := flag.String("cut", "", "cut the path once, both ways, holding its bytes: AFTER/FOR, as 20s/5s, FOR 0 for good (empty: never)")
 	flag.Parse()
 	p := path{delay: *rtt / 2, jitter: *jitter, start: time.Now()}
 	var err error
@@ -57,13 +67,19 @@ func main() {
 	if p.stallEvery, p.stallFor, err = parseStall(*stall); err != nil {
 		log.Fatal(err)
 	}
+	if p.cutAt, p.cutFor, err = parseCut(*cut); err != nil {
+		log.Fatal(err)
+	}
 	ln, err := net.Listen("tcp", *listen)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("netdelay: %s -> %s, rtt %v, rate %s, jitter %v, stall %q", *listen, *to, *rtt, *rate, *jitter, *stall)
+	log.Printf("netdelay: %s -> %s, rtt %v, rate %s, jitter %v, stall %q, cut %q", *listen, *to, *rtt, *rate, *jitter, *stall, *cut)
 	if p.stallEvery > 0 {
 		go announceStalls(p)
+	}
+	if p.cutAt > 0 {
+		go announceCut(p)
 	}
 	for {
 		c, err := ln.Accept()
@@ -130,6 +146,61 @@ func (p path) stallEnd(t time.Time) time.Time {
 	return t.Add(p.stallEvery - in)
 }
 
+// parseCut reads AFTER/FOR, such as 20s/5s; FOR 0 cuts for good.
+// Returns: when the cut begins after the start and how long it lasts, both
+// 0 for an empty one.
+func parseCut(s string) (after, dur time.Duration, err error) {
+	if s == "" {
+		return 0, 0, nil
+	}
+	a, b, ok := strings.Cut(s, "/")
+	if !ok {
+		return 0, 0, fmt.Errorf("bad cut %q (want AFTER/FOR)", s)
+	}
+	if after, err = time.ParseDuration(a); err != nil {
+		return 0, 0, err
+	}
+	if dur, err = time.ParseDuration(b); err != nil {
+		return 0, 0, err
+	}
+	if after <= 0 || dur < 0 {
+		return 0, 0, fmt.Errorf("bad cut %q: AFTER must be positive, FOR not negative", s)
+	}
+	return after, dur, nil
+}
+
+// cutEnd is when bytes due at t may go: t itself outside the cut, the
+// cut's end inside it.
+// Returns: false when t falls into a cut that never heals.
+func (p path) cutEnd(t time.Time) (time.Time, bool) {
+	if p.cutAt == 0 {
+		return t, true
+	}
+	begin := p.start.Add(p.cutAt)
+	if t.Before(begin) {
+		return t, true
+	}
+	if p.cutFor == 0 {
+		return time.Time{}, false
+	}
+	if end := begin.Add(p.cutFor); t.Before(end) {
+		return end, true
+	}
+	return t, true
+}
+
+// announceCut logs the cut as it begins and as it heals.
+func announceCut(p path) {
+	time.Sleep(time.Until(p.start.Add(p.cutAt)))
+	if p.cutFor == 0 {
+		log.Printf("netdelay: cut for good")
+		return
+	}
+	log.Printf("netdelay: cut for %v", p.cutFor)
+	time.Sleep(p.cutFor)
+	log.Printf("netdelay: cut healed")
+}
+
 // announceStalls logs each stall as it begins.
 func announceStalls(p path) {
 	for k := 1; ; k++ {
@@ -140,8 +211,15 @@ func announceStalls(p path) {
 }
 
 // proxy passes one connection on to `to` and back through the path.
+// Notes: a connection accepted during a cut dials only once the cut heals,
+// and never if it does not.
 func proxy(c net.Conn, to string, p path) {
 	defer c.Close()
+	at, ok := p.cutEnd(time.Now())
+	if !ok {
+		select {} // the cut never heals: the black hole keeps the connection
+	}
+	time.Sleep(time.Until(at))
 	up, err := net.Dial("tcp", to)
 	if err != nil {
 		log.Printf("netdelay: %s: %v", to, err)
@@ -164,7 +242,9 @@ type timed struct {
 
 // pipe copies src to dst through the path until either ends: a reader
 // stamps chunks as they arrive, a writer sends each when the path lets it
-// (behind the ones before it, the rate and the delay, after any stall).
+// (behind the ones before it, the rate and the delay, after any stall and
+// the cut). Notes: in a cut that never heals the writer holds its chunk for
+// good, so the reader stops once the queue is full and nothing is closed.
 func pipe(dst io.WriteCloser, src io.Reader, p path) {
 	ch := make(chan timed, queue)
 	go func() {
@@ -198,7 +278,10 @@ func pipe(dst io.WriteCloser, src io.Reader, p path) {
 		if at.Before(last) {
 			at = last // order is kept
 		}
-		at = p.stallEnd(at)
+		at, ok := p.cutEnd(p.stallEnd(at))
+		if !ok {
+			select {} // cut for good: hold everything, close nothing
+		}
 		last = at
 		time.Sleep(time.Until(at))
 		if _, err := dst.Write(t.b); err != nil {

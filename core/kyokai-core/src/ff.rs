@@ -7,6 +7,7 @@
 //! Only the leading fields of `AVFrame` and `AVPacket` are read or written;
 //! they have kept their places since FFmpeg 2.
 
+use crate::convert::Sink;
 use std::ffi::{CStr, c_char, c_int, c_void};
 use std::sync::OnceLock;
 
@@ -166,14 +167,10 @@ impl Decoder {
         }
     }
 
-    /// Decodes one frame (Annex B) into `rgba` (resized to width×height×4).
+    /// Decodes one frame (Annex B) into `sink` (as it wants the picture).
     /// Returns: the picture's size when one came out, None while FFmpeg
     /// waits for more.
-    pub fn decode(
-        &mut self,
-        frame: &[u8],
-        rgba: &mut Vec<u8>,
-    ) -> Result<Option<(u32, u32)>, String> {
+    pub fn decode(&mut self, frame: &[u8], sink: &mut Sink) -> Result<Option<(u32, u32)>, String> {
         self.padded.clear();
         self.padded.extend_from_slice(frame);
         self.padded.resize(frame.len() + PADDING, 0);
@@ -208,12 +205,12 @@ impl Decoder {
             if got < 0 {
                 return Err(format!("FFmpeg did not decode ({got})"));
             }
-            out = Some(self.picture(rgba)?);
+            out = Some(self.picture(sink)?);
         }
     }
 
-    /// Converts the received frame into RGBA.
-    fn picture(&self, rgba: &mut Vec<u8>) -> Result<(u32, u32), String> {
+    /// Converts the received frame into `sink`.
+    fn picture(&self, sink: &mut Sink) -> Result<(u32, u32), String> {
         // SAFETY: AVFrame's leading fields (see the offsets); for 4:2:0 the
         // three planes hold `height` and `height/2` rows of their line size.
         unsafe {
@@ -233,7 +230,7 @@ impl Decoder {
                 planes[i] = std::slice::from_raw_parts(data.add(i).read(), stride * rows);
                 strides[i] = stride;
             }
-            crate::video::planar_to_rgba(planes, strides, w, h, false, rgba);
+            sink.planar(planes, strides, w, h, false)?;
             Ok((w as u32, h as u32))
         }
     }
@@ -279,7 +276,7 @@ mod tests {
             enc.picture(&bgra, w, h, w * 4);
             let (frame, _) = enc.encode(false).unwrap().pop().unwrap();
             assert_eq!(
-                dec.decode(&frame, &mut rgba).unwrap(),
+                dec.decode(&frame, &mut Sink::vec(&mut rgba)).unwrap(),
                 Some((w as u32, h as u32))
             );
         }

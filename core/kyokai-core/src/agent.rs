@@ -375,10 +375,12 @@ impl Link {
     /// drop closes it, or why the agent cannot start it (the link is down,
     /// or the agent has no display or encoder): the caller shows the
     /// placeholder and tries again.
+    #[allow(clippy::too_many_arguments)]
     pub fn open_video(
         self: &Arc<Self>,
         display: Option<Display>,
         choices: &[Choice],
+        want: crate::video::Want,
         tx: mpsc::Sender<Encoded>,
         key: Arc<AtomicBool>,
         targets: Arc<Targets>,
@@ -400,7 +402,7 @@ impl Link {
         }
         let opened: Opened = match self.call(
             "video.open",
-            json!({"stream": stream, "display": display, "choices": choices}),
+            json!({"stream": stream, "display": display, "choices": choices, "want": want}),
         ) {
             Ok(o) => o,
             Err(e) => {
@@ -744,6 +746,7 @@ pub fn serve(input: Box<dyn Read + Send>, out: Box<dyn Write + Send>) {
         clipboard: None,
         desks: HashMap::new(),
         awake: None,
+        busy: None,
         work,
         opening: HashMap::new(),
     };
@@ -785,6 +788,8 @@ struct Agent {
     /// Keeps the console session's displays awake while video streams: a
     /// display request from the helper in session 0 does not count.
     awake: Option<crate::power::Awake>,
+    /// Keeps the system from slowing the agent while video streams.
+    busy: Option<crate::power::Busy>,
     /// Where the workers of slow requests hand their results back.
     work: std_mpsc::Sender<Work>,
     /// The streams opening on a worker, by kind (`video`, `audio`) and
@@ -901,13 +906,17 @@ impl Agent {
                     .iter()
                     .filter_map(|w| crate::video::Choice::parse(&w.codec, w.i444))
                     .collect();
+                // The session's frame rate, ratio and size (an older engine
+                // sends none: the defaults).
+                let want: crate::video::Want =
+                    serde_json::from_value(req["want"].clone()).unwrap_or_default();
                 // Opening a capture can take seconds: on a worker, while
                 // input goes on (`Work::Done`).
                 self.opening.insert(("video", stream), false);
                 let work = self.work.clone();
                 std::thread::spawn(move || {
                     follow_input_desktop();
-                    let source = crate::video::Source::open(display, &choices);
+                    let source = crate::video::Source::open(display, &choices, want);
                     let finish = move |agent: &mut Agent| agent.video_opened(stream, source);
                     let _ = work.send(Work::Done(id, Box::new(finish)));
                 });
@@ -941,6 +950,7 @@ impl Agent {
                 self.sources.remove(&stream);
                 if self.sources.is_empty() {
                     self.awake = None;
+                    self.busy = None;
                 }
                 return Ok(None);
             }
@@ -1163,6 +1173,7 @@ impl Agent {
         });
         self.sources.insert(stream, source);
         self.awake.get_or_insert_with(crate::power::keep_awake);
+        self.busy.get_or_insert_with(crate::power::busy);
         Ok(reply)
     }
 
@@ -2062,16 +2073,23 @@ mod tests {
             codec: "vp9-sw",
             i444: true,
         }];
-        let (start, _, video) =
-            match link.open_video(None, &choices, tx, key, targets, stop.clone()) {
-                Ok(opened) => opened,
-                // A machine that cannot capture (no display, no permission)
-                // says why; the helper's session then shows its placeholder.
-                Err(why) => {
-                    assert!(!why.is_empty(), "a refusal without a reason");
-                    return;
-                }
-            };
+        let (start, _, video) = match link.open_video(
+            None,
+            &choices,
+            crate::video::Want::default(),
+            tx,
+            key,
+            targets,
+            stop.clone(),
+        ) {
+            Ok(opened) => opened,
+            // A machine that cannot capture (no display, no permission)
+            // says why; the helper's session then shows its placeholder.
+            Err(why) => {
+                assert!(!why.is_empty(), "a refusal without a reason");
+                return;
+            }
+        };
         assert!(start.width > 0 && start.height > 0);
         assert_eq!((start.codec.as_str(), start.i444), ("vp9-sw", true));
         let frame = rx.blocking_recv().expect("a frame through the agent");

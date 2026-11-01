@@ -8731,6 +8731,46 @@ func (msgs Messages) ViewerDecoding(codec string, impl string) string {
 	return Catalog.Format(msgs.locale, "ViewerDecoding", map[string]any{"codec": codec, "impl": impl})
 }
 
+// ViewerDirectConnect says "Connect directly"
+// in the language the app shows.
+func ViewerDirectConnect() string { return In(i18n.Locale()).ViewerDirectConnect() }
+
+// ViewerDirectConnect says "Connect directly"
+// in the language of msgs.
+func (msgs Messages) ViewerDirectConnect() string {
+	return Catalog.Format(msgs.locale, "ViewerDirectConnect", nil)
+}
+
+// ViewerDirectFirewall says "Windows may ask once to allow Kyokai."
+// in the language the app shows.
+func ViewerDirectFirewall() string { return In(i18n.Locale()).ViewerDirectFirewall() }
+
+// ViewerDirectFirewall says "Windows may ask once to allow Kyokai."
+// in the language of msgs.
+func (msgs Messages) ViewerDirectFirewall() string {
+	return Catalog.Format(msgs.locale, "ViewerDirectFirewall", nil)
+}
+
+// ViewerDirectLater says "Not now"
+// in the language the app shows.
+func ViewerDirectLater() string { return In(i18n.Locale()).ViewerDirectLater() }
+
+// ViewerDirectLater says "Not now"
+// in the language of msgs.
+func (msgs Messages) ViewerDirectLater() string {
+	return Catalog.Format(msgs.locale, "ViewerDirectLater", nil)
+}
+
+// ViewerDirectOffer says "This device is on your network, but the connection goes through the server."
+// in the language the app shows.
+func ViewerDirectOffer() string { return In(i18n.Locale()).ViewerDirectOffer() }
+
+// ViewerDirectOffer says "This device is on your network, but the connection goes through the server."
+// in the language of msgs.
+func (msgs Messages) ViewerDirectOffer() string {
+	return Catalog.Format(msgs.locale, "ViewerDirectOffer", nil)
+}
+
 // ViewerDisplay says "Display"
 // in the language the app shows.
 func ViewerDisplay() string { return In(i18n.Locale()).ViewerDisplay() }
@@ -9233,6 +9273,26 @@ func ViewerRelayedHint() string { return In(i18n.Locale()).ViewerRelayedHint() }
 // in the language of msgs.
 func (msgs Messages) ViewerRelayedHint() string {
 	return Catalog.Format(msgs.locale, "ViewerRelayedHint", nil)
+}
+
+// ViewerResolution says "Resolution"
+// in the language the app shows.
+func ViewerResolution() string { return In(i18n.Locale()).ViewerResolution() }
+
+// ViewerResolution says "Resolution"
+// in the language of msgs.
+func (msgs Messages) ViewerResolution() string {
+	return Catalog.Format(msgs.locale, "ViewerResolution", nil)
+}
+
+// ViewerResolutionNative says "Native"
+// in the language the app shows.
+func ViewerResolutionNative() string { return In(i18n.Locale()).ViewerResolutionNative() }
+
+// ViewerResolutionNative says "Native"
+// in the language of msgs.
+func (msgs Messages) ViewerResolutionNative() string {
+	return Catalog.Format(msgs.locale, "ViewerResolutionNative", nil)
 }
 
 // ViewerShowBar says "Show controls"

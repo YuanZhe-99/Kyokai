@@ -5,7 +5,7 @@
 
 use crate::ai::desktop::{Desktop, Frame};
 use crate::input::{Area, Event, Guard, INJECTED_TAG, LocalInput, Mods, PointerAction, lock_for};
-use crate::video::{Display, Got, Grab, MAX_FPS, MAX_SIZE, Take, fit, order};
+use crate::video::{Display, Got, Grab, MAX_FPS, Take, order};
 use block2::RcBlock;
 use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
@@ -496,10 +496,10 @@ fn filter(id: CGDirectDisplayID, show_kyokai: bool) -> Result<Retained<SCContent
 }
 
 impl Grab for Capture {
-    fn open(want: Display) -> Result<(Self, u32, u32), String> {
+    fn open(want: Display, short: u32) -> Result<(Self, u32, u32), String> {
         let id = display_id(want).ok_or("the display is gone")?;
         let (pw, ph) = pixel_size(id, want);
-        let (w, h) = fit(pw, ph, MAX_SIZE.0, MAX_SIZE.1);
+        let (w, h) = crate::video::fit_short(pw, ph, short);
         Ok((Capture::start(want, w, h)?, w, h))
     }
 

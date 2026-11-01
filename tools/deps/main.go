@@ -2,14 +2,15 @@
 // releases: the MyGo module (go.mod), the EasyTier release the engine embeds,
 // the RustDesk release the vendored code comes from and the vcpkg release
 // that builds libvpx and libaom (third_party/upstream.json; its commit is
-// the baseline in core/vcpkg-configuration.json), and the Rust toolchain
-// (rust-toolchain.toml).
+// the baseline in core/vcpkg-configuration.json), the smoltcp release
+// vendored in core/third_party/smoltcp (its Cargo.toml) and the Rust
+// toolchain (rust-toolchain.toml).
 //
 //	go run ./tools/deps check [-strict]   compare pins with the latest releases
 //	go run ./tools/deps update            move MyGo to its latest version
 //
-// EasyTier, RustDesk, vcpkg and Rust move by hand, each with its review and
-// checks (doc/en-us/ci-cd.md). Run from the repository root.
+// EasyTier, RustDesk, vcpkg, smoltcp and Rust move by hand, each with its
+// review and checks (doc/en-us/ci-cd.md). Run from the repository root.
 package main
 
 import (
@@ -31,6 +32,7 @@ const (
 	pinsPath        = "third_party/upstream.json"
 	toolchainPath   = "rust-toolchain.toml"
 	vcpkgConfigPath = "core/vcpkg-configuration.json"
+	smoltcpPath     = "core/third_party/smoltcp/Cargo.toml"
 	mygoModule      = "github.com/egoist/mygo"
 )
 
@@ -138,6 +140,16 @@ func check(args []string) error {
 		return err
 	}
 
+	st, err := smoltcpVersion()
+	if err != nil {
+		return err
+	}
+	latestSt, err := latestCrate("smoltcp")
+	if err != nil {
+		return err
+	}
+	report("smoltcp", st, latestSt, "vendored: core/third_party/smoltcp/KYOKAI.md")
+
 	rust, err := rustChannel()
 	if err != nil {
 		return err
@@ -226,6 +238,53 @@ func latestRelease(repo string) (string, error) {
 		return "", err
 	}
 	return r.TagName, nil
+}
+
+var crateVersionRE = regexp.MustCompile(`(?m)^version\s*=\s*"([^"]+)"`)
+
+// smoltcpVersion returns the version of the smoltcp vendored in
+// core/third_party/smoltcp: the first version line of its Cargo.toml, the
+// package's own.
+func smoltcpVersion() (string, error) {
+	data, err := os.ReadFile(smoltcpPath)
+	if err != nil {
+		return "", err
+	}
+	m := crateVersionRE.FindSubmatch(data)
+	if m == nil {
+		return "", fmt.Errorf("%s has no version", smoltcpPath)
+	}
+	return string(m[1]), nil
+}
+
+// latestCrate returns the newest stable version of a crate on crates.io.
+// Notes: crates.io refuses requests without a User-Agent.
+func latestCrate(name string) (string, error) {
+	req, err := http.NewRequest("GET", "https://crates.io/api/v1/crates/"+name, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "kyokai-deps (https://github.com/YuanZhe-99/Kyokai)")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("crates.io %s: %s", name, resp.Status)
+	}
+	var c struct {
+		Crate struct {
+			MaxStableVersion string `json:"max_stable_version"`
+		} `json:"crate"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&c); err != nil {
+		return "", err
+	}
+	if c.Crate.MaxStableVersion == "" {
+		return "", fmt.Errorf("crates.io %s: no stable version", name)
+	}
+	return c.Crate.MaxStableVersion, nil
 }
 
 var channelRE = regexp.MustCompile(`(?m)^channel\s*=\s*"([^"]+)"`)

@@ -96,7 +96,10 @@ KYOKAI_CORE_LIB=/abs/path/kyokai_core.dll go test ./internal/core/
 不发送帧，打印“still”），结束时打印整个观察中最长的间隔。`ctl logs` 向引擎的所有者或助手的操作者打印引擎的日志
 （`logs.read`：助手模式下是助手及其代理的日志）。`tools/netdelay` 把一条快速的路径变成缓慢、不均匀的路径，用于在一台机器上
 测试高延迟下的会话：一个 TCP 代理，把每个方向延迟半个往返时间、限制到一个速率、加上随机抖动，并不时冻结路径，同时保持字节的顺序，
-等待的字节数有上限。开发用的被控端接受按地址连接（包括 `127.0.0.1/32`）时：
+等待的字节数有上限。`-cut AFTER/FOR`（例如 `20s/5s`；FOR 为 `0` 表示永久）在开始后 AFTER 时把路径双向切断一次：是黑洞而不是关闭，
+因此什么都不通过、什么都不关闭，已发送的字节在等待，切断恢复后按顺序到达，切断期间接受的连接届时到达目标。它用于观察会话与隧道如何切换
+路径（[networking.md](networking.md)，“切换路径”）；核心的 `threenode` 测试（`cargo test -p kyokai-core threenode -- --ignored`，约一分钟，
+使用局域网地址）用一个进程中的三个 EasyTier 节点测量同样的情况。开发用的被控端接受按地址连接（包括 `127.0.0.1/32`）时：
 
 ```bash
 go run ./tools/netdelay -listen 127.0.0.1:47400 -to 127.0.0.1:47310 -rtt 230ms -rate 3mbit -jitter 20ms -stall 45s/3s
