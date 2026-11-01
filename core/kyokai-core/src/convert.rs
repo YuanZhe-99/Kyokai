@@ -77,7 +77,7 @@ impl<'a> Sink<'a> {
 
     /// What is wanted of the picture (a decoder need not read one that is
     /// not converted).
-    #[cfg(any(windows, target_os = "macos", test))]
+    #[cfg(any(windows, target_os = "macos"))]
     pub fn want(&self) -> Want {
         self.want
     }
