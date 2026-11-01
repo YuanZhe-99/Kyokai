@@ -460,7 +460,7 @@ const (
 	mainMinH        float32 = 520 // and its height
 	paneNameMaxW    float32 = 200 // a header's name, at most
 	paneRadius      float32 = 14  // a pane's corners
-	paneOuterRadius float32 = 4   // on Windows and Linux, one that meets a corner of the window (paneRadii)
+	paneTightRadius float32 = 4   // a pane's corners on Windows and Linux (paneCorner)
 	paneButton      float32 = 28  // a button in a pane's header or the sidebar
 	winButtonW      float32 = 40  // a window button the view draws on Windows
 	winButtonH      float32 = 30
@@ -545,56 +545,17 @@ const (
 	trafficOwnY  = int((paneHeaderH - 14) / 2)
 )
 
-// corners is a set of an element's corners, each named for the corner of
-// the main window it would meet: an element meets the window's corner
-// where it reaches the window's edges on both sides of it (paneMargin
-// in), with no sidebar, card or illustration between.
-type corners uint8
-
-const (
-	cornerTL   corners = 1 << iota // top-left
-	cornerTR                       // top-right
-	cornerBR                       // bottom-right
-	cornerBL                       // bottom-left
-	cornersAll = cornerTL | cornerTR | cornerBR | cornerBL
-)
-
-// paneRadii is the rule for the corners of a pane, a card above the panes
-// or protected mode's and the tour's pane (doc/en-us/gui.md, "Windows"):
-// paneRadius, but on Windows and Linux paneOuterRadius for each corner
-// that meets the window's, which those systems round less than a pane
-// (Windows 11 at 8 points), so that its curve never bulges past the
-// window's.
-// Inputs: goos, runtime.GOOS; at, the corners that meet the window's.
-// Returns: the radii in Radius's order (top-left, top-right, bottom-right,
-// bottom-left), for Radius(r[:]...).
-// Notes: macOS keeps paneRadius everywhere: its window corners are larger.
-func paneRadii(goos string, at corners) [4]float32 {
-	r := [4]float32{paneRadius, paneRadius, paneRadius, paneRadius}
+// paneCorner is the radius of every corner of a pane, a card above the
+// panes and protected mode's and the tour's pane (doc/en-us/gui.md,
+// "Windows"): paneRadius on macOS; on Windows and Linux, which round the
+// window less (Windows 11 at 8 points), paneTightRadius, so that a corner
+// meeting the window's never bulges past its curve and the left and right
+// corners match.
+func paneCorner(goos string) float32 {
 	if goos == "darwin" {
-		return r
+		return paneRadius
 	}
-	for i, k := range [4]corners{cornerTL, cornerTR, cornerBR, cornerBL} {
-		if at&k != 0 {
-			r[i] = paneOuterRadius
-		}
-	}
-	return r
-}
-
-// panesCorners are the corners of the window the main window's panes
-// reach together: the right ones always; the left ones only with the
-// sidebar hidden (shown or folded to the rail, the sidebar is between);
-// the top ones only with no card above the panes.
-func panesCorners(sidebarHidden, cards bool) corners {
-	at := cornerTR | cornerBR
-	if sidebarHidden {
-		at |= cornerTL | cornerBL
-	}
-	if cards {
-		at &^= cornerTL | cornerTR
-	}
-	return at
+	return paneTightRadius
 }
 
 // sbDoubleClick is how soon a second click on the sidebar's button hides

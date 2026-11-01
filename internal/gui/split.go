@@ -90,33 +90,6 @@ func (s *split) topLeft() tab {
 	return p.tab
 }
 
-// corners is which of the window's corners the pane showing t meets, when
-// the split as a whole meets those in at: of panes side by side the left
-// one keeps the left corners and the right one the right ones, of panes
-// above each other the upper one the top ones and the lower one the
-// bottom ones. None for a tab not shown.
-func (s *split) corners(t tab, at corners) corners {
-	var walk func(p *pane, at corners) (corners, bool)
-	walk = func(p *pane, at corners) (corners, bool) {
-		switch {
-		case p == nil:
-			return 0, false
-		case p.first == nil:
-			return at, p.tab == t
-		}
-		a, b := at&^(cornerTR|cornerBR), at&^(cornerTL|cornerBL)
-		if !p.across {
-			a, b = at&^(cornerBL|cornerBR), at&^(cornerTL|cornerTR)
-		}
-		if got, ok := walk(p.first, a); ok {
-			return got, true
-		}
-		return walk(p.second, b)
-	}
-	got, _ := walk(s.root, at)
-	return got
-}
-
 // leaf is the pane showing t, and its parent (nil for the root).
 func (s *split) leaf(t tab) (p, parent *pane) {
 	var find func(p, up *pane) (*pane, *pane)

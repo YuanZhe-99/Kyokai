@@ -8,7 +8,7 @@ when `SCREENSHOT_DIR` is set.
 
 - **The main window** is a sidebar on the window's base — Mica on Windows 11, the sidebar
   material on macOS, the theme's background elsewhere — and beside it the panes: rounded boxes
-  (14-point corners, a border and a faint shadow) floating 8 points from the window's edges and
+  (rounded per "Corners at the window's" below, a border and a faint shadow) floating 8 points from the window's edges and
   from each other (`shellView`). Home, each device's desktop and each of its services (SSH, Remote
   Desktop, VNC), a host's status and each AI session is a pane (`tab`: `homeTab`, `viewer`,
   `serviceTab`, `statusTab`, `aiTab`). Requests waiting for the
@@ -125,16 +125,12 @@ when `SCREENSHOT_DIR` is set.
   separator at the end of the top-right pane's header (`windowButtons`), maximize with Windows
   11's snap layouts; while Settings covers the panes they stay in that place, light over the
   dimmed window, never beside the sheet's × (an overlay; the header keeps their room unseen).
-- **Corners at the window's.** On Windows and Linux a corner of an element that meets a corner of
-  the main window — a pane of the group, the top card above the panes, protected mode's pane, the
-  tour's — takes 4 points instead of 14 (`paneRadii`, `paneOuterRadius`), so that its curve never
-  bulges past the window's own (Windows 11 rounds the window at 8). An element meets a corner
-  where it reaches the window's margin on both sides of it: the left corners only while the
-  sidebar is hidden altogether (shown or as the rail, the sidebar lies between); the top corners
-  only while no card shows above the panes (the first card then takes them); a maximized pane
-  meets every corner its group's room meets (`panesCorners`, `split.corners`). macOS keeps 14
-  everywhere, its window corners being larger; a window of its own and full screen are unchanged
-  (no corners).
+- **Corners at the window's.** On Windows and Linux every corner of a pane, of a card above the
+  panes, of protected mode's pane and of the tour's takes 4 points instead of 14 (`paneCorner`,
+  `paneTightRadius`): a corner that meets the window's never bulges past its curve (Windows 11
+  rounds the window at 8), and the left and right corners match whatever the sidebar and the
+  cards do. macOS keeps 14 everywhere, its window corners being larger; a window of its own and
+  full screen are unchanged (no corners).
 - **Full screen** shows the pane in focus alone, with no header or sidebar.
 
 ## Settings

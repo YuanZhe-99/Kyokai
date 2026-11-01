@@ -83,13 +83,7 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 				left = paneMargin / 2
 			}
 			ui.Column(c.Key("protected")).Grow(1).MinWidth(0).FillHeight().Padding(paneMargin, paneMargin, paneMargin, left).Children(func() {
-				// It meets every corner of the window but those beside the traffic lights.
-				at := cornersAll
-				if bar.Left > 0 {
-					at &^= cornerTL | cornerBL
-				}
-				r := paneRadii(runtime.GOOS, at)
-				ui.Column(c).Fill().Radius(r[:]...).Clip().Background(t.Background).Border(1, t.Border).Children(func() {
+				ui.Column(c).Fill().Radius(paneCorner(runtime.GOOS)).Clip().Background(t.Background).Border(1, t.Border).Children(func() {
 					ui.Row(c.Key("protected-head")).Height(paneHeaderH).Shrink(0).FillWidth().Padding(0, 8, 0, 14).Gap(4).AlignItems(ui.Center).Children(func() {
 						ui.Icon(c, navAI).FontSize(navIconSize).TextColor(t.TextMuted)
 						ui.Text(c, L.PickThisComputer()).FontSize(sizeBody).Bold()
@@ -123,8 +117,8 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 	ui.Row(c.Key("shell")).Fill().AlignItems(ui.Stretch).Children(func() {
 		a.sidebarView(c, vw)
 		ui.Column(c.Key("main")).Grow(1).MinWidth(0).MinHeight(0).Padding(paneMargin/2, paneMargin/2, paneMargin/2, left).Children(func() {
-			cards := a.bannersView(c, vw, panesCorners(hidden, false))
-			vw.panesView(c, g, panesCorners(hidden, cards))
+			a.bannersView(c)
+			vw.panesView(c, g)
 			a.toastView(c)
 		})
 	})
@@ -143,19 +137,12 @@ func (a *App) shellView(c *ui.Context, vw *viewerWindow, g group) {
 // bannersView is what needs the user whatever shows: the connection
 // requests waiting for them, a device connected here, an AI task waiting
 // or working here — each a card of its own (noticeCard).
-// Inputs: vw, the main window; at, the window's corners the cards' room
-// meets, whose top ones the first card takes (paneRadii).
-// Returns: whether any card shows, so that the panes below know they no
-// longer meet the window's top corners.
-func (a *App) bannersView(c *ui.Context, vw *viewerWindow, at corners) bool {
-	vw.cardAt, vw.cards = at&(cornerTL|cornerTR), 0
+func (a *App) bannersView(c *ui.Context) {
 	ui.Column(c.Key("banners")).FillWidth().Shrink(0).Children(func() {
 		a.requestsView(c)
 		a.hostBanner(c)
 		a.aiBanner(c)
 	})
-	vw.cardAt = 0
-	return vw.cards > 0
 }
 
 // noticeCard is one of the cards above the panes (bannersView), or above
@@ -163,17 +150,10 @@ func (a *App) bannersView(c *ui.Context, vw *viewerWindow, at corners) bool {
 // round it so that its edges and the gaps line up with theirs; tinted with
 // tone and edged in it when one is given — the accent for a decision the
 // user makes, the warning colour for someone at work on this computer.
-// The first card above the panes takes the corners the main window's
-// cardAt names (bannersView); every other card is rounded as a pane.
-// Side effects: counts the card in the main window's cards and clears its
-// cardAt.
 func (a *App) noticeCard(c *ui.Context, key string, tone ui.Color, body func()) {
 	t := c.Theme()
-	r := paneRadii(runtime.GOOS, a.main.cardAt)
-	a.main.cardAt = 0
-	a.main.cards++
 	ui.Column(c.Key(key)).FillWidth().Shrink(0).Padding(paneMargin / 2).Children(func() {
-		card := ui.Column(c.Key(key+"-card")).FillWidth().Radius(r[:]...).Clip().
+		card := ui.Column(c.Key(key+"-card")).FillWidth().Radius(paneCorner(runtime.GOOS)).Clip().
 			Background(t.Background).Border(1, t.Border).Shadow(0, 6, 18, 0, paneShadow)
 		if tone.A == 0 {
 			card.Padding(noticePadY, noticePadX).Gap(10).Children(body)
