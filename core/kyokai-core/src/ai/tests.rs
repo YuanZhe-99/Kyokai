@@ -2030,3 +2030,62 @@ fn live_openrouter_models_click_where_they_mean() {
     }
     assert!(failed.is_empty(), "did not press SAVE: {failed:?}");
 }
+
+/// The golden requests (PLAN.md, Pi step 2): what each adapter sends at the
+/// start, after one answered turn and after a follow-up, for the scenario in
+/// `fixtures/golden/scenario.json`. The sidecar's providers must build the
+/// same bytes. `KYOKAI_GOLDEN=update` writes the files.
+#[test]
+fn golden_requests() {
+    use super::{Conversation, Protocol};
+    let scenario = load("golden/scenario.json");
+    let shot = |key: &str| Shot {
+        b64: scenario[key].as_str().unwrap().into(),
+        width: 1280,
+        height: 720,
+    };
+    let s = |key: &str| scenario[key].as_str().unwrap().to_string();
+    for (protocol, name) in [
+        (Protocol::Anthropic, "anthropic"),
+        (Protocol::OpenaiResponses, "openai-responses"),
+        (Protocol::OpenaiChat, "openai-chat"),
+    ] {
+        let response = match &scenario["responses"][name] {
+            Value::String(path) => load(path),
+            inline => inline.clone(),
+        };
+        let mut c = Conversation::new(
+            protocol,
+            &s("model"),
+            &s("system"),
+            &s("task"),
+            &shot("shot"),
+        );
+        let mut bodies = vec![c.body()];
+        let turn = c.accept(&response).unwrap();
+        let outcomes: Vec<Outcome> = (0..turn.actions.len())
+            .map(|i| match i {
+                0 => Outcome::Ok,
+                1 => Outcome::Image(shot("after")),
+                2 => Outcome::Failed("no".into()),
+                _ => Outcome::NotExecuted,
+            })
+            .collect();
+        c.answer(&outcomes, Some(&shot("after")), false);
+        bodies.push(c.body());
+        c.follow_up(&s("follow_up"), &shot("follow_shot"));
+        bodies.push(c.body());
+        let path = dir().join(format!("golden/{name}.json"));
+        let text = serde_json::to_string_pretty(&bodies).unwrap() + "\n";
+        if std::env::var("KYOKAI_GOLDEN").as_deref() == Ok("update") {
+            std::fs::write(&path, &text).unwrap();
+        }
+        let want = std::fs::read_to_string(&path)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        assert_eq!(
+            text, want,
+            "{name}: the adapter's requests changed (KYOKAI_GOLDEN=update rewrites them)"
+        );
+    }
+}

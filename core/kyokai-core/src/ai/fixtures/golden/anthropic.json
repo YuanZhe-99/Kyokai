@@ -1,0 +1,1068 @@
+[
+  {
+    "cache_control": {
+      "ttl": "1h",
+      "type": "ephemeral"
+    },
+    "context_management": {
+      "edits": [
+        {
+          "clear_at_least": {
+            "type": "input_tokens",
+            "value": 20000
+          },
+          "keep": {
+            "type": "tool_uses",
+            "value": 5
+          },
+          "trigger": {
+            "type": "input_tokens",
+            "value": 100000
+          },
+          "type": "clear_tool_uses_20250919"
+        }
+      ]
+    },
+    "fallbacks": "default",
+    "max_tokens": 16000,
+    "messages": [
+      {
+        "content": [
+          {
+            "source": {
+              "data": "U0hPVDA=",
+              "media_type": "image/png",
+              "type": "base64"
+            },
+            "type": "image"
+          },
+          {
+            "text": "Save the file",
+            "type": "text"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "golden-model",
+    "output_config": {
+      "effort": "high"
+    },
+    "system": [
+      {
+        "cache_control": {
+          "ttl": "1h",
+          "type": "ephemeral"
+        },
+        "text": "You are operating a computer.",
+        "type": "text"
+      }
+    ],
+    "thinking": {
+      "display": "updates",
+      "type": "adaptive"
+    },
+    "tools": [
+      {
+        "type": "computer_toolset_20260801"
+      }
+    ]
+  },
+  {
+    "cache_control": {
+      "ttl": "1h",
+      "type": "ephemeral"
+    },
+    "context_management": {
+      "edits": [
+        {
+          "clear_at_least": {
+            "type": "input_tokens",
+            "value": 20000
+          },
+          "keep": {
+            "type": "tool_uses",
+            "value": 5
+          },
+          "trigger": {
+            "type": "input_tokens",
+            "value": 100000
+          },
+          "type": "clear_tool_uses_20250919"
+        }
+      ]
+    },
+    "fallbacks": "default",
+    "max_tokens": 16000,
+    "messages": [
+      {
+        "content": [
+          {
+            "source": {
+              "data": "U0hPVDA=",
+              "media_type": "image/png",
+              "type": "base64"
+            },
+            "type": "image"
+          },
+          {
+            "text": "Save the file",
+            "type": "text"
+          }
+        ],
+        "role": "user"
+      },
+      {
+        "content": [
+          {
+            "signature": "<SIGNATURE>",
+            "thinking": "",
+            "type": "thinking"
+          },
+          {
+            "signature": "<SIGNATURE>",
+            "thinking": "Opening the dialog's save button.",
+            "type": "thinking"
+          },
+          {
+            "text": "I'll click Save.",
+            "type": "text"
+          },
+          {
+            "id": "toolu_01",
+            "input": {},
+            "name": "screenshot",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_02",
+            "input": {
+              "region": [
+                100,
+                200,
+                400,
+                350
+              ]
+            },
+            "name": "zoom",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_03",
+            "input": {
+              "coordinate": [
+                500,
+                300
+              ],
+              "text": "shift"
+            },
+            "name": "left_click",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_04",
+            "input": {
+              "coordinate": [
+                10,
+                20
+              ]
+            },
+            "name": "right_click",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_05",
+            "input": {},
+            "name": "middle_click",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_06",
+            "input": {
+              "coordinate": [
+                30,
+                40
+              ],
+              "text": "ctrl+shift"
+            },
+            "name": "double_click",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_07",
+            "input": {
+              "coordinate": [
+                50,
+                60
+              ]
+            },
+            "name": "triple_click",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_08",
+            "input": {
+              "coordinate": [
+                600,
+                300
+              ],
+              "start_coordinate": [
+                200,
+                300
+              ]
+            },
+            "name": "left_click_drag",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_09",
+            "input": {
+              "coordinate": [
+                70,
+                80
+              ]
+            },
+            "name": "mouse_move",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_10",
+            "input": {},
+            "name": "left_mouse_down",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_11",
+            "input": {},
+            "name": "left_mouse_up",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_12",
+            "input": {},
+            "name": "cursor_position",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_13",
+            "input": {
+              "coordinate": [
+                500,
+                400
+              ],
+              "scroll_amount": 3,
+              "scroll_direction": "down"
+            },
+            "name": "scroll",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_14",
+            "input": {
+              "scroll_amount": 2,
+              "scroll_direction": "left",
+              "text": "shift"
+            },
+            "name": "scroll",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_15",
+            "input": {
+              "text": "pictures of cats"
+            },
+            "name": "type",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_16",
+            "input": {
+              "repeat": 4,
+              "text": "Tab"
+            },
+            "name": "key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_17",
+            "input": {
+              "text": "ctrl+s"
+            },
+            "name": "key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_18",
+            "input": {
+              "text": "alt+Tab"
+            },
+            "name": "key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_19",
+            "input": {
+              "text": "Return"
+            },
+            "name": "key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_20",
+            "input": {
+              "text": "super+Page_Up"
+            },
+            "name": "key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_21",
+            "input": {
+              "duration": 1.5,
+              "text": "shift"
+            },
+            "name": "hold_key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_22",
+            "input": {
+              "duration": 2
+            },
+            "name": "wait",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          }
+        ],
+        "role": "assistant"
+      },
+      {
+        "content": [
+          {
+            "content": [
+              {
+                "text": "OK",
+                "type": "text"
+              }
+            ],
+            "tool_use_id": "toolu_01",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": [
+              {
+                "source": {
+                  "data": "U0hPVDE=",
+                  "media_type": "image/png",
+                  "type": "base64"
+                },
+                "type": "image"
+              }
+            ],
+            "tool_use_id": "toolu_02",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": [
+              {
+                "text": "no",
+                "type": "text"
+              }
+            ],
+            "is_error": true,
+            "tool_use_id": "toolu_03",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_04",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_05",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_06",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_07",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_08",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_09",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_10",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_11",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_12",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_13",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_14",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_15",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_16",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_17",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_18",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_19",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_20",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_21",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_22",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "golden-model",
+    "output_config": {
+      "effort": "high"
+    },
+    "system": [
+      {
+        "cache_control": {
+          "ttl": "1h",
+          "type": "ephemeral"
+        },
+        "text": "You are operating a computer.",
+        "type": "text"
+      }
+    ],
+    "thinking": {
+      "display": "updates",
+      "type": "adaptive"
+    },
+    "tools": [
+      {
+        "type": "computer_toolset_20260801"
+      }
+    ]
+  },
+  {
+    "cache_control": {
+      "ttl": "1h",
+      "type": "ephemeral"
+    },
+    "context_management": {
+      "edits": [
+        {
+          "clear_at_least": {
+            "type": "input_tokens",
+            "value": 20000
+          },
+          "keep": {
+            "type": "tool_uses",
+            "value": 5
+          },
+          "trigger": {
+            "type": "input_tokens",
+            "value": 100000
+          },
+          "type": "clear_tool_uses_20250919"
+        }
+      ]
+    },
+    "fallbacks": "default",
+    "max_tokens": 16000,
+    "messages": [
+      {
+        "content": [
+          {
+            "source": {
+              "data": "U0hPVDA=",
+              "media_type": "image/png",
+              "type": "base64"
+            },
+            "type": "image"
+          },
+          {
+            "text": "Save the file",
+            "type": "text"
+          }
+        ],
+        "role": "user"
+      },
+      {
+        "content": [
+          {
+            "signature": "<SIGNATURE>",
+            "thinking": "",
+            "type": "thinking"
+          },
+          {
+            "signature": "<SIGNATURE>",
+            "thinking": "Opening the dialog's save button.",
+            "type": "thinking"
+          },
+          {
+            "text": "I'll click Save.",
+            "type": "text"
+          },
+          {
+            "id": "toolu_01",
+            "input": {},
+            "name": "screenshot",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_02",
+            "input": {
+              "region": [
+                100,
+                200,
+                400,
+                350
+              ]
+            },
+            "name": "zoom",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_03",
+            "input": {
+              "coordinate": [
+                500,
+                300
+              ],
+              "text": "shift"
+            },
+            "name": "left_click",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_04",
+            "input": {
+              "coordinate": [
+                10,
+                20
+              ]
+            },
+            "name": "right_click",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_05",
+            "input": {},
+            "name": "middle_click",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_06",
+            "input": {
+              "coordinate": [
+                30,
+                40
+              ],
+              "text": "ctrl+shift"
+            },
+            "name": "double_click",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_07",
+            "input": {
+              "coordinate": [
+                50,
+                60
+              ]
+            },
+            "name": "triple_click",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_08",
+            "input": {
+              "coordinate": [
+                600,
+                300
+              ],
+              "start_coordinate": [
+                200,
+                300
+              ]
+            },
+            "name": "left_click_drag",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_09",
+            "input": {
+              "coordinate": [
+                70,
+                80
+              ]
+            },
+            "name": "mouse_move",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_10",
+            "input": {},
+            "name": "left_mouse_down",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_11",
+            "input": {},
+            "name": "left_mouse_up",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_12",
+            "input": {},
+            "name": "cursor_position",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_13",
+            "input": {
+              "coordinate": [
+                500,
+                400
+              ],
+              "scroll_amount": 3,
+              "scroll_direction": "down"
+            },
+            "name": "scroll",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_14",
+            "input": {
+              "scroll_amount": 2,
+              "scroll_direction": "left",
+              "text": "shift"
+            },
+            "name": "scroll",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_15",
+            "input": {
+              "text": "pictures of cats"
+            },
+            "name": "type",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_16",
+            "input": {
+              "repeat": 4,
+              "text": "Tab"
+            },
+            "name": "key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_17",
+            "input": {
+              "text": "ctrl+s"
+            },
+            "name": "key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_18",
+            "input": {
+              "text": "alt+Tab"
+            },
+            "name": "key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_19",
+            "input": {
+              "text": "Return"
+            },
+            "name": "key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_20",
+            "input": {
+              "text": "super+Page_Up"
+            },
+            "name": "key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_21",
+            "input": {
+              "duration": 1.5,
+              "text": "shift"
+            },
+            "name": "hold_key",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_22",
+            "input": {
+              "duration": 2
+            },
+            "name": "wait",
+            "toolset_name": "computer",
+            "type": "tool_use"
+          }
+        ],
+        "role": "assistant"
+      },
+      {
+        "content": [
+          {
+            "content": [
+              {
+                "text": "OK",
+                "type": "text"
+              }
+            ],
+            "tool_use_id": "toolu_01",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": [
+              {
+                "source": {
+                  "data": "U0hPVDE=",
+                  "media_type": "image/png",
+                  "type": "base64"
+                },
+                "type": "image"
+              }
+            ],
+            "tool_use_id": "toolu_02",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": [
+              {
+                "text": "no",
+                "type": "text"
+              }
+            ],
+            "is_error": true,
+            "tool_use_id": "toolu_03",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_04",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_05",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_06",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_07",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_08",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_09",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_10",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_11",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_12",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_13",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_14",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_15",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_16",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_17",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_18",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_19",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_20",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_21",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          },
+          {
+            "content": "Not executed: an earlier computer action in this turn failed.",
+            "is_error": true,
+            "tool_use_id": "toolu_22",
+            "toolset_name": "computer",
+            "type": "tool_result"
+          }
+        ],
+        "role": "user"
+      },
+      {
+        "content": [
+          {
+            "source": {
+              "data": "U0hPVDI=",
+              "media_type": "image/png",
+              "type": "base64"
+            },
+            "type": "image"
+          },
+          {
+            "text": "Now close it",
+            "type": "text"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "golden-model",
+    "output_config": {
+      "effort": "high"
+    },
+    "system": [
+      {
+        "cache_control": {
+          "ttl": "1h",
+          "type": "ephemeral"
+        },
+        "text": "You are operating a computer.",
+        "type": "text"
+      }
+    ],
+    "thinking": {
+      "display": "updates",
+      "type": "adaptive"
+    },
+    "tools": [
+      {
+        "type": "computer_toolset_20260801"
+      }
+    ]
+  }
+]

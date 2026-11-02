@@ -10,6 +10,8 @@ mygo_windows_*.syso
 /spikes/*/node_modules/
 /spikes/*/out/
 /spikes/*/.bun-cache/
+/sidecar/node_modules/
+/sidecar/.bun-cache/
 # Stray build outputs at the repository root
 /kyokai
 /kyokai.exe

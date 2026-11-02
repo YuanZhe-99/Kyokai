@@ -128,7 +128,7 @@ Each lands with its docs and tests; the Rust loop stays until step 4 replaces it
    `act {id, action}`/`result {id, outcome, shot?}`, `turn {text, progress, usage}`, `done`,
    `failed`, `aborted`; the engine refuses a version it does not speak. Done when: the protocol
    is documented and the engine's side has table tests against a fake sidecar.
-2. **The sidecar program** (`sidecar/`, TypeScript on Pi, Bun pinned in `tools/deps`): the
+2. Done (2026-11-01; Bun not yet in `tools/deps`, its tests not yet in CI — step 3): **the sidecar program** (`sidecar/`, TypeScript on Pi, Bun pinned in `tools/deps`): the
    spike's session set-up, Kyokai's three providers translating to the providers' native shapes
    with the prefix append-only (Claude's hour-long breakpoints and server clearing, OpenAI's
    `computer` tool with `previous_response_id`, `openai-chat` with batched screenshot drops), the

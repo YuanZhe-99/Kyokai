@@ -43,6 +43,7 @@ described in [run-modes.md](run-modes.md).
 | `core/third_party/rustdesk-qos` | RustDesk's video QoS, vendored |
 | `core/third_party/thunk-noop` | Stands in for EasyTier's `thunk-rs` build step, so Windows builds keep the static C runtime |
 | `core/third_party/smoltcp` | smoltcp 0.14.0, EasyTier's in-process TCP/IP stack, vendored with its retransmission timeout's floor at 200 ms ([networking.md](networking.md)) |
+| `sidecar` | `kyokai-agent`, the AI task's loop on Pi (TypeScript, built with Bun): the providers' conversations, append-only (`conversation.ts`), and the engine's protocol ([The agent sidecar](#the-agent-sidecar)) |
 
 ## FFI
 

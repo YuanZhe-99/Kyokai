@@ -153,6 +153,11 @@ KYOKAI_PROFILE=ctl kyokai-svc ctl watch --id 1 --seconds 600 --keys shift --keys
 
 ## Spikes
 
+The agent sidecar (sidecar/, [architecture.md](architecture.md#the-agent-sidecar)) is a Bun package pinned
+exactly (package.json, un.lock): cd sidecar && bun install && bun test runs its tests, among them
+the golden requests the Rust adapters wrote (core/kyokai-core/src/ai/fixtures/golden;
+KYOKAI_GOLDEN=update cargo test … golden_requests rewrites them when a request changes on purpose).
+
 `spikes/` holds the Phase 0 feasibility programs, each with its own `go.mod` or Cargo workspace so
 that the product gate never builds them. Their results go into [upstream.md](upstream.md) and
 [platform-notes.md](platform-notes.md); code that proves itself moves into the product in a later

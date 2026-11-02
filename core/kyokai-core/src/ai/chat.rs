@@ -196,7 +196,7 @@ fn image(b64: &str) -> Value {
 /// Kyokai's actions as function tools, named and shaped like the members of
 /// Claude's computer toolset (positions in the unit the system prompt
 /// gives, `Coordinates::describe`).
-fn tools() -> Value {
+pub fn tools() -> Value {
     let point = json!({"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2,
         "description": "[x, y] on the latest full screenshot, in the unit the instructions give"});
     let modifiers = json!({"type": "string", "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\""});

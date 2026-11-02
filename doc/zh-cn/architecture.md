@@ -40,6 +40,7 @@
 | `core/third_party/rustdesk-qos` | 复用的 RustDesk 视频 QoS |
 | `core/third_party/thunk-noop` | 替代 EasyTier 的 `thunk-rs` 构建步骤，使 Windows 构建保持静态 C 运行时 |
 | `core/third_party/smoltcp` | 内置的 smoltcp 0.14.0（EasyTier 的进程内 TCP/IP 协议栈），重传超时的下限改为 200 毫秒（[networking.md](networking.md)） |
+| `sidecar` | `kyokai-agent`，AI 任务在 Pi 上的循环（TypeScript，用 Bun 构建）：只追加的各服务商对话（`conversation.ts`）与引擎的协议（[agent sidecar](#agent-sidecar)） |
 
 ## FFI
 

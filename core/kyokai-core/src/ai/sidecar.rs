@@ -71,6 +71,11 @@ pub enum ToSidecar {
         system: String,
         instruction: String,
         shot: WireShot,
+        /// The function tools an `openai-chat` source is offered (Kyokai's
+        /// actions in the computer toolset's shape); null for the others,
+        /// whose providers have their own computer tools.
+        #[serde(default)]
+        tools: Value,
     },
     /// A message from the person for the running turn.
     Steer { text: String },
@@ -234,10 +239,11 @@ mod tests {
                     system: "sys".into(),
                     instruction: "Save".into(),
                     shot: shot(),
+                    tools: Value::Null,
                 },
                 json!({"t": "start", "task": 7, "protocol": "openai-chat", "url": "https://openrouter.ai/api/v1",
                     "model": "qwen/qwen3.8-27b", "coordinates": "0-1000", "system": "sys", "instruction": "Save",
-                    "shot": {"b64": "AAAA", "width": 1280, "height": 720}}),
+                    "shot": {"b64": "AAAA", "width": 1280, "height": 720}, "tools": null}),
             ),
             (ToSidecar::Abort, json!({"t": "abort"})),
             (

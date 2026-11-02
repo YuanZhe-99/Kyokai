@@ -1,0 +1,1450 @@
+[
+  {
+    "messages": [
+      {
+        "content": "You are operating a computer.",
+        "role": "system"
+      },
+      {
+        "content": [
+          {
+            "text": "Save the file",
+            "type": "text"
+          },
+          {
+            "image_url": {
+              "url": "data:image/png;base64,U0hPVDA="
+            },
+            "type": "image_url"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "golden-model",
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "function": {
+          "description": "Take a screenshot of the screen.",
+          "name": "screenshot",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "View a region of the screen at full resolution.",
+          "name": "zoom",
+          "parameters": {
+            "properties": {
+              "region": {
+                "description": "[x0, y0, x1, y1] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              }
+            },
+            "required": [
+              "region"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Click the left mouse button.",
+          "name": "left_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Click the right mouse button.",
+          "name": "right_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Click the middle mouse button.",
+          "name": "middle_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Double-click the left mouse button.",
+          "name": "double_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Triple-click the left mouse button.",
+          "name": "triple_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Drag with the left button held.",
+          "name": "left_click_drag",
+          "parameters": {
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "start_coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "start_coordinate",
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Move the mouse.",
+          "name": "mouse_move",
+          "parameters": {
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Press the left mouse button.",
+          "name": "left_mouse_down",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Release the left mouse button.",
+          "name": "left_mouse_up",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Report where the mouse pointer is.",
+          "name": "cursor_position",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Scroll the mouse wheel.",
+          "name": "scroll",
+          "parameters": {
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "scroll_amount": {
+                "description": "wheel notches",
+                "type": "integer"
+              },
+              "scroll_direction": {
+                "enum": [
+                  "up",
+                  "down",
+                  "left",
+                  "right"
+                ],
+                "type": "string"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "scroll_direction",
+              "scroll_amount"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Type text.",
+          "name": "type",
+          "parameters": {
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Press a key or a combination such as \"ctrl+s\" or \"Return\".",
+          "name": "key",
+          "parameters": {
+            "properties": {
+              "repeat": {
+                "type": "integer"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Hold keys down for a while.",
+          "name": "hold_key",
+          "parameters": {
+            "properties": {
+              "duration": {
+                "description": "seconds",
+                "type": "number"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "duration"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Wait, for example for something to load.",
+          "name": "wait",
+          "parameters": {
+            "properties": {
+              "duration": {
+                "description": "seconds",
+                "type": "number"
+              }
+            },
+            "required": [
+              "duration"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "content": "You are operating a computer.",
+        "role": "system"
+      },
+      {
+        "content": [
+          {
+            "text": "Save the file",
+            "type": "text"
+          },
+          {
+            "image_url": {
+              "url": "data:image/png;base64,U0hPVDA="
+            },
+            "type": "image_url"
+          }
+        ],
+        "role": "user"
+      },
+      {
+        "content": "Clicking.",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{\"coordinate\": [640, 425]}",
+              "name": "left_click"
+            },
+            "id": "c1",
+            "type": "function"
+          },
+          {
+            "function": {
+              "arguments": "{}",
+              "name": "screenshot"
+            },
+            "id": "c2",
+            "type": "function"
+          },
+          {
+            "function": {
+              "arguments": "{\"text\": \"ctrl+s\"}",
+              "name": "key"
+            },
+            "id": "c3",
+            "type": "function"
+          },
+          {
+            "function": {
+              "arguments": "{\"duration\": 1}",
+              "name": "wait"
+            },
+            "id": "c4",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "content": "done",
+        "role": "tool",
+        "tool_call_id": "c1"
+      },
+      {
+        "content": "the image follows",
+        "role": "tool",
+        "tool_call_id": "c2"
+      },
+      {
+        "content": "error: no",
+        "role": "tool",
+        "tool_call_id": "c3"
+      },
+      {
+        "content": "not executed: an earlier action failed",
+        "role": "tool",
+        "tool_call_id": "c4"
+      },
+      {
+        "content": [
+          {
+            "image_url": {
+              "url": "data:image/png;base64,U0hPVDE="
+            },
+            "type": "image_url"
+          },
+          {
+            "text": "The screen now:",
+            "type": "text"
+          },
+          {
+            "image_url": {
+              "url": "data:image/png;base64,U0hPVDE="
+            },
+            "type": "image_url"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "golden-model",
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "function": {
+          "description": "Take a screenshot of the screen.",
+          "name": "screenshot",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "View a region of the screen at full resolution.",
+          "name": "zoom",
+          "parameters": {
+            "properties": {
+              "region": {
+                "description": "[x0, y0, x1, y1] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              }
+            },
+            "required": [
+              "region"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Click the left mouse button.",
+          "name": "left_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Click the right mouse button.",
+          "name": "right_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Click the middle mouse button.",
+          "name": "middle_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Double-click the left mouse button.",
+          "name": "double_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Triple-click the left mouse button.",
+          "name": "triple_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Drag with the left button held.",
+          "name": "left_click_drag",
+          "parameters": {
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "start_coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "start_coordinate",
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Move the mouse.",
+          "name": "mouse_move",
+          "parameters": {
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Press the left mouse button.",
+          "name": "left_mouse_down",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Release the left mouse button.",
+          "name": "left_mouse_up",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Report where the mouse pointer is.",
+          "name": "cursor_position",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Scroll the mouse wheel.",
+          "name": "scroll",
+          "parameters": {
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "scroll_amount": {
+                "description": "wheel notches",
+                "type": "integer"
+              },
+              "scroll_direction": {
+                "enum": [
+                  "up",
+                  "down",
+                  "left",
+                  "right"
+                ],
+                "type": "string"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "scroll_direction",
+              "scroll_amount"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Type text.",
+          "name": "type",
+          "parameters": {
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Press a key or a combination such as \"ctrl+s\" or \"Return\".",
+          "name": "key",
+          "parameters": {
+            "properties": {
+              "repeat": {
+                "type": "integer"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Hold keys down for a while.",
+          "name": "hold_key",
+          "parameters": {
+            "properties": {
+              "duration": {
+                "description": "seconds",
+                "type": "number"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "duration"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Wait, for example for something to load.",
+          "name": "wait",
+          "parameters": {
+            "properties": {
+              "duration": {
+                "description": "seconds",
+                "type": "number"
+              }
+            },
+            "required": [
+              "duration"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "content": "You are operating a computer.",
+        "role": "system"
+      },
+      {
+        "content": [
+          {
+            "text": "Save the file",
+            "type": "text"
+          },
+          {
+            "image_url": {
+              "url": "data:image/png;base64,U0hPVDA="
+            },
+            "type": "image_url"
+          }
+        ],
+        "role": "user"
+      },
+      {
+        "content": "Clicking.",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{\"coordinate\": [640, 425]}",
+              "name": "left_click"
+            },
+            "id": "c1",
+            "type": "function"
+          },
+          {
+            "function": {
+              "arguments": "{}",
+              "name": "screenshot"
+            },
+            "id": "c2",
+            "type": "function"
+          },
+          {
+            "function": {
+              "arguments": "{\"text\": \"ctrl+s\"}",
+              "name": "key"
+            },
+            "id": "c3",
+            "type": "function"
+          },
+          {
+            "function": {
+              "arguments": "{\"duration\": 1}",
+              "name": "wait"
+            },
+            "id": "c4",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "content": "done",
+        "role": "tool",
+        "tool_call_id": "c1"
+      },
+      {
+        "content": "the image follows",
+        "role": "tool",
+        "tool_call_id": "c2"
+      },
+      {
+        "content": "error: no",
+        "role": "tool",
+        "tool_call_id": "c3"
+      },
+      {
+        "content": "not executed: an earlier action failed",
+        "role": "tool",
+        "tool_call_id": "c4"
+      },
+      {
+        "content": [
+          {
+            "image_url": {
+              "url": "data:image/png;base64,U0hPVDE="
+            },
+            "type": "image_url"
+          },
+          {
+            "text": "The screen now:",
+            "type": "text"
+          },
+          {
+            "image_url": {
+              "url": "data:image/png;base64,U0hPVDE="
+            },
+            "type": "image_url"
+          }
+        ],
+        "role": "user"
+      },
+      {
+        "content": [
+          {
+            "text": "Now close it",
+            "type": "text"
+          },
+          {
+            "image_url": {
+              "url": "data:image/png;base64,U0hPVDI="
+            },
+            "type": "image_url"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "model": "golden-model",
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "function": {
+          "description": "Take a screenshot of the screen.",
+          "name": "screenshot",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "View a region of the screen at full resolution.",
+          "name": "zoom",
+          "parameters": {
+            "properties": {
+              "region": {
+                "description": "[x0, y0, x1, y1] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              }
+            },
+            "required": [
+              "region"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Click the left mouse button.",
+          "name": "left_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Click the right mouse button.",
+          "name": "right_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Click the middle mouse button.",
+          "name": "middle_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Double-click the left mouse button.",
+          "name": "double_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Triple-click the left mouse button.",
+          "name": "triple_click",
+          "parameters": {
+            "description": "where to click",
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Drag with the left button held.",
+          "name": "left_click_drag",
+          "parameters": {
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "start_coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "start_coordinate",
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Move the mouse.",
+          "name": "mouse_move",
+          "parameters": {
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              }
+            },
+            "required": [
+              "coordinate"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Press the left mouse button.",
+          "name": "left_mouse_down",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Release the left mouse button.",
+          "name": "left_mouse_up",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Report where the mouse pointer is.",
+          "name": "cursor_position",
+          "parameters": {
+            "properties": {},
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Scroll the mouse wheel.",
+          "name": "scroll",
+          "parameters": {
+            "properties": {
+              "coordinate": {
+                "description": "[x, y] on the latest full screenshot, in the unit the instructions give",
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "scroll_amount": {
+                "description": "wheel notches",
+                "type": "integer"
+              },
+              "scroll_direction": {
+                "enum": [
+                  "up",
+                  "down",
+                  "left",
+                  "right"
+                ],
+                "type": "string"
+              },
+              "text": {
+                "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\"",
+                "type": "string"
+              }
+            },
+            "required": [
+              "scroll_direction",
+              "scroll_amount"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Type text.",
+          "name": "type",
+          "parameters": {
+            "properties": {
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Press a key or a combination such as \"ctrl+s\" or \"Return\".",
+          "name": "key",
+          "parameters": {
+            "properties": {
+              "repeat": {
+                "type": "integer"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Hold keys down for a while.",
+          "name": "hold_key",
+          "parameters": {
+            "properties": {
+              "duration": {
+                "description": "seconds",
+                "type": "number"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text",
+              "duration"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Wait, for example for something to load.",
+          "name": "wait",
+          "parameters": {
+            "properties": {
+              "duration": {
+                "description": "seconds",
+                "type": "number"
+              }
+            },
+            "required": [
+              "duration"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      }
+    ]
+  }
+]

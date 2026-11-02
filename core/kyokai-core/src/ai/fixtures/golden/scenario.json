@@ -1,0 +1,23 @@
+{
+  "_about": "The scenario both the Rust adapters and the sidecar's providers play (PLAN.md, Pi step 2): start, one turn answered (the first action OK, the second a picture, the third failed, the rest not executed), then a follow-up. golden/<protocol>.json holds the three request bodies the Rust adapters build; the sidecar must build the same.",
+  "model": "golden-model",
+  "system": "You are operating a computer.",
+  "task": "Save the file",
+  "shot": "U0hPVDA=",
+  "after": "U0hPVDE=",
+  "follow_up": "Now close it",
+  "follow_shot": "U0hPVDI=",
+  "responses": {
+    "anthropic": "docs/claude_response_batch.json",
+    "openai-responses": "docs/openai_response_batch.json",
+    "openai-chat": {
+      "choices": [{"finish_reason": "tool_calls", "message": {"role": "assistant", "content": "Clicking.", "tool_calls": [
+        {"id": "c1", "type": "function", "function": {"name": "left_click", "arguments": "{\"coordinate\": [640, 425]}"}},
+        {"id": "c2", "type": "function", "function": {"name": "screenshot", "arguments": "{}"}},
+        {"id": "c3", "type": "function", "function": {"name": "key", "arguments": "{\"text\": \"ctrl+s\"}"}},
+        {"id": "c4", "type": "function", "function": {"name": "wait", "arguments": "{\"duration\": 1}"}}
+      ]}}],
+      "usage": {"prompt_tokens": 1500, "completion_tokens": 30}
+    }
+  }
+}

@@ -1,0 +1,102 @@
+[
+  {
+    "input": [
+      {
+        "content": [
+          {
+            "text": "Save the file",
+            "type": "input_text"
+          },
+          {
+            "detail": "high",
+            "image_url": "data:image/png;base64,U0hPVDA=",
+            "type": "input_image"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "instructions": "You are operating a computer.",
+    "model": "golden-model",
+    "tools": [
+      {
+        "type": "computer"
+      }
+    ],
+    "truncation": "disabled"
+  },
+  {
+    "input": [
+      {
+        "call_id": "call_002",
+        "output": {
+          "image_url": "data:image/png;base64,U0hPVDE=",
+          "type": "computer_screenshot"
+        },
+        "type": "computer_call_output"
+      },
+      {
+        "content": [
+          {
+            "text": "Action 3 failed: no\nAction 4 was not executed.\nAction 5 was not executed.\nAction 6 was not executed.\nAction 7 was not executed.\nAction 8 was not executed.\nAction 9 was not executed.\nAction 10 was not executed.\nAction 11 was not executed.\nAction 12 was not executed.\nAction 13 was not executed.\nAction 14 was not executed.",
+            "type": "input_text"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "instructions": "You are operating a computer.",
+    "model": "golden-model",
+    "previous_response_id": "resp_doc_batch",
+    "tools": [
+      {
+        "type": "computer"
+      }
+    ],
+    "truncation": "disabled"
+  },
+  {
+    "input": [
+      {
+        "call_id": "call_002",
+        "output": {
+          "image_url": "data:image/png;base64,U0hPVDE=",
+          "type": "computer_screenshot"
+        },
+        "type": "computer_call_output"
+      },
+      {
+        "content": [
+          {
+            "text": "Action 3 failed: no\nAction 4 was not executed.\nAction 5 was not executed.\nAction 6 was not executed.\nAction 7 was not executed.\nAction 8 was not executed.\nAction 9 was not executed.\nAction 10 was not executed.\nAction 11 was not executed.\nAction 12 was not executed.\nAction 13 was not executed.\nAction 14 was not executed.",
+            "type": "input_text"
+          }
+        ],
+        "role": "user"
+      },
+      {
+        "content": [
+          {
+            "text": "Now close it",
+            "type": "input_text"
+          },
+          {
+            "detail": "high",
+            "image_url": "data:image/png;base64,U0hPVDI=",
+            "type": "input_image"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "instructions": "You are operating a computer.",
+    "model": "golden-model",
+    "previous_response_id": "resp_doc_batch",
+    "tools": [
+      {
+        "type": "computer"
+      }
+    ],
+    "truncation": "disabled"
+  }
+]
