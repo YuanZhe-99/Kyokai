@@ -481,10 +481,11 @@ when `SCREENSHOT_DIR` is set.
   back and forth, and floats again when the room runs out and in full screen, which has no
   header. Its icons, each named by its tooltip:
   Display (the display by number when the host has several; Fit or Original size), Quality (the
-  preset, Frame rate with the cap such as "30 fps", Resolution — Auto, Native, 4K, 1440p, 1080p,
+  preset, Custom with its percentages for a host that takes it (0.7.0 and later), Frame rate with
+  the cap such as "30 fps", Resolution — Auto, Native, 4K, 1440p, 1080p,
   720p — only for a host whose stream says which applies (0.6.15 and later,
   [computer-use.md](computer-use.md), "Quality and bandwidth"), Codec with Auto and what both
-  computers do, by codec name only, when there is a choice, and Full colour), Keyboard (with `control-input`, on
+  computers do, by codec name only, when there is a choice, Full colour and Hardware codec), Keyboard (with `control-input`, on
   Windows and macOS: the keyboard mode Map, Translate or Legacy, remembered for every viewer, and
   Swap Ctrl and Cmd where a Mac is on either side and on every NanoKVM pane (off there until chosen: the wired computer's system is not known); on a Mac without Kyokai's Accessibility
   permission the icon takes the warning colour and its tooltip says to allow it; in Map and
@@ -494,7 +495,7 @@ when `SCREENSHOT_DIR` is set.
   `control-input`: Type the clipboard — this computer's clipboard text typed on the host as keys
   would type it, in text events of at most 4,096 bytes, for a field that refuses pasting or a
   computer behind a NanoKVM, which has no clipboard (`typeClipboard`); then, when the host offers
-  them, a Windows host: Lock screen, Ctrl+Alt+Del in the
+  them, a Windows host: Lock screen, Lock when the session ends (0.7.0 and later), Ctrl+Alt+Del in the
   helper modes, Block their keyboard and mouse and Privacy mode, checked as the host reports),
   then toggles for Sound (plays the host's sound; on unless chosen, kept for each device), Pointer
   (shows or hides the ring, remembered for every viewer), Clipboard (pulls out the clipboard panel,
@@ -537,7 +538,8 @@ when `SCREENSHOT_DIR` is set.
   direct connections on as the Network page does (on Windows the offer adds that Windows may ask
   once to allow Kyokai), and **Not now**, which hides it for that pane (`offersDirect`,
   `directOffer`); never for a session by address or to a NanoKVM. The quality preset,
-  frame-rate cap, Resolution, Fit or Original size, Full colour, Codec, Swap Ctrl and Cmd, the clipboard switch
+  frame-rate cap, Resolution, Fit or Original size, Full colour, Codec, Hardware codec, Lock when the
+  session ends, Swap Ctrl and Cmd, the clipboard switch
   and the folded toolbar are kept for each device (`viewers` in `gui.json`): a device's viewer
   opens with the settings chosen for it last.
 - The clipboard panel: "Share the clipboard with this device" (on unless switched off, kept for

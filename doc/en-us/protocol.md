@@ -130,8 +130,9 @@ controller may choose one with `{"type": "codec", codec}`, and asks for the host
 plaintexts that start with byte `0x04` followed by one 10 ms Opus packet of 48 kHz stereo, none
 while it is silent, the packets waiting when a frame's chunk was sent going out before its next
 chunk, [computer-use.md](computer-use.md), "Sound") (`auto`, or a name of the offer; another
-name changes nothing), and a resumed controller sends its viewer's `quality`, `codec` and `audio` again
-before its `codecs`. Before its first frame the host
+name changes nothing), and a resumed controller sends its viewer's `quality`, `codec`, `audio` and
+`lock-after` again before its `codecs`. A controller whose viewer switches its hardware codec sends
+`codecs` again (the software codecs only while it is off); the host goes on in the best of them. Before its first frame the host
 sends `{"type": "video-start", codec, width, height, i444, encoder, hardware}` (`i444` and `hardware` only when true; `encoder`: `videotoolbox`, `media-foundation`, `libvpx` or `libaom`, as the encoder reports, left out for the test pattern; a `recovery` host adds `placeholder` to the test pattern's: `asleep`, `no-display`, `agent`, `no-encoder`, `retrying`, `no-codec`, `cannot-capture` or `nanokvm`; a host that announced `resolution` adds `size`, the resolution choice in force: `auto`, `native`, `2160`, `1440`, `1080` or `720`). As the last chunk of each frame arrives the controller sends `{"type": "received", frame}` (the frame's number); the host sends a new frame only while fewer are unacknowledged than its window allows (3 to 12, from the frame rate and the path's round trip, [computer-use.md](computer-use.md), "Video"), takes only an acknowledgement of a frame it sent and that was not acknowledged, and waits for acknowledgements however long they take: every controller (protocol 10) acknowledges every frame over an ordered, reliable stream, so a late one means a slow path, not a lost frame (a dead connection ends by the idle limit). The controller may send `{"type":
 "key-frame"}` (the host then describes the stream, its displays and the codec offer again and
 sends a key frame, unless the last key frame it sent is not acknowledged yet: that one is waited for, and the request neither forces another nor makes a picture due) — its GUI's requests (as it opens, after a frame it lost or failed to decode,
@@ -144,10 +145,14 @@ whatever else that session holds (at most 64 entries, all of them known, or it i
 "test-delay"}` once a second, which the controller echoes with `reply: true`, and `{"type":
 "stats", delay_ms, fps, bitrate, encode_ms, frames}` (`encode_ms`: the last second's frames' average from
 picture to frame; `frames`: how many frames it sent that second, which 0.4.0 leaves out); a `recovery` host adds `video`: `live`, `dark`, `recovering` or `placeholder`) ([computer-use.md](computer-use.md)); the controller may set
-the quality with `{"type": "quality", preset, fps, i444, size}`, where `fps` is the viewer's cap or
+the quality with `{"type": "quality", preset, fps, i444, size, custom}`, where `preset` is `speed`,
+`balanced`, `best` or, to a host that announced `custom-quality`, `custom` with `custom` its
+percentage (10 to 2000, RustDesk's), `fps` is the viewer's cap or
 less while it cannot decode that many, `i444` asks for full colour (4:4:4) where both sides do it,
 and `size`, to a host that announced `resolution`, chooses the resolution (`auto`, `native`,
-`2160`, `1440`, `1080` or `720`). With more than one display the host also sends `{"type": "displays", list, current}` (each
+`2160`, `1440`, `1080` or `720`). To a host that announced `lock-after` the controller may send
+`{"type": "lock-after", on}`: with `control-input`, the host locks its screen when the session
+ends. With more than one display the host also sends `{"type": "displays", list, current}` (each
 display's place and size, the primary first) and the controller may ask for another with
 `{"type": "display", index}`. While it sends video the host also sends `{"type": "cursor", x, y, visible}`, its pointer as
 fractions of the picture, when it moves; `visible` says whether it is on the display shown. With `control-input` the host sends
@@ -265,6 +270,8 @@ outside the range this build speaks (10 to 10) is refused as incompatible.
 | `recovery` | the controller's `no-picture`; the host's `placeholder` in `video-start` and `video` in its stats |
 | `nanokvm` | sessions of the computer wired to the host's NanoKVM USB (`client_hello`'s `nanokvm`); permission `use-nanokvm` |
 | `resolution` | the controller's resolution choice (`quality`'s `size`); the host's `size` in `video-start` |
+| `custom-quality` | `quality`'s `custom` preset and percentage |
+| `lock-after` | `lock-after`: the host locks its screen when the session ends (Windows hosts) |
 | `ai-sessions` | `ai-start`'s and `reply`'s `thinking`; the `fork`, `compact`, `rename` and `export` AI commands; `ai-export` |
 | `move` | a resume that moves the session (`client_hello`'s `move`: the controller's AI task goes on); resumable tunnels and `got`; healthy sessions moving to a better route ([networking.md](networking.md), "Switching paths") |
 

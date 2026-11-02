@@ -966,6 +966,15 @@
   "ProtectedWrongPassword": "That is not the permanent password.",
   "QualityBalanced": "Balanced",
   "QualityBest": "Sharper",
+  "QualityCustom": "Custom",
+  "QualityCustomAt": "Custom ({value})",
+  "@QualityCustomAt": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
   "QualityFullColour": "Full colour",
   "QualitySpeed": "Faster",
   "RenameHint": "Shown only on this device. Leave it empty to use the name the device gives itself.",
@@ -1717,6 +1726,7 @@
   },
   "ViewerImplUnknown": "not known yet",
   "ViewerInputPaused": "Input paused — the connection is behind",
+  "ViewerHardwareCodec": "Hardware codec",
   "ViewerKeyboard": "Keyboard",
   "ViewerKeyboardGrabBehind": "Keyboard: another window is in front of Kyokai's, so the keys stay there.",
   "ViewerKeyboardGrabMissed": "Keyboard: some keys got past Kyokai; it sent them itself and took the keyboard again.",
@@ -1738,6 +1748,7 @@
   "ViewerKeyboardNoGrab": "Allow Accessibility for Kyokai in System Settings to send every key, then reopen this connection.",
   "ViewerKeyboardTranslate": "Translate",
   "ViewerLock": "Lock screen",
+  "ViewerLockAfter": "Lock when the session ends",
   "ViewerMoveBar": "Drag to move the controls",
   "ViewerNoDecoder": "The picture can't be shown: Kyokai's core library is missing.",
   "ViewerNoPicture": "This session does not show the screen.",

@@ -162,12 +162,33 @@ func toEvent(ev ui.InputEvent, box ui.Rect, pw, ph int, held map[ui.Key]bool, gr
 	return inputEvent{}, false
 }
 
-// qualityPresets are RustDesk's image qualities, in the viewer's order.
-var qualityPresets = []string{"speed", "balanced", "best"}
+// qualityPresets are RustDesk's image qualities, in the viewer's order,
+// and its custom quality (presetCustom) last.
+var qualityPresets = []string{"speed", "balanced", "best", "custom"}
+
+// presetCustom is the custom quality's index in qualityPresets.
+const presetCustom = 3
+
+// customLevels are the custom quality's steps, in RustDesk's percent (50:
+// the bitrate a ratio of 1 gives; Balanced is about 33, Best 75), within
+// its slider's range.
+var customLevels = []int{10, 25, 50, 75, 100, 200, 500, 1000, 2000}
 
 // fpsCaps are the frame-rate caps the viewer offers, as it shows them
-// (setQuality reads the number).
-var fpsCaps = []string{"15 fps", "30 fps", "60 fps"}
+// (setQuality reads the number), up to the host's most (video::MAX_FPS).
+var fpsCaps = []string{"5 fps", "10 fps", "15 fps", "20 fps", "24 fps", "30 fps", "45 fps", "60 fps"}
+
+// The host features the viewer's controls need (session::feature).
+const (
+	featureCustomQuality = "custom-quality"
+	featureLockAfter     = "lock-after"
+)
+
+// hostHas reports whether this viewer's host announced a feature in its
+// last session.
+func (v *viewer) hostHas(feature string) bool {
+	return v.app != nil && v.app.hostHas(v.device, feature)
+}
 
 // resolutions are the ceilings the viewer offers for the host's picture,
 // as its quality message names them: Auto (the host's choice), Native, and
@@ -208,7 +229,11 @@ func (v *viewer) qualityPacket() []byte {
 	if size == "" {
 		size = "auto"
 	}
-	body, _ := json.Marshal(map[string]any{"type": "quality", "preset": qualityPresets[min(max(v.preset, 0), 2)], "fps": fps, "i444": v.full, "size": size})
+	msg := map[string]any{"type": "quality", "preset": qualityPresets[min(max(v.preset, 0), presetCustom)], "fps": fps, "i444": v.full, "size": size}
+	if v.preset == presetCustom {
+		msg["custom"] = v.custom
+	}
+	body, _ := json.Marshal(msg)
 	return append([]byte{packetControl}, body...)
 }
 
@@ -233,6 +258,36 @@ func (v *viewer) setQuality(preset int, fpsCap string, full bool) {
 	v.mu.Unlock()
 	v.keepSettings()
 	v.sendQuality()
+}
+
+// setCustom sends RustDesk's custom quality at a percentage
+// (customLevels) to the host's QoS.
+func (v *viewer) setCustom(pct int) {
+	v.mu.Lock()
+	v.preset, v.custom = presetCustom, pct
+	v.mu.Unlock()
+	v.keepSettings()
+	v.sendQuality()
+}
+
+// setHardware turns the viewer's hardware codec on or off: off, this side
+// names only the software codecs and the host goes on in one of them.
+func (v *viewer) setHardware(on bool) {
+	v.mu.Lock()
+	v.software = !on
+	v.mu.Unlock()
+	v.keepSettings()
+	v.sendControl(map[string]any{"type": "hardware", "on": on})
+}
+
+// setLockAfter asks the host to lock its screen when this session ends, or
+// not.
+func (v *viewer) setLockAfter(on bool) {
+	v.mu.Lock()
+	v.lockAfter = on
+	v.mu.Unlock()
+	v.keepSettings()
+	v.sendControl(map[string]any{"type": "lock-after", "on": on})
 }
 
 // setSize sends the viewer's resolution choice (resolutions); the host
@@ -263,7 +318,7 @@ func (v *viewer) keepSettings() {
 	}
 	v.mu.Lock()
 	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Size: v.size, Swap: v.swap, Mute: v.mute, Folded: v.folded,
-		Original: v.original, NoClipboard: v.clip.off}
+		Original: v.original, NoClipboard: v.clip.off, Custom: v.custom, Software: v.software, LockAfter: v.lockAfter}
 	v.mu.Unlock()
 	v.app.setViewerPrefs(v.tabKey(), vp)
 }
@@ -362,13 +417,19 @@ func commandEvents(command string) []inputEvent {
 // side's engine.
 func (v *viewer) choicePackets() [][]byte {
 	v.mu.Lock()
-	quality, codec, mute := v.qualityPacket(), v.codec, v.mute
+	quality, codec, mute, software, lockAfter := v.qualityPacket(), v.codec, v.mute, v.software, v.lockAfter
 	clip := v.clipUsePacket()
 	v.mu.Unlock()
 	out := [][]byte{quality}
 	if codec != "" && codec != "auto" {
 		body, _ := json.Marshal(map[string]any{"type": "codec", "codec": codec})
 		out = append(out, append([]byte{packetControl}, body...))
+	}
+	if software {
+		out = append(out, append([]byte{packetControl}, `{"on":false,"type":"hardware"}`...))
+	}
+	if lockAfter && v.hostHas(featureLockAfter) {
+		out = append(out, append([]byte{packetControl}, `{"on":true,"type":"lock-after"}`...))
 	}
 	sound, _ := json.Marshal(map[string]any{"type": "audio", "on": !mute})
 	return append(out, append([]byte{packetControl}, sound...), clip)

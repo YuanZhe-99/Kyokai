@@ -118,6 +118,13 @@ colour switches). The viewer sends its quality and codec as its stream starts, a
 keeps them and sends them again, before its codecs, when the session resumes, so the host opens
 the video as the viewer chose (they are settings, not input).
 
+**Hardware codec.** The Quality menu's Hardware codec is on unless switched off (kept for each
+device). Off, the controller's engine names its codecs again in a new `codecs` message, the software
+ones only (VP9 in libvpx, AV1, VP8, and a NanoKVM's MJPEG), so the host goes on in one of them,
+encoded and decoded in software, as RustDesk's client does with its hardware codec off; the codec
+offer follows. A host of any version takes it, since it only hears other codecs. It helps where a
+GPU's encoder or decoder misbehaves.
+
 **Full colour (4:4:4).** The viewer's Quality menu has a Full colour choice. When it is on and the
 controller decodes software VP9 or AV1 in 4:4:4 (every current build does), the host puts those
 first in full colour (I444: chroma at every pixel, so one-pixel coloured text and lines stay sharp)
@@ -175,8 +182,12 @@ a second later, and the bitrate changes while it runs. Once a second the host al
 delay, frame rate and bitrate it chose; the viewer shows the delay.
 
 The viewer's Quality menu offers RustDesk's presets — Faster (ratio 0.5), Balanced (0.67) and
-Sharper (1.5) — a frame-rate cap of 15, 30 or 60, and Full colour; they reach the host as
-`{"type": "quality", preset, fps, i444, size}` and set that viewer's image quality and custom frame
+Sharper (1.5) — and, from a host that announced `custom-quality` (0.7.0 and later), RustDesk's
+custom quality at 10, 25, 50, 75, 100, 200, 500, 1000 or 2000 % (RustDesk's percent: the ratio is the
+percentage × 2 / 100, so 50 % is a ratio of 1, kept between 0.2 and 40 as RustDesk keeps it; a
+custom quality kept for a host that does not take it opens as Balanced), a frame-rate cap of 5, 10,
+15, 20, 24, 30, 45 or 60, and Full colour; they reach the host as
+`{"type": "quality", preset, fps, i444, size, custom}` and set that viewer's image quality and custom frame
 rate in the QoS, whether it gets full colour (above) and the resolution (below).
 
 The viewer also asks for less than its cap when this computer cannot decode that many frames, as
@@ -421,6 +432,13 @@ host's AI task, like input:
 | Ctrl+Alt+Del | only in the helper modes: the helper, a SYSTEM service, calls `SendSAS`; the policy that lets services do that (`SoftwareSASGeneration`) is switched on for the call and put back as it was |
 | Block their keyboard and mouse | low-level hooks swallow the host's own keyboard and mouse while any session holds the block; Kyokai's injected input passes. The host user lifts it with Ctrl+Alt+Shift+Esc (which also stops an AI task) or Ctrl+Alt+Del, which no hook sees; it ends with the session |
 | Privacy mode | RustDesk's privacy mode: a black, click-through, topmost window over the whole virtual desktop, left out of capture (`WDA_EXCLUDEFROMCAPTURE`), so the people at the host see black while the picture shows the screen; it blocks their keyboard and mouse too and is lifted the same way. Refused where Windows cannot leave the window out of capture |
+
+**Lock when the session ends.** The Actions menu's Lock when the session ends, from a Windows host
+that announced `lock-after` (0.7.0 and later; kept for each device), asks the host with
+`{"type": "lock-after", on}` to lock its screen when this session ends, however it ends — a
+dropped connection included, so the computer is never left unlocked behind it; a resumed session
+asks again. As RustDesk's "Lock after session end", it needs `control-input`, and the host locks
+as the Lock screen action does.
 
 The host reports whether Ctrl+Alt+Del is available, whether the block holds and whether privacy
 mode is on; the viewer's switches show that report, not the request.

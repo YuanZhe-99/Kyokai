@@ -689,7 +689,9 @@ pub fn hevc_hardware() -> bool {
 /// The codecs this controller decodes, by name, and those it decodes in
 /// full colour: the system's (Media Foundation, checked once; VideoToolbox;
 /// the system's FFmpeg on Linux) and the software ones (always).
-pub fn decodable() -> (Vec<String>, Vec<String>) {
+/// Inputs: `system` false leaves the system's decoders out: with the
+/// viewer's hardware codec off, the stream comes in a software codec.
+pub fn decodable(system: bool) -> (Vec<String>, Vec<String>) {
     #[cfg(windows)]
     let mut decode: Vec<String> = crate::mf::decodable()
         .iter()
@@ -707,6 +709,9 @@ pub fn decodable() -> (Vec<String>, Vec<String>) {
         .collect();
     #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     let mut decode = Vec::new();
+    if !system {
+        decode.clear();
+    }
     let soft = crate::soft::Codec::ALL;
     decode.extend(soft.iter().map(|c| c.name().to_string()));
     // A NanoKVM's own pictures (Raw), which only a NanoKVM host offers.
@@ -2403,11 +2408,19 @@ mod tests {
 
     #[test]
     fn this_build_decodes_every_software_codec() {
-        let (decode, i444) = decodable();
+        let (decode, i444) = decodable(true);
         for c in ["vp9-sw", "av1", "vp8"] {
             assert!(decode.iter().any(|d| d == c), "{c}");
         }
         assert_eq!(i444, ["vp9-sw", "av1"]);
+        // The hardware codec off: the software codecs only, and a NanoKVM's
+        // pictures.
+        let (decode, _) = decodable(false);
+        let only = ["vp9-sw", "av1", "vp8", "mjpeg"];
+        assert!(
+            decode.iter().all(|d| only.contains(&d.as_str())),
+            "{decode:?}"
+        );
     }
 
     /// Whether a test capturer (`Fake`) is open.

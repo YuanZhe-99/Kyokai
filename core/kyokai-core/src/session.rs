@@ -59,6 +59,11 @@ pub mod feature {
     /// `thinking`, the `fork`, `compact`, `rename` and `export` commands,
     /// and the host's `ai-export`.
     pub const AI_SESSIONS: &str = "ai-sessions";
+    /// `quality`'s `custom` preset and percentage.
+    pub const CUSTOM_QUALITY: &str = "custom-quality";
+    /// The `lock-after` message: the host locks its screen when the session
+    /// ends (Windows hosts).
+    pub const LOCK_AFTER: &str = "lock-after";
 }
 
 /// The features this build announces.
@@ -73,6 +78,9 @@ pub const FEATURES: &[&str] = &[
     feature::RESOLUTION,
     feature::MOVE,
     feature::AI_SESSIONS,
+    feature::CUSTOM_QUALITY,
+    #[cfg(windows)]
+    feature::LOCK_AFTER,
 ];
 
 /// What the other side of a session announced: its features, none for
@@ -274,7 +282,8 @@ enum Message {
         reply: bool,
     },
     /// controller → host: the viewer's image quality (`best`, `balanced`,
-    /// `speed`), frame-rate cap (RustDesk's presets) and whether it wants
+    /// `speed`; to a host that announced `custom-quality`, `custom` with its
+    /// percentage), frame-rate cap (RustDesk's presets) and whether it wants
     /// full colour (4:4:4) where both sides do it; to a host that announced
     /// `resolution`, the stream's size (`video::Size`'s names).
     Quality {
@@ -284,6 +293,10 @@ enum Message {
         i444: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         size: Option<String>,
+        /// The custom quality in RustDesk's percent (50: a bitrate ratio of
+        /// 1), within CUSTOM_RANGE; 0 with the other presets.
+        #[serde(default)]
+        custom: u32,
     },
     /// host → controller: what QoS measured and chose, for the viewer, how
     /// long the host took from a picture to its frame (the average of the
@@ -410,6 +423,11 @@ enum Message {
     /// controller → host: whether the viewer plays the host's sound; the
     /// host captures it only while asked and the screen may be viewed.
     Audio {
+        on: bool,
+    },
+    /// controller → host (`lock-after`): whether the host locks its screen
+    /// when this session ends.
+    LockAfter {
         on: bool,
     },
     /// host → controller, with video: where the host's pointer is, as
@@ -636,6 +654,43 @@ fn pick(
     #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     let _ = raw;
     video::prefer(c, preferred)
+}
+
+/// The custom quality's range, in RustDesk's percent: its slider's.
+pub const CUSTOM_RANGE: std::ops::RangeInclusive<u32> = 10..=2000;
+
+/// The value RustDesk's QoS takes for a viewer's quality preset (`custom`
+/// with its percentage, kept in CUSTOM_RANGE), None for a name this build
+/// does not know.
+fn image_quality(preset: &str, custom: u32) -> Option<i32> {
+    use rustdesk_qos::ImageQuality;
+    match preset {
+        "best" => Some(ImageQuality::Best.value()),
+        "balanced" => Some(ImageQuality::Balanced.value()),
+        "speed" => Some(ImageQuality::Low.value()),
+        "custom" => {
+            let pct = custom.clamp(*CUSTOM_RANGE.start(), *CUSTOM_RANGE.end());
+            Some((pct as i32) << 8)
+        }
+        _ => None,
+    }
+}
+
+/// Locks the host's screen when the session that holds it ends, once its
+/// viewer asked (`lock-after`): however the session ends, a dropped
+/// connection included, the computer is not left unlocked behind it.
+#[cfg(windows)]
+#[derive(Default)]
+struct LockAfter(bool);
+
+#[cfg(windows)]
+impl Drop for LockAfter {
+    fn drop(&mut self) {
+        if self.0 {
+            log::info!("host session: locking the screen, as the viewer asked");
+            std::thread::spawn(|| crate::input::Injector::default().lock_screen());
+        }
+    }
 }
 
 fn boosted(qos_fps: u32, cap: u32, input_at: Option<Instant>, delay_ms: u32) -> u32 {
@@ -898,6 +953,10 @@ pub struct Choices {
     quality: Option<Value>,
     codec: Option<Value>,
     audio: Option<Value>,
+    lock_after: Option<Value>,
+    /// The viewer's hardware codec switched off: this side names only the
+    /// software codecs (`video::decodable`).
+    software: bool,
     /// The viewer's clipboard choice, which stays on this side.
     clipboard: ClipUse,
 }
@@ -3203,6 +3262,8 @@ fn keep_choice(choices: &Mutex<Choices>, m: &Value) {
         Some("quality") => c.quality = Some(m.clone()),
         Some("codec") => c.codec = Some(m.clone()),
         Some("audio") => c.audio = Some(m.clone()),
+        Some("lock-after") => c.lock_after = Some(m.clone()),
+        Some("hardware") => c.software = !m["on"].as_bool().unwrap_or(true),
         Some("clipboard-use") => {
             c.clipboard = ClipUse {
                 share: m["share"].as_bool().unwrap_or(true),
@@ -3710,13 +3771,16 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // a resumed one first gives the viewer's quality and codec again, so
     // the host opens the video as the viewer chose.
     if let Side::Controller { choices, .. } = &side {
-        let again: Vec<Value> = choices
+        let (again, software): (Vec<Value>, bool) = choices
             .lock()
             .map(|c| {
-                [c.quality.clone(), c.codec.clone(), c.audio.clone()]
-                    .into_iter()
-                    .flatten()
-                    .collect()
+                let again = [
+                    c.quality.clone(),
+                    c.codec.clone(),
+                    c.audio.clone(),
+                    c.lock_after.clone(),
+                ];
+                (again.into_iter().flatten().collect(), c.software)
             })
             .unwrap_or_default();
         for m in again {
@@ -3724,7 +3788,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                 out.json(&m)?;
             }
         }
-        let (decode, i444) = tokio::task::spawn_blocking(video::decodable)
+        let (decode, i444) = tokio::task::spawn_blocking(move || video::decodable(!software))
             .await
             .unwrap_or_default();
         out.json(&Message::Codecs { decode, i444 })?;
@@ -3949,6 +4013,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // second, since the host user can lift them.
     #[cfg_attr(not(windows), allow(unused_mut))]
     let mut holding = false;
+    #[cfg(windows)]
+    let mut lock_after = LockAfter::default();
     let mut block_check = tokio::time::interval(Duration::from_secs(1));
     #[cfg(windows)]
     if let Some(inj) = &injector {
@@ -4465,6 +4531,22 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     None => std::future::pending().await,
                 }
             } => {
+                // The viewer's hardware codec: this side names its codecs
+                // again, the system's left out while it is off, and the
+                // host goes on in the best of them.
+                if msg["type"] == "hardware" {
+                    let system = msg["on"].as_bool().unwrap_or(true);
+                    if let Some(c) = &choices
+                        && let Ok(mut c) = c.lock()
+                    {
+                        c.software = !system;
+                    }
+                    let (decode, i444) = tokio::task::spawn_blocking(move || video::decodable(system))
+                        .await
+                        .unwrap_or_default();
+                    out.json(&Message::Codecs { decode, i444 })?;
+                    continue;
+                }
                 // The viewer's clipboard choice stays on this side.
                 if msg["type"] == "clipboard-use" {
                     let now = ClipUse {
@@ -4502,7 +4584,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     continue;
                 }
                 // Only messages a GUI may send pass on to the host.
-                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::Codec { .. } | Message::Audio { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. } | Message::NoPicture { .. })) = serde_json::from_value::<Message>(msg) {
+                if let Ok(m @ (Message::KeyFrame | Message::Display { .. } | Message::Codecs { .. } | Message::Input { .. } | Message::Action { .. } | Message::Quality { .. } | Message::Codec { .. } | Message::Audio { .. } | Message::LockAfter { .. } | Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. } | Message::NoPicture { .. })) = serde_json::from_value::<Message>(msg) {
                     // The viewer's latest choices, for a resumed session.
                     if let (Some(c), Ok(v)) = (&choices, serde_json::to_value(&m))
                         && let Ok(mut c) = c.lock()
@@ -4511,6 +4593,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                             Message::Quality { .. } => c.quality = Some(v),
                             Message::Codec { .. } => c.codec = Some(v),
                             Message::Audio { .. } => c.audio = Some(v),
+                            Message::LockAfter { .. } => c.lock_after = Some(v),
                             _ => {}
                         }
                     }
@@ -4593,7 +4676,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     // A newer peer's message: ignored, never the end of the session.
                     Message::Unknown => {}
                     Message::Pong => {}
-                    Message::Quality { preset, fps, i444, size: wanted_size } => {
+                    Message::Quality { preset, fps, i444, size: wanted_size, custom } => {
                         // A size the viewer chose: the video opens again at it.
                         if let Some(next) = wanted_size.as_deref().and_then(video::Size::parse)
                             && next != size
@@ -4614,14 +4697,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                                 reopen!(want_display);
                             }
                         }
-                        let quality = match preset.as_str() {
-                            "best" => Some(rustdesk_qos::ImageQuality::Best),
-                            "balanced" => Some(rustdesk_qos::ImageQuality::Balanced),
-                            "speed" => Some(rustdesk_qos::ImageQuality::Low),
-                            _ => None,
-                        };
-                        if let Some(q) = quality {
-                            qos.user_image_quality(QOS_VIEWER, q.value());
+                        if let Some(q) = image_quality(&preset, custom) {
+                            qos.user_image_quality(QOS_VIEWER, q);
                         }
                         if (1..=video::MAX_FPS).contains(&fps) {
                             qos.user_custom_fps(QOS_VIEWER, fps);
@@ -4665,6 +4742,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         }
                     }
                     Message::Audio { .. } => {}
+                    // Only a session that may give input may lock the
+                    // screen.
+                    #[cfg(windows)]
+                    Message::LockAfter { on } if injector.is_some() && matches!(side, Side::Host { .. }) => {
+                        lock_after.0 = on;
+                    }
+                    Message::LockAfter { .. } => {}
                     Message::TestDelay { reply: false } => {
                         out.once(&out.echo, &Message::TestDelay { reply: true })?;
                     }
@@ -8639,7 +8723,7 @@ mod nanokvm_tests {
             .unwrap();
         // Auto: the first codec both sides have (the GPU's where there is
         // one), as the host chooses.
-        let (decode, _) = video::decodable();
+        let (decode, _) = video::decodable(true);
         let encodes = video::encodable();
         let auto = video::choose(&decode, &[], false, video::hevc_hardware())
             .into_iter()
@@ -8812,6 +8896,24 @@ mod nanokvm_tests {
             features: vec![feature::NANOKVM.into()],
         };
         assert_eq!(crate::access::wire_want(&want, &peer), want.to_vec());
+    }
+
+    /// The viewer's presets reach RustDesk's QoS as its own client sends
+    /// them: the custom percentage in the bits above the low byte, kept in
+    /// the slider's range.
+    #[test]
+    fn quality_presets_as_rustdesk_takes_them() {
+        for (preset, custom, want) in [
+            ("best", 0, Some(4)),
+            ("balanced", 0, Some(3)),
+            ("speed", 0, Some(2)),
+            ("custom", 50, Some(50 << 8)),
+            ("custom", 0, Some(10 << 8)),
+            ("custom", 9999, Some(2000 << 8)),
+            ("sharper", 0, None),
+        ] {
+            assert_eq!(image_quality(preset, custom), want, "{preset} {custom}");
+        }
     }
 
     /// Raw goes first only on a NanoKVM host that can send it, when the

@@ -223,6 +223,14 @@ type viewer struct {
 	preset int
 	fpsCap string
 	full   bool
+	// custom is the custom quality's percentage (customLevels), used with
+	// presetCustom.
+	custom int
+	// software: the viewer's hardware codec is off; this side names only
+	// the software codecs, so the host sends one of them.
+	software bool
+	// lockAfter: the host locks its screen when the session ends.
+	lockAfter bool
 	// The codecs the host offers ({codecs}, media CODECS) and the viewer's
 	// choice among them ("auto" or a codec's name).
 	offer []string
@@ -411,11 +419,18 @@ func (a *App) newViewer(device string, about localapi.About, want []string, kvm 
 		title = L.PickThisComputer()
 	}
 	v := &viewer{app: a, device: device, kvm: kvm, own: own, title: title, want: want,
-		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto", size: "auto"}
-	// The settings chosen for this connection last time.
+		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto", size: "auto", custom: 50}
+	// The settings chosen for this connection last time; a custom quality
+	// the host does not take is Balanced.
 	if vp, ok := a.viewerPrefs(v.tabKey()); ok {
-		v.preset, v.full, v.swap, v.mute, v.folded = min(max(vp.Preset, 0), 2), vp.Full, vp.Swap, vp.Mute, vp.Folded
-		v.original, v.clip.off = vp.Original, vp.NoClipboard
+		v.preset, v.full, v.swap, v.mute, v.folded = min(max(vp.Preset, 0), presetCustom), vp.Full, vp.Swap, vp.Mute, vp.Folded
+		v.original, v.clip.off, v.software, v.lockAfter = vp.Original, vp.NoClipboard, vp.Software, vp.LockAfter
+		if slices.Contains(customLevels, vp.Custom) {
+			v.custom = vp.Custom
+		}
+		if v.preset == presetCustom && !a.hostHas(device, featureCustomQuality) {
+			v.preset = 1
+		}
 		if slices.Contains(fpsCaps, vp.FPS) {
 			v.fpsCap = vp.FPS
 		}
@@ -2068,7 +2083,9 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 	v.mu.Lock()
 	original, soundOn, swap, peerOS, refused := v.original, !v.mute, v.swapping(), v.phase.Peer.OS, v.noGrab
 	canClip, clipShown := v.clip.may, v.clip.shown
+	custom, software, lockAfter := v.custom, v.software, v.lockAfter
 	v.mu.Unlock()
+	customOK := v.hostHas(featureCustomQuality)
 
 	barMenu(c, v.app, "bar-display", barDisplay, L.ViewerDisplay(), func(m *ui.Menu) {
 		if n := len(b.displays.List); n > 1 {
@@ -2097,6 +2114,21 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 				v.setQuality(i, fpsCap, full)
 				back()
 			}
+		}
+		// RustDesk's custom quality, from a host that takes it.
+		if customOK {
+			label := L.QualityCustom()
+			if preset == presetCustom {
+				label = L.QualityCustomAt(strconv.Itoa(custom) + "%")
+			}
+			m.Submenu(label, func(m *ui.Menu) {
+				for _, pct := range customLevels {
+					if m.Item(strconv.Itoa(pct) + "%").Checked(preset == presetCustom && pct == custom).Chosen() {
+						v.setCustom(pct)
+						back()
+					}
+				}
+			})
 		}
 		m.Separator()
 		m.Submenu(L.ViewerFrameRate(), func(m *ui.Menu) {
@@ -2131,6 +2163,11 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 		}
 		if m.Item(L.QualityFullColour()).Checked(full).Chosen() {
 			v.setQuality(preset, fpsCap, !full)
+			back()
+		}
+		// Off: the stream comes in a software codec, decoded in software.
+		if m.Item(L.ViewerHardwareCodec()).Checked(!software).Chosen() {
+			v.setHardware(software)
 			back()
 		}
 	})
@@ -2225,6 +2262,10 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 			m.Separator()
 			if m.Item(L.ViewerLock()).Chosen() {
 				action("lock")
+			}
+			if v.hostHas(featureLockAfter) && m.Item(L.ViewerLockAfter()).Checked(lockAfter).Chosen() {
+				v.setLockAfter(!lockAfter)
+				back()
 			}
 			if a.CtrlAltDel && m.Item(L.ViewerCtrlAltDel()).Chosen() {
 				action("ctrl-alt-del")

@@ -86,13 +86,16 @@ AI 任务。除此之外，这与其他恢复一样：它的视频重新开始�
 选择其中之一（`auto`，或清单中的名称；其他名称不改变任何东西），并用 `{"type": "audio", on}` 请求被控端的声音（被控端只发给获得 `hear-sound` 的
 控制端，以字节 `0x04` 开头的明文，后接一个 48 kHz 立体声、10 毫秒的 Opus 数据包，静音时不发送，发送某帧的一个分片时已在等待的数据包在
 该帧下一个分片之前发出，[computer-use.md](computer-use.md)“声音”）；恢复的控制端
-会在发送其 `codecs` 之前再次发送查看者的 `quality`、`codec` 与 `audio`。
+会在发送其 `codecs` 之前再次发送查看者的 `quality`、`codec`、`audio` 与 `lock-after`。
+查看窗口切换硬件编解码时，控制端再次发送 `codecs`（关闭期间只列软件编解码器）；被控端改用其中最好的一个。
 被控端在第一帧之前发送 `{"type": "video-start", codec, width, height, i444, encoder, hardware}`（`i444` 与 `hardware` 仅在为真时出现；`encoder`：`videotoolbox`、`media-foundation`、`libvpx` 或 `libaom`，由编码器自己报告，测试图案不带此字段；声明了 `recovery` 的被控端会在测试图案的 `video-start` 中加上 `placeholder`：`asleep`、`no-display`、`agent`、`no-encoder`、`retrying`、`no-codec`、`cannot-capture` 或 `nanokvm`；声明了 `resolution` 的被控端加上 `size`，即正在生效的分辨率选择：`auto`、`native`、`2160`、`1440`、`1080` 或 `720`）。每帧的最后一个分片到达时，控制端发送 `{"type": "received", frame}`（该帧的编号）；被控端只在未确认的帧少于其窗口允许的数量时发送新帧（3 至 12，由帧率与路径的往返时间决定，[computer-use.md](computer-use.md)“视频”），只接受对它已发送且尚未确认的帧的确认，并且无论确认多久才到都等待：每个控制端（协议 10）都通过有序、可靠的流确认每一帧，因此确认迟到意味着路径慢，而不是帧丢失（断开的连接会在空闲时限时结束）。控制端可以发送
 `{"type": "key-frame"}`（被控端随后重新说明视频流、其显示器与编码清单，并发送关键帧，除非它上一个发出的关键帧尚未确认：那时等待那一个，这个请求既不强制再发一个，也不开始计算应有画面的时间）——即其界面的请求（打开时、丢失某帧或解码失败之后，以及在关键帧到达之前每秒一次），以及控制端在其队列丢弃帧期间自己的请求
 （最多每秒一次，用它自己的计时器，因此没有帧到达时也会请求），以及发给声明了 `recovery` 的被控端的 `{"type": "no-picture", for_ms, why}`，即其查看窗口已 5 秒没有显示画面（`why`：`decode-error`、`waiting` 或 `stale`；最多每秒一次；被控端把它视为故障，除非其上一个关键帧尚未确认，或画面应到但未满 5 秒，[computer-use.md](computer-use.md)“视频”）——在拥有 `control-input` 时还可发送 `{"type": "input", event}`；发给声明了 `input-sync` 的被控端时，事件可以是 `{"kind": "sync", held: {scans, keys, buttons}}`，即控制端在停顿或恢复之后按住的按键（按扫描码与按名称）与按钮，被控端随即松开该会话按住的其他一切（最多 64 项，且都必须是已知的，否则丢弃）。发送视频期间，被控端每秒发送一次 `{"type": "test-delay"}`，控制端以 `reply: true`
 回传；被控端还会发送 `{"type": "stats", delay_ms, fps, bitrate, encode_ms, frames}`（`encode_ms`：上一秒各帧从画面到编码完成的平均时间；`frames`：它在这一秒发送的帧数，0.4.0 不带此字段；声明了 `recovery` 的被控端加上 `video`：`live`、`dark`、`recovering` 或 `placeholder`）（[computer-use.md](computer-use.md)）；控制端可用
-`{"type": "quality", preset, fps, i444, size}` 设置画质，其中 `fps` 是查看窗口的上限，解码不了那么多帧时更低；`i444` 表示在双方都支持时要求全彩（4:4:4）；
-`size` 发给声明了 `resolution` 的被控端，用于选择分辨率（`auto`、`native`、`2160`、`1440`、`1080` 或 `720`）。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用
+`{"type": "quality", preset, fps, i444, size, custom}` 设置画质，其中 `preset` 为 `speed`、`balanced`、`best`，
+或发给声明了 `custom-quality` 的被控端时为 `custom`，`custom` 即其百分比（10 至 2000，同 RustDesk）；`fps` 是查看窗口的上限，解码不了那么多帧时更低；`i444` 表示在双方都支持时要求全彩（4:4:4）；
+`size` 发给声明了 `resolution` 的被控端，用于选择分辨率（`auto`、`native`、`2160`、`1440`、`1080` 或 `720`）。控制端可向声明了 `lock-after` 的被控端发送
+`{"type": "lock-after", on}`：拥有 `control-input` 时，被控端在会话结束时锁定屏幕。有多个显示器时，被控端还会发送 `{"type": "displays", list, current}`（各显示器的位置与尺寸，主显示器在前），控制端可以用
 `{"type": "display", index}` 请求另一个显示器。发送视频期间，被控端还会在指针移动时发送 `{"type": "cursor", x, y, visible}`，即以画面比例表示的指针位置；`visible` 表示它是否在所显示的显示器上。拥有 `control-input` 时，被控端在会话开始时发送
 `{"type": "actions", ctrl_alt_del, blocked, privacy}`（阻止或隐私模式变化时也会发送），控制端可以发送 `{"type": "action", action}`，其值为 `lock`、`ctrl-alt-del`、`block`、`unblock`、
 `privacy-on`、`privacy-off`，或在被控端声明了 `wake` 时为 `wake`（较旧的被控端改由控制端引擎发送一次 Shift 按下与松开）（[computer-use.md](computer-use.md)）。拥有 `clipboard` 时，任一端都会为本端复制的文本发送 `{"type": "clipboard", text}`（最大 1 MiB），为图片发送
@@ -172,6 +175,8 @@ net, battery, services, offers, ai}`，每 2 秒一次，此外只有 `ping`、`
 | `recovery` | 控制端的 `no-picture`；被控端 `video-start` 中的 `placeholder` 与其统计信息中的 `video` |
 | `nanokvm` | 经被控端的 NanoKVM USB 有线连接的电脑的会话（`client_hello` 的 `nanokvm`）；权限 `use-nanokvm` |
 | `resolution` | 控制端的分辨率选择（`quality` 的 `size`）；被控端 `video-start` 中的 `size` |
+| `custom-quality` | `quality` 的 `custom` 预设与百分比 |
+| `lock-after` | `lock-after`：被控端在会话结束时锁定屏幕（Windows 被控端） |
 | `ai-sessions` | `ai-start` 与 `reply` 的 `thinking`；AI 命令 `fork`、`compact`、`rename` 与 `export`；`ai-export` |
 | `move` | 迁移会话的恢复（`client_hello` 的 `move`：控制端的 AI 任务继续）；可恢复的隧道与 `got`；健康的会话迁移到更好的路径（[networking.md](networking.md)，“切换路径”） |
 

@@ -1502,6 +1502,27 @@ func TestDecodeRate(t *testing.T) {
 	}
 }
 
+// TestViewerControls: the custom quality goes out with its percentage, as
+// RustDesk's client sends it; a viewer with the hardware codec off says so
+// again when its stream starts, and nothing else is added while it is on.
+func TestViewerControls(t *testing.T) {
+	v := &viewer{preset: presetCustom, custom: 75, fpsCap: "24 fps", size: "auto"}
+	if q := string(v.qualityPacket()[1:]); q != `{"custom":75,"fps":24,"i444":false,"preset":"custom","size":"auto","type":"quality"}` {
+		t.Errorf("quality %s", q)
+	}
+	n := len(v.choicePackets())
+	v.software = true
+	got := v.choicePackets()
+	if len(got) != n+1 || string(got[1][1:]) != `{"on":false,"type":"hardware"}` {
+		t.Errorf("choices %q", got)
+	}
+	// A host that did not announce lock-after hears nothing of it.
+	v.lockAfter = true
+	if len(v.choicePackets()) != n+1 {
+		t.Error("lock-after sent to a host without it")
+	}
+}
+
 // TestQueueKeepsReleases: a full input queue drops presses, never a
 // release (regression: a dropped release left a key or a button held on
 // the host); the releases kept aside go once the queue drained.

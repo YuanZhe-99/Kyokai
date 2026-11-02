@@ -5181,6 +5181,26 @@ func (msgs Messages) QualityBest() string {
 	return Catalog.Format(msgs.locale, "QualityBest", nil)
 }
 
+// QualityCustom says "Custom"
+// in the language the app shows.
+func QualityCustom() string { return In(i18n.Locale()).QualityCustom() }
+
+// QualityCustom says "Custom"
+// in the language of msgs.
+func (msgs Messages) QualityCustom() string {
+	return Catalog.Format(msgs.locale, "QualityCustom", nil)
+}
+
+// QualityCustomAt says "Custom ({value})"
+// in the language the app shows.
+func QualityCustomAt(value string) string { return In(i18n.Locale()).QualityCustomAt(value) }
+
+// QualityCustomAt says "Custom ({value})"
+// in the language of msgs.
+func (msgs Messages) QualityCustomAt(value string) string {
+	return Catalog.Format(msgs.locale, "QualityCustomAt", map[string]any{"value": value})
+}
+
 // QualityFullColour says "Full colour"
 // in the language the app shows.
 func QualityFullColour() string { return In(i18n.Locale()).QualityFullColour() }
@@ -9573,6 +9593,16 @@ func (msgs Messages) ViewerInputPaused() string {
 	return Catalog.Format(msgs.locale, "ViewerInputPaused", nil)
 }
 
+// ViewerHardwareCodec says "Hardware codec"
+// in the language the app shows.
+func ViewerHardwareCodec() string { return In(i18n.Locale()).ViewerHardwareCodec() }
+
+// ViewerHardwareCodec says "Hardware codec"
+// in the language of msgs.
+func (msgs Messages) ViewerHardwareCodec() string {
+	return Catalog.Format(msgs.locale, "ViewerHardwareCodec", nil)
+}
+
 // ViewerKeyboard says "Keyboard"
 // in the language the app shows.
 func ViewerKeyboard() string { return In(i18n.Locale()).ViewerKeyboard() }
@@ -9713,6 +9743,16 @@ func ViewerLock() string { return In(i18n.Locale()).ViewerLock() }
 // in the language of msgs.
 func (msgs Messages) ViewerLock() string {
 	return Catalog.Format(msgs.locale, "ViewerLock", nil)
+}
+
+// ViewerLockAfter says "Lock when the session ends"
+// in the language the app shows.
+func ViewerLockAfter() string { return In(i18n.Locale()).ViewerLockAfter() }
+
+// ViewerLockAfter says "Lock when the session ends"
+// in the language of msgs.
+func (msgs Messages) ViewerLockAfter() string {
+	return Catalog.Format(msgs.locale, "ViewerLockAfter", nil)
 }
 
 // ViewerMoveBar says "Drag to move the controls"

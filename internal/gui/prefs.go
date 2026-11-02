@@ -150,6 +150,12 @@ type ViewerPrefs struct {
 	// NoClipboard: the clipboard is not shared with the device, even with
 	// its tab in front.
 	NoClipboard bool `json:"no_clipboard,omitempty"`
+	// Custom: the custom quality's percentage (with the custom preset).
+	Custom int `json:"custom,omitempty"`
+	// Software: the hardware codec is off.
+	Software bool `json:"software,omitempty"`
+	// LockAfter: the host locks its screen when the session ends.
+	LockAfter bool `json:"lock_after,omitempty"`
 }
 
 func defaultPrefs() Prefs { return Prefs{Theme: "system", CheckAppUpdates: true, AutoInstallHour: 3} }

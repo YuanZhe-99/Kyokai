@@ -2007,7 +2007,8 @@ fn ax_elements() -> Option<crate::ai::elements::Listed> {
     use crate::ai::elements::{Element, Listed, MAX_ELEMENTS};
     use objc2_application_services::{AXUIElement, AXValue, AXValueType};
     use objc2_core_foundation::{CFArray, CGSize};
-    if !AXIsProcessTrusted() {
+    // SAFETY: a plain query of this process's Accessibility permission.
+    if !unsafe { AXIsProcessTrusted() } {
         return None;
     }
     let pid = window_owner(None)?;

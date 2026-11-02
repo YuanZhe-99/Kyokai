@@ -2010,12 +2010,12 @@ mod atspi {
                 .unwrap_or_default();
             // An entry's text, never a password field's.
             let mut text = String::new();
-            if kind == "edit" && role_name != "password text" {
-                if let Some(reply) =
+            if kind == "edit"
+                && role_name != "password text"
+                && let Some(reply) =
                     call(&c, &node, "org.a11y.atspi.Text", "GetText", &(0i32, -1i32)).await
-                {
-                    text = reply.body().deserialize::<String>().unwrap_or_default();
-                }
+            {
+                text = reply.body().deserialize::<String>().unwrap_or_default();
             }
             if matches!(kind, "text" | "image") && name.trim().is_empty() {
                 continue;
