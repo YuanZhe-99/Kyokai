@@ -4,8 +4,12 @@
 // and the screen after the batch, abort during an action, and nothing
 // contacted but the provider.
 
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { join } from "node:path";
+
+// Each test starts the sidecar from source; the first start on a cold
+// runner transpiles Pi, which takes longer than bun's 5 seconds.
+setDefaultTimeout(30_000);
 
 const KEY = "sk-test-not-a-real-key";
 const SHOT = { b64: "U0hPVDA=", width: 1280, height: 720 };

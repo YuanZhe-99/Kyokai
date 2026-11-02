@@ -1,5 +1,5 @@
 // Vendored from RustDesk (https://github.com/rustdesk/rustdesk), libs/scrap/src/dxgi/mod.rs,
-// commit fada664df7a294d1d1a9ca3e7cd3637069122f17. License: AGPL-3.0 (RustDesk); the original
+// commit 23e5bb471a040d62f0a6ad52591fb30784265b73. License: AGPL-3.0 (RustDesk); the original
 // scrap code by Ram (quadrupleslap) is MIT.
 // Modified by Kyokai: no Magnification (privacy mode) module; logging through the `log` crate
 // instead of hbb_common; scrap's shared types and libyuv calls come from crate::shim. A frame is

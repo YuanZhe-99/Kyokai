@@ -1,5 +1,5 @@
 // Vendored from RustDesk (https://github.com/rustdesk/rustdesk), libs/scrap/src/dxgi/gdi.rs,
-// commit fada664df7a294d1d1a9ca3e7cd3637069122f17. License: AGPL-3.0 (RustDesk); the original
+// commit 23e5bb471a040d62f0a6ad52591fb30784265b73. License: AGPL-3.0 (RustDesk); the original
 // scrap code by Ram (quadrupleslap) is MIT.
 // Modified by Kyokai: no Magnification (privacy mode) module; logging through the `log` crate
 // instead of hbb_common; scrap's shared types and libyuv calls come from crate::shim. The bitmap
@@ -162,42 +162,6 @@ impl Drop for CapturerGDI {
             DeleteDC(self.screen_dc);
             DeleteDC(self.dc);
             DeleteObject(self.bmp as _);
-        }
-    }
-}
-
-// Modified by Kyokai: upstream test disabled (it needs RustDesk's repng dev-dependency).
-#[cfg(any())]
-mod tests {
-    use super::super::*;
-    use super::*;
-    #[test]
-    fn test() {
-        match Displays::new().unwrap().next() {
-            Some(d) => {
-                let w = d.width();
-                let h = d.height();
-                let c = CapturerGDI::new(d.name(), w, h).unwrap();
-                let mut data = Vec::new();
-                c.frame(&mut data).unwrap();
-                let mut bitflipped = Vec::with_capacity((w * h * 4) as usize);
-                for y in 0..h {
-                    for x in 0..w {
-                        let i = (w * 4 * y + 4 * x) as usize;
-                        bitflipped.extend_from_slice(&[data[i + 2], data[i + 1], data[i], 255]);
-                    }
-                }
-                repng::encode(
-                    std::fs::File::create("gdi_screen.png").unwrap(),
-                    d.width() as u32,
-                    d.height() as u32,
-                    &bitflipped,
-                )
-                .unwrap();
-            }
-            _ => {
-                assert!(false);
-            }
         }
     }
 }

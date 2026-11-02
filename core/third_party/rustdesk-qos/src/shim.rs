@@ -1,6 +1,6 @@
 // Kyokai shim for vendored RustDesk code (AGPL-3.0, like RustDesk): what
 // video_qos.rs takes from RustDesk's server module, scrap's codec
-// (libs/scrap/src/common/codec.rs, commit fada664df7a294d1d1a9ca3e7cd3637069122f17,
+// (libs/scrap/src/common/codec.rs, commit 23e5bb471a040d62f0a6ad52591fb30784265b73,
 // copied below unchanged), hbb_common's clock and RustDesk's configuration.
 
 pub use std::collections::HashMap;

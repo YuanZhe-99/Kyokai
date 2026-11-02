@@ -1,5 +1,5 @@
 // Vendored from RustDesk (https://github.com/rustdesk/rustdesk), src/server/video_qos/tests/robustness.rs,
-// commit fada664df7a294d1d1a9ca3e7cd3637069122f17. License: AGPL-3.0 (RustDesk). Unchanged.
+// commit 23e5bb471a040d62f0a6ad52591fb30784265b73. License: AGPL-3.0 (RustDesk). Unchanged.
 
 //! Guards against tuning the controller to the simulator: the CI bounds applied
 //! to seeds that never took part in setting them, and a sweep of the scenario

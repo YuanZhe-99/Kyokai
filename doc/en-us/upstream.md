@@ -167,7 +167,7 @@ when they run; anything not listed here is not assumed.
   license field (the repository is LGPL-3.0), and its pins keep hickory-proto at 0.25 and zip at 8,
   whose advisories `core/deny.toml` records with the reason each does not apply.
 
-## RustDesk 1.5.0
+## RustDesk 1.5.1
 
 | Module | License status | Kyokai's use |
 |---|---|---|

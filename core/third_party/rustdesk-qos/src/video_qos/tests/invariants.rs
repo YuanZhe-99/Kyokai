@@ -1,5 +1,5 @@
 // Vendored from RustDesk (https://github.com/rustdesk/rustdesk), src/server/video_qos/tests/invariants.rs,
-// commit fada664df7a294d1d1a9ca3e7cd3637069122f17. License: AGPL-3.0 (RustDesk). Unchanged.
+// commit 23e5bb471a040d62f0a6ad52591fb30784265b73. License: AGPL-3.0 (RustDesk). Unchanged.
 
 //! The controller's invariants as properties over random sessions.  A scenario
 //! test pins one trajectory; these hold whatever the trajectory:
