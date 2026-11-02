@@ -1,5 +1,48 @@
 # Version history
 
+## 0.7.0 (2026-11-02)
+
+The AI update: Pi as the agent loop, AI sessions, Auto approvals, scope, and a command line.
+
+- AI tasks run in an agent sidecar on Pi (`kyokai-agent`, built with Bun and shipped and signed
+  per target); Kyokai keeps the action schema, the executor, the policy, the lease, approvals and
+  take-over. Kyokai's three providers keep the provider's native protocols and an append-only
+  cached prefix: Claude's hour-long cache and server clearing, OpenAI's `computer` tool,
+  `openai-chat` with screenshots dropped in batches. Each task counts its tokens.
+- AI sessions: conversations kept across replies and restarts (memory only with No logs), with
+  rename, fork, clone, compact (by hand and before a reply once it grows), export to Markdown,
+  and a model and thinking choice per task. Controllers get the same under `run-ai-task` from
+  hosts that announce `ai-sessions`.
+- Auto approval mode: each action classed from what the system says about its target; class 0
+  runs, the risky classes ask (system shortcuts, settings, terminals, process control, power and
+  sign-out, deleting, sending, payments, consent, vaults, installing, Remote Desktop), and a model
+  refused three times falls back to asking for everything.
+- AI scope: the host user grants apps or windows and folders per session. What the AI sees outside
+  the granted windows is dimmed, and actions there are refused; folders are checked in file
+  dialogs and Explorer, not enforced.
+- Beside the host user (Windows, best effort): the AI works in its granted window from a capture of
+  that window alone, through UI Automation patterns, while the person uses another; where that
+  cannot work it says so and falls back to taking turns.
+- The element list beside each screenshot (UI Automation on Windows, AX on macOS, AT-SPI on Linux),
+  with the system's OCR where it lists little. Coordinate modes for `openai-chat` models (Qwen
+  3.5 and later on the 0–1000 grid).
+- AI on a pane: the host user lends a Remote Desktop, VNC or this computer's NanoKVM pane to the
+  AI. NanoKVM typing follows the wired computer's keyboard layout (US, UK, German, French).
+- The `kyokai` command line in the app's `bin`: status, devices and routes, sessions and
+  connection requests, screenshots, AI tasks and sessions, tunnels on a local port (OpenSSH's
+  `sftp` and `scp` go through them), `--json` and exit codes.
+- Kyokai's own task set (`tools/taskset`) measures models on fixed Windows and macOS tasks.
+- The viewer, as RustDesk's: a custom quality from 10 to 2000 %, frame-rate caps from 5 to 60, a
+  Hardware codec switch (off: software codecs only) and Lock when the session ends (Windows hosts).
+- The wheel scrolls one notch a notch again: the viewer sent the toolkit's DIPs as notches (about
+  99 for one) and the Remote Desktop and VNC panes multiplied them again.
+- Fixes: on macOS and Linux a Go host no longer aborts when a child process exits (tokio's SIGCHLD
+  handler gets SA_ONSTACK); every pane corner is rounded alike on Windows and Linux; Right Shift
+  goes as Right Shift from Windows controllers.
+- Upstreams: RustDesk 1.5.0 → 1.5.1 (vendored code reviewed; two upstream tests removed), Pi 1.4.0 →
+  1.5.0; new: Bun 1.4.4; checked, unchanged: MyGo v0.7.4, EasyTier v2.7.0, vcpkg 2026.10.16,
+  smoltcp 0.14.0, Rust 1.99.1.
+
 ## 0.6.15 (2026-11-01)
 
 A sharper, steadier picture, paths that switch in time, corners that line up.
