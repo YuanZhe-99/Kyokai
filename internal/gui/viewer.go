@@ -142,6 +142,10 @@ type viewer struct {
 	// desktop; own: this computer's own NanoKVM, opened here without a
 	// network session (both fixed at creation).
 	kvm, own bool
+	// ai serves this computer's own NanoKVM pane to its AI (aipane.go),
+	// nil while it is not; aiX and aiY are where the AI's pointer is.
+	ai       *paneServe
+	aiX, aiY float32
 	// inUse: this computer's own NanoKVM is in a controller's use, and
 	// takeOver asks the next connection to end that session; guarded by mu.
 	inUse, takeOver bool
@@ -603,6 +607,7 @@ func (a *App) syncViewers() {
 // close ends the viewer's stream as its tab closes: the keyboard grab, the
 // media connection and its place among the open viewers. The session goes on.
 func (v *viewer) close() {
+	v.serveAI(false)
 	v.endGrab()
 	v.home.Store(nil)
 	v.app.mu.Lock()
@@ -2203,6 +2208,14 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 				}
 				if m.Item(L.ViewerWake()).Chosen() {
 					action("wake")
+				}
+				// This computer's own NanoKVM may be lent to its AI.
+				if v.own {
+					m.Separator()
+					if m.Item(L.AIPaneServe()).Checked(v.ai != nil).Chosen() {
+						v.serveAI(v.ai == nil)
+						back()
+					}
 				}
 				return
 			}

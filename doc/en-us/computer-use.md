@@ -726,7 +726,7 @@ applies decides:
 
 | Class | The action reaches |
 |---|---|
-| Remote Desktop and VNC | a Remote Desktop, VNC, RustDesk, AnyDesk or TeamViewer window (pixels only, no element tree) |
+| Remote Desktop and VNC | a Remote Desktop, VNC, RustDesk, AnyDesk or TeamViewer window, or a pane lent to the AI (pixels only, no element tree) |
 | Password vault | a password manager (1Password, Bitwarden, KeePass(XC), Keychain Access, Passwords) |
 | Installing | an installer (Windows Installer, App Installer, Installer, pkexec, the software centres) |
 | Settings | system or security settings (Settings, Control Panel, MMC, the registry, Windows Security, System Settings, the desktops' control centres) |
@@ -802,6 +802,30 @@ account, container or virtual machine could hold it to some folders; the folders
 
 Granting is the host user's; a controller cannot widen it. The AI cannot work in one window while
 the host user works in another: local input still takes over at once (PLAN.md).
+
+### AI on a pane
+
+The host's AI may also work in a pane of this computer's GUI that shows another computer: a
+Remote Desktop or VNC pane ([remote-services.md](remote-services.md)), or this computer's own
+NanoKVM USB pane. The host user lends it: "Let this computer's AI work here" in the pane's Actions
+menu (off by default; until turned off or the pane closes; never implied by `run-ai-task`). The AI
+pane's place chip then lists the pane under This computer, and a task started there
+(`AITaskRequest.on`, `kyokai ai-start --pane ID`) works in it:
+
+- **What it sees and what it does**: the pane's picture (the client's framebuffer, or the NanoKVM
+  picture as the pane shows it), and its input goes to that client or the NanoKVM's keyboard and
+  mouse — never to this computer's desktop. The GUI serves the pane over the local API
+  (`ai.pane.serve`) and the engine relays to the core (`ai.pane.*`): the core asks for the size, a
+  picture (a PNG), an input event (`input::Event`, as a viewer sends a person's) or a release, and a
+  task's desktop there is `ai::pane::PaneDesk`. A NanoKVM types as a US keyboard, as the pane does.
+- **The same rules**: the executor, the lease, the approvals and pause hold; the host user's input
+  on the pane takes over at once, this computer's emergency stop stops it, and a pane closed or no
+  longer lent fails the task at its next look or action.
+- **Pixels only**: the policy takes the pane for a Remote Desktop and VNC window (`kyokai pane`), so
+  in Auto every action that acts asks; there is no element list, and this computer's AI scope (its
+  apps and folders) does not apply there: the pane itself is the grant.
+- Only this computer's own user starts a task on a pane; a controller cannot, whatever its
+  permissions.
 
 ### States
 

@@ -26,7 +26,8 @@ and the flags it takes. Flags come after the command.
 Output is for people by default. `--json` prints the engine's answer as the local API's JSON
 response instead (`screenshot`: the file and its size; `move`: the device and the socket); the
 commands that print as things arrive (`watch`, `watch-status`, `tunnel`, `logs`) do not take it.
-`backup --json` still writes the identity only to its file.
+`backup --json` still writes the identity only to its file. The JSON is the local API's, which changes only by
+adding fields within version 2; golden tests (`internal/ctl/testdata`) hold it for the AI commands.
 
 | Code | Meaning |
 |---|---|
@@ -88,5 +89,7 @@ and ten seconds without one is a failure.
 uses; `kyokai ai-scope --apps A,B` grants the AI only those programs' windows for this session, and
 `kyokai ai-scope` with no apps gives it the whole desktop again ([computer-use.md](computer-use.md#ai-scope));
 `kyokai ai-folders --folders "C:\Work;D:\Shared"` (separated as `PATH` is: `;` on Windows, `:` elsewhere)
-grants only those folders, checked, not enforced, and with no folders every folder again. `ai` shows both.
+grants only those folders, checked, not enforced, and with no folders every folder again. `ai` shows both,
+and the panes the GUI lends the AI; `ai-start --pane ID` starts a task in one of them
+([computer-use.md](computer-use.md#ai-on-a-pane)).
 The scope is the host user's to set, so these commands speak to this device's own engine only.

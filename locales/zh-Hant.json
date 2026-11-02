@@ -114,6 +114,7 @@
   "AIStatePausedFolders": "已暫停：授權的資料夾之外有檔案被變更",
   "AIWhyOutsideFolders": "這會在你授權的資料夾之外的資料夾中操作。",
   "AIOutsideChanged": "在授權的資料夾之外有變更：\n{files}",
+  "AIPaneServe": "讓這台電腦的 AI 在這裡工作",
   "AIScopeAll": "所有應用程式",
   "AIScopeCount": "應用程式：{count}",
   "AISendButton": "只用傳送按鈕",

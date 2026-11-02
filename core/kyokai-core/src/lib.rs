@@ -1647,6 +1647,52 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 Ok(c.ctx.ai.settings())
             })
         }
+        // A pane the GUI serves for the AI (ai::pane), relayed by the
+        // engine: opened, its requests taken one by one (waiting up to a
+        // second, without the core's lock), answered, its host user's input
+        // told, closed.
+        "ai.pane.open" => {
+            let served: crate::ai::pane::Served =
+                serde_json::from_value(req.params.take()).map_err(|e| format!("bad pane: {e}"))?;
+            try_core(|c| c.ctx.ai.open_pane(served).map(|()| json!({})))
+        }
+        "ai.pane.next" => {
+            let pane = core_ctx()?
+                .ai
+                .pane(req.params["id"].as_str().unwrap_or_default())
+                .ok_or("no such pane")?;
+            match pane.next(std::time::Duration::from_secs(1)) {
+                Some(r) => Ok(r),
+                None if pane.closed() => Err("the pane is closed".into()),
+                None => Ok(Value::Null),
+            }
+        }
+        "ai.pane.answer" => {
+            let pane = core_ctx()?
+                .ai
+                .pane(req.params["id"].as_str().unwrap_or_default())
+                .ok_or("no such pane")?;
+            pane.answer(
+                req.params["seq"].as_u64().ok_or("bad seq")?,
+                req.params["answer"].take(),
+            );
+            Ok(json!({}))
+        }
+        "ai.pane.local" => {
+            if let Some(pane) = core_ctx()?
+                .ai
+                .pane(req.params["id"].as_str().unwrap_or_default())
+            {
+                pane.local(req.params["moved"].as_bool().unwrap_or(false));
+            }
+            Ok(json!({}))
+        }
+        "ai.pane.close" => {
+            core_ctx()?
+                .ai
+                .close_pane(req.params["id"].as_str().unwrap_or_default());
+            Ok(json!({}))
+        }
         "ai.apps" => try_core(|c| c.ctx.ai.apps().map(|a| json!(a))),
         "ai.key.set" => {
             // {"source": "claude", "key": "…"} stores it, {"key": null} removes

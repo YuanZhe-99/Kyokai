@@ -53,9 +53,12 @@ pub enum Thinking {
 
 /// A task's model and thinking, chosen when it starts or between runs;
 /// None keeps the settings' model (the task's, for a reply) and the usual
-/// thinking.
+/// thinking. `on` is a pane the GUI serves (`ai::pane`), chosen at start
+/// by this computer's own user only; None: this computer's desktop.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Choice {
+    #[serde(default)]
+    pub on: Option<String>,
     #[serde(default)]
     pub model: Option<ModelRef>,
     #[serde(default)]
@@ -454,6 +457,10 @@ pub struct Task {
     /// has grown (`AUTO_COMPACT`).
     #[serde(default)]
     pub context: u64,
+    /// The pane it works in (`ai::pane`), or None for this computer's
+    /// desktop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane: Option<super::pane::Served>,
     /// Files changed outside the granted folders while it acted (AI scope;
     /// at most `MAX_OUTSIDE`), for the host user to look at.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -517,6 +524,8 @@ struct Shared {
     scope: Mutex<policy::Scope>,
     /// Files changing under the home folder, while folders are granted.
     watch: Mutex<Option<Watch>>,
+    /// The panes the GUI serves for the AI (`ai::pane`).
+    panes: super::pane::Panes,
     /// The home folder the watch covers.
     home: Mutex<PathBuf>,
 }
@@ -535,28 +544,39 @@ struct Watch {
 
 impl Watch {
     /// Watches `root` and everything under it.
+    /// Notes: paths come back under `root` as given, not its real path
+    /// (macOS reports /var as /private/var), so they compare with the
+    /// granted folders as the host user wrote them.
     /// Notes: on Linux this adds a watch per folder, which takes a while in
     /// a large home; call it off the async threads.
     fn start(root: &Path) -> Result<Watch, String> {
         use notify::{EventKind, Watcher, event::ModifyKind};
         let seen = Arc::new(Mutex::new(Vec::new()));
         let into = seen.clone();
-        let mut watcher = notify::recommended_watcher(move |e: notify::Result<notify::Event>| {
-            let Ok(e) = e else { return };
-            if matches!(
-                e.kind,
-                EventKind::Create(_)
-                    | EventKind::Remove(_)
-                    | EventKind::Modify(
-                        ModifyKind::Data(_) | ModifyKind::Name(_) | ModifyKind::Any
-                    )
-            ) {
-                let mut seen = into.lock().expect("watch");
-                let room = MAX_CHANGES.saturating_sub(seen.len());
-                seen.extend(e.paths.into_iter().take(room));
-            }
-        })
-        .map_err(|e| format!("watch: {e}"))?;
+        let given = root.to_path_buf();
+        let real = std::fs::canonicalize(root).unwrap_or_else(|_| given.clone());
+        let mut watcher =
+            notify::recommended_watcher(move |e: notify::Result<notify::Event>| {
+                let Ok(e) = e else { return };
+                if matches!(
+                    e.kind,
+                    EventKind::Create(_)
+                        | EventKind::Remove(_)
+                        | EventKind::Modify(
+                            ModifyKind::Data(_) | ModifyKind::Name(_) | ModifyKind::Any
+                        )
+                ) {
+                    let mut seen = into.lock().expect("watch");
+                    let room = MAX_CHANGES.saturating_sub(seen.len());
+                    seen.extend(e.paths.into_iter().take(room).map(
+                        |p| match p.strip_prefix(&real) {
+                            Ok(rest) if real != given => given.join(rest),
+                            _ => p,
+                        },
+                    ));
+                }
+            })
+            .map_err(|e| format!("watch: {e}"))?;
         watcher
             .watch(root, notify::RecursiveMode::Recursive)
             .map_err(|e| format!("watch: {e}"))?;
@@ -641,6 +661,7 @@ impl Ai {
                 draft: Mutex::new((0, String::new())),
                 scope: Mutex::new(policy::Scope::default()),
                 watch: Mutex::new(None),
+                panes: Default::default(),
                 home: Mutex::new(
                     std::env::var_os("USERPROFILE")
                         .or_else(|| std::env::var_os("HOME"))
@@ -673,6 +694,7 @@ impl Ai {
             "keys": keys,
             "scope": self.shared.scope().apps,
             "folders": self.shared.scope().folders,
+            "panes": self.shared.panes.list(),
         })
     }
 
@@ -748,6 +770,35 @@ impl Ai {
         }
         self.shared.changed.notify_waiters();
         Ok(())
+    }
+
+    /// Serves a pane of this computer's GUI to the AI (`ai::pane`): the host
+    /// user let it work there.
+    /// Inputs: `served` from the GUI, through the engine.
+    pub fn open_pane(&self, served: super::pane::Served) -> Result<(), String> {
+        if served.id.is_empty()
+            || served.id.len() > 64
+            || served.name.trim().is_empty()
+            || served.name.len() > 200
+            || !matches!(served.kind.as_str(), "rdp" | "vnc" | "nanokvm")
+        {
+            return Err("bad pane".into());
+        }
+        self.shared.panes.open(served);
+        self.shared.changed.notify_waiters();
+        Ok(())
+    }
+
+    /// A served pane, for the engine's relay.
+    pub fn pane(&self, id: &str) -> Option<Arc<super::pane::Pane>> {
+        self.shared.panes.get(id)
+    }
+
+    /// Stops serving a pane: a task on it fails at its next look or
+    /// action.
+    pub fn close_pane(&self, id: &str) {
+        self.shared.panes.close(id);
+        self.shared.changed.notify_waiters();
     }
 
     /// The programs with windows on the screen now, for choosing a scope:
@@ -911,6 +962,20 @@ impl Ai {
         if !keyless(source) && self.shared.secrets.get(&key_name(&source.id)).is_none() {
             return Err("add an API key for the provider first".into());
         }
+        let pane = match &choice.on {
+            None => None,
+            Some(_) if origin.is_some() => {
+                return Err("only this computer's user lets the AI work in a pane".into());
+            }
+            Some(on) => Some(
+                self.shared
+                    .panes
+                    .get(on)
+                    .ok_or("that pane is no longer open for the AI")?
+                    .served
+                    .clone(),
+            ),
+        };
         let id = {
             let mut tasks = self.shared.tasks.lock().expect("tasks");
             if let Some(t) = tasks
@@ -932,6 +997,7 @@ impl Ai {
                 source: model.source.clone(),
                 model: model.id.clone(),
                 thinking: choice.thinking,
+                pane,
                 state: State::Running,
                 paused: None,
                 error: None,
@@ -1275,6 +1341,7 @@ impl Ai {
                 source: t.source.clone(),
                 model: t.model.clone(),
                 thinking: t.thinking,
+                pane: t.pane.clone(),
                 state: State::Done,
                 paused: None,
                 error: None,
@@ -1943,7 +2010,18 @@ async fn run(shared: &Arc<Shared>, id: u64) -> Result<Agent, Stop> {
         .find(|m| m.id == model)
         .map_or(Coordinates::Auto, |m| m.coordinates)
         .resolve(source.protocol == super::Protocol::OpenaiChat, &model);
-    let desk: Desk = Arc::new(Mutex::new((shared.open_desktop)()?));
+    let pane = shared.edit(id, |t| t.pane.clone()).flatten();
+    let screen = (shared.open_desktop)()?;
+    let desk: Desk = Arc::new(Mutex::new(match pane {
+        None => screen,
+        Some(p) => {
+            let p = shared
+                .panes
+                .get(&p.id)
+                .ok_or_else(|| "the pane is no longer open for the AI".to_string())?;
+            Box::new(super::pane::PaneDesk::new(p, screen))
+        }
+    }));
     let watcher = tokio::spawn(watch(shared.clone(), id, desk.clone()));
     let result = drive(
         shared,
@@ -2014,7 +2092,7 @@ async fn drive(
     let mut seen = observe(
         desk,
         start.coords,
-        shared.scope().apps,
+        grant(shared, desk).apps,
         source.lists_elements(),
     )
     .await?;
@@ -2133,7 +2211,8 @@ async fn drive(
                 if last {
                     shared.running(id).await?;
                     if source.protocol != Protocol::Anthropic {
-                        seen = observe(desk, seen.coords, shared.scope().apps, seen.lists).await?;
+                        seen = observe(desk, seen.coords, grant(shared, desk).apps, seen.lists)
+                            .await?;
                         shot = Some((&seen.shot).into());
                     }
                 }
@@ -2158,6 +2237,21 @@ async fn drive(
             FromSidecar::Aborted => return Err(Stop::Cancelled),
             FromSidecar::Hello { .. } => {}
         }
+    }
+}
+
+/// Whether a task's desktop is another computer seen through a pane.
+fn remote(desk: &Desk) -> bool {
+    desk.lock().expect("desktop").remote()
+}
+
+/// What the AI scope grants a task: this computer's scope on its own
+/// desktop, nothing limited on a pane (the pane is the grant).
+fn grant(shared: &Shared, desk: &Desk) -> policy::Scope {
+    if remote(desk) {
+        policy::Scope::default()
+    } else {
+        shared.scope()
     }
 }
 
@@ -2255,7 +2349,11 @@ async fn act_one(
     }
     // AI scope's folders: files changed outside them since the last action
     // pause the task for the host user to look.
-    let outside = shared.outside();
+    let outside = if remote(desk) {
+        Vec::new()
+    } else {
+        shared.outside()
+    };
     if !outside.is_empty() {
         let _ = shared.apply(id, Event::Pause, |t| {
             t.paused = Some(Pause::Folders);
@@ -2293,7 +2391,7 @@ async fn act_one(
     };
     // UI Automation can wait on a slow program: off the async thread.
     let target = tokio::task::block_in_place(|| target_of(desk, &action, seen));
-    let scope = shared.scope();
+    let scope = grant(shared, desk);
     let unacknowledged = !turn.flagged.is_empty() && !turn.acknowledged;
     let class = match policy::decide(mode, unacknowledged, &action, &target, &scope) {
         Verdict::Run => None,
@@ -2470,7 +2568,7 @@ async fn execute(
 ) -> Outcome {
     match action {
         Action::Screenshot => {
-            match observe(desk, seen.coords, shared.scope().apps, seen.lists).await {
+            match observe(desk, seen.coords, grant(shared, desk).apps, seen.lists).await {
                 Ok(s) => {
                     *seen = s;
                     Outcome::Image(seen.shot.clone())
@@ -2478,7 +2576,7 @@ async fn execute(
                 Err(why) => Outcome::Failed(why),
             }
         }
-        Action::Zoom { region } => match capture(desk, shared.scope().apps).await {
+        Action::Zoom { region } => match capture(desk, grant(shared, desk).apps).await {
             Ok(frame) => {
                 let r = desktop::frame_region(*region, seen.size(), (frame.width, frame.height));
                 Outcome::Image(tokio::task::block_in_place(|| {

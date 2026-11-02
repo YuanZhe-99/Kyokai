@@ -38,7 +38,10 @@ type aiTab struct {
 	// device is "" for this computer, else the host's Device ID; a new
 	// session may move (moveTo, under a.mu).
 	device string
-	win    atomic.Pointer[viewerWindow]
+	// on is the served pane (localapi.AIPane's ID) a new task of this
+	// computer runs in, "" for this computer's desktop.
+	on  string
+	win atomic.Pointer[viewerWindow]
 
 	// reply is what is typed in the box while it continues a task; sent
 	// are the replies sent from the pane, which the conversation shows.
@@ -369,12 +372,23 @@ func (t *aiTab) title() string {
 	return L.AINewSession()
 }
 
-// where names the device the session runs on.
+// where names the device the session runs on, or the pane it works in.
 func (t *aiTab) where() string {
-	if t.device == "" {
-		return L.PickThisComputer()
+	if t.device != "" {
+		return t.app.deviceName(t.device)
 	}
-	return t.app.deviceName(t.device)
+	if t.on != "" {
+		t.app.mu.Lock()
+		defer t.app.mu.Unlock()
+		if s := t.app.ai.settings; s != nil {
+			for _, p := range s.Panes {
+				if p.ID == t.on {
+					return p.Name
+				}
+			}
+		}
+	}
+	return L.PickThisComputer()
 }
 
 // tabTitle names the window while the pane is in focus.
@@ -632,11 +646,11 @@ func (t *aiTab) submit(mode boxMode, s aiPaneState, text string) bool {
 	a.mu.Lock()
 	a.busy["ai-task"], a.ai.draft = true, ""
 	a.mu.Unlock()
-	id, thinking := t.id, t.thinking
+	id, thinking, on := t.id, t.thinking, t.on
 	t.thinking = ""
 	go func() {
 		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestAITaskStart,
-			AITask: &localapi.AITaskRequest{Key: key, Instruction: text, Thinking: thinking}})
+			AITask: &localapi.AITaskRequest{Key: key, Instruction: text, Thinking: thinking, On: on}})
 		a.update(func() {
 			delete(a.busy, "ai-task")
 			if a.aiFailed(err) {

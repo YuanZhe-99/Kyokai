@@ -120,7 +120,7 @@ an input device's id; running streams switch; the helper passes it to its agent)
 (→ `[{id, name}]`, the input devices; the agent's in the helper), and for AI tasks ([computer-use.md](computer-use.md)):
 `ai.settings.get`, `ai.settings.set` (`{sources?, model?: {source, id}, approval?}`; the answer adds
 `keys` per source), `ai.key.set` (`{source, key}`, null removes it; a key is never returned),
-`ai.models.list` (`{source}` → `{models}`, asks the source), `ai.scope.set` (`{apps}`, null for the whole desktop; the answer is the settings with `scope`), `ai.folders.set` (`{folders}`, full paths, null for every folder; the answer is the settings with `folders`), `ai.apps` (→ the programs with windows on the screen), `ai.task.start`
+`ai.models.list` (`{source}` → `{models}`, asks the source), `ai.pane.open` (`{id, name, kind}`), `ai.pane.next` (`{id}` → `{seq, request}` or null after a second, without the core's lock), `ai.pane.answer` (`{id, seq, answer}`), `ai.pane.local` (`{id, moved}`), `ai.pane.close` (`{id}`), `ai.scope.set` (`{apps}`, null for the whole desktop; the answer is the settings with `scope`), `ai.folders.set` (`{folders}`, full paths, null for every folder; the answer is the settings with `folders`), `ai.apps` (→ the programs with windows on the screen), `ai.task.start`
 (`{key, instruction, choice?: {model?, thinking?}}` → `{id}`; the key makes it idempotent), `ai.task.reply` (`{id, text, choice?}`),
 `ai.task.pause`, `ai.task.resume`, `ai.task.cancel` (`{id}`), `ai.task.decide` (`{id, approve}`),
 `ai.task.rename` (`{id, name}`), `ai.task.fork` (`{id, run?}` → `{id}`), `ai.task.compact` (`{id}`),
@@ -168,7 +168,11 @@ runtime statically, so nothing is resolved through the search path.
   and never forwards; the GUI asks for a key frame first. `tunnel.open` (`{tunnel: {device_id,
   address?, route?, service}}`) answers once the host admitted the tunnel (after up to 90 seconds) or names
   why not, then carries the tunnel's bytes as packets 14 both ways
-  ([remote-services.md](remote-services.md)). These additions change no request's
+  ([remote-services.md](remote-services.md)). `ai.pane.serve` (`{pane: {id, name, kind}}`, the
+  owner only) lends a pane of the GUI to the AI ([computer-use.md](computer-use.md#ai-on-a-pane)):
+  it answers OK, then carries JSON values both ways — the engine's requests `{seq, request}` and
+  the GUI's answers `{seq, answer}` or its host user's input on the pane `{local}` — relayed to the
+  core's `ai.pane.*` until either side closes it. These additions change no request's
   meaning, so the local API stays at version 2: an older engine ignores `clipboard-use` and an
   older GUI ignores packets 13 and 15. The status includes the open host
   confirmations and the sessions; secrets travel only towards the engine (the network secret, the

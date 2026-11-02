@@ -764,6 +764,9 @@ func (h *handler) Media(ctx context.Context, req localapi.Request, open func() i
 	if req.Type == localapi.RequestTunnelOpen {
 		return h.tunnel(ctx, req, open)
 	}
+	if req.Type == localapi.RequestAIPaneServe {
+		return h.servePane(ctx, req, open)
+	}
 	if h.videos.Add(1) > maxVideoStreams {
 		h.videos.Add(-1)
 		return localapi.Fail(localapi.CodeInvalid, "too many media streams are open")
@@ -1233,6 +1236,9 @@ func aiChoice(t *localapi.AITaskRequest) map[string]any {
 	}
 	if t.Thinking != "" {
 		c["thinking"] = t.Thinking
+	}
+	if t.On != "" {
+		c["on"] = t.On
 	}
 	return c
 }

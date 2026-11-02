@@ -498,6 +498,7 @@ fn classify(program: &str, action: &Action, target: &Target) -> Option<Class> {
 // lowercase.
 
 const REMOTE_DESKTOP: &[&str] = &[
+    super::pane::PROGRAM,
     "mstsc.exe",
     "msrdc.exe",
     "vncviewer.exe",

@@ -234,6 +234,7 @@ func run(args []string) error {
 	source := fs.String("source", "", "ai-key, ai-models: the AI source's id")
 	model := fs.String("model", "", "ai-set: the model tasks use, as SOURCE:MODEL; ai-start: this task's model (none: the settings'); ai-reply: another model of the task's source")
 	thinking := fs.String("thinking", "", "ai-start, ai-reply: how much the model thinks: low, medium, high or max (none: the usual)")
+	pane := fs.String("pane", "", "ai-start: a pane this computer's GUI lets the AI work in, by the id `ai` lists (none: this computer's desktop)")
 	sourcesFile := fs.String("sources-file", "", "ai-set: a JSON list of AI sources replacing the current ones")
 	approval := fs.String("approval", "", "ai-set: auto or every-action")
 	text := fs.String("text", "", "ai-start, ai-reply, watch: what the AI should do (watch: on the host)")
@@ -422,6 +423,7 @@ func run(args []string) error {
 		req.AITask = &localapi.AITaskRequest{Thinking: *thinking}
 		if cmd == "ai-start" {
 			req.AITask.Key, req.AITask.Instruction = strconv.FormatInt(time.Now().UnixNano(), 36), *text
+			req.AITask.On = *pane
 		} else {
 			req.AITask.Text = *text
 		}
@@ -553,6 +555,9 @@ func run(args []string) error {
 		}
 		for _, f := range s.Folders {
 			fmt.Printf("folder %s\n", f)
+		}
+		for _, p := range s.Panes {
+			fmt.Printf("pane %s %q  %s\n", p.ID, p.Name, p.Kind)
 		}
 		for _, src := range s.Sources {
 			ids := make([]string, len(src.Models))

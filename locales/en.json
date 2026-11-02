@@ -356,6 +356,7 @@
       }
     }
   },
+  "AIPaneServe": "Let this computer's AI work here",
   "AIScopeAll": "All apps",
   "AIScopeCount": "Apps: {count}",
   "@AIScopeCount": {

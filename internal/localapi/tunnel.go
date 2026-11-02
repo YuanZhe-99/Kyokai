@@ -124,3 +124,10 @@ func (t *tunnelConn) Write(p []byte) (int, error) {
 	}
 	return sent, nil
 }
+
+// ServePane serves a pane of this GUI to the AI (RequestAIPaneServe): the
+// connection then carries AIPaneMessage values, the engine's requests in
+// and the GUI's answers out, until either side closes it.
+func (c *Client) ServePane(ctx context.Context, p AIPane) (net.Conn, error) {
+	return c.openStream(ctx, Request{Type: RequestAIPaneServe, Pane: &p}, c.Timeout)
+}

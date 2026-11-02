@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"testing"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
@@ -52,5 +53,21 @@ func TestTunnelFailure(t *testing.T) {
 		if got := tunnelFailure(c.state, json.RawMessage(c.failure)); got != c.want {
 			t.Errorf("%s %s: %q, want %q", c.state, c.failure, got, c.want)
 		}
+	}
+}
+
+// TestPaneServingIsTheOwners: serving a pane to the AI is refused to a
+// connection that is not the owner's (the kyokai group) and in protected
+// mode, before the core or the connection is touched.
+func TestPaneServingIsTheOwners(t *testing.T) {
+	h := &handler{} // no core: a request that reached it would panic
+	req := localapi.Request{Type: localapi.RequestAIPaneServe, Pane: &localapi.AIPane{ID: "p1", Name: "Remote Desktop", Kind: "rdp"}}
+	open := func() io.ReadWriter { t.Fatal("the connection was taken"); return nil }
+	if resp := h.Media(context.Background(), req, open); resp.OK {
+		t.Error("a pane was served to the group")
+	}
+	h.protected.Store(true)
+	if resp := h.Media(context.Background(), req, open); resp.OK {
+		t.Error("a pane was served in protected mode")
 	}
 }

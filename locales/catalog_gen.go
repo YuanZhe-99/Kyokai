@@ -1187,6 +1187,16 @@ func (msgs Messages) AIOutsideChanged(files string) string {
 	return Catalog.Format(msgs.locale, "AIOutsideChanged", map[string]any{"files": files})
 }
 
+// AIPaneServe says "Let this computer's AI work here"
+// in the language the app shows.
+func AIPaneServe() string { return In(i18n.Locale()).AIPaneServe() }
+
+// AIPaneServe says "Let this computer's AI work here"
+// in the language of msgs.
+func (msgs Messages) AIPaneServe() string {
+	return Catalog.Format(msgs.locale, "AIPaneServe", nil)
+}
+
 // AIScopeAll says "All apps"
 // in the language the app shows.
 func AIScopeAll() string { return In(i18n.Locale()).AIScopeAll() }

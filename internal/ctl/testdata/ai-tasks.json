@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "ok": true,
+  "ai_tasks": [
+    {
+      "id": 7,
+      "instruction": "Save the report",
+      "source": "claude",
+      "model": "claude-opus-5-5",
+      "state": "paused",
+      "paused": "folders",
+      "pane": {
+        "id": "rdp-1",
+        "name": "Remote Desktop · NUC",
+        "kind": "rdp"
+      },
+      "outside": [
+        "/home/me/secret.txt"
+      ],
+      "text": "",
+      "progress": null,
+      "steps": [
+        {
+          "at": 1,
+          "action": {
+            "kind": "screenshot"
+          },
+          "outcome": "ok"
+        }
+      ],
+      "created": 1,
+      "updated": 2
+    }
+  ]
+}

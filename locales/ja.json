@@ -114,6 +114,7 @@
   "AIStatePausedFolders": "一時停止：許可したフォルダー以外でファイルが変更されました",
   "AIWhyOutsideFolders": "許可したフォルダー以外のフォルダーで操作します。",
   "AIOutsideChanged": "許可したフォルダー以外で変更がありました：\n{files}",
+  "AIPaneServe": "このコンピューターの AI にここで作業させる",
   "AIScopeAll": "すべてのアプリ",
   "AIScopeCount": "アプリ：{count}",
   "AISendButton": "送信ボタンのみ",

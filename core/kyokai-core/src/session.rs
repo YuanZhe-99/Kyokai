@@ -3147,8 +3147,8 @@ impl HostAi {
     fn handle(&self, msg: Message) -> Result<Option<Message>, String> {
         let not_allowed = || "this session may not do that".to_string();
         let thinking = |thinking| crate::ai::Choice {
-            model: None,
             thinking,
+            ..Default::default()
         };
         match msg {
             Message::AiStart {

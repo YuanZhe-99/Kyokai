@@ -10,6 +10,7 @@ pub mod elements;
 #[cfg(test)]
 pub(crate) mod fake;
 mod openai;
+pub mod pane;
 pub mod policy;
 #[cfg(test)]
 mod screens;

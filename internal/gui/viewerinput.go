@@ -435,6 +435,10 @@ func (v *viewer) sendInput(ev ui.InputEvent) bool {
 	if ev.Kind == ui.InputPointerMove || ev.Kind == ui.InputPointerDown {
 		v.app.menuClosed() // a native menu takes the pointer while it is open
 	}
+	if v.ai != nil {
+		// The host user always wins: their input on the pane takes over.
+		v.ai.local(ev.Kind == ui.InputPointerMove)
+	}
 	now := time.Now()
 	v.mu.Lock()
 	box, start, may := v.box, v.start, v.control

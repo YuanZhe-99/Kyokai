@@ -1,0 +1,27 @@
+{
+  "version": 2,
+  "ok": true,
+  "ai_settings": {
+    "model": {
+      "source": "claude",
+      "id": "claude-opus-5-5"
+    },
+    "approval": "auto",
+    "keys": {
+      "claude": true
+    },
+    "scope": [
+      "code.exe"
+    ],
+    "folders": [
+      "/work/report"
+    ],
+    "panes": [
+      {
+        "id": "rdp-1",
+        "name": "Remote Desktop · NUC",
+        "kind": "rdp"
+      }
+    ]
+  }
+}

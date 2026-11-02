@@ -19,7 +19,7 @@
 ## 输出与退出码
 
 默认输出供人阅读。`--json` 改为以本地 API 的 JSON 回答打印引擎的回答（`screenshot`：文件及其尺寸；`move`：设备与套接字）；
-边到达边打印的命令（`watch`、`watch-status`、`tunnel`、`logs`）不接受它。`backup --json` 仍只把身份写入它的文件。
+边到达边打印的命令（`watch`、`watch-status`、`tunnel`、`logs`）不接受它。`backup --json` 仍只把身份写入它的文件。JSON 即本地 API 的格式，在版本 2 内只会增加字段；黄金测试（`internal/ctl/testdata`）为 AI 命令固定了它。
 
 | 退出码 | 含义 |
 |---|---|
@@ -71,5 +71,6 @@
 `kyokai ai-apps` 按 AI 范围使用的名字列出这台设备屏幕上有窗口的程序；`kyokai ai-scope --apps A,B` 在本会话中只把这些程序的窗口
 授予 AI，不带程序的 `kyokai ai-scope` 则重新给它整个桌面（[computer-use.md](computer-use.md#ai-范围)）；
 `kyokai ai-folders --folders "C:\Work;D:\Shared"`（与 `PATH` 相同的分隔方式：Windows 上为 `;`，其他系统为 `:`）
-只授予这些文件夹，检查而非强制，不带文件夹则重新允许所有文件夹。`ai` 会显示两者。
+只授予这些文件夹，检查而非强制，不带文件夹则重新允许所有文件夹。`ai` 会显示两者，以及界面借给 AI 的窗格；`ai-start --pane ID`
+在其中一个窗格中开始任务（[computer-use.md](computer-use.md#窗格中的-ai)）。
 范围只能由被控端用户设置，所以这些命令只与这台设备自己的引擎通信。

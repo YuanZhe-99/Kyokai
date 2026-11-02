@@ -267,7 +267,7 @@ func serveConn(ctx context.Context, conn net.Conn, h Handler, authz Authorizer, 
 		} else if req.Type == RequestSessionAttach {
 			stream(ctx, conn, reader, h, req)
 			return
-		} else if req.Type == RequestMedia || req.Type == RequestTunnelOpen {
+		} else if req.Type == RequestMedia || req.Type == RequestTunnelOpen || req.Type == RequestAIPaneServe {
 			media(ctx, conn, reader, h, req)
 			return
 		} else {

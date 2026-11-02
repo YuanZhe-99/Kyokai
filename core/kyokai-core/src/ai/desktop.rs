@@ -61,6 +61,12 @@ pub trait Desktop: Send {
     fn elements(&mut self) -> Option<super::elements::Listed> {
         None
     }
+    /// Whether this is another computer seen through a pane (`ai::pane`),
+    /// where this computer's AI scope (its apps and folders) does not
+    /// apply: the pane itself is the grant.
+    fn remote(&self) -> bool {
+        false
+    }
 }
 
 /// A window on the screen as AI scope reads it (`Desktop::windows`).

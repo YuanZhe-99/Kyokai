@@ -592,7 +592,7 @@ func (t *aiTab) chips(c *ui.Context, rec AIRecord, s aiPaneState) {
 				m.Item(L.AIFoldersChecked()).Disabled(true)
 			})
 		}
-		aiChip(c, "ai-chip-where-"+t.id, kindDesktop, ui.Transparent, L.PickThisComputer(), where)
+		aiChip(c, "ai-chip-where-"+t.id, kindDesktop, ui.Transparent, t.where(), where)
 		ui.Box(c).Grow(1)
 		if set == nil {
 			return
@@ -653,15 +653,27 @@ func (t *aiTab) chips(c *ui.Context, rec AIRecord, s aiPaneState) {
 // one this computer connected to (moveTo).
 func (t *aiTab) whereMenu(m *ui.Menu) {
 	a := t.app
-	if m.Item(L.PickThisComputer()).Checked(t.device == "").Chosen() {
+	if m.Item(L.PickThisComputer()).Checked(t.device == "" && t.on == "").Chosen() {
 		t.moveTo("")
+		t.on = ""
 	}
 	a.mu.Lock()
 	var rows []deviceRow
 	if a.status != nil {
 		rows = deviceRows(a.status, a.prefs)
 	}
+	var panes []localapi.AIPane
+	if a.ai.settings != nil {
+		panes = a.ai.settings.Panes
+	}
 	a.mu.Unlock()
+	// Panes this computer's GUI lets its AI work in ("AI on a pane").
+	for _, p := range panes {
+		if m.Item(p.Name).Checked(t.device == "" && t.on == p.ID).Chosen() {
+			t.moveTo("")
+			t.on = p.ID
+		}
+	}
 	if len(rows) > 0 {
 		m.Separator()
 	}

@@ -1589,6 +1589,7 @@ fn a_task_keeps_its_model_and_thinking_and_a_reply_may_change_them() {
             id: id.into(),
         }),
         thinking,
+        on: None,
     };
     let id = rig
         .ai
@@ -1978,6 +1979,96 @@ fn elements_are_listed_and_clicked_by_number() {
             .to_string()
             .contains("Elements on screen")
     );
+}
+
+/// A task on a pane the GUI serves sees the pane's picture, asks before
+/// acting there (a Remote Desktop window to the policy), and its click goes
+/// to the pane, not this computer's desktop; this computer's apps scope
+/// does not dim the pane; a controller cannot choose a pane; closing the
+/// pane fails the task's next look.
+#[test]
+fn a_task_works_in_a_served_pane() {
+    use super::pane::Served;
+    let turns = vec![(0, claude_turn("m1", click_save())), (0, claude_end("ok"))];
+    let server = server(turns);
+    let rig = rig("pane", "claude", &server.url);
+    rig.ai.set_scope(Some(vec!["code.exe".into()])).unwrap();
+    rig.ai
+        .open_pane(Served {
+            id: "p1".into(),
+            name: "Remote Desktop · NUC".into(),
+            kind: "rdp".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        rig.ai.settings()["panes"][0]["name"],
+        "Remote Desktop · NUC"
+    );
+    let on = |id: &str| super::Choice {
+        on: Some(id.into()),
+        ..Default::default()
+    };
+    assert!(
+        rig.ai
+            .start_with("c", "Save", Some("controller"), on("p1"))
+            .is_err()
+    );
+    assert!(rig.ai.start_with("k0", "Save", None, on("gone")).is_err());
+    // The GUI's side: the synthetic screen, SAVE pressed by a click on it.
+    let pane = rig.ai.pane("p1").unwrap();
+    let gui = std::thread::spawn(move || {
+        let mut pressed = false;
+        let mut inputs = Vec::new();
+        while let Some(r) = (0..100).find_map(|_| pane.next(Duration::from_millis(100))) {
+            let seq = r["seq"].as_u64().unwrap();
+            let answer = match r["request"]["op"].as_str().unwrap() {
+                "size" => json!({"width": screens::WIDTH, "height": screens::HEIGHT}),
+                "capture" => {
+                    let frame = screens::screen(pressed).frame();
+                    json!({"png": super::desktop::shot(&frame, [0, 0, frame.width, frame.height], (frame.width, frame.height), 1).b64})
+                }
+                "input" => {
+                    let e = &r["request"]["event"];
+                    if e["kind"] == "pointer" && e["action"] == "down" {
+                        pressed = true;
+                    }
+                    inputs.push(e.clone());
+                    json!({})
+                }
+                _ => json!({}),
+            };
+            pane.answer(seq, answer);
+        }
+        inputs
+    });
+    let id = rig
+        .ai
+        .start_with("k", "Save the file", None, on("p1"))
+        .unwrap();
+    let t = rig.state(id, "approval");
+    assert_eq!(t["approval"]["class"], "remote-desktop");
+    assert_eq!(t["pane"]["name"], "Remote Desktop · NUC");
+    rig.ai.decide(id, true).unwrap();
+    rig.state(id, "done");
+    // Nothing reached this computer's desktop; the first picture was not
+    // dimmed by this computer's apps scope.
+    assert!(rig.log.lock().unwrap().events.is_empty());
+    let first = &server.requests.lock().unwrap()[0].1;
+    let png = first["messages"][0]["content"][0]["source"]["data"]
+        .as_str()
+        .unwrap();
+    let frame = super::pane::decode_png(png).unwrap();
+    let mid = ((screens::HEIGHT / 2 * screens::WIDTH + screens::WIDTH / 2) * 4) as usize;
+    let shown = screens::screen(false).frame();
+    assert_eq!(&frame.bgra[mid..mid + 3], &shown.bgra[mid..mid + 3]);
+    rig.ai.close_pane("p1");
+    let inputs = gui.join().unwrap();
+    assert!(
+        inputs
+            .iter()
+            .any(|e| e["kind"] == "pointer" && e["action"] == "down")
+    );
+    assert!(rig.ai.settings()["panes"].as_array().unwrap().is_empty());
 }
 
 /// A target the fake desktop reports from now on.

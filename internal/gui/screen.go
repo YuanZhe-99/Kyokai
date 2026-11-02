@@ -10,6 +10,7 @@ import (
 
 	"github.com/YuanZhe-99/Kyokai/internal/bgra"
 	"github.com/YuanZhe-99/Kyokai/internal/core"
+	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
@@ -63,6 +64,11 @@ type screenClient struct {
 	// held are the keys sent down in Legacy mode, so each release goes
 	// exactly when its press did.
 	held map[ui.Key]remoteKey
+	// aiAt and aiButtons are where the AI's pointer is and the buttons it
+	// holds when the pane is served to it (aipane.go); ai the serving.
+	aiAt      image.Point
+	aiButtons uint8
+	ai        *paneServe
 	// clip is the text last exchanged with the other desktop's clipboard.
 	clip string
 }
@@ -198,7 +204,23 @@ func (sc *screenClient) scan(ev core.KeyEvent) {
 	_ = sc.desk.key(k, ev.Down != 0)
 }
 
-func (sc *screenClient) close() { sc.desk.close() }
+func (sc *screenClient) close() {
+	sc.serveAI(nil)
+	sc.desk.close()
+}
+
+// serveAI lets this computer's AI work in the pane as s names it, or stops
+// it with nil (doc/en-us/computer-use.md, "AI on a pane").
+// Notes: call on the main thread.
+func (sc *screenClient) serveAI(s *serviceTab) {
+	if sc.ai != nil {
+		sc.ai.stop()
+		sc.ai = nil
+	}
+	if s != nil {
+		sc.ai = s.app.servePane(localapi.AIPane{ID: s.key, Name: s.title, Kind: s.service}, sc)
+	}
+}
 
 // input passes an event on the picture to the other desktop: the pointer
 // and the wheel in its pixels, keys by name and text in Legacy mode (the
@@ -206,6 +228,10 @@ func (sc *screenClient) close() { sc.desk.close() }
 func (sc *screenClient) input(ev ui.InputEvent) bool {
 	if ev.Kind == ui.InputPointerMove || ev.Kind == ui.InputPointerDown {
 		sc.s.app.menuClosed() // a native menu takes the pointer while it is open
+	}
+	if sc.ai != nil {
+		// The host user always wins: their input on the pane takes over.
+		sc.ai.local(ev.Kind == ui.InputPointerMove)
 	}
 	sc.mu.Lock()
 	box, fb := sc.box, sc.fb
@@ -419,6 +445,15 @@ func (sc *screenClient) toolbar(c *ui.Context, s *serviceTab) {
 				}
 				if m.Item(L.ViewerCtrlAltDel()).Chosen() {
 					go sc.ctrlAltDel()
+					back()
+				}
+				m.Separator()
+				if m.Item(L.AIPaneServe()).Checked(sc.ai != nil).Chosen() {
+					if sc.ai != nil {
+						sc.serveAI(nil)
+					} else {
+						sc.serveAI(s)
+					}
 					back()
 				}
 			})

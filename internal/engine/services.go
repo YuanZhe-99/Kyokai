@@ -183,3 +183,61 @@ func tunnelFailure(state string, failure json.RawMessage) string {
 	}
 	return "timeout"
 }
+
+// servePane relays a pane the GUI serves to the AI (ai.pane.serve;
+// doc/en-us/computer-use.md, "AI on a pane") until the GUI or a stop ends
+// it: the core's requests for the pane (taken one by one, each wait a
+// second at most) to the GUI, the GUI's answers and its host user's input
+// on the pane to the core.
+// Notes: only the engine's owner serves panes; a task on the pane fails at
+// its next look or action once the relay ends.
+func (h *handler) servePane(ctx context.Context, req localapi.Request, open func() io.ReadWriter) localapi.Response {
+	if !localapi.IsOwner(ctx) {
+		return localapi.Fail(localapi.CodeInvalid, "only this computer's owner may do this")
+	}
+	if req.Pane == nil {
+		return localapi.Fail(localapi.CodeInvalid, "pane missing")
+	}
+	id := req.Pane.ID
+	if err := h.lib.Call("ai.pane.open", req.Pane, nil); err != nil {
+		return localapi.Fail(localapi.CodeInvalid, "%v", err)
+	}
+	defer func() {
+		_ = h.lib.Call("ai.pane.close", map[string]string{"id": id}, nil)
+		h.changed()
+	}()
+	h.changed()
+	rw := open()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		defer cancel()
+		dec := json.NewDecoder(rw)
+		for {
+			var m localapi.AIPaneMessage
+			if err := dec.Decode(&m); err != nil {
+				return
+			}
+			switch {
+			case m.Seq != 0:
+				_ = h.lib.Call("ai.pane.answer", map[string]any{"id": id, "seq": m.Seq, "answer": m.Answer}, nil)
+			case m.Local != "":
+				_ = h.lib.Call("ai.pane.local", map[string]any{"id": id, "moved": m.Local == "move"}, nil)
+			}
+		}
+	}()
+	enc := json.NewEncoder(rw)
+	for ctx.Err() == nil {
+		var next json.RawMessage
+		if err := h.lib.Call("ai.pane.next", map[string]string{"id": id}, &next); err != nil {
+			break
+		}
+		if len(next) == 0 || string(next) == "null" {
+			continue
+		}
+		if err := enc.Encode(next); err != nil {
+			break
+		}
+	}
+	return localapi.Response{OK: true}
+}
