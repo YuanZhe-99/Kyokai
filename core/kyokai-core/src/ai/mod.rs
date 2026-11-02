@@ -9,6 +9,7 @@ pub mod desktop;
 pub mod elements;
 #[cfg(test)]
 pub(crate) mod fake;
+pub(crate) mod ocr;
 mod openai;
 pub mod pane;
 pub mod policy;

@@ -1983,3 +1983,108 @@ mod tests {
         }
     }
 }
+
+/// The text lines Vision reads in a frame, for the element list's OCR layer
+/// (`ai::ocr`): accurate recognition in the system's languages, each line's
+/// bounds in the frame's pixels.
+/// Returns: None when Vision is not there or fails.
+pub fn ocr_lines(frame: &crate::ai::desktop::Frame) -> Option<Vec<crate::ai::elements::Element>> {
+    use objc2::AnyThread;
+    use objc2_core_foundation::CFRetained;
+    use objc2_core_video::CVPixelBufferCreate;
+    use objc2_foundation::NSDictionary;
+    use objc2_vision::{
+        VNImageRequestHandler, VNRecognizeTextRequest, VNRequest, VNRequestTextRecognitionLevel,
+    };
+    let (w, h) = (frame.width as usize, frame.height as usize);
+    if w == 0 || h == 0 || frame.bgra.len() < w * h * 4 {
+        return None;
+    }
+    let mut made: *mut objc2_core_video::CVPixelBuffer = std::ptr::null_mut();
+    // SAFETY: `made` is a valid place for the new buffer, which comes back
+    // retained once and is taken over by CFRetained below.
+    let r = unsafe {
+        CVPixelBufferCreate(
+            None,
+            w,
+            h,
+            kCVPixelFormatType_32BGRA,
+            None,
+            std::ptr::NonNull::from(&mut made),
+        )
+    };
+    let made = std::ptr::NonNull::new(made)?;
+    if r != kCVReturnSuccess {
+        return None;
+    }
+    // SAFETY: CVPixelBufferCreate returned it with a +1 retain count.
+    let pixels = unsafe { CFRetained::from_raw(made) };
+    let lock = CVPixelBufferLockFlags(0);
+    // SAFETY: locks the buffer made above for writing.
+    if unsafe { CVPixelBufferLockBaseAddress(&pixels, lock) } != kCVReturnSuccess {
+        return None;
+    }
+    let stride = CVPixelBufferGetBytesPerRow(&pixels);
+    let base = CVPixelBufferGetBaseAddress(&pixels) as *mut u8;
+    if !base.is_null() {
+        for y in 0..h {
+            // SAFETY: while locked, `base` holds `h` rows of `stride` bytes,
+            // each at least `w * 4` long; the frame's rows are `w * 4`.
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    frame.bgra.as_ptr().add(y * w * 4),
+                    base.add(y * stride),
+                    w * 4,
+                );
+            }
+        }
+    }
+    // SAFETY: unlocks what was locked above.
+    unsafe { CVPixelBufferUnlockBaseAddress(&pixels, lock) };
+    if base.is_null() {
+        return None;
+    }
+    // SAFETY: a handler over a valid pixel buffer with no options.
+    let handler = unsafe {
+        VNImageRequestHandler::initWithCVPixelBuffer_options(
+            VNImageRequestHandler::alloc(),
+            &pixels,
+            &NSDictionary::new(),
+        )
+    };
+    let request = VNRecognizeTextRequest::new();
+    request.setRecognitionLevel(VNRequestTextRecognitionLevel::Accurate);
+    let base_request: &VNRequest = &request;
+    handler
+        .performRequests_error(&NSArray::from_slice(&[base_request]))
+        .ok()?;
+    let mut out = Vec::new();
+    for observation in request.results()?.iter() {
+        let Some(best) = observation.topCandidates(1).firstObject() else {
+            continue;
+        };
+        let text = best.string().to_string();
+        if text.trim().is_empty() {
+            continue;
+        }
+        // SAFETY: a plain property read; Vision's boxes are normalized with
+        // the origin at the bottom left.
+        let b = unsafe { observation.boundingBox() };
+        let (fw, fh) = (w as f64, h as f64);
+        let x0 = b.origin.x * fw;
+        let y0 = (1.0 - b.origin.y - b.size.height) * fh;
+        out.push(crate::ai::elements::Element {
+            role: crate::ai::ocr::ROLE.into(),
+            name: text,
+            text: String::new(),
+            rect: [
+                x0 as i32,
+                y0 as i32,
+                (x0 + b.size.width * fw).ceil() as i32,
+                (y0 + b.size.height * fh).ceil() as i32,
+            ],
+        });
+    }
+    out.sort_by_key(|e| (e.rect[1], e.rect[0]));
+    Some(out)
+}

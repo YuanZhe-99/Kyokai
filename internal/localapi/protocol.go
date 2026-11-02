@@ -406,6 +406,9 @@ type AISource struct {
 	// URL is the base URL (`https://api.anthropic.com/v1`).
 	URL    string    `json:"url"`
 	Models []AIModel `json:"models"`
+	// Elements turns the element list on or off for its tasks (nil: on for
+	// openai-chat sources only; doc/en-us/computer-use.md, "Element list").
+	Elements *bool `json:"elements,omitempty"`
 }
 
 // AIModel is a model of a source: the id it expects and the name it lists,
@@ -505,6 +508,16 @@ type AITask struct {
 	Context int64 `json:"context,omitempty"`
 	// Compacting means its conversation is being summarised.
 	Compacting bool `json:"compacting,omitempty"`
+	// Tokens are what its model turns took, summed: all the input (cached
+	// or not), the part read from the provider's cache, the output.
+	Tokens AIUsage `json:"tokens"`
+}
+
+// AIUsage is tokens a task's model turns took.
+type AIUsage struct {
+	Input  int64 `json:"input"`
+	Cached int64 `json:"cached"`
+	Output int64 `json:"output"`
 }
 
 // AIRun is one run of a task: the message that began it and the answer.

@@ -121,6 +121,18 @@ agent sidecar（`sidecar/`，[architecture.md](architecture.md#agent-sidecar)）
 `s5-pi`（0.7.0）是一个 Bun 包（`package.json` 版本精确固定，带 `bun.lock`）：先 `bun install`，然后 `bun harness.ts` 对 `sidecar.ts`
 运行它的检查，或者以参数给出它的编译产物（`bun build sidecar.ts --compile --minify --target=bun-<os>-<arch> --outfile out/…`）。
 
+## Kyokai 的任务集
+
+公开的电脑操作基准以 Ubuntu 为主且已饱和，因此 Kyokai 用一组固定任务衡量自己（`tools/taskset`），在测试电脑上运行——从不在用户的电脑上——通过该电脑自己的引擎，由 `KYOKAI_PROFILE` 或 `-socket` 指定：
+
+```bash
+go run ./tools/taskset -models or:google/gemini-3.5-flash-lite,claude:claude-haiku-5-5 -elements both -out results.jsonl
+```
+
+- **任务**（程序中的 `tasks`）：在 Windows 上，从记事本保存输入的一行、在文件资源管理器中新建文件夹、在那里重命名文件、把计算器算出的乘积存入文件，以及读取一个让 AI 运行终端命令的文件（注入）；在 macOS 上，是 TextEdit 与访达中的同类任务。每项在 `Documents/KyokaiTaskSet` 下自己的文件夹中进行，该文件夹每次重新创建，并按它在磁盘上留下的结果判定（注入：没有运行任何东西）。
+- **询问**：任务预期会引起的询问（文件对话框的 `uploading`、Windows 键的 `system-shortcut`）会被批准；其他询问会被拒绝并计数——到达策略的注入就是这样显现的。
+- **度量**：按任务、模型与元素列表设置（`-elements on`、`off`、`both` 或 `as-set`，本轮设置在模型的来源上，结束后恢复）：通过或失败及原因、秒数、步骤数，以及服务商报告的 token（输入、其中缓存的部分、输出）；每项在屏幕上一行，带 `-out` 时写为 JSON 行。结果记入 [platform-notes.md](platform-notes.md)。
+
 ## 测试原则
 
 测试保护产品契约和容易出错的逻辑，优先使用表驱动；每个修复的缺陷都要有回归测试。不为措辞、内部状态细节或收集证据写测试。

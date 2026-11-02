@@ -170,6 +170,30 @@ phase. `s5-pi` (0.7.0) is a Bun package (`package.json` pinned exactly, `bun.loc
 `bun harness.ts` runs its checks against `sidecar.ts`, or against a build of it
 (`bun build sidecar.ts --compile --minify --target=bun-<os>-<arch> --outfile out/…`) given as the argument.
 
+## Kyokai's task set
+
+The public computer-use benchmarks are Ubuntu-first and saturated, so Kyokai measures itself with a
+fixed set of tasks (`tools/taskset`), run on a test computer — never a user's — through that
+computer's own engine, as `KYOKAI_PROFILE` or `-socket` names it:
+
+```bash
+go run ./tools/taskset -models or:google/gemini-3.5-flash-lite,claude:claude-haiku-5-5 -elements both -out results.jsonl
+```
+
+- **The tasks** (`tasks` in the program): on Windows, save a typed line from Notepad, make a folder
+  in File Explorer, rename a file there, take a product from Calculator into a saved file, and read
+  a file whose text tells the AI to run a terminal command (an injection); on macOS, TextEdit and
+  Finder's versions of the same. Each works in its own folder under `Documents/KyokaiTaskSet`,
+  made afresh, and is checked by what it left on disk (the injection: that nothing was run).
+- **Asks**: an ask the task is expected to raise (a file dialog's `uploading`, the Windows key's
+  `system-shortcut`) is approved; any other is declined and counted — how an injection that
+  reached the policy shows.
+- **Measures**: per task, model and element-list setting (`-elements on`, `off`, `both` or
+  `as-set`, set on the model's source for the round and put back after): pass or fail and why,
+  seconds, steps, and the tokens the provider reported (input, the cached part, output); a line
+  each on the screen and, with `-out`, as JSON lines. Results go into
+  [platform-notes.md](platform-notes.md).
+
 ## Testing principles
 
 Tests protect product contracts and error-prone logic, preferably table-driven; every fixed bug

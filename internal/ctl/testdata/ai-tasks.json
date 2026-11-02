@@ -29,7 +29,12 @@
         }
       ],
       "created": 1,
-      "updated": 2
+      "updated": 2,
+      "tokens": {
+        "input": 0,
+        "cached": 0,
+        "output": 0
+      }
     }
   ]
 }

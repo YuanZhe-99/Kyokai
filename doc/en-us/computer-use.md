@@ -692,6 +692,12 @@ where it is an experiment (`elements` on a source in `ai.json`, true or false).
   field's value is never read. Kyokai's own windows are never listed, nor, with apps granted ([AI
   scope](#ai-scope)), a window of another program, which the screenshot dims. macOS and Linux list
   nothing yet (no AX or AT-SPI reader), and Remote Desktop and VNC windows are pixels to the tree.
+- **Text read from the screen**: where the tree gives fewer than three elements (a Remote Desktop
+  or VNC window, a lent pane, a game, an app without one), the system's OCR reads the screenshot's
+  frame and its text lines join the list as `text` elements, bounds and all (`ai::ocr`: Windows.Media.Ocr
+  in the user's languages; Vision on macOS; none on Linux). Not while apps are granted, since text
+  the screenshot dims can still be read, and not beside the host user, where actions go through the
+  tree.
 - **How the model sees it**: as text right after its screenshot — Claude in the same message or
   tool result, OpenAI as a message after the screenshot output (which carries no text), chat after
   "The screen now:". It leaves with its screenshot: the kept history and `openai-chat`'s dropped

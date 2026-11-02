@@ -17,6 +17,7 @@ use zeroize::Zeroizing;
 use super::action::{self, Action, Coordinates};
 use super::desktop::{self, Desktop, Frame, Step};
 use super::elements;
+use super::ocr;
 use super::policy::{self, Approval, Class, Verdict};
 use super::sidecar::{Agent, FromSidecar, ToSidecar, WireOutcome};
 use super::{Client, Outcome, Protocol, Shot, Source, default_sources, key_name};
@@ -1893,12 +1894,27 @@ async fn observe(
     let mut centres = None;
     if lists {
         // UI Automation can wait on a slow program: off the async thread.
-        let listed = tokio::task::block_in_place(|| desk.lock().expect("desktop").elements())
+        let mut listed = tokio::task::block_in_place(|| desk.lock().expect("desktop").elements())
             .filter(|l| {
                 scope
                     .as_ref()
                     .is_none_or(|apps| l.program.as_ref().is_some_and(|p| apps.contains(p)))
             });
+        // Little or no tree (a Remote Desktop window, a pane, a game): the
+        // text lines the system's OCR reads. Not with apps granted: dimmed
+        // text can still be read.
+        if scope.is_none() && listed.as_ref().is_none_or(|l| l.elements.len() < ocr::FEW) {
+            let read = tokio::task::block_in_place(|| ocr::lines(&frame)).unwrap_or_default();
+            if !read.is_empty() {
+                let mut l = listed.unwrap_or_default();
+                if l.window.is_empty() {
+                    l.window = "the text read from the screen".into();
+                }
+                l.elements.extend(read);
+                l.elements.truncate(elements::MAX_ELEMENTS);
+                listed = Some(l);
+            }
+        }
         if let Some((table, c)) = listed.and_then(|l| {
             elements::table(
                 &l,
