@@ -108,8 +108,8 @@ and members of a local `kyokai` group, by uid and gid ([security.md](security.md
 ## The helper (Linux)
 
 `kyokai-svc helper install --from BIN --operator-uid N` (root, through `pkexec`, which asks through
-the desktop's polkit agent: the one administrator prompt) copies the app's `kyokai-svc` and
-`libkyokai_core.so` into `/usr/local/lib/kyokai/helper`, writable by root only, records the
+the desktop's polkit agent: the one administrator prompt) copies the app's `kyokai-svc`,
+`libkyokai_core.so` and `kyokai-agent` (the agent sidecar) into `/usr/local/lib/kyokai/helper`, writable by root only, records the
 operator's uid and the app's folder in `/var/lib/kyokai/helper.json` (root only), and writes two
 systemd units: the system service `kyokai-helper.service` (`run --host helper` as root, from
 boot, started again when it ends; systemd makes `/run/kyokai` for its sockets, which every local
@@ -192,7 +192,7 @@ Helper** (`helper.agent_restart`: the agent exits and launchd starts it again).
 ## Updates
 
 Release builds sign the helper's files: `scripts/build.sh` writes `bundle.json` (the version and the
-SHA-256 of `kyokai-svc.exe` and `kyokai_core.dll`) and `bundle.sig` (Ed25519, `KYOKAI_SIGNING_KEY`)
+SHA-256 of `kyokai-svc.exe`, `kyokai_core.dll` and `kyokai-agent.exe`) and `bundle.sig` (Ed25519, `KYOKAI_SIGNING_KEY`)
 next to them. When the helper is older than the app, General, Run mode, offers **Update the
 helper** (`helper.update`): the helper reads the bundle **once**, checks the signature against the
 key embedded in it (`internal/bundlesig/release.pub`), every hash, that it holds both files and is

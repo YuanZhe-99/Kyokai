@@ -36,3 +36,31 @@ test("screenshots leave the chat history five at a time", () => {
 	expect(counts.slice(0, 9)).toEqual(Array(9).fill(0));
 	expect([counts[9], counts[12], counts[13], counts[20]]).toEqual([5, 5, 10, 15]);
 });
+
+test("a Claude refusal ends the task with the classifier's explanation", () => {
+	const c = open("anthropic", "m", "sys", "t", shot("shot"), null);
+	const turn = c.accept(json("docs/claude_response_refusal.json"));
+	expect(turn.end).toEqual({ refused: "Declined by a safety classifier." });
+	expect(turn.calls).toEqual([]);
+});
+
+test("only the computer toolset's tool calls are actions", () => {
+	const c = open("anthropic", "m", "sys", "t", shot("shot"), null);
+	const turn = c.accept({ id: "m", content: [{ type: "tool_use", id: "x", name: "screenshot", input: {} }] });
+	expect(turn.calls).toEqual([]);
+});
+
+test("OpenAI's safety checks are acknowledged only once the host user approved them", () => {
+	for (const acknowledged of [false, true]) {
+		const c = open("openai-responses", "m", "sys", "t", shot("shot"), null);
+		const turn = c.accept(json("docs/openai_response_legacy.json"));
+		expect(turn.flagged.length).toBe(1);
+		expect(turn.calls.map((x) => x.name)).toEqual(["openai"]);
+		c.answer([{ kind: "ok" }], shot("after"), acknowledged);
+		const body: any = c.body();
+		expect(body.previous_response_id).toBeTruthy();
+		const ack = body.input[0].acknowledged_safety_checks;
+		if (acknowledged) expect(ack[0].id).toBe("cu_sc_1");
+		else expect(ack).toBeUndefined();
+	}
+});

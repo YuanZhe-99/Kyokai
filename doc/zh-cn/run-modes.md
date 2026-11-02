@@ -59,7 +59,7 @@ Kyokai 沿用 Easytier-MyGo 的做法：管理员授权只在安装特权助手�
 
 ## 助手（Linux）
 
-`kyokai-svc helper install --from BIN --operator-uid N`（root 身份，经 `pkexec`，由桌面的 polkit 代理询问：唯一一次管理员提示）把应用的 `kyokai-svc` 与 `libkyokai_core.so` 复制到只有 root 可写的 `/usr/local/lib/kyokai/helper`，把操作者的 uid 与应用的文件夹记录在 `/var/lib/kyokai/helper.json`（仅 root），并写入两个 systemd 单元：系统服务 `kyokai-helper.service`（以 root 运行 `run --host helper`，开机即运行，结束后重新启动；systemd 为它的套接字创建所有本地用户都能进入的 `/run/kyokai`，以及仅 root 可用的 `/var/lib/kyokai`），以及 `/etc/systemd/user` 中的用户服务 `kyokai-agent.service`（`agent --socket /run/kyokai/agent.sock`，属于 `graphical-session.target`，以 `systemctl --global` 为所有用户启用，并立即在每个运行中的用户管理器里启动），它像 macOS 的代理一样在用户的图形会话中采集与注入。代理的链路与 macOS 相同：助手只接受由第一个座席上活动会话的用户（logind 的 `/run/systemd/seats/seat0`）运行的自己的 `kyokai-svc`（`SO_PEERCRED`、`/proc/<pid>/exe`）的连接，代理只连接由 root 持有的套接字。登录界面上没有代理：GDM 与 SDDM 不允许任何程序采集它。`helper uninstall` 停止并停用两个单元，删除文件与套接字（`--purge`：还删除状态）。
+`kyokai-svc helper install --from BIN --operator-uid N`（root 身份，经 `pkexec`，由桌面的 polkit 代理询问：唯一一次管理员提示）把应用的 `kyokai-svc`、`libkyokai_core.so` 与 `kyokai-agent`（agent sidecar） 复制到只有 root 可写的 `/usr/local/lib/kyokai/helper`，把操作者的 uid 与应用的文件夹记录在 `/var/lib/kyokai/helper.json`（仅 root），并写入两个 systemd 单元：系统服务 `kyokai-helper.service`（以 root 运行 `run --host helper`，开机即运行，结束后重新启动；systemd 为它的套接字创建所有本地用户都能进入的 `/run/kyokai`，以及仅 root 可用的 `/var/lib/kyokai`），以及 `/etc/systemd/user` 中的用户服务 `kyokai-agent.service`（`agent --socket /run/kyokai/agent.sock`，属于 `graphical-session.target`，以 `systemctl --global` 为所有用户启用，并立即在每个运行中的用户管理器里启动），它像 macOS 的代理一样在用户的图形会话中采集与注入。代理的链路与 macOS 相同：助手只接受由第一个座席上活动会话的用户（logind 的 `/run/systemd/seats/seat0`）运行的自己的 `kyokai-svc`（`SO_PEERCRED`、`/proc/<pid>/exe`）的连接，代理只连接由 root 持有的套接字。登录界面上没有代理：GDM 与 SDDM 不允许任何程序采集它。`helper uninstall` 停止并停用两个单元，删除文件与套接字（`--purge`：还删除状态）。
 
 助手把身份保存在 `/var/lib/kyokai` 中，存储的密钥由 `systemd-creds` 封存（`master.cred`：主机的凭据密钥，电脑没有时由第一次封存创建，有 TPM 时同时使用 TPM），因为 root 没有 Secret Service。它的套接字 `/run/kyokai/ctl.sock` 所有本地用户都能打开；助手只为 root、操作者与本地 `kyokai` 组的成员服务，按 uid 与 gid 判断（[security.md](security.md)）。更新使用与 Windows 相同的签名包（应用的 `kyokai-svc` 旁边的 `bundle.json` 与 `bundle.sig`），自我停用会停止单元并删除一切，服务最后。AppImage 的文件夹是退出时就消失的挂载点，因此从它安装的助手不记录应用文件夹（`--app-dir=`），永远不会自行移除：切回“无特权”时移除它。
 
@@ -89,7 +89,7 @@ macOS 的代理所用的用户无法写入助手的文件夹，因此它经链�
 
 ## 更新
 
-发布版本会为助手的文件签名：`scripts/build.sh` 在它们旁边写入 `bundle.json`（版本以及 `kyokai-svc.exe` 与 `kyokai_core.dll` 的 SHA-256）
+发布版本会为助手的文件签名：`scripts/build.sh` 在它们旁边写入 `bundle.json`（版本以及 `kyokai-svc.exe`、`kyokai_core.dll` 与 `kyokai-agent.exe` 的 SHA-256）
 与 `bundle.sig`（Ed25519，`KYOKAI_SIGNING_KEY`）。助手比应用旧时，“通用”中的“运行方式”会提供**更新助手**（`helper.update`）：助手**只读取一次**
 该 bundle，用内置的密钥（`internal/bundlesig/release.pub`）检查签名、检查每个哈希、确认两个文件都在且版本不更旧，然后把这些已验证的字节原样写入
 自己的文件夹（先把正在运行的文件改名移开）并退出；服务会重新启动它。它不会再次读取用户可写的应用文件夹，因此检查之后在那里被替换的文件不会被安装。

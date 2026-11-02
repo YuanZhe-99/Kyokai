@@ -13,7 +13,7 @@ use super::action::{
 use super::desktop::{self, Frame, Step};
 use super::fake::*;
 use super::task::{Pause, State, testing};
-use super::{End, Outcome, Shot, claude, openai, screens};
+use super::{claude, openai, screens};
 use crate::input::{Event, LocalInput, Mods, PointerAction};
 
 fn dir() -> PathBuf {
@@ -29,23 +29,43 @@ fn p(x: i32, y: i32) -> Point {
     Point { x, y }
 }
 
-fn shot(b64: &str) -> Shot {
-    Shot {
-        b64: b64.into(),
-        width: 1280,
-        height: 720,
-    }
+/// The computer calls of a Claude response, parsed by the engine's parser
+/// (the sidecar picks them out of the response as this does).
+fn claude_calls(response: &Value) -> Vec<Result<Action, ParseError>> {
+    response["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|b| b["type"] == "tool_use" && b["toolset_name"] == "computer")
+        .map(|b| claude::parse_member(b["name"].as_str().unwrap_or(""), &b["input"]))
+        .collect()
 }
+
+/// The actions of an OpenAI response's computer calls, parsed likewise.
+fn openai_actions(response: &Value) -> Vec<Result<Action, ParseError>> {
+    response["output"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|i| i["type"] == "computer_call")
+        .flat_map(|i| match (i["actions"].as_array(), i.get("action")) {
+            (Some(list), _) if !list.is_empty() => list.clone(),
+            (_, Some(a)) if !a.is_null() => vec![a.clone()],
+            _ => Vec::new(),
+        })
+        .map(|a| openai::parse_action(&a))
+        .collect()
+}
+/// What the sidecar answers a Claude action that a pause stopped.
+const PAUSED: &str =
+    "Not executed: the host user paused the task. Take a screenshot before continuing.";
 
 #[test]
 fn openai_batch_actions() {
-    let r = openai::parse_response(&load("docs/openai_response_batch.json")).unwrap();
-    assert_eq!(r.response_id, "resp_doc_batch");
-    assert_eq!(r.text, "Typing the search term.");
-    assert_eq!(r.calls.len(), 1);
-    let call = &r.calls[0];
-    assert_eq!(call.call_id, "call_002");
-    let got: Vec<Action> = call.actions.iter().map(|a| a.clone().unwrap()).collect();
+    let got: Vec<Action> = openai_actions(&load("docs/openai_response_batch.json"))
+        .into_iter()
+        .map(Result::unwrap)
+        .collect();
     let want = vec![
         Action::Click {
             at: Some(p(405, 157)),
@@ -117,68 +137,17 @@ fn openai_batch_actions() {
     }
 }
 
+/// An older response's single `action` reads like a batch of one.
 #[test]
-fn openai_safety_checks_are_flagged_and_acknowledged_only_after_approval() {
-    let resp = load("docs/openai_response_legacy.json");
-    let r = openai::parse_response(&resp).unwrap();
+fn openai_legacy_single_action() {
     assert_eq!(
-        r.calls[0].actions,
+        openai_actions(&load("docs/openai_response_legacy.json")),
         vec![Ok(Action::Click {
             at: Some(p(700, 100)),
             button: Button::Right,
             count: 1,
             modifiers: vec![]
         })]
-    );
-    for acknowledged in [false, true] {
-        let mut c = openai::Conversation::new("m", "sys", "task", &shot("A"));
-        let turn = c.accept(&resp).unwrap();
-        assert_eq!(turn.flagged.len(), 1);
-        c.answer(&[Outcome::Ok], &shot("B"), acknowledged);
-        let body = c.body();
-        assert_eq!(body["previous_response_id"], r.response_id);
-        let ack = &body["input"][0]["acknowledged_safety_checks"];
-        if acknowledged {
-            assert_eq!(ack[0]["id"], "cu_sc_1");
-        } else {
-            assert!(ack.is_null());
-        }
-    }
-}
-
-#[test]
-fn openai_request_shapes() {
-    let mut c = openai::Conversation::new("gpt-6.1-sol", "sys", "do it", &shot("B64"));
-    let r1 = c.body();
-    assert_eq!(r1["tools"], json!([{"type": "computer"}]));
-    assert_eq!(r1["instructions"], "sys");
-    assert_eq!(r1["truncation"], "disabled", "too long fails loudly");
-    assert_eq!(
-        r1["input"][0]["content"][1]["image_url"],
-        "data:image/png;base64,B64"
-    );
-    assert!(r1.get("previous_response_id").is_none());
-    let turn = c.accept(&load("docs/openai_response_batch.json")).unwrap();
-    assert_eq!(turn.end, End::Actions);
-    let mut outcomes = vec![Outcome::Ok; turn.actions.len()];
-    outcomes[1] = Outcome::Failed("Rejected by the host: no".into());
-    outcomes[2] = Outcome::NotExecuted;
-    c.answer(&outcomes, &shot("AFTER"), false);
-    let r2 = c.body();
-    assert_eq!(r2["previous_response_id"], "resp_doc_batch");
-    assert_eq!(r2["instructions"], "sys", "instructions are not chained");
-    assert_eq!(
-        r2["input"][0],
-        json!({
-            "type": "computer_call_output",
-            "call_id": "call_002",
-            "output": {"type": "computer_screenshot", "image_url": "data:image/png;base64,AFTER"}
-        })
-    );
-    let note = r2["input"][1]["content"][0]["text"].as_str().unwrap();
-    assert!(
-        note.contains("Action 2 failed") && note.contains("Action 3 was not executed"),
-        "{note}"
     );
 }
 
@@ -200,14 +169,10 @@ fn openai_rejects_unknown_action_and_key() {
 
 #[test]
 fn claude_all_members() {
-    let r = claude::parse_response(&load("docs/claude_response_batch.json")).unwrap();
-    assert_eq!(r.stop_reason, "tool_use");
-    assert_eq!(
-        r.progress,
-        vec!["Opening the dialog's save button.".to_string()]
-    );
-    assert_eq!(r.text, "I'll click Save.");
-    let got: Vec<Action> = r.calls.iter().map(|c| c.action.clone().unwrap()).collect();
+    let got: Vec<Action> = claude_calls(&load("docs/claude_response_batch.json"))
+        .into_iter()
+        .map(Result::unwrap)
+        .collect();
     let want = vec![
         Action::Screenshot,
         Action::Zoom {
@@ -304,98 +269,6 @@ fn claude_all_members() {
 }
 
 #[test]
-fn claude_refusal_and_fallback() {
-    let resp = load("docs/claude_response_refusal.json");
-    let r = claude::parse_response(&resp).unwrap();
-    assert_eq!(r.stop_details.as_ref().unwrap()["category"], "cyber");
-    let mut c = claude::Conversation::new("m", "sys", "t", &shot("A"));
-    let turn = c.accept(&resp).unwrap();
-    assert_eq!(
-        turn.end,
-        End::Refused("Declined by a safety classifier.".into())
-    );
-    assert!(turn.actions.is_empty());
-}
-
-#[test]
-fn claude_request_shapes() {
-    let c = claude::Conversation::new("claude-opus-5-5", "sys", "do it", &shot("B64"));
-    let r1 = c.body();
-    assert_eq!(r1["tools"], json!([{"type": "computer_toolset_20260801"}]));
-    assert_eq!(
-        r1["thinking"],
-        json!({"type": "adaptive", "display": "updates"})
-    );
-    assert_eq!(r1["output_config"], json!({"effort": "high"}));
-    assert_eq!(r1["fallbacks"], "default");
-    // Cached for an hour: the system prompt (with the tools before it) by
-    // its own breakpoint, the conversation by the automatic one.
-    let hour = json!({"type": "ephemeral", "ttl": "1h"});
-    assert_eq!(
-        r1["system"],
-        json!([{"type": "text", "text": "sys", "cache_control": hour}])
-    );
-    assert_eq!(r1["cache_control"], hour);
-    // Old results are cleared in batches worth breaking the cache for.
-    let edit = &r1["context_management"]["edits"][0];
-    assert_eq!(edit["type"], "clear_tool_uses_20250919");
-    assert_eq!(
-        edit["clear_at_least"],
-        json!({"type": "input_tokens", "value": claude::CLEAR_AT_LEAST})
-    );
-    assert!(
-        r1.get("tool_choice").is_none(),
-        "forced tool_choice 400s on Opus 5.5"
-    );
-}
-
-#[test]
-fn claude_history_is_append_only_and_results_echo_the_toolset() {
-    let resp = json!({
-        "id": "msg_x", "model": "claude-opus-5-5", "stop_reason": "tool_use",
-        "content": [
-            {"type": "thinking", "thinking": "", "signature": "sig"},
-            {"type": "tool_use", "id": "a", "name": "left_click", "toolset_name": "computer", "input": {"coordinate": [640, 425]}},
-            {"type": "tool_use", "id": "b", "name": "zoom", "toolset_name": "computer", "input": {"region": [560, 400, 720, 450]}},
-            {"type": "tool_use", "id": "c", "name": "cursor_position", "toolset_name": "computer", "input": {}},
-            {"type": "tool_use", "id": "d", "name": "left_click", "toolset_name": "computer", "input": {"coordinate": [5000, 10]}},
-            {"type": "tool_use", "id": "e", "name": "screenshot", "toolset_name": "computer", "input": {}}
-        ]
-    });
-    let mut c = claude::Conversation::new("claude-opus-5-5", "sys", "t", &shot("FIRST"));
-    let first = c.body().clone();
-    let turn = c.accept(&resp).unwrap();
-    assert_eq!(turn.actions.len(), 5);
-    c.answer(&[
-        Outcome::Ok,
-        Outcome::Image(shot("ZOOM")),
-        Outcome::Text("X=1, Y=2".into()),
-        Outcome::Failed("Rejected by the host: out of bounds".into()),
-        Outcome::NotExecuted,
-    ]);
-    let second = c.body();
-    let msgs = second["messages"].as_array().unwrap();
-    assert_eq!(msgs.len(), 3);
-    assert_eq!(msgs[0], first["messages"][0]);
-    assert_eq!(msgs[1]["role"], "assistant");
-    assert_eq!(
-        msgs[1]["content"], resp["content"],
-        "assistant content byte for byte"
-    );
-    let results = msgs[2]["content"].as_array().unwrap();
-    assert_eq!(results.len(), 5);
-    for (r, id) in results.iter().zip(["a", "b", "c", "d", "e"]) {
-        assert_eq!(r["toolset_name"], "computer");
-        assert_eq!(r["tool_use_id"], id);
-    }
-    assert_eq!(results[0]["content"][0]["text"], "OK");
-    assert_eq!(results[1]["content"][0]["source"]["data"], "ZOOM");
-    assert_eq!(results[2]["content"][0]["text"], "X=1, Y=2");
-    assert_eq!(results[3]["is_error"], true);
-    assert_eq!(results[4]["content"], claude::NOT_EXECUTED);
-}
-
-#[test]
 fn claude_rejects_bad_members() {
     assert_eq!(
         claude::parse_member("teleport", &json!({})),
@@ -421,12 +294,6 @@ fn claude_rejects_bad_members() {
         )
         .is_err()
     );
-    // Non-computer tool_use blocks are not treated as computer actions.
-    let r = claude::parse_response(&json!({"id": "m", "content": [
-        {"type": "tool_use", "id": "x", "name": "screenshot", "input": {}}
-    ]}))
-    .unwrap();
-    assert!(r.calls.is_empty());
 }
 
 #[test]
@@ -523,9 +390,8 @@ fn live_fixtures_parse() {
             continue;
         }
         seen += 1;
-        let r = claude::parse_response(&serde_json::from_str(&text).unwrap()).unwrap();
-        for c in r.calls {
-            let a = c.action.unwrap_or_else(|e| panic!("{name}: {e}"));
+        for c in claude_calls(&serde_json::from_str(&text).unwrap()) {
+            let a = c.unwrap_or_else(|e| panic!("{name}: {e}"));
             validate(&a, 1280, 720).unwrap_or_else(|e| panic!("{name}: {a:?}: {e}"));
         }
     }
@@ -923,7 +789,7 @@ fn a_response_after_a_pause_never_acts() {
     let requests = server.requests.lock().unwrap();
     let results = &requests[1].1["messages"][2]["content"];
     assert_eq!(results[0]["is_error"], true);
-    assert_eq!(results[0]["content"], claude::PAUSED);
+    assert_eq!(results[0]["content"], PAUSED);
     assert_eq!(rig.clicks(), 0);
 }
 
@@ -945,7 +811,7 @@ fn a_response_after_a_pause_and_a_resume_never_acts() {
     assert_eq!(rig.clicks(), 0, "nothing ran");
     let requests = server.requests.lock().unwrap();
     let results = &requests[1].1["messages"][2]["content"];
-    assert_eq!(results[0]["content"], claude::PAUSED);
+    assert_eq!(results[0]["content"], PAUSED);
 }
 
 #[test]
@@ -1449,25 +1315,15 @@ fn garbage_answers_never_panic() {
             }
             v
         };
-        let _ = claude::parse_response(&doc);
-        let _ = openai::parse_response(&doc);
-        let mut c = claude::Conversation::new("m", "s", "t", &shot("A"));
-        if let Ok(turn) = c.accept(&doc) {
-            // As the runtime does: only a valid action is planned.
-            for a in turn.actions.iter().flatten() {
-                if validate(a, 1280, 720).is_ok() {
-                    let _ = desktop::plan(a, (1280, 720), Some((0.5, 0.5)));
-                }
+        // As the engine does: each call parsed, only a valid action planned.
+        for a in claude_calls(&doc)
+            .into_iter()
+            .chain(openai_actions(&doc))
+            .flatten()
+        {
+            if validate(&a, 1280, 720).is_ok() {
+                let _ = desktop::plan(&a, (1280, 720), Some((0.5, 0.5)));
             }
-            c.answer(&vec![Outcome::Ok; turn.actions.len()]);
-        }
-        let mut o = openai::Conversation::new("m", "s", "t", &shot("A"));
-        if let Ok(turn) = o.accept(&doc) {
-            o.answer(
-                &vec![Outcome::NotExecuted; turn.actions.len()],
-                &shot("B"),
-                true,
-            );
         }
     }
 }
@@ -2029,63 +1885,4 @@ fn live_openrouter_models_click_where_they_mean() {
         }
     }
     assert!(failed.is_empty(), "did not press SAVE: {failed:?}");
-}
-
-/// The golden requests (PLAN.md, Pi step 2): what each adapter sends at the
-/// start, after one answered turn and after a follow-up, for the scenario in
-/// `fixtures/golden/scenario.json`. The sidecar's providers must build the
-/// same bytes. `KYOKAI_GOLDEN=update` writes the files.
-#[test]
-fn golden_requests() {
-    use super::{Conversation, Protocol};
-    let scenario = load("golden/scenario.json");
-    let shot = |key: &str| Shot {
-        b64: scenario[key].as_str().unwrap().into(),
-        width: 1280,
-        height: 720,
-    };
-    let s = |key: &str| scenario[key].as_str().unwrap().to_string();
-    for (protocol, name) in [
-        (Protocol::Anthropic, "anthropic"),
-        (Protocol::OpenaiResponses, "openai-responses"),
-        (Protocol::OpenaiChat, "openai-chat"),
-    ] {
-        let response = match &scenario["responses"][name] {
-            Value::String(path) => load(path),
-            inline => inline.clone(),
-        };
-        let mut c = Conversation::new(
-            protocol,
-            &s("model"),
-            &s("system"),
-            &s("task"),
-            &shot("shot"),
-        );
-        let mut bodies = vec![c.body()];
-        let turn = c.accept(&response).unwrap();
-        let outcomes: Vec<Outcome> = (0..turn.actions.len())
-            .map(|i| match i {
-                0 => Outcome::Ok,
-                1 => Outcome::Image(shot("after")),
-                2 => Outcome::Failed("no".into()),
-                _ => Outcome::NotExecuted,
-            })
-            .collect();
-        c.answer(&outcomes, Some(&shot("after")), false);
-        bodies.push(c.body());
-        c.follow_up(&s("follow_up"), &shot("follow_shot"));
-        bodies.push(c.body());
-        let path = dir().join(format!("golden/{name}.json"));
-        let text = serde_json::to_string_pretty(&bodies).unwrap() + "\n";
-        if std::env::var("KYOKAI_GOLDEN").as_deref() == Ok("update") {
-            std::fs::write(&path, &text).unwrap();
-        }
-        let want = std::fs::read_to_string(&path)
-            .unwrap_or_default()
-            .replace("\r\n", "\n");
-        assert_eq!(
-            text, want,
-            "{name}: the adapter's requests changed (KYOKAI_GOLDEN=update rewrites them)"
-        );
-    }
 }

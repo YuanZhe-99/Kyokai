@@ -111,10 +111,11 @@ KYOKAI_PROFILE=ctl kyokai-svc ctl watch --id 1 --seconds 600 --keys shift --keys
 
 ## 可行性验证
 
-agent sidecar（sidecar/，[architecture.md](architecture.md#agent-sidecar)）是一个版本精确固定的 Bun 包（package.json、
-un.lock）：cd sidecar && bun install && bun test 运行它的测试，其中包括 Rust 适配器写出的黄金请求
-（core/kyokai-core/src/ai/fixtures/golden；有意改变请求时，KYOKAI_GOLDEN=update cargo test … golden_requests 重写它们）。
-
+agent sidecar（`sidecar/`，[architecture.md](architecture.md#agent-sidecar)）是一个版本精确固定的 Bun 包（`package.json`、
+`bun.lock`）：`cd sidecar && bun install && bun test` 运行它的测试，其中包括 `core/kyokai-core/src/ai/fixtures/golden`
+中的黄金请求（由 Rust 适配器在移入 sidecar 之前写出；有意改变的请求也要随之改变它们）。引擎的 AI 测试让每个任务
+从源码经 sidecar 运行，所以需要 `PATH` 中有 Bun，并已在 `sidecar/` 中执行 `bun install`。调试版引擎可用
+`KYOKAI_AGENT`（一个程序，或由 Bun 运行的 `.ts` 文件）代替它旁边的 `kyokai-agent`。
 `spikes/` 存放 Phase 0 的可行性验证程序，各自带有自己的 `go.mod` 或 Cargo 工作区，产品检查不会构建它们。结果写入
 [upstream.md](upstream.md) 与 [platform-notes.md](platform-notes.md)；验证成功的代码在之后的阶段移入产品。
 `s5-pi`（0.7.0）是一个 Bun 包（`package.json` 版本精确固定，带 `bun.lock`）：先 `bun install`，然后 `bun harness.ts` 对 `sidecar.ts`

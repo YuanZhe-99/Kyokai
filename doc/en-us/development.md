@@ -33,7 +33,10 @@
   an unverified release candidate on Windows.
 - `cargo-deny` (`cargo install cargo-deny --locked`) for the dependency check; on Windows ARM64 it
   builds only once clang is installed.
-- Bun, the version `sidecar/package.json` names (`packageManager`; on Windows `winget install`\n  `Oven-sh.Bun`), for the agent sidecar's tests and for `scripts/build.sh`, which compiles\n  `kyokai-agent` and writes its packages' notices.\n- `cargo-about` (`cargo install cargo-about --locked --features cli`) for the license file that
+- Bun, the version `sidecar/package.json` names (`packageManager`; on Windows `winget install
+  Oven-sh.Bun`), for the agent sidecar's tests and for `scripts/build.sh`, which compiles
+  `kyokai-agent` and writes its packages' notices.
+- `cargo-about` (`cargo install cargo-about --locked --features cli`) for the license file that
   `scripts/build.sh` puts into every package.
 - libvpx 1.16.0, libaom 3.15.2 and Opus 1.6.1, linked statically into the core: `scripts/codecs.sh`
   builds them with vcpkg in manifest mode (`core/vcpkg.json`, the registry pinned in
@@ -153,15 +156,17 @@ KYOKAI_PROFILE=ctl kyokai-svc ctl watch --id 1 --seconds 600 --keys shift --keys
 
 ## Spikes
 
-The agent sidecar (sidecar/, [architecture.md](architecture.md#the-agent-sidecar)) is a Bun package pinned
-exactly (package.json, un.lock): cd sidecar && bun install && bun test runs its tests, among them
-the golden requests the Rust adapters wrote (core/kyokai-core/src/ai/fixtures/golden;
-KYOKAI_GOLDEN=update cargo test … golden_requests rewrites them when a request changes on purpose).
-
+The agent sidecar (`sidecar/`, [architecture.md](architecture.md#the-agent-sidecar)) is a Bun package pinned
+exactly (`package.json`, `bun.lock`): `cd sidecar && bun install && bun test` runs its tests, among them
+the golden requests in `core/kyokai-core/src/ai/fixtures/golden` (written by the Rust adapters before
+they moved into the sidecar; a request changed on purpose changes them too). The engine's AI tests run
+each task through the sidecar from source, so they need Bun on `PATH` and `bun install` done in
+`sidecar/`. A debug engine takes `KYOKAI_AGENT` (a program, or a `.ts` file Bun runs) instead of the
+`kyokai-agent` beside it.
 `spikes/` holds the Phase 0 feasibility programs, each with its own `go.mod` or Cargo workspace so
 that the product gate never builds them. Their results go into [upstream.md](upstream.md) and
 [platform-notes.md](platform-notes.md); code that proves itself moves into the product in a later
-phase. s5-pi (0.7.0) is a Bun package (package.json pinned exactly, un.lock): un install, then
+phase. `s5-pi` (0.7.0) is a Bun package (`package.json` pinned exactly, `bun.lock`): `bun install`, then
 `bun harness.ts` runs its checks against `sidecar.ts`, or against a build of it
 (`bun build sidecar.ts --compile --minify --target=bun-<os>-<arch> --outfile out/…`) given as the argument.
 

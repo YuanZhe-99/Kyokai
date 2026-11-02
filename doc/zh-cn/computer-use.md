@@ -369,7 +369,7 @@ Google Gemini、Groq、Together、Fireworks、Deep Infra、Mistral、xAI、Moons
 | 回复 | 每个操作一个 `tool_result`；历史只追加 | 每个调用一个 `computer_call_output`，附上该批操作之后的屏幕，并用一条说明列出失败或未执行的操作；安全检查只在被控端用户批准后才确认 |
 | 默认模型 | `claude-opus-5-5` | `gpt-6.1-sol` |
 
-请求经 HTTPS 发出（rustls，ring 提供方，系统根证书），每次最长五分钟，遇到过载和服务端错误时重试三次。显示给用户的错误绝不包含密钥。
+请求由 agent sidecar（[architecture.md](architecture.md#agent-sidecar)）经 HTTPS 发出，每次最长五分钟，遇到过载和服务端错误时重试三次；引擎每次只为一个请求把密钥交给它。显示给用户的错误绝不包含密钥。
 
 ### 坐标
 

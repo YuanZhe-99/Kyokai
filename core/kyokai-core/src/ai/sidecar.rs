@@ -7,10 +7,6 @@
 //!
 //! Versioned: the sidecar says `hello {v}` first, and the engine refuses a
 //! version it does not speak.
-//!
-//! The engine drives tasks through it from step 4 of "Pi in the product"
-//! (PLAN.md); until then only its tests use it.
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -143,30 +139,18 @@ pub enum FromSidecar {
     Aborted,
 }
 
-/// One end of the line link (generic so the tests run it over memory).
-pub struct Link<R, W> {
+/// Reads the sidecar's lines (generic so the tests read from memory).
+pub struct Reader<R> {
     read: R,
-    write: W,
     line: String,
 }
 
-impl<R: BufRead, W: Write> Link<R, W> {
-    pub fn new(read: R, write: W) -> Self {
-        Link {
+impl<R: BufRead> Reader<R> {
+    pub fn new(read: R) -> Self {
+        Reader {
             read,
-            write,
             line: String::new(),
         }
-    }
-
-    /// Writes one message as a line.
-    pub fn send(&mut self, m: &ToSidecar) -> Result<(), String> {
-        let mut bytes = serde_json::to_vec(m).map_err(|e| e.to_string())?;
-        bytes.push(b'\n');
-        self.write
-            .write_all(&bytes)
-            .and_then(|()| self.write.flush())
-            .map_err(|e| format!("the agent is gone: {e}"))
     }
 
     /// Reads the next message.
@@ -194,16 +178,93 @@ impl<R: BufRead, W: Write> Link<R, W> {
                 .map_err(|e| format!("the agent sent something unreadable: {e}"));
         }
     }
+}
 
-    /// Waits for the sidecar's `hello` and checks its version.
-    pub fn handshake(&mut self) -> Result<(), String> {
-        match self.recv()? {
-            FromSidecar::Hello { v } if v == VERSION => Ok(()),
-            FromSidecar::Hello { v } => Err(format!(
-                "the agent speaks protocol {v}, this engine {VERSION}"
-            )),
-            other => Err(format!("the agent began with {other:?}, not hello")),
-        }
+/// Checks the sidecar's first message: `hello` with this version.
+fn hello(first: FromSidecar) -> Result<(), String> {
+    match first {
+        FromSidecar::Hello { v } if v == VERSION => Ok(()),
+        FromSidecar::Hello { v } => Err(format!(
+            "the agent speaks protocol {v}, this engine {VERSION}"
+        )),
+        other => Err(format!("the agent began with {other:?}, not hello")),
+    }
+}
+/// A running sidecar: its process, what it writes (read on a thread of its
+/// own into a channel), and its input. Dropping it ends the process.
+pub struct Agent {
+    child: std::process::Child,
+    input: std::process::ChildStdin,
+    output: tokio::sync::mpsc::UnboundedReceiver<Result<FromSidecar, String>>,
+}
+
+impl Agent {
+    /// Starts the sidecar (`command`: the program and its arguments) and
+    /// waits for its `hello`.
+    /// Side effects: a process that lives until this is dropped; its
+    /// standard error is discarded (it never carries a key).
+    pub async fn start(command: &[String]) -> Result<Agent, String> {
+        let (program, args) = command
+            .split_first()
+            .ok_or("no agent sidecar is configured")?;
+        let mut child = std::process::Command::new(program)
+            .args(args)
+            .current_dir(std::env::temp_dir())
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|e| format!("the agent sidecar did not start: {e}"))?;
+        let input = child.stdin.take().expect("piped");
+        let stdout = child.stdout.take().expect("piped");
+        let (tx, output) = tokio::sync::mpsc::unbounded_channel();
+        std::thread::Builder::new()
+            .name("kyokai-agent-out".into())
+            .spawn(move || {
+                let mut link = Reader::new(std::io::BufReader::new(stdout));
+                loop {
+                    let m = link.recv();
+                    let end = m.is_err();
+                    if tx.send(m).is_err() || end {
+                        return;
+                    }
+                }
+            })
+            .map_err(|e| format!("the agent sidecar's reader: {e}"))?;
+        let mut agent = Agent {
+            child,
+            input,
+            output,
+        };
+        hello(agent.recv().await?)?;
+        Ok(agent)
+    }
+
+    /// Writes one message (on a blocking thread: a screenshot is large).
+    pub fn send(&mut self, m: &ToSidecar) -> Result<(), String> {
+        let mut bytes = serde_json::to_vec(m).map_err(|e| e.to_string())?;
+        bytes.push(b'\n');
+        tokio::task::block_in_place(|| {
+            self.input
+                .write_all(&bytes)
+                .and_then(|()| self.input.flush())
+        })
+        .map_err(|e| format!("the agent sidecar is gone: {e}"))
+    }
+
+    /// The next message from the sidecar.
+    pub async fn recv(&mut self) -> Result<FromSidecar, String> {
+        self.output
+            .recv()
+            .await
+            .unwrap_or_else(|| Err("the agent sidecar ended".into()))
+    }
+}
+
+impl Drop for Agent {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
@@ -213,8 +274,8 @@ mod tests {
     use serde_json::json;
     use std::io::Cursor;
 
-    fn link(input: &str) -> Link<Cursor<Vec<u8>>, Vec<u8>> {
-        Link::new(Cursor::new(input.as_bytes().to_vec()), Vec::new())
+    fn link(input: &str) -> Reader<Cursor<Vec<u8>>> {
+        Reader::new(Cursor::new(input.as_bytes().to_vec()))
     }
 
     fn shot() -> WireShot {
@@ -288,15 +349,15 @@ mod tests {
     /// with a reason, never a panic.
     #[test]
     fn the_handshake_checks_the_version() {
-        assert!(link("{\"t\":\"hello\",\"v\":1}\n").handshake().is_ok());
-        let other = link("{\"t\":\"hello\",\"v\":2}\n").handshake().unwrap_err();
+        assert!(hello(link("{\"t\":\"hello\",\"v\":1}\n").recv().unwrap()).is_ok());
+        let other = hello(link("{\"t\":\"hello\",\"v\":2}\n").recv().unwrap()).unwrap_err();
         assert!(other.contains("protocol 2"), "{other}");
-        assert!(link("{\"t\":\"done\"}\n").handshake().is_err());
-        assert!(link("").handshake().unwrap_err().contains("ended"));
+        assert!(hello(link("{\"t\":\"done\"}\n").recv().unwrap()).is_err());
+        assert!(link("").recv().unwrap_err().contains("ended"));
     }
 
     /// Unreadable, unknown and overlong lines are errors; blank lines are
-    /// skipped; a send writes one line.
+    /// skipped.
     #[test]
     fn bad_lines_are_refused() {
         assert!(link("not json\n").recv().is_err());
@@ -307,8 +368,5 @@ mod tests {
             link("\n\n{\"t\":\"aborted\"}\n").recv().unwrap(),
             FromSidecar::Aborted
         );
-        let mut l = link("");
-        l.send(&ToSidecar::Abort).unwrap();
-        assert_eq!(l.write, b"{\"t\":\"abort\"}\n");
     }
 }

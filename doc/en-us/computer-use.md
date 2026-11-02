@@ -624,9 +624,9 @@ in `internal/gui/modelname.go`).
 | Answer | one `tool_result` per action; the history is append-only | one `computer_call_output` per call with the screen after its batch, and a note naming the actions that failed or did not run; safety checks acknowledged only after the host user approved them |
 | Default model | `claude-opus-5-5` | `gpt-6.1-sol` |
 
-Requests go over HTTPS (rustls with the ring provider and the system's roots), five minutes at
-most each, retried three times on overload and server errors. Errors shown to the user never
-contain the key.
+Requests go out from the agent sidecar ([architecture.md](architecture.md#the-agent-sidecar)) over HTTPS,
+five minutes at most each, retried three times on overload and server errors; the engine hands it
+the key for one request at a time. Errors shown to the user never contain the key.
 
 ### Coordinates
 

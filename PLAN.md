@@ -138,7 +138,7 @@ Each lands with its docs and tests; the Rust loop stays until step 4 replaces it
    `bin/`, the CI and release jobs install the pinned Bun, the bundle signature and the helper's
    checks cover it, packaging.md and third-party.md list Pi and Bun. Done when: a release build
    on each target holds it and the helper accepts it.
-4. **The engine drives it**: a task runs through the sidecar (the executor, policy, lease,
+4. Done (2026-11-01; left: the live run on the test VM): **the engine drives it**: a task runs through the sidecar (the executor, policy, lease,
    approvals, pause, take-over and emergency stop unchanged), the sidecar starts per task and
    ends with it, a crash fails the task loudly; the Rust adapters go. Done when: every AI test
    passes through the sidecar, and a live run (Haiku 5.5 or GPT Luna through OpenRouter) on the

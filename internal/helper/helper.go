@@ -73,9 +73,10 @@ func (s Settings) AppGone() bool {
 	return s.AppDir != "" && !fileExists(filepath.Join(s.AppDir, exeName("kyokai-svc")))
 }
 
-// binaries are the files the helper runs, copied from the app.
+// binaries are the files the helper runs, copied from the app: the engine,
+// the core, and the agent sidecar its AI tasks run through.
 func binaries() []string {
-	return []string{exeName("kyokai-svc"), core.LibraryName()}
+	return []string{exeName("kyokai-svc"), core.LibraryName(), exeName("kyokai-agent")}
 }
 
 // svcPath is the installed engine.

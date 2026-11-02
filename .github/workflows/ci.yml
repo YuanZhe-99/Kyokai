@@ -158,8 +158,14 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Clippy
         run: cargo clippy --manifest-path core/Cargo.toml --workspace --all-targets -- -D warnings
+      # The AI tests run each task through the agent sidecar, from source.
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: sidecar/package.json
       - name: Rust tests
-        run: cargo test --manifest-path core/Cargo.toml --workspace
+        run: |
+          (cd sidecar && bun install --frozen-lockfile)
+          cargo test --manifest-path core/Cargo.toml --workspace
 
   test:
     name: Test (${{ matrix.os }})
