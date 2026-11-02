@@ -117,6 +117,16 @@ func (msgs Messages) AIApprovalAbout() string {
 	return Catalog.Format(msgs.locale, "AIApprovalAbout", nil)
 }
 
+// AIApprovalAutoOption says "Risky steps (Auto)"
+// in the language the app shows.
+func AIApprovalAutoOption() string { return In(i18n.Locale()).AIApprovalAutoOption() }
+
+// AIApprovalAutoOption says "Risky steps (Auto)"
+// in the language of msgs.
+func (msgs Messages) AIApprovalAutoOption() string {
+	return Catalog.Format(msgs.locale, "AIApprovalAutoOption", nil)
+}
+
 // AIApprovalBanner says "The AI task is waiting for your approval."
 // in the language the app shows.
 func AIApprovalBanner() string { return In(i18n.Locale()).AIApprovalBanner() }
@@ -145,16 +155,6 @@ func AIApprovalFlagged() string { return In(i18n.Locale()).AIApprovalFlagged() }
 // in the language of msgs.
 func (msgs Messages) AIApprovalFlagged() string {
 	return Catalog.Format(msgs.locale, "AIApprovalFlagged", nil)
-}
-
-// AIApprovalFlaggedOption says "Flagged steps and system shortcuts"
-// in the language the app shows.
-func AIApprovalFlaggedOption() string { return In(i18n.Locale()).AIApprovalFlaggedOption() }
-
-// AIApprovalFlaggedOption says "Flagged steps and system shortcuts"
-// in the language of msgs.
-func (msgs Messages) AIApprovalFlaggedOption() string {
-	return Catalog.Format(msgs.locale, "AIApprovalFlaggedOption", nil)
 }
 
 // AIApprovalNoteHere says "Moving your mouse pauses the AI at once."
@@ -1257,6 +1257,16 @@ func (msgs Messages) AIStatePausedLocal() string {
 	return Catalog.Format(msgs.locale, "AIStatePausedLocal", nil)
 }
 
+// AIStatePausedLocked says "Paused: the computer is locked"
+// in the language the app shows.
+func AIStatePausedLocked() string { return In(i18n.Locale()).AIStatePausedLocked() }
+
+// AIStatePausedLocked says "Paused: the computer is locked"
+// in the language of msgs.
+func (msgs Messages) AIStatePausedLocked() string {
+	return Catalog.Format(msgs.locale, "AIStatePausedLocked", nil)
+}
+
 // AIStatePausedSleep says "Paused: the computer went to sleep"
 // in the language the app shows.
 func AIStatePausedSleep() string { return In(i18n.Locale()).AIStatePausedSleep() }
@@ -1375,6 +1385,166 @@ func AIWhoMayAbout() string { return In(i18n.Locale()).AIWhoMayAbout() }
 // in the language of msgs.
 func (msgs Messages) AIWhoMayAbout() string {
 	return Catalog.Format(msgs.locale, "AIWhoMayAbout", nil)
+}
+
+// AIWhyConsent says "This agrees to or allows something."
+// in the language the app shows.
+func AIWhyConsent() string { return In(i18n.Locale()).AIWhyConsent() }
+
+// AIWhyConsent says "This agrees to or allows something."
+// in the language of msgs.
+func (msgs Messages) AIWhyConsent() string {
+	return Catalog.Format(msgs.locale, "AIWhyConsent", nil)
+}
+
+// AIWhyCredentials says "This types where a password goes."
+// in the language the app shows.
+func AIWhyCredentials() string { return In(i18n.Locale()).AIWhyCredentials() }
+
+// AIWhyCredentials says "This types where a password goes."
+// in the language of msgs.
+func (msgs Messages) AIWhyCredentials() string {
+	return Catalog.Format(msgs.locale, "AIWhyCredentials", nil)
+}
+
+// AIWhyDeleting says "This deletes files."
+// in the language the app shows.
+func AIWhyDeleting() string { return In(i18n.Locale()).AIWhyDeleting() }
+
+// AIWhyDeleting says "This deletes files."
+// in the language of msgs.
+func (msgs Messages) AIWhyDeleting() string {
+	return Catalog.Format(msgs.locale, "AIWhyDeleting", nil)
+}
+
+// AIWhyInstalling says "This installs software."
+// in the language the app shows.
+func AIWhyInstalling() string { return In(i18n.Locale()).AIWhyInstalling() }
+
+// AIWhyInstalling says "This installs software."
+// in the language of msgs.
+func (msgs Messages) AIWhyInstalling() string {
+	return Catalog.Format(msgs.locale, "AIWhyInstalling", nil)
+}
+
+// AIWhyPasswordVault says "This works in a password manager."
+// in the language the app shows.
+func AIWhyPasswordVault() string { return In(i18n.Locale()).AIWhyPasswordVault() }
+
+// AIWhyPasswordVault says "This works in a password manager."
+// in the language of msgs.
+func (msgs Messages) AIWhyPasswordVault() string {
+	return Catalog.Format(msgs.locale, "AIWhyPasswordVault", nil)
+}
+
+// AIWhyPayments says "This could pay or buy something."
+// in the language the app shows.
+func AIWhyPayments() string { return In(i18n.Locale()).AIWhyPayments() }
+
+// AIWhyPayments says "This could pay or buy something."
+// in the language of msgs.
+func (msgs Messages) AIWhyPayments() string {
+	return Catalog.Format(msgs.locale, "AIWhyPayments", nil)
+}
+
+// AIWhyPowerSession says "This could shut down, restart, sign out or lock the computer."
+// in the language the app shows.
+func AIWhyPowerSession() string { return In(i18n.Locale()).AIWhyPowerSession() }
+
+// AIWhyPowerSession says "This could shut down, restart, sign out or lock the computer."
+// in the language of msgs.
+func (msgs Messages) AIWhyPowerSession() string {
+	return Catalog.Format(msgs.locale, "AIWhyPowerSession", nil)
+}
+
+// AIWhyProcessControl says "This could end programs."
+// in the language the app shows.
+func AIWhyProcessControl() string { return In(i18n.Locale()).AIWhyProcessControl() }
+
+// AIWhyProcessControl says "This could end programs."
+// in the language of msgs.
+func (msgs Messages) AIWhyProcessControl() string {
+	return Catalog.Format(msgs.locale, "AIWhyProcessControl", nil)
+}
+
+// AIWhyRemoteDesktop says "This works in a remote desktop window, which Kyokai cannot look into."
+// in the language the app shows.
+func AIWhyRemoteDesktop() string { return In(i18n.Locale()).AIWhyRemoteDesktop() }
+
+// AIWhyRemoteDesktop says "This works in a remote desktop window, which Kyokai cannot look into."
+// in the language of msgs.
+func (msgs Messages) AIWhyRemoteDesktop() string {
+	return Catalog.Format(msgs.locale, "AIWhyRemoteDesktop", nil)
+}
+
+// AIWhySecureSurface says "A system security prompt is open."
+// in the language the app shows.
+func AIWhySecureSurface() string { return In(i18n.Locale()).AIWhySecureSurface() }
+
+// AIWhySecureSurface says "A system security prompt is open."
+// in the language of msgs.
+func (msgs Messages) AIWhySecureSurface() string {
+	return Catalog.Format(msgs.locale, "AIWhySecureSurface", nil)
+}
+
+// AIWhySending says "This could send a message."
+// in the language the app shows.
+func AIWhySending() string { return In(i18n.Locale()).AIWhySending() }
+
+// AIWhySending says "This could send a message."
+// in the language of msgs.
+func (msgs Messages) AIWhySending() string {
+	return Catalog.Format(msgs.locale, "AIWhySending", nil)
+}
+
+// AIWhySettings says "This changes system or security settings."
+// in the language the app shows.
+func AIWhySettings() string { return In(i18n.Locale()).AIWhySettings() }
+
+// AIWhySettings says "This changes system or security settings."
+// in the language of msgs.
+func (msgs Messages) AIWhySettings() string {
+	return Catalog.Format(msgs.locale, "AIWhySettings", nil)
+}
+
+// AIWhyShortcut says "This presses a system shortcut."
+// in the language the app shows.
+func AIWhyShortcut() string { return In(i18n.Locale()).AIWhyShortcut() }
+
+// AIWhyShortcut says "This presses a system shortcut."
+// in the language of msgs.
+func (msgs Messages) AIWhyShortcut() string {
+	return Catalog.Format(msgs.locale, "AIWhyShortcut", nil)
+}
+
+// AIWhyTerminal says "This types into a terminal."
+// in the language the app shows.
+func AIWhyTerminal() string { return In(i18n.Locale()).AIWhyTerminal() }
+
+// AIWhyTerminal says "This types into a terminal."
+// in the language of msgs.
+func (msgs Messages) AIWhyTerminal() string {
+	return Catalog.Format(msgs.locale, "AIWhyTerminal", nil)
+}
+
+// AIWhyUnknown says "Kyokai cannot tell which program this reaches."
+// in the language the app shows.
+func AIWhyUnknown() string { return In(i18n.Locale()).AIWhyUnknown() }
+
+// AIWhyUnknown says "Kyokai cannot tell which program this reaches."
+// in the language of msgs.
+func (msgs Messages) AIWhyUnknown() string {
+	return Catalog.Format(msgs.locale, "AIWhyUnknown", nil)
+}
+
+// AIWhyUploading says "This chooses a file to open, upload or save."
+// in the language the app shows.
+func AIWhyUploading() string { return In(i18n.Locale()).AIWhyUploading() }
+
+// AIWhyUploading says "This chooses a file to open, upload or save."
+// in the language of msgs.
+func (msgs Messages) AIWhyUploading() string {
+	return Catalog.Format(msgs.locale, "AIWhyUploading", nil)
 }
 
 // AIWorkingHint says "Working — pause or stop the task to write"

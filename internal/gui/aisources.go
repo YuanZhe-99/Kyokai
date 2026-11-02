@@ -180,7 +180,7 @@ func (a *App) aiProviders(c *ui.Context) {
 		return
 	}
 	labels, refs, cur := aiModelChoices(s)
-	policies := []string{L.AIApprovalFlaggedOption(), L.AIApprovalEveryOption()}
+	policies := []string{L.AIApprovalAutoOption(), L.AIApprovalEveryOption()}
 	policy := policies[0]
 	if s.Approval == "every-action" {
 		policy = policies[1]
@@ -196,7 +196,7 @@ func (a *App) aiProviders(c *ui.Context) {
 		})
 		r.row(c, "ai-policy", tile(rowCheck), setting{title: L.AIApproval(), about: L.AIApprovalAbout()}, func() {
 			if ui.Select(c.Key("ai-policy-sel"), &policy, policies).Width(280).Disabled(busy).Changed() {
-				a.saveAISettings(&localapi.AISettings{Approval: []string{"flagged", "every-action"}[slices.Index(policies, policy)]}, "")
+				a.saveAISettings(&localapi.AISettings{Approval: []string{"auto", "every-action"}[slices.Index(policies, policy)]}, "")
 			}
 		})
 	})

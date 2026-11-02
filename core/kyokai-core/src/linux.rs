@@ -1715,6 +1715,29 @@ impl Desktop for Screen {
     fn stop_requested(&mut self) -> bool {
         self.watch.stop_requested()
     }
+
+    /// On X11, the program (its executable's name) of the window at `at`
+    /// or of the focused one; Wayland tells no program where others'
+    /// windows are, so nothing is known there and the policy asks.
+    fn target(&mut self, at: Option<(f32, f32)>) -> crate::ai::policy::Target {
+        let Ok(x) = X::open() else {
+            return Default::default();
+        };
+        let pid = match at {
+            Some((fx, fy)) => {
+                let (px, py) = point_in(main_area(), fx, fy);
+                x.owner_at(px.into(), py.into())
+            }
+            None => x.focused().and_then(|w| x.pid(w)),
+        };
+        let program = pid
+            .and_then(|p| std::fs::read_link(format!("/proc/{p}/exe")).ok())
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()));
+        crate::ai::policy::Target {
+            program,
+            ..Default::default()
+        }
+    }
 }
 
 #[cfg(test)]

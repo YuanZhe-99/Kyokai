@@ -93,7 +93,8 @@ stay in memory, and only for the hosts its GUI shows while its main window is op
   an approval, so no one answers those in the host user's place. The GUI tells the engine with
   `input.kyokai`; an engine of an older version refuses it and keeps them guarded.
 - The model's proposals are only input: every action is parsed, bounds-checked against the latest
-  screenshot and executed by the host's own executor; nothing runs commands or code, and nothing
+  screenshot and executed by the host's own executor; the approval policy decides from facts the
+  system gives about the action's target, never from the model ([computer-use.md](computer-use.md#approvals)); nothing runs commands or code, and nothing
   the AI does is injected into a Kyokai window, whatever the host user lets people do (pointer input
   by the window under it, keys by the focused window).
 - Local input, pause, cancel and the emergency stop revoke the task's input lease at once; a

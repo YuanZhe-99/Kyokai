@@ -229,20 +229,24 @@ func TestAIPromptByKeyboard(t *testing.T) {
 
 // TestAIApprovalInline: a host's step waiting for approval shows in the
 // conversation, never hidden; Allow sends the decision on the link when
-// the session may approve, and otherwise says the host's user decides.
+// the session may approve, and otherwise says the host's user decides; it
+// says why it asks (the host's policy class).
 func TestAIApprovalInline(t *testing.T) {
 	i18n.SetLocaleFunc(func() string { return "en" })
 	defer i18n.SetLocaleFunc(nil)
 	for _, approve := range []bool{true, false} {
 		a := aiDemoApp(t)
 		task := &localapi.AITask{ID: 5, Instruction: "Rename the report", State: "approval", Steps: aiSteps(),
-			Approval: &localapi.AIApproval{Action: []byte(`{"kind":"type","text":"Q3.docx"}`)}}
+			Approval: &localapi.AIApproval{Action: []byte(`{"kind":"type","text":"Q3.docx"}`), Class: "terminal"}}
 		l := addAILink(a, "657365333", "connected", true, approve, task)
 		addAITab(a, "657365333", AIRecord{ID: "h", Device: "657365333", Task: 5, Title: "Rename the report", Updated: 1})
 		tt := ui.NewTester(a.main.view, 1280, 800)
 		tt.Frame()
 		if !tt.HasText(L.AIApprovalTitle()) {
 			t.Fatalf("approve %v: the approval does not show", approve)
+		}
+		if !tt.HasText(L.AIWhyTerminal()) {
+			t.Errorf("approve %v: the approval does not say why it asks", approve)
 		}
 		if !approve {
 			if !tt.HasText(L.ViewerAIHostApproves()) {

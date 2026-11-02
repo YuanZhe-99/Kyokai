@@ -329,8 +329,9 @@ password.
 In Settings, **AI providers**, add a provider from its template (Claude and OpenAI
 are there already; OpenRouter, Gemini, Qwen, Ollama and many more are a click away, or **Custom**
 for any other), enter your API key, add models by id or with **List models**, and choose the
-**Model** tasks use. Other providers need a model that accepts images and calls tools. Choose also and when to be asked: **Flagged steps and system shortcuts** (the default) or **Every
-action**. The key stays in this computer's secrets store and is never shown again or sent anywhere
+**Model** tasks use. Other providers need a model that accepts images and calls tools. Choose also and when to be asked: **Risky steps (Auto)** (the default: it asks before terminals,
+password managers, settings, installers, sending, paying and the like, and whenever it cannot tell
+what an action reaches; [computer-use.md](computer-use.md#approvals)) or **Every action**. The key stays in this computer's secrets store and is never shown again or sent anywhere
 but to the provider.
 
 Then open an AI task: **+** at the top of the sidebar, **AI task**, **This computer** (or search

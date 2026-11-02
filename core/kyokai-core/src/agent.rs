@@ -683,6 +683,13 @@ impl crate::ai::desktop::Desktop for RemoteDesktop {
             .call("ai.stop", json!({"desk": self.id}))
             .unwrap_or(true)
     }
+
+    fn target(&mut self, at: Option<(f32, f32)>) -> crate::ai::policy::Target {
+        // An agent that cannot tell answers nothing usable: the policy asks.
+        self.link
+            .call("ai.target", json!({"desk": self.id, "at": at}))
+            .unwrap_or_default()
+    }
 }
 
 impl Drop for RemoteDesktop {
@@ -1112,6 +1119,11 @@ impl Agent {
                         return Ok(None);
                     }
                     "ai.cursor" => json!(d.cursor()),
+                    "ai.target" => {
+                        let at = serde_json::from_value::<Option<(f32, f32)>>(req["at"].clone())
+                            .unwrap_or(None);
+                        json!(d.target(at))
+                    }
                     "ai.local" => {
                         let l = d.local_input();
                         let age = |t: Option<Instant>| t.map(|t| t.elapsed().as_millis() as u64);
@@ -1234,6 +1246,14 @@ pub fn follow_input_desktop() -> Desk {
 #[cfg(not(windows))]
 pub fn follow_input_desktop() -> Desk {
     Desk::Same
+}
+
+/// The name of the desktop that receives input ("Default", "Winlogon"), or
+/// None when this process may not open it (a secure desktop, No
+/// privileges).
+#[cfg(windows)]
+pub fn input_desktop_name() -> Option<String> {
+    windows_impl::input_desktop_name()
 }
 
 /// What following the input desktop did (`follow_input_desktop`).
@@ -1724,6 +1744,15 @@ mod windows_impl {
         // SAFETY: the handle opened above, not kept.
         let _ = unsafe { CloseDesktop(input) };
         moved
+    }
+
+    /// The input desktop's name (`super::input_desktop_name`).
+    pub fn input_desktop_name() -> Option<String> {
+        let input = input_desktop().ok()?;
+        let n = name(input);
+        // SAFETY: the handle opened above, not kept.
+        let _ = unsafe { CloseDesktop(input) };
+        Some(n)
     }
 
     /// A desktop's name ("Default", "Winlogon", …).

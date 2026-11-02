@@ -1763,6 +1763,53 @@ impl Desktop for Screen {
     fn stop_requested(&mut self) -> bool {
         self.watch.stop_requested()
     }
+
+    /// The program (its app's name, lowercase) of the window at `at` or of
+    /// the frontmost one; the lock screen; a password field, which macOS
+    /// marks by turning Secure Event Input on while it has the focus.
+    fn target(&mut self, at: Option<(f32, f32)>) -> crate::ai::policy::Target {
+        use crate::ai::policy::{Role, Surface, Target};
+        if screen_locked() {
+            return Target {
+                surface: Surface::Locked,
+                ..Default::default()
+            };
+        }
+        let point = match at {
+            Some((x, y)) => {
+                let Ok((_, d)) = main_display() else {
+                    return Target::default();
+                };
+                Some(CGPoint {
+                    x: d.x as f64 + x as f64 * d.width as f64,
+                    y: d.y as f64 + y as f64 * d.height as f64,
+                })
+            }
+            None => None,
+        };
+        let program = window_owner(point)
+            .map(process_name)
+            .filter(|n| !n.is_empty())
+            .map(|n| n.to_lowercase());
+        Target {
+            role: (at.is_none() && secure_input_holder().is_some()).then_some(Role::Password),
+            program,
+            ..Default::default()
+        }
+    }
+}
+
+/// Whether the screen is locked: the session's dictionary carries
+/// `CGSSessionScreenIsLocked` only then.
+fn screen_locked() -> bool {
+    let Some(session) = CGSessionCopyCurrentDictionary() else {
+        return false;
+    };
+    // SAFETY: the session dictionary has string keys.
+    let session = unsafe { CFRetained::cast_unchecked::<CFDictionary<CFString, CFType>>(session) };
+    session
+        .get(&CFString::from_static_str("CGSSessionScreenIsLocked"))
+        .is_some()
 }
 
 #[cfg(test)]

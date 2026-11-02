@@ -333,7 +333,8 @@ type AISettings struct {
 	Sources []AISource `json:"sources,omitempty"`
 	// Model is the one tasks use.
 	Model *AIModelRef `json:"model,omitempty"`
-	// Approval is "flagged" or "every-action".
+	// Approval is "auto" or "every-action" ("flagged" from a host before
+	// 0.7.0, which is Auto now).
 	Approval string `json:"approval,omitempty"`
 	// Keys says which sources have a stored key (a response only); the
 	// keys never leave the engine.
@@ -430,6 +431,9 @@ type AIApproval struct {
 	Action json.RawMessage `json:"action"`
 	// Flagged are the provider's safety notes for the turn, if any.
 	Flagged []string `json:"flagged"`
+	// Class is why it asks, as the host's policy names it ("terminal",
+	// "password-vault", …; empty from a host before 0.7.0).
+	Class string `json:"class,omitempty"`
 }
 
 // AIActive is the task in progress, as the status shows it.

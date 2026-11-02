@@ -323,6 +323,9 @@ func (t *aiTab) approval(c *ui.Context, task *localapi.AITask, may bool) {
 			ui.Text(c, L.AIApprovalTitle()).FontWeight(600)
 		})
 		ui.Text(c, describeAction(task.Approval.Action))
+		if why := aiWhy(task.Approval.Class); why != "" {
+			ui.Text(c, why).FontSize(sizeSmall).TextColor(th.TextMuted)
+		}
 		if len(task.Approval.Flagged) > 0 {
 			ui.Text(c, L.AIApprovalFlagged()).FontSize(sizeSmall).TextColor(textTone(th, th.Warning))
 			for i, f := range task.Approval.Flagged {
@@ -512,8 +515,8 @@ func (t *aiTab) chips(c *ui.Context, rec AIRecord, s aiPaneState) {
 		set := s.settings
 		if set != nil {
 			aiChip(c, "ai-chip-ask-"+t.id, aiShield, ui.Transparent, L.AIApproval(), func(m *ui.Menu) {
-				for _, p := range []struct{ id, label string }{{"flagged", L.AIApprovalFlaggedOption()}, {"every-action", L.AIApprovalEveryOption()}} {
-					on := set.Approval == p.id || set.Approval == "" && p.id == "flagged"
+				for _, p := range []struct{ id, label string }{{"auto", L.AIApprovalAutoOption()}, {"every-action", L.AIApprovalEveryOption()}} {
+					on := set.Approval == p.id || set.Approval != "every-action" && p.id == "auto"
 					if m.Item(p.label).Checked(on).Chosen() && !on {
 						a.saveAISettings(&localapi.AISettings{Approval: p.id}, "")
 					}

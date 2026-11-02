@@ -438,7 +438,7 @@ pub use windows_impl::take_sent;
 #[cfg(windows)]
 pub use windows_impl::{
     Injector, LocalWatch, emergency_stop, kyokai_process, nudge_pointer, physical, pointer,
-    pointer_in,
+    pointer_in, process_image,
 };
 
 #[cfg(target_os = "linux")]
@@ -939,24 +939,25 @@ mod windows_impl {
 
     /// Whether a process is one of Kyokai's (by its executable's name).
     pub fn kyokai_process(pid: u32) -> bool {
+        process_image(pid).is_some_and(|p| is_kyokai(&p))
+    }
+
+    /// A process's executable path, when this process may ask.
+    pub fn process_image(pid: u32) -> Option<String> {
         // SAFETY: plain queries; the process handle is closed below.
         unsafe {
-            match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
-                Ok(h) => {
-                    let mut name = [0u16; 1024];
-                    let mut len = name.len() as u32;
-                    let ok = QueryFullProcessImageNameW(
-                        h,
-                        PROCESS_NAME_WIN32,
-                        PWSTR(name.as_mut_ptr()),
-                        &mut len,
-                    )
-                    .is_ok();
-                    let _ = CloseHandle(h);
-                    ok && is_kyokai(&String::from_utf16_lossy(&name[..len as usize]))
-                }
-                Err(_) => false,
-            }
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+            let mut name = [0u16; 1024];
+            let mut len = name.len() as u32;
+            let ok = QueryFullProcessImageNameW(
+                h,
+                PROCESS_NAME_WIN32,
+                PWSTR(name.as_mut_ptr()),
+                &mut len,
+            )
+            .is_ok();
+            let _ = CloseHandle(h);
+            ok.then(|| String::from_utf16_lossy(&name[..len as usize]))
         }
     }
 

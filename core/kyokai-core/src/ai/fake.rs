@@ -27,6 +27,8 @@ pub struct Log {
     pub stop: bool,
     /// The size `size()` reports, when not the capture's.
     pub size: Option<(u32, u32)>,
+    /// What `target()` reports (a plain editor unless a test sets it).
+    pub target: Option<super::policy::Target>,
     pub released: u32,
 }
 
@@ -84,6 +86,18 @@ impl Desktop for Fake {
 
     fn stop_requested(&mut self) -> bool {
         std::mem::take(&mut self.0.lock().unwrap().stop)
+    }
+
+    fn target(&mut self, _at: Option<(f32, f32)>) -> super::policy::Target {
+        self.0
+            .lock()
+            .unwrap()
+            .target
+            .clone()
+            .unwrap_or(super::policy::Target {
+                program: Some("notepad.exe".into()),
+                ..Default::default()
+            })
     }
 }
 

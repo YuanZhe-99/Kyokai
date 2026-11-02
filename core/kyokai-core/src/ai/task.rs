@@ -14,23 +14,13 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Notify;
 use zeroize::Zeroizing;
 
-use super::action::{self, Action, Coordinates, Key};
+use super::action::{self, Action, Coordinates};
 use super::desktop::{self, Desktop, Frame, Step};
+use super::policy::{self, Approval, Class, Verdict};
 use super::{
     Client, Conversation, End, Endpoint, Outcome, Protocol, Shot, Source, default_sources, key_name,
 };
 use crate::store::Secrets;
-
-/// When a task asks the host user before acting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Approval {
-    /// Only what the provider flags, and system shortcuts (the Windows /
-    /// Command key).
-    Flagged,
-    /// Before every action.
-    EveryAction,
-}
 
 /// The host's AI settings (`ai.json` in the state directory; the keys live
 /// in the secrets store).
@@ -58,7 +48,7 @@ impl Default for Settings {
                 source: "claude".into(),
                 id: super::claude::DEFAULT_MODEL.into(),
             },
-            approval: Approval::Flagged,
+            approval: Approval::Auto,
         }
     }
 }
@@ -272,6 +262,8 @@ pub enum Pause {
     Disconnected,
     /// The computer went to sleep.
     Sleep,
+    /// The session is locked or the sign-in screen shows.
+    Locked,
 }
 
 /// One action of a task, as the history keeps it.
@@ -292,6 +284,10 @@ pub struct Pending {
     pub action: Value,
     /// The provider's safety notes, if it flagged the turn.
     pub flagged: Vec<String>,
+    /// Why it asks: the policy's class (`policy::Class`; none in a record
+    /// from before 0.7.0).
+    #[serde(default)]
+    pub class: Option<Class>,
 }
 
 /// One AI task.
@@ -336,6 +332,9 @@ pub struct Task {
     since: Option<Instant>,
     #[serde(skip)]
     decision: Option<bool>,
+    /// Actions the policy refused or the host user declined.
+    #[serde(skip)]
+    refusals: u32,
     /// The host user's next message for a finished task.
     #[serde(skip)]
     reply: Option<String>,
@@ -586,6 +585,7 @@ impl Ai {
                 lease: 0,
                 since: Some(Instant::now()),
                 decision: None,
+                refusals: 0,
                 reply: None,
                 conversation: None,
             });
@@ -1301,12 +1301,46 @@ async fn act(
             shared.record(id, action_json, "failed", Some("stale".into()));
             continue;
         }
-        let ask = !acknowledged || approval == Approval::EveryAction || sensitive(action);
-        if ask {
-            match approve(shared, id, lease, &action_json, &turn.flagged).await? {
+        // Repeated refusals leave the task asking before every action.
+        let refusals = shared.edit(id, |t| t.refusals).unwrap_or(0);
+        let mode = if refusals >= policy::REFUSALS_BEFORE_EVERY_ACTION {
+            Approval::EveryAction
+        } else {
+            approval
+        };
+        // UI Automation can wait on a slow program: off the async thread.
+        let target = tokio::task::block_in_place(|| target_of(desk, action, seen));
+        let class = match policy::decide(mode, !acknowledged, action, &target) {
+            Verdict::Run => None,
+            Verdict::Ask(class) => Some(class),
+            Verdict::Refuse(class) => {
+                failed = true;
+                shared.edit(id, |t| t.refusals += 1);
+                outcomes.push(Outcome::Failed(format!(
+                    "Refused by the host: {}",
+                    refusal(class)
+                )));
+                shared.record(
+                    id,
+                    action_json,
+                    "refused",
+                    Some(json!(class).as_str().unwrap_or_default().into()),
+                );
+                continue;
+            }
+            Verdict::Pause => {
+                let _ = shared.apply(id, Event::Pause, |t| t.paused = Some(Pause::Locked));
+                outcomes.push(Outcome::Paused);
+                shared.record(id, action_json, "paused", None);
+                continue;
+            }
+        };
+        if let Some(class) = class {
+            match approve(shared, id, lease, &action_json, &turn.flagged, class).await? {
                 Some(true) => acknowledged = true,
                 Some(false) => {
                     failed = true;
+                    shared.edit(id, |t| t.refusals += 1);
                     outcomes.push(Outcome::Failed(
                         "The host user declined this action.".into(),
                     ));
@@ -1364,12 +1398,33 @@ async fn stale(desk: &Desk, seen: &Seen) -> bool {
     !matches!(now, Ok(Ok(size)) if size == (seen.frame.width, seen.frame.height))
 }
 
-/// Actions the Flagged policy always asks about: shortcuts with the
-/// Windows / Command key (launchers, system menus).
-fn sensitive(a: &Action) -> bool {
-    match a {
-        Action::KeyCombo { keys, .. } | Action::HoldKey { keys, .. } => keys.contains(&Key::Meta),
-        _ => false,
+/// What an action would reach: the window under its point (its pointer
+/// position for a click in place), or the focused one for keys.
+fn target_of(desk: &Desk, action: &Action, seen: &Seen) -> policy::Target {
+    let (w, h) = seen.size();
+    let frac = |p: &action::Point| ((p.x as f32 + 0.5) / w as f32, (p.y as f32 + 0.5) / h as f32);
+    let mut desk = desk.lock().expect("desktop");
+    let at = match action {
+        Action::Click { at: Some(p), .. }
+        | Action::Scroll { at: Some(p), .. }
+        | Action::Move { to: p, .. } => Some(frac(p)),
+        Action::Drag { path, .. } => path.first().map(frac),
+        Action::Click { at: None, .. }
+        | Action::Scroll { at: None, .. }
+        | Action::MouseDown { .. }
+        | Action::MouseUp { .. } => desk.cursor(),
+        _ => None,
+    };
+    desk.target(at)
+}
+
+/// What the model is told when the policy refuses an action.
+fn refusal(class: Class) -> &'static str {
+    match class {
+        Class::SecureSurface => {
+            "a credential prompt is on screen; only the person at the computer may answer it"
+        }
+        _ => "this action is not allowed here",
     }
 }
 
@@ -1381,11 +1436,13 @@ async fn approve(
     lease: u64,
     action: &Value,
     flagged: &[String],
+    class: Class,
 ) -> Result<Option<bool>, Stop> {
     let asked = shared.apply(id, Event::Ask, |t| {
         t.approval = Some(Pending {
             action: action.clone(),
             flagged: flagged.to_vec(),
+            class: Some(class),
         });
         t.decision = None;
     });

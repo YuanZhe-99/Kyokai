@@ -9,6 +9,7 @@ pub mod desktop;
 #[cfg(test)]
 pub(crate) mod fake;
 mod openai;
+pub mod policy;
 #[cfg(test)]
 mod screens;
 mod task;

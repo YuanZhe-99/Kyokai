@@ -1729,3 +1729,112 @@ fn grid_models_click_where_they_mean() {
         "as pixels it lands elsewhere"
     );
 }
+
+/// A target the fake desktop reports from now on.
+fn set_target(rig: &Rig, target: super::policy::Target) {
+    rig.log.lock().unwrap().target = Some(target);
+}
+
+/// The lock screen pauses the task before anything acts; a credential
+/// prompt is refused, and the model is told so.
+#[test]
+fn secure_surfaces_pause_or_refuse() {
+    use super::policy::{Surface, Target};
+    let server = server(vec![
+        (0, claude_turn("m1", click_save())),
+        (0, claude_end("ok")),
+    ]);
+    let rig = rig("locked", "claude", &server.url);
+    set_target(
+        &rig,
+        Target {
+            surface: Surface::Locked,
+            ..Default::default()
+        },
+    );
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    let t = rig.until(id, "the pause", |t| t["state"] == "paused");
+    assert_eq!(t["paused"], "locked");
+    assert!(
+        !rig.log.lock().unwrap().pressed,
+        "nothing pressed on the lock screen"
+    );
+
+    let server = super::fake::server(vec![
+        (0, claude_turn("m1", click_save())),
+        (0, claude_end("ok")),
+    ]);
+    let rig = super::fake::rig("credentials", "claude", &server.url);
+    set_target(
+        &rig,
+        Target {
+            surface: Surface::Credentials,
+            ..Default::default()
+        },
+    );
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    let t = rig.state(id, "done");
+    assert_eq!(t["steps"][0]["outcome"], "refused");
+    assert!(!rig.log.lock().unwrap().pressed);
+    let answer = server.requests.lock().unwrap()[1].1.to_string();
+    assert!(
+        answer.contains("Refused by the host"),
+        "the model hears why"
+    );
+}
+
+/// Auto asks for a class it knows, says which, and runs the rest; three
+/// refusals in one task leave it asking before every action.
+#[test]
+fn auto_asks_by_class_and_falls_back_after_refusals() {
+    use super::policy::Target;
+    let server = server(vec![
+        (0, claude_turn("m1", click_save())),
+        (0, claude_end("ok")),
+    ]);
+    let rig = rig("auto-vault", "claude", &server.url);
+    set_target(
+        &rig,
+        Target {
+            program: Some("keepassxc.exe".into()),
+            ..Default::default()
+        },
+    );
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    let t = rig.state(id, "approval");
+    assert_eq!(t["approval"]["class"], "password-vault");
+    rig.ai.decide(id, true).unwrap();
+    rig.state(id, "done");
+    assert!(rig.log.lock().unwrap().pressed);
+
+    // Three declines, then even a plain editor asks.
+    let decline = |rig: &Rig, id| {
+        rig.until(id, "an approval", |t| t["state"] == "approval");
+        rig.ai.decide(id, false).unwrap();
+    };
+    let turns = (0..4)
+        .map(|i| (0, claude_turn(&format!("m{i}"), click_save())))
+        .chain([(0, claude_end("ok"))]);
+    let server = super::fake::server(turns.collect());
+    let rig = super::fake::rig("auto-fallback", "claude", &server.url);
+    set_target(
+        &rig,
+        Target {
+            program: Some("1password.exe".into()),
+            ..Default::default()
+        },
+    );
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    for _ in 0..3 {
+        decline(&rig, id);
+    }
+    set_target(
+        &rig,
+        Target {
+            program: Some("notepad.exe".into()),
+            ..Default::default()
+        },
+    );
+    let t = rig.until(id, "the fallback's approval", |t| t["state"] == "approval");
+    assert_eq!(t["approval"]["class"], "every-action");
+}

@@ -676,10 +676,59 @@ screenshot, its limits (text up to 16 KiB, up to 100 repeats, waits and holds up
 failure stops the turn: the actions after it are answered "not executed". Every action ends by
 releasing whatever it holds.
 
-The approval policy is Flagged (the default) or Every action. Flagged asks when the provider raised
-a safety check for the turn (once, before its first action) and for shortcuts with the Windows /
-Command key. A declined action fails with "The host user declined this action", and the model
-continues from there.
+### Approvals
+
+A task's approval mode is **Auto** (the default; `auto` in `ai.json`, which reads the first
+versions' `flagged` as Auto) or **Every action**. There is no mode that asks nothing and no
+"always allow": an approval covers the one action it shows. The policy (`ai::policy`) decides each
+action from the action itself and facts the system gives about what it would reach — never from
+what the model says — and the model cannot change it. The order is fixed, and the first row that
+applies decides:
+
+| Order | When | Then |
+|---|---|---|
+| 1 | the session is locked or the sign-in screen shows, or a secure desktop this process cannot open has the input | the task pauses (`locked`) |
+| 2 | a credential prompt (UAC's or the system's password sheet) | refused, in every mode |
+| 3 | a UAC consent prompt (helper modes) | asks, in every mode |
+| 4 | typing (text or keys) into a password field | asks, in every mode |
+| 5 | the provider flagged the turn | asks, once, before its first action |
+| 6 | Every action | asks |
+| 7 | Auto, a shortcut: Ctrl+Alt+Del or Windows / Command + L (power and session), Ctrl+Shift+Esc (process control), any other with the Windows / Command key | asks |
+| 8 | Auto, nothing known about the program the action reaches | asks (it fails closed) |
+| 9 | Auto, a class of the table below | asks |
+| 10 | anything else (and screenshots, zooms, waits and the cursor's position, which reach nothing; a pointer move alone) | runs |
+
+| Class | The action reaches |
+|---|---|
+| Remote Desktop and VNC | a Remote Desktop, VNC, RustDesk, AnyDesk or TeamViewer window (pixels only, no element tree) |
+| Password vault | a password manager (1Password, Bitwarden, KeePass(XC), Keychain Access, Passwords) |
+| Installing | an installer (Windows Installer, App Installer, Installer, pkexec, the software centres) |
+| Settings | system or security settings (Settings, Control Panel, MMC, the registry, Windows Security, System Settings, the desktops' control centres) |
+| Process control | Task Manager, Process Explorer, Activity Monitor, the system monitors |
+| Terminal | typing into a terminal (Command Prompt, PowerShell, Windows Terminal, Terminal, iTerm, and the common others); clicking one is not |
+| Uploading | a file dialog (open or save) |
+| Deleting | Delete in a file manager (Explorer, Finder, Files, Dolphin, …) |
+| Sending | Enter, or a click on a control named Send, in a mail or chat app |
+| Payments | a click on a control named Pay, Buy, Place order, … in a browser |
+| Consent | a click on a control named Allow, Accept, Agree, … in a browser or a system permission dialog |
+
+Words count only within a known app: a control named Send elsewhere is just a control. Programs are
+known by their executable's file name on Windows and Linux and by their app's name on macOS. What is
+known about a target:
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| The program | the window at the point (the focused one for keys), its process's executable | the window at the point (the frontmost for keys), its app | X11: the window's process (X-Resource or `_NET_WM_PID`); Wayland: nothing, so Auto asks for every action that acts |
+| The control | UI Automation at the point or the focus: password field, text, button, its name | a password field: Secure Event Input is on while one has the focus | — |
+| A file dialog | the common dialog (`#32770` holding the shell's item view) | — | — |
+| Secure surfaces | the session's lock state (`WTSSessionInfoEx`), the input desktop's name, LogonUI and consent running | the session's screen-locked key | — |
+
+In the helper modes the agent reads these on the user's desktop for the helper (`ai.target`); an
+agent that cannot answer leaves the target unknown, so Auto asks. Each approval says why it asks,
+in Kyokai's words for its class (the task's `approval.class`), beside the action and any provider
+notes. A declined action fails with "The host user declined this action", a refused one with
+"Refused by the host" and the reason, and the model continues from there; after three refusals or
+declines in one task it asks before every action.
 
 ### States
 

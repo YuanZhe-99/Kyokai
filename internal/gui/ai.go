@@ -301,6 +301,47 @@ func aiFinished(state string) bool {
 	return state == "done" || state == "failed" || state == "cancelled"
 }
 
+// aiWhy says why an action waits for approval, from the host's policy class
+// (doc/en-us/computer-use.md, "Approvals"); "" where the card says enough
+// already (every action, a flagged turn) or the host names no class.
+func aiWhy(class string) string {
+	switch class {
+	case "secure-surface":
+		return L.AIWhySecureSurface()
+	case "credentials":
+		return L.AIWhyCredentials()
+	case "unknown":
+		return L.AIWhyUnknown()
+	case "system-shortcut":
+		return L.AIWhyShortcut()
+	case "power-session":
+		return L.AIWhyPowerSession()
+	case "settings":
+		return L.AIWhySettings()
+	case "deleting":
+		return L.AIWhyDeleting()
+	case "uploading":
+		return L.AIWhyUploading()
+	case "password-vault":
+		return L.AIWhyPasswordVault()
+	case "installing":
+		return L.AIWhyInstalling()
+	case "terminal":
+		return L.AIWhyTerminal()
+	case "process-control":
+		return L.AIWhyProcessControl()
+	case "sending":
+		return L.AIWhySending()
+	case "payments":
+		return L.AIWhyPayments()
+	case "consent":
+		return L.AIWhyConsent()
+	case "remote-desktop":
+		return L.AIWhyRemoteDesktop()
+	}
+	return ""
+}
+
 func aiStateLabel(t *localapi.AITask) string {
 	switch t.State {
 	case "running":
@@ -319,6 +360,8 @@ func aiStateLabel(t *localapi.AITask) string {
 			return L.AIStatePausedDisconnected()
 		case "sleep":
 			return L.AIStatePausedSleep()
+		case "locked":
+			return L.AIStatePausedLocked()
 		}
 		return L.AIStatePaused()
 	case "done":

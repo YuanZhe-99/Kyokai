@@ -896,7 +896,7 @@ func demoAISettings(keys bool) *localapi.AISettings {
 				Models: []localapi.AIModel{{ID: "anthropic/claude-opus-5-5", Name: "Anthropic: Claude Opus 5.5"}, {ID: "google/gemini-3-pro"}}},
 		},
 		Model:    &localapi.AIModelRef{Source: "claude", ID: "claude-opus-5-5"},
-		Approval: "flagged",
+		Approval: "auto",
 		Keys:     map[string]bool{"claude": keys, "openrouter": keys},
 	}
 }

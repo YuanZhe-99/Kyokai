@@ -41,6 +41,13 @@ pub trait Desktop: Send {
     /// Whether the emergency-stop shortcut was pressed since the last call
     /// (the call clears it).
     fn stop_requested(&mut self) -> bool;
+    /// What input at `at` (fractions of the screen; None: the focused
+    /// window, for keys) would reach, as the system reports it
+    /// (`policy::Target`). The default knows nothing, so the policy asks.
+    fn target(&mut self, at: Option<(f32, f32)>) -> super::policy::Target {
+        let _ = at;
+        super::policy::Target::default()
+    }
 }
 
 /// One step of an action.
@@ -479,6 +486,217 @@ mod windows_impl {
 
         fn stop_requested(&mut self) -> bool {
             self.watch.stop_requested()
+        }
+
+        fn target(&mut self, at: Option<(f32, f32)>) -> crate::ai::policy::Target {
+            facts::target(at)
+        }
+    }
+
+    mod facts {
+        //! What input would reach on this desktop (`Desktop::target`): the
+        //! input desktop and the session's lock state, the window's
+        //! process, and the UI Automation element there.
+        use crate::ai::policy::{Role, Surface, Target};
+        use crate::input::{physical, process_image};
+        use windows::Win32::Foundation::{HWND, POINT};
+        use windows::Win32::System::Com::{
+            CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
+        };
+        use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
+        use windows::Win32::System::RemoteDesktop::{
+            WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTS_PROCESS_INFOW,
+            WTSEnumerateProcessesW, WTSFreeMemory, WTSINFOEXW, WTSQuerySessionInformationW,
+            WTSSessionInfoEx,
+        };
+        use windows::Win32::System::Threading::GetCurrentProcessId;
+        use windows::Win32::UI::Accessibility::{
+            CUIAutomation, IUIAutomation, IUIAutomationElement, UIA_ButtonControlTypeId,
+            UIA_DocumentControlTypeId, UIA_EditControlTypeId,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{
+            FindWindowExW, GA_ROOT, GetAncestor, GetClassNameW, GetForegroundWindow,
+            GetSystemMetrics, GetWindowThreadProcessId, SM_CXSCREEN, SM_CYSCREEN, WindowFromPoint,
+        };
+        use windows::core::w;
+
+        /// WTSINFOEX_LEVEL1's `SessionFlags` for a locked session.
+        const WTS_SESSIONSTATE_LOCK: i32 = 0;
+
+        /// Reads the facts for input at `at` (fractions of the primary
+        /// display), or at the focus.
+        pub fn target(at: Option<(f32, f32)>) -> Target {
+            let surface = surface();
+            if surface != Surface::Desktop {
+                return Target {
+                    surface,
+                    ..Default::default()
+                };
+            }
+            physical(|| {
+                // SAFETY: plain queries of the screen's metrics and windows.
+                let (hwnd, point) = unsafe {
+                    match at {
+                        Some((x, y)) => {
+                            let p = POINT {
+                                x: (x * GetSystemMetrics(SM_CXSCREEN) as f32) as i32,
+                                y: (y * GetSystemMetrics(SM_CYSCREEN) as f32) as i32,
+                            };
+                            (WindowFromPoint(p), Some(p))
+                        }
+                        None => (GetForegroundWindow(), None),
+                    }
+                };
+                // SAFETY: a plain query; a null window gives a null root.
+                let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+                let mut target = Target {
+                    program: program(root),
+                    file_dialog: file_dialog(root),
+                    ..Default::default()
+                };
+                if let Some(e) = element(point) {
+                    // SAFETY: COM calls on an element this thread holds.
+                    unsafe {
+                        target.role = Some(match e.CurrentIsPassword().map(|b| b.as_bool()) {
+                            Ok(true) => Role::Password,
+                            _ => match e.CurrentControlType() {
+                                Ok(t)
+                                    if t == UIA_EditControlTypeId
+                                        || t == UIA_DocumentControlTypeId =>
+                                {
+                                    Role::Text
+                                }
+                                Ok(t) if t == UIA_ButtonControlTypeId => Role::Button,
+                                _ => Role::Other,
+                            },
+                        });
+                        target.name = e
+                            .CurrentName()
+                            .ok()
+                            .map(|n| n.to_string().to_lowercase())
+                            .filter(|n| !n.is_empty());
+                    }
+                }
+                target
+            })
+        }
+
+        /// What the input desktop shows: the user's desktop, the lock or
+        /// sign-in screen, a UAC prompt, or a secure desktop this process
+        /// cannot open.
+        fn surface() -> Surface {
+            if locked() {
+                return Surface::Locked;
+            }
+            match crate::agent::input_desktop_name() {
+                Some(n) if n.eq_ignore_ascii_case("default") => Surface::Desktop,
+                None => Surface::Unknown,
+                Some(_) if running("logonui.exe") => Surface::Locked,
+                Some(_) if running("consent.exe") => Surface::Consent,
+                Some(_) => Surface::Unknown,
+            }
+        }
+
+        /// Whether this session is locked (its lock screen shows).
+        fn locked() -> bool {
+            let mut buf = windows::core::PWSTR::null();
+            let mut len = 0u32;
+            // SAFETY: the system allocates `buf`, freed below; it is read
+            // only when the call succeeded and filled a whole WTSINFOEXW.
+            unsafe {
+                if WTSQuerySessionInformationW(
+                    Some(WTS_CURRENT_SERVER_HANDLE),
+                    WTS_CURRENT_SESSION,
+                    WTSSessionInfoEx,
+                    &mut buf,
+                    &mut len,
+                )
+                .is_err()
+                {
+                    return false;
+                }
+                let info = buf.0 as *const WTSINFOEXW;
+                let locked = len as usize >= std::mem::size_of::<WTSINFOEXW>()
+                    && (*info).Level == 1
+                    && (*info).Data.WTSInfoExLevel1.SessionFlags == WTS_SESSIONSTATE_LOCK;
+                WTSFreeMemory(buf.0.cast());
+                locked
+            }
+        }
+
+        /// Whether a program by this executable name runs in this session.
+        fn running(exe: &str) -> bool {
+            let mut session = 0u32;
+            let mut list: *mut WTS_PROCESS_INFOW = std::ptr::null_mut();
+            let mut count = 0u32;
+            // SAFETY: the system allocates `list` with `count` entries, read
+            // only within that count and freed below.
+            unsafe {
+                if ProcessIdToSessionId(GetCurrentProcessId(), &mut session).is_err()
+                    || WTSEnumerateProcessesW(
+                        Some(WTS_CURRENT_SERVER_HANDLE),
+                        0,
+                        1,
+                        &mut list,
+                        &mut count,
+                    )
+                    .is_err()
+                {
+                    return false;
+                }
+                let found = std::slice::from_raw_parts(list, count as usize)
+                    .iter()
+                    .any(|p| {
+                        p.SessionId == session
+                            && p.pProcessName
+                                .to_string()
+                                .is_ok_and(|n| n.eq_ignore_ascii_case(exe))
+                    });
+                WTSFreeMemory(list.cast());
+                found
+            }
+        }
+
+        /// The executable name (lowercase) of the process owning a window.
+        fn program(root: HWND) -> Option<String> {
+            let mut pid = 0u32;
+            // SAFETY: a plain query; a null window leaves `pid` zero.
+            unsafe { GetWindowThreadProcessId(root, Some(&mut pid)) };
+            if pid == 0 {
+                return None;
+            }
+            let path = process_image(pid)?;
+            std::path::Path::new(&path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_lowercase())
+        }
+
+        /// Whether a top-level window is the common file dialog (a dialog
+        /// holding the shell's item view).
+        fn file_dialog(root: HWND) -> bool {
+            let mut class = [0u16; 32];
+            // SAFETY: fills `class` up to its length.
+            let n = unsafe { GetClassNameW(root, &mut class) } as usize;
+            if String::from_utf16_lossy(&class[..n]) != "#32770" {
+                return false;
+            }
+            // SAFETY: a plain search among the window's children.
+            unsafe { FindWindowExW(Some(root), None, w!("DUIViewWndClassName"), None) }.is_ok()
+        }
+
+        /// The UI Automation element at a point, or the focused one.
+        fn element(at: Option<POINT>) -> Option<IUIAutomationElement> {
+            // SAFETY: COM on this thread (multithreaded, as the crate uses
+            // it elsewhere); the objects are released when dropped.
+            unsafe {
+                let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+                let uia: IUIAutomation =
+                    CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+                match at {
+                    Some(p) => uia.ElementFromPoint(p).ok(),
+                    None => uia.GetFocusedElement().ok(),
+                }
+            }
         }
     }
 }
