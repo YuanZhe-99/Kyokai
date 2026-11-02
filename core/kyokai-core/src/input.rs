@@ -37,6 +37,7 @@ pub enum Event {
     /// Windows numbers it (`crate::keyboard::scan_code`), with the
     /// controller's CapsLock and NumLock, which the host follows.
     Scan {
+        #[serde(deserialize_with = "scan_code")]
         code: u32,
         down: bool,
         #[serde(default)]
@@ -50,6 +51,26 @@ pub enum Event {
 /// or Pause (0xE11D).
 pub fn valid_scan(code: u32) -> bool {
     matches!(code, 0x01..=0xFF | 0xE001..=0xE0FF | 0xE11D)
+}
+
+/// Reads a scan code from a controller, taking 0xE036 for Right Shift
+/// (0x36): Windows controllers up to 0.6.15 sent it so, from their keyboard
+/// hook's extended flag, and 0xE036 is no key to any host.
+fn scan_code<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
+    u32::deserialize(d).map(right_shift)
+}
+
+/// `scan_code` for the keys a `sync` holds.
+fn scan_codes<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<std::collections::BTreeSet<u32>, D::Error> {
+    std::collections::BTreeSet::<u32>::deserialize(d)
+        .map(|codes| codes.into_iter().map(right_shift).collect())
+}
+
+/// The scan code itself, or 0x36 for 0xE036.
+fn right_shift(code: u32) -> u32 {
+    if code == 0xE036 { 0x36 } else { code }
 }
 
 /// `KEYBDINPUT` flags, as numbers so the mapping is testable everywhere.
@@ -215,7 +236,7 @@ impl Event {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Held {
     /// Keys by scan code (Map and Translate).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "scan_codes")]
     pub scans: std::collections::BTreeSet<u32>,
     /// Keys by name (Legacy).
     #[serde(default)]
@@ -1493,6 +1514,26 @@ mod tests {
         ];
         for (code, want) in cases {
             assert_eq!(scan_input(code), want, "{code:#x}");
+        }
+    }
+
+    #[test]
+    fn right_shift_from_older_windows_controllers_is_right_shift() {
+        // (as sent, as read): 0.6.15's Windows grab sent Right Shift as 0xE036.
+        for (sent, read) in [(0xE036, 0x36), (0x36, 0x36), (0x2A, 0x2A), (0xE01D, 0xE01D)] {
+            let e: Event = serde_json::from_value(
+                serde_json::json!({"kind": "scan", "code": sent, "down": true}),
+            )
+            .unwrap();
+            assert!(
+                matches!(e, Event::Scan { code, .. } if code == read),
+                "{sent:#x}"
+            );
+            let s: Sync = serde_json::from_value(
+                serde_json::json!({"kind": "sync", "held": {"scans": [sent]}}),
+            )
+            .unwrap();
+            assert_eq!(s.held.scans, [read].into(), "{sent:#x}");
         }
     }
 

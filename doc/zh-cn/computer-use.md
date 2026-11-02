@@ -154,7 +154,7 @@ VideoToolbox 硬件”；AV1 总是 libaom 软件）、被控端的编码时间�
 |---|---|
 | 指针移动、按下、松开 | `{kind: "pointer", action, button（0 主键，1 次键，2 中键）, x, y}`，x 与 y 是相对画面的比例；在画面周围黑边上的按下与移动会被丢弃（画面上的控制栏自己接收），松开总会发送；没有按住按键的移动以 button 0 发送（被控端知道自己按住了什么）。查看窗口最多每 8 毫秒发送一次最新的移动，任何其他事件都会先发送正在等待的移动（见下文“输入是一条流”） |
 | 滚动 | `{kind: "scroll", dx, dy}`，以行计（触控板像素 ÷ 40）；`dy` 为正表示内容向下移动 |
-| 映射或翻译模式下的按键 | `{kind: "scan", code, down, caps, num}`：按 Windows 的编号给出按键的扫描码（set-1 扫描码，扩展键为 0xE0xx，Pause 为 0xE11D），并附上控制端的 CapsLock 与 NumLock（[键盘模式](#键盘模式)） |
+| 映射或翻译模式下的按键 | `{kind: "scan", code, down, caps, num}`：按 Windows 的编号给出按键的扫描码（set-1 扫描码，扩展键为 0xE0xx，Pause 为 0xE11D；右 Shift 为 0x36，尽管 Windows 键盘钩子把它标为扩展键，主机也把 0.6.15 及之前的 Windows 控制端为它发来的 0xE036 当作 0x36），并附上控制端的 CapsLock 与 NumLock（[键盘模式](#键盘模式)） |
 | 文字 | `{kind: "text", text}`：以 Unicode 字符输入，因此由控制端的键盘布局与死键决定（翻译与传统模式） |
 | 传统模式：不带 Ctrl、Alt 或 Win、会产生文字的按键 | 不发送：随后会发送它的文字 |
 | 传统模式：其他按键与快捷键 | `{kind: "key", key, down, mods}`，按名称发送（`enter`、`f5`、`page-down`、带 Ctrl 的 `c` 等）；只有发送过按下的键才会发送松开 |

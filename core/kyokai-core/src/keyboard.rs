@@ -99,6 +99,8 @@ pub fn leaves_injected(extra: usize, vk: u32) -> bool {
 /// layout makes its own.
 /// Notes: the hook reports NumLock as extended 0x45 and Pause as plain
 /// 0x45; Windows' own numbering is the other way round from the hook's.
+/// It also marks Right Shift extended, which Windows numbers 0x36 (0xE036
+/// is no key to it: `MapVirtualKey` gives none).
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn scan_code(
     vk: u32,
@@ -112,6 +114,7 @@ pub fn scan_code(
     match vk {
         0x13 => Some(0xE11D), // VK_PAUSE
         0x90 => Some(0x45),   // VK_NUMLOCK
+        0xA1 => Some(0x36),   // VK_RSHIFT
         _ if scan == 0 => match vk_to_scan(vk) {
             0 => None,
             code => Some(code),
@@ -1218,6 +1221,8 @@ mod tests {
             (0x24, 0x47, true, Some(0xE047)),  // Home
             (0x67, 0x47, false, Some(0x47)),   // numpad 7
             (0x24, 0x47, false, Some(0x47)),   // numpad 7 with NumLock off
+            (0xA0, 0x2A, false, Some(0x2A)),   // left Shift
+            (0xA1, 0x36, true, Some(0x36)),    // right Shift, which the hook marks extended
             (0xA2, 0x1D, false, Some(0x1D)),   // left Ctrl
             (0xA3, 0x1D, true, Some(0xE01D)),  // right Ctrl
             (0xA5, 0x38, true, Some(0xE038)),  // right Alt

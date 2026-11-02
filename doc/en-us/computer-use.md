@@ -261,7 +261,7 @@ The viewer sends input only for a session granted `control-input`; the host chec
 |---|---|
 | pointer move, press, release | `{kind: "pointer", action, button (0 primary, 1 secondary, 2 middle), x, y}`, x and y as fractions of the picture; presses and moves on the black bars around it are dropped (the toolbar over it takes its own), releases always sent; a move with no button held goes with button 0 (the host knows what it holds). The viewer sends the newest move at most every 8 ms, and any other event sends a waiting move first (see "Input is a stream" below) |
 | scroll | `{kind: "scroll", dx, dy}` in lines (touchpad pixels ÷ 40); positive `dy` moves the content down |
-| a key, in Map or Translate mode | `{kind: "scan", code, down, caps, num}`: the key's scan code as Windows numbers it (the set-1 code, 0xE0xx for extended keys, 0xE11D for Pause) with the controller's CapsLock and NumLock ([Keyboard modes](#keyboard-modes)) |
+| a key, in Map or Translate mode | `{kind: "scan", code, down, caps, num}`: the key's scan code as Windows numbers it (the set-1 code, 0xE0xx for extended keys, 0xE11D for Pause; Right Shift is 0x36, though the Windows keyboard hook marks it extended, and a host takes the 0xE036 that Windows controllers up to 0.6.15 sent for it as 0x36) with the controller's CapsLock and NumLock ([Keyboard modes](#keyboard-modes)) |
 | text | `{kind: "text", text}`: typed as Unicode characters, so the controller's layout and dead keys decide (Translate and Legacy) |
 | Legacy: a key without Ctrl, Alt or Win that types | nothing: its text follows |
 | Legacy: other keys and shortcuts | `{kind: "key", key, down, mods}` by name (`enter`, `f5`, `page-down`, `c` with Ctrl, …); a release only when its press was sent |
