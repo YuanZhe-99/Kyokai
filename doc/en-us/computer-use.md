@@ -690,8 +690,10 @@ where it is an experiment (`elements` on a source in `ai.json`, true or false).
   number, role, name, its value (an edit's text) and bounds in the model's unit on that screenshot
   (`1 button "Save" [560,400,719,449]`); names and values are cut at 80 characters. A password
   field's value is never read. Kyokai's own windows are never listed, nor, with apps granted ([AI
-  scope](#ai-scope)), a window of another program, which the screenshot dims. macOS and Linux list
-  nothing yet (no AX or AT-SPI reader), and Remote Desktop and VNC windows are pixels to the tree.
+  scope](#ai-scope)), a window of another program, which the screenshot dims. On macOS the front
+  window's controls come from the Accessibility API (with Accessibility allowed; a secure text
+  field's value never read); Linux lists nothing yet (no AT-SPI reader), and Remote Desktop and
+  VNC windows are pixels to the tree.
 - **Text read from the screen**: where the tree gives fewer than three elements (a Remote Desktop
   or VNC window, a lent pane, a game, an app without one), the system's OCR reads the screenshot's
   frame and its text lines join the list as `text` elements, bounds and all (`ai::ocr`: Windows.Media.Ocr

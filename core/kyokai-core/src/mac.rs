@@ -1800,6 +1800,10 @@ impl Desktop for Screen {
 
     /// The on-screen windows front to back, each with its app's name, in
     /// the main display's pixels.
+    fn elements(&mut self) -> Option<crate::ai::elements::Listed> {
+        ax_elements()
+    }
+
     fn windows(&mut self) -> Vec<crate::ai::desktop::Shown> {
         let Ok((id, d)) = main_display() else {
             return Vec::new();
@@ -2087,4 +2091,177 @@ pub fn ocr_lines(frame: &crate::ai::desktop::Frame) -> Option<Vec<crate::ai::ele
     }
     out.sort_by_key(|e| (e.rect[1], e.rect[0]));
     Some(out)
+}
+
+/// One accessibility attribute of an element, when it has one.
+fn ax_attr(e: &objc2_application_services::AXUIElement, name: &str) -> Option<CFRetained<CFType>> {
+    let mut value: *const CFType = std::ptr::null();
+    // SAFETY: `value` is a valid place for the copied attribute, which
+    // comes back retained once and is taken over by CFRetained.
+    let err = unsafe {
+        e.copy_attribute_value(
+            &CFString::from_str(name),
+            std::ptr::NonNull::from(&mut value),
+        )
+    };
+    if err != objc2_application_services::AXError::Success {
+        return None;
+    }
+    // SAFETY: on success the attribute is a CF object retained for us.
+    std::ptr::NonNull::new(value.cast_mut()).map(|v| unsafe { CFRetained::from_raw(v) })
+}
+
+/// An attribute as a string (a title, a value), when it is one.
+fn ax_string(e: &objc2_application_services::AXUIElement, name: &str) -> Option<String> {
+    ax_attr(e, name)?
+        .downcast_ref::<CFString>()
+        .map(|s| s.to_string())
+}
+
+/// The element list's role for an AX role, None for containers and parts
+/// not acted on (groups, scroll areas, toolbars, the window).
+fn ax_role(role: &str, subrole: Option<&str>) -> Option<&'static str> {
+    Some(match role {
+        "AXButton" | "AXDisclosureTriangle" | "AXMenuButton" => "button",
+        "AXTextField" | "AXTextArea" | "AXSearchField" => "edit",
+        "AXComboBox" | "AXPopUpButton" => "combobox",
+        "AXCheckBox" => "checkbox",
+        "AXRadioButton" if subrole == Some("AXTabButton") => "tabitem",
+        "AXRadioButton" => "radiobutton",
+        "AXLink" => "link",
+        "AXMenuItem" | "AXMenuBarItem" => "menuitem",
+        "AXStaticText" => "text",
+        "AXImage" => "image",
+        "AXSlider" => "slider",
+        "AXIncrementor" => "spinner",
+        "AXRow" | "AXCell" => "listitem",
+        "AXOutlineRow" => "treeitem",
+        "AXWebArea" | "AXDocument" => "document",
+        _ => return None,
+    })
+}
+
+/// The front window's controls through the Accessibility API, as the
+/// element list keeps them (`Desktop::elements`): those people act on and
+/// named text and images, on the main display, at most `MAX_ELEMENTS`, in
+/// the tree's order; a secure text field's value is never read. Each
+/// element's bounds are in the main display's pixels.
+/// Returns: None without Accessibility permission, a front window, or for
+/// Kyokai's own.
+fn ax_elements() -> Option<crate::ai::elements::Listed> {
+    use crate::ai::elements::{Element, Listed, MAX_ELEMENTS};
+    use objc2_application_services::{AXUIElement, AXValue, AXValueType};
+    use objc2_core_foundation::{CFArray, CGSize};
+    if !AXIsProcessTrusted() {
+        return None;
+    }
+    let pid = window_owner(None)?;
+    if kyokai_process(pid) {
+        return None;
+    }
+    let (id, d) = main_display().ok()?;
+    let (pw, ph) = pixel_size(id, d);
+    let (sx, sy) = (pw as f64 / d.width as f64, ph as f64 / d.height as f64);
+    // SAFETY: an element for a running process; Accessibility checked above.
+    let app = unsafe { AXUIElement::new_application(pid) };
+    // SAFETY: a plain setting on the element; a slow app is not waited on
+    // for long.
+    let _ = unsafe { app.set_messaging_timeout(0.5) };
+    let window = ax_attr(&app, "AXFocusedWindow")?;
+    let window = window.downcast_ref::<AXUIElement>()?;
+    let title = ax_string(window, "AXTitle").unwrap_or_default();
+    // The window's elements depth first, the tree's order.
+    let mut stack: Vec<CFRetained<CFType>> = Vec::new();
+    let mut elements = Vec::new();
+    let mut seen = 0;
+    if let Some(kids) = ax_attr(window, "AXChildren") {
+        stack.push(kids);
+    }
+    let point = |e: &AXUIElement, name: &str, ty: AXValueType| -> Option<(f64, f64)> {
+        let v = ax_attr(e, name)?;
+        let v = v.downcast_ref::<AXValue>()?;
+        let mut out = CGSize {
+            width: 0.0,
+            height: 0.0,
+        };
+        // SAFETY: a CGPoint and a CGSize are both two doubles, the size of
+        // `out`, which the value is read into.
+        let ok = unsafe { v.value(ty, std::ptr::NonNull::from(&mut out).cast()) };
+        ok.then_some((out.width, out.height))
+    };
+    while let Some(node) = stack.pop() {
+        if elements.len() >= MAX_ELEMENTS || seen > 3000 {
+            break;
+        }
+        if let Some(list) = node.downcast_ref::<CFArray>() {
+            // SAFETY: an AX children list holds CF objects.
+            let list = unsafe { list.cast_unchecked::<CFType>() };
+            // Children are pushed in reverse so the first comes off first.
+            for i in (0..list.len()).rev() {
+                if let Some(child) = list.get(i) {
+                    stack.push(child);
+                }
+            }
+            continue;
+        }
+        let Some(e) = node.downcast_ref::<AXUIElement>() else {
+            continue;
+        };
+        seen += 1;
+        if let Some(kids) = ax_attr(e, "AXChildren") {
+            stack.push(kids);
+        }
+        let Some(r) = ax_string(e, "AXRole") else {
+            continue;
+        };
+        let subrole = ax_string(e, "AXSubrole");
+        let Some(role) = ax_role(&r, subrole.as_deref()) else {
+            continue;
+        };
+        let (Some((x, y)), Some((w, h))) = (
+            point(e, "AXPosition", AXValueType::CGPoint),
+            point(e, "AXSize", AXValueType::CGSize),
+        ) else {
+            continue;
+        };
+        let rect = [
+            ((x - d.x as f64) * sx).max(0.0) as i32,
+            ((y - d.y as f64) * sy).max(0.0) as i32,
+            ((x + w - d.x as f64) * sx).min(pw as f64) as i32,
+            ((y + h - d.y as f64) * sy).min(ph as f64) as i32,
+        ];
+        if rect[2] <= rect[0] || rect[3] <= rect[1] {
+            continue;
+        }
+        let name = ax_string(e, "AXTitle")
+            .filter(|t| !t.is_empty())
+            .or_else(|| ax_string(e, "AXDescription"))
+            .unwrap_or_default();
+        let secure = subrole.as_deref() == Some("AXSecureTextField");
+        let text = if secure {
+            String::new()
+        } else {
+            ax_string(e, "AXValue").unwrap_or_default()
+        };
+        let name = if role == "text" && name.is_empty() {
+            text.clone()
+        } else {
+            name
+        };
+        if matches!(role, "text" | "image") && name.trim().is_empty() {
+            continue;
+        }
+        let text = if role == "text" { String::new() } else { text };
+        elements.push(Element {
+            role: role.into(),
+            name,
+            text,
+            rect,
+        });
+    }
+    Some(Listed {
+        window: title,
+        program: Some(process_name(pid).to_lowercase()).filter(|p| !p.is_empty()),
+        elements,
+    })
 }
