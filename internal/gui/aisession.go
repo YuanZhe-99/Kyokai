@@ -592,7 +592,12 @@ func (t *aiTab) submit(mode boxMode, s aiPaneState, text string) bool {
 			a.aiReply(s.task.ID, text, t.model, t.thinking)
 			t.model, t.thinking = nil, ""
 		} else if l := a.aiLinkOf(t.device); l != nil {
-			l.send(map[string]any{"type": "ai-command", "id": s.task.ID, "command": "reply", "text": text})
+			msg := map[string]any{"type": "ai-command", "id": s.task.ID, "command": "reply", "text": text}
+			if t.thinking != "" {
+				msg["thinking"] = t.thinking
+			}
+			l.send(msg)
+			t.thinking = ""
 		}
 		return true
 	}
@@ -615,7 +620,12 @@ func (t *aiTab) submit(mode boxMode, s aiPaneState, text string) bool {
 			t.prev = v.task.ID
 		}
 		l.setDraft("")
-		l.send(map[string]any{"type": "ai-start", "key": key, "instruction": text})
+		msg := map[string]any{"type": "ai-start", "key": key, "instruction": text}
+		if t.thinking != "" {
+			msg["thinking"] = t.thinking
+		}
+		l.send(msg)
+		t.thinking = ""
 		return true
 	}
 	t.starting = text
@@ -681,8 +691,15 @@ func (t *aiTab) rename(name string) {
 	}
 	// This computer's task takes the name too, so the command line and an
 	// export show it.
-	if r, ok := t.app.aiRecord(t.id); ok && t.device == "" && r.Task != 0 {
+	r, ok := t.app.aiRecord(t.id)
+	switch {
+	case !ok || r.Task == 0:
+	case t.device == "":
 		t.app.aiRenameTask(r.Task, name)
+	case t.app.hostHas(t.device, featureAISessions):
+		if l := t.app.aiLinkOf(t.device); l != nil {
+			l.send(map[string]any{"type": "ai-command", "id": r.Task, "command": "rename", "text": name})
+		}
 	}
 }
 

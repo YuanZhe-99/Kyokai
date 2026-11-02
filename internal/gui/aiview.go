@@ -506,6 +506,9 @@ func (t *aiTab) chips(c *ui.Context, rec AIRecord, s aiPaneState) {
 			aiChip(c, "ai-chip-ask-"+t.id, aiShield, ui.Transparent, L.AIApprovalOnHost(t.where()), nil)
 			aiChip(c, "ai-chip-where-"+t.id, nil, dot, L.AIRunsOn(t.where()), where)
 			ui.Box(c).Grow(1)
+			if a.hostHas(t.device, featureAISessions) {
+				t.thinkingChip(c, s)
+			}
 			text := L.AIKeyOf(t.where())
 			if s.task != nil && s.task.Model != "" {
 				text = L.AIModelKeyOf(t.where(), friendlyModelName(s.task.Model, "", ""))
@@ -578,19 +581,7 @@ func (t *aiTab) chips(c *ui.Context, rec AIRecord, s aiPaneState) {
 			}
 		}
 		if protocol != "" && protocol != "openai-chat" {
-			level := t.thinking
-			// A running or finished task shows its own; a new session the usual.
-			if level == "" && s.task != nil && (done != nil || !aiFinished(s.task.State)) {
-				level = s.task.Thinking
-			}
-			aiChip(c, "ai-chip-thinking-"+t.id, nil, ui.Transparent, L.AIThinking(thinkingLabel(level)), func(m *ui.Menu) {
-				for _, k := range []string{"low", "medium", "high", "max"} {
-					on := k == level || level == "" && k == "high"
-					if m.Item(thinkingLabel(k)).Radio(on).Chosen() && !on {
-						t.thinking = k
-					}
-				}
-			})
+			t.thinkingChip(c, s)
 		}
 		if done != nil {
 			cur := s.task.Model
@@ -721,7 +712,7 @@ func (t *aiTab) titleExtras(c *ui.Context) {
 		return
 	}
 	if task := t.state(rec).task; task != nil {
-		if t.device == "" && task.State == "done" {
+		if task.State == "done" && (t.device == "" || t.app.hostHas(t.device, featureAISessions)) {
 			t.moreMenu(c, task)
 		}
 		switch {
@@ -735,31 +726,47 @@ func (t *aiTab) titleExtras(c *ui.Context) {
 	}
 }
 
-// moreMenu is the header's menu for this computer's finished task:
-// Duplicate, Continue from an earlier reply (a fork after that reply's
-// run), Compact conversation and Export as Markdown.
+// moreMenu is the header's menu for a finished task, this computer's or a
+// host's that announced "ai-sessions": Duplicate, Continue from an earlier
+// reply (a fork after that reply's run), Compact conversation and Export
+// as Markdown.
 func (t *aiTab) moreMenu(c *ui.Context, task *localapi.AITask) {
 	a := t.app
-	id, runs, can, compacting := task.ID, slices.Clone(task.Runs), task.Resumable, task.Compacting
+	id, instruction, runs, can, compacting := task.ID, task.Instruction, slices.Clone(task.Runs), task.Resumable, task.Compacting
+	fork := func(run *int) {
+		if t.device == "" {
+			a.aiFork(t, id, run)
+			return
+		}
+		a.hostFork(t, id, instruction, run)
+	}
 	iconButtonBase(c, "head-more-"+t.id, rowMore, L.ActionMore()).Menu(func(m *ui.Menu) {
 		if m.Item(L.AIDuplicate()).Disabled(!can).Chosen() {
-			a.aiFork(t, id, nil)
+			fork(nil)
 		}
 		if len(runs) > 1 {
 			m.Submenu(L.AIContinueFrom(), func(m *ui.Menu) {
 				for i, r := range runs[:len(runs)-1] {
 					if m.Item(L.AIContinueAfter(clipText(r.Message, 40))).Disabled(!can).Chosen() {
-						a.aiFork(t, id, &i)
+						fork(&i)
 					}
 				}
 			})
 		}
 		if m.Item(L.AICompact()).Disabled(!can || compacting).Chosen() {
-			a.aiCompact(id)
+			if t.device == "" {
+				a.aiCompact(id)
+			} else if l := a.aiLinkOf(t.device); l != nil {
+				l.send(map[string]any{"type": "ai-command", "id": id, "command": "compact"})
+			}
 		}
 		m.Separator()
 		if m.Item(L.AIExport()).Chosen() {
-			go a.aiExport(id, t.title())
+			if t.device == "" {
+				go a.aiExport(id, t.title())
+			} else if l := a.aiLinkOf(t.device); l != nil {
+				go a.hostExport(l, id, t.title())
+			}
 		}
 	})
 }
@@ -859,4 +866,22 @@ func aiWhen(at int64, now time.Time) string {
 		return L.AIYesterday()
 	}
 	return t.Format("01-02")
+}
+
+// thinkingChip chooses how much the model thinks from the next start or
+// reply: Low, Medium, High or Max; it shows the chosen level, else a
+// running or finished task's own, else the usual (High).
+func (t *aiTab) thinkingChip(c *ui.Context, s aiPaneState) {
+	level := t.thinking
+	if level == "" && s.task != nil && (s.task.State == "done" || !aiFinished(s.task.State)) {
+		level = s.task.Thinking
+	}
+	aiChip(c, "ai-chip-thinking-"+t.id, nil, ui.Transparent, L.AIThinking(thinkingLabel(level)), func(m *ui.Menu) {
+		for _, k := range []string{"low", "medium", "high", "max"} {
+			on := k == level || level == "" && k == "high"
+			if m.Item(thinkingLabel(k)).Radio(on).Chosen() && !on {
+				t.thinking = k
+			}
+		}
+	})
 }

@@ -314,14 +314,57 @@ func (a *App) aiCompact(id uint64) {
 	}()
 }
 
-// aiExport saves this computer's task as Markdown where the user chooses.
+// exportPath asks the user where to save a task as Markdown.
+// Returns: the path, empty when the user cancelled.
 // Notes: the save dialog waits for the user; call it off the main thread.
-func (a *App) aiExport(id uint64, title string) {
+func (a *App) exportPath(title string) string {
 	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
 		Parent: a.window, Title: L.AIExport(), DefaultPath: exportName(title) + ".md",
 		Filters: []mygo.FileFilter{{Name: L.MarkdownFileKind(), Extensions: []string{"md"}}},
 	})
-	if err != nil || path == "" {
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
+// hostExport asks a host for its task as Markdown, saved where the user
+// chooses when it comes (aiLink.exportTo).
+// Notes: call it off the main thread.
+func (a *App) hostExport(l *aiLink, id uint64, title string) {
+	if path := a.exportPath(title); path != "" {
+		l.exportTo(id, path)
+	}
+}
+
+// hostFork asks a host to copy its finished task, as it is (run nil) or
+// as it was after one of its runs, and opens a session for the host that
+// takes the copy when it comes (a new task with the same instruction:
+// aiBinds), titled as t.
+// Notes: call on the main thread.
+func (a *App) hostFork(t *aiTab, id uint64, instruction string, run *int) {
+	l := a.aiLinkOf(t.device)
+	if l == nil {
+		return
+	}
+	rec := a.newAIRecord(t.device)
+	title := t.title()
+	a.setAIRecord(rec, func(r *AIRecord) { r.Title = title })
+	if n := a.openAISession(t.device, "", rec, nil, zoneMiddle); n != nil {
+		n.starting, n.prev = instruction, id
+	}
+	msg := map[string]any{"type": "ai-command", "id": id, "command": "fork"}
+	if run != nil {
+		msg["run"] = *run
+	}
+	l.send(msg)
+}
+
+// aiExport saves this computer's task as Markdown where the user chooses.
+// Notes: the save dialog waits for the user; call it off the main thread.
+func (a *App) aiExport(id uint64, title string) {
+	path := a.exportPath(title)
+	if path == "" {
 		return
 	}
 	resp, err := a.requestWith(localapi.Request{Type: localapi.RequestAITaskExport, ID: id})

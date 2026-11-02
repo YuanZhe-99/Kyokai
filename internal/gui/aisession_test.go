@@ -372,6 +372,30 @@ func TestAIFinishedTaskChoices(t *testing.T) {
 	}
 }
 
+// TestHostAISessionsNeedTheFeature: a host's session offers thinking (and
+// the finished task's menu) only when the host announced "ai-sessions".
+func TestHostAISessionsNeedTheFeature(t *testing.T) {
+	now := time.Now().Unix()
+	done := localapi.AITask{ID: 3, Instruction: "Rename the report", Model: "claude-opus-5-5", State: "done", Resumable: true, Created: now, Updated: now}
+	for _, features := range [][]string{nil, {"tunnel", featureAISessions}} {
+		a := aiDemoApp(t)
+		a.status.Recent[0].Features = features
+		task := done
+		addAILink(a, "657365333", "connected", true, true, &task)
+		addAITab(a, "657365333", AIRecord{ID: "h", Device: "657365333", Task: 3, Title: "Rename the report", Updated: now})
+		tt := ui.NewTester(a.main.view, 1280, 800)
+		tt.Frame()
+		tt.Frame()
+		want := features != nil
+		if got := tt.HasText(L.AIThinking(L.AIThinkingHigh())); got != want {
+			t.Errorf("features %v: thinking shown %v, want %v", features, got, want)
+		}
+		if got := a.hostHas("657365333", featureAISessions); got != want {
+			t.Errorf("features %v: hostHas %v", features, got)
+		}
+	}
+}
+
 // TestExportNamesAndClips: an export's file name leaves out what file
 // systems refuse; menu items clip long messages to one line.
 func TestExportNamesAndClips(t *testing.T) {

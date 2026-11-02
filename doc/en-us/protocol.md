@@ -229,12 +229,13 @@ closes one with no frame for 15 seconds.
 
 | Message | Direction | Needs | Does |
 |---|---|---|---|
-| `{"type": "ai-start", key, instruction}` | controller → host | `run-ai-task` | starts a task on the host for this controller; a repeated key starts one task |
-| `{"type": "ai-command", id, command, text}` | controller → host | `run-ai-task` | `pause`, `resume`, `cancel` or `reply` (with `text`) for the host's task, whoever started it |
+| `{"type": "ai-start", key, instruction, thinking?}` | controller → host | `run-ai-task` | starts a task on the host for this controller; a repeated key starts one task; `thinking` (`ai-sessions`): `low`, `medium`, `high` or `max` |
+| `{"type": "ai-command", id, command, text, run?, thinking?}` | controller → host | `run-ai-task` | `pause`, `resume`, `cancel` or `reply` (with `text`, and `thinking` with `ai-sessions`) for the host's task, whoever started it; with `ai-sessions` also `fork` (after run `run`, none: a clone; the copy is the host's own and its newest task), `compact`, `rename` (`text` the name) and `export` ([computer-use.md](computer-use.md#history-and-settings)) |
 | `{"type": "ai-decide", id, approve}` | controller → host | `approve-ai-action` | answers the approval of the host's task |
 | `{"type": "ai-draft", text}` | either way | `run-ai-task` (controller → host) | the draft of the next instruction: a controller's reaches the host, which passes the shared draft (as anyone typed it last) to every controller |
 | `{"type": "ai-task", task}` | host → controller | — | the host's newest task, the same for every controller whoever started it, whenever it changes and when a session (re)starts; its latest 20 actions and 3 progress notes |
 | `{"type": "ai-error", error}` | host → controller | — | why a request was refused |
+| `{"type": "ai-export", id, markdown}` | host → controller | — | the task as Markdown, the answer to `export` (`ai-sessions`) |
 
 Commands are never sent again after a reconnect; the host sends the current task instead. Input
 from a controller with `control-input` pauses a task that holds the desktop (a take-over) before it
@@ -264,6 +265,7 @@ outside the range this build speaks (10 to 10) is refused as incompatible.
 | `recovery` | the controller's `no-picture`; the host's `placeholder` in `video-start` and `video` in its stats |
 | `nanokvm` | sessions of the computer wired to the host's NanoKVM USB (`client_hello`'s `nanokvm`); permission `use-nanokvm` |
 | `resolution` | the controller's resolution choice (`quality`'s `size`); the host's `size` in `video-start` |
+| `ai-sessions` | `ai-start`'s and `reply`'s `thinking`; the `fork`, `compact`, `rename` and `export` AI commands; `ai-export` |
 | `move` | a resume that moves the session (`client_hello`'s `move`: the controller's AI task goes on); resumable tunnels and `got`; healthy sessions moving to a better route ([networking.md](networking.md), "Switching paths") |
 
 ## Decoders

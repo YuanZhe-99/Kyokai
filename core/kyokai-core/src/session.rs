@@ -55,6 +55,10 @@ pub mod feature {
     /// A resume that moves a session to another connection: the host keeps
     /// the controller's AI task going (`client_hello`'s `move`).
     pub const MOVE: &str = "move";
+    /// The host's AI tasks as sessions: `ai-start`'s and `reply`'s
+    /// `thinking`, the `fork`, `compact`, `rename` and `export` commands,
+    /// and the host's `ai-export`.
+    pub const AI_SESSIONS: &str = "ai-sessions";
 }
 
 /// The features this build announces.
@@ -68,6 +72,7 @@ pub const FEATURES: &[&str] = &[
     feature::NANOKVM,
     feature::RESOLUTION,
     feature::MOVE,
+    feature::AI_SESSIONS,
 ];
 
 /// What the other side of a session announced: its features, none for
@@ -304,14 +309,24 @@ enum Message {
     AiStart {
         key: String,
         instruction: String,
+        /// How much the model thinks (`ai-sessions`; none: the usual).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thinking: Option<crate::ai::Thinking>,
     },
     /// controller → host (`run-ai-task`): steer a task this controller
     /// started; `text` is the reply's.
     AiCommand {
         id: u64,
         command: Steer,
+        /// The reply's text, or `rename`'s name.
         #[serde(default)]
         text: String,
+        /// `fork`: the run to begin after (none: the latest, a clone).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        run: Option<usize>,
+        /// `reply`: how much the model thinks from now on.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thinking: Option<crate::ai::Thinking>,
     },
     /// controller → host (`approve-ai-action`): answer the approval of a
     /// task this controller started.
@@ -327,6 +342,12 @@ enum Message {
     /// host → controller: why an AI request was refused.
     AiError {
         error: String,
+    },
+    /// host → controller (`ai-sessions`): a task as Markdown, the answer
+    /// to the `export` command.
+    AiExport {
+        id: u64,
+        markdown: String,
     },
     /// either way (`run-ai-task`): the shared draft of the next instruction,
     /// as typed on any side; the host passes it to every controller.
@@ -455,6 +476,14 @@ enum Steer {
     Resume,
     Cancel,
     Reply,
+    /// A copy of the task after one of its runs, or as it is (`ai-sessions`).
+    Fork,
+    /// Summarise the task's conversation (`ai-sessions`).
+    Compact,
+    /// Name the task (`ai-sessions`).
+    Rename,
+    /// The task as Markdown, answered with `ai-export` (`ai-sessions`).
+    Export,
     /// A command of a newer controller: ignored.
     #[serde(other)]
     Unknown,
@@ -3113,23 +3142,50 @@ pub struct HostAi {
 
 impl HostAi {
     /// Answers an AI request from the controller.
-    /// Returns: why it was refused, safe to show.
-    fn handle(&self, msg: Message) -> Result<(), String> {
+    /// Returns: the message that answers it, if any (`ai-export`), or why
+    /// it was refused, safe to show.
+    fn handle(&self, msg: Message) -> Result<Option<Message>, String> {
         let not_allowed = || "this session may not do that".to_string();
+        let thinking = |thinking| crate::ai::Choice {
+            model: None,
+            thinking,
+        };
         match msg {
-            Message::AiStart { key, instruction } if self.run => self
+            Message::AiStart {
+                key,
+                instruction,
+                thinking: k,
+            } if self.run => self
                 .ai
-                .start(&key, &instruction, Some(&self.peer))
-                .map(|_| ()),
-            Message::AiCommand { id, command, text } if self.run => match command {
-                Steer::Pause => self.ai.pause(id, crate::ai::Pause::Controller),
-                Steer::Resume => self.ai.resume(id),
-                Steer::Cancel => self.ai.cancel(id),
-                Steer::Reply => self.ai.reply(id, &text),
-                Steer::Unknown => Ok(()),
+                .start_with(&key, &instruction, Some(&self.peer), thinking(k))
+                .map(|_| None),
+            Message::AiCommand {
+                id,
+                command,
+                text,
+                run,
+                thinking: k,
+            } if self.run => match command {
+                Steer::Pause => self
+                    .ai
+                    .pause(id, crate::ai::Pause::Controller)
+                    .map(|()| None),
+                Steer::Resume => self.ai.resume(id).map(|()| None),
+                Steer::Cancel => self.ai.cancel(id).map(|()| None),
+                Steer::Reply => self.ai.reply_with(id, &text, thinking(k)).map(|()| None),
+                Steer::Fork => self.ai.fork(id, run).map(|_| None),
+                Steer::Compact => self.ai.compact(id).map(|()| None),
+                Steer::Rename => self.ai.rename(id, &text).map(|()| None),
+                Steer::Export => self
+                    .ai
+                    .export(id)
+                    .map(|markdown| Some(Message::AiExport { id, markdown })),
+                Steer::Unknown => Ok(None),
             },
-            Message::AiDecide { id, approve } if self.approve => self.ai.decide(id, approve),
-            Message::AiDraft { text } if self.run => self.ai.set_draft(&text),
+            Message::AiDecide { id, approve } if self.approve => {
+                self.ai.decide(id, approve).map(|()| None)
+            }
+            Message::AiDraft { text } if self.run => self.ai.set_draft(&text).map(|()| None),
             _ => Err(not_allowed()),
         }
     }
@@ -4652,10 +4708,12 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     m @ (Message::AiStart { .. } | Message::AiCommand { .. } | Message::AiDecide { .. } | Message::AiDraft { .. }) => {
                         // Only a host answers AI requests.
-                        if let Side::Host { ai, .. } = &side
-                            && let Err(error) = ai.handle(m)
-                        {
-                            out.json(&Message::AiError { error })?;
+                        if let Side::Host { ai, .. } = &side {
+                            match ai.handle(m) {
+                                Ok(Some(answer)) => out.json(&answer)?,
+                                Ok(None) => {}
+                                Err(error) => out.json(&Message::AiError { error })?,
+                            }
                         }
                     }
                     Message::Clipboard { text } => {
@@ -4728,6 +4786,13 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                         if let Some(q) = &queue {
                             let mut packet = vec![media::packet::AI_TASK];
                             packet.extend(serde_json::to_vec(&task).map_err(|_| Failure::Broken)?);
+                            q.push(packet);
+                        }
+                    }
+                    Message::AiExport { id, markdown } => {
+                        if let Some(q) = &queue {
+                            let mut packet = vec![media::packet::AI_EXPORT];
+                            packet.extend(serde_json::to_vec(&json!({"id": id, "markdown": markdown})).map_err(|_| Failure::Broken)?);
                             q.push(packet);
                         }
                     }
@@ -5904,7 +5969,10 @@ mod tests {
             let Ok(p) = queue.pop(Duration::from_millis(200)) else {
                 continue;
             };
-            if let kind @ (media::packet::AI_TASK | media::packet::AI_ERROR) = p[0] {
+            if let kind @ (media::packet::AI_TASK
+            | media::packet::AI_ERROR
+            | media::packet::AI_EXPORT) = p[0]
+            {
                 let v: Value = serde_json::from_slice(&p[1..]).unwrap();
                 if f(kind, &v) {
                     return v;
@@ -6007,6 +6075,34 @@ mod tests {
                 break;
             }
         }
+        // With `ai-sessions` the controller names, exports and forks the
+        // host's finished task.
+        control
+            .try_send(
+                json!({"type": "ai-command", "id": tid, "command": "rename", "text": "Saving"}),
+            )
+            .unwrap();
+        control
+            .try_send(json!({"type": "ai-command", "id": tid, "command": "export"}))
+            .unwrap();
+        let export = ai_packet(&queue, "the export", |k, _| k == media::packet::AI_EXPORT);
+        assert_eq!(export["id"], tid);
+        assert!(
+            export["markdown"]
+                .as_str()
+                .unwrap()
+                .starts_with("# Saving\n"),
+            "{export}"
+        );
+        control
+            .try_send(json!({"type": "ai-command", "id": tid, "command": "fork"}))
+            .unwrap();
+        let fork = ai_packet(&queue, "the fork", |k, t| {
+            k == media::packet::AI_TASK && t["id"] != tid && t["id"] != own && t["state"] == "done"
+        });
+        assert_eq!(fork["instruction"], "Save the file");
+        assert_eq!(fork["text"], "Saved the file.");
+        assert_eq!(fork["origin"], Value::Null, "a fork is the host's own");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -581,7 +581,10 @@ colors a shell uses most, and the cursor (`termPreview`).
   command line and an export show) and, while the task waits for an approval or is paused,
   "Waiting for you" or "Paused" as a pill, or "Compacting" while its conversation is summarised;
   a host's session adds Watch its screen (its icon alone in a narrow pane), which opens the
-  host's desktop on the session's left. This computer's finished task adds ⋯ (`moreMenu`):
+  host's desktop on the session's left. A finished task adds ⋯ (`moreMenu`) on this computer, and
+  on a host that announced `ai-sessions` (where a fork opens a session of its own that takes the
+  host's copy when it comes, the export is saved where chosen once the host sends it, and Rename
+  names the host's task too):
   Duplicate (a clone, opened in a session of its own), Continue from an earlier reply (a submenu
   of its earlier replies, "After “…”", each a fork after that reply's run), Compact conversation
   and Export as Markdown… (a save dialog; [computer-use.md](computer-use.md#history-and-settings)).
@@ -620,7 +623,8 @@ colors a shell uses most, and the cursor (`termPreview`).
   that change this computer's AI settings, and "This computer"; then, where the source takes it
   (not an `openai-chat` one), "Thinking: High" — Low, Medium, High or Max for the next start or
   reply, a running or finished task showing its own —; a finished task's model chip lists its
-  source's models for the next reply instead of changing the settings; on a host "Approvals as set on
+  source's models for the next reply instead of changing the settings; on a host (with the
+  thinking chip too when it announced `ai-sessions`) "Approvals as set on
   NUC", "Runs on NUC" with the link's dot, and the task's model with whose key ("Claude Opus
   5.5 · NUC's key"; "NUC's model and key" before a task says it). A new session's where-chip is
   a menu of this computer and the devices this one connected to, moving the session there

@@ -142,12 +142,13 @@ net, battery, services, offers, ai}`，每 2 秒一次，此外只有 `ping`、`
 
 | 消息 | 方向 | 需要 | 作用 |
 |---|---|---|---|
-| `{"type": "ai-start", key, instruction}` | 控制端 → 被控端 | `run-ai-task` | 为该控制端在被控端上启动任务；重复的 key 只启动一个任务 |
-| `{"type": "ai-command", id, command, text}` | 控制端 → 被控端 | `run-ai-task` | 对被控端的任务执行 `pause`、`resume`、`cancel` 或 `reply`（带 `text`），无论由谁发起 |
+| `{"type": "ai-start", key, instruction, thinking?}` | 控制端 → 被控端 | `run-ai-task` | 为该控制端在被控端上启动任务；重复的 key 只启动一个任务；`thinking`（`ai-sessions`）：`low`、`medium`、`high` 或 `max` |
+| `{"type": "ai-command", id, command, text, run?, thinking?}` | 控制端 → 被控端 | `run-ai-task` | 对被控端的任务执行 `pause`、`resume`、`cancel` 或 `reply`（带 `text`，有 `ai-sessions` 时还可带 `thinking`），无论由谁发起；有 `ai-sessions` 时还有 `fork`（在第 `run` 次运行之后，没有则为复制；副本属于被控端自己，并成为它最新的任务）、`compact`、`rename`（`text` 为名称）与 `export`（[computer-use.md](computer-use.md#历史与设置)） |
 | `{"type": "ai-decide", id, approve}` | 控制端 → 被控端 | `approve-ai-action` | 答复被控端任务的批准请求 |
 | `{"type": "ai-draft", text}` | 双向 | `run-ai-task`（控制端 → 被控端） | 下一条指令的草稿：控制端的草稿发给被控端，被控端把共享草稿（任何人最后输入的内容）发给每个控制端 |
 | `{"type": "ai-task", task}` | 被控端 → 控制端 | — | 被控端最新的任务，无论由谁发起，每个控制端看到的都相同；在它变化时以及会话（重新）开始时发送；带最近 20 个操作与 3 条进度说明 |
 | `{"type": "ai-error", error}` | 被控端 → 控制端 | — | 请求被拒绝的原因 |
+| `{"type": "ai-export", id, markdown}` | 被控端 → 控制端 | — | 以 Markdown 表示的任务，`export` 的回答（`ai-sessions`） |
 
 重新连接后命令绝不会重发；被控端改为发送当前的任务。拥有 `control-input` 的控制端发来的输入会在注入之前暂停正在占用桌面的任务（接管）；
 任务执行期间，单纯的指针移动会被丢弃。控制端的引擎把 `ai-task`、`ai-error` 与 `ai-draft` 作为媒体包 5、6 与 10 交给界面；与统计（包 4）一样，较新的任务会替换仍在等待的那个。
@@ -171,6 +172,7 @@ net, battery, services, offers, ai}`，每 2 秒一次，此外只有 `ping`、`
 | `recovery` | 控制端的 `no-picture`；被控端 `video-start` 中的 `placeholder` 与其统计信息中的 `video` |
 | `nanokvm` | 经被控端的 NanoKVM USB 有线连接的电脑的会话（`client_hello` 的 `nanokvm`）；权限 `use-nanokvm` |
 | `resolution` | 控制端的分辨率选择（`quality` 的 `size`）；被控端 `video-start` 中的 `size` |
+| `ai-sessions` | `ai-start` 与 `reply` 的 `thinking`；AI 命令 `fork`、`compact`、`rename` 与 `export`；`ai-export` |
 | `move` | 迁移会话的恢复（`client_hello` 的 `move`：控制端的 AI 任务继续）；可恢复的隧道与 `got`；健康的会话迁移到更好的路径（[networking.md](networking.md)，“切换路径”） |
 
 ## 解码

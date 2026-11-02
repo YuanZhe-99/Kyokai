@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"os"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -18,7 +19,14 @@ const (
 	packetAITask  byte = 5
 	packetAIError byte = 6
 	packetAIDraft byte = 10
+	// packetAIExport is the host's task as Markdown, the answer to an
+	// export (the host's "ai-sessions" feature).
+	packetAIExport byte = 16
 )
+
+// featureAISessions is the host feature that brings thinking, fork,
+// compact, rename and export to its AI tasks.
+const featureAISessions = "ai-sessions"
 
 // draftQuiet is how long after typing a draft typed elsewhere is not shown
 // over what is being typed.
@@ -57,6 +65,9 @@ type aiLink struct {
 	draft        string
 	// draftAt is when this computer's user last typed the draft.
 	draftAt time.Time
+	// exports are where the user chose to save tasks the host is asked to
+	// export, by task.
+	exports map[uint64]string
 }
 
 // aiLinkView is what an AI pane shows of its host's link.
@@ -277,6 +288,30 @@ func (l *aiLink) packet(kind byte, body []byte) {
 			l.draft = d.Text
 		}
 		l.mu.Unlock()
+	case packetAIExport:
+		var e struct {
+			ID       uint64
+			Markdown string
+		}
+		if json.Unmarshal(body, &e) != nil {
+			return
+		}
+		l.mu.Lock()
+		path, ok := l.exports[e.ID]
+		delete(l.exports, e.ID)
+		l.mu.Unlock()
+		if !ok {
+			return
+		}
+		err := os.WriteFile(path, []byte(e.Markdown), 0o600)
+		l.app.update(func() {
+			if err != nil {
+				l.app.setToast(err.Error(), true)
+				return
+			}
+			l.app.setToast(L.AIExported(), false)
+		})
+		return
 	case packetAIError:
 		var refused struct{ Error string }
 		if json.Unmarshal(body, &refused) != nil {
@@ -311,4 +346,31 @@ func (l *aiLink) setDraft(text string) {
 	l.draft, l.draftAt = text, time.Now()
 	l.mu.Unlock()
 	l.send(map[string]any{"type": "ai-draft", "text": text})
+}
+
+// exportTo asks the host for its task as Markdown, to be saved at path
+// when it comes.
+func (l *aiLink) exportTo(id uint64, path string) {
+	l.mu.Lock()
+	if l.exports == nil {
+		l.exports = map[uint64]string{}
+	}
+	l.exports[id] = path
+	l.mu.Unlock()
+	l.send(map[string]any{"type": "ai-command", "id": id, "command": "export"})
+}
+
+// hostHas reports whether a host announced feature in its last session.
+func (a *App) hostHas(device, feature string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.status == nil {
+		return false
+	}
+	for _, r := range a.status.Recent {
+		if r.DeviceID == device {
+			return slices.Contains(r.Features, feature)
+		}
+	}
+	return false
 }

@@ -725,7 +725,9 @@ impl Ai {
         self.shared.draft.lock().expect("draft").clone()
     }
 
-    /// Starts a task with the settings' model and the usual thinking.
+    /// Starts a task with the settings' model and the usual thinking (the
+    /// tests' shorthand).
+    #[cfg(test)]
     pub fn start(&self, key: &str, instruction: &str, origin: Option<&str>) -> Result<u64, String> {
         self.start_with(key, instruction, origin, Choice::default())
     }
@@ -814,7 +816,9 @@ impl Ai {
         Ok(id)
     }
 
-    /// Continues a finished task with the host user's next message.
+    /// Continues a finished task with the host user's next message (the
+    /// tests' shorthand).
+    #[cfg(test)]
     pub fn reply(&self, id: u64, text: &str) -> Result<(), String> {
         self.reply_with(id, text, Choice::default())
     }

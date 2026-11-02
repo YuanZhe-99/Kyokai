@@ -62,6 +62,9 @@ pub mod packet {
     /// engine → GUI: `{paused}` JSON, whether the session refuses input as
     /// behind now (`session::InputGate`); a newer one replaces one waiting.
     pub const INPUT: u8 = 15;
+    /// engine → GUI: `{id, markdown}` JSON, the host's task as Markdown
+    /// (the answer to an `export` command).
+    pub const AI_EXPORT: u8 = 16;
 }
 
 /// What a video stream carries, sent before its first frame.

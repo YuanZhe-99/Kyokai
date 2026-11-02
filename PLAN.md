@@ -163,7 +163,7 @@ Each lands with its docs and tests; the Rust loop stays until step 4 replaces it
      protocol (a different protocol forks through a compaction). Built: within the task's source; another source is refused (the conversation lives with its provider; a summary carried across is a later choice).
    - 5e. Done (2026-11-02; gui.md, "AI sessions"; cli.md): **The GUI and the CLI**: the pane's menu (Rename, Fork, Clone, Export, Compact), the
      model and thinking chips; `kyokai ai-*` commands for each.
-   - 5f. **Controllers**: the same under `run-ai-task`, behind a feature token on the wire.
+   - 5f. Done (2026-11-02; protocol.md, "Compatibility", `ai-sessions`; gui.md, "AI sessions"; the host's model stays the host's choice): **Controllers**: the same under `run-ai-task`, behind a feature token on the wire.
 ### Research behind 0.7.0 (2026-10-23)
 
 Two research rounds (agent backend and computer-use options; approvals, tokens and window scope)
