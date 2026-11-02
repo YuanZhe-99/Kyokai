@@ -161,7 +161,7 @@ Each lands with its docs and tests; the Rust loop stays until step 4 replaces it
      screenshot.
    - 5d. Done (2026-11-02; computer-use.md, "AI tasks"): **Model and thinking per task**: chosen at start, changeable between runs within one
      protocol (a different protocol forks through a compaction). Built: within the task's source; another source is refused (the conversation lives with its provider; a summary carried across is a later choice).
-   - 5e. **The GUI and the CLI**: the pane's menu (Rename, Fork, Clone, Export, Compact), the
+   - 5e. Done (2026-11-02; gui.md, "AI sessions"; cli.md): **The GUI and the CLI**: the pane's menu (Rename, Fork, Clone, Export, Compact), the
      model and thinking chips; `kyokai ai-*` commands for each.
    - 5f. **Controllers**: the same under `run-ai-task`, behind a feature token on the wire.
 ### Research behind 0.7.0 (2026-10-23)

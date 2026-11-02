@@ -267,6 +267,46 @@ func (msgs Messages) AIChatNote() string {
 	return Catalog.Format(msgs.locale, "AIChatNote", nil)
 }
 
+// AICompact says "Compact conversation"
+// in the language the app shows.
+func AICompact() string { return In(i18n.Locale()).AICompact() }
+
+// AICompact says "Compact conversation"
+// in the language of msgs.
+func (msgs Messages) AICompact() string {
+	return Catalog.Format(msgs.locale, "AICompact", nil)
+}
+
+// AICompacting says "Compacting"
+// in the language the app shows.
+func AICompacting() string { return In(i18n.Locale()).AICompacting() }
+
+// AICompacting says "Compacting"
+// in the language of msgs.
+func (msgs Messages) AICompacting() string {
+	return Catalog.Format(msgs.locale, "AICompacting", nil)
+}
+
+// AIContinueAfter says "After “{message}”"
+// in the language the app shows.
+func AIContinueAfter(message string) string { return In(i18n.Locale()).AIContinueAfter(message) }
+
+// AIContinueAfter says "After “{message}”"
+// in the language of msgs.
+func (msgs Messages) AIContinueAfter(message string) string {
+	return Catalog.Format(msgs.locale, "AIContinueAfter", map[string]any{"message": message})
+}
+
+// AIContinueFrom says "Continue from an earlier reply"
+// in the language the app shows.
+func AIContinueFrom() string { return In(i18n.Locale()).AIContinueFrom() }
+
+// AIContinueFrom says "Continue from an earlier reply"
+// in the language of msgs.
+func (msgs Messages) AIContinueFrom() string {
+	return Catalog.Format(msgs.locale, "AIContinueFrom", nil)
+}
+
 // AICoordAuto says "Automatic"
 // in the language the app shows.
 func AICoordAuto() string { return In(i18n.Locale()).AICoordAuto() }
@@ -593,6 +633,16 @@ func (msgs Messages) AIDoZoom() string {
 	return Catalog.Format(msgs.locale, "AIDoZoom", nil)
 }
 
+// AIDuplicate says "Duplicate"
+// in the language the app shows.
+func AIDuplicate() string { return In(i18n.Locale()).AIDuplicate() }
+
+// AIDuplicate says "Duplicate"
+// in the language of msgs.
+func (msgs Messages) AIDuplicate() string {
+	return Catalog.Format(msgs.locale, "AIDuplicate", nil)
+}
+
 // AIEditSource says "Edit"
 // in the language the app shows.
 func AIEditSource() string { return In(i18n.Locale()).AIEditSource() }
@@ -601,6 +651,26 @@ func AIEditSource() string { return In(i18n.Locale()).AIEditSource() }
 // in the language of msgs.
 func (msgs Messages) AIEditSource() string {
 	return Catalog.Format(msgs.locale, "AIEditSource", nil)
+}
+
+// AIExport says "Export as Markdown…"
+// in the language the app shows.
+func AIExport() string { return In(i18n.Locale()).AIExport() }
+
+// AIExport says "Export as Markdown…"
+// in the language of msgs.
+func (msgs Messages) AIExport() string {
+	return Catalog.Format(msgs.locale, "AIExport", nil)
+}
+
+// AIExported says "Conversation saved."
+// in the language the app shows.
+func AIExported() string { return In(i18n.Locale()).AIExported() }
+
+// AIExported says "Conversation saved."
+// in the language of msgs.
+func (msgs Messages) AIExported() string {
+	return Catalog.Format(msgs.locale, "AIExported", nil)
 }
 
 // AIHintSend says "Enter to send · Shift+Enter for a new line"
@@ -1365,6 +1435,56 @@ func AITaskFrom(device string) string { return In(i18n.Locale()).AITaskFrom(devi
 // in the language of msgs.
 func (msgs Messages) AITaskFrom(device string) string {
 	return Catalog.Format(msgs.locale, "AITaskFrom", map[string]any{"device": device})
+}
+
+// AIThinking says "Thinking: {level}"
+// in the language the app shows.
+func AIThinking(level string) string { return In(i18n.Locale()).AIThinking(level) }
+
+// AIThinking says "Thinking: {level}"
+// in the language of msgs.
+func (msgs Messages) AIThinking(level string) string {
+	return Catalog.Format(msgs.locale, "AIThinking", map[string]any{"level": level})
+}
+
+// AIThinkingHigh says "High"
+// in the language the app shows.
+func AIThinkingHigh() string { return In(i18n.Locale()).AIThinkingHigh() }
+
+// AIThinkingHigh says "High"
+// in the language of msgs.
+func (msgs Messages) AIThinkingHigh() string {
+	return Catalog.Format(msgs.locale, "AIThinkingHigh", nil)
+}
+
+// AIThinkingLow says "Low"
+// in the language the app shows.
+func AIThinkingLow() string { return In(i18n.Locale()).AIThinkingLow() }
+
+// AIThinkingLow says "Low"
+// in the language of msgs.
+func (msgs Messages) AIThinkingLow() string {
+	return Catalog.Format(msgs.locale, "AIThinkingLow", nil)
+}
+
+// AIThinkingMax says "Max"
+// in the language the app shows.
+func AIThinkingMax() string { return In(i18n.Locale()).AIThinkingMax() }
+
+// AIThinkingMax says "Max"
+// in the language of msgs.
+func (msgs Messages) AIThinkingMax() string {
+	return Catalog.Format(msgs.locale, "AIThinkingMax", nil)
+}
+
+// AIThinkingMedium says "Medium"
+// in the language the app shows.
+func AIThinkingMedium() string { return In(i18n.Locale()).AIThinkingMedium() }
+
+// AIThinkingMedium says "Medium"
+// in the language of msgs.
+func (msgs Messages) AIThinkingMedium() string {
+	return Catalog.Format(msgs.locale, "AIThinkingMedium", nil)
 }
 
 // AIWaitingForYou says "Waiting for you"
@@ -3219,6 +3339,16 @@ func LogsSaved() string { return In(i18n.Locale()).LogsSaved() }
 // in the language of msgs.
 func (msgs Messages) LogsSaved() string {
 	return Catalog.Format(msgs.locale, "LogsSaved", nil)
+}
+
+// MarkdownFileKind says "Markdown file"
+// in the language the app shows.
+func MarkdownFileKind() string { return In(i18n.Locale()).MarkdownFileKind() }
+
+// MarkdownFileKind says "Markdown file"
+// in the language of msgs.
+func (msgs Messages) MarkdownFileKind() string {
+	return Catalog.Format(msgs.locale, "MarkdownFileKind", nil)
 }
 
 // NameSaved says "Name saved."

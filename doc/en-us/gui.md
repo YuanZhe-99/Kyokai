@@ -577,9 +577,14 @@ colors a shell uses most, and the cursor (`termPreview`).
 - **Header**, as any pane's: the AI icon in the accent, the device's name ("This computer" or
   the host's), and where other panes say their kind, the session's title — its first
   instruction until renamed ("New AI task" before) —, then Rename (the title typed in place:
-  Enter keeps it, Escape leaves it as it was) and, while the task waits for an approval or is
-  paused, "Waiting for you" or "Paused" as a pill; a host's session adds Watch its screen
-  (its icon alone in a narrow pane), which opens the host's desktop on the session's left.
+  Enter keeps it, Escape leaves it as it was; on this computer it names the task too, which the
+  command line and an export show) and, while the task waits for an approval or is paused,
+  "Waiting for you" or "Paused" as a pill, or "Compacting" while its conversation is summarised;
+  a host's session adds Watch its screen (its icon alone in a narrow pane), which opens the
+  host's desktop on the session's left. This computer's finished task adds ⋯ (`moreMenu`):
+  Duplicate (a clone, opened in a session of its own), Continue from an earlier reply (a submenu
+  of its earlier replies, "After “…”", each a fork after that reply's run), Compact conversation
+  and Export as Markdown… (a save dialog; [computer-use.md](computer-use.md#history-and-settings)).
 - **A new session** centres, at most 680 points wide: the AI's round mark, "What should the AI
   do on this computer?" (or on the host) and how it works there ("It sees this screen and uses
   the mouse and keyboard. Moving your mouse pauses it at once."), the box, three suggestions
@@ -612,7 +617,10 @@ colors a shell uses most, and the cursor (`termPreview`).
   computer without a model with a key (Settings), or a host's link connecting, waiting for its
   user to allow AI tasks, refused or not allowing them (Reconnect).
 - **Chips** under the box (`chips`): on this computer the apps the AI may use (All apps, or the ones checked from those with windows now: [AI scope](computer-use.md#ai-scope)), Ask before acting and the model, menus
-  that change this computer's AI settings, and "This computer"; on a host "Approvals as set on
+  that change this computer's AI settings, and "This computer"; then, where the source takes it
+  (not an `openai-chat` one), "Thinking: High" — Low, Medium, High or Max for the next start or
+  reply, a running or finished task showing its own —; a finished task's model chip lists its
+  source's models for the next reply instead of changing the settings; on a host "Approvals as set on
   NUC", "Runs on NUC" with the link's dot, and the task's model with whose key ("Claude Opus
   5.5 · NUC's key"; "NUC's model and key" before a task says it). A new session's where-chip is
   a menu of this computer and the devices this one connected to, moving the session there

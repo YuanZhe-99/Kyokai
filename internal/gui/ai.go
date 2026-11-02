@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
@@ -244,19 +246,116 @@ func (a *App) loadAI() {
 }
 
 // aiReply continues a finished task.
-func (a *App) aiReply(id uint64, text string) {
+// Inputs: model and thinking, another model of the task's source and how
+// much it thinks from now on (nil, "": as they were).
+func (a *App) aiReply(id uint64, text string, model *localapi.AIModelRef, thinking string) {
 	a.mu.Lock()
 	a.busy["ai-task"] = true
 	a.mu.Unlock()
 	go func() {
 		_, err := a.requestWith(localapi.Request{Type: localapi.RequestAITaskReply, ID: id,
-			AITask: &localapi.AITaskRequest{Text: text}})
+			AITask: &localapi.AITaskRequest{Text: text, Model: model, Thinking: thinking}})
 		a.update(func() {
 			delete(a.busy, "ai-task")
 			a.aiFailed(err)
 		})
 		a.refreshAITasks()
 	}()
+}
+
+// aiRenameTask gives this computer's task the session's name.
+func (a *App) aiRenameTask(id uint64, name string) {
+	go func() {
+		_, err := a.requestWith(localapi.Request{Type: localapi.RequestAITaskRename, ID: id,
+			AITask: &localapi.AITaskRequest{Name: name}})
+		a.update(func() { a.aiFailed(err) })
+	}()
+}
+
+// aiFork copies this computer's finished task, as it is (run nil) or as it
+// was after one of its runs, and opens the copy in a session of its own
+// titled as t.
+func (a *App) aiFork(t *aiTab, id uint64, run *int) {
+	title := t.title()
+	go func() {
+		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestAITaskFork, ID: id,
+			AITask: &localapi.AITaskRequest{Run: run}})
+		a.update(func() { a.aiFailed(err) })
+		if err != nil {
+			return
+		}
+		a.refreshAITasks()
+		a.later(func() { a.openAITask("", resp.ID, title) })
+	}()
+}
+
+// aiCompact compacts this computer's finished task, then follows it until
+// the summary is in (no task holds the desktop, so the status poll does not
+// run meanwhile).
+func (a *App) aiCompact(id uint64) {
+	go func() {
+		_, err := a.requestWith(localapi.Request{Type: localapi.RequestAITaskCompact, ID: id})
+		a.update(func() { a.aiFailed(err) })
+		for deadline := time.Now().Add(6 * time.Minute); err == nil && time.Now().Before(deadline); {
+			select {
+			case <-a.ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
+			a.refreshAITasks()
+			a.mu.Lock()
+			i := slices.IndexFunc(a.ai.tasks, func(t localapi.AITask) bool { return t.ID == id })
+			busy := i >= 0 && a.ai.tasks[i].Compacting
+			a.mu.Unlock()
+			if !busy {
+				return
+			}
+		}
+	}()
+}
+
+// aiExport saves this computer's task as Markdown where the user chooses.
+// Notes: the save dialog waits for the user; call it off the main thread.
+func (a *App) aiExport(id uint64, title string) {
+	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
+		Parent: a.window, Title: L.AIExport(), DefaultPath: exportName(title) + ".md",
+		Filters: []mygo.FileFilter{{Name: L.MarkdownFileKind(), Extensions: []string{"md"}}},
+	})
+	if err != nil || path == "" {
+		return
+	}
+	resp, err := a.requestWith(localapi.Request{Type: localapi.RequestAITaskExport, ID: id})
+	var werr error
+	if err == nil {
+		werr = os.WriteFile(path, []byte(resp.Document), 0o600)
+	}
+	a.update(func() {
+		switch {
+		case a.aiFailed(err):
+		case werr != nil:
+			a.setToast(werr.Error(), true)
+		default:
+			a.setToast(L.AIExported(), false)
+		}
+	})
+}
+
+// exportName is a file name from a session's title: its first 60
+// characters with what file systems refuse left out.
+func exportName(title string) string {
+	name := strings.Map(func(r rune) rune {
+		if strings.ContainsRune(`<>:"/\|?*`, r) || r < ' ' {
+			return -1
+		}
+		return r
+	}, title)
+	if r := []rune(strings.TrimSpace(name)); len(r) > 60 {
+		name = string(r[:60])
+	}
+	if name = strings.Trim(name, " ."); name == "" {
+		return "kyokai-ai-task"
+	}
+	return name
 }
 
 // aiCommand pauses, resumes or cancels a task.

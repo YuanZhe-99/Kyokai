@@ -561,6 +561,52 @@ func (t *aiTab) chips(c *ui.Context, rec AIRecord, s aiPaneState) {
 		if set == nil {
 			return
 		}
+		// A finished task goes on with its own source: its model and
+		// thinking for the next reply are chosen here, not the settings'.
+		var done *localapi.AISource
+		if s.task != nil && s.task.State == "done" {
+			if i := slices.IndexFunc(set.Sources, func(x localapi.AISource) bool { return x.ID == s.task.Source }); i >= 0 {
+				done = &set.Sources[i]
+			}
+		}
+		protocol := ""
+		if done != nil {
+			protocol = done.Protocol
+		} else if set.Model != nil {
+			if i := slices.IndexFunc(set.Sources, func(x localapi.AISource) bool { return x.ID == set.Model.Source }); i >= 0 {
+				protocol = set.Sources[i].Protocol
+			}
+		}
+		if protocol != "" && protocol != "openai-chat" {
+			level := t.thinking
+			// A running or finished task shows its own; a new session the usual.
+			if level == "" && s.task != nil && (done != nil || !aiFinished(s.task.State)) {
+				level = s.task.Thinking
+			}
+			aiChip(c, "ai-chip-thinking-"+t.id, nil, ui.Transparent, L.AIThinking(thinkingLabel(level)), func(m *ui.Menu) {
+				for _, k := range []string{"low", "medium", "high", "max"} {
+					on := k == level || level == "" && k == "high"
+					if m.Item(thinkingLabel(k)).Radio(on).Chosen() && !on {
+						t.thinking = k
+					}
+				}
+			})
+		}
+		if done != nil {
+			cur := s.task.Model
+			if t.model != nil {
+				cur = t.model.ID
+			}
+			src := done
+			aiChip(c, "ai-chip-model-"+t.id, nil, ui.Transparent, friendlyModelName(cur, "", ""), func(m *ui.Menu) {
+				for _, x := range src.Models {
+					if m.Item(friendlyModelName(x.ID, x.Name, "")).Radio(x.ID == cur).Chosen() && x.ID != cur {
+						t.model = &localapi.AIModelRef{Source: src.ID, ID: x.ID}
+					}
+				}
+			})
+			return
+		}
 		labels, refs, cur := aiModelChoices(set)
 		if len(labels) == 0 {
 			return
@@ -675,13 +721,69 @@ func (t *aiTab) titleExtras(c *ui.Context) {
 		return
 	}
 	if task := t.state(rec).task; task != nil {
-		switch task.State {
-		case "approval":
+		if t.device == "" && task.State == "done" {
+			t.moreMenu(c, task)
+		}
+		switch {
+		case task.State == "approval":
 			statePill(c, L.AIWaitingForYou(), th.Warning)
-		case "paused":
+		case task.State == "paused":
 			statePill(c, L.AIStatePaused(), th.Warning)
+		case task.Compacting:
+			statePill(c, L.AICompacting(), th.Accent)
 		}
 	}
+}
+
+// moreMenu is the header's menu for this computer's finished task:
+// Duplicate, Continue from an earlier reply (a fork after that reply's
+// run), Compact conversation and Export as Markdown.
+func (t *aiTab) moreMenu(c *ui.Context, task *localapi.AITask) {
+	a := t.app
+	id, runs, can, compacting := task.ID, slices.Clone(task.Runs), task.Resumable, task.Compacting
+	iconButtonBase(c, "head-more-"+t.id, rowMore, L.ActionMore()).Menu(func(m *ui.Menu) {
+		if m.Item(L.AIDuplicate()).Disabled(!can).Chosen() {
+			a.aiFork(t, id, nil)
+		}
+		if len(runs) > 1 {
+			m.Submenu(L.AIContinueFrom(), func(m *ui.Menu) {
+				for i, r := range runs[:len(runs)-1] {
+					if m.Item(L.AIContinueAfter(clipText(r.Message, 40))).Disabled(!can).Chosen() {
+						a.aiFork(t, id, &i)
+					}
+				}
+			})
+		}
+		if m.Item(L.AICompact()).Disabled(!can || compacting).Chosen() {
+			a.aiCompact(id)
+		}
+		m.Separator()
+		if m.Item(L.AIExport()).Chosen() {
+			go a.aiExport(id, t.title())
+		}
+	})
+}
+
+// clipText is s on one line, cut to n characters with an ellipsis.
+func clipText(s string, n int) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > n {
+		return string(r[:n-1]) + "…"
+	}
+	return s
+}
+
+// thinkingLabel is a thinking level in words ("" is the usual, High).
+func thinkingLabel(level string) string {
+	switch level {
+	case "low":
+		return L.AIThinkingLow()
+	case "medium":
+		return L.AIThinkingMedium()
+	case "max":
+		return L.AIThinkingMax()
+	}
+	return L.AIThinkingHigh()
 }
 
 // headButtons are the header's own buttons on a host's session: Watch its

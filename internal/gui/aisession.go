@@ -50,6 +50,11 @@ type aiTab struct {
 	prev     uint64
 	// renaming is the title being typed in the header (nil: not renaming).
 	renaming *string
+	// model and thinking are chosen in the chips for this computer's next
+	// start or reply (nil, "": the task's, else the settings' and the
+	// usual).
+	model    *localapi.AIModelRef
+	thinking string
 	// seen is what the conversation showed last (steps and state), to
 	// follow its end as it grows; folded are its groups of steps folded
 	// to their count, by place.
@@ -584,7 +589,8 @@ func (t *aiTab) submit(mode boxMode, s aiPaneState, text string) bool {
 		t.sent = append(t.sent, aiSent{text: text, after: after, answer: s.task.Text})
 		t.reply = ""
 		if t.device == "" {
-			a.aiReply(s.task.ID, text)
+			a.aiReply(s.task.ID, text, t.model, t.thinking)
+			t.model, t.thinking = nil, ""
 		} else if l := a.aiLinkOf(t.device); l != nil {
 			l.send(map[string]any{"type": "ai-command", "id": s.task.ID, "command": "reply", "text": text})
 		}
@@ -616,10 +622,11 @@ func (t *aiTab) submit(mode boxMode, s aiPaneState, text string) bool {
 	a.mu.Lock()
 	a.busy["ai-task"], a.ai.draft = true, ""
 	a.mu.Unlock()
-	id := t.id
+	id, thinking := t.id, t.thinking
+	t.thinking = ""
 	go func() {
 		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestAITaskStart,
-			AITask: &localapi.AITaskRequest{Key: key, Instruction: text}})
+			AITask: &localapi.AITaskRequest{Key: key, Instruction: text, Thinking: thinking}})
 		a.update(func() {
 			delete(a.busy, "ai-task")
 			if a.aiFailed(err) {
@@ -671,6 +678,11 @@ func (t *aiTab) rename(name string) {
 	t.app.setAIRecord(t.id, func(r *AIRecord) { r.Title = name })
 	if w := t.tabWindow(); w != nil {
 		w.retitle()
+	}
+	// This computer's task takes the name too, so the command line and an
+	// export show it.
+	if r, ok := t.app.aiRecord(t.id); ok && t.device == "" && r.Task != 0 {
+		t.app.aiRenameTask(r.Task, name)
 	}
 }
 

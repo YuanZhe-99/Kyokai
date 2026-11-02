@@ -58,6 +58,17 @@
     }
   },
   "AIChatNote": "Needs a model that accepts images and calls tools; Kyokai offers its actions as tools.",
+  "AICompact": "Compact conversation",
+  "AICompacting": "Compacting",
+  "AIContinueAfter": "After “{message}”",
+  "@AIContinueAfter": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "AIContinueFrom": "Continue from an earlier reply",
   "AICoordAuto": "Automatic",
   "AICoordGrid1000": "Grid 0–1000 (Qwen3-VL)",
   "AICoordGrid999": "Grid 0–999 (Gemini)",
@@ -207,7 +218,10 @@
     }
   },
   "AIDoZoom": "Look closer at part of the screen",
+  "AIDuplicate": "Duplicate",
   "AIEditSource": "Edit",
+  "AIExport": "Export as Markdown…",
+  "AIExported": "Conversation saved.",
   "AIHintSend": "Enter to send · Shift+Enter for a new line",
   "AIHintSendShift": "Shift+Enter to send · Enter for a new line",
   "AIHintStart": "Enter to start",
@@ -374,6 +388,18 @@
       }
     }
   },
+  "AIThinking": "Thinking: {level}",
+  "@AIThinking": {
+    "placeholders": {
+      "level": {
+        "type": "String"
+      }
+    }
+  },
+  "AIThinkingHigh": "High",
+  "AIThinkingLow": "Low",
+  "AIThinkingMax": "Max",
+  "AIThinkingMedium": "Medium",
   "AIWaitingForYou": "Waiting for you",
   "AIWatchScreen": "Watch its screen",
   "AIWhoMay": "Who may run AI tasks here",
@@ -649,6 +675,7 @@
   },
   "LogsFileKind": "Text file",
   "LogsSaved": "Logs saved.",
+  "MarkdownFileKind": "Markdown file",
   "NameSaved": "Name saved.",
   "NanokvmFound": "Found a NanoKVM USB: its capture card and serial port are suggested.",
   "NanokvmHint": "A NanoKVM USB plugged into this computer captures another computer's HDMI output and types and points on it through its USB. Choose its capture card and serial port; Kyokai suggests the pair it finds.",

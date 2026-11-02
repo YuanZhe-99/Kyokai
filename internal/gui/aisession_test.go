@@ -323,6 +323,76 @@ func TestAINamesInOrder(t *testing.T) {
 	}
 }
 
+// TestAIFinishedTaskChoices: this computer's finished task offers its
+// menu (Duplicate, Continue from an earlier reply, Compact, Export) and
+// chips for the next reply's thinking and model; a chat source has no
+// thinking chip; a compacting task says so.
+func TestAIFinishedTaskChoices(t *testing.T) {
+	now := time.Now().Unix()
+	done := localapi.AITask{ID: 3, Instruction: "Rename the report", Source: "claude", Model: "claude-opus-5-5", State: "done",
+		Thinking: "max", Resumable: true, Created: now, Updated: now,
+		Runs: []localapi.AIRun{{Message: "Rename the report", Text: "Renamed."}, {Message: "Now save it", Text: "Saved."}}}
+	a := aiDemoApp(t)
+	a.ai.tasks = []localapi.AITask{done}
+	tb := addAITab(a, "", AIRecord{ID: "w", Task: 3, Title: "Rename the report", State: "done", Updated: now})
+	tt := ui.NewTester(a.main.view, 1280, 800)
+	tt.Frame()
+	tt.Frame()
+	for _, want := range []string{L.AIThinking(L.AIThinkingMax()), friendlyModelName("claude-opus-5-5", "", "")} {
+		if !tt.HasText(want) {
+			t.Errorf("no %q among %q", want, tt.Texts())
+		}
+	}
+	if tt.HasText(L.AICompacting()) {
+		t.Error("a task not compacting says it is")
+	}
+	tb.thinking = "low"
+	tt.Frame()
+	if want := L.AIThinking(L.AIThinkingLow()); !tt.HasText(want) {
+		t.Errorf("the chosen thinking is not shown: no %q", want)
+	}
+
+	a.ai.tasks[0].Compacting = true
+	tt.Frame()
+	if !tt.HasText(L.AICompacting()) {
+		t.Error("a compacting task does not say so")
+	}
+
+	chat := done
+	chat.Source = "local"
+	b := aiDemoApp(t)
+	b.ai.settings.Sources = append(b.ai.settings.Sources, localapi.AISource{ID: "local", Name: "Local", Protocol: "openai-chat", Models: []localapi.AIModel{{ID: "qwen"}}})
+	b.ai.tasks = []localapi.AITask{chat}
+	addAITab(b, "", AIRecord{ID: "w", Task: 3, Title: "Rename the report", State: "done", Updated: now})
+	tc := ui.NewTester(b.main.view, 1280, 800)
+	tc.Frame()
+	tc.Frame()
+	if tc.HasText(L.AIThinking(L.AIThinkingMax())) {
+		t.Error("a chat source offers thinking")
+	}
+}
+
+// TestExportNamesAndClips: an export's file name leaves out what file
+// systems refuse; menu items clip long messages to one line.
+func TestExportNamesAndClips(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"Rename the Q3 report", "Rename the Q3 report"},
+		{`a/b\c:d*e?"f<g>h|`, "abcdefgh"},
+		{"  ..  ", "kyokai-ai-task"},
+		{strings.Repeat("x", 70), strings.Repeat("x", 60)},
+	} {
+		if got := exportName(c.in); got != c.want {
+			t.Errorf("exportName(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+	if got := clipText("Open\nthe   file", 40); got != "Open the file" {
+		t.Errorf("clipText joins lines: %q", got)
+	}
+	if got := clipText(strings.Repeat("y", 50), 10); got != strings.Repeat("y", 9)+"…" {
+		t.Errorf("clipText cuts: %q", got)
+	}
+}
+
 // TestAIPanesRender renders AI sessions in their states, in every language
 // and both themes: a new one with suggestions and recent tasks; this
 // computer's task working with a reply sent, paused, done (the box then
@@ -360,7 +430,13 @@ func TestAIPanesRender(t *testing.T) {
 		},
 		"ai-done": func(a *App) {
 			d := working
-			d.State, d.Text, d.Progress = "done", "Saved as Q3-final.docx in Documents.", nil
+			d.State, d.Text, d.Progress, d.Resumable, d.Thinking = "done", "Saved as Q3-final.docx in Documents.", nil, true, "max"
+			a.ai.tasks = []localapi.AITask{d}
+			addAITab(a, "", AIRecord{ID: "w", Task: 3, Title: "Rename the Q3 report and save it", State: "done", Updated: now})
+		},
+		"ai-compacting": func(a *App) {
+			d := working
+			d.State, d.Text, d.Progress, d.Resumable, d.Compacting = "done", "Saved as Q3-final.docx in Documents.", nil, true, true
 			a.ai.tasks = []localapi.AITask{d}
 			addAITab(a, "", AIRecord{ID: "w", Task: 3, Title: "Rename the Q3 report and save it", State: "done", Updated: now})
 		},
