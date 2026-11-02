@@ -12,6 +12,7 @@ use super::elements::Element;
 pub const FEW: usize = 3;
 
 /// The role OCR lines take in the list.
+#[cfg(any(windows, target_os = "macos"))]
 pub const ROLE: &str = "text";
 
 /// The text lines the system reads in a frame, each with its bounds in the
@@ -96,7 +97,7 @@ mod windows_ocr {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 
@@ -104,7 +105,6 @@ mod tests {
     /// where they were drawn: one lies on the SAVE button (its blocky pixel
     /// font may read as other letters; the bounds are what the list needs).
     #[test]
-    #[cfg(windows)]
     fn ocr_reads_a_drawn_line() {
         let frame = super::super::screens::screen(false).frame();
         let Some(lines) = lines(&frame) else {

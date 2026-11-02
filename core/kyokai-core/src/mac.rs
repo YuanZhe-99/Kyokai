@@ -1843,151 +1843,6 @@ fn screen_locked() -> bool {
         .is_some()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Kyokai's processes are told by their executable, whoever started them
-    /// (regression: "this engine or its parent" missed the app in the helper
-    /// modes, where launchd starts the agent).
-    #[test]
-    fn kyokai_processes_are_told_by_their_executable() {
-        // This test binary is kyokai_core-….
-        assert!(kyokai_process(std::process::id() as i32));
-        assert!(!kyokai_process(1), "launchd");
-        assert!(!kyokai_process(-1), "no such process");
-    }
-
-    /// The program the keyboard grab's status names: an app by its bundle,
-    /// a bare executable by its file.
-    #[test]
-    fn programs_are_named_by_their_app() {
-        for (path, name) in [
-            (
-                "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
-                "Terminal",
-            ),
-            (
-                "/Applications/1Password.app/Contents/MacOS/1Password",
-                "1Password",
-            ),
-            (
-                "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app/Contents/MacOS/Simulator",
-                "Xcode",
-            ),
-            (
-                "/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow",
-                "loginwindow",
-            ),
-            ("/usr/bin/sudo", "sudo"),
-        ] {
-            assert_eq!(program_name(path), name, "{path}");
-        }
-        assert_eq!(process_name(-1), "", "no such process");
-    }
-
-    /// Every key the Map table names comes back to its scan code, so a Mac
-    /// viewer sends what a Mac host turns into the same key.
-    #[test]
-    fn mac_key_codes_and_scan_codes_round_trip() {
-        for scan in (0x01..=0xFF).chain(0xE001..=0xE0FF).chain([0xE11D]) {
-            if let Some(k) = scan_keycode(scan) {
-                assert_eq!(keycode_scan(k), Some(scan), "{scan:#x} → {k:#x}");
-            }
-        }
-        assert_eq!(
-            keycode_scan(0x37),
-            Some(0xE05B),
-            "Command is the Windows key"
-        );
-        assert_eq!(keycode_scan(0x3F), None, "Fn has no scan code");
-    }
-
-    /// Kyokai's windows (this process, the app) are left out of capture
-    /// while the host user hides them, and only theirs.
-    #[test]
-    fn capture_leaves_out_kyokai_only_while_hidden() {
-        let own = 4242;
-        let cases = [
-            (own, "", false, true),
-            (17, BUNDLE_ID, false, true),
-            (17, "com.apple.finder", false, false),
-            (own, "", true, false),
-            (17, BUNDLE_ID, true, false),
-        ];
-        for (pid, bundle, show, out) in cases {
-            assert_eq!(
-                left_out(pid, bundle, own, show),
-                out,
-                "{pid} {bundle} {show}"
-            );
-        }
-    }
-
-    #[test]
-    fn named_keys_and_scan_codes_reach_the_same_mac_keys() {
-        let pairs = [
-            ("a", 0x1E),
-            ("z", 0x2C),
-            ("q", 0x10),
-            ("m", 0x32),
-            ("1", 0x02),
-            ("0", 0x0B),
-            ("escape", 0x01),
-            ("enter", 0x1C),
-            ("space", 0x39),
-            ("tab", 0x0F),
-            ("backspace", 0x0E),
-            ("minus", 0x0C),
-            ("equal", 0x0D),
-            ("bracket-left", 0x1A),
-            ("bracket-right", 0x1B),
-            ("backslash", 0x2B),
-            ("semicolon", 0x27),
-            ("quote", 0x28),
-            ("backquote", 0x29),
-            ("comma", 0x33),
-            ("period", 0x34),
-            ("slash", 0x35),
-            ("f1", 0x3B),
-            ("f10", 0x44),
-            ("f11", 0x57),
-            ("f12", 0x58),
-            ("left", 0xE04B),
-            ("right", 0xE04D),
-            ("up", 0xE048),
-            ("down", 0xE050),
-            ("home", 0xE047),
-            ("end", 0xE04F),
-            ("page-up", 0xE049),
-            ("page-down", 0xE051),
-            ("delete", 0xE053),
-            ("insert", 0xE052),
-            ("shift", 0x2A),
-            ("ctrl", 0x1D),
-            ("alt", 0x38),
-            ("meta", 0xE05B),
-            ("caps-lock", 0x3A),
-            ("context-menu", 0xE05D),
-            ("print-screen", 0xE037),
-        ];
-        for (name, scan) in pairs {
-            assert!(keycode(name).is_some(), "{name}");
-            assert_eq!(keycode(name), scan_keycode(scan), "{name}");
-        }
-        assert_eq!(keycode("f21"), None, "a Mac has no F21");
-        // Distinct keys stay distinct.
-        let mut seen = std::collections::HashMap::new();
-        for code in (0x01..=0xFF).chain(0xE001..=0xE0FF).chain([0xE11D]) {
-            if let Some(k) = scan_keycode(code)
-                && let Some(other) = seen.insert(k, code)
-            {
-                panic!("{other:#x} and {code:#x} both reach {k:#x}");
-            }
-        }
-    }
-}
-
 /// The text lines Vision reads in a frame, for the element list's OCR layer
 /// (`ai::ocr`): accurate recognition in the system's languages, each line's
 /// bounds in the frame's pixels.
@@ -2264,4 +2119,149 @@ fn ax_elements() -> Option<crate::ai::elements::Listed> {
         program: Some(process_name(pid).to_lowercase()).filter(|p| !p.is_empty()),
         elements,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Kyokai's processes are told by their executable, whoever started them
+    /// (regression: "this engine or its parent" missed the app in the helper
+    /// modes, where launchd starts the agent).
+    #[test]
+    fn kyokai_processes_are_told_by_their_executable() {
+        // This test binary is kyokai_core-….
+        assert!(kyokai_process(std::process::id() as i32));
+        assert!(!kyokai_process(1), "launchd");
+        assert!(!kyokai_process(-1), "no such process");
+    }
+
+    /// The program the keyboard grab's status names: an app by its bundle,
+    /// a bare executable by its file.
+    #[test]
+    fn programs_are_named_by_their_app() {
+        for (path, name) in [
+            (
+                "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+                "Terminal",
+            ),
+            (
+                "/Applications/1Password.app/Contents/MacOS/1Password",
+                "1Password",
+            ),
+            (
+                "/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app/Contents/MacOS/Simulator",
+                "Xcode",
+            ),
+            (
+                "/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow",
+                "loginwindow",
+            ),
+            ("/usr/bin/sudo", "sudo"),
+        ] {
+            assert_eq!(program_name(path), name, "{path}");
+        }
+        assert_eq!(process_name(-1), "", "no such process");
+    }
+
+    /// Every key the Map table names comes back to its scan code, so a Mac
+    /// viewer sends what a Mac host turns into the same key.
+    #[test]
+    fn mac_key_codes_and_scan_codes_round_trip() {
+        for scan in (0x01..=0xFF).chain(0xE001..=0xE0FF).chain([0xE11D]) {
+            if let Some(k) = scan_keycode(scan) {
+                assert_eq!(keycode_scan(k), Some(scan), "{scan:#x} → {k:#x}");
+            }
+        }
+        assert_eq!(
+            keycode_scan(0x37),
+            Some(0xE05B),
+            "Command is the Windows key"
+        );
+        assert_eq!(keycode_scan(0x3F), None, "Fn has no scan code");
+    }
+
+    /// Kyokai's windows (this process, the app) are left out of capture
+    /// while the host user hides them, and only theirs.
+    #[test]
+    fn capture_leaves_out_kyokai_only_while_hidden() {
+        let own = 4242;
+        let cases = [
+            (own, "", false, true),
+            (17, BUNDLE_ID, false, true),
+            (17, "com.apple.finder", false, false),
+            (own, "", true, false),
+            (17, BUNDLE_ID, true, false),
+        ];
+        for (pid, bundle, show, out) in cases {
+            assert_eq!(
+                left_out(pid, bundle, own, show),
+                out,
+                "{pid} {bundle} {show}"
+            );
+        }
+    }
+
+    #[test]
+    fn named_keys_and_scan_codes_reach_the_same_mac_keys() {
+        let pairs = [
+            ("a", 0x1E),
+            ("z", 0x2C),
+            ("q", 0x10),
+            ("m", 0x32),
+            ("1", 0x02),
+            ("0", 0x0B),
+            ("escape", 0x01),
+            ("enter", 0x1C),
+            ("space", 0x39),
+            ("tab", 0x0F),
+            ("backspace", 0x0E),
+            ("minus", 0x0C),
+            ("equal", 0x0D),
+            ("bracket-left", 0x1A),
+            ("bracket-right", 0x1B),
+            ("backslash", 0x2B),
+            ("semicolon", 0x27),
+            ("quote", 0x28),
+            ("backquote", 0x29),
+            ("comma", 0x33),
+            ("period", 0x34),
+            ("slash", 0x35),
+            ("f1", 0x3B),
+            ("f10", 0x44),
+            ("f11", 0x57),
+            ("f12", 0x58),
+            ("left", 0xE04B),
+            ("right", 0xE04D),
+            ("up", 0xE048),
+            ("down", 0xE050),
+            ("home", 0xE047),
+            ("end", 0xE04F),
+            ("page-up", 0xE049),
+            ("page-down", 0xE051),
+            ("delete", 0xE053),
+            ("insert", 0xE052),
+            ("shift", 0x2A),
+            ("ctrl", 0x1D),
+            ("alt", 0x38),
+            ("meta", 0xE05B),
+            ("caps-lock", 0x3A),
+            ("context-menu", 0xE05D),
+            ("print-screen", 0xE037),
+        ];
+        for (name, scan) in pairs {
+            assert!(keycode(name).is_some(), "{name}");
+            assert_eq!(keycode(name), scan_keycode(scan), "{name}");
+        }
+        assert_eq!(keycode("f21"), None, "a Mac has no F21");
+        // Distinct keys stay distinct.
+        let mut seen = std::collections::HashMap::new();
+        for code in (0x01..=0xFF).chain(0xE001..=0xE0FF).chain([0xE11D]) {
+            if let Some(k) = scan_keycode(code)
+                && let Some(other) = seen.insert(k, code)
+            {
+                panic!("{other:#x} and {code:#x} both reach {k:#x}");
+            }
+        }
+    }
 }

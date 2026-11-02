@@ -1742,6 +1742,29 @@ impl Desktop for Screen {
     /// On X11, the window manager's stacking list with each window's
     /// program, in the primary display's pixels; on Wayland none (a scoped
     /// screenshot is dimmed all over).
+    /// On X11, the focused window's controls through AT-SPI (`atspi`);
+    /// Wayland names no focused window's process, so none there.
+    fn elements(&mut self) -> Option<crate::ai::elements::Listed> {
+        let x = X::open().ok()?;
+        let pid = x.focused().and_then(|w| x.pid(w))?;
+        if pid == std::process::id() {
+            return None;
+        }
+        let program = std::fs::read_link(format!("/proc/{pid}/exe"))
+            .ok()
+            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()))?;
+        if crate::input::is_kyokai(&program) {
+            return None;
+        }
+        let area = main_area();
+        let mut listed = std::thread::spawn(move || atspi::elements(pid, area))
+            .join()
+            .ok()
+            .flatten()?;
+        listed.program = Some(program);
+        Some(listed)
+    }
+
     fn windows(&mut self) -> Vec<crate::ai::desktop::Shown> {
         let Ok(x) = X::open() else {
             return Vec::new();
@@ -1764,6 +1787,251 @@ impl Desktop for Screen {
                 ],
             })
             .collect()
+    }
+}
+
+/// The element list through AT-SPI, the accessibility bus of GNOME, KDE and
+/// most toolkits (doc/en-us/computer-use.md, "Element list").
+mod atspi {
+    use crate::ai::elements::{Element, Listed, MAX_ELEMENTS};
+    use crate::input::Area;
+    use zbus::Connection;
+    use zbus::zvariant::OwnedObjectPath;
+
+    /// An accessible object: its bus name and path.
+    type Node = (String, OwnedObjectPath);
+
+    const ACCESSIBLE: &str = "org.a11y.atspi.Accessible";
+    /// AT-SPI's state bits (the first word): active, showing.
+    const STATE_ACTIVE: u32 = 1 << 1;
+    const STATE_SHOWING: u32 = 1 << 25;
+    /// Most objects one listing visits.
+    const MAX_SEEN: usize = 3000;
+
+    /// The active window's controls of the application with process `pid`,
+    /// their bounds in `area`'s pixels (the main display).
+    /// Returns: None without an accessibility bus or such a window.
+    /// Notes: runs a runtime of its own; call it off the async threads.
+    pub fn elements(pid: u32, area: Area) -> Option<Listed> {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .ok()?;
+        rt.block_on(async move {
+            tokio::time::timeout(std::time::Duration::from_secs(5), list(pid, area))
+                .await
+                .ok()
+                .flatten()
+        })
+    }
+
+    /// The accessibility bus, whose address the session bus gives.
+    async fn bus() -> Option<Connection> {
+        let session = Connection::session().await.ok()?;
+        let reply = session
+            .call_method(
+                Some("org.a11y.Bus"),
+                "/org/a11y/bus",
+                Some("org.a11y.Bus"),
+                "GetAddress",
+                &(),
+            )
+            .await
+            .ok()?;
+        let address: String = reply.body().deserialize().ok()?;
+        zbus::connection::Builder::address(address.as_str())
+            .ok()?
+            .build()
+            .await
+            .ok()
+    }
+
+    /// Calls a method of an accessible object.
+    async fn call<B>(
+        c: &Connection,
+        node: &Node,
+        iface: &str,
+        method: &str,
+        body: &B,
+    ) -> Option<zbus::Message>
+    where
+        B: serde::Serialize + zbus::zvariant::DynamicType,
+    {
+        c.call_method(
+            Some(node.0.as_str()),
+            node.1.as_str(),
+            Some(iface),
+            method,
+            body,
+        )
+        .await
+        .ok()
+    }
+
+    /// An object's children.
+    async fn children(c: &Connection, node: &Node) -> Vec<Node> {
+        let Some(reply) = call(c, node, ACCESSIBLE, "GetChildren", &()).await else {
+            return Vec::new();
+        };
+        reply.body().deserialize::<Vec<Node>>().unwrap_or_default()
+    }
+
+    /// An object's state bits (the first word).
+    async fn state(c: &Connection, node: &Node) -> u32 {
+        let Some(reply) = call(c, node, ACCESSIBLE, "GetState", &()).await else {
+            return 0;
+        };
+        reply
+            .body()
+            .deserialize::<Vec<u32>>()
+            .ok()
+            .and_then(|s| s.first().copied())
+            .unwrap_or(0)
+    }
+
+    /// A string property of an object.
+    async fn property(c: &Connection, node: &Node, iface: &str, name: &str) -> Option<String> {
+        let reply = call(
+            c,
+            node,
+            "org.freedesktop.DBus.Properties",
+            "Get",
+            &(iface, name),
+        )
+        .await?;
+        let v: zbus::zvariant::OwnedValue = reply.body().deserialize().ok()?;
+        String::try_from(v).ok()
+    }
+
+    /// The element list's role for an AT-SPI role name, None for containers.
+    fn role(name: &str) -> Option<&'static str> {
+        Some(match name {
+            "push button" | "toggle button" | "button" => "button",
+            "text" | "entry" | "password text" | "editbar" => "edit",
+            "combo box" => "combobox",
+            "check box" | "check menu item" => "checkbox",
+            "radio button" | "radio menu item" => "radiobutton",
+            "link" => "link",
+            "menu item" | "menu" => "menuitem",
+            "label" | "static" | "heading" | "paragraph" => "text",
+            "image" | "icon" => "image",
+            "list item" => "listitem",
+            "tree item" | "table cell" => "treeitem",
+            "page tab" => "tabitem",
+            "slider" => "slider",
+            "spin button" => "spinner",
+            "document web" | "document frame" | "document text" => "document",
+            _ => return None,
+        })
+    }
+
+    /// Lists the active window of the application with process `pid`.
+    async fn list(pid: u32, area: Area) -> Option<Listed> {
+        let c = bus().await?;
+        let dbus = zbus::fdo::DBusProxy::new(&c).await.ok()?;
+        let root: Node = (
+            "org.a11y.atspi.Registry".into(),
+            OwnedObjectPath::try_from("/org/a11y/atspi/accessible/root").ok()?,
+        );
+        // The application whose connection belongs to the process.
+        let mut app = None;
+        for a in children(&c, &root).await {
+            let Ok(name) = zbus::names::BusName::try_from(a.0.as_str()) else {
+                continue;
+            };
+            if dbus.get_connection_unix_process_id(name).await.ok() == Some(pid) {
+                app = Some(a);
+                break;
+            }
+        }
+        let app = app?;
+        // Its active window.
+        let mut window = None;
+        for w in children(&c, &app).await {
+            if state(&c, &w).await & STATE_ACTIVE != 0 {
+                window = Some(w);
+                break;
+            }
+        }
+        let window = window?;
+        let title = property(&c, &window, ACCESSIBLE, "Name")
+            .await
+            .unwrap_or_default();
+        let mut stack = children(&c, &window).await;
+        stack.reverse();
+        let mut elements = Vec::new();
+        let mut seen = 0;
+        while let Some(node) = stack.pop() {
+            if elements.len() >= MAX_ELEMENTS || seen >= MAX_SEEN {
+                break;
+            }
+            seen += 1;
+            if state(&c, &node).await & STATE_SHOWING == 0 {
+                continue;
+            }
+            let mut kids = children(&c, &node).await;
+            kids.reverse();
+            stack.extend(kids);
+            let Some(reply) = call(&c, &node, ACCESSIBLE, "GetRoleName", &()).await else {
+                continue;
+            };
+            let Ok(role_name) = reply.body().deserialize::<String>() else {
+                continue;
+            };
+            let Some(kind) = role(&role_name) else {
+                continue;
+            };
+            // Screen coordinates (0).
+            let Some(reply) = call(
+                &c,
+                &node,
+                "org.a11y.atspi.Component",
+                "GetExtents",
+                &(0u32,),
+            )
+            .await
+            else {
+                continue;
+            };
+            let Ok((x, y, w, h)) = reply.body().deserialize::<(i32, i32, i32, i32)>() else {
+                continue;
+            };
+            let rect = [
+                (x - area.x).max(0),
+                (y - area.y).max(0),
+                (x + w - area.x).min(area.width as i32),
+                (y + h - area.y).min(area.height as i32),
+            ];
+            if rect[2] <= rect[0] || rect[3] <= rect[1] {
+                continue;
+            }
+            let name = property(&c, &node, ACCESSIBLE, "Name")
+                .await
+                .unwrap_or_default();
+            // An entry's text, never a password field's.
+            let mut text = String::new();
+            if kind == "edit" && role_name != "password text" {
+                if let Some(reply) =
+                    call(&c, &node, "org.a11y.atspi.Text", "GetText", &(0i32, -1i32)).await
+                {
+                    text = reply.body().deserialize::<String>().unwrap_or_default();
+                }
+            }
+            if matches!(kind, "text" | "image") && name.trim().is_empty() {
+                continue;
+            }
+            elements.push(Element {
+                role: kind.into(),
+                name,
+                text,
+                rect,
+            });
+        }
+        Some(Listed {
+            window: title,
+            program: None,
+            elements,
+        })
     }
 }
 
