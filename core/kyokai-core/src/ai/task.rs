@@ -39,6 +39,28 @@ pub struct ModelRef {
     pub id: String,
 }
 
+/// How much the model thinks before it answers: Claude's effort, OpenAI's
+/// reasoning effort (`max` sent as `high`); chat sources take none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Thinking {
+    Low,
+    Medium,
+    High,
+    Max,
+}
+
+/// A task's model and thinking, chosen when it starts or between runs;
+/// None keeps the settings' model (the task's, for a reply) and the usual
+/// thinking.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Choice {
+    #[serde(default)]
+    pub model: Option<ModelRef>,
+    #[serde(default)]
+    pub thinking: Option<Thinking>,
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
@@ -383,6 +405,9 @@ pub struct Task {
     #[serde(alias = "provider")]
     pub source: String,
     pub model: String,
+    /// How much its model thinks (None: the usual).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<Thinking>,
     pub state: State,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paused: Option<Pause>,
@@ -682,11 +707,6 @@ impl Ai {
         }
     }
 
-    /// Starts a task with the current provider and model.
-    /// Inputs: `key` — the caller's idempotency key; a second start with the
-    /// same key returns the first task; `origin` — the Device ID of the
-    /// controller that asked, None for the host's own user.
-    /// Returns: the task's id.
     /// Replaces the shared draft of the next instruction.
     /// Returns: an error for a draft longer than an instruction may be.
     pub fn set_draft(&self, text: &str) -> Result<(), String> {
@@ -705,14 +725,35 @@ impl Ai {
         self.shared.draft.lock().expect("draft").clone()
     }
 
+    /// Starts a task with the settings' model and the usual thinking.
     pub fn start(&self, key: &str, instruction: &str, origin: Option<&str>) -> Result<u64, String> {
+        self.start_with(key, instruction, origin, Choice::default())
+    }
+
+    /// Starts a task.
+    /// Inputs: `key` — the caller's idempotency key; a second start with the
+    /// same key returns the first task; `origin` — the Device ID of the
+    /// controller that asked, None for the host's own user; `choice` — its
+    /// model (None: the settings') and thinking (None: the usual).
+    /// Returns: the task's id.
+    pub fn start_with(
+        &self,
+        key: &str,
+        instruction: &str,
+        origin: Option<&str>,
+        choice: Choice,
+    ) -> Result<u64, String> {
         let instruction = instruction.trim();
         if instruction.is_empty() || instruction.len() > MAX_INSTRUCTION {
             return Err("describe the task in a few sentences".into());
         }
         let settings = self.shared.settings.lock().expect("settings").clone();
+        let model = choice.model.unwrap_or_else(|| settings.model.clone());
+        if model.id.trim().is_empty() || model.id.len() > 200 {
+            return Err("choose a model first".into());
+        }
         let source = settings
-            .source(&settings.model.source)
+            .source(&model.source)
             .ok_or("choose a model first")?;
         if !keyless(source) && self.shared.secrets.get(&key_name(&source.id)).is_none() {
             return Err("add an API key for the provider first".into());
@@ -735,8 +776,9 @@ impl Ai {
                 key: key.into(),
                 instruction: instruction.into(),
                 origin: origin.map(str::to_string),
-                source: settings.model.source.clone(),
-                model: settings.model.id.clone(),
+                source: model.source.clone(),
+                model: model.id.clone(),
+                thinking: choice.thinking,
                 state: State::Running,
                 paused: None,
                 error: None,
@@ -774,6 +816,13 @@ impl Ai {
 
     /// Continues a finished task with the host user's next message.
     pub fn reply(&self, id: u64, text: &str) -> Result<(), String> {
+        self.reply_with(id, text, Choice::default())
+    }
+
+    /// Continues a finished task, perhaps with another model of its source
+    /// or other thinking (`choice`; None keeps the task's): the conversation
+    /// then goes on in a new sidecar from the kept one.
+    pub fn reply_with(&self, id: u64, text: &str, choice: Choice) -> Result<(), String> {
         let text = text.trim();
         if text.is_empty() || text.len() > MAX_INSTRUCTION {
             return Err("write a message first".into());
@@ -796,7 +845,31 @@ impl Ai {
             if t.runs.len() >= MAX_RUNS {
                 return Err("this task is too long to continue; start a new one".into());
             }
+            let model = choice
+                .model
+                .filter(|m| m.id != t.model || m.source != t.source);
+            if let Some(m) = &model {
+                // The conversation lives with the provider it began with.
+                if m.source != t.source {
+                    return Err("a task keeps its provider; start a new task for another".into());
+                }
+                if m.id.trim().is_empty() || m.id.len() > 200 {
+                    return Err("choose a model first".into());
+                }
+            }
+            let thinking = choice.thinking.filter(|&k| Some(k) != t.thinking);
+            if (model.is_some() || thinking.is_some()) && matches!(t.kept, Kept::None) {
+                return Err("this task can no longer change its model".into());
+            }
             t.state = next(t.state, Event::Reply).ok_or("the task is not finished")?;
+            if let Some(m) = model {
+                t.model = m.id;
+                t.conversation = None;
+            }
+            if let Some(k) = thinking {
+                t.thinking = Some(k);
+                t.conversation = None;
+            }
             t.runs.push(Run {
                 message: text.into(),
                 text: String::new(),
@@ -1045,6 +1118,7 @@ impl Ai {
                 origin: None,
                 source: t.source.clone(),
                 model: t.model.clone(),
+                thinking: t.thinking,
                 state: State::Done,
                 paused: None,
                 error: None,
@@ -1513,6 +1587,7 @@ async fn summarize(
     id: u64,
     source: &Source,
     model: &str,
+    thinking: Option<Thinking>,
     c: &Conversation,
     run: usize,
 ) -> Result<Conversation, String> {
@@ -1533,6 +1608,7 @@ async fn summarize(
         tools: chat_tools(source),
         resume: Some(c.state.clone()),
         compact: true,
+        thinking,
     })?;
     loop {
         match a.recv().await? {
@@ -1565,11 +1641,12 @@ async fn summarize(
 
 /// Compacts a finished task's kept conversation by hand (`Ai::compact`).
 async fn compact(shared: &Arc<Shared>, id: u64) -> Result<(), String> {
-    let (source, model, kept, runs) = shared
+    let (source, model, thinking, kept, runs) = shared
         .edit(id, |t| {
             (
                 t.source.clone(),
                 t.model.clone(),
+                t.thinking,
                 shared.conversation(t),
                 t.runs.len(),
             )
@@ -1577,7 +1654,16 @@ async fn compact(shared: &Arc<Shared>, id: u64) -> Result<(), String> {
         .ok_or("no such task")?;
     let kept = kept.ok_or("this task's conversation was not kept")?;
     let source = task_source(shared, &source)?;
-    let c = summarize(shared, id, &source, &model, &kept, runs.saturating_sub(1)).await?;
+    let c = summarize(
+        shared,
+        id,
+        &source,
+        &model,
+        thinking,
+        &kept,
+        runs.saturating_sub(1),
+    )
+    .await?;
     let kept = shared.store(id, c);
     shared.edit(id, |t| {
         t.kept = kept;
@@ -1593,11 +1679,12 @@ async fn compact(shared: &Arc<Shared>, id: u64) -> Result<(), String> {
 /// Returns: the agent sidecar when the model finished (so the task can
 /// continue later).
 async fn run(shared: &Arc<Shared>, id: u64) -> Result<Agent, Stop> {
-    let (source, model, instruction, reply, conversation, kept, context, runs) = shared
+    let (source, model, thinking, instruction, reply, conversation, kept, context, runs) = shared
         .edit(id, |t| {
             (
                 t.source.clone(),
                 t.model.clone(),
+                t.thinking,
                 t.instruction.clone(),
                 t.reply.take(),
                 t.conversation.take(),
@@ -1616,7 +1703,16 @@ async fn run(shared: &Arc<Shared>, id: u64) -> Result<Agent, Stop> {
     let (conversation, kept) = match kept {
         Some(c) if reply.is_some() && context >= AUTO_COMPACT => {
             drop(conversation);
-            let c = summarize(shared, id, &source, &model, &c, runs.saturating_sub(2)).await?;
+            let c = summarize(
+                shared,
+                id,
+                &source,
+                &model,
+                thinking,
+                &c,
+                runs.saturating_sub(2),
+            )
+            .await?;
             let state = c.state.clone();
             let kept = shared.store(id, c);
             shared.edit(id, |t| {
@@ -1642,6 +1738,7 @@ async fn run(shared: &Arc<Shared>, id: u64) -> Result<Agent, Stop> {
         &source,
         Start {
             model,
+            thinking,
             instruction,
             reply,
             conversation,
@@ -1675,6 +1772,7 @@ async fn watch(shared: Arc<Shared>, id: u64, desk: Desk) {
 /// How a runner begins: a new conversation, or a reply to a finished one.
 struct Start {
     model: String,
+    thinking: Option<Thinking>,
     /// How the model gives positions (resolved).
     coords: Coordinates,
     instruction: String,
@@ -1726,6 +1824,7 @@ async fn drive(
                 tools: chat_tools(source),
                 resume,
                 compact: false,
+                thinking: start.thinking,
             })?;
             a
         }

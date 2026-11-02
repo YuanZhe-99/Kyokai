@@ -17,7 +17,7 @@ mod task;
 #[cfg(test)]
 mod tests;
 
-pub use task::{Ai, Pause, open_screen};
+pub use task::{Ai, Choice, Pause, Thinking, open_screen};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

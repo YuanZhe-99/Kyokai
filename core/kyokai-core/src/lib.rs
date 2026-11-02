@@ -1679,12 +1679,18 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 .as_str()
                 .ok_or("bad instruction")?
                 .to_owned();
-            try_core(|c| Ok(json!({"id": c.ctx.ai.start(&key, &instruction, None)?})))
+            let choice: ai::Choice = serde_json::from_value(req.params["choice"].clone())
+                .ok()
+                .unwrap_or_default();
+            try_core(|c| Ok(json!({"id": c.ctx.ai.start_with(&key, &instruction, None, choice)?})))
         }
         "ai.task.reply" => {
             let id = req.params["id"].as_u64().ok_or("bad task id")?;
             let text = req.params["text"].as_str().ok_or("bad text")?.to_owned();
-            try_core(|c| c.ctx.ai.reply(id, &text).map(|()| json!({})))
+            let choice: ai::Choice = serde_json::from_value(req.params["choice"].clone())
+                .ok()
+                .unwrap_or_default();
+            try_core(|c| c.ctx.ai.reply_with(id, &text, choice).map(|()| json!({})))
         }
         "ai.task.pause" | "ai.task.resume" | "ai.task.cancel" | "ai.task.decide" => {
             let id = req.params["id"].as_u64().ok_or("bad task id")?;

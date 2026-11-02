@@ -403,6 +403,12 @@ type AITaskRequest struct {
 	// Run is the run ai.task.fork begins after (0 first; nil: the latest,
 	// a clone).
 	Run *int `json:"run,omitempty"`
+	// Model is the model ai.task.start uses (nil: the settings'), or the
+	// one a reply moves the task to (the task's source only).
+	Model *AIModelRef `json:"model,omitempty"`
+	// Thinking is how much the model thinks: "low", "medium", "high" or
+	// "max" (empty: the usual; chat sources take none).
+	Thinking string `json:"thinking,omitempty"`
 }
 
 // AITask is one AI task on this host.
@@ -415,6 +421,8 @@ type AITask struct {
 	// Source is the AI source the task uses.
 	Source string `json:"source"`
 	Model  string `json:"model"`
+	// Thinking is how much its model thinks (empty: the usual).
+	Thinking string `json:"thinking,omitempty"`
 	// State is "running", "approval", "paused", "done", "failed" or
 	// "cancelled".
 	State string `json:"state"`

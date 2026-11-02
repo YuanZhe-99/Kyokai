@@ -791,6 +791,13 @@ the model's text and progress notes, the actions and what became of them, the to
 (`tokens`: input, the part read from the provider's cache, output, as the provider reports them), never a
 screenshot — up
 to 100; Settings › AI clears it (Recent tasks), with the AI sessions the GUI keeps in `gui.json`.
+A task runs with the model chosen for it when it starts (`ai.task.start` `model`; none: the
+settings') and its thinking (`thinking`: `low`, `medium`, `high` or `max`; none: the usual — Claude's
+`high` effort, OpenAI's default; OpenAI is sent `max` as `high`; chat sources take none). A reply
+may move it to another model of its source or change its thinking (`ai.task.reply`); the
+conversation then goes on in a new sidecar from the kept one. Another source is refused: the
+conversation lives with its provider.
+
 Each task keeps its runs (`runs`: the instruction, then each reply, with the model's answer to each),
 and may be given a name (`ai.task.rename`; empty gives it back its instruction's) and exported as
 Markdown (`ai.task.export`: the runs with their steps and answers, never a screenshot). After a run

@@ -205,7 +205,8 @@ func run(args []string) error {
 	display := fs.Int("display", -1, "watch: show the host's display N (0 first) from the start")
 	actions := fs.String("action", "", "watch: session actions to send, 4 s apart from 2 s on (lock, ctrl-alt-del, block, unblock, privacy-on, privacy-off)")
 	source := fs.String("source", "", "ai-key, ai-models: the AI source's id")
-	model := fs.String("model", "", "ai-set: the model tasks use, as SOURCE:MODEL")
+	model := fs.String("model", "", "ai-set: the model tasks use, as SOURCE:MODEL; ai-start: this task's model (none: the settings'); ai-reply: another model of the task's source")
+	thinking := fs.String("thinking", "", "ai-start, ai-reply: how much the model thinks: low, medium, high or max (none: the usual)")
 	sourcesFile := fs.String("sources-file", "", "ai-set: a JSON list of AI sources replacing the current ones")
 	approval := fs.String("approval", "", "ai-set: auto or every-action")
 	text := fs.String("text", "", "ai-start, ai-reply, watch: what the AI should do (watch: on the host)")
@@ -379,10 +380,20 @@ func run(args []string) error {
 			}
 			req.AIKey.Key = &k
 		}
-	case "ai-start":
-		req.AITask = &localapi.AITaskRequest{Key: strconv.FormatInt(time.Now().UnixNano(), 36), Instruction: *text}
-	case "ai-reply":
-		req.AITask = &localapi.AITaskRequest{Text: *text}
+	case "ai-start", "ai-reply":
+		req.AITask = &localapi.AITaskRequest{Thinking: *thinking}
+		if cmd == "ai-start" {
+			req.AITask.Key, req.AITask.Instruction = strconv.FormatInt(time.Now().UnixNano(), 36), *text
+		} else {
+			req.AITask.Text = *text
+		}
+		if *model != "" {
+			s, id, ok := strings.Cut(*model, ":")
+			if !ok {
+				return errors.New("--model wants SOURCE:MODEL")
+			}
+			req.AITask.Model = &localapi.AIModelRef{Source: s, ID: id}
+		}
 	case "ai-rename":
 		req.AITask = &localapi.AITaskRequest{Name: *name}
 	case "ai-fork":
@@ -517,6 +528,9 @@ func run(args []string) error {
 // printTask writes one AI task: its state, its actions and the model's text.
 func printTask(t localapi.AITask) {
 	fmt.Printf("task %d  %s  %s:%s  %q\n", t.ID, t.State, t.Source, t.Model, t.Instruction)
+	if t.Thinking != "" {
+		fmt.Println("  thinking", t.Thinking)
+	}
 	if t.Name != "" {
 		fmt.Printf("  name %q\n", t.Name)
 	}

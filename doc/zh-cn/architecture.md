@@ -117,7 +117,7 @@ product”），由引擎为每个任务启动。sidecar 负责循环与发给�
 | 消息 | 方向 | 字段 |
 |---|---|---|
 | `hello` | sidecar → 引擎 | `v` |
-| `start` | 引擎 → sidecar | `task`、`protocol`、`url`、`model`、`coordinates`、`system`、`instruction`、`shot`（`{b64, width, height}`）、`resume?`（保留的对话，由 `instruction` 与 `shot` 接续；压缩过的对话 `{summary}` 则从总结重新开始）、`compact?`（只在关闭工具的情况下总结 `resume`：回答是带用量的 `turn`，然后是 `state` `{summary}`） |
+| `start` | 引擎 → sidecar | `task`、`protocol`、`url`、`model`、`coordinates`、`system`、`instruction`、`shot`（`{b64, width, height}`）、`resume?`（保留的对话，由 `instruction` 与 `shot` 接续；压缩过的对话 `{summary}` 则从总结重新开始）、`compact?`（只在关闭工具的情况下总结 `resume`：回答是带用量的 `turn`，然后是 `state` `{summary}`）、`thinking?`（`low`、`medium`、`high`、`max`） |
 | `key?` / `key` | sidecar → 引擎 / 返回 | — / `key`（null：没有） |
 | `act` | sidecar → 引擎 | `id`、`name`、`input`（一次 computer 工具集成员调用，或 `name: "openai"` 下的 OpenAI 操作对象）、`last`（本轮最后一个操作：服务商需要时，它的结果带上该批操作之后的屏幕；本轮第一个失败之后的操作，引擎答复“未执行”） |
 | `result` | 引擎 → sidecar | `id`、`outcome`（`{kind: ok \| image \| text \| failed \| not-executed \| paused, …}`）、`shot?`、`acknowledged`（被控端用户批准了本轮的安全检查） |

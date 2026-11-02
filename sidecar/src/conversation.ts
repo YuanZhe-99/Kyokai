@@ -47,6 +47,10 @@ export interface Turn {
 
 export type Protocol = "anthropic" | "openai-responses" | "openai-chat";
 
+/** How much the model thinks: Claude's effort, OpenAI's reasoning effort
+ * (`max` sent as `high`); chat sources take none. Undefined: the usual. */
+export type Thinking = "low" | "medium" | "high" | "max";
+
 export interface Conversation {
 	readonly protocol: Protocol;
 	body(): unknown;
@@ -94,12 +98,12 @@ class Claude implements Conversation {
 	readonly protocol = "anthropic";
 	private request: any;
 	private pending: string[] = [];
-	constructor(model: string, system: string, task: string, shot: Shot) {
+	constructor(model: string, system: string, task: string, shot: Shot, thinking?: Thinking) {
 		this.request = {
 			model,
 			max_tokens: 16000,
 			thinking: { type: "adaptive", display: "updates" },
-			output_config: { effort: "high" },
+			output_config: { effort: thinking ?? "high" },
 			fallbacks: "default",
 			system: [{ type: "text", text: system, cache_control: cache() }],
 			cache_control: cache(),
@@ -172,8 +176,8 @@ class Claude implements Conversation {
 		body.tool_choice = { type: "none" };
 		return body;
 	}
-	static restore(model: string, system: string, state: any): Claude {
-		const c = new Claude(model, system, "", { b64: "", width: 0, height: 0 });
+	static restore(model: string, system: string, state: any, thinking?: Thinking): Claude {
+		const c = new Claude(model, system, "", { b64: "", width: 0, height: 0 }, thinking);
 		c.request.messages = structuredClone(state.messages);
 		return c;
 	}
@@ -211,6 +215,7 @@ class OpenAI implements Conversation {
 		private system: string,
 		task: string,
 		shot: Shot,
+		private thinking?: Thinking,
 	) {
 		this.input = [
 			{
@@ -231,6 +236,7 @@ class OpenAI implements Conversation {
 			input: this.input,
 		};
 		if (this.previous) body.previous_response_id = this.previous;
+		if (this.thinking) body.reasoning = { effort: this.thinking === "max" ? "high" : this.thinking };
 		return body;
 	}
 	accept(response: any): Turn {
@@ -303,8 +309,8 @@ class OpenAI implements Conversation {
 		body.tool_choice = "none";
 		return body;
 	}
-	static restore(model: string, system: string, state: any): OpenAI {
-		const c = new OpenAI(model, system, "", { b64: "", width: 0, height: 0 });
+	static restore(model: string, system: string, state: any, thinking?: Thinking): OpenAI {
+		const c = new OpenAI(model, system, "", { b64: "", width: 0, height: 0 }, thinking);
 		c.previous = typeof state.previous === "string" ? state.previous : undefined;
 		c.input = [];
 		return c;
@@ -440,9 +446,9 @@ class Chat implements Conversation {
 
 /** Continues a kept conversation with `instruction` and the screen now:
  * one compaction replaced (`{summary}`) starts afresh from its summary. */
-export function resume(protocol: Protocol, model: string, system: string, state: any, instruction: string, shot: Shot, tools: unknown): Conversation {
-	if (typeof state?.summary === "string") return open(protocol, model, system, summarized(state.summary, instruction), shot, tools);
-	const conv = restore(protocol, model, system, state, tools);
+export function resume(protocol: Protocol, model: string, system: string, state: any, instruction: string, shot: Shot, tools: unknown, thinking?: Thinking): Conversation {
+	if (typeof state?.summary === "string") return open(protocol, model, system, summarized(state.summary, instruction), shot, tools, thinking);
+	const conv = restore(protocol, model, system, state, tools, thinking);
 	conv.followUp(instruction, shot);
 	return conv;
 }
@@ -450,25 +456,25 @@ export function resume(protocol: Protocol, model: string, system: string, state:
 /** A conversation kept by `state`, to continue with a follow-up.
  * Notes: the state comes from the engine, which got it from an earlier
  * sidecar; a malformed one fails the task. */
-export function restore(protocol: Protocol, model: string, system: string, state: any, tools: unknown): Conversation {
+export function restore(protocol: Protocol, model: string, system: string, state: any, tools: unknown, thinking?: Thinking): Conversation {
 	if (!state || typeof state !== "object" || (protocol !== "openai-responses" && !Array.isArray(state.messages))) throw new Error("the kept conversation is unreadable");
 	switch (protocol) {
 		case "anthropic":
-			return Claude.restore(model, system, state);
+			return Claude.restore(model, system, state, thinking);
 		case "openai-responses":
-			return OpenAI.restore(model, system, state);
+			return OpenAI.restore(model, system, state, thinking);
 		case "openai-chat":
 			return Chat.restore(model, system, state, tools);
 	}
 }
 
 /** A new conversation for a task. */
-export function open(protocol: Protocol, model: string, system: string, task: string, shot: Shot, tools: unknown): Conversation {
+export function open(protocol: Protocol, model: string, system: string, task: string, shot: Shot, tools: unknown, thinking?: Thinking): Conversation {
 	switch (protocol) {
 		case "anthropic":
-			return new Claude(model, system, task, shot);
+			return new Claude(model, system, task, shot, thinking);
 		case "openai-responses":
-			return new OpenAI(model, system, task, shot);
+			return new OpenAI(model, system, task, shot, thinking);
 		case "openai-chat":
 			return new Chat(model, system, task, shot, tools);
 	}

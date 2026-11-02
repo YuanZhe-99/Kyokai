@@ -81,6 +81,10 @@ pub enum ToSidecar {
         /// `state` of `{summary}`; no screen, no actions.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         compact: bool,
+        /// How much the model thinks; None: the usual (Claude's `high`
+        /// effort, OpenAI's default).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        thinking: Option<super::Thinking>,
     },
     /// A message from the person for the running turn.
     Steer { text: String },
@@ -319,11 +323,12 @@ mod tests {
                     tools: Value::Null,
                     resume: Some(json!({"previous": "resp_1"})),
                     compact: false,
+                    thinking: Some(crate::ai::Thinking::Max),
                 },
                 json!({"t": "start", "task": 7, "protocol": "openai-chat", "url": "https://openrouter.ai/api/v1",
                     "model": "qwen/qwen3.8-27b", "coordinates": "0-1000", "system": "sys", "instruction": "Save",
                     "shot": {"b64": "AAAA", "width": 1280, "height": 720}, "tools": null,
-                    "resume": {"previous": "resp_1"}}),
+                    "resume": {"previous": "resp_1"}, "thinking": "max"}),
             ),
             (ToSidecar::Abort, json!({"t": "abort"})),
             (

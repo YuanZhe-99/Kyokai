@@ -17,7 +17,7 @@ import {
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { CLAUDE_BETAS, CLAUDE_VERSION, type Conversation, open, type Outcome, restore, resume, SUMMARIZE, type Shot, type Turn } from "./conversation";
+import { CLAUDE_BETAS, CLAUDE_VERSION, type Conversation, open, type Outcome, restore, resume, SUMMARIZE, type Thinking, type Shot, type Turn } from "./conversation";
 
 /** The protocol version this sidecar speaks. */
 export const VERSION = 2;
@@ -40,6 +40,7 @@ type Start = {
 	resume?: unknown;
 	/** Only summarise `resume` (compaction): no screen, no actions. */
 	compact?: boolean;
+	thinking?: Thinking;
 };
 type Result = { id: string; outcome: Outcome; shot?: Shot; acknowledged?: boolean };
 
@@ -153,7 +154,7 @@ if (start.compact) {
 			send({ t: "done", text: "" });
 			await new Promise(() => {});
 		}
-		const kept = restore(start.protocol, start.model, start.system, start.resume, start.tools);
+		const kept = restore(start.protocol, start.model, start.system, start.resume, start.tools, start.thinking);
 		const key = (await ask<{ key: string | null }>("key", { t: "key?" })).key;
 		const turn = kept.accept(await post(start, kept.summarize(SUMMARIZE), key));
 		const summary = turn.text.trim();
@@ -170,8 +171,8 @@ if (start.compact) {
 
 const conv: Conversation =
 	start.resume !== undefined
-		? resume(start.protocol, start.model, start.system, start.resume, start.instruction, start.shot, start.tools)
-		: open(start.protocol, start.model, start.system, start.instruction, start.shot, start.tools);
+		? resume(start.protocol, start.model, start.system, start.resume, start.instruction, start.shot, start.tools, start.thinking)
+		: open(start.protocol, start.model, start.system, start.instruction, start.shot, start.tools, start.thinking);
 /** Whether the last turn waits for its answer, which the next request carries. */
 let answered = true;
 /** The outcomes of the last turn's actions, by call id, from the engine. */

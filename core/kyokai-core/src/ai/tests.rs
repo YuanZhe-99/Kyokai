@@ -1400,7 +1400,9 @@ fn a_reply_after_a_restart_continues_the_kept_conversation() {
     rig.restart(&server.url);
     assert_eq!(rig.task(id)["resumable"], true);
     rig.ai.reply(id, "Now save it").unwrap();
-    let t = rig.until(id, "the reply's answer", |t| t["text"] == "Saved it.");
+    let t = rig.until(id, "the reply's answer", |t| {
+        t["state"] == "done" && t["text"] == "Saved it."
+    });
     let runs: Vec<(&str, &str)> = t["runs"]
         .as_array()
         .unwrap()
@@ -1466,7 +1468,9 @@ fn forks_and_clones_continue_from_where_they_were_taken() {
     let id = rig.ai.start("k1", "Open the file", None).unwrap();
     rig.state(id, "done");
     rig.ai.reply(id, "Now save it").unwrap();
-    rig.until(id, "the reply's answer", |t| t["text"] == "Saved it.");
+    rig.until(id, "the reply's answer", |t| {
+        t["state"] == "done" && t["text"] == "Saved it."
+    });
 
     let fork = rig.ai.fork(id, Some(0)).unwrap();
     let f = rig.task(fork);
@@ -1520,7 +1524,9 @@ fn compaction_by_hand_continues_from_the_summary() {
         .unwrap();
     assert!(kept.contains("saving is left") && !kept.contains("Opened the file."));
     rig.ai.reply(id, "Now save it").unwrap();
-    rig.until(id, "the reply's answer", |t| t["text"] == "Saved it.");
+    rig.until(id, "the reply's answer", |t| {
+        t["state"] == "done" && t["text"] == "Saved it."
+    });
     let requests = server.requests.lock().unwrap();
     let ask = &requests[1].1;
     assert_eq!(ask["tool_choice"], "none");
@@ -1557,7 +1563,9 @@ fn a_long_conversation_is_compacted_before_a_reply() {
     let id = rig.ai.start("k1", "Open the file", None).unwrap();
     assert_eq!(rig.state(id, "done")["context"], 200_000);
     rig.ai.reply(id, "Now save it").unwrap();
-    let t = rig.until(id, "the reply's answer", |t| t["text"] == "Saved it.");
+    let t = rig.until(id, "the reply's answer", |t| {
+        t["state"] == "done" && t["text"] == "Saved it."
+    });
     assert_ne!(t["context"], 200_000);
     let requests = server.requests.lock().unwrap();
     assert_eq!(requests.len(), 3);
@@ -1566,6 +1574,75 @@ fn a_long_conversation_is_compacted_before_a_reply() {
         .as_str()
         .unwrap();
     assert!(first.contains("saving is left") && first.ends_with("Now: Now save it"));
+}
+
+/// A task runs with the model and thinking chosen for it; a reply may change
+/// them within its source, never to another source.
+#[test]
+fn a_task_keeps_its_model_and_thinking_and_a_reply_may_change_them() {
+    use super::task::ModelRef;
+    let server = server(vec![(0, claude_end("Opened.")), (0, claude_end("Saved."))]);
+    let rig = rig("choice", "claude", &server.url);
+    let choice = |source: &str, id: &str, thinking| super::Choice {
+        model: Some(ModelRef {
+            source: source.into(),
+            id: id.into(),
+        }),
+        thinking,
+    };
+    let id = rig
+        .ai
+        .start_with(
+            "k1",
+            "Open the file",
+            None,
+            choice("claude", "claude-haiku-5-5", Some(super::Thinking::Low)),
+        )
+        .unwrap();
+    let t = rig.state(id, "done");
+    assert_eq!(
+        (t["model"].as_str(), t["thinking"].as_str()),
+        (Some("claude-haiku-5-5"), Some("low"))
+    );
+    assert!(
+        rig.ai
+            .reply_with(id, "Now save it", choice("openai", "gpt-x", None))
+            .is_err(),
+        "the conversation stays with its provider"
+    );
+    rig.ai
+        .reply_with(
+            id,
+            "Now save it",
+            choice("claude", "claude-opus-5-5", Some(super::Thinking::Max)),
+        )
+        .unwrap();
+    let t = rig.until(id, "the reply's answer", |t| {
+        t["state"] == "done" && t["text"] == "Saved."
+    });
+    assert_eq!(t["model"], "claude-opus-5-5");
+    let requests = server.requests.lock().unwrap();
+    let (first, second) = (&requests[0].1, &requests[1].1);
+    assert_eq!(
+        (
+            first["model"].as_str(),
+            first["output_config"]["effort"].as_str()
+        ),
+        (Some("claude-haiku-5-5"), Some("low"))
+    );
+    assert_eq!(
+        (
+            second["model"].as_str(),
+            second["output_config"]["effort"].as_str()
+        ),
+        (Some("claude-opus-5-5"), Some("max"))
+    );
+    assert!(
+        serde_json::to_string(&second["messages"])
+            .unwrap()
+            .contains("Opened."),
+        "the conversation went on"
+    );
 }
 
 /// Under No logs a kept conversation stays in memory: a reply continues it
@@ -1590,7 +1667,9 @@ fn no_logs_keeps_the_conversation_in_memory() {
             .exists()
     );
     rig.ai.reply(id, "Now save it").unwrap();
-    rig.until(id, "the reply's answer", |t| t["text"] == "Saved it.");
+    rig.until(id, "the reply's answer", |t| {
+        t["state"] == "done" && t["text"] == "Saved it."
+    });
 
     rig.restart(&server.url);
     assert_eq!(rig.task(id)["resumable"], false);

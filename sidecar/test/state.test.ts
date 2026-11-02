@@ -48,6 +48,16 @@ test("OpenAI keeps only the last response's id", () => {
 	expect(body.input[0].content[0].text).toBe("Now close it");
 });
 
+test("thinking sets Claude's effort and OpenAI's reasoning, and a restore may change the model", () => {
+	const usual: any = open("anthropic", "claude-x", "sys", "t", SHOT, null).body();
+	expect(usual.output_config).toEqual({ effort: "high" });
+	const claude: any = restore("anthropic", "claude-y", "sys", { messages: [] }, null, "low").body();
+	expect([claude.model, claude.output_config.effort]).toEqual(["claude-y", "low"]);
+	expect((open("openai-responses", "gpt-x", "sys", "t", SHOT, null).body() as any).reasoning).toBeUndefined();
+	expect((open("openai-responses", "gpt-x", "sys", "t", SHOT, null, "max").body() as any).reasoning).toEqual({ effort: "high" });
+	expect((open("openai-chat", "m", "sys", "t", SHOT, [], "max").body() as any).reasoning).toBeUndefined();
+});
+
 test("a chat conversation keeps its messages without screenshots", () => {
 	const c = open("openai-chat", "m", "sys", "Save the file", SHOT, []);
 	c.accept({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "Saved." } }] });

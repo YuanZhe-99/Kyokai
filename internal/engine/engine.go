@@ -656,7 +656,7 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 			return localapi.Fail(localapi.CodeInvalid, "AI task missing")
 		}
 		var out struct{ ID uint64 }
-		params := map[string]string{"key": req.AITask.Key, "instruction": req.AITask.Instruction}
+		params := map[string]any{"key": req.AITask.Key, "instruction": req.AITask.Instruction, "choice": aiChoice(req.AITask)}
 		if err := h.lib.Call("ai.task.start", params, &out); err != nil {
 			return localapi.Fail(localapi.CodeInvalid, "%v", err)
 		}
@@ -666,7 +666,7 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 		if req.AITask == nil {
 			return localapi.Fail(localapi.CodeInvalid, "AI task missing")
 		}
-		return h.command("ai.task.reply", map[string]any{"id": req.ID, "text": req.AITask.Text})
+		return h.command("ai.task.reply", map[string]any{"id": req.ID, "text": req.AITask.Text, "choice": aiChoice(req.AITask)})
 	case localapi.RequestAITaskPause, localapi.RequestAITaskResume, localapi.RequestAITaskCancel:
 		return h.command(string(req.Type), map[string]uint64{"id": req.ID})
 	case localapi.RequestAITaskDecide:
@@ -1220,4 +1220,17 @@ func (h *handler) isBackground() bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.background
+}
+
+// aiChoice is a task's model and thinking as the core takes them (`choice`
+// of ai.task.start and ai.task.reply); absent ones keep the defaults.
+func aiChoice(t *localapi.AITaskRequest) map[string]any {
+	c := map[string]any{}
+	if t.Model != nil {
+		c["model"] = t.Model
+	}
+	if t.Thinking != "" {
+		c["thinking"] = t.Thinking
+	}
+	return c
 }

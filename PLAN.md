@@ -159,8 +159,8 @@ Each lands with its docs and tests; the Rust loop stays until step 4 replaces it
    - 5c. Done (2026-11-02; computer-use.md, "History and settings"): **Compact**: by hand, and automatically before a reply once the last request passed a
      threshold: the model summarises, the conversation restarts from the summary and a fresh
      screenshot.
-   - 5d. **Model and thinking per task**: chosen at start, changeable between runs within one
-     protocol (a different protocol forks through a compaction).
+   - 5d. Done (2026-11-02; computer-use.md, "AI tasks"): **Model and thinking per task**: chosen at start, changeable between runs within one
+     protocol (a different protocol forks through a compaction). Built: within the task's source; another source is refused (the conversation lives with its provider; a summary carried across is a later choice).
    - 5e. **The GUI and the CLI**: the pane's menu (Rename, Fork, Clone, Export, Compact), the
      model and thinking chips; `kyokai ai-*` commands for each.
    - 5f. **Controllers**: the same under `run-ai-task`, behind a feature token on the wire.
