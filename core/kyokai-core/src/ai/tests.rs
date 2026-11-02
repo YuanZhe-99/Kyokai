@@ -2083,6 +2083,15 @@ fn a_task_works_beside_the_host_user() {
     let key = json!([{"type": "tool_use", "id": "k1", "name": "key", "toolset_name": "computer", "input": {"text": "ctrl+s"}}]);
     let turns = vec![
         (0, claude_turn("m1", click_save())),
+        // Typing a turn later goes to the element clicked, across the
+        // screenshot between (a regression: the focus was lost).
+        (
+            0,
+            claude_turn(
+                "m1b",
+                json!([{"type": "tool_use", "id": "y1", "name": "type", "toolset_name": "computer", "input": {"text": "notes"}}]),
+            ),
+        ),
         (0, claude_turn("m2", key.clone())),
         (0, claude_turn("m3", key)),
         (0, claude_end("ok")),
@@ -2103,6 +2112,8 @@ fn a_task_works_beside_the_host_user() {
             id: 7,
             program: "notepad.exe".into(),
             rect: [0, 0, screens::WIDTH as i32, screens::HEIGHT as i32],
+            file_dialog: false,
+            folder: None,
         });
         log.elements = Some(Listed {
             window: "Save".into(),
@@ -2130,7 +2141,10 @@ fn a_task_works_beside_the_host_user() {
     {
         let log = one.log.lock().unwrap();
         assert!(log.pressed, "SAVE through its element");
-        assert_eq!(log.acted, vec![(0, BesideAct::Click)]);
+        assert_eq!(
+            log.acted,
+            vec![(0, BesideAct::Click), (0, BesideAct::Type("notes".into()))]
+        );
         assert!(log.events.is_empty(), "no input sent beside the host user");
     }
     one.ai.resume(id).unwrap();

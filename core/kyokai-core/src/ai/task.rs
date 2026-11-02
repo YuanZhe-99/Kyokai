@@ -474,6 +474,10 @@ pub struct Task {
     in_front: bool,
     #[serde(skip)]
     beside_off: bool,
+    /// Beside the host user: the element clicked last and its window,
+    /// which takes typing across screenshots.
+    #[serde(skip)]
+    beside_focus: Option<(u64, elements::Element)>,
     /// The pane it works in (`ai::pane`), or None for this computer's
     /// desktop.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -549,6 +553,9 @@ struct Shared {
 
 /// Most changed paths a watch holds between two looks.
 const MAX_CHANGES: usize = 1000;
+/// How long a window brought forward beside the host user gets before
+/// input goes to it.
+const RAISE_SETTLE: Duration = Duration::from_millis(400);
 /// Most paths a task keeps of what changed outside its folders.
 const MAX_OUTSIDE: usize = 20;
 
@@ -1063,6 +1070,7 @@ impl Ai {
                 beside_window: None,
                 in_front: false,
                 beside_off: false,
+                beside_focus: None,
                 compacting: false,
                 reply: None,
                 conversation: None,
@@ -1406,6 +1414,7 @@ impl Ai {
                 beside_window: None,
                 in_front: false,
                 beside_off: false,
+                beside_focus: None,
                 compacting: false,
                 reply: None,
                 conversation: None,
@@ -1584,9 +1593,12 @@ impl Shared {
                 .find(|t| t.id == id)
                 .map_or((None, None), |t| (t.since, t.beside_window))
         };
+        // Beside the host user, only their input in the AI's window counts;
+        // before its first screenshot names the window, none does.
+        let beside = window.is_none() && beside_wanted(self, id, desk);
         let mut desk = desk.lock().expect("desktop");
-        // Beside the host user, only their input in the AI's window counts.
-        since.is_some_and(|s| desk.local_input().after(s))
+        !beside
+            && since.is_some_and(|s| desk.local_input().after(s))
             && window.is_none_or(|w| desk.front() == Some(w))
     }
 
@@ -1819,10 +1831,17 @@ async fn look(
         seen.shot.elements = Some(table);
         seen.centres = Some(c);
     }
+    // The element clicked last keeps the typing, found again by its role,
+    // name and place.
+    let focus = shared
+        .edit(id, |t| t.beside_focus.clone())
+        .flatten()
+        .filter(|(window, _)| *window == w.id)
+        .and_then(|(_, e)| listed.elements.iter().position(|n| *n == e));
     seen.beside = Some(BesideSeen {
         window: w,
         elements: listed.elements,
-        focus: None,
+        focus,
     });
     Ok(seen)
 }
@@ -2441,6 +2460,8 @@ fn beside_target(b: &BesideSeen, action: &Action, seen: &Seen) -> policy::Target
     .map(|i| &b.elements[i]);
     policy::Target {
         program: Some(b.window.program.clone()),
+        file_dialog: b.window.file_dialog,
+        folder: b.window.folder.clone(),
         role: element.map(|e| match e.role.as_str() {
             "edit" | "document" => policy::Role::Text,
             "button" | "splitbutton" => policy::Role::Button,
@@ -2480,6 +2501,9 @@ async fn beside_step(
                 "Its window could not be brought to the front; take a new screenshot.".into(),
             );
         };
+        // The window takes the keyboard a moment after it comes forward:
+        // keys sent at once land in the old focus or not at all.
+        tokio::time::sleep(RAISE_SETTLE).await;
         return inject(
             shared,
             id,
@@ -2549,6 +2573,7 @@ async fn beside_step(
         Ok(()) => {
             if act == desktop::BesideAct::Click {
                 b.focus = Some(index);
+                shared.edit(id, |t| t.beside_focus = Some((window.id, expect)));
                 seen.beside = Some(b);
             }
             Outcome::Ok
@@ -2809,8 +2834,27 @@ fn uses_coordinates(a: &Action) -> bool {
 /// Whether the screen's size changed since the model's screenshot.
 async fn stale(desk: &Desk, seen: &Seen) -> bool {
     let desk = desk.clone();
-    let now = tokio::task::spawn_blocking(move || desk.lock().expect("desktop").size()).await;
-    !matches!(now, Ok(Ok(size)) if size == (seen.frame.width, seen.frame.height))
+    let frame = (seen.frame.width, seen.frame.height);
+    // Beside the host user the screenshot is of the window: its size, and
+    // that it is still the window the AI works in.
+    let window = seen.beside.as_ref().map(|b| b.window.clone());
+    let now = tokio::task::spawn_blocking(move || {
+        let mut d = desk.lock().expect("desktop");
+        match window {
+            None => d.size().ok(),
+            Some(w) => d
+                .beside(std::slice::from_ref(&w.program))
+                .filter(|n| n.id == w.id)
+                .map(|n| {
+                    (
+                        (n.rect[2] - n.rect[0]) as u32,
+                        (n.rect[3] - n.rect[1]) as u32,
+                    )
+                }),
+        }
+    })
+    .await;
+    !matches!(now, Ok(Some(size)) if size == frame)
 }
 
 /// What an action would reach: the window under its point (its pointer

@@ -124,6 +124,12 @@ pub struct Beside {
     pub program: String,
     /// Where it is on the screen: `[x0, y0, x1, y1]`.
     pub rect: [i32; 4],
+    /// Whether it is a file chooser, and the folder it (or a file
+    /// manager) shows, as `policy::Target` has them.
+    #[serde(default)]
+    pub file_dialog: bool,
+    #[serde(default)]
+    pub folder: Option<String>,
 }
 
 /// What the AI does to an element beside the host user.
@@ -825,19 +831,31 @@ mod windows_impl {
             }
         }
 
-        /// The executable name (lowercase) of the process owning a window.
+        /// The executable name (lowercase) of the process owning a window;
+        /// for a Store app's frame (ApplicationFrameHost), the app's own,
+        /// from the core window inside it (Settings is systemsettings.exe).
         fn program(root: HWND) -> Option<String> {
-            let mut pid = 0u32;
-            // SAFETY: a plain query; a null window leaves `pid` zero.
-            unsafe { GetWindowThreadProcessId(root, Some(&mut pid)) };
-            if pid == 0 {
-                return None;
+            let name = |hwnd: HWND| {
+                let mut pid = 0u32;
+                // SAFETY: a plain query; a null window leaves `pid` zero.
+                unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+                let path = (pid != 0).then(|| process_image(pid)).flatten()?;
+                std::path::Path::new(&path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_lowercase())
+            };
+            let own = name(root)?;
+            if own != FRAME_HOST {
+                return Some(own);
             }
-            let path = process_image(pid)?;
-            std::path::Path::new(&path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_lowercase())
+            // SAFETY: a plain search among the window's children.
+            let core =
+                unsafe { FindWindowExW(Some(root), None, w!("Windows.UI.Core.CoreWindow"), None) };
+            Some(core.ok().and_then(name).unwrap_or(own))
         }
+
+        /// The process that draws Store apps' window frames.
+        const FRAME_HOST: &str = "applicationframehost.exe";
 
         /// The visible top-level windows, topmost first (`EnumWindows`'
         /// order), each with its program and its frame as the screen shows
@@ -1259,10 +1277,23 @@ mod windows_impl {
                     return None;
                 }
                 let p = program(hwnd)?;
-                (apps.contains(&p) && !crate::input::is_kyokai(&p)).then_some(super::Beside {
+                if !apps.contains(&p) || crate::input::is_kyokai(&p) {
+                    return None;
+                }
+                let dialog = file_dialog(hwnd);
+                let folder = if dialog {
+                    address_bar(hwnd)
+                } else if p == "explorer.exe" {
+                    explorer_folder(hwnd).or_else(|| address_bar(hwnd))
+                } else {
+                    None
+                };
+                Some(super::Beside {
                     id: hwnd.0 as u64,
                     program: p,
                     rect,
+                    file_dialog: dialog,
+                    folder,
                 })
             })
         }

@@ -558,6 +558,9 @@ func run(args []string) error {
 		for _, f := range s.Folders {
 			fmt.Printf("folder %s\n", f)
 		}
+		if s.Beside {
+			fmt.Println("beside on")
+		}
 		for _, p := range s.Panes {
 			fmt.Printf("pane %s %q  %s\n", p.ID, p.Name, p.Kind)
 		}

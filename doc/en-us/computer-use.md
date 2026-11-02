@@ -772,7 +772,9 @@ not saved, and neither implies the other. With apps granted:
   program it cannot tell), and app switching (Alt+Tab, Alt+Esc, Windows / Command + Tab or a digit);
   a system picker, notification or the Start and search panels ask instead. Pointer moves alone and
   screenshots stay free. Dialogs of a granted app's own process are its windows.
-- Programs are named as the policy names them (an executable's file name, a macOS app's name);
+- Programs are named as the policy names them (an executable's file name, a macOS app's name; a
+  Store app's by its own process, not the ApplicationFrameHost frame around it: Settings is
+  `systemsettings.exe`);
   `ai.apps` lists the programs with windows on the screen now, for choosing.
 
 With folders granted (full paths; a folder grants what is inside it), the folders are **checked,
@@ -820,7 +822,9 @@ not saved; granting no apps turns it off). It is best effort, on Windows for now
 - **When it cannot**: any other step (keys, right and double clicks, drags, an element with no
   such pattern, a read-only value) pauses the task, "Paused: this step needs your screen", with
   the reason on its step. Resuming brings its window to the front and runs that step with the
-  pointer and keyboard, then it works beside the host user again. Where no window can be worked
+  pointer and keyboard (after a short wait for the window to take the keyboard), then it works
+beside the host user again. The element clicked last keeps taking the typing across screenshots
+while it is still listed. Where no window can be worked
   beside (macOS, Linux, a pane, the helper modes), the first step that acts says so the same way,
   and after the resume the task works with the screen as usual.
 - **The host user always wins**: their input in the AI's window still takes over at once; input
