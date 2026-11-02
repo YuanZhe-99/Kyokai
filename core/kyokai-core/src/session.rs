@@ -6671,6 +6671,22 @@ mod tests {
                 "the video never restarted in vp8: {start}"
             );
         }
+        // The hardware codec off: the controller names software codecs
+        // only, and the host offers no other.
+        control
+            .try_send(json!({"type": "hardware", "on": false}))
+            .unwrap();
+        let soft = ["vp9-sw", "av1", "vp8", crate::kvm::RAW];
+        let until = Instant::now() + Duration::from_secs(8);
+        loop {
+            let offer = next_packet(&queue, media::packet::CODECS, "software offer");
+            let codecs: Vec<String> = serde_json::from_value(offer["codecs"].clone()).unwrap();
+            if codecs.iter().all(|c| soft.contains(&c.as_str())) {
+                assert!(codecs.iter().any(|c| c == "vp8"), "{codecs:?}");
+                break;
+            }
+            assert!(Instant::now() < until, "still offered: {codecs:?}");
+        }
         // The connection drops and resumes: the host gets the choices again
         // before the video starts.
         host_side.abort();
