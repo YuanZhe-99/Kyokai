@@ -1797,6 +1797,33 @@ impl Desktop for Screen {
             ..Default::default()
         }
     }
+
+    /// The on-screen windows front to back, each with its app's name, in
+    /// the main display's pixels.
+    fn windows(&mut self) -> Vec<crate::ai::desktop::Shown> {
+        let Ok((id, d)) = main_display() else {
+            return Vec::new();
+        };
+        let (pw, ph) = pixel_size(id, d);
+        let (sx, sy) = (pw as f64 / d.width as f64, ph as f64 / d.height as f64);
+        let (ox, oy) = (d.x as f64, d.y as f64);
+        shown_windows()
+            .into_iter()
+            .filter_map(|w| {
+                let r = w.bounds?;
+                let name = process_name(w.pid);
+                Some(crate::ai::desktop::Shown {
+                    program: (!name.is_empty()).then(|| name.to_lowercase()),
+                    rect: [
+                        ((r.origin.x - ox) * sx) as i32,
+                        ((r.origin.y - oy) * sy) as i32,
+                        ((r.origin.x + r.size.width - ox) * sx) as i32,
+                        ((r.origin.y + r.size.height - oy) * sy) as i32,
+                    ],
+                })
+            })
+            .collect()
+    }
 }
 
 /// Whether the screen is locked: the session's dictionary carries

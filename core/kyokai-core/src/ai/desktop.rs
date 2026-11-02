@@ -48,6 +48,44 @@ pub trait Desktop: Send {
         let _ = at;
         super::policy::Target::default()
     }
+    /// The windows on the screen, topmost first: each one's program (as
+    /// `target` names it) and its rectangle in the capture's pixels. The
+    /// default knows none, so a scoped screenshot is dimmed all over.
+    fn windows(&mut self) -> Vec<Shown> {
+        Vec::new()
+    }
+}
+
+/// A window on the screen as AI scope reads it (`Desktop::windows`).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Shown {
+    pub program: Option<String>,
+    /// `[x0, y0, x1, y1]` in the capture's pixels (may reach past it).
+    pub rect: [i32; 4],
+}
+
+/// Dims what the granted programs' windows do not show: covered parts of
+/// a granted window, other windows and the desktop become a dark grey, so
+/// the model sees only the granted apps (AI scope).
+/// Inputs: `windows` topmost first; `apps` the granted programs.
+pub fn dim_outside(frame: &mut Frame, windows: &[Shown], apps: &[String]) {
+    let (w, h) = (frame.width as i32, frame.height as i32);
+    let mut keep = vec![false; (w * h) as usize];
+    // Bottom to top, each window paints its own answer over the ones below.
+    for win in windows.iter().rev() {
+        let granted = win.program.as_ref().is_some_and(|p| apps.contains(p));
+        let [x0, y0, x1, y1] = win.rect;
+        let (x0, x1) = (x0.clamp(0, w), x1.clamp(0, w));
+        for y in y0.clamp(0, h)..y1.clamp(0, h) {
+            keep[(y * w + x0) as usize..(y * w + x1) as usize].fill(granted);
+        }
+    }
+    for (px, keep) in frame.bgra.as_chunks_mut::<4>().0.iter_mut().zip(keep) {
+        if !keep {
+            let grey = ((px[0] as u32 + px[1] as u32 + px[2] as u32) / 12) as u8;
+            px[..3].fill(grey);
+        }
+    }
 }
 
 /// One step of an action.
@@ -491,6 +529,10 @@ mod windows_impl {
         fn target(&mut self, at: Option<(f32, f32)>) -> crate::ai::policy::Target {
             facts::target(at)
         }
+
+        fn windows(&mut self) -> Vec<Shown> {
+            facts::windows()
+        }
     }
 
     mod facts {
@@ -669,6 +711,64 @@ mod windows_impl {
             std::path::Path::new(&path)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_lowercase())
+        }
+
+        /// The visible top-level windows, topmost first (`EnumWindows`'
+        /// order), each with its program and its frame as the screen shows
+        /// it (DWM's bounds, without the invisible resize borders); minimized
+        /// and cloaked windows (other virtual desktops, suspended apps) left
+        /// out.
+        pub fn windows() -> Vec<super::Shown> {
+            use windows::Win32::Foundation::{LPARAM, RECT};
+            use windows::Win32::Graphics::Dwm::{
+                DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute,
+            };
+            use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, IsIconic, IsWindowVisible};
+            use windows::core::BOOL;
+
+            /// Adds one window to the list `l` points at.
+            unsafe extern "system" fn each(hwnd: HWND, l: LPARAM) -> BOOL {
+                // SAFETY: `l` is the list `windows` passed, alive for the
+                // whole EnumWindows call; the queries only read the window.
+                unsafe {
+                    let out = &mut *(l.0 as *mut Vec<super::Shown>);
+                    let mut cloaked = 0u32;
+                    let _ = DwmGetWindowAttribute(
+                        hwnd,
+                        DWMWA_CLOAKED,
+                        (&mut cloaked as *mut u32).cast(),
+                        4,
+                    );
+                    let mut r = RECT::default();
+                    if IsWindowVisible(hwnd).as_bool()
+                        && !IsIconic(hwnd).as_bool()
+                        && cloaked == 0
+                        && DwmGetWindowAttribute(
+                            hwnd,
+                            DWMWA_EXTENDED_FRAME_BOUNDS,
+                            (&mut r as *mut RECT).cast(),
+                            std::mem::size_of::<RECT>() as u32,
+                        )
+                        .is_ok()
+                        && r.right > r.left
+                        && r.bottom > r.top
+                    {
+                        out.push(super::Shown {
+                            program: program(hwnd),
+                            rect: [r.left, r.top, r.right, r.bottom],
+                        });
+                    }
+                    true.into()
+                }
+            }
+
+            let mut out: Vec<super::Shown> = Vec::new();
+            physical(|| {
+                // SAFETY: the callback gets the list's address, which
+                // outlives the call.
+                let _ = unsafe { EnumWindows(Some(each), LPARAM(&mut out as *mut _ as isize)) };
+            });
+            out
         }
 
         /// Whether a top-level window is the common file dialog (a dialog

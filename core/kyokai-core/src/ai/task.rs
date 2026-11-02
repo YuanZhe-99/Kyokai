@@ -373,6 +373,9 @@ struct Shared {
     /// The instruction being written, shared by the host's user and every
     /// controller: its text and a serial that changes with it.
     draft: Mutex<(u64, String)>,
+    /// The programs the host user granted the AI in this session (AI
+    /// scope), or None for the whole desktop; kept in memory only.
+    scope: Mutex<Option<Vec<String>>>,
 }
 
 /// The host's AI runtime, owned by the core.
@@ -414,6 +417,7 @@ impl Ai {
                 open_desktop,
                 url,
                 draft: Mutex::new((0, String::new())),
+                scope: Mutex::new(None),
             }),
             client: Arc::new(Client::new()?),
             rt: Some(rt),
@@ -438,7 +442,50 @@ impl Ai {
             "model": s.model,
             "approval": s.approval,
             "keys": keys,
+            "scope": self.shared.scope.lock().expect("scope").clone(),
         })
+    }
+
+    /// Grants the AI only these programs' windows (names as
+    /// `policy::Target::program` has them), or the whole desktop with None.
+    /// Side effects: applies to the running task from its next action and
+    /// screenshot; not saved.
+    pub fn set_scope(&self, apps: Option<Vec<String>>) -> Result<(), String> {
+        let apps = apps.map(|list| {
+            let mut list: Vec<String> = list
+                .iter()
+                .map(|a| a.trim().to_lowercase())
+                .filter(|a| !a.is_empty())
+                .collect();
+            list.sort();
+            list.dedup();
+            list
+        });
+        if apps
+            .as_ref()
+            .is_some_and(|l| l.len() > 64 || l.iter().any(|a| a.len() > 256))
+        {
+            return Err("too many or too long app names".into());
+        }
+        *self.shared.scope.lock().expect("scope") = apps;
+        self.shared.changed.notify_waiters();
+        Ok(())
+    }
+
+    /// The programs with windows on the screen now, for choosing a scope:
+    /// their names as `set_scope` takes them, sorted.
+    /// Side effects: opens the desktop briefly (through the session agent in
+    /// the helper modes).
+    pub fn apps(&self) -> Result<Vec<String>, String> {
+        let mut desk = (self.shared.open_desktop)()?;
+        let mut apps: Vec<String> = desk
+            .windows()
+            .into_iter()
+            .filter_map(|w| w.program)
+            .collect();
+        apps.sort();
+        apps.dedup();
+        Ok(apps)
     }
 
     /// Changes the settings; absent fields stay.
@@ -806,6 +853,11 @@ const SETTINGS: &str = "ai.json";
 const HISTORY: &str = "ai-tasks.json";
 
 impl Shared {
+    /// The session's AI scope (`Ai::set_scope`).
+    fn scope(&self) -> Option<Vec<String>> {
+        self.scope.lock().expect("scope").clone()
+    }
+
     /// Applies an event to a task and wakes its runner.
     fn apply(&self, id: u64, event: Event, f: impl FnOnce(&mut Task)) -> Result<(), String> {
         {
@@ -991,18 +1043,30 @@ impl Seen {
 /// The desktop a runner drives, shared with blocking capture calls.
 type Desk = Arc<Mutex<Box<dyn Desktop>>>;
 
-/// Captures the screen on a blocking thread.
-async fn capture(desk: &Desk) -> Result<Frame, String> {
+/// Captures the screen on a blocking thread, dimmed outside the granted
+/// programs' windows when the AI has a scope (`desktop::dim_outside`).
+async fn capture(desk: &Desk, scope: Option<Vec<String>>) -> Result<Frame, String> {
     let desk = desk.clone();
-    tokio::task::spawn_blocking(move || desk.lock().expect("desktop").capture())
-        .await
-        .map_err(|_| "capture failed".to_string())?
+    tokio::task::spawn_blocking(move || {
+        let mut desk = desk.lock().expect("desktop");
+        let mut frame = desk.capture()?;
+        if let Some(apps) = scope {
+            desktop::dim_outside(&mut frame, &desk.windows(), &apps);
+        }
+        Ok(frame)
+    })
+    .await
+    .map_err(|_| "capture failed".to_string())?
 }
 
 /// Takes a screenshot for a model that gives positions as `coords` says.
-async fn observe(desk: &Desk, coords: Coordinates) -> Result<Seen, String> {
+async fn observe(
+    desk: &Desk,
+    coords: Coordinates,
+    scope: Option<Vec<String>>,
+) -> Result<Seen, String> {
     let multiple = coords.multiple();
-    let frame = capture(desk).await?;
+    let frame = capture(desk, scope).await?;
     let shot = tokio::task::block_in_place(|| {
         desktop::shot(
             &frame,
@@ -1155,7 +1219,7 @@ async fn drive(
     key: &str,
     start: Start,
 ) -> Result<Conversation, Stop> {
-    let mut seen = observe(desk, start.coords).await?;
+    let mut seen = observe(desk, start.coords, shared.scope()).await?;
     let mut conv = match (start.conversation, start.reply) {
         (Some(mut c), Some(text)) => {
             c.follow_up(&text, &seen.shot);
@@ -1208,7 +1272,7 @@ async fn drive(
         // waits for the resume, with a fresh screenshot.
         shared.running(id).await?;
         let last = if conv.wants_final_shot() {
-            seen = observe(desk, seen.coords).await?;
+            seen = observe(desk, seen.coords, shared.scope()).await?;
             Some(seen.shot.clone())
         } else {
             None
@@ -1315,7 +1379,8 @@ async fn act(
         };
         // UI Automation can wait on a slow program: off the async thread.
         let target = tokio::task::block_in_place(|| target_of(desk, action, seen));
-        let class = match policy::decide(mode, !acknowledged, action, &target) {
+        let scope = shared.scope();
+        let class = match policy::decide(mode, !acknowledged, action, &target, scope.as_deref()) {
             Verdict::Run => None,
             Verdict::Ask(class) => Some(class),
             Verdict::Refuse(class) => {
@@ -1429,6 +1494,9 @@ fn refusal(class: Class) -> &'static str {
         Class::SecureSurface => {
             "a credential prompt is on screen; only the person at the computer may answer it"
         }
+        Class::OutsideScope => {
+            "it reaches a program outside the apps the host user granted; stay in those apps' windows"
+        }
         _ => "this action is not allowed here",
     }
 }
@@ -1489,14 +1557,14 @@ async fn execute(
     seen: &mut Seen,
 ) -> Outcome {
     match action {
-        Action::Screenshot => match observe(desk, seen.coords).await {
+        Action::Screenshot => match observe(desk, seen.coords, shared.scope()).await {
             Ok(s) => {
                 *seen = s;
                 Outcome::Image(seen.shot.clone())
             }
             Err(why) => Outcome::Failed(why),
         },
-        Action::Zoom { region } => match capture(desk).await {
+        Action::Zoom { region } => match capture(desk, shared.scope()).await {
             Ok(frame) => {
                 let r = desktop::frame_region(*region, seen.size(), (frame.width, frame.height));
                 Outcome::Image(tokio::task::block_in_place(|| {

@@ -1047,6 +1047,26 @@ func (msgs Messages) AISaved() string {
 	return Catalog.Format(msgs.locale, "AISaved", nil)
 }
 
+// AIScopeAll says "All apps"
+// in the language the app shows.
+func AIScopeAll() string { return In(i18n.Locale()).AIScopeAll() }
+
+// AIScopeAll says "All apps"
+// in the language of msgs.
+func (msgs Messages) AIScopeAll() string {
+	return Catalog.Format(msgs.locale, "AIScopeAll", nil)
+}
+
+// AIScopeCount says "Apps: {count}"
+// in the language the app shows.
+func AIScopeCount(count int) string { return In(i18n.Locale()).AIScopeCount(count) }
+
+// AIScopeCount says "Apps: {count}"
+// in the language of msgs.
+func (msgs Messages) AIScopeCount(count int) string {
+	return Catalog.Format(msgs.locale, "AIScopeCount", map[string]any{"count": count})
+}
+
 // AISendButton says "The send button only"
 // in the language the app shows.
 func AISendButton() string { return In(i18n.Locale()).AISendButton() }
@@ -1425,6 +1445,16 @@ func AIWhyInstalling() string { return In(i18n.Locale()).AIWhyInstalling() }
 // in the language of msgs.
 func (msgs Messages) AIWhyInstalling() string {
 	return Catalog.Format(msgs.locale, "AIWhyInstalling", nil)
+}
+
+// AIWhyOutsideScope says "This reaches a program outside the apps you granted."
+// in the language the app shows.
+func AIWhyOutsideScope() string { return In(i18n.Locale()).AIWhyOutsideScope() }
+
+// AIWhyOutsideScope says "This reaches a program outside the apps you granted."
+// in the language of msgs.
+func (msgs Messages) AIWhyOutsideScope() string {
+	return Catalog.Format(msgs.locale, "AIWhyOutsideScope", nil)
 }
 
 // AIWhyPasswordVault says "This works in a password manager."

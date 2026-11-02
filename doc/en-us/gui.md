@@ -611,7 +611,7 @@ colors a shell uses most, and the cursor (`termPreview`).
   second). Above it what keeps it from sending: another task working there (Show it), this
   computer without a model with a key (Settings), or a host's link connecting, waiting for its
   user to allow AI tasks, refused or not allowing them (Reconnect).
-- **Chips** under the box (`chips`): on this computer Ask before acting and the model, menus
+- **Chips** under the box (`chips`): on this computer the apps the AI may use (All apps, or the ones checked from those with windows now: [AI scope](computer-use.md#ai-scope)), Ask before acting and the model, menus
   that change this computer's AI settings, and "This computer"; on a host "Approvals as set on
   NUC", "Runs on NUC" with the link's dot, and the task's model with whose key ("Claude Opus
   5.5 · NUC's key"; "NUC's model and key" before a task says it). A new session's where-chip is

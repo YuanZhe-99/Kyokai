@@ -1888,3 +1888,71 @@ fn tasks_count_their_tokens() {
         json!({"input": 4600, "cached": 1500, "output": 35})
     );
 }
+
+/// AI scope dims what the granted programs' windows do not show, by
+/// stacking order: a granted window's covered part goes dark too.
+#[test]
+fn scope_dims_outside_the_granted_windows() {
+    use super::desktop::{Shown, dim_outside};
+    let mut f = Frame {
+        bgra: [200, 200, 200, 255].repeat(100 * 50),
+        width: 100,
+        height: 50,
+    };
+    let win = |p: &str, rect| Shown {
+        program: Some(p.into()),
+        rect,
+    };
+    // Topmost first: a terminal over the editor's right half.
+    let windows = [
+        win("cmd.exe", [60, 0, 100, 50]),
+        win("code.exe", [0, 0, 80, 50]),
+        win("explorer.exe", [0, 0, 100, 50]),
+    ];
+    dim_outside(&mut f, &windows, &["code.exe".into()]);
+    let at = |x: usize, y: usize| f.bgra[(y * 100 + x) * 4];
+    assert_eq!(at(10, 10), 200, "the granted editor shows");
+    assert_eq!(at(70, 10), 50, "its part under the terminal goes dark");
+    assert_eq!(at(90, 10), 50, "the terminal goes dark");
+    let mut all = Frame {
+        bgra: [200, 200, 200, 255].repeat(100 * 50),
+        width: 100,
+        height: 50,
+    };
+    dim_outside(&mut all, &[], &["code.exe".into()]);
+    assert_eq!(
+        all.bgra[(10 * 100 + 10) * 4],
+        50,
+        "no window list: nothing shows"
+    );
+    assert_eq!(all.bgra[(10 * 100 + 10) * 4 + 3], 255, "alpha untouched");
+}
+
+/// With a scope, a click on another program is refused and the model told
+/// to stay in the granted apps; the granted one's runs.
+#[test]
+fn scope_refuses_other_programs() {
+    use super::policy::Target;
+    let turns = vec![(0, claude_turn("m1", click_save())), (0, claude_end("ok"))];
+    let server = server(turns);
+    let rig = rig("scope", "claude", &server.url);
+    rig.ai.set_scope(Some(vec!["Code.exe".into()])).unwrap();
+    assert_eq!(rig.ai.settings()["scope"], json!(["code.exe"]));
+    set_target(
+        &rig,
+        Target {
+            program: Some("notepad.exe".into()),
+            ..Default::default()
+        },
+    );
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    let t = rig.state(id, "done");
+    assert_eq!(t["steps"][0]["outcome"], "refused");
+    assert!(!rig.log.lock().unwrap().pressed);
+    assert!(
+        server.requests.lock().unwrap()[1]
+            .1
+            .to_string()
+            .contains("outside the apps")
+    );
+}

@@ -110,6 +110,8 @@ pub enum Class {
     Consent,
     /// A Remote Desktop or VNC window (no element tree, pixels only).
     RemoteDesktop,
+    /// A program outside the apps the host user granted (AI scope).
+    OutsideScope,
 }
 
 /// What the policy decided for one action.
@@ -130,10 +132,18 @@ pub const REFUSALS_BEFORE_EVERY_ACTION: u32 = 3;
 /// flagged this turn and the host user has not acknowledged it; `target` —
 /// what the action would reach (only looked at for actions that reach
 /// something).
+/// `scope` — the programs the host user granted, or None for the whole
+/// desktop.
 /// Notes: the order is fixed: refusals and secure surfaces, then what never
 /// loosens (consent, credentials, flags), then the mode; risk signals add
 /// up to the worst one, and an unknown target asks.
-pub fn decide(mode: Approval, flagged: bool, action: &Action, target: &Target) -> Verdict {
+pub fn decide(
+    mode: Approval,
+    flagged: bool,
+    action: &Action,
+    target: &Target,
+    scope: Option<&[String]>,
+) -> Verdict {
     let reaches = reaches(action);
     if reaches {
         match target.surface {
@@ -141,6 +151,23 @@ pub fn decide(mode: Approval, flagged: bool, action: &Action, target: &Target) -
             Surface::Credentials => return Verdict::Refuse(Class::SecureSurface),
             Surface::Consent => return Verdict::Ask(Class::SecureSurface),
             Surface::Desktop => {}
+        }
+        // AI scope: only the granted programs' windows, no switching away;
+        // a system picker or notification asks, anything else is refused
+        // (an unknown program too).
+        if let Some(apps) = scope
+            && acts(action)
+        {
+            if switches_app(action) {
+                return Verdict::Refuse(Class::OutsideScope);
+            }
+            match target.program.as_deref() {
+                Some(p) if apps.iter().any(|a| a == p) => {}
+                Some(p) if SYSTEM_SURFACES.contains(&p) => {
+                    return Verdict::Ask(Class::OutsideScope);
+                }
+                _ => return Verdict::Refuse(Class::OutsideScope),
+            }
         }
         if types(action) && target.role == Some(Role::Password) {
             return Verdict::Ask(Class::Credentials);
@@ -195,6 +222,19 @@ fn keys(a: &Action) -> &[Key] {
         Action::KeyCombo { keys, .. } | Action::HoldKey { keys, .. } => keys,
         _ => &[],
     }
+}
+
+/// Whether keys switch to another app or window: Alt+Tab, Alt+Esc, the
+/// Windows or Command key with Tab or a digit (the taskbar's apps).
+fn switches_app(a: &Action) -> bool {
+    let keys = keys(a);
+    let tab = presses(keys, "tab");
+    (keys.contains(&Key::Alt) && (tab || presses(keys, "escape")))
+        || (keys.contains(&Key::Meta)
+            && (tab
+                || keys
+                    .iter()
+                    .any(|k| matches!(k, Key::Char(c) if c.is_ascii_digit()))))
 }
 
 /// Key combinations that are a class on their own, wherever they go.
@@ -422,6 +462,19 @@ const BROWSERS: &[&str] = &[
     "chromium",
     "brave",
     "msedge",
+];
+/// System surfaces that come up over a granted app on its behalf: pickers,
+/// notifications, the Start and search panels.
+const SYSTEM_SURFACES: &[&str] = &[
+    "pickerhost.exe",
+    "shellexperiencehost.exe",
+    "searchhost.exe",
+    "startmenuexperiencehost.exe",
+    "notificationcenter",
+    "usernotificationcenter",
+    "xdg-desktop-portal-gnome",
+    "xdg-desktop-portal-kde",
+    "xdg-desktop-portal-gtk",
 ];
 const SYSTEM_DIALOGS: &[&str] = &[
     "usernotificationcenter",
@@ -837,7 +890,74 @@ mod tests {
             ),
         ];
         for (mode, flagged, action, target, want, why) in cases {
-            assert_eq!(decide(mode, flagged, &action, &target), want, "{why}");
+            assert_eq!(decide(mode, flagged, &action, &target, None), want, "{why}");
+        }
+    }
+
+    /// AI scope: granted programs only, no switching away; system pickers
+    /// ask; moves and screenshots are free; class 0 still comes first.
+    #[test]
+    fn scope_holds_the_granted_programs() {
+        use Verdict::*;
+        let apps = ["code.exe".to_string()];
+        let scope = Some(&apps[..]);
+        let alt_tab = combo(&[Key::Alt, Key::Named("tab")]);
+        let win_digit = combo(&[Key::Meta, Key::Char('2')]);
+        let locked = Target {
+            surface: Surface::Locked,
+            ..on("code.exe")
+        };
+        let cases: Vec<(Action, Target, Verdict, &str)> = vec![
+            (click(), on("code.exe"), Run, "the granted app"),
+            (typing(), on("code.exe"), Run, "typing into it"),
+            (
+                click(),
+                on("notepad.exe"),
+                Refuse(Class::OutsideScope),
+                "another app",
+            ),
+            (
+                click(),
+                Target::default(),
+                Refuse(Class::OutsideScope),
+                "an unknown app",
+            ),
+            (
+                click(),
+                on("pickerhost.exe"),
+                Ask(Class::OutsideScope),
+                "a system picker",
+            ),
+            (
+                alt_tab,
+                on("code.exe"),
+                Refuse(Class::OutsideScope),
+                "Alt+Tab",
+            ),
+            (
+                win_digit,
+                on("code.exe"),
+                Refuse(Class::OutsideScope),
+                "Win+2",
+            ),
+            (
+                Action::Move {
+                    to: Point { x: 1, y: 1 },
+                    held: vec![],
+                },
+                on("notepad.exe"),
+                Run,
+                "a move",
+            ),
+            (Action::Screenshot, on("notepad.exe"), Run, "a screenshot"),
+            (click(), locked, Pause, "the lock screen first"),
+        ];
+        for (action, target, want, why) in cases {
+            assert_eq!(
+                decide(Approval::Auto, false, &action, &target, scope),
+                want,
+                "{why}"
+            );
         }
     }
 

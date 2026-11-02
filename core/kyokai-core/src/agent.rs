@@ -684,6 +684,13 @@ impl crate::ai::desktop::Desktop for RemoteDesktop {
             .unwrap_or(true)
     }
 
+    fn windows(&mut self) -> Vec<crate::ai::desktop::Shown> {
+        // None known: a scoped screenshot is dimmed all over.
+        self.link
+            .call("ai.windows", json!({"desk": self.id}))
+            .unwrap_or_default()
+    }
+
     fn target(&mut self, at: Option<(f32, f32)>) -> crate::ai::policy::Target {
         // An agent that cannot tell answers nothing usable: the policy asks.
         self.link
@@ -1119,6 +1126,7 @@ impl Agent {
                         return Ok(None);
                     }
                     "ai.cursor" => json!(d.cursor()),
+                    "ai.windows" => json!(d.windows()),
                     "ai.target" => {
                         let at = serde_json::from_value::<Option<(f32, f32)>>(req["at"].clone())
                             .unwrap_or(None);

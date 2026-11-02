@@ -1738,6 +1738,33 @@ impl Desktop for Screen {
             ..Default::default()
         }
     }
+
+    /// On X11, the window manager's stacking list with each window's
+    /// program, in the primary display's pixels; on Wayland none (a scoped
+    /// screenshot is dimmed all over).
+    fn windows(&mut self) -> Vec<crate::ai::desktop::Shown> {
+        let Ok(x) = X::open() else {
+            return Vec::new();
+        };
+        let origin = main_area();
+        let program = |pid: Option<u32>| {
+            pid.and_then(|p| std::fs::read_link(format!("/proc/{p}/exe")).ok())
+                .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_lowercase()))
+        };
+        x.windows()
+            .into_iter()
+            .rev()
+            .map(|w| crate::ai::desktop::Shown {
+                program: program(w.pid),
+                rect: [
+                    w.rect.x - origin.x,
+                    w.rect.y - origin.y,
+                    w.rect.x + w.rect.w - origin.x,
+                    w.rect.y + w.rect.h - origin.y,
+                ],
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]

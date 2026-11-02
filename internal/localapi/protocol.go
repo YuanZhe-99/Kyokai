@@ -94,6 +94,8 @@ const (
 	RequestHelperRemove         RequestType = "helper.remove"              // the helper removes itself, its state included (macOS), after the store moved out
 	RequestHelperUpdate         RequestType = "helper.update"              // the helper installs the signed bundle in Request.From and restarts
 	RequestAIModels             RequestType = "ai.models.list"             // the models a source lists (Request.Source → Response.AIModels), only when asked
+	RequestAIScopeSet           RequestType = "ai.scope.set"               // grant the AI only these programs' windows (Request.Apps; none: the whole desktop), for this session
+	RequestAIApps               RequestType = "ai.apps"                    // the programs with windows on the screen now (→ Response.AIApps), for choosing a scope
 	RequestMedia                RequestType = "session.media"              // a controller session's media (Request.ID); the connection then carries packets
 	RequestSessionAttach        RequestType = "session.attach"             // streaming; see package doc
 	RequestAISettingsGet        RequestType = "ai.settings.get"            // the AI settings and which keys are stored
@@ -218,9 +220,11 @@ type Request struct {
 	// Backup carries the passphrase (and for an import the document).
 	Backup *IdentityBackup `json:"backup,omitempty"`
 	// AISettings carries the fields RequestAISettingsSet changes.
-	AISettings *AISettings    `json:"ai_settings,omitempty"`
-	AIKey      *AIKey         `json:"ai_key,omitempty"`
-	AITask     *AITaskRequest `json:"ai_task,omitempty"`
+	AISettings *AISettings `json:"ai_settings,omitempty"`
+	// Apps are the programs ai.scope.set grants (nil: the whole desktop).
+	Apps   *[]string      `json:"apps,omitempty"`
+	AIKey  *AIKey         `json:"ai_key,omitempty"`
+	AITask *AITaskRequest `json:"ai_task,omitempty"`
 	// LoginKey is RequestKeysAdd's key, or (its ID) RequestKeysRemove's.
 	LoginKey *LoginKey `json:"login_key,omitempty"`
 	// Sign is RequestKeysSign's.
@@ -339,6 +343,9 @@ type AISettings struct {
 	// Keys says which sources have a stored key (a response only); the
 	// keys never leave the engine.
 	Keys map[string]bool `json:"keys,omitempty"`
+	// Scope is the programs the AI is granted in this session (a response
+	// only; empty: the whole desktop, doc/en-us/computer-use.md, "AI scope").
+	Scope []string `json:"scope,omitempty"`
 }
 
 // AISource is a model provider: a template's endpoint or the user's own,
@@ -604,6 +611,8 @@ type Response struct {
 	AITasks []AITask `json:"ai_tasks,omitempty"`
 	// AIModels are the models a source listed (RequestAIModels).
 	AIModels []AIModel `json:"ai_models,omitempty"`
+	// AIApps are the programs with windows on the screen (ai.apps).
+	AIApps []string `json:"ai_apps,omitempty"`
 	// Keys answers RequestKeysList (public parts only).
 	Keys []LoginKey `json:"keys,omitempty"`
 	// Signature answers RequestKeysSign: the SSH signature blob, base64.

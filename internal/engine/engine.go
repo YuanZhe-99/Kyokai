@@ -196,6 +196,7 @@ var protectedAllows = map[localapi.RequestType]bool{
 	localapi.RequestPermission: true, localapi.RequestAgentRestart: true, localapi.RequestHelperUpdate: true,
 	localapi.RequestAISettingsGet: true, localapi.RequestAISettingsSet: true, localapi.RequestAIKeySet: true,
 	localapi.RequestAIModels: true, localapi.RequestAITaskStart: true, localapi.RequestAIDraft: true,
+	localapi.RequestAIScopeSet: true, localapi.RequestAIApps: true,
 	localapi.RequestAITaskReply: true, localapi.RequestAITaskPause: true, localapi.RequestAITaskResume: true,
 	localapi.RequestAITaskCancel: true, localapi.RequestAITaskDecide: true, localapi.RequestAITasks: true,
 	localapi.RequestAIHistoryClear: true, localapi.RequestAIStop: true, localapi.RequestClipboardMine: true,
@@ -636,6 +637,14 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 			return localapi.Fail(localapi.CodeInvalid, "%v", err)
 		}
 		return localapi.Response{OK: true, AIModels: out.Models}
+	case localapi.RequestAIScopeSet:
+		return h.aiSettings("ai.scope.set", map[string]*[]string{"apps": req.Apps})
+	case localapi.RequestAIApps:
+		var apps []string
+		if err := h.lib.Call("ai.apps", nil, &apps); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true, AIApps: apps}
 	case localapi.RequestAIDraft:
 		if req.AITask == nil {
 			return localapi.Fail(localapi.CodeInvalid, "draft missing")

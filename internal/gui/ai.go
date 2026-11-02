@@ -35,6 +35,10 @@ type aiState struct {
 	tasks   []localapi.AITask
 	loaded  bool
 	polling bool
+	// apps are the programs with windows on this screen (ai.apps), for
+	// the scope chip; appsAt is when they were last asked for.
+	apps   []string
+	appsAt time.Time
 }
 
 // aiView is Settings › AI: the providers and the defaults for new tasks
@@ -338,6 +342,8 @@ func aiWhy(class string) string {
 		return L.AIWhyConsent()
 	case "remote-desktop":
 		return L.AIWhyRemoteDesktop()
+	case "outside-scope":
+		return L.AIWhyOutsideScope()
 	}
 	return ""
 }
@@ -535,4 +541,53 @@ func keyLabel(keys []string) string {
 // fraction.
 func seconds(ms int) string {
 	return strings.TrimSuffix(strings.TrimRight(fmt.Sprintf("%.1f", float64(ms)/1000), "0"), ".")
+}
+
+// refreshAIApps asks the engine again for the programs with windows on
+// this screen (ai.apps), at most every few seconds; the scope chip shows
+// them the next time it opens.
+func (a *App) refreshAIApps() {
+	a.mu.Lock()
+	if time.Since(a.ai.appsAt) < 3*time.Second {
+		a.mu.Unlock()
+		return
+	}
+	a.ai.appsAt = time.Now()
+	a.mu.Unlock()
+	go func() {
+		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestAIApps})
+		if err != nil || !resp.OK {
+			return
+		}
+		a.update(func() { a.ai.apps = resp.AIApps })
+	}()
+}
+
+// setAIScope grants the AI only these programs' windows in this session,
+// or the whole desktop with nil (doc/en-us/computer-use.md, "AI scope").
+func (a *App) setAIScope(apps []string) {
+	go func() {
+		req := localapi.Request{Type: localapi.RequestAIScopeSet}
+		if apps != nil {
+			req.Apps = &apps
+		}
+		resp, err := a.requestWith(req)
+		if err != nil || !resp.OK || resp.AISettings == nil {
+			return
+		}
+		a.update(func() { a.ai.settings = resp.AISettings })
+	}()
+}
+
+// scopeChoices are the programs the scope chip offers: those with windows
+// now and those granted already, sorted.
+func scopeChoices(apps, granted []string) []string {
+	out := slices.Concat(apps, granted)
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// appLabel names a program for people: its executable without ".exe".
+func appLabel(app string) string {
+	return strings.TrimSuffix(app, ".exe")
 }

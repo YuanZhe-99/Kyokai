@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -519,6 +520,38 @@ func (t *aiTab) chips(c *ui.Context, rec AIRecord, s aiPaneState) {
 					on := set.Approval == p.id || set.Approval != "every-action" && p.id == "auto"
 					if m.Item(p.label).Checked(on).Chosen() && !on {
 						a.saveAISettings(&localapi.AISettings{Approval: p.id}, "")
+					}
+				}
+			})
+		}
+		if set != nil {
+			label := L.AIScopeAll()
+			switch len(set.Scope) {
+			case 0:
+			case 1:
+				label = appLabel(set.Scope[0])
+			default:
+				label = L.AIScopeCount(len(set.Scope))
+			}
+			aiChip(c, "ai-chip-scope-"+t.id, nil, ui.Transparent, label, func(m *ui.Menu) {
+				a.refreshAIApps()
+				if m.Item(L.AIScopeAll()).Checked(len(set.Scope) == 0).Chosen() && len(set.Scope) > 0 {
+					a.setAIScope(nil)
+				}
+				a.mu.Lock()
+				apps := a.ai.apps
+				a.mu.Unlock()
+				for _, app := range scopeChoices(apps, set.Scope) {
+					on := slices.Contains(set.Scope, app)
+					if m.Item(appLabel(app)).Checked(on).Chosen() {
+						scope := slices.DeleteFunc(slices.Clone(set.Scope), func(s string) bool { return s == app })
+						if !on {
+							scope = append(scope, app)
+						}
+						if len(scope) == 0 {
+							scope = nil
+						}
+						a.setAIScope(scope)
 					}
 				}
 			})

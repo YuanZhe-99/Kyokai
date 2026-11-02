@@ -1627,6 +1627,17 @@ fn call(input: &[u8]) -> Result<Value, String> {
         }
         "ai.settings.get" => with_core(|c| c.ctx.ai.settings()),
         "ai.settings.set" => try_core(|c| c.ctx.ai.set_settings(&req.params)),
+        "ai.scope.set" => {
+            // {"apps": ["code.exe", …]} grants those programs; {"apps": null}
+            // the whole desktop again.
+            let apps: Option<Vec<String>> = serde_json::from_value(req.params["apps"].take())
+                .map_err(|e| format!("bad apps: {e}"))?;
+            try_core(|c| {
+                c.ctx.ai.set_scope(apps)?;
+                Ok(c.ctx.ai.settings())
+            })
+        }
+        "ai.apps" => try_core(|c| c.ctx.ai.apps().map(|a| json!(a))),
         "ai.key.set" => {
             // {"source": "claude", "key": "…"} stores it, {"key": null} removes
             // it (`provider` is the first versions' name of the field).

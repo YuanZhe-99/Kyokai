@@ -321,6 +321,15 @@
     }
   },
   "AISaved": "AI settings saved.",
+  "AIScopeAll": "All apps",
+  "AIScopeCount": "Apps: {count}",
+  "@AIScopeCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "AISendButton": "The send button only",
   "AISendEnter": "Enter (Shift+Enter breaks the line)",
   "AISendKey": "Send a prompt with",
@@ -373,6 +382,7 @@
   "AIWhyCredentials": "This types where a password goes.",
   "AIWhyDeleting": "This deletes files.",
   "AIWhyInstalling": "This installs software.",
+  "AIWhyOutsideScope": "This reaches a program outside the apps you granted.",
   "AIWhyPasswordVault": "This works in a password manager.",
   "AIWhyPayments": "This could pay or buy something.",
   "AIWhyPowerSession": "This could shut down, restart, sign out or lock the computer.",

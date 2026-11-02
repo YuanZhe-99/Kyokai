@@ -28,6 +28,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | temporary password | 临时密码 |
 | permanent password | 固定密码 |
 | coordinate mode | 坐标模式 |
+| AI scope | AI 范围 |
 | Screen positions (a model's coordinate mode) | 屏幕位置 |
 | trusted device | 受信任设备 |
 | friendly name | 别名 |

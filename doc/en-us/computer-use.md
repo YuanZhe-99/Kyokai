@@ -730,6 +730,28 @@ notes. A declined action fails with "The host user declined this action", a refu
 "Refused by the host" and the reason, and the model continues from there; after three refusals or
 declines in one task it asks before every action.
 
+### AI scope
+
+The host user may grant the AI only some apps for the session (the AI pane's apps chip, or
+`ai.scope.set`; kept in memory, not saved). With a scope:
+
+- **What the AI sees**: every screenshot and zoom is dimmed to a dark grey wherever the granted
+  programs' windows do not show — other windows, the desktop, and the parts of a granted window
+  that another one covers — from the system's window list and stacking order (Windows: the visible,
+  uncloaked top-level windows with DWM's frame bounds; macOS: the on-screen window list; X11: the
+  window manager's stacking list). Where no window list is known (Wayland), everything is dimmed.
+- **What it may do**: right before each action, after class 0 and before anything else, the policy
+  ([Approvals](#approvals)) refuses an action that acts on a window of another program (or of a
+  program it cannot tell), and app switching (Alt+Tab, Alt+Esc, Windows / Command + Tab or a digit);
+  a system picker, notification or the Start and search panels ask instead. Pointer moves alone and
+  screenshots stay free. Dialogs of a granted app's own process are its windows.
+- Programs are named as the policy names them (an executable's file name, a macOS app's name);
+  `ai.apps` lists the programs with windows on the screen now, for choosing.
+
+Granting is the host user's; a controller cannot widen it. Folders are not part of the scope yet,
+and the AI cannot work in one window while the host user works in another: local input still takes
+over at once (PLAN.md).
+
 ### States
 
 | Event | From | To |
