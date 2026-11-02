@@ -19,6 +19,7 @@
     "minimumSystemVersion": "14.0",
     "entitlements": "packaging/macos/app.entitlements",
     "helperEntitlements": {
+      "bin/kyokai": "packaging/macos/engine.entitlements",
       "bin/kyokai-svc": "packaging/macos/engine.entitlements",
       "bin/Kyokai Helper.app": "packaging/macos/engine.entitlements"
     },

@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 界面 | `Kyokai`（MyGo） | 当前用户，从不提权 | 窗口、托盘、设置。自身不持有身份，只显示引擎推送的内容。 |
 | 引擎 | `kyokai-svc run --host user` | 当前用户，界面的子进程 | 加载 Rust 核心（由它持有设备身份、密码、内嵌的 EasyTier 节点（[networking.md](networking.md)）以及会话两端（[protocol.md](protocol.md)））；提供本地 API。 |
-| 控制命令行 | `kyokai-svc ctl …` | 当前用户 | 本地 API 的脚本客户端（开发、冒烟测试）。 |
+| 命令行 | `kyokai …`（也可用 `kyokai-svc ctl …`） | 当前用户 | 面向人与脚本的本地 API 客户端（[cli.md](cli.md)）。 |
 
 引擎与界面同生同灭：macOS 上界面持有的生命线管道关闭时引擎停止，Windows 上界面进程消失时引擎停止（`--parent-pid`）；
 从托盘退出时也会请求它关闭。同一套接字上的第二个引擎会在接触身份之前拒绝启动。`KYOKAI_PROFILE` 让开发实例拥有自己的
@@ -27,7 +27,9 @@
 | 包 / crate | 职责 |
 |---|---|
 | `cmd/kyokai` | 界面入口 |
-| `cmd/kyokai-svc` | 引擎入口（`run`、`ctl`、`version`） |
+| `cmd/kyokai-svc` | 引擎入口（`run`、`ctl`、`helper`、`agent`、`version`） |
+| `cmd/kyokai-cli` | 控制台程序 `kyokai` |
+| `internal/ctl` | 命令行（[cli.md](cli.md)） |
 | `internal/gui` | 界面状态、视图、托盘、应用更新、引擎子进程 |
 | `internal/engine` | 引擎宿主：生命线、基于核心的本地 API 处理 |
 | `internal/localapi` | 基于 AF_UNIX 的带版本 NDJSON 协议、对端凭据授权 |

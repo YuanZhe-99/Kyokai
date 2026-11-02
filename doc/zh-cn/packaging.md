@@ -11,9 +11,9 @@ x64）；macOS 目标需要 Mac；Linux 目标需要同架构的 Linux 主机，
 
 | 平台 | 文件 |
 |---|---|
-| Windows（x64、ARM64） | `Kyokai.exe` 与 `bin/kyokai-svc.exe`、`bin/kyokai_core.dll`、`bin/kyokai-agent.exe`（agent sidecar，内含 Bun 的运行时）、`licenses/`；按用户安装的 NSIS 安装包（`%LOCALAPPDATA%\Programs\Kyokai`，无需管理员权限）；便携 zip |
-| macOS（Apple 芯片、Intel） | `Kyokai.app`，其中有 `Contents/Resources/bin/kyokai-svc`（应用的引擎）与 `kyokai-agent`（agent sidecar，助手 bundle 中其引擎旁也有一份）与 `bin/Kyokai Helper.app`（核心库与助手自己的引擎，[run-modes.md](run-modes.md)），以及 `.dmg` |
-| Linux（x64、ARM64） | `kyokai`，其中有 `bin/kyokai-svc`、`bin/libkyokai_core.so`、`bin/kyokai-agent` 与 `licenses/`；安装到 `/opt/kyokai` 的 Debian 包（依赖 GTK 3、`libayatana-appindicator3-1`、`libpipewire-0.3-0t64`、`libva2`、`libva-drm2` 以及 libavcodec 62、61 或 60；它不能自行更新，又没有软件包仓库，需手动在其上安装更新的 `.deb`）、带 `install.sh` 的归档（安装到 `~/.local`，无需 root，自动更新），以及 AppImage（相同的文件；不自动更新，从它安装的助手不监视应用文件夹，[run-modes.md](run-modes.md)） |
+| Windows（x64、ARM64） | `Kyokai.exe` 与 `bin/kyokai-svc.exe`、`bin/kyokai.exe`（命令行，[cli.md](cli.md)）、`bin/kyokai_core.dll`、`bin/kyokai-agent.exe`（agent sidecar，内含 Bun 的运行时）、`licenses/`；按用户安装的 NSIS 安装包（`%LOCALAPPDATA%\Programs\Kyokai`，无需管理员权限）；便携 zip |
+| macOS（Apple 芯片、Intel） | `Kyokai.app`，其中有 `Contents/Resources/bin/kyokai-svc`（应用的引擎）、`kyokai`（命令行）与 `kyokai-agent`（agent sidecar，助手 bundle 中其引擎旁也有一份）与 `bin/Kyokai Helper.app`（核心库与助手自己的引擎，[run-modes.md](run-modes.md)），以及 `.dmg` |
+| Linux（x64、ARM64） | `kyokai`，其中有 `bin/kyokai-svc`、`bin/kyokai`（命令行）、`bin/libkyokai_core.so`、`bin/kyokai-agent` 与 `licenses/`；安装到 `/opt/kyokai` 的 Debian 包（依赖 GTK 3、`libayatana-appindicator3-1`、`libpipewire-0.3-0t64`、`libva2`、`libva-drm2` 以及 libavcodec 62、61 或 60；它不能自行更新，又没有软件包仓库，需手动在其上安装更新的 `.deb`）、带 `install.sh` 的归档（安装到 `~/.local`，无需 root，自动更新），以及 AppImage（相同的文件；不自动更新，从它安装的助手不监视应用文件夹，[run-modes.md](run-modes.md)） |
 | 全部 | 设置 `MYGO_UPDATER_PRIVATE_KEY` 时：签名的更新归档、增量包与 `update-<target>.json` |
 
 `resources/<goos>-<goarch>/` 与 `resources/licenses/` 下的构建产物不提交。

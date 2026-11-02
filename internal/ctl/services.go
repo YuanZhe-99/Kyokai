@@ -1,4 +1,4 @@
-package main
+package ctl
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -36,11 +35,12 @@ var ctlServices = map[string]func(args []string) error{
 // ctlWatchStatus watches devices' status for a while, as Home does (a lease
 // renewed every 10 seconds), and prints each sample as it arrives.
 func ctlWatchStatus(args []string) error {
-	fs := flag.NewFlagSet("ctl watch-status", flag.ExitOnError)
-	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "local API socket path")
+	fs, socket := newFlags(args[0])
 	devices := fs.String("device", "", "the Device IDs to watch (comma-separated)")
 	seconds := fs.Int("seconds", 20, "how long to watch")
-	fs.Parse(args[1:])
+	if err := parse(fs, args[1:]); err != nil {
+		return err
+	}
 	client := localapi.NewClient(*socket)
 	ctx := context.Background()
 	lease := func(ids []string) error {
@@ -99,12 +99,13 @@ const servicePasswordEnv = "KYOKAI_SERVICE_PASSWORD"
 //
 //	ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" user@host
 func ctlTunnel(args []string) error {
-	fs := flag.NewFlagSet("ctl tunnel", flag.ExitOnError)
-	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "local API socket path")
+	fs, socket := newFlags(args[0])
 	device := fs.String("device", "", "the Device ID")
 	address := fs.String("address", "", "the device's IP address or domain name, instead of the network")
 	service := fs.String("service", "ssh", "ssh, rdp or vnc")
-	fs.Parse(args[1:])
+	if err := parse(fs, args[1:]); err != nil {
+		return err
+	}
 	conn, err := localapi.NewClient(*socket).Tunnel(context.Background(), localapi.TunnelRequest{DeviceID: *device, Address: *address, Service: *service})
 	if err != nil {
 		return fmt.Errorf("no tunnel: %w", err)
@@ -128,14 +129,15 @@ func ctlTunnel(args []string) error {
 // device's service sign-ins; the password comes from the environment.
 func ctlCredentials(args []string) error {
 	cmd := args[0]
-	fs := flag.NewFlagSet("ctl "+cmd, flag.ExitOnError)
-	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "local API socket path")
+	fs, socket := newFlags(cmd)
 	device := fs.String("device", "", "the Device ID")
 	service := fs.String("service", "", "ssh, rdp or vnc (credentials-forget: also key, or none for everything)")
 	user := fs.String("user", "", "credentials-set: the user name")
 	domain := fs.String("domain", "", "credentials-set: the Remote Desktop domain")
 	keyID := fs.String("key-id", "", "credentials-set: a kept sign-in key for SSH")
-	fs.Parse(args[1:])
+	if err := parse(fs, args[1:]); err != nil {
+		return err
+	}
 	req := localapi.Request{DeviceID: *device, Service: *service}
 	switch cmd {
 	case "credentials-set":
@@ -153,6 +155,9 @@ func ctlCredentials(args []string) error {
 	if err != nil {
 		return err
 	}
+	if jsonOut {
+		return printJSON(resp)
+	}
 	if c := resp.Credentials; c != nil {
 		fmt.Printf("user %q domain %q key %q password set: %v\nserver key %s\n", c.User, c.Domain, c.KeyID, c.Password != nil, c.HostKey)
 		return nil
@@ -166,12 +171,13 @@ func ctlCredentials(args []string) error {
 // engine only; its public line is printed for the other device.
 func ctlKeys(args []string) error {
 	cmd := args[0]
-	fs := flag.NewFlagSet("ctl "+cmd, flag.ExitOnError)
-	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "local API socket path")
+	fs, socket := newFlags(cmd)
 	name := fs.String("name", "", "keys-generate, authorized-add: the key's name")
 	public := fs.String("public", "", "authorized-add: the OpenSSH public key line")
 	id := fs.String("id", "", "keys-remove, authorized-remove: the key's id")
-	fs.Parse(args[1:])
+	if err := parse(fs, args[1:]); err != nil {
+		return err
+	}
 	req := localapi.Request{}
 	switch cmd {
 	case "keys":
@@ -193,11 +199,11 @@ func ctlKeys(args []string) error {
 		req.Type, req.Authorized = localapi.RequestAuthorizedRemove, &localapi.AuthorizedKey{ID: *id}
 	}
 	resp, err := localapi.NewClient(*socket).Do(context.Background(), req)
-	if errors.Is(err, localapi.ErrNotRunning) {
-		return errors.New("the engine is not running")
-	}
 	if err != nil {
 		return err
+	}
+	if jsonOut {
+		return printJSON(resp)
 	}
 	for _, k := range resp.Keys {
 		fmt.Printf("key %s %q %s\n  %s\n", k.ID, k.Name, k.Type, k.Public)
@@ -214,9 +220,10 @@ func ctlKeys(args []string) error {
 // ctlLogs prints the engine's logs (the helper's and its agent's in the
 // helper modes); only the owner or the helper's operator may read them.
 func ctlLogs(args []string) error {
-	fs := flag.NewFlagSet("ctl logs", flag.ExitOnError)
-	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "local API socket path")
-	fs.Parse(args[1:])
+	fs, socket := newFlags(args[0])
+	if err := parse(fs, args[1:]); err != nil {
+		return err
+	}
 	resp, err := localapi.NewClient(*socket).Do(context.Background(), localapi.Request{Type: localapi.RequestLogsRead})
 	if err != nil {
 		return err

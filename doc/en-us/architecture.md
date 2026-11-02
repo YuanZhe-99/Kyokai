@@ -6,7 +6,7 @@
 |---|---|---|---|
 | GUI | `Kyokai` (MyGo) | the user, never elevated | Window, tray, settings. Holds no identity; shows what the engine pushes. |
 | Engine | `kyokai-svc run --host user` | the user, a child of the GUI | Loads the Rust core, which owns the device identity, the passwords, the embedded EasyTier node ([networking.md](networking.md)) and both ends of sessions ([protocol.md](protocol.md)); serves the local API. |
-| Control CLI | `kyokai-svc ctl …` | the user | Scriptable client of the local API (development, smoke tests). |
+| Command line | `kyokai …` (also `kyokai-svc ctl …`) | the user | Client of the local API for people and scripts ([cli.md](cli.md)). |
 
 The engine lives exactly as long as the GUI: on macOS it stops when the lifeline pipe the GUI holds
 closes, on Windows when the GUI's process is gone (`--parent-pid`); quitting from the tray also asks
@@ -30,7 +30,9 @@ described in [run-modes.md](run-modes.md).
 | Package / crate | Role |
 |---|---|
 | `cmd/kyokai` | GUI entry point |
-| `cmd/kyokai-svc` | Engine entry point (`run`, `ctl`, `version`) |
+| `cmd/kyokai-svc` | Engine entry point (`run`, `ctl`, `helper`, `agent`, `version`) |
+| `cmd/kyokai-cli` | The console `kyokai` |
+| `internal/ctl` | The command line ([cli.md](cli.md)) |
 | `internal/gui` | GUI state, views, tray, app updates, the engine child |
 | `internal/engine` | Engine host: lifeline, local API handlers over the core |
 | `internal/localapi` | Versioned NDJSON protocol over AF_UNIX, peer-credential authorization |

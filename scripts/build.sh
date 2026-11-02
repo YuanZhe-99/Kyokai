@@ -5,8 +5,8 @@
 #   scripts/build.sh windows/amd64 windows/arm64 ...
 #
 # For each target it builds the native codec libraries (scripts/codecs.sh),
-# the Rust core (cargo, --release) and the engine (kyokai-svc,
-# CGO_ENABLED=0) into resources/<goos>-<goarch>/bin, which `mygo build`
+# the Rust core (cargo, --release), the engine (kyokai-svc, CGO_ENABLED=0),
+# the console command line (kyokai) and the agent sidecar (kyokai-agent) into resources/<goos>-<goarch>/bin, which `mygo build`
 # ships with the app, and copies the license texts into resources/licenses. macOS targets need a macOS host; Windows targets need
 # Windows (the core links with MSVC); Linux targets need a Linux host of that
 # architecture (the core links with libpipewire, whose bindings are
@@ -122,6 +122,8 @@ for t in "${targets[@]}"; do
 	fi
 	test -f "$libdir/$lib" || { echo "missing $libdir/$lib" >&2; exit 1; }
 	CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w" -o "$bin/kyokai-svc$ext" ./cmd/kyokai-svc
+	# The console command line (doc/en-us/cli.md), in bin and not on PATH.
+	CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w" -o "$bin/kyokai$ext" ./cmd/kyokai-cli
 	# kyokai-agent: one executable with Bun's runtime for the target.
 	case "$goarch" in amd64) barch=x64 ;; *) barch=$goarch ;; esac
 	bun build sidecar/src/main.ts --compile --minify --target="bun-$goos-$barch" --outfile "$bin/kyokai-agent$ext" >/dev/null

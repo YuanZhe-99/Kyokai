@@ -107,6 +107,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | Install updates automatically / Never / When the computer is idle / Every day at (About & updates) | 自动安装更新 / 从不 / 电脑空闲时 / 每天定时 |
 | Runs on / Kyokai Network (built in) / EasyTier options / other devices cannot reach this one (Network) | 运行于 / Kyokai 网络（内置） / EasyTier 选项 / 其他设备无法连到这台电脑 |
 | Fit / Original size (the viewer) | 适应窗口 / 原始大小 |
+| command line / exit code | 命令行 / 退出码 |
 | clipboard history / Share the clipboard with this device | 剪贴板历史 / 与这台设备共享剪贴板 |
 | (the pane) in front | （小窗）位于前台 |
 | pane / pane header / group (panes split together) | 小窗 / 小窗标题栏 / 分组（分屏在一起的小窗） |

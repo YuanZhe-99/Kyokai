@@ -36,6 +36,7 @@ about to change, verify against the code, then fix the docs in the same commit.
 | Seeing and operating a host: video, input, AI | `doc/en-us/computer-use.md` |
 | The host's own SSH, Remote Desktop and VNC through tunnels: the built-in clients, saved service sign-ins, files over SSH (SFTP, SCP); the NanoKVM USB | `doc/en-us/remote-services.md` |
 | How people use Kyokai, step by step | `doc/en-us/user-guide.md` |
+| The `kyokai` command line: commands, `--json`, exit codes, screenshots | `doc/en-us/cli.md` |
 | Interface structure, wording, tray, languages | `doc/en-us/gui.md` |
 | Verified upstream contracts (MyGo, EasyTier, RustDesk, OpenAI, Claude) and quirks | `doc/en-us/upstream.md` |
 | Reused third-party code, licenses and obligations | `doc/en-us/third-party.md` |
