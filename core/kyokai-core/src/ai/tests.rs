@@ -2425,7 +2425,7 @@ fn folders_pause_on_changes_outside() {
         .as_array()
         .is_none_or(|s| s.is_empty())
     {
-        assert!(t0.elapsed() < Duration::from_secs(20), "no first step");
+        assert!(t0.elapsed() < Duration::from_secs(60), "no first step");
         std::thread::sleep(Duration::from_millis(20));
     }
     std::fs::write(granted.join("report.txt"), "in").unwrap();

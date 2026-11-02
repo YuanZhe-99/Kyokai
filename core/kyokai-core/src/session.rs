@@ -5964,7 +5964,8 @@ mod tests {
 
     /// Reads the controller's media until an AI packet satisfies `f`.
     fn ai_packet(queue: &media::Queue, what: &str, f: impl Fn(u8, &Value) -> bool) -> Value {
-        let until = Instant::now() + Duration::from_secs(20);
+        // The host starts its agent sidecar from source: slow on a cold runner.
+        let until = Instant::now() + Duration::from_secs(60);
         while Instant::now() < until {
             let Ok(p) = queue.pop(Duration::from_millis(200)) else {
                 continue;

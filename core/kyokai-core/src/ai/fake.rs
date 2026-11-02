@@ -214,10 +214,7 @@ impl Server {
     pub fn wait_for(&self, n: usize) {
         let t0 = Instant::now();
         while self.requests.lock().unwrap().len() < n {
-            assert!(
-                t0.elapsed() < Duration::from_secs(20),
-                "waiting for request {n}"
-            );
+            assert!(t0.elapsed() < WAIT, "waiting for request {n}");
             std::thread::sleep(Duration::from_millis(5));
         }
     }
@@ -237,6 +234,11 @@ impl Drop for Rig {
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
+
+/// How long a rig waits for a task or the stand-in provider. Each task starts
+/// the agent sidecar from source, which on a cold CI runner first
+/// transpiles Pi: well past the usual second (it timed out at 20 s).
+const WAIT: Duration = Duration::from_secs(60);
 
 /// The key the rigs store; never a real one.
 pub const TEST_KEY: &str = "sk-test-not-a-real-key";
@@ -313,10 +315,7 @@ impl Rig {
             if f(&t) {
                 return t;
             }
-            assert!(
-                t0.elapsed() < Duration::from_secs(20),
-                "waiting for {what}: {t:#}"
-            );
+            assert!(t0.elapsed() < WAIT, "waiting for {what}: {t:#}");
             std::thread::sleep(Duration::from_millis(10));
         }
     }
