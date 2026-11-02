@@ -243,7 +243,7 @@ clipboard or AI reaches it.
 
 - **Choosing it.** Under Access, "NanoKVM USB", the host's user chooses the capture card and the
   serial port and turns "Offer it to other devices" on (`access.settings`
-  `{nanokvm: {on, video, serial}}`; on without both is refused; the status says `nanokvm`).
+  `{nanokvm: {on, video, serial, layout}}`, `layout` `us`, `uk`, `de` or `fr`; on without both is refused; the status says `nanokvm`).
   `nanokvm.devices` lists this computer's capture cards and USB serial ports (`{video, serial,
   suggested}`, each port `{id, name, nanokvm}`) and suggests the pair that looks like one NanoKVM:
   the MacroSilicon capture chip (USB vendor 345F) and the CH340 (1A86:7523) on the same hub, or
@@ -283,8 +283,10 @@ clipboard or AI reaches it.
   bitrate control, for a local network. A card that does not open shows the placeholder
   `nanokvm`, tried again like a screen.
 - **Input.** Keys by position go to the wired computer as USB usages (US positions, which its own
-  layout reads), keys by name with their modifiers, text typed as a US keyboard types it
-  (characters without a key there are skipped), the pointer absolute across the picture (0–4095)
+  layout reads), keys by name with their modifiers, text typed as the wired computer's
+  keyboard layout types it — "Keyboard layout" under NanoKVM USB: US (as before), United
+  Kingdom, German (QWERTZ) or French (AZERTY), with Shift or AltGr; characters without a key
+  there and those only a dead key types are skipped —, the pointer absolute across the picture (0–4095)
   with three buttons and the wheel. Moves are merged while the serial line is busy (it carries
   some 400 frames a second); presses, releases and keys never are. Every second the host asks the
   device how the wired computer stands (GET_INFO): its Caps Lock and Num Lock are brought in line

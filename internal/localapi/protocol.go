@@ -596,6 +596,9 @@ type Nanokvm struct {
 	On     bool   `json:"on"`
 	Video  string `json:"video"`
 	Serial string `json:"serial"`
+	// Layout is the wired computer's keyboard layout, which typed text
+	// follows: "us" (empty), "uk", "de" or "fr".
+	Layout string `json:"layout,omitempty"`
 }
 
 // NanokvmPort is a capture card or a serial port of this computer: what

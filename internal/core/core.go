@@ -128,6 +128,7 @@ type Status struct {
 		On     bool   `json:"on"`
 		Video  string `json:"video"`
 		Serial string `json:"serial"`
+		Layout string `json:"layout,omitempty"`
 	} `json:"nanokvm"`
 	// KeepsHistory: the connection history is written to the store (off
 	// with No logs).

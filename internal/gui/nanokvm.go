@@ -112,16 +112,28 @@ func (a *App) nanokvmSection(c *ui.Context) {
 			})
 		}
 		row("kvm-video", barDisplay, setting{title: L.NanokvmVideo(), about: L.NanokvmVideoAbout(), more: L.NanokvmHint()}, video, videoIDs, videoLabels, func(id string) {
-			set(localapi.Nanokvm{On: saved.On, Video: id, Serial: serial})
+			set(localapi.Nanokvm{On: saved.On, Video: id, Serial: serial, Layout: saved.Layout})
 		})
 		row("kvm-serial", rowPlug, setting{title: L.NanokvmSerial(), about: L.NanokvmSerialAbout()}, serial, serialIDs, serialLabels, func(id string) {
-			set(localapi.Nanokvm{On: saved.On, Video: video, Serial: id})
+			set(localapi.Nanokvm{On: saved.On, Video: video, Serial: id, Layout: saved.Layout})
 		})
 		on := saved.On
 		ready := video != "" && serial != ""
 		r.row(c, "kvm-on", tile(kindNanokvm), setting{title: L.NanokvmOffer(), about: L.NanokvmOfferAbout()}, func() {
 			if ui.Switch(c.Key("kvm-on-sw"), &on).Label(L.NanokvmOffer()).Disabled(busy || !ready && !saved.On).Changed() {
-				set(localapi.Nanokvm{On: on, Video: video, Serial: serial})
+				set(localapi.Nanokvm{On: on, Video: video, Serial: serial, Layout: saved.Layout})
+			}
+		})
+		// The wired computer's layout: typed text (Type the clipboard, the
+		// AI's typing) presses the keys it puts those characters on.
+		layouts := []string{"us", "uk", "de", "fr"}
+		names := []string{L.KeyboardLayoutUs(), L.KeyboardLayoutUk(), L.KeyboardLayoutDe(), L.KeyboardLayoutFr()}
+		cur := names[max(slices.Index(layouts, saved.Layout), 0)]
+		r.row(c, "kvm-layout", tile(barKeyboard), setting{title: L.NanokvmLayout(), about: L.NanokvmLayoutAbout()}, func() {
+			if ui.Select(c.Key("kvm-layout-sel"), &cur, names).Width(280).Label(L.NanokvmLayout()).Disabled(busy).Changed() {
+				if i := slices.Index(names, cur); i >= 0 {
+					set(localapi.Nanokvm{On: saved.On, Video: video, Serial: serial, Layout: layouts[i]})
+				}
 			}
 		})
 		r.block(c, "kvm-look", func() {

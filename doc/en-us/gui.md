@@ -351,7 +351,7 @@ when `SCREENSHOT_DIR` is set.
   VNC, empty for the standard one, with Save and Cancel while edited. **NanoKVM USB**: Capture card
   and Serial port, each a choice of the devices found (the saved one, else the one picked, else the
   pair found; one that is gone shown as not connected; None found when there are none), Offer it
-  to other devices (off until both are chosen; a change while it is on takes effect at once), and
+  to other devices (off until both are chosen; a change while it is on takes effect at once), Keyboard layout (US, United Kingdom, German, French: the wired computer's, which typed text follows), and
   Look again and Open (this computer's own, once its devices are saved; a choice is saved at once),
   with "Found a NanoKVM USB" while a pair was found (`nanokvmSection`). Then the devices watching
   this computer's status, with since when; trusted devices with their last connection and Remove;

@@ -1227,6 +1227,66 @@ func (msgs Messages) AIBesideNote() string {
 	return Catalog.Format(msgs.locale, "AIBesideNote", nil)
 }
 
+// NanokvmLayout says "Keyboard layout"
+// in the language the app shows.
+func NanokvmLayout() string { return In(i18n.Locale()).NanokvmLayout() }
+
+// NanokvmLayout says "Keyboard layout"
+// in the language of msgs.
+func (msgs Messages) NanokvmLayout() string {
+	return Catalog.Format(msgs.locale, "NanokvmLayout", nil)
+}
+
+// NanokvmLayoutAbout says "The wired computer's layout: text typed there (Type the clipboard, the AI's typing) presses the keys that layout puts…"
+// in the language the app shows.
+func NanokvmLayoutAbout() string { return In(i18n.Locale()).NanokvmLayoutAbout() }
+
+// NanokvmLayoutAbout says "The wired computer's layout: text typed there (Type the clipboard, the AI's typing) presses the keys that layout puts…"
+// in the language of msgs.
+func (msgs Messages) NanokvmLayoutAbout() string {
+	return Catalog.Format(msgs.locale, "NanokvmLayoutAbout", nil)
+}
+
+// KeyboardLayoutUs says "US"
+// in the language the app shows.
+func KeyboardLayoutUs() string { return In(i18n.Locale()).KeyboardLayoutUs() }
+
+// KeyboardLayoutUs says "US"
+// in the language of msgs.
+func (msgs Messages) KeyboardLayoutUs() string {
+	return Catalog.Format(msgs.locale, "KeyboardLayoutUs", nil)
+}
+
+// KeyboardLayoutUk says "United Kingdom"
+// in the language the app shows.
+func KeyboardLayoutUk() string { return In(i18n.Locale()).KeyboardLayoutUk() }
+
+// KeyboardLayoutUk says "United Kingdom"
+// in the language of msgs.
+func (msgs Messages) KeyboardLayoutUk() string {
+	return Catalog.Format(msgs.locale, "KeyboardLayoutUk", nil)
+}
+
+// KeyboardLayoutDe says "German (QWERTZ)"
+// in the language the app shows.
+func KeyboardLayoutDe() string { return In(i18n.Locale()).KeyboardLayoutDe() }
+
+// KeyboardLayoutDe says "German (QWERTZ)"
+// in the language of msgs.
+func (msgs Messages) KeyboardLayoutDe() string {
+	return Catalog.Format(msgs.locale, "KeyboardLayoutDe", nil)
+}
+
+// KeyboardLayoutFr says "French (AZERTY)"
+// in the language the app shows.
+func KeyboardLayoutFr() string { return In(i18n.Locale()).KeyboardLayoutFr() }
+
+// KeyboardLayoutFr says "French (AZERTY)"
+// in the language of msgs.
+func (msgs Messages) KeyboardLayoutFr() string {
+	return Catalog.Format(msgs.locale, "KeyboardLayoutFr", nil)
+}
+
 // AIScopeAll says "All apps"
 // in the language the app shows.
 func AIScopeAll() string { return In(i18n.Locale()).AIScopeAll() }

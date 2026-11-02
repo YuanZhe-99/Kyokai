@@ -360,6 +360,12 @@
   "AIBeside": "Work beside me",
   "AIStatePausedBeside": "Paused: this step needs your screen",
   "AIBesideNote": "The AI could not take this step in the background. Resume to let it use the pointer and keyboard in its window.",
+  "NanokvmLayout": "Keyboard layout",
+  "NanokvmLayoutAbout": "The wired computer's layout: text typed there (Type the clipboard, the AI's typing) presses the keys that layout puts the characters on.",
+  "KeyboardLayoutUs": "US",
+  "KeyboardLayoutUk": "United Kingdom",
+  "KeyboardLayoutDe": "German (QWERTZ)",
+  "KeyboardLayoutFr": "French (AZERTY)",
   "AIScopeAll": "All apps",
   "AIScopeCount": "Apps: {count}",
   "@AIScopeCount": {

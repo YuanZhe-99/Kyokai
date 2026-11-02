@@ -67,6 +67,9 @@ pub struct Settings {
     pub video: String,
     #[serde(default)]
     pub serial: String,
+    /// The wired computer's keyboard layout, which typed text follows.
+    #[serde(default)]
+    pub layout: Layout,
 }
 
 impl Settings {
@@ -401,6 +404,158 @@ fn name_usage(name: &str) -> Option<Usage> {
     })
 }
 
+/// The wired computer's keyboard layout, which text is typed for: the
+/// keys are positions, and its own layout reads them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Layout {
+    #[default]
+    Us,
+    /// United Kingdom.
+    Uk,
+    /// German (QWERTZ).
+    De,
+    /// French (AZERTY).
+    Fr,
+}
+
+/// AltGr (right Alt), which some layouts type characters with.
+const ALTGR: u8 = 0x40;
+
+/// How a character is typed on the wired computer's layout: its key's usage
+/// and the modifiers held (Shift, AltGr). None for characters the layout
+/// has no key for, or only a dead key (they are skipped).
+fn char_on(layout: Layout, c: char) -> Option<(u8, u8)> {
+    let us = |c: char| char_usage(c).map(|(u, s)| (u, if s { LSHIFT } else { 0 }));
+    let (plain, shift, altgr) = (0, LSHIFT, ALTGR);
+    // Where the layout differs from US; letters and digits not named here
+    // sit where they do on US.
+    let own: Option<(u8, u8)> = match layout {
+        Layout::Us => None,
+        Layout::Uk => match c {
+            '"' => Some((0x1F, shift)),
+            '@' => Some((0x34, shift)),
+            '#' => Some((0x32, plain)),
+            '~' => Some((0x32, shift)),
+            '£' => Some((0x20, shift)),
+            '\\' => Some((0x64, plain)),
+            '|' => Some((0x64, shift)),
+            '¬' => Some((0x35, shift)),
+            '€' => Some((0x21, altgr)),
+            _ => None,
+        },
+        Layout::De => match c {
+            'z' => Some((0x1C, plain)),
+            'Z' => Some((0x1C, shift)),
+            'y' => Some((0x1D, plain)),
+            'Y' => Some((0x1D, shift)),
+            '"' => Some((0x1F, shift)),
+            '§' => Some((0x20, shift)),
+            '&' => Some((0x23, shift)),
+            '/' => Some((0x24, shift)),
+            '(' => Some((0x25, shift)),
+            ')' => Some((0x26, shift)),
+            '=' => Some((0x27, shift)),
+            'ß' => Some((0x2D, plain)),
+            '?' => Some((0x2D, shift)),
+            'ü' => Some((0x2F, plain)),
+            'Ü' => Some((0x2F, shift)),
+            '+' => Some((0x30, plain)),
+            '*' => Some((0x30, shift)),
+            '~' => Some((0x30, altgr)),
+            'ö' => Some((0x33, plain)),
+            'Ö' => Some((0x33, shift)),
+            'ä' => Some((0x34, plain)),
+            'Ä' => Some((0x34, shift)),
+            '#' => Some((0x32, plain)),
+            '\'' => Some((0x32, shift)),
+            '<' => Some((0x64, plain)),
+            '>' => Some((0x64, shift)),
+            '|' => Some((0x64, altgr)),
+            ';' => Some((0x36, shift)),
+            ':' => Some((0x37, shift)),
+            '-' => Some((0x38, plain)),
+            '_' => Some((0x38, shift)),
+            '@' => Some((0x14, altgr)),
+            '€' => Some((0x08, altgr)),
+            '{' => Some((0x24, altgr)),
+            '[' => Some((0x25, altgr)),
+            ']' => Some((0x26, altgr)),
+            '}' => Some((0x27, altgr)),
+            '\\' => Some((0x2D, altgr)),
+            '^' | '`' | '´' => return None,
+            _ => None,
+        },
+        Layout::Fr => match c {
+            'a' => Some((0x14, plain)),
+            'A' => Some((0x14, shift)),
+            'q' => Some((0x04, plain)),
+            'Q' => Some((0x04, shift)),
+            'z' => Some((0x1A, plain)),
+            'Z' => Some((0x1A, shift)),
+            'w' => Some((0x1D, plain)),
+            'W' => Some((0x1D, shift)),
+            'm' => Some((0x33, plain)),
+            'M' => Some((0x33, shift)),
+            '1'..='9' => Some((0x1E + (c as u8 - b'1'), shift)),
+            '0' => Some((0x27, shift)),
+            '&' => Some((0x1E, plain)),
+            'é' => Some((0x1F, plain)),
+            '"' => Some((0x20, plain)),
+            '\'' => Some((0x21, plain)),
+            '(' => Some((0x22, plain)),
+            '-' => Some((0x23, plain)),
+            'è' => Some((0x24, plain)),
+            '_' => Some((0x25, plain)),
+            'ç' => Some((0x26, plain)),
+            'à' => Some((0x27, plain)),
+            ')' => Some((0x2D, plain)),
+            '°' => Some((0x2D, shift)),
+            '=' => Some((0x2E, plain)),
+            '+' => Some((0x2E, shift)),
+            '$' => Some((0x30, plain)),
+            '£' => Some((0x30, shift)),
+            'ù' => Some((0x34, plain)),
+            '%' => Some((0x34, shift)),
+            '*' => Some((0x32, plain)),
+            'µ' => Some((0x32, shift)),
+            ',' => Some((0x10, plain)),
+            '?' => Some((0x10, shift)),
+            ';' => Some((0x36, plain)),
+            '.' => Some((0x36, shift)),
+            ':' => Some((0x37, plain)),
+            '/' => Some((0x37, shift)),
+            '!' => Some((0x38, plain)),
+            '§' => Some((0x38, shift)),
+            '<' => Some((0x64, plain)),
+            '>' => Some((0x64, shift)),
+            '#' => Some((0x20, altgr)),
+            '{' => Some((0x21, altgr)),
+            '[' => Some((0x22, altgr)),
+            '|' => Some((0x23, altgr)),
+            '\\' => Some((0x25, altgr)),
+            '@' => Some((0x27, altgr)),
+            ']' => Some((0x2D, altgr)),
+            '}' => Some((0x2E, altgr)),
+            '€' => Some((0x08, altgr)),
+            '^' | '`' | '~' | '¨' => return None,
+            _ => None,
+        },
+    };
+    own.or_else(|| match layout {
+        // Every other character a US keyboard types sits elsewhere on
+        // AZERTY: only what is named above.
+        Layout::Fr
+            if !c.is_ascii_lowercase()
+                && !c.is_ascii_uppercase()
+                && !matches!(c, ' ' | '\n' | '\t') =>
+        {
+            None
+        }
+        _ => us(c),
+    })
+}
+
 /// How a character is typed on a US keyboard: its key's usage and whether
 /// Shift is held. None for characters it has no key for.
 fn char_usage(c: char) -> Option<(u8, bool)> {
@@ -507,6 +662,8 @@ struct Hold {
     buttons: u8,
     x: u16,
     y: u16,
+    /// The layout typed text follows.
+    layout: Layout,
 }
 
 impl Hold {
@@ -625,10 +782,10 @@ impl Hold {
             Event::Text { text } => {
                 let (mods, keys) = (self.mods, std::mem::take(&mut self.keys));
                 for c in text.chars() {
-                    let Some((usage, shift)) = char_usage(c) else {
+                    let Some((usage, mods)) = char_on(self.layout, c) else {
                         continue;
                     };
-                    self.mods = if shift { LSHIFT } else { 0 };
+                    self.mods = mods;
                     self.keys = vec![usage];
                     out.push(self.keyboard());
                     self.keys.clear();
@@ -663,7 +820,7 @@ pub struct Hid {
 impl Hid {
     /// Opens the serial port `id` and starts its writer.
     /// Returns: why it did not open (missing, taken, no permission).
-    pub fn open(id: &str) -> Result<Hid, String> {
+    pub fn open(id: &str, layout: Layout) -> Result<Hid, String> {
         let mut port = sys::Serial::open(id, BAUD)?;
         let (tx, rx) = smpsc::channel::<Vec<Report>>();
         let info: Arc<Mutex<Option<Info>>> = Arc::new(Mutex::new(None));
@@ -717,7 +874,10 @@ impl Hid {
             }
         });
         Ok(Hid {
-            hold: Hold::default(),
+            hold: Hold {
+                layout,
+                ..Hold::default()
+            },
             tx: Some(tx),
             info,
         })
@@ -1070,6 +1230,56 @@ mod tests {
     use super::*;
     use crate::input::Mods;
 
+    /// Text follows the wired computer's layout: the keys each layout puts
+    /// a character on, with Shift or AltGr; dead keys and characters a
+    /// layout lacks are skipped.
+    #[test]
+    fn text_follows_the_layout() {
+        let (s, g) = (LSHIFT, ALTGR);
+        for (layout, c, want) in [
+            (Layout::Us, 'a', Some((0x04, 0))),
+            (Layout::Us, '@', Some((0x1F, s))),
+            (Layout::Us, 'é', None),
+            (Layout::Uk, '@', Some((0x34, s))),
+            (Layout::Uk, '"', Some((0x1F, s))),
+            (Layout::Uk, '£', Some((0x20, s))),
+            (Layout::Uk, '#', Some((0x32, 0))),
+            (Layout::De, 'z', Some((0x1C, 0))),
+            (Layout::De, 'Y', Some((0x1D, s))),
+            (Layout::De, 'ü', Some((0x2F, 0))),
+            (Layout::De, '@', Some((0x14, g))),
+            (Layout::De, '-', Some((0x38, 0))),
+            (Layout::De, '^', None),
+            (Layout::Fr, 'a', Some((0x14, 0))),
+            (Layout::Fr, 'q', Some((0x04, 0))),
+            (Layout::Fr, 'm', Some((0x33, 0))),
+            (Layout::Fr, '1', Some((0x1E, s))),
+            (Layout::Fr, 'é', Some((0x1F, 0))),
+            (Layout::Fr, ',', Some((0x10, 0))),
+            (Layout::Fr, '@', Some((0x27, g))),
+            (Layout::Fr, ' ', Some((0x2C, 0))),
+            (Layout::Fr, '[', Some((0x22, g))),
+            (Layout::Fr, '`', None),
+        ] {
+            assert_eq!(char_on(layout, c), want, "{layout:?} {c:?}");
+        }
+        // Typing on a German layout presses Y's key for z and AltGr+Q for @,
+        // with nothing held after.
+        let mut h = Hold {
+            layout: Layout::De,
+            ..Hold::default()
+        };
+        let (reports, _) = h.event(&Event::Text { text: "z@".into() }, None);
+        let bytes: Vec<u8> = reports.iter().flat_map(|r| r.frame()).collect();
+        let k = |mods: u8, key: u8| frame(cmd::KEYBOARD, &[mods, 0, key, 0, 0, 0, 0, 0]);
+        let none = frame(cmd::KEYBOARD, &[0; 8]);
+        // The key goes up before its modifier.
+        let want: Vec<u8> = [k(0, 0x1C), none.clone(), k(ALTGR, 0x14), k(ALTGR, 0), none].concat();
+        assert_eq!(bytes, want);
+        let s: Settings = serde_json::from_str(r#"{"on":true,"video":"v","serial":"s"}"#).unwrap();
+        assert_eq!(s.layout, Layout::Us, "settings from before keep US");
+    }
+
     #[test]
     fn frames_carry_their_sum() {
         assert_eq!(frame(cmd::GET_INFO, &[]), vec![0x57, 0xAB, 0, 1, 0, 0x03]);
@@ -1393,7 +1603,7 @@ mod tests {
             decoding.as_secs_f64() * 1000.0 / whole as f64
         );
         assert_eq!(whole, 60);
-        let hid = Hid::open(&pair.serial).unwrap();
+        let hid = Hid::open(&pair.serial, Layout::Us).unwrap();
         let t0 = Instant::now();
         while hid.info.lock().unwrap().is_none() && t0.elapsed() < Duration::from_secs(3) {
             std::thread::sleep(Duration::from_millis(50));

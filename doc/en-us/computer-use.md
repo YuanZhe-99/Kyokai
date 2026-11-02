@@ -844,7 +844,7 @@ pane's place chip then lists the pane under This computer, and a task started th
   mouse — never to this computer's desktop. The GUI serves the pane over the local API
   (`ai.pane.serve`) and the engine relays to the core (`ai.pane.*`): the core asks for the size, a
   picture (a PNG), an input event (`input::Event`, as a viewer sends a person's) or a release, and a
-  task's desktop there is `ai::pane::PaneDesk`. A NanoKVM types as a US keyboard, as the pane does.
+  task's desktop there is `ai::pane::PaneDesk`. A NanoKVM types for the wired computer's keyboard layout, as the pane does.
 - **The same rules**: the executor, the lease, the approvals and pause hold; the host user's input
   on the pane takes over at once, this computer's emergency stop stops it, and a pane closed or no
   longer lent fails the task at its next look or action.

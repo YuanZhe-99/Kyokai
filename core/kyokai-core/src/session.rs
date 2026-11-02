@@ -2280,8 +2280,8 @@ async fn host_login<S: AsyncRead + AsyncWrite + Unpin>(
             return Err(Failure::Refused(Refusal::Denied));
         }
         let chosen = ctx.access.nanokvm();
-        let serial = chosen.serial.clone();
-        let opened = tokio::task::spawn_blocking(move || crate::kvm::Hid::open(&serial))
+        let (serial, layout) = (chosen.serial.clone(), chosen.layout);
+        let opened = tokio::task::spawn_blocking(move || crate::kvm::Hid::open(&serial, layout))
             .await
             .unwrap_or_else(|e| Err(e.to_string()));
         match opened {
@@ -2418,10 +2418,11 @@ pub fn local_kvm(
         // The serial port is free once a session taken over let go of it.
         let until = Instant::now() + TAKE_OVER_WAIT;
         let hid = loop {
-            let serial = chosen.serial.clone();
-            let opened = tokio::task::spawn_blocking(move || crate::kvm::Hid::open(&serial))
-                .await
-                .unwrap_or_else(|e| Err(e.to_string()));
+            let (serial, layout) = (chosen.serial.clone(), chosen.layout);
+            let opened =
+                tokio::task::spawn_blocking(move || crate::kvm::Hid::open(&serial, layout))
+                    .await
+                    .unwrap_or_else(|e| Err(e.to_string()));
             match opened {
                 Ok(hid) => break hid,
                 Err(e) if Instant::now() >= until => {
@@ -8536,6 +8537,7 @@ mod nanokvm_tests {
                 on: true,
                 video: "card".into(),
                 serial: gone.into(),
+                layout: Default::default(),
             })
             .unwrap();
         let (s, _) = open(&host, &controller).await;
@@ -8562,6 +8564,7 @@ mod nanokvm_tests {
                 on: true,
                 video: pair.video,
                 serial: pair.serial,
+                layout: Default::default(),
             })
             .unwrap();
         let controller = device("1.0.1");
@@ -8705,6 +8708,7 @@ mod nanokvm_tests {
                 on: true,
                 video: "card".into(),
                 serial: gone.into(),
+                layout: Default::default(),
             })
             .unwrap();
         // Opening (its work not run): listed as connecting, and local.
@@ -8749,6 +8753,7 @@ mod nanokvm_tests {
             on,
             video: "card".into(),
             serial: gone.into(),
+            layout: Default::default(),
         };
         host.access.set_nanokvm(offer(true)).unwrap();
         assert!(
