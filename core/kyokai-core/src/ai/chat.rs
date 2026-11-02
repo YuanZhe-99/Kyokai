@@ -10,9 +10,13 @@ use super::{End, Outcome, Shot, Turn};
 use crate::ai::action::ParseError;
 use serde_json::{Value, json};
 
-/// Screenshots kept in the history; older ones are replaced by a note, so
-/// a long task does not resend every picture.
+/// The fewest screenshots the history keeps; older ones are replaced by a
+/// note, so a long task does not resend every picture.
 const KEEP_IMAGES: usize = 3;
+/// Screenshots dropped at once: the history between drops stays the same
+/// prefix, which a provider's prompt cache can read back, where dropping
+/// one per turn would change it every turn.
+const DROP_BATCH: usize = 5;
 
 /// A task's conversation in the chat completions format.
 #[derive(Clone)]
@@ -38,18 +42,26 @@ impl Conversation {
         }
     }
 
-    /// The request: the history with only the newest screenshots.
+    /// The request: the history with only the newest screenshots, older
+    /// ones dropped `DROP_BATCH` at a time (`omitted`).
     pub fn body(&self) -> Value {
         let mut messages = self.messages.clone();
+        let total = messages
+            .iter()
+            .filter_map(|m| m["content"].as_array())
+            .flatten()
+            .filter(|p| p["type"] == "image_url")
+            .count();
+        let omit = omitted(total);
         let mut seen = 0;
-        for m in messages.iter_mut().rev() {
+        for m in messages.iter_mut() {
             let Some(parts) = m["content"].as_array_mut() else {
                 continue;
             };
-            for p in parts.iter_mut().rev() {
+            for p in parts.iter_mut() {
                 if p["type"] == "image_url" {
                     seen += 1;
-                    if seen > KEEP_IMAGES {
+                    if seen <= omit {
                         *p = json!({"type": "text", "text": "[an earlier screenshot, omitted]"});
                     }
                 }
@@ -121,6 +133,12 @@ impl Conversation {
             text,
             progress: Vec::new(),
             end,
+            usage: super::Usage::read(
+                &response["usage"],
+                &["prompt_tokens"],
+                "prompt_tokens_details.cached_tokens",
+                "completion_tokens",
+            ),
         })
     }
 
@@ -157,6 +175,17 @@ impl Conversation {
             image(&shot.b64),
         ]}));
     }
+}
+
+/// How many of `total` screenshots, oldest first, the request leaves out:
+/// none until there are more than `KEEP_IMAGES + DROP_BATCH`, then whole
+/// batches, keeping between `KEEP_IMAGES` and `KEEP_IMAGES + DROP_BATCH -
+/// 1`.
+fn omitted(total: usize) -> usize {
+    if total <= KEEP_IMAGES + DROP_BATCH {
+        return 0;
+    }
+    (total - KEEP_IMAGES) / DROP_BATCH * DROP_BATCH
 }
 
 /// A screenshot as a message part.
@@ -343,15 +372,27 @@ mod tests {
     #[test]
     fn a_reply_without_calls_finishes_and_old_screenshots_are_dropped() {
         let mut c = Conversation::new("m", "sys", "task", &shot("S0"));
-        for i in 1..=5 {
+        for i in 1..=9 {
             c.follow_up("more", &shot(&format!("S{i}")));
         }
         let body = c.body().to_string();
         assert!(
-            !body.contains("S0") && !body.contains("S2"),
-            "older pictures leave"
+            !body.contains("\"S0") && !body.contains("S4\""),
+            "older pictures leave, five at once"
         );
-        assert!(body.contains("S3") && body.contains("S5"));
+        assert!(body.contains("S5") && body.contains("S9"));
+        // One more keeps the same batch out: the earlier messages stay as
+        // they were, a prefix the provider's cache can read back.
+        let before = c.body()["messages"].as_array().unwrap().clone();
+        c.follow_up("more", &shot("S10"));
+        let after = c.body()["messages"].as_array().unwrap().clone();
+        assert_eq!(after[..before.len()], before[..]);
+        let counts: Vec<usize> = (0..=20).map(omitted).collect();
+        assert_eq!(&counts[..9], &[0; 9]);
+        assert_eq!(
+            (counts[9], counts[12], counts[13], counts[20]),
+            (5, 5, 10, 15)
+        );
         let done = json!({"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "Done."}}]});
         assert_eq!(c.accept(&done).unwrap().end, End::Finished);
         let cut = json!({"choices": [{"finish_reason": "length", "message": {"role": "assistant", "content": "…"}}]});

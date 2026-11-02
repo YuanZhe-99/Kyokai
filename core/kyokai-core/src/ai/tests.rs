@@ -152,6 +152,7 @@ fn openai_request_shapes() {
     let r1 = c.body();
     assert_eq!(r1["tools"], json!([{"type": "computer"}]));
     assert_eq!(r1["instructions"], "sys");
+    assert_eq!(r1["truncation"], "disabled", "too long fails loudly");
     assert_eq!(
         r1["input"][0]["content"][1]["image_url"],
         "data:image/png;base64,B64"
@@ -327,10 +328,20 @@ fn claude_request_shapes() {
     );
     assert_eq!(r1["output_config"], json!({"effort": "high"}));
     assert_eq!(r1["fallbacks"], "default");
-    assert_eq!(r1["system"], "sys");
+    // Cached for an hour: the system prompt (with the tools before it) by
+    // its own breakpoint, the conversation by the automatic one.
+    let hour = json!({"type": "ephemeral", "ttl": "1h"});
     assert_eq!(
-        r1["context_management"]["edits"][0]["type"],
-        "clear_tool_uses_20250919"
+        r1["system"],
+        json!([{"type": "text", "text": "sys", "cache_control": hour}])
+    );
+    assert_eq!(r1["cache_control"], hour);
+    // Old results are cleared in batches worth breaking the cache for.
+    let edit = &r1["context_management"]["edits"][0];
+    assert_eq!(edit["type"], "clear_tool_uses_20250919");
+    assert_eq!(
+        edit["clear_at_least"],
+        json!({"type": "input_tokens", "value": claude::CLEAR_AT_LEAST})
     );
     assert!(
         r1.get("tool_choice").is_none(),
@@ -860,7 +871,12 @@ fn claude_task_clicks_and_finishes() {
         !first.to_string().contains(TEST_KEY),
         "the key never goes into a body"
     );
-    assert!(first["system"].as_str().unwrap().contains("1280x720"));
+    assert!(
+        first["system"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("1280x720")
+    );
     let results = &requests[1].1["messages"][2]["content"];
     assert_eq!(results[0]["content"][0]["text"], "OK");
     assert_eq!(
@@ -1837,4 +1853,38 @@ fn auto_asks_by_class_and_falls_back_after_refusals() {
     );
     let t = rig.until(id, "the fallback's approval", |t| t["state"] == "approval");
     assert_eq!(t["approval"]["class"], "every-action");
+}
+
+/// A task sums the tokens its turns took, as each provider reports them
+/// (Claude counts cache reads and writes apart from `input_tokens`).
+#[test]
+fn tasks_count_their_tokens() {
+    let mut first = claude_turn("m1", click_save());
+    first["usage"] = json!({"input_tokens": 50, "cache_creation_input_tokens": 3000, "cache_read_input_tokens": 0, "output_tokens": 200});
+    let mut last = claude_end("ok");
+    last["usage"] = json!({"input_tokens": 80, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 3000, "output_tokens": 20});
+    let server = server(vec![(0, first), (0, last)]);
+    let rig = rig("tokens", "claude", &server.url);
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    let t = rig.state(id, "done");
+    assert_eq!(
+        t["tokens"],
+        json!({"input": 6130, "cached": 3000, "output": 220})
+    );
+
+    let call = |args: &str| {
+        json!({"choices": [{"finish_reason": "tool_calls", "message": {"role": "assistant", "content": "",
+        "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "left_click", "arguments": args}}]}}],
+        "usage": {"prompt_tokens": 1500, "prompt_tokens_details": {"cached_tokens": 0}, "completion_tokens": 30}})
+    };
+    let done = json!({"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "Saved."}}],
+        "usage": {"prompt_tokens": 3100, "prompt_tokens_details": {"cached_tokens": 1500}, "completion_tokens": 5}});
+    let server = super::fake::server(vec![(0, call("{\"coordinate\": [640, 425]}")), (0, done)]);
+    let rig = super::fake::rig("tokens-chat", "chat", &server.url);
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    let t = rig.state(id, "done");
+    assert_eq!(
+        t["tokens"],
+        json!({"input": 4600, "cached": 1500, "output": 35})
+    );
 }

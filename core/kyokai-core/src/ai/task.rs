@@ -335,6 +335,9 @@ pub struct Task {
     /// Actions the policy refused or the host user declined.
     #[serde(skip)]
     refusals: u32,
+    /// The tokens its model turns took, summed.
+    #[serde(default)]
+    pub tokens: super::Usage,
     /// The host user's next message for a finished task.
     #[serde(skip)]
     reply: Option<String>,
@@ -586,6 +589,7 @@ impl Ai {
                 since: Some(Instant::now()),
                 decision: None,
                 refusals: 0,
+                tokens: Default::default(),
                 reply: None,
                 conversation: None,
             });
@@ -1178,6 +1182,7 @@ async fn drive(
             if !turn.text.is_empty() {
                 t.text = turn.text.clone();
             }
+            t.tokens.add(turn.usage);
             t.progress.extend(turn.progress.iter().cloned());
             let extra = t.progress.len().saturating_sub(MAX_PROGRESS);
             t.progress.drain(..extra);

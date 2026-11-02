@@ -358,14 +358,14 @@ Google Gemini、Groq、Together、Fireworks、Deep Infra、Mistral、xAI、Moons
 |---|---|---|
 | `anthropic` | Claude | 带 computer 工具集的 Messages API（见下） |
 | `openai-responses` | OpenAI | 带 `computer` 工具的 Responses API（见下） |
-| `openai-chat` | 其他所有模板与自定义 | chat completions，把 Kyokai 的操作作为函数工具提供，名称与形式同 computer 工具集的成员（`left_click` 带 `coordinate`、`key` 带 `text`、`scroll` 带 `scroll_direction` 与 `scroll_amount` 等），因此三种协议共用一个解析器；屏幕以图片放在用户消息中，每个调用以一条 `tool` 消息答复，随后附上该批操作之后的屏幕；历史中只保留最新的 3 张截图。模型必须能接收图片并调用工具 |
+| `openai-chat` | 其他所有模板与自定义 | chat completions，把 Kyokai 的操作作为函数工具提供，名称与形式同 computer 工具集的成员（`left_click` 带 `coordinate`、`key` 带 `text`、`scroll` 带 `scroll_direction` 与 `scroll_amount` 等），因此三种协议共用一个解析器；屏幕以图片放在用户消息中，每个调用以一条 `tool` 消息答复，随后附上该批操作之后的屏幕；超过 8 张后旧截图每次 5 张一起移出历史（保留 3 到 7 张），使请求的前缀（服务商的提示缓存会读回它）每 5 张截图才变一次，而不是每轮都变。模型必须能接收图片并调用工具 |
 
 模型按 OpenRouter 的写法显示为 `厂商: 模型`（`Anthropic: Claude Opus 5.5`、`Qwen: Qwen2.5 VL 72B Instruct`），经由其他来源访问的模型后面附上来源；
 名称来自服务商自己的列表，或按规则由 id 得出（MyApps-AI 的命名规则，移植在 `internal/gui/modelname.go` 中）。
 
 | | Claude | OpenAI |
 |---|---|---|
-| 请求 | Messages API 加 `computer_toolset_20260801`，自适应思考并返回进度说明，effort 为 `high`，服务端回退，输入超过 100,000 token 后由服务端清除旧的工具结果（保留最新 5 个） | Responses API 加 `computer` 工具，`previous_response_id`，`truncation: "auto"`，每次请求都带上指令 |
+| 请求 | Messages API 加 `computer_toolset_20260801`，自适应思考并返回进度说明，effort 为 `high`，服务端回退，缓存一小时（工具与系统提示用自己的断点，对话用自动断点；一小时足以跨过批准与暂停），输入超过 100,000 token 后由服务端清除旧的工具结果，保留最新 5 个，且每次至少清除 20,000 token，使缓存的前缀很少变化 | Responses API 加 `computer` 工具，`previous_response_id`，`truncation: "disabled"`（超出上下文的对话以服务商给出的原因失败，而不是悄悄丢掉历史），每次请求都带上指令 |
 | 回复 | 每个操作一个 `tool_result`；历史只追加 | 每个调用一个 `computer_call_output`，附上该批操作之后的屏幕，并用一条说明列出失败或未执行的操作；安全检查只在被控端用户批准后才确认 |
 | 默认模型 | `claude-opus-5-5` | `gpt-6.1-sol` |
 
@@ -485,7 +485,7 @@ Ctrl+Alt+Shift+Esc（紧急停止，任务运行期间有效）、托盘中的�
 ### 历史与设置
 
 状态目录中的 `ai.json` 保存各来源、选定的模型与批准方式（最初版本的文件——一个服务商以及 Claude 与 OpenAI 各一个模型——会读成两个默认来源）；
-密钥保存在机密存储中（`ai.<source>.key`），不会再显示，除了发给各自的来源之外不发往任何地方。`ai-tasks.json` 保存已结束的任务——指令、模型的文字与进度说明、各个操作及其结果，绝不包含截图——最多
+密钥保存在机密存储中（`ai.<source>.key`），不会再显示，除了发给各自的来源之外不发往任何地方。`ai-tasks.json` 保存已结束的任务——指令、模型的文字与进度说明、各个操作及其结果、各轮消耗的 token（`tokens`：输入、其中从服务商缓存读取的部分、输出，按服务商的报告），绝不包含截图——最多
 100 个；设置中的 AI 可以清除它（最近的任务），连同界面保存在 `gui.json` 中的 AI 会话。已结束任务的对话保留在内存中，因此在引擎停止之前，回复可以让它继续。
 
 ## macOS

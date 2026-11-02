@@ -53,7 +53,9 @@ impl Conversation {
             "model": self.model,
             "instructions": self.system,
             "tools": [{"type": "computer"}],
-            "truncation": "auto",
+            // A conversation past the context fails loudly; "auto" would drop
+            // history without saying so.
+            "truncation": "disabled",
             "input": self.input,
         });
         if let Some(p) = &self.previous {
@@ -102,6 +104,12 @@ impl Conversation {
             text: parsed.text,
             progress: Vec::new(),
             end,
+            usage: super::Usage::read(
+                &response["usage"],
+                &["input_tokens"],
+                "input_tokens_details.cached_tokens",
+                "output_tokens",
+            ),
         })
     }
 

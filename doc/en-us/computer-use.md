@@ -611,7 +611,7 @@ asks; nothing is fetched by itself.
 |---|---|---|
 | `anthropic` | Claude | Messages API with the computer toolset (below) |
 | `openai-responses` | OpenAI | Responses API with the `computer` tool (below) |
-| `openai-chat` | every other template, Custom | chat completions with Kyokai's actions as function tools named and shaped like the computer toolset's members (`left_click` with `coordinate`, `key` with `text`, `scroll` with `scroll_direction` and `scroll_amount`, …), so one parser checks all three; the screen goes in user messages as an image, each call is answered with a `tool` message and the screen after the batch follows; only the newest 3 screenshots stay in the history. The model must accept images and call tools |
+| `openai-chat` | every other template, Custom | chat completions with Kyokai's actions as function tools named and shaped like the computer toolset's members (`left_click` with `coordinate`, `key` with `text`, `scroll` with `scroll_direction` and `scroll_amount`, …), so one parser checks all three; the screen goes in user messages as an image, each call is answered with a `tool` message and the screen after the batch follows; old screenshots leave the history 5 at a time once there are more than 8 (3 to 7 stay), so the request's prefix, which a provider's prompt cache reads back, changes once every 5 screenshots rather than every turn. The model must accept images and call tools |
 
 Models are shown as OpenRouter writes them, `Vendor: Model` (`Anthropic: Claude Opus 5.5`,
 `Qwen: Qwen2.5 VL 72B Instruct`), with the source after a model reached through another one; the
@@ -620,7 +620,7 @@ in `internal/gui/modelname.go`).
 
 | | Claude | OpenAI |
 |---|---|---|
-| Request | Messages API with `computer_toolset_20260801`, adaptive thinking with progress notes, effort `high`, server-side fallbacks, old tool results cleared by the server after 100,000 input tokens (the newest 5 stay) | Responses API with the `computer` tool, `previous_response_id`, `truncation: "auto"`, the instructions on every request |
+| Request | Messages API with `computer_toolset_20260801`, adaptive thinking with progress notes, effort `high`, server-side fallbacks, cached for an hour (the tools and system prompt by their own breakpoint, the conversation by the automatic one; an hour outlasts approvals and pauses), old tool results cleared by the server after 100,000 input tokens, the newest 5 staying and at least 20,000 tokens at a time so the cached prefix changes seldom | Responses API with the `computer` tool, `previous_response_id`, `truncation: "disabled"` (a conversation past the context fails with the provider's reason instead of losing history unseen), the instructions on every request |
 | Answer | one `tool_result` per action; the history is append-only | one `computer_call_output` per call with the screen after its batch, and a note naming the actions that failed or did not run; safety checks acknowledged only after the host user approved them |
 | Default model | `claude-opus-5-5` | `gpt-6.1-sol` |
 
@@ -765,7 +765,9 @@ Ctrl+Alt+Shift+Esc (the emergency stop, while a task runs), the tray's Stop AI t
 file from the first versions, with one provider and a model each for Claude and OpenAI, is read
 into the two default sources); the keys live in the secrets store (`ai.<source>.key`) and are never
 shown again or sent anywhere but to their source. `ai-tasks.json` keeps the finished tasks — the instruction,
-the model's text and progress notes, the actions and what became of them, never a screenshot — up
+the model's text and progress notes, the actions and what became of them, the tokens its turns took
+(`tokens`: input, the part read from the provider's cache, output, as the provider reports them), never a
+screenshot — up
 to 100; Settings › AI clears it (Recent tasks), with the AI sessions the GUI keeps in `gui.json`.
 A finished task's conversation stays in memory, so a reply continues it until the engine stops.
 

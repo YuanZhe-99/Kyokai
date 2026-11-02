@@ -138,6 +138,41 @@ pub enum End {
     Incomplete(String),
 }
 
+/// Tokens a model turn took, as its provider reports them: all the input
+/// (cached or not), the part read from the provider's prompt cache, and the
+/// output (thinking included).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Usage {
+    pub input: u64,
+    pub cached: u64,
+    pub output: u64,
+}
+
+impl Usage {
+    /// Reads a response's `usage`: `input` and `cached` are the sums of the
+    /// fields named (paths separated by dots), `output` the one named.
+    fn read(usage: &Value, input: &[&str], cached: &str, output: &str) -> Usage {
+        let at = |path: &str| {
+            path.split('.')
+                .fold(usage, |v, k| &v[k])
+                .as_u64()
+                .unwrap_or(0)
+        };
+        Usage {
+            input: input.iter().map(|p| at(p)).sum(),
+            cached: at(cached),
+            output: at(output),
+        }
+    }
+
+    /// Adds another turn's.
+    pub fn add(&mut self, other: Usage) {
+        self.input += other.input;
+        self.cached += other.cached;
+        self.output += other.output;
+    }
+}
+
 /// One model turn, provider-neutral.
 #[derive(Debug, Clone)]
 pub struct Turn {
@@ -150,6 +185,8 @@ pub struct Turn {
     /// Progress notes between actions.
     pub progress: Vec<String>,
     pub end: End,
+    /// The tokens it took.
+    pub usage: Usage,
 }
 
 /// What became of one action.

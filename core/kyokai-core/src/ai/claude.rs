@@ -16,6 +16,15 @@ pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
 /// Progress notes, server-side fallbacks and tool-result clearing.
 pub const BETAS: &str = "thinking-display-updates-2026-08-18,server-side-fallback-2026-07-01,context-management-2025-06-27";
 pub const TOOLSET: &str = "computer";
+/// Tokens a clearing of old tool results must free at least: about a dozen
+/// screenshots, so the cached prefix is rewritten seldom.
+pub const CLEAR_AT_LEAST: u32 = 20_000;
+
+/// A cache breakpoint of an hour, so a task that waits for an approval or a
+/// resume still reads its prefix back.
+fn cache() -> Value {
+    json!({"type": "ephemeral", "ttl": "1h"})
+}
 pub const NOT_EXECUTED: &str = "Not executed: an earlier computer action in this turn failed.";
 pub const PAUSED: &str =
     "Not executed: the host user paused the task. Take a screenshot before continuing.";
@@ -37,14 +46,21 @@ impl Conversation {
                 "thinking": {"type": "adaptive", "display": "updates"},
                 "output_config": {"effort": "high"},
                 "fallbacks": "default",
-                "system": system,
+                // Cached for an hour, which outlasts approvals and pauses: the
+                // tools and the system prompt by their own breakpoint, the
+                // growing conversation by the automatic one (the longer TTL
+                // must come first, so both are an hour).
+                "system": [{"type": "text", "text": system, "cache_control": cache()}],
+                "cache_control": cache(),
                 "tools": [{"type": "computer_toolset_20260801"}],
-                // Old screenshots go once the conversation is long; the
-                // newest few stay.
+                // Old screenshots go once the conversation is long, the
+                // newest few staying, and only in batches worth breaking
+                // the cached prefix for.
                 "context_management": {"edits": [{
                     "type": "clear_tool_uses_20250919",
                     "trigger": {"type": "input_tokens", "value": 100000},
                     "keep": {"type": "tool_uses", "value": 5},
+                    "clear_at_least": {"type": "input_tokens", "value": CLEAR_AT_LEAST},
                 }]},
                 "messages": [{
                     "role": "user",
@@ -88,6 +104,17 @@ impl Conversation {
             text: parsed.text,
             progress: parsed.progress,
             end,
+            // Claude counts cache reads and writes apart from `input_tokens`.
+            usage: super::Usage::read(
+                &response["usage"],
+                &[
+                    "input_tokens",
+                    "cache_read_input_tokens",
+                    "cache_creation_input_tokens",
+                ],
+                "cache_read_input_tokens",
+                "output_tokens",
+            ),
         })
     }
 
