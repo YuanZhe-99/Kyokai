@@ -3,13 +3,14 @@
 // the RustDesk release the vendored code comes from and the vcpkg release
 // that builds libvpx and libaom (third_party/upstream.json; its commit is
 // the baseline in core/vcpkg-configuration.json), the smoltcp release
-// vendored in core/third_party/smoltcp (its Cargo.toml) and the Rust
-// toolchain (rust-toolchain.toml).
+// vendored in core/third_party/smoltcp (its Cargo.toml), the Rust
+// toolchain (rust-toolchain.toml), and Bun and Pi, which build and run the
+// agent sidecar (sidecar/package.json).
 //
 //	go run ./tools/deps check [-strict]   compare pins with the latest releases
 //	go run ./tools/deps update            move MyGo to its latest version
 //
-// EasyTier, RustDesk, vcpkg, smoltcp and Rust move by hand, each with its
+// EasyTier, RustDesk, vcpkg, smoltcp, Rust, Bun and Pi move by hand, each with its
 // review and checks (doc/en-us/ci-cd.md). Run from the repository root.
 package main
 
@@ -33,6 +34,8 @@ const (
 	toolchainPath   = "rust-toolchain.toml"
 	vcpkgConfigPath = "core/vcpkg-configuration.json"
 	smoltcpPath     = "core/third_party/smoltcp/Cargo.toml"
+	sidecarPath     = "sidecar/package.json"
+	piPackage       = "@earendil-works/pi-coding-agent"
 	mygoModule      = "github.com/egoist/mygo"
 )
 
@@ -160,6 +163,21 @@ func check(args []string) error {
 	}
 	report("Rust", rust, latestRust, "")
 
+	bun, pi, err := sidecarPins()
+	if err != nil {
+		return err
+	}
+	latestBun, err := latestRelease("oven-sh/bun")
+	if err != nil {
+		return err
+	}
+	report("Bun", bun, strings.TrimPrefix(latestBun, "bun-v"), "sidecar/package.json packageManager")
+	latestPi, err := latestNpm(piPackage)
+	if err != nil {
+		return err
+	}
+	report("Pi", pi, latestPi, "the three @earendil-works packages in sidecar/package.json")
+
 	if outdated && *strict {
 		return errors.New("upstream pins are outdated")
 	}
@@ -285,6 +303,46 @@ func latestCrate(name string) (string, error) {
 		return "", fmt.Errorf("crates.io %s: no stable version", name)
 	}
 	return c.Crate.MaxStableVersion, nil
+}
+
+// sidecarPins returns the Bun and Pi versions the agent sidecar pins: its
+// package manager (`bun@x.y.z`) and its pi-coding-agent dependency.
+func sidecarPins() (bun, pi string, err error) {
+	data, err := os.ReadFile(sidecarPath)
+	if err != nil {
+		return "", "", err
+	}
+	var p struct {
+		PackageManager string            `json:"packageManager"`
+		Dependencies   map[string]string `json:"dependencies"`
+	}
+	if err := json.Unmarshal(data, &p); err != nil {
+		return "", "", fmt.Errorf("%s: %w", sidecarPath, err)
+	}
+	bun, ok := strings.CutPrefix(p.PackageManager, "bun@")
+	if !ok || p.Dependencies[piPackage] == "" {
+		return "", "", fmt.Errorf("%s pins no Bun or no Pi", sidecarPath)
+	}
+	return bun, p.Dependencies[piPackage], nil
+}
+
+// latestNpm returns the version an npm package's `latest` tag names.
+func latestNpm(name string) (string, error) {
+	resp, err := httpClient.Get("https://registry.npmjs.org/" + name + "/latest")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("npm %s: %s", name, resp.Status)
+	}
+	var v struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		return "", err
+	}
+	return v.Version, nil
 }
 
 var channelRE = regexp.MustCompile(`(?m)^channel\s*=\s*"([^"]+)"`)

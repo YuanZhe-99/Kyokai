@@ -73,6 +73,14 @@ jobs:
       - name: Rust formatting
         run: cargo fmt --manifest-path core/Cargo.toml --all --check
 
+      # The agent sidecar: its tests, among them the golden requests the
+      # engine's adapters wrote (doc/en-us/development.md).
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: sidecar/package.json
+      - name: Agent sidecar
+        run: cd sidecar && bun install --frozen-lockfile && bun test
+
       - name: Dependency licenses and advisories
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:

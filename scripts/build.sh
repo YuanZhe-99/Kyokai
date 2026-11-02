@@ -82,6 +82,11 @@ cp LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/*.txt resources/licenses/
 # among them; LGPL-3.0 also asks for the GPL-3.0 text, copied above).
 command -v cargo-about >/dev/null || { echo "cargo-about is missing: cargo install cargo-about --locked" >&2; exit 1; }
 cargo about generate --manifest-path core/Cargo.toml -c core/about.toml -o resources/licenses/RUST_LICENSES.txt core/about.hbs
+# The agent sidecar (doc/en-us/architecture.md, "The agent sidecar"): its
+# pinned packages, and every npm package compiled into it with its license
+# (Bun's own license and its libraries' are in third_party/licenses).
+command -v bun >/dev/null || { echo "bun is missing: install the version in sidecar/package.json" >&2; exit 1; }
+(cd sidecar && bun install --frozen-lockfile >/dev/null && bun licenses.ts ../resources/licenses/SIDECAR_LICENSES.txt)
 
 for t in "${targets[@]}"; do
 	goos=${t%/*}
@@ -117,12 +122,17 @@ for t in "${targets[@]}"; do
 	fi
 	test -f "$libdir/$lib" || { echo "missing $libdir/$lib" >&2; exit 1; }
 	CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w" -o "$bin/kyokai-svc$ext" ./cmd/kyokai-svc
+	# kyokai-agent: one executable with Bun's runtime for the target.
+	case "$goarch" in amd64) barch=x64 ;; *) barch=$goarch ;; esac
+	bun build sidecar/src/main.ts --compile --minify --target="bun-$goos-$barch" --outfile "$bin/kyokai-agent$ext" >/dev/null
 	if [ "$goos" = darwin ]; then
 		# The x86_64 linker leaves the core unsigned, and codesign refuses
 		# the bundle's engine while a library beside it carries no signature
 		# at all; the ad hoc one is replaced when the app is signed.
 		codesign --force --sign - "$libdir/$lib"
+		codesign --force --sign - "$bin/kyokai-agent"
 		cp "$bin/kyokai-svc" "$libdir/kyokai-svc"
+		cp "$bin/kyokai-agent" "$libdir/kyokai-agent"
 		helper_bundle "$(dirname "$libdir")"
 	fi
 	# Release builds sign the helper's files, so an installed helper updates

@@ -172,7 +172,7 @@ Do not change these without the user explicitly deciding to:
 Every change set keeps the upstreams current: the latest MyGo tag; EasyTier at the latest tag of
 the line Kyokai embeds (the v2.7 prerelease line, pinned by commit, until a v2.7.x stable ships;
 the moving `nightly` tag is never used); RustDesk's vendored code reviewed against its latest
-release; the Rust toolchain in `rust-toolchain.toml`. When `go run ./tools/deps check` reports
+release; the Rust toolchain in `rust-toolchain.toml`; Bun and Pi as `sidecar/package.json` pins them. When `go run ./tools/deps check` reports
 an update, move it following `doc/en-us/ci-cd.md`, re-run the EasyTier integration test when
 EasyTier moves, and add a `version-history.md` line naming the versions. Record "checked,
 unchanged" too.

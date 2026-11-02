@@ -18,6 +18,8 @@
   其 SHA-256 并输出路径。`scripts/build.sh` 与 `scripts/smoke.sh` 会自行使用它；直接运行 cargo 命令前先执行
   `export PROTOC=$(scripts/protoc.sh)`。没有 `PROTOC` 时，EasyTier 的构建会在 Windows 上下载未经校验的候选版本。
 - 依赖检查用 `cargo-deny`（`cargo install cargo-deny --locked`）；在 Windows ARM64 上要装好 clang 才能构建。
+- Bun，版本为 `sidecar/package.json` 所写（`packageManager`；Windows 上 `winget install Oven-sh.Bun`），用于 agent sidecar
+  的测试，以及编译 `kyokai-agent` 并写出其各包声明的 `scripts/build.sh`。
 - `scripts/build.sh` 放入每个安装包的许可证文件需要 `cargo-about`（`cargo install cargo-about --locked --features cli`）。
 - libvpx 1.16.0、libaom 3.15.2 与 Opus 1.6.1 静态链接进核心：`scripts/codecs.sh` 以清单模式用 vcpkg 构建它们（`core/vcpkg.json`，
   注册表固定在 `core/vcpkg-configuration.json`，覆盖三元组在 `core/vcpkg-triplets`），装到
@@ -48,7 +50,7 @@
 ## 命令
 
 ```bash
-go run ./tools/deps check          # pinned vs latest MyGo, EasyTier, RustDesk, vcpkg, Rust
+go run ./tools/deps check          # pinned vs latest MyGo, EasyTier, RustDesk, vcpkg, Rust, Bun, Pi
 scripts/codecs.sh                  # libvpx and libaom for this platform (once, before cargo)
 gofmt -l cmd internal tools
 go vet ./...

@@ -33,7 +33,7 @@
   an unverified release candidate on Windows.
 - `cargo-deny` (`cargo install cargo-deny --locked`) for the dependency check; on Windows ARM64 it
   builds only once clang is installed.
-- `cargo-about` (`cargo install cargo-about --locked --features cli`) for the license file that
+- Bun, the version `sidecar/package.json` names (`packageManager`; on Windows `winget install`\n  `Oven-sh.Bun`), for the agent sidecar's tests and for `scripts/build.sh`, which compiles\n  `kyokai-agent` and writes its packages' notices.\n- `cargo-about` (`cargo install cargo-about --locked --features cli`) for the license file that
   `scripts/build.sh` puts into every package.
 - libvpx 1.16.0, libaom 3.15.2 and Opus 1.6.1, linked statically into the core: `scripts/codecs.sh`
   builds them with vcpkg in manifest mode (`core/vcpkg.json`, the registry pinned in
@@ -69,7 +69,7 @@
 ## Commands
 
 ```bash
-go run ./tools/deps check          # pinned vs latest MyGo, EasyTier, RustDesk, vcpkg, Rust
+go run ./tools/deps check          # pinned vs latest MyGo, EasyTier, RustDesk, vcpkg, Rust, Bun, Pi
 scripts/codecs.sh                  # libvpx and libaom for this platform (once, before cargo)
 gofmt -l cmd internal tools
 go vet ./...

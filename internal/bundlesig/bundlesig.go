@@ -31,8 +31,8 @@ import (
 var releasePub string
 
 // Files a bundle manifest covers (those present in the folder: Windows'
-// and Linux's).
-var Files = []string{"kyokai-svc.exe", "kyokai_core.dll", "kyokai-svc", "libkyokai_core.so"}
+// and Linux's): the engine, the core and the agent sidecar.
+var Files = []string{"kyokai-svc.exe", "kyokai_core.dll", "kyokai-agent.exe", "kyokai-svc", "libkyokai_core.so", "kyokai-agent"}
 
 // ErrNoKey reports a build without a release public key (development).
 var ErrNoKey = errors.New("this build has no release key; bundles cannot be verified")

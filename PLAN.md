@@ -134,7 +134,7 @@ Each lands with its docs and tests; the Rust loop stays until step 4 replaces it
    `computer` tool with `previous_response_id`, `openai-chat` with batched screenshot drops), the
    actions as Kyokai's tool schema, usage reported per turn. Done when: its own tests replay the
    Rust adapters' fixtures byte for byte, and the harness checks pass.
-3. **Building and shipping it**: `scripts/build.sh` compiles `kyokai-agent` per target into
+3. Done (2026-11-01; the helper copies `kyokai-agent` from step 4, when the engine starts it): **building and shipping it**: `scripts/build.sh` compiles `kyokai-agent` per target into
    `bin/`, the CI and release jobs install the pinned Bun, the bundle signature and the helper's
    checks cover it, packaging.md and third-party.md list Pi and Bun. Done when: a release build
    on each target holds it and the helper accepts it.

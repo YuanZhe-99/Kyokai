@@ -2,6 +2,7 @@
   "name": "kyokai-agent",
   "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.4",
   "description": "Kyokai's agent sidecar: Pi's loop with Kyokai's providers (doc/en-us/architecture.md, \"The agent sidecar\").",
   "scripts": {
     "test": "bun test"
