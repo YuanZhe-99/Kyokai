@@ -61,12 +61,80 @@ pub trait Desktop: Send {
     fn elements(&mut self) -> Option<super::elements::Listed> {
         None
     }
+    /// The window the AI works in beside the host user (computer-use.md,
+    /// "Beside the host user"): the topmost visible window of a granted
+    /// program. None where the system cannot do it.
+    fn beside(&mut self, apps: &[String]) -> Option<Beside> {
+        let _ = apps;
+        None
+    }
+    /// That window as it looks, also where others cover it.
+    fn capture_beside(&mut self, b: &Beside) -> Result<Frame, String> {
+        let _ = b;
+        Err(BESIDE_NOT_HERE.into())
+    }
+    /// That window's elements, their bounds in its own pixels.
+    fn elements_beside(&mut self, b: &Beside) -> Option<super::elements::Listed> {
+        let _ = b;
+        None
+    }
+    /// Acts on the window's element `index` without the pointer or the
+    /// keyboard, if it is still `expect`.
+    /// Returns: why it cannot, for the task to fall back.
+    fn act_beside(
+        &mut self,
+        b: &Beside,
+        index: usize,
+        expect: &super::elements::Element,
+        act: &BesideAct,
+    ) -> Result<(), String> {
+        let _ = (b, index, expect, act);
+        Err(BESIDE_NOT_HERE.into())
+    }
+    /// The foreground window, as `Beside::id` names windows.
+    fn front(&mut self) -> Option<u64> {
+        None
+    }
+    /// Brings the window to the front for a step with the pointer and
+    /// keyboard. Returns: whether it is in front now.
+    fn raise(&mut self, b: &Beside) -> bool {
+        let _ = b;
+        false
+    }
     /// Whether this is another computer seen through a pane (`ai::pane`),
     /// where this computer's AI scope (its apps and folders) does not
     /// apply: the pane itself is the grant.
     fn remote(&self) -> bool {
         false
     }
+}
+
+/// Why a step cannot run beside the host user here.
+pub const BESIDE_NOT_HERE: &str = "this system cannot do it in the background";
+/// Why a step beside the host user did not run: the element is no longer
+/// what the model saw (not a reason to ask for the screen).
+pub const BESIDE_CHANGED: &str = "the window changed; take a new screenshot";
+
+/// The window the AI works in beside the host user (`Desktop::beside`).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Beside {
+    /// The system's handle for it.
+    pub id: u64,
+    /// Its program, as `policy::Target::program` names it.
+    pub program: String,
+    /// Where it is on the screen: `[x0, y0, x1, y1]`.
+    pub rect: [i32; 4],
+}
+
+/// What the AI does to an element beside the host user.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BesideAct {
+    /// Its default action: invoke, toggle, select, expand or collapse.
+    Click,
+    /// Text added to its value.
+    Type(String),
+    /// Scrolled by notches, positive down.
+    Scroll(i32),
 }
 
 /// A window on the screen as AI scope reads it (`Desktop::windows`).
@@ -551,6 +619,36 @@ mod windows_impl {
         fn elements(&mut self) -> Option<crate::ai::elements::Listed> {
             facts::elements()
         }
+
+        fn beside(&mut self, apps: &[String]) -> Option<Beside> {
+            facts::beside(apps)
+        }
+
+        fn capture_beside(&mut self, b: &Beside) -> Result<Frame, String> {
+            facts::capture_beside(b)
+        }
+
+        fn elements_beside(&mut self, b: &Beside) -> Option<crate::ai::elements::Listed> {
+            facts::elements_beside(b)
+        }
+
+        fn act_beside(
+            &mut self,
+            b: &Beside,
+            index: usize,
+            expect: &crate::ai::elements::Element,
+            act: &BesideAct,
+        ) -> Result<(), String> {
+            facts::act_beside(b, index, expect, act)
+        }
+
+        fn front(&mut self) -> Option<u64> {
+            facts::front()
+        }
+
+        fn raise(&mut self, b: &Beside) -> bool {
+            facts::raise(b)
+        }
     }
 
     mod facts {
@@ -948,7 +1046,50 @@ mod windows_impl {
 
         /// The controls of one top-level window, as `elements` lists them.
         fn elements_of(root: HWND) -> Option<crate::ai::elements::Listed> {
-            use crate::ai::elements::{Element, Listed, MAX_ELEMENTS};
+            // SAFETY: plain queries of the screen's metrics.
+            let screen = unsafe {
+                [
+                    0,
+                    0,
+                    GetSystemMetrics(SM_CXSCREEN),
+                    GetSystemMetrics(SM_CYSCREEN),
+                ]
+            };
+            physical(|| {
+                walk(root, screen, None).map(|(title, found)| crate::ai::elements::Listed {
+                    window: title,
+                    program: program(root),
+                    elements: found.into_iter().map(|(_, e)| e).collect(),
+                })
+            })
+        }
+
+        /// What `walk` does to the element at an index, as it reaches it.
+        type Visit<'a> = (
+            usize,
+            &'a mut dyn FnMut(&IUIAutomationElement) -> Result<(), String>,
+        );
+
+        /// Walks a window's control view once (a cached UI Automation query)
+        /// and keeps what the element list keeps: the controls people act on
+        /// and named text and images, not off screen, inside `area` (screen
+        /// pixels, whose top left the bounds are taken from), at most
+        /// `MAX_ELEMENTS`, in the tree's order; a password field's value is
+        /// never read. With `visit`, it calls it on the element of that
+        /// index, while it is alive.
+        /// Returns: the window's title and the elements kept, or None for no
+        /// window, Kyokai's own, or no tree; the visit's error as an element
+        /// list of none.
+        /// Notes: call under `physical` (bounds in physical pixels).
+        fn walk(
+            root: HWND,
+            area: [i32; 4],
+            mut visit: Option<Visit>,
+        ) -> Option<(
+            String,
+            Vec<(IUIAutomationElement, crate::ai::elements::Element)>,
+        )> {
+            use crate::ai::elements::{Element, MAX_ELEMENTS};
             use crate::input::kyokai_process;
             use windows::Win32::System::Variant::{VT_BSTR, VariantClear};
             use windows::Win32::UI::Accessibility::{
@@ -957,92 +1098,407 @@ mod windows_impl {
                 UIA_ValueValuePropertyId,
             };
             use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
-            physical(|| {
-                // SAFETY: plain queries of the window and its process; COM
-                // on this thread (as `element`), every object released when
-                // dropped, each VARIANT cleared after reading.
-                unsafe {
-                    if root.is_invalid() {
+            // SAFETY: plain queries of the window and its process; COM on
+            // this thread (as `element`), every object released when dropped,
+            // each VARIANT cleared after reading.
+            unsafe {
+                if root.is_invalid() {
+                    return None;
+                }
+                let mut pid = 0u32;
+                GetWindowThreadProcessId(root, Some(&mut pid));
+                if pid == 0 || kyokai_process(pid) {
+                    return None;
+                }
+                let mut title = [0u16; 512];
+                let n = GetWindowTextW(root, &mut title) as usize;
+                let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+                let uia: IUIAutomation =
+                    CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+                let window = uia.ElementFromHandle(root).ok()?;
+                let cache = uia.CreateCacheRequest().ok()?;
+                for p in [
+                    UIA_ControlTypePropertyId,
+                    UIA_NamePropertyId,
+                    UIA_BoundingRectanglePropertyId,
+                    UIA_IsOffscreenPropertyId,
+                    UIA_IsPasswordPropertyId,
+                    UIA_ValueValuePropertyId,
+                ] {
+                    cache.AddProperty(p).ok()?;
+                }
+                let found = window
+                    .FindAllBuildCache(
+                        TreeScope_Descendants,
+                        &uia.ControlViewCondition().ok()?,
+                        &cache,
+                    )
+                    .ok()?;
+                let mut elements = Vec::new();
+                for i in 0..found.Length().unwrap_or(0) {
+                    if elements.len() == MAX_ELEMENTS {
+                        break;
+                    }
+                    let Ok(e) = found.GetElement(i) else { continue };
+                    let Some(role) = e.CachedControlType().ok().and_then(|t| role(t.0)) else {
+                        continue;
+                    };
+                    if e.CachedIsOffscreen().is_ok_and(|o| o.as_bool()) {
+                        continue;
+                    }
+                    let Ok(r) = e.CachedBoundingRectangle() else {
+                        continue;
+                    };
+                    let rect = [
+                        r.left.max(area[0]) - area[0],
+                        r.top.max(area[1]) - area[1],
+                        r.right.min(area[2]) - area[0],
+                        r.bottom.min(area[3]) - area[1],
+                    ];
+                    if rect[2] <= rect[0] || rect[3] <= rect[1] {
+                        continue;
+                    }
+                    let name = e.CachedName().map(|n| n.to_string()).unwrap_or_default();
+                    let password = e.CachedIsPassword().is_ok_and(|p| p.as_bool());
+                    let mut text = String::new();
+                    if !password
+                        && let Ok(mut v) = e.GetCachedPropertyValue(UIA_ValueValuePropertyId)
+                    {
+                        if v.Anonymous.Anonymous.vt == VT_BSTR {
+                            text = v.Anonymous.Anonymous.Anonymous.bstrVal.to_string();
+                        }
+                        let _ = VariantClear(&mut v);
+                    }
+                    // Text and images only when they say something.
+                    if matches!(role, "text" | "image") && name.trim().is_empty() {
+                        continue;
+                    }
+                    if let Some((at, f)) = visit.as_mut()
+                        && *at == elements.len()
+                    {
+                        // The visit is all a visiting walk is for.
+                        let _ = f(&e);
                         return None;
                     }
-                    let mut pid = 0u32;
-                    GetWindowThreadProcessId(root, Some(&mut pid));
-                    if pid == 0 || kyokai_process(pid) {
-                        return None;
-                    }
-                    let mut title = [0u16; 512];
-                    let n = GetWindowTextW(root, &mut title) as usize;
-                    let (w, h) = (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
-                    let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-                    let uia: IUIAutomation =
-                        CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
-                    let window = uia.ElementFromHandle(root).ok()?;
-                    let cache = uia.CreateCacheRequest().ok()?;
-                    for p in [
-                        UIA_ControlTypePropertyId,
-                        UIA_NamePropertyId,
-                        UIA_BoundingRectanglePropertyId,
-                        UIA_IsOffscreenPropertyId,
-                        UIA_IsPasswordPropertyId,
-                        UIA_ValueValuePropertyId,
-                    ] {
-                        cache.AddProperty(p).ok()?;
-                    }
-                    let found = window
-                        .FindAllBuildCache(
-                            TreeScope_Descendants,
-                            &uia.ControlViewCondition().ok()?,
-                            &cache,
-                        )
-                        .ok()?;
-                    let mut elements = Vec::new();
-                    for i in 0..found.Length().unwrap_or(0) {
-                        if elements.len() == MAX_ELEMENTS {
-                            break;
-                        }
-                        let Ok(e) = found.GetElement(i) else { continue };
-                        let Some(role) = e.CachedControlType().ok().and_then(|t| role(t.0)) else {
-                            continue;
-                        };
-                        if e.CachedIsOffscreen().is_ok_and(|o| o.as_bool()) {
-                            continue;
-                        }
-                        let Ok(r) = e.CachedBoundingRectangle() else {
-                            continue;
-                        };
-                        let rect = [r.left.max(0), r.top.max(0), r.right.min(w), r.bottom.min(h)];
-                        if rect[2] <= rect[0] || rect[3] <= rect[1] {
-                            continue;
-                        }
-                        let name = e.CachedName().map(|n| n.to_string()).unwrap_or_default();
-                        let password = e.CachedIsPassword().is_ok_and(|p| p.as_bool());
-                        let mut text = String::new();
-                        if !password
-                            && let Ok(mut v) = e.GetCachedPropertyValue(UIA_ValueValuePropertyId)
-                        {
-                            if v.Anonymous.Anonymous.vt == VT_BSTR {
-                                text = v.Anonymous.Anonymous.Anonymous.bstrVal.to_string();
-                            }
-                            let _ = VariantClear(&mut v);
-                        }
-                        // Text and images only when they say something.
-                        if matches!(role, "text" | "image") && name.trim().is_empty() {
-                            continue;
-                        }
-                        elements.push(Element {
+                    elements.push((
+                        e,
+                        Element {
                             role: role.into(),
                             name,
                             text,
                             rect,
-                        });
+                        },
+                    ));
+                }
+                Some((String::from_utf16_lossy(&title[..n]), elements))
+            }
+        }
+
+        /// The window the AI works in beside the host user: the topmost
+        /// visible window of a granted program (`Desktop::beside`).
+        pub fn beside(apps: &[String]) -> Option<super::Beside> {
+            use windows::Win32::Foundation::{LPARAM, RECT};
+            use windows::Win32::Graphics::Dwm::{
+                DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute,
+            };
+            use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, IsIconic, IsWindowVisible};
+            use windows::core::BOOL;
+
+            /// Adds one shown window to the list `l` points at.
+            unsafe extern "system" fn each(hwnd: HWND, l: LPARAM) -> BOOL {
+                // SAFETY: `l` is the list `beside` passed, alive for the
+                // whole EnumWindows call; the queries only read the window.
+                unsafe {
+                    let out = &mut *(l.0 as *mut Vec<(HWND, [i32; 4])>);
+                    let mut cloaked = 0u32;
+                    let _ = DwmGetWindowAttribute(
+                        hwnd,
+                        DWMWA_CLOAKED,
+                        (&mut cloaked as *mut u32).cast(),
+                        4,
+                    );
+                    let mut r = RECT::default();
+                    if IsWindowVisible(hwnd).as_bool()
+                        && !IsIconic(hwnd).as_bool()
+                        && cloaked == 0
+                        && DwmGetWindowAttribute(
+                            hwnd,
+                            DWMWA_EXTENDED_FRAME_BOUNDS,
+                            (&mut r as *mut RECT).cast(),
+                            std::mem::size_of::<RECT>() as u32,
+                        )
+                        .is_ok()
+                        && r.right - r.left > 8
+                        && r.bottom - r.top > 8
+                    {
+                        out.push((hwnd, [r.left, r.top, r.right, r.bottom]));
                     }
-                    Some(Listed {
-                        window: String::from_utf16_lossy(&title[..n]),
-                        program: program(root),
-                        elements,
+                    true.into()
+                }
+            }
+
+            let mut shown: Vec<(HWND, [i32; 4])> = Vec::new();
+            physical(|| {
+                // SAFETY: the callback gets the list's address, which
+                // outlives the call.
+                let _ = unsafe { EnumWindows(Some(each), LPARAM(&mut shown as *mut _ as isize)) };
+            });
+            // The shell's own windows (the taskbars, the desktop) are explorer.exe's
+            // too, but no window to work in.
+            const SHELL: [&str; 4] = [
+                "Shell_TrayWnd",
+                "Shell_SecondaryTrayWnd",
+                "Progman",
+                "WorkerW",
+            ];
+            shown.into_iter().find_map(|(hwnd, rect)| {
+                let mut class = [0u16; 64];
+                // SAFETY: fills `class` up to its length.
+                let n = unsafe { GetClassNameW(hwnd, &mut class) } as usize;
+                if SHELL.contains(&String::from_utf16_lossy(&class[..n]).as_str()) {
+                    return None;
+                }
+                let p = program(hwnd)?;
+                (apps.contains(&p) && !crate::input::is_kyokai(&p)).then_some(super::Beside {
+                    id: hwnd.0 as u64,
+                    program: p,
+                    rect,
+                })
+            })
+        }
+
+        /// The window as it draws itself (PrintWindow, its full content),
+        /// cut to the frame the screen shows, also where others cover it.
+        pub fn capture_beside(b: &super::Beside) -> Result<super::Frame, String> {
+            use windows::Win32::Foundation::RECT;
+            use windows::Win32::Graphics::Gdi::{
+                BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleBitmap, CreateCompatibleDC,
+                DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
+            };
+            use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
+            use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, PW_RENDERFULLCONTENT};
+            let hwnd = HWND(b.id as usize as *mut _);
+            physical(|| {
+                // SAFETY: GDI objects made here are selected out and deleted
+                // below; GetDIBits fills `px`, sized for the whole bitmap.
+                unsafe {
+                    let mut wr = RECT::default();
+                    GetWindowRect(hwnd, &mut wr).map_err(|e| format!("the window: {e}"))?;
+                    let (w, h) = (wr.right - wr.left, wr.bottom - wr.top);
+                    if w <= 0 || h <= 0 {
+                        return Err("the window has no size".into());
+                    }
+                    let screen = GetDC(None);
+                    let dc = CreateCompatibleDC(Some(screen));
+                    let bmp = CreateCompatibleBitmap(screen, w, h);
+                    let old = SelectObject(dc, bmp.into());
+                    let drawn =
+                        PrintWindow(hwnd, dc, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool();
+                    SelectObject(dc, old);
+                    let mut info = BITMAPINFO {
+                        bmiHeader: BITMAPINFOHEADER {
+                            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                            biWidth: w,
+                            biHeight: -h,
+                            biPlanes: 1,
+                            biBitCount: 32,
+                            biCompression: BI_RGB.0,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    };
+                    let mut px = vec![0u8; (w * h * 4) as usize];
+                    let rows = GetDIBits(
+                        dc,
+                        bmp,
+                        0,
+                        h as u32,
+                        Some(px.as_mut_ptr().cast()),
+                        &mut info,
+                        DIB_RGB_COLORS,
+                    );
+                    let _ = DeleteObject(bmp.into());
+                    let _ = DeleteDC(dc);
+                    ReleaseDC(None, screen);
+                    if !drawn || rows != h {
+                        return Err("the window did not draw itself".into());
+                    }
+                    // The frame the screen shows, without the invisible
+                    // resize borders.
+                    let [x0, y0, x1, y1] = b.rect;
+                    let (ox, oy) = ((x0 - wr.left).clamp(0, w), (y0 - wr.top).clamp(0, h));
+                    let (fw, fh) = ((x1 - x0).min(w - ox), (y1 - y0).min(h - oy));
+                    let mut bgra = Vec::with_capacity((fw * fh * 4) as usize);
+                    for y in oy..oy + fh {
+                        let row = ((y * w + ox) * 4) as usize;
+                        bgra.extend_from_slice(&px[row..row + (fw * 4) as usize]);
+                    }
+                    for p in bgra.as_chunks_mut::<4>().0 {
+                        p[3] = 255;
+                    }
+                    Ok(super::Frame {
+                        bgra,
+                        width: fw as u32,
+                        height: fh as u32,
                     })
                 }
             })
+        }
+
+        /// The window's elements, their bounds in its own pixels.
+        pub fn elements_beside(b: &super::Beside) -> Option<crate::ai::elements::Listed> {
+            let hwnd = HWND(b.id as usize as *mut _);
+            physical(|| {
+                walk(hwnd, b.rect, None).map(|(title, found)| crate::ai::elements::Listed {
+                    window: title,
+                    program: Some(b.program.clone()),
+                    elements: found.into_iter().map(|(_, e)| e).collect(),
+                })
+            })
+        }
+
+        /// Acts on element `index` of the window through its UI Automation
+        /// patterns, if it is still `expect` (its role and name).
+        /// Returns: why it cannot (another element there now, no pattern for
+        /// the act, a read-only value), for the task to fall back.
+        pub fn act_beside(
+            b: &super::Beside,
+            index: usize,
+            expect: &crate::ai::elements::Element,
+            act: &super::BesideAct,
+        ) -> Result<(), String> {
+            use windows::Win32::UI::Accessibility::{
+                ExpandCollapseState_Collapsed, IUIAutomationExpandCollapsePattern,
+                IUIAutomationInvokePattern, IUIAutomationLegacyIAccessiblePattern,
+                IUIAutomationScrollPattern, IUIAutomationSelectionItemPattern,
+                IUIAutomationTogglePattern, IUIAutomationValuePattern, ScrollAmount_NoAmount,
+                ScrollAmount_SmallDecrement, ScrollAmount_SmallIncrement,
+                UIA_ExpandCollapsePatternId, UIA_InvokePatternId, UIA_LegacyIAccessiblePatternId,
+                UIA_ScrollPatternId, UIA_SelectionItemPatternId, UIA_TogglePatternId,
+                UIA_ValuePatternId,
+            };
+            let hwnd = HWND(b.id as usize as *mut _);
+            let mut done: Option<Result<(), String>> = None;
+            let mut act_on = |e: &IUIAutomationElement| -> Result<(), String> {
+                // SAFETY: COM calls on an element this thread holds, within
+                // the walk that found it.
+                let r = unsafe {
+                    let same = e.CachedName().map(|n| n.to_string()).unwrap_or_default()
+                        == expect.name
+                        && e.CachedControlType().ok().and_then(|t| role(t.0))
+                            == Some(expect.role.as_str());
+                    if !same {
+                        Err(super::BESIDE_CHANGED.to_string())
+                    } else {
+                        match act {
+                            super::BesideAct::Click => {
+                                if let Ok(p) = e.GetCurrentPatternAs::<IUIAutomationInvokePattern>(
+                                    UIA_InvokePatternId,
+                                ) {
+                                    p.Invoke().map_err(|e| e.to_string())
+                                } else if let Ok(p) = e
+                                    .GetCurrentPatternAs::<IUIAutomationTogglePattern>(
+                                        UIA_TogglePatternId,
+                                    )
+                                {
+                                    p.Toggle().map_err(|e| e.to_string())
+                                } else if let Ok(p) = e
+                                    .GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(
+                                        UIA_SelectionItemPatternId,
+                                    )
+                                {
+                                    p.Select().map_err(|e| e.to_string())
+                                } else if let Ok(p) = e
+                                    .GetCurrentPatternAs::<IUIAutomationExpandCollapsePattern>(
+                                        UIA_ExpandCollapsePatternId,
+                                    )
+                                {
+                                    if p.CurrentExpandCollapseState()
+                                        .is_ok_and(|s| s == ExpandCollapseState_Collapsed)
+                                    {
+                                        p.Expand().map_err(|e| e.to_string())
+                                    } else {
+                                        p.Collapse().map_err(|e| e.to_string())
+                                    }
+                                } else if let Ok(p) = e
+                                    .GetCurrentPatternAs::<IUIAutomationLegacyIAccessiblePattern>(
+                                        UIA_LegacyIAccessiblePatternId,
+                                    )
+                                {
+                                    p.DoDefaultAction().map_err(|e| e.to_string())
+                                } else {
+                                    Err("this element has no action to take in the background"
+                                        .into())
+                                }
+                            }
+                            super::BesideAct::Type(text) => {
+                                let p = e
+                                    .GetCurrentPatternAs::<IUIAutomationValuePattern>(
+                                        UIA_ValuePatternId,
+                                    )
+                                    .map_err(|_| {
+                                        "this element takes no text in the background".to_string()
+                                    })?;
+                                if p.CurrentIsReadOnly().is_ok_and(|r| r.as_bool()) {
+                                    return Err("this element is read-only".into());
+                                }
+                                let now =
+                                    p.CurrentValue().map(|v| v.to_string()).unwrap_or_default();
+                                p.SetValue(&windows::core::BSTR::from(now + text))
+                                    .map_err(|e| e.to_string())
+                            }
+                            super::BesideAct::Scroll(notches) => {
+                                let p = e
+                                    .GetCurrentPatternAs::<IUIAutomationScrollPattern>(
+                                        UIA_ScrollPatternId,
+                                    )
+                                    .map_err(|_| {
+                                        "this element does not scroll in the background".to_string()
+                                    })?;
+                                let step = if *notches > 0 {
+                                    ScrollAmount_SmallIncrement
+                                } else {
+                                    ScrollAmount_SmallDecrement
+                                };
+                                for _ in 0..notches.unsigned_abs().min(20) {
+                                    p.Scroll(ScrollAmount_NoAmount, step)
+                                        .map_err(|e| e.to_string())?;
+                                }
+                                Ok(())
+                            }
+                        }
+                    }
+                };
+                done = Some(r.clone());
+                r
+            };
+            physical(|| walk(hwnd, b.rect, Some((index, &mut act_on))));
+            done.unwrap_or_else(|| Err(super::BESIDE_CHANGED.into()))
+        }
+
+        /// The foreground window, as `Beside::id` names windows.
+        pub fn front() -> Option<u64> {
+            // SAFETY: plain queries; a null window gives a null root.
+            let root = physical(|| unsafe { GetAncestor(GetForegroundWindow(), GA_ROOT) });
+            (!root.is_invalid()).then_some(root.0 as u64)
+        }
+
+        /// Brings the window to the front (restored if minimized).
+        /// Returns: whether it is in front now.
+        pub fn raise(b: &super::Beside) -> bool {
+            use windows::Win32::UI::WindowsAndMessaging::{
+                IsIconic, SW_RESTORE, SetForegroundWindow, ShowWindow,
+            };
+            let hwnd = HWND(b.id as usize as *mut _);
+            // SAFETY: plain window calls on a handle that may be gone, which
+            // they refuse.
+            unsafe {
+                if IsIconic(hwnd).as_bool() {
+                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                }
+                let _ = SetForegroundWindow(hwnd);
+            }
+            front() == Some(b.id)
         }
 
         /// A UI Automation control type as the element list names it, or
@@ -1155,6 +1611,80 @@ mod windows_impl {
                 l.elements.iter().filter(|e| !e.text.is_empty()).count()
             );
             assert!(l.elements.len() <= crate::ai::elements::MAX_ELEMENTS);
+        }
+
+        /// Beside the host user: an Explorer window, covered or not, is
+        /// found, captured on its own, listed in its own pixels, and one of
+        /// its tree items selected without the pointer. Opens and closes a
+        /// window on this desktop: run by hand (`--ignored`).
+        #[test]
+        #[ignore]
+        fn an_explorer_window_works_beside() {
+            use windows::Win32::Foundation::{LPARAM, WPARAM};
+            use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
+            let dir = std::env::temp_dir().join("kyokai-beside");
+            std::fs::create_dir_all(&dir).unwrap();
+            // explorer.exe hands the folder to the running shell and returns.
+            let _ = std::process::Command::new("explorer.exe")
+                .arg(&dir)
+                .status();
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let b = beside(&["explorer.exe".into()]).expect("an Explorer window");
+            let frame = capture_beside(&b).unwrap();
+            assert_eq!(
+                (frame.width as i32, frame.height as i32),
+                (b.rect[2] - b.rect[0], b.rect[3] - b.rect[1])
+            );
+            assert!(
+                frame.bgra.chunks(4).any(|p| p[0] != p[1]),
+                "a picture, not a blank"
+            );
+            let listed = elements_beside(&b).unwrap();
+            eprintln!(
+                "window {:?}: roles {:?}",
+                listed.window,
+                listed
+                    .elements
+                    .iter()
+                    .map(|e| e.role.as_str())
+                    .collect::<std::collections::BTreeSet<_>>()
+            );
+            assert!(
+                listed
+                    .elements
+                    .iter()
+                    .all(|e| e.rect[2] <= frame.width as i32)
+            );
+            let (i, item) = listed
+                .elements
+                .iter()
+                .enumerate()
+                .find(|(_, e)| e.role == "treeitem")
+                .expect("a tree item");
+            let t0 = std::time::Instant::now();
+            let acted = act_beside(&b, i, item, &super::BesideAct::Click);
+            eprintln!(
+                "{} elements; clicked {:?} in {:?}: {acted:?}",
+                listed.elements.len(),
+                item.role,
+                t0.elapsed()
+            );
+            assert!(acted.is_ok());
+            let wrong = crate::ai::elements::Element {
+                name: "not this".into(),
+                ..item.clone()
+            };
+            assert!(act_beside(&b, i, &wrong, &super::BesideAct::Click).is_err());
+            // SAFETY: asks the window to close, as its close button does.
+            unsafe {
+                let _ = PostMessageW(
+                    Some(HWND(b.id as usize as *mut _)),
+                    WM_CLOSE,
+                    WPARAM(0),
+                    LPARAM(0),
+                );
+            }
+            let _ = std::fs::remove_dir(&dir);
         }
 
         /// Address bar texts in any language name their folder from its

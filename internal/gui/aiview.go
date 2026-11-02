@@ -229,6 +229,9 @@ func (t *aiTab) conversation(c *ui.Context, rec AIRecord, s aiPaneState) {
 	if task.Error != "" {
 		ui.Text(c, task.Error).FontSize(sizeSmall).TextColor(th.TextMuted).Selectable()
 	}
+	if task.Note != "" && task.State == "paused" {
+		ui.Text(c, L.AIBesideNote()).FontSize(sizeSmall).TextColor(textTone(th, th.Warning))
+	}
 	if len(task.Outside) > 0 {
 		ui.Text(c, L.AIOutsideChanged(strings.Join(task.Outside, "\n"))).FontSize(sizeSmall).TextColor(textTone(th, th.Warning)).Selectable()
 	}
@@ -548,6 +551,11 @@ func (t *aiTab) chips(c *ui.Context, rec AIRecord, s aiPaneState) {
 				a.mu.Lock()
 				apps := a.ai.apps
 				a.mu.Unlock()
+				// Beside the host user needs apps granted (the AI's window).
+				if m.Item(L.AIBeside()).Checked(set.Beside).Disabled(len(set.Scope) == 0).Chosen() {
+					a.setAIBeside(!set.Beside)
+				}
+				m.Separator()
 				for _, app := range scopeChoices(apps, set.Scope) {
 					on := slices.Contains(set.Scope, app)
 					if m.Item(appLabel(app)).Checked(on).Chosen() {

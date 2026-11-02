@@ -32,6 +32,12 @@ pub struct Log {
     pub released: u32,
     /// What `elements()` reports (none unless a test sets it).
     pub elements: Option<super::elements::Listed>,
+    /// Beside the host user: the window `beside()` reports, the acts on
+    /// its elements, the foreground window, and how often it was raised.
+    pub beside: Option<super::desktop::Beside>,
+    pub acted: Vec<(usize, super::desktop::BesideAct)>,
+    pub front: Option<u64>,
+    pub raised: u32,
 }
 
 /// A desktop that shows the synthetic screens and records what it is sent.
@@ -92,6 +98,48 @@ impl Desktop for Fake {
 
     fn elements(&mut self) -> Option<super::elements::Listed> {
         self.0.lock().unwrap().elements.clone()
+    }
+
+    fn beside(&mut self, apps: &[String]) -> Option<super::desktop::Beside> {
+        let b = self.0.lock().unwrap().beside.clone()?;
+        apps.contains(&b.program).then_some(b)
+    }
+
+    fn capture_beside(&mut self, _b: &super::desktop::Beside) -> Result<Frame, String> {
+        Ok(screens::screen(self.0.lock().unwrap().pressed).frame())
+    }
+
+    fn elements_beside(&mut self, _b: &super::desktop::Beside) -> Option<super::elements::Listed> {
+        self.0.lock().unwrap().elements.clone()
+    }
+
+    fn act_beside(
+        &mut self,
+        _b: &super::desktop::Beside,
+        index: usize,
+        expect: &super::elements::Element,
+        act: &super::desktop::BesideAct,
+    ) -> Result<(), String> {
+        let mut log = self.0.lock().unwrap();
+        let b = screens::BUTTON;
+        if *act == super::desktop::BesideAct::Click
+            && expect.rect == [b[0] as i32, b[1] as i32, b[2] as i32, b[3] as i32]
+        {
+            log.pressed = true;
+        }
+        log.acted.push((index, act.clone()));
+        Ok(())
+    }
+
+    fn front(&mut self) -> Option<u64> {
+        self.0.lock().unwrap().front
+    }
+
+    fn raise(&mut self, b: &super::desktop::Beside) -> bool {
+        let mut log = self.0.lock().unwrap();
+        log.raised += 1;
+        log.front = Some(b.id);
+        true
     }
 
     fn target(&mut self, _at: Option<(f32, f32)>) -> super::policy::Target {

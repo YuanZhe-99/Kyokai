@@ -800,8 +800,31 @@ account, container or virtual machine could hold it to some folders; the folders
   and folders, AppData and Library, the temporary folder and Kyokai's own state. A change is not
   known to be the AI's: another program may have made it.
 
-Granting is the host user's; a controller cannot widen it. The AI cannot work in one window while
-the host user works in another: local input still takes over at once (PLAN.md).
+Granting is the host user's; a controller cannot widen it.
+
+### Beside the host user
+
+With apps granted, the host user may let the AI work in its window while they work in another:
+"Work beside me" in the apps chip (`ai.beside.set`, `kyokai ai-beside --on`; for the session,
+not saved; granting no apps turns it off). It is best effort, on Windows for now:
+
+- **What it sees**: the topmost window of a granted program on its own (PrintWindow, its full
+  content), also where other windows cover it, and that window's element list, always given
+  beside the host user ([Element list](#element-list)).
+- **What it does without the pointer or keyboard**: a left click on an element runs its default
+  action through UI Automation (invoke, toggle, select, expand or collapse, else the legacy
+  default action); typing adds to the value of the element clicked last (no line breaks); a
+  scroll on an element scrolls it; a zoom looks at the window again; a pointer move alone does
+  nothing. Before acting it checks the element is still the one listed (else "the window
+  changed; take a new screenshot").
+- **When it cannot**: any other step (keys, right and double clicks, drags, an element with no
+  such pattern, a read-only value) pauses the task, "Paused: this step needs your screen", with
+  the reason on its step. Resuming brings its window to the front and runs that step with the
+  pointer and keyboard, then it works beside the host user again. Where no window can be worked
+  beside (macOS, Linux, a pane, the helper modes), the first step that acts says so the same way,
+  and after the resume the task works with the screen as usual.
+- **The host user always wins**: their input in the AI's window still takes over at once; input
+  in their own windows does not pause it. The emergency stop, approvals and the lease hold.
 
 ### AI on a pane
 

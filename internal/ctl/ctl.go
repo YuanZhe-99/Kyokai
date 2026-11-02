@@ -162,7 +162,7 @@ var requests = map[string]localapi.RequestType{
 	"ai-clear": localapi.RequestAIHistoryClear, "ai-stop": localapi.RequestAIStop,
 	"route-add": localapi.RequestRoutesSet, "route-remove": localapi.RequestRoutesSet, "route-prefer": localapi.RequestRoutesSet,
 	"ai-rename": localapi.RequestAITaskRename, "ai-export": localapi.RequestAITaskExport, "ai-fork": localapi.RequestAITaskFork, "ai-compact": localapi.RequestAITaskCompact,
-	"ai-scope": localapi.RequestAIScopeSet, "ai-folders": localapi.RequestAIFoldersSet, "ai-apps": localapi.RequestAIApps,
+	"ai-scope": localapi.RequestAIScopeSet, "ai-folders": localapi.RequestAIFoldersSet, "ai-beside": localapi.RequestAIBesideSet, "ai-apps": localapi.RequestAIApps,
 }
 
 // run sends one request to the user's engine and prints the answer.
@@ -219,7 +219,7 @@ func run(args []string) error {
 	mode := fs.String("mode", "", "access: which passwords open this host (temporary, permanent, both)")
 	withoutAsking := fs.String("without-asking", "", "access: whether an accepted password admits without asking (true, false)")
 	publish := fs.String("publish", "", "name-set: show the friendly name in the networks before any login (true, false)")
-	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached); capture-show: captures show Kyokai's windows; no-logs: keep no logs or connection history; protect: protected mode; network-direct: try direct paths in every network")
+	on := fs.Bool("on", false, "background: serve from boot (else only while a GUI is attached); ai-beside: the AI works in its granted window beside you; capture-show: captures show Kyokai's windows; no-logs: keep no logs or connection history; protect: protected mode; network-direct: try direct paths in every network")
 	seconds := fs.Int("seconds", 5, "watch: how long to count frames")
 	snapshot := fs.String("snapshot", "", "watch: decode the stream and save the last picture as PNG")
 	quality := fs.String("quality", "", "watch: ask for a preset first (speed, balanced, best)")
@@ -406,6 +406,8 @@ func run(args []string) error {
 		if a := list(*apps); len(a) > 0 {
 			req.Apps = &a
 		}
+	case "ai-beside":
+		req.On = on
 	case "ai-folders":
 		if f := filepath.SplitList(*folders); len(f) > 0 {
 			req.Folders = &f

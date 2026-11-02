@@ -357,6 +357,9 @@
     }
   },
   "AIPaneServe": "Let this computer's AI work here",
+  "AIBeside": "Work beside me",
+  "AIStatePausedBeside": "Paused: this step needs your screen",
+  "AIBesideNote": "The AI could not take this step in the background. Resume to let it use the pointer and keyboard in its window.",
   "AIScopeAll": "All apps",
   "AIScopeCount": "Apps: {count}",
   "@AIScopeCount": {

@@ -291,6 +291,9 @@ pub enum Pause {
     Locked,
     /// Files changed outside the granted folders (AI scope).
     Folders,
+    /// Beside the host user, a step needs the pointer and keyboard (or the
+    /// AI cannot work beside them here): resuming lets it.
+    Beside,
 }
 
 /// One action of a task, as the history keeps it.
@@ -457,6 +460,20 @@ pub struct Task {
     /// has grown (`AUTO_COMPACT`).
     #[serde(default)]
     pub context: u64,
+    /// Why it paused, in words safe to show (a step it cannot take beside
+    /// the host user).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    /// Beside the host user: the window it works in now, whose input alone
+    /// takes over; the next step runs with the pointer and keyboard (the host
+    /// user resumed after it paused for one); it no longer works beside them
+    /// (the system cannot).
+    #[serde(skip)]
+    beside_window: Option<u64>,
+    #[serde(skip)]
+    in_front: bool,
+    #[serde(skip)]
+    beside_off: bool,
     /// The pane it works in (`ai::pane`), or None for this computer's
     /// desktop.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -694,6 +711,7 @@ impl Ai {
             "keys": keys,
             "scope": self.shared.scope().apps,
             "folders": self.shared.scope().folders,
+            "beside": self.shared.scope().beside,
             "panes": self.shared.panes.list(),
         })
     }
@@ -719,7 +737,26 @@ impl Ai {
         {
             return Err("too many or too long app names".into());
         }
-        self.shared.scope.lock().expect("scope").apps = apps;
+        let mut scope = self.shared.scope.lock().expect("scope");
+        // Beside the host user needs a window of a granted app.
+        scope.beside &= apps.is_some();
+        scope.apps = apps;
+        drop(scope);
+        self.shared.changed.notify_waiters();
+        Ok(())
+    }
+
+    /// Lets the AI work in its granted window beside the host user, or
+    /// stops (doc/en-us/computer-use.md, "Beside the host user").
+    /// Returns: why not (no apps granted).
+    /// Side effects: applies from the next screenshot; not saved.
+    pub fn set_beside(&self, on: bool) -> Result<(), String> {
+        let mut scope = self.shared.scope.lock().expect("scope");
+        if on && scope.apps.is_none() {
+            return Err("choose the apps the AI may use first".into());
+        }
+        scope.beside = on;
+        drop(scope);
         self.shared.changed.notify_waiters();
         Ok(())
     }
@@ -1022,6 +1059,10 @@ impl Ai {
                 kept: Kept::None,
                 context: 0,
                 outside: Vec::new(),
+                note: None,
+                beside_window: None,
+                in_front: false,
+                beside_off: false,
                 compacting: false,
                 reply: None,
                 conversation: None,
@@ -1361,6 +1402,10 @@ impl Ai {
                 kept: Kept::None,
                 context: 0,
                 outside: Vec::new(),
+                note: None,
+                beside_window: None,
+                in_front: false,
+                beside_off: false,
                 compacting: false,
                 reply: None,
                 conversation: None,
@@ -1456,6 +1501,12 @@ impl Shared {
             if matches!(event, Event::Resume | Event::Decide) {
                 t.since = Some(Instant::now());
             }
+            if event == Event::Resume {
+                // Resumed after a step it could not take beside the host
+                // user: that step runs in front, with the pointer and keys.
+                t.in_front = t.paused == Some(Pause::Beside) && !t.beside_off;
+                t.note = None;
+            }
             t.updated = now();
             f(t);
         }
@@ -1526,11 +1577,17 @@ impl Shared {
     /// Whether the host user used the keyboard or mouse since the task was
     /// last given the desktop.
     fn local_input(&self, id: u64, desk: &Desk) -> bool {
-        let since = {
+        let (since, window) = {
             let tasks = self.tasks.lock().expect("tasks");
-            tasks.iter().find(|t| t.id == id).and_then(|t| t.since)
+            tasks
+                .iter()
+                .find(|t| t.id == id)
+                .map_or((None, None), |t| (t.since, t.beside_window))
         };
-        since.is_some_and(|s| desk.lock().expect("desktop").local_input().after(s))
+        let mut desk = desk.lock().expect("desktop");
+        // Beside the host user, only their input in the AI's window counts.
+        since.is_some_and(|s| desk.local_input().after(s))
+            && window.is_none_or(|w| desk.front() == Some(w))
     }
 
     /// Pauses a running task because of local input.
@@ -1694,6 +1751,80 @@ struct Seen {
     /// The centres of the listed elements in the model's unit, numbered from
     /// 1; None without a list, or once an action may have changed the screen.
     centres: Option<Vec<[i32; 2]>>,
+    /// Beside the host user: the window the screenshot is of, its elements
+    /// (bounds in the frame's pixels) and the one last clicked, which takes
+    /// typing.
+    beside: Option<BesideSeen>,
+}
+
+/// The window a task works in beside the host user, as last seen.
+#[derive(Clone)]
+struct BesideSeen {
+    window: desktop::Beside,
+    elements: Vec<elements::Element>,
+    focus: Option<usize>,
+}
+
+/// Takes a screenshot as the task works now: of its granted window alone
+/// beside the host user (`Scope::beside`), else of the screen, with the
+/// element list where its source has one (always beside the host user,
+/// where actions go by element).
+/// Side effects: notes the task's window, whose input alone takes over.
+async fn look(
+    shared: &Shared,
+    id: u64,
+    desk: &Desk,
+    coords: Coordinates,
+    lists: bool,
+) -> Result<Seen, String> {
+    let scope = grant(shared, desk);
+    let off = shared.edit(id, |t| t.beside_off).unwrap_or(true);
+    let window = match (&scope.apps, scope.beside && !off) {
+        (Some(apps), true) => tokio::task::block_in_place(|| {
+            let mut d = desk.lock().expect("desktop");
+            let w = d.beside(apps)?;
+            let frame = d.capture_beside(&w).ok()?;
+            let listed = d.elements_beside(&w).unwrap_or_default();
+            Some((w, frame, listed))
+        }),
+        _ => None,
+    };
+    let Some((w, frame, listed)) = window else {
+        shared.edit(id, |t| t.beside_window = None);
+        return observe(desk, coords, scope.apps, lists).await;
+    };
+    shared.edit(id, |t| t.beside_window = Some(w.id));
+    let shot = tokio::task::block_in_place(|| {
+        desktop::shot(
+            &frame,
+            [0, 0, frame.width, frame.height],
+            desktop::SHOT_MAX,
+            coords.multiple(),
+        )
+    });
+    let mut seen = Seen {
+        frame,
+        shot,
+        coords,
+        lists,
+        centres: None,
+        beside: None,
+    };
+    if let Some((table, c)) = elements::table(
+        &listed,
+        (seen.frame.width, seen.frame.height),
+        seen.size(),
+        coords,
+    ) {
+        seen.shot.elements = Some(table);
+        seen.centres = Some(c);
+    }
+    seen.beside = Some(BesideSeen {
+        window: w,
+        elements: listed.elements,
+        focus: None,
+    });
+    Ok(seen)
 }
 
 impl Seen {
@@ -1767,6 +1898,7 @@ async fn observe(
         coords,
         lists,
         centres,
+        beside: None,
     })
 }
 
@@ -2089,13 +2221,7 @@ async fn drive(
 ) -> Result<Agent, Stop> {
     // Changes before the run are not the AI's.
     shared.outside();
-    let mut seen = observe(
-        desk,
-        start.coords,
-        grant(shared, desk).apps,
-        source.lists_elements(),
-    )
-    .await?;
+    let mut seen = look(shared, id, desk, start.coords, source.lists_elements()).await?;
     let system = system_prompt(&seen);
     let mut agent = match (start.conversation, start.reply) {
         (Some(mut a), Some(text)) => {
@@ -2211,8 +2337,7 @@ async fn drive(
                 if last {
                     shared.running(id).await?;
                     if source.protocol != Protocol::Anthropic {
-                        seen = observe(desk, seen.coords, grant(shared, desk).apps, seen.lists)
-                            .await?;
+                        seen = look(shared, id, desk, seen.coords, seen.lists).await?;
                         shot = Some((&seen.shot).into());
                     }
                 }
@@ -2253,6 +2378,203 @@ fn grant(shared: &Shared, desk: &Desk) -> policy::Scope {
     } else {
         shared.scope()
     }
+}
+
+/// Whether the host user asked the task to work beside them (`Scope::beside`)
+/// and it still may on this desktop.
+fn beside_wanted(shared: &Shared, id: u64, desk: &Desk) -> bool {
+    let scope = grant(shared, desk);
+    scope.beside && scope.apps.is_some() && !shared.edit(id, |t| t.beside_off).unwrap_or(true)
+}
+
+/// Whether an action changes something (a pointer move alone, screenshots,
+/// zooms, waits and the pointer's position do not).
+fn acts(a: &Action) -> bool {
+    !matches!(
+        a,
+        Action::Screenshot
+            | Action::Zoom { .. }
+            | Action::Wait { .. }
+            | Action::CursorPosition
+            | Action::Move { .. }
+    )
+}
+
+/// Pauses a task for a step it cannot take beside the host user, saying
+/// why; resuming runs that step in front (`Task::in_front`), or, with
+/// `off`, the rest of the task with the screen.
+fn yield_beside(shared: &Shared, id: u64, off: bool, why: &str) -> Outcome {
+    let note = format!("this step needs your screen: {why}");
+    let _ = shared.apply(id, Event::Pause, |t| {
+        t.paused = Some(Pause::Beside);
+        t.note = Some(note);
+        t.beside_off |= off;
+    });
+    Outcome::Paused
+}
+
+/// The element of the window under a point of the screenshot: the smallest
+/// one holding it.
+fn element_at(b: &BesideSeen, seen: &Seen, p: &action::Point) -> Option<usize> {
+    let (sw, sh) = seen.size();
+    let x = (p.x.max(0) as i64 * seen.frame.width as i64 / sw.max(1) as i64) as i32;
+    let y = (p.y.max(0) as i64 * seen.frame.height as i64 / sh.max(1) as i64) as i32;
+    b.elements
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.rect[0] <= x && x < e.rect[2] && e.rect[1] <= y && y < e.rect[3])
+        .min_by_key(|(_, e)| (e.rect[2] - e.rect[0]) as i64 * (e.rect[3] - e.rect[1]) as i64)
+        .map(|(i, _)| i)
+}
+
+/// What an action beside the host user reaches, for the policy: the
+/// window's program, and the element under it (typing: the one clicked
+/// last).
+fn beside_target(b: &BesideSeen, action: &Action, seen: &Seen) -> policy::Target {
+    let element = match action {
+        Action::Click { at: Some(p), .. } | Action::Scroll { at: Some(p), .. } => {
+            element_at(b, seen, p)
+        }
+        Action::Type { .. } => b.focus,
+        _ => None,
+    }
+    .map(|i| &b.elements[i]);
+    policy::Target {
+        program: Some(b.window.program.clone()),
+        role: element.map(|e| match e.role.as_str() {
+            "edit" | "document" => policy::Role::Text,
+            "button" | "splitbutton" => policy::Role::Button,
+            _ => policy::Role::Other,
+        }),
+        name: element
+            .map(|e| e.name.to_lowercase())
+            .filter(|n| !n.is_empty()),
+        ..Default::default()
+    }
+}
+
+/// Runs one step beside the host user: through the element's UI Automation
+/// patterns where it can (a left click, typing into the element clicked
+/// last, scrolling), a screenshot or zoom of the window alone; anything
+/// else pauses the task to ask for the screen. After such a pause the
+/// host user resumed: the step runs in front with the pointer and keys.
+async fn beside_step(
+    shared: &Arc<Shared>,
+    id: u64,
+    lease: u64,
+    desk: &Desk,
+    action: &Action,
+    seen: &mut Seen,
+) -> Outcome {
+    let mut b = seen.beside.clone().expect("beside");
+    if shared
+        .edit(id, |t| std::mem::take(&mut t.in_front))
+        .unwrap_or(false)
+    {
+        let size = tokio::task::block_in_place(|| {
+            let mut d = desk.lock().expect("desktop");
+            d.raise(&b.window).then(|| d.size().ok()).flatten()
+        });
+        let Some(size) = size else {
+            return Outcome::Failed(
+                "Its window could not be brought to the front; take a new screenshot.".into(),
+            );
+        };
+        return inject(
+            shared,
+            id,
+            lease,
+            desk,
+            &to_screen(action, seen, &b.window),
+            size,
+        )
+        .await;
+    }
+    let act = match action {
+        Action::Screenshot | Action::Wait { .. } | Action::CursorPosition => {
+            return execute(shared, id, lease, desk, action, seen).await;
+        }
+        Action::Zoom { region } => {
+            let w = b.window.clone();
+            return match tokio::task::block_in_place(|| {
+                desk.lock().expect("desktop").capture_beside(&w)
+            }) {
+                Ok(frame) => {
+                    let r =
+                        desktop::frame_region(*region, seen.size(), (frame.width, frame.height));
+                    Outcome::Image(tokio::task::block_in_place(|| {
+                        desktop::shot(&frame, r, desktop::SHOT_MAX, 1)
+                    }))
+                }
+                Err(why) => Outcome::Failed(why),
+            };
+        }
+        // The pointer stays the host user's.
+        Action::Move { .. } => return Outcome::Ok,
+        Action::Click {
+            at: Some(p),
+            button: action::Button::Left,
+            count: 1,
+            modifiers,
+        } if modifiers.is_empty() => {
+            element_at(&b, seen, p).map(|i| (i, desktop::BesideAct::Click))
+        }
+        Action::Type { text } if !text.contains(['\n', '\r']) => {
+            b.focus.map(|i| (i, desktop::BesideAct::Type(text.clone())))
+        }
+        Action::Scroll {
+            at: Some(p),
+            dx: 0,
+            dy,
+            modifiers,
+        } if modifiers.is_empty() && *dy != 0 => element_at(&b, seen, p).map(|i| {
+            (
+                i,
+                desktop::BesideAct::Scroll((*dy / 120).max(1) * dy.signum()),
+            )
+        }),
+        _ => None,
+    };
+    let Some((index, act)) = act else {
+        return yield_beside(shared, id, false, "it takes the pointer or the keyboard");
+    };
+    let window = b.window.clone();
+    let expect = b.elements[index].clone();
+    let done = tokio::task::block_in_place(|| {
+        desk.lock()
+            .expect("desktop")
+            .act_beside(&window, index, &expect, &act)
+    });
+    match done {
+        Ok(()) => {
+            if act == desktop::BesideAct::Click {
+                b.focus = Some(index);
+                seen.beside = Some(b);
+            }
+            Outcome::Ok
+        }
+        Err(why) if why == desktop::BESIDE_CHANGED => Outcome::Failed(why),
+        Err(why) => yield_beside(shared, id, false, &why),
+    }
+}
+
+/// An action on the window's screenshot as the same action on the screen,
+/// in its pixels.
+fn to_screen(action: &Action, seen: &Seen, w: &desktop::Beside) -> Action {
+    let (sw, sh) = seen.size();
+    let map = |p: &action::Point| action::Point {
+        x: w.rect[0] + (p.x as i64 * seen.frame.width as i64 / sw.max(1) as i64) as i32,
+        y: w.rect[1] + (p.y as i64 * seen.frame.height as i64 / sh.max(1) as i64) as i32,
+    };
+    let mut a = action.clone();
+    match &mut a {
+        Action::Click { at: Some(p), .. }
+        | Action::Scroll { at: Some(p), .. }
+        | Action::Move { to: p, .. } => *p = map(p),
+        Action::Drag { path, .. } => path.iter_mut().for_each(|p| *p = map(p)),
+        _ => {}
+    }
+    a
 }
 
 /// Adds changed paths to a task's record of what changed outside its
@@ -2390,7 +2712,10 @@ async fn act_one(
         approval
     };
     // UI Automation can wait on a slow program: off the async thread.
-    let target = tokio::task::block_in_place(|| target_of(desk, &action, seen));
+    let target = match &seen.beside {
+        Some(b) => beside_target(b, &action, seen),
+        None => tokio::task::block_in_place(|| target_of(desk, &action, seen)),
+    };
     let scope = grant(shared, desk);
     let unacknowledged = !turn.flagged.is_empty() && !turn.acknowledged;
     let class = match policy::decide(mode, unacknowledged, &action, &target, &scope) {
@@ -2433,10 +2758,23 @@ async fn act_one(
             }
         }
     }
-    let outcome = execute(shared, id, lease, desk, &action, seen).await;
+    let outcome = if seen.beside.is_some() {
+        beside_step(shared, id, lease, desk, &action, seen).await
+    } else if acts(&action) && beside_wanted(shared, id, desk) {
+        // Asked to work beside the host user, with no window it can do that
+        // in here: it says so once and works with the screen from then on.
+        yield_beside(
+            shared,
+            id,
+            true,
+            "it cannot work beside you here; resume to let it use the screen",
+        )
+    } else {
+        execute(shared, id, lease, desk, &action, seen).await
+    };
     let (name, detail) = match &outcome {
         Outcome::Failed(why) => ("failed", Some(why.clone())),
-        Outcome::Paused => ("paused", None),
+        Outcome::Paused => ("paused", shared.edit(id, |t| t.note.clone()).flatten()),
         _ => ("ok", None),
     };
     turn.failed = matches!(outcome, Outcome::Failed(_));
@@ -2567,15 +2905,13 @@ async fn execute(
     seen: &mut Seen,
 ) -> Outcome {
     match action {
-        Action::Screenshot => {
-            match observe(desk, seen.coords, grant(shared, desk).apps, seen.lists).await {
-                Ok(s) => {
-                    *seen = s;
-                    Outcome::Image(seen.shot.clone())
-                }
-                Err(why) => Outcome::Failed(why),
+        Action::Screenshot => match look(shared, id, desk, seen.coords, seen.lists).await {
+            Ok(s) => {
+                *seen = s;
+                Outcome::Image(seen.shot.clone())
             }
-        }
+            Err(why) => Outcome::Failed(why),
+        },
         Action::Zoom { region } => match capture(desk, grant(shared, desk).apps).await {
             Ok(frame) => {
                 let r = desktop::frame_region(*region, seen.size(), (frame.width, frame.height));
@@ -2597,9 +2933,24 @@ async fn execute(
             }
             None => Outcome::Failed("the cursor position is not known".into()),
         },
-        input => {
+        input => inject(shared, id, lease, desk, input, seen.size()).await,
+    }
+}
+
+/// Plays an action as input on a screen of `size` pixels (the screenshot's
+/// positions are in them), step by step under the lease.
+async fn inject(
+    shared: &Arc<Shared>,
+    id: u64,
+    lease: u64,
+    desk: &Desk,
+    input: &Action,
+    size: (u32, u32),
+) -> Outcome {
+    {
+        {
             let cursor = desk.lock().expect("desktop").cursor();
-            let steps = match desktop::plan(input, seen.size(), cursor) {
+            let steps = match desktop::plan(input, size, cursor) {
                 Ok(s) => s,
                 Err(why) => return Outcome::Failed(why),
             };

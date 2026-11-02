@@ -1637,6 +1637,14 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 Ok(c.ctx.ai.settings())
             })
         }
+        "ai.beside.set" => {
+            // {"on": true} lets the AI work beside the host user.
+            let on = req.params["on"].as_bool().ok_or("bad on")?;
+            try_core(|c| {
+                c.ctx.ai.set_beside(on)?;
+                Ok(c.ctx.ai.settings())
+            })
+        }
         "ai.folders.set" => {
             // {"folders": ["C:\\Work", …]} grants those folders; {"folders":
             // null} every folder again.

@@ -514,6 +514,8 @@ func aiStateLabel(t *localapi.AITask) string {
 			return L.AIStatePausedLocked()
 		case "folders":
 			return L.AIStatePausedFolders()
+		case "beside":
+			return L.AIStatePausedBeside()
 		}
 		return L.AIStatePaused()
 	case "done":
@@ -706,6 +708,18 @@ func (a *App) refreshAIApps() {
 			return
 		}
 		a.update(func() { a.ai.apps = resp.AIApps })
+	}()
+}
+
+// setAIBeside lets the AI work in its granted window beside this computer's
+// user, or stops (doc/en-us/computer-use.md, "Beside the host user").
+func (a *App) setAIBeside(on bool) {
+	go func() {
+		resp, err := a.requestWith(localapi.Request{Type: localapi.RequestAIBesideSet, On: &on})
+		if err != nil || !resp.OK || resp.AISettings == nil {
+			return
+		}
+		a.update(func() { a.ai.settings = resp.AISettings })
 	}()
 }
 

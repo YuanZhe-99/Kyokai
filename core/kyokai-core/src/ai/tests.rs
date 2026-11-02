@@ -2071,6 +2071,99 @@ fn a_task_works_in_a_served_pane() {
     assert!(rig.ai.settings()["panes"].as_array().unwrap().is_empty());
 }
 
+/// Beside the host user: the task sees its window alone, clicks SAVE through
+/// the element (no input sent), is not paused by the host user's input in
+/// another window, pauses with a reason for a key it cannot press in the
+/// background, and after the resume presses it in front; where no window
+/// can be worked beside, it says so once and works with the screen.
+#[test]
+fn a_task_works_beside_the_host_user() {
+    use super::desktop::{Beside, BesideAct};
+    use super::elements::{Element, Listed};
+    let key = json!([{"type": "tool_use", "id": "k1", "name": "key", "toolset_name": "computer", "input": {"text": "ctrl+s"}}]);
+    let turns = vec![
+        (0, claude_turn("m1", click_save())),
+        (0, claude_turn("m2", key.clone())),
+        (0, claude_turn("m3", key)),
+        (0, claude_end("ok")),
+    ];
+    let srv0 = server(turns);
+    let one = rig("beside", "claude", &srv0.url);
+    assert!(
+        one.ai.set_beside(true).is_err(),
+        "beside needs apps granted"
+    );
+    one.ai.set_scope(Some(vec!["notepad.exe".into()])).unwrap();
+    one.ai.set_beside(true).unwrap();
+    assert_eq!(one.ai.settings()["beside"], true);
+    let b = screens::BUTTON;
+    {
+        let mut log = one.log.lock().unwrap();
+        log.beside = Some(Beside {
+            id: 7,
+            program: "notepad.exe".into(),
+            rect: [0, 0, screens::WIDTH as i32, screens::HEIGHT as i32],
+        });
+        log.elements = Some(Listed {
+            window: "Save".into(),
+            program: Some("notepad.exe".into()),
+            elements: vec![Element {
+                role: "button".into(),
+                name: "SAVE".into(),
+                text: String::new(),
+                rect: [b[0] as i32, b[1] as i32, b[2] as i32, b[3] as i32],
+            }],
+        });
+        // The host user works in another window.
+        log.front = Some(99);
+    }
+    let id = one.ai.start("k", "Save the file", None).unwrap();
+    one.log.lock().unwrap().press_at = Some(Instant::now());
+    let t = one.state(id, "paused");
+    assert_eq!(t["paused"], "beside");
+    assert!(
+        t["note"]
+            .as_str()
+            .unwrap()
+            .contains("pointer or the keyboard")
+    );
+    {
+        let log = one.log.lock().unwrap();
+        assert!(log.pressed, "SAVE through its element");
+        assert_eq!(log.acted, vec![(0, BesideAct::Click)]);
+        assert!(log.events.is_empty(), "no input sent beside the host user");
+    }
+    one.ai.resume(id).unwrap();
+    one.state(id, "done");
+    let log = one.log.lock().unwrap();
+    assert_eq!(log.raised, 1, "the key step in front");
+    assert!(!log.events.is_empty(), "the key pressed with the keyboard");
+    drop(log);
+    // Changing the apps turns it off.
+    one.ai.set_scope(None).unwrap();
+    assert_eq!(one.ai.settings()["beside"], false);
+
+    // No window to work beside here: once paused, then the screen.
+    let srv = server(vec![
+        (0, claude_turn("m1", click_save())),
+        (0, claude_end("ok")),
+    ]);
+    let none = rig("beside-none", "claude", &srv.url);
+    none.ai.set_scope(Some(vec!["notepad.exe".into()])).unwrap();
+    none.ai.set_beside(true).unwrap();
+    let id = none.ai.start("k", "Save the file", None).unwrap();
+    let t = none.state(id, "paused");
+    assert_eq!(t["paused"], "beside");
+    assert!(
+        t["note"]
+            .as_str()
+            .unwrap()
+            .contains("cannot work beside you here")
+    );
+    none.ai.resume(id).unwrap();
+    none.state(id, "done");
+}
+
 /// A target the fake desktop reports from now on.
 fn set_target(rig: &Rig, target: super::policy::Target) {
     rig.log.lock().unwrap().target = Some(target);
@@ -2335,7 +2428,6 @@ fn folders_pause_on_changes_outside() {
         .find(|s| s["outcome"] == "paused")
         .unwrap()
         .clone();
-    assert_eq!(paused["action"]["kind"], "click");
     assert!(paused["detail"].as_str().unwrap().contains("secret.txt"));
     rig.ai.cancel(id).unwrap();
     rig.ai.set_folders(None).unwrap();

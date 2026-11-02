@@ -1197,6 +1197,36 @@ func (msgs Messages) AIPaneServe() string {
 	return Catalog.Format(msgs.locale, "AIPaneServe", nil)
 }
 
+// AIBeside says "Work beside me"
+// in the language the app shows.
+func AIBeside() string { return In(i18n.Locale()).AIBeside() }
+
+// AIBeside says "Work beside me"
+// in the language of msgs.
+func (msgs Messages) AIBeside() string {
+	return Catalog.Format(msgs.locale, "AIBeside", nil)
+}
+
+// AIStatePausedBeside says "Paused: this step needs your screen"
+// in the language the app shows.
+func AIStatePausedBeside() string { return In(i18n.Locale()).AIStatePausedBeside() }
+
+// AIStatePausedBeside says "Paused: this step needs your screen"
+// in the language of msgs.
+func (msgs Messages) AIStatePausedBeside() string {
+	return Catalog.Format(msgs.locale, "AIStatePausedBeside", nil)
+}
+
+// AIBesideNote says "The AI could not take this step in the background. Resume to let it use the pointer and keyboard in its window."
+// in the language the app shows.
+func AIBesideNote() string { return In(i18n.Locale()).AIBesideNote() }
+
+// AIBesideNote says "The AI could not take this step in the background. Resume to let it use the pointer and keyboard in its window."
+// in the language of msgs.
+func (msgs Messages) AIBesideNote() string {
+	return Catalog.Format(msgs.locale, "AIBesideNote", nil)
+}
+
 // AIScopeAll says "All apps"
 // in the language the app shows.
 func AIScopeAll() string { return In(i18n.Locale()).AIScopeAll() }

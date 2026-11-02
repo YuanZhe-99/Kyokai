@@ -82,6 +82,10 @@ pub struct Scope {
     /// The folders, absolute paths: checked, not enforced (the file views'
     /// folders, typed paths, and changes seen while the AI acts).
     pub folders: Option<Vec<String>>,
+    /// The AI works in its granted window beside the host user, without
+    /// their pointer and keyboard where it can (needs `apps`).
+    #[serde(default)]
+    pub beside: bool,
 }
 
 /// Why an action asks or is refused: a class of the policy's table.
@@ -1089,6 +1093,7 @@ mod tests {
         let scope = Scope {
             apps: Some(vec!["code.exe".into()]),
             folders: None,
+            beside: false,
         };
         let alt_tab = combo(&[Key::Alt, Key::Named("tab")]);
         let win_digit = combo(&[Key::Meta, Key::Char('2')]);
@@ -1158,6 +1163,7 @@ mod tests {
         let scope = Scope {
             apps: None,
             folders: Some(vec![r"C:\Work\Report".into()]),
+            beside: false,
         };
         let explorer = |folder: Option<&str>, role: Option<Role>| Target {
             folder: folder.map(Into::into),

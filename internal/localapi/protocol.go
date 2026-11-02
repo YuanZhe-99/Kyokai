@@ -96,6 +96,7 @@ const (
 	RequestAIModels             RequestType = "ai.models.list"             // the models a source lists (Request.Source → Response.AIModels), only when asked
 	RequestAIScopeSet           RequestType = "ai.scope.set"               // grant the AI only these programs' windows (Request.Apps; none: the whole desktop), for this session
 	RequestAIFoldersSet         RequestType = "ai.folders.set"             // grant the AI only these folders (Request.Folders, full paths; none: every folder), checked, not enforced, for this session
+	RequestAIBesideSet          RequestType = "ai.beside.set"              // let the AI work in its granted window beside the host user (Request.On), for this session
 	RequestAIPaneServe          RequestType = "ai.pane.serve"              // serve a pane of this GUI to the AI (Request.Pane); the connection then carries the pane's requests and answers (AIPaneMessage), owner only
 	RequestAIApps               RequestType = "ai.apps"                    // the programs with windows on the screen now (→ Response.AIApps), for choosing a scope
 	RequestMedia                RequestType = "session.media"              // a controller session's media (Request.ID); the connection then carries packets
@@ -229,6 +230,8 @@ type Request struct {
 	AISettings *AISettings `json:"ai_settings,omitempty"`
 	// Apps are the programs ai.scope.set grants (nil: the whole desktop).
 	Apps *[]string `json:"apps,omitempty"`
+	// On is ai.beside.set's choice.
+	On *bool `json:"on,omitempty"`
 	// Pane is the pane ai.pane.serve serves.
 	Pane *AIPane `json:"pane,omitempty"`
 	// Folders are the folders ai.folders.set grants (nil: every folder).
@@ -359,6 +362,9 @@ type AISettings struct {
 	// Folders are the folders the AI is granted in this session (a
 	// response only; empty: every folder): checked, not enforced.
 	Folders []string `json:"folders,omitempty"`
+	// Beside means the AI works in its granted window beside the host user
+	// (a response only).
+	Beside bool `json:"beside,omitempty"`
 	// Panes are the panes this computer's GUI serves to the AI (a response
 	// only), any of which a task may work in (AITaskRequest.On).
 	Panes []AIPane `json:"panes,omitempty"`
@@ -470,6 +476,9 @@ type AITask struct {
 	// "take-over", "disconnected", "sleep", "locked" or "folders" (files
 	// changed outside the granted folders).
 	Paused string `json:"paused,omitempty"`
+	// Note says why it paused, safe to show (a step it cannot take beside
+	// the host user).
+	Note string `json:"note,omitempty"`
 	// Pane is the pane it works in, nil on this computer's desktop.
 	Pane *AIPane `json:"pane,omitempty"`
 	// Outside are files that changed outside the granted folders while it

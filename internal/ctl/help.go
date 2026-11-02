@@ -70,6 +70,7 @@ var commands = []struct{ name, summary string }{
 	{"ai-apps", "list the programs with windows on the screen"},
 	{"ai-scope", "let the AI work only in these programs (--apps), or anywhere"},
 	{"ai-folders", "let the AI work only in these folders (--folders; checked, not enforced), or anywhere"},
+	{"ai-beside", "let the AI work in its granted window beside you (--on), or not; steps it cannot take that way pause and ask"},
 	{"ai-clear", "clear the AI history"},
 	{"ai-stop", "stop all AI work at once"},
 	{"", ""},
