@@ -335,6 +335,27 @@
     }
   },
   "AISaved": "AI settings saved.",
+  "AIFoldersAll": "All folders",
+  "AIFoldersCount": "Folders: {count}",
+  "@AIFoldersCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "AIFoldersAdd": "Add a folder…",
+  "AIFoldersChecked": "Kyokai checks folders but cannot enforce them",
+  "AIStatePausedFolders": "Paused: files changed outside the granted folders",
+  "AIWhyOutsideFolders": "This works in a folder outside the folders you granted.",
+  "AIOutsideChanged": "Changed outside the granted folders:\n{files}",
+  "@AIOutsideChanged": {
+    "placeholders": {
+      "files": {
+        "type": "String"
+      }
+    }
+  },
   "AIScopeAll": "All apps",
   "AIScopeCount": "Apps: {count}",
   "@AIScopeCount": {

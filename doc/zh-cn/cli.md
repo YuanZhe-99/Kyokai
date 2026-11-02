@@ -49,7 +49,7 @@
 | 这台设备 | `status`、`password`、`regenerate`、`permanent`、`name-set`、`access`、`password-grants`、`trusted`、`untrust`、`backup`、`restore`、`reset-identity` |
 | 网络 | `network`、`network-set`、`networks`、`network-profile`、`network-remove`、`network-direct`、`network-backend`、`cores`、`core-install` |
 | 会话与设备 | `connect`、`identify`、`close`、`allow`、`deny`、`forget`、`remove`、`devices`、`route-add`、`route-remove`、`route-prefer`、`screenshot`、`watch`、`watch-status` |
-| AI | `ai`、`ai-set`、`ai-key`、`ai-models`、`ai-start`、`ai-reply`、`ai-tasks`、`ai-follow`、`ai-rename`、`ai-fork`、`ai-compact`、`ai-export`、`ai-pause`、`ai-resume`、`ai-cancel`、`ai-approve`、`ai-decline`、`ai-apps`、`ai-scope`、`ai-clear`、`ai-stop` |
+| AI | `ai`、`ai-set`、`ai-key`、`ai-models`、`ai-start`、`ai-reply`、`ai-tasks`、`ai-follow`、`ai-rename`、`ai-fork`、`ai-compact`、`ai-export`、`ai-pause`、`ai-resume`、`ai-cancel`、`ai-approve`、`ai-decline`、`ai-apps`、`ai-scope`、`ai-folders`、`ai-clear`、`ai-stop` |
 | 密钥、隧道与登录信息 | `keys`、`keys-generate`、`keys-remove`、`authorized`、`authorized-add`、`authorized-remove`、`tunnel`、`credentials-set`、`credentials-get`、`credentials-forget` |
 | 引擎 | `background`、`helper-update`、`move`、`capture-show`、`no-logs`、`protect`、`clipboard-mine`、`logs`、`shutdown` |
 | 命令行本身 | `help`、`version` |
@@ -69,5 +69,7 @@
 ## AI 范围
 
 `kyokai ai-apps` 按 AI 范围使用的名字列出这台设备屏幕上有窗口的程序；`kyokai ai-scope --apps A,B` 在本会话中只把这些程序的窗口
-授予 AI，不带程序的 `kyokai ai-scope` 则重新给它整个桌面（[computer-use.md](computer-use.md#ai-范围)）。
+授予 AI，不带程序的 `kyokai ai-scope` 则重新给它整个桌面（[computer-use.md](computer-use.md#ai-范围)）；
+`kyokai ai-folders --folders "C:\Work;D:\Shared"`（与 `PATH` 相同的分隔方式：Windows 上为 `;`，其他系统为 `:`）
+只授予这些文件夹，检查而非强制，不带文件夹则重新允许所有文件夹。`ai` 会显示两者。
 范围只能由被控端用户设置，所以这些命令只与这台设备自己的引擎通信。

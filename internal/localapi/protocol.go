@@ -95,6 +95,7 @@ const (
 	RequestHelperUpdate         RequestType = "helper.update"              // the helper installs the signed bundle in Request.From and restarts
 	RequestAIModels             RequestType = "ai.models.list"             // the models a source lists (Request.Source → Response.AIModels), only when asked
 	RequestAIScopeSet           RequestType = "ai.scope.set"               // grant the AI only these programs' windows (Request.Apps; none: the whole desktop), for this session
+	RequestAIFoldersSet         RequestType = "ai.folders.set"             // grant the AI only these folders (Request.Folders, full paths; none: every folder), checked, not enforced, for this session
 	RequestAIApps               RequestType = "ai.apps"                    // the programs with windows on the screen now (→ Response.AIApps), for choosing a scope
 	RequestMedia                RequestType = "session.media"              // a controller session's media (Request.ID); the connection then carries packets
 	RequestSessionAttach        RequestType = "session.attach"             // streaming; see package doc
@@ -226,9 +227,11 @@ type Request struct {
 	// AISettings carries the fields RequestAISettingsSet changes.
 	AISettings *AISettings `json:"ai_settings,omitempty"`
 	// Apps are the programs ai.scope.set grants (nil: the whole desktop).
-	Apps   *[]string      `json:"apps,omitempty"`
-	AIKey  *AIKey         `json:"ai_key,omitempty"`
-	AITask *AITaskRequest `json:"ai_task,omitempty"`
+	Apps *[]string `json:"apps,omitempty"`
+	// Folders are the folders ai.folders.set grants (nil: every folder).
+	Folders *[]string      `json:"folders,omitempty"`
+	AIKey   *AIKey         `json:"ai_key,omitempty"`
+	AITask  *AITaskRequest `json:"ai_task,omitempty"`
 	// LoginKey is RequestKeysAdd's key, or (its ID) RequestKeysRemove's.
 	LoginKey *LoginKey `json:"login_key,omitempty"`
 	// Sign is RequestKeysSign's.
@@ -350,6 +353,9 @@ type AISettings struct {
 	// Scope is the programs the AI is granted in this session (a response
 	// only; empty: the whole desktop, doc/en-us/computer-use.md, "AI scope").
 	Scope []string `json:"scope,omitempty"`
+	// Folders are the folders the AI is granted in this session (a
+	// response only; empty: every folder): checked, not enforced.
+	Folders []string `json:"folders,omitempty"`
 }
 
 // AISource is a model provider: a template's endpoint or the user's own,
@@ -427,8 +433,12 @@ type AITask struct {
 	// "cancelled".
 	State string `json:"state"`
 	// Paused says why: "host-user", "local-input", "controller",
-	// "take-over", "disconnected" or "sleep".
+	// "take-over", "disconnected", "sleep", "locked" or "folders" (files
+	// changed outside the granted folders).
 	Paused string `json:"paused,omitempty"`
+	// Outside are files that changed outside the granted folders while it
+	// acted (at most 20).
+	Outside []string `json:"outside,omitempty"`
 	// Error says why the task failed; safe to show.
 	Error    string      `json:"error,omitempty"`
 	Text     string      `json:"text"`

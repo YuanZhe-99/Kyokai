@@ -591,9 +591,19 @@ mod windows_impl {
                 };
                 // SAFETY: a plain query; a null window gives a null root.
                 let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+                let program = program(root);
+                let file_dialog = file_dialog(root);
+                let folder = if file_dialog {
+                    address_bar(root)
+                } else if program.as_deref() == Some("explorer.exe") {
+                    explorer_folder(root).or_else(|| address_bar(root))
+                } else {
+                    None
+                };
                 let mut target = Target {
-                    program: program(root),
-                    file_dialog: file_dialog(root),
+                    program,
+                    file_dialog,
+                    folder,
                     ..Default::default()
                 };
                 if let Some(e) = element(point) {
@@ -782,6 +792,208 @@ mod windows_impl {
             }
             // SAFETY: a plain search among the window's children.
             unsafe { FindWindowExW(Some(root), None, w!("DUIViewWndClassName"), None) }.is_ok()
+        }
+
+        /// The folder a File Explorer window shows, from the shell's list of
+        /// its windows: the entries whose frame is `root`, one per tab; with
+        /// several tabs, those whose name starts the window's title (the
+        /// tab in front names it), when they agree on one folder.
+        /// Returns: its path, or None for a folder not on disk (This PC,
+        /// Libraries), a window the list does not have, or tabs it cannot
+        /// tell apart.
+        /// Notes: only calls that cross processes (the view's own window is
+        /// an input-synchronous call, refused from here).
+        fn explorer_folder(root: HWND) -> Option<String> {
+            use windows::Win32::System::Com::{
+                CLSCTX_LOCAL_SERVER, CoTaskMemFree, IServiceProvider,
+            };
+            use windows::Win32::System::Variant::{VARIANT, VT_I4};
+            use windows::Win32::UI::Shell::{
+                IFolderView, IPersistFolder2, IShellBrowser, IShellWindows, IWebBrowser2,
+                SHGetNameFromIDList, SID_STopLevelBrowser, SIGDN_FILESYSPATH, ShellWindows,
+            };
+            use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
+            use windows::core::Interface;
+            let mut title = [0u16; 512];
+            // SAFETY: fills `title` up to its length.
+            let n = unsafe { GetWindowTextW(root, &mut title) } as usize;
+            let title = String::from_utf16_lossy(&title[..n]);
+            // (name, path) of each of the frame's tabs.
+            let mut tabs: Vec<(String, Option<String>)> = Vec::new();
+            // SAFETY: COM on this thread (as `element`); every object is
+            // released when dropped, the ID lists freed after their names
+            // are read.
+            unsafe {
+                let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+                let list: IShellWindows =
+                    CoCreateInstance(&ShellWindows, None, CLSCTX_LOCAL_SERVER).ok()?;
+                for i in 0..list.Count().ok()? {
+                    let mut index = VARIANT::default();
+                    (*index.Anonymous.Anonymous).vt = VT_I4;
+                    (*index.Anonymous.Anonymous).Anonymous.lVal = i;
+                    let Ok(item) = list.Item(&index) else {
+                        continue;
+                    };
+                    let Ok(web) = item.cast::<IWebBrowser2>() else {
+                        continue;
+                    };
+                    if web.HWND().ok().map(|h| h.0) != Some(root.0 as isize) {
+                        continue;
+                    }
+                    let name = web
+                        .LocationName()
+                        .map(|n| n.to_string())
+                        .unwrap_or_default();
+                    let path = (|| {
+                        let browser = item
+                            .cast::<IServiceProvider>()
+                            .ok()?
+                            .QueryService::<IShellBrowser>(&SID_STopLevelBrowser)
+                            .ok()?;
+                        let view = browser.QueryActiveShellView().ok()?;
+                        let folder: IPersistFolder2 =
+                            view.cast::<IFolderView>().ok()?.GetFolder().ok()?;
+                        let pidl = folder.GetCurFolder().ok()?;
+                        let name = SHGetNameFromIDList(pidl, SIGDN_FILESYSPATH);
+                        CoTaskMemFree(Some(pidl as *const _));
+                        let name = name.ok()?;
+                        let path = name.to_string().ok();
+                        CoTaskMemFree(Some(name.0 as *const _));
+                        path
+                    })();
+                    tabs.push((name, path));
+                }
+            }
+            if tabs.len() > 1 {
+                tabs.retain(|(name, _)| !name.is_empty() && title.starts_with(name.as_str()));
+            }
+            let (_, first) = tabs.first()?;
+            tabs.iter()
+                .all(|(_, p)| p == first)
+                .then(|| first.clone())
+                .flatten()
+        }
+
+        /// The folder a file chooser (or an Explorer window) shows, read
+        /// from its address bar: the breadcrumb toolbar's text ("Address:
+        /// C:\…", in the system's language) from its drive or share on.
+        /// Returns: None when the bar names no folder on disk ("Desktop").
+        fn address_bar(root: HWND) -> Option<String> {
+            use windows::Win32::Foundation::LPARAM;
+            use windows::Win32::UI::WindowsAndMessaging::{
+                EnumChildWindows, GetParent, GetWindowTextW,
+            };
+            use windows::core::BOOL;
+
+            /// Takes the text of the breadcrumb toolbar, if `hwnd` is it.
+            unsafe extern "system" fn each(hwnd: HWND, l: LPARAM) -> BOOL {
+                // SAFETY: `l` is the string `address_bar` passed, alive for
+                // the whole EnumChildWindows call; the queries only read.
+                unsafe {
+                    let class = |h: HWND| {
+                        let mut buf = [0u16; 64];
+                        let n = GetClassNameW(h, &mut buf) as usize;
+                        String::from_utf16_lossy(&buf[..n])
+                    };
+                    if class(hwnd) != "ToolbarWindow32"
+                        || GetParent(hwnd).map(class).as_deref() != Ok("Breadcrumb Parent")
+                    {
+                        return true.into();
+                    }
+                    let mut buf = [0u16; 1024];
+                    let n = GetWindowTextW(hwnd, &mut buf) as usize;
+                    *(l.0 as *mut String) = String::from_utf16_lossy(&buf[..n]);
+                    false.into()
+                }
+            }
+
+            let mut text = String::new();
+            // SAFETY: the callback gets the string's address, which outlives
+            // the call.
+            let _ = unsafe {
+                EnumChildWindows(Some(root), Some(each), LPARAM(&mut text as *mut _ as isize))
+            };
+            path_in(&text)
+        }
+
+        /// A File Explorer window opened on a folder reads as that folder,
+        /// from the shell's list and from its address bar. Opens and closes
+        /// a window on this desktop: run by hand (`--ignored`).
+        #[test]
+        #[ignore]
+        fn explorer_shows_its_folder() {
+            use windows::Win32::Foundation::{LPARAM, WPARAM};
+            use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
+            let dir = std::env::temp_dir().join("kyokai-explorer-folder");
+            std::fs::create_dir_all(&dir).unwrap();
+            // explorer.exe hands the folder to the running shell and returns.
+            let _ = std::process::Command::new("explorer.exe")
+                .arg(&dir)
+                .status();
+            let mut root = HWND::default();
+            for _ in 0..50 {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+                let mut h = None;
+                // SAFETY: a plain walk over the top-level Explorer windows.
+                while let Ok(next) = unsafe { FindWindowExW(None, h, w!("CabinetWClass"), None) } {
+                    eprintln!(
+                        "{next:?}: {:?} / {:?}",
+                        explorer_folder(next),
+                        address_bar(next)
+                    );
+                    if explorer_folder(next).is_some_and(|f| f.ends_with("kyokai-explorer-folder"))
+                    {
+                        root = next;
+                    }
+                    h = Some(next);
+                }
+                if !root.is_invalid() {
+                    break;
+                }
+            }
+            assert!(!root.is_invalid(), "no Explorer window on the folder");
+            let want = dir.to_string_lossy().to_lowercase();
+            assert_eq!(
+                explorer_folder(root).map(|f| f.to_lowercase()),
+                Some(want.clone())
+            );
+            eprintln!("address bar: {:?}", address_bar(root));
+            // SAFETY: asks the window to close, as its close button does.
+            unsafe {
+                let _ = PostMessageW(Some(root), WM_CLOSE, WPARAM(0), LPARAM(0));
+            }
+            let _ = std::fs::remove_dir(&dir);
+        }
+
+        /// Address bar texts in any language name their folder from its
+        /// drive or share on; none for a place not on disk.
+        #[test]
+        fn address_bars_name_their_folder() {
+            for (text, want) in [
+                (
+                    r"Address: C:\Users\me\Documents",
+                    Some(r"C:\Users\me\Documents"),
+                ),
+                (r"地址: D:\工作", Some(r"D:\工作")),
+                (r"Address: \\nas\share\x", Some(r"\\nas\share\x")),
+                ("Address: Desktop", None),
+                ("", None),
+            ] {
+                assert_eq!(path_in(text).as_deref(), want, "{text}");
+            }
+        }
+
+        /// The path in an address bar's text: from its first drive (`C:\`)
+        /// or share (`\\`) on.
+        fn path_in(text: &str) -> Option<String> {
+            let b = text.as_bytes();
+            let (start, _) = text.char_indices().find(|&(i, c)| {
+                (c.is_ascii_alphabetic()
+                    && b.get(i + 1) == Some(&b':')
+                    && b.get(i + 2) == Some(&b'\\'))
+                    || text[i..].starts_with("\\\\")
+            })?;
+            Some(text[start..].trim_end().to_owned())
         }
 
         /// The UI Automation element at a point, or the focused one.

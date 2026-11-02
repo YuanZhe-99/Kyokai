@@ -67,6 +67,21 @@ pub struct Target {
     pub name: Option<String>,
     /// Whether the window is a file chooser (open or save).
     pub file_dialog: bool,
+    /// The folder a file manager's window or a file chooser shows, as an
+    /// absolute path; None when it is not a file view, or the folder is
+    /// not one on disk (Desktop, Libraries, This PC) or cannot be read.
+    pub folder: Option<String>,
+}
+
+/// What the host user granted the AI in this session (AI scope); a None
+/// part is not limited. Neither part implies the other.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Scope {
+    /// The programs, as `Target::program` names them.
+    pub apps: Option<Vec<String>>,
+    /// The folders, absolute paths: checked, not enforced (the file views'
+    /// folders, typed paths, and changes seen while the AI acts).
+    pub folders: Option<Vec<String>>,
 }
 
 /// Why an action asks or is refused: a class of the policy's table.
@@ -112,6 +127,8 @@ pub enum Class {
     RemoteDesktop,
     /// A program outside the apps the host user granted (AI scope).
     OutsideScope,
+    /// A folder outside the folders the host user granted (AI scope).
+    OutsideFolders,
 }
 
 /// What the policy decided for one action.
@@ -132,8 +149,7 @@ pub const REFUSALS_BEFORE_EVERY_ACTION: u32 = 3;
 /// flagged this turn and the host user has not acknowledged it; `target` —
 /// what the action would reach (only looked at for actions that reach
 /// something).
-/// `scope` — the programs the host user granted, or None for the whole
-/// desktop.
+/// `scope` — what the host user granted (AI scope).
 /// Notes: the order is fixed: refusals and secure surfaces, then what never
 /// loosens (consent, credentials, flags), then the mode; risk signals add
 /// up to the worst one, and an unknown target asks.
@@ -142,7 +158,7 @@ pub fn decide(
     flagged: bool,
     action: &Action,
     target: &Target,
-    scope: Option<&[String]>,
+    scope: &Scope,
 ) -> Verdict {
     let reaches = reaches(action);
     if reaches {
@@ -155,7 +171,7 @@ pub fn decide(
         // AI scope: only the granted programs' windows, no switching away;
         // a system picker or notification asks, anything else is refused
         // (an unknown program too).
-        if let Some(apps) = scope
+        if let Some(apps) = &scope.apps
             && acts(action)
         {
             if switches_app(action) {
@@ -168,6 +184,12 @@ pub fn decide(
                 }
                 _ => return Verdict::Refuse(Class::OutsideScope),
             }
+        }
+        if let Some(folders) = &scope.folders
+            && acts(action)
+            && let Some(v) = folder_check(action, target, folders)
+        {
+            return v;
         }
         if types(action) && target.role == Some(Role::Password) {
             return Verdict::Ask(Class::Credentials);
@@ -191,6 +213,166 @@ pub fn decide(
     match classify(program, action, target) {
         Some(class) => Verdict::Ask(class),
         None => Verdict::Run,
+    }
+}
+
+/// AI scope's folders: a typed path outside them is refused; in a file
+/// view whose folder is outside them (or not known), an action asks unless
+/// it only scrolls, clicks into a text field (the address bar, a name box),
+/// or types paths that are all inside them — the way back in.
+/// Returns: the verdict, or None when the folders have nothing to say.
+fn folder_check(action: &Action, target: &Target, folders: &[String]) -> Option<Verdict> {
+    let mut typed_in = false;
+    if let Action::Type { text } = action {
+        let paths = typed_paths(text, target.folder.as_deref(), &|v| std::env::var(v).ok());
+        if paths
+            .iter()
+            .any(|p| !p.as_deref().is_some_and(|p| within(p, folders)))
+        {
+            return Some(Verdict::Refuse(Class::OutsideFolders));
+        }
+        typed_in = !paths.is_empty();
+    }
+    let file_view = target.file_dialog
+        || target
+            .program
+            .as_deref()
+            .is_some_and(|p| FILE_MANAGERS.contains(&p));
+    if !file_view || typed_in || target.folder.as_deref().is_some_and(|f| within(f, folders)) {
+        return None;
+    }
+    let harmless = match action {
+        Action::Scroll { .. } => true,
+        Action::Click { .. } => target.role == Some(Role::Text),
+        _ => false,
+    };
+    (!harmless).then_some(Verdict::Ask(Class::OutsideFolders))
+}
+
+/// The paths typed text names: absolute ones (`C:\…`, `\\server\…`, and
+/// `/…` at the start or after a space or quote), the home folder's and
+/// other variables' (`~/…`, `%USERPROFILE%\…`, `$HOME/…`), and relative
+/// ones that climb (`../…`), taken against `folder` (the file view's).
+/// Each runs to the end of its line or a quote, since names hold spaces.
+/// Inputs: `var` reads an environment variable.
+/// Returns: each path made absolute, or None where it cannot be (an unknown
+/// variable, a climbing path without a folder).
+pub fn typed_paths(
+    text: &str,
+    folder: Option<&str>,
+    var: &dyn Fn(&str) -> Option<String>,
+) -> Vec<Option<String>> {
+    let mut out = Vec::new();
+    for line in text.split(['\n', '\r']) {
+        let mut i = 0;
+        let mut prev: Option<char> = None;
+        while let Some(c) = line[i..].chars().next() {
+            let s = &line[i..];
+            let gap = prev.is_none_or(|p| p.is_whitespace() || matches!(p, '"' | '\'' | '=' | '('));
+            let b = s.as_bytes();
+            let sep = |n: usize| matches!(b.get(n), Some(b'\\' | b'/'));
+            // Where the path starts, and the absolute path its start stands for.
+            let start: Option<(usize, Option<String>)> = if c.is_ascii_alphabetic()
+                && b.get(1) == Some(&b':')
+                && sep(2)
+                && !prev.is_some_and(|p| p.is_alphanumeric())
+            {
+                Some((0, Some(String::new())))
+            } else if !gap {
+                None
+            } else if s.starts_with("\\\\") {
+                Some((0, Some(String::new())))
+            } else if c == '~' && sep(1) {
+                Some((1, var("USERPROFILE").or_else(|| var("HOME"))))
+            } else if c == '%' {
+                s[1..].find('%').map(|end| (end + 2, var(&s[1..end + 1])))
+            } else if c == '$' {
+                let name = s[1..].trim_start_matches('{');
+                let len = name
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .unwrap_or(name.len());
+                let skip = s.len() - name.len() + len;
+                let skip = skip + usize::from(s[skip..].starts_with('}'));
+                (len > 0).then(|| (skip, var(&name[..len])))
+            } else if s.starts_with("..") && sep(2) {
+                Some((0, folder.map(|f| format!("{f}/"))))
+            } else if c == '/'
+                && b.get(1)
+                    .is_some_and(|n| !n.is_ascii_whitespace() && *n != b'/')
+            {
+                Some((0, Some(String::new())))
+            } else {
+                None
+            };
+            let Some((skip, base)) = start else {
+                prev = Some(c);
+                i += c.len_utf8();
+                continue;
+            };
+            let len = s
+                .find(['"', '\'', '<', '>', '|'])
+                .unwrap_or(s.len())
+                .max(skip);
+            out.push(base.map(|base| format!("{base}{}", &s[skip..len])));
+            prev = s[..len].chars().last();
+            i += len.max(1);
+        }
+    }
+    out
+}
+
+/// Whether a path is a full one: from a drive (`C:\`), a share (`\\server\`)
+/// or the root (`/`).
+pub fn absolute(path: &str) -> bool {
+    let b = path.as_bytes();
+    (b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'\\' | b'/'))
+        || path.starts_with("\\\\")
+        || path.starts_with('/')
+}
+
+/// Whether `path` is one of `folders` or inside one, compared after
+/// resolving `.` and `..`, with either separator; case-insensitive for
+/// Windows paths and on macOS.
+pub fn within(path: &str, folders: &[String]) -> bool {
+    let p = normal(path);
+    folders.iter().any(|f| {
+        let f = normal(f);
+        p == f || p.starts_with(&format!("{}/", f.trim_end_matches('/')))
+    })
+}
+
+/// A path for comparing: `/` separators, `.` and `..` resolved (never above
+/// its root), no trailing separator, lowercase where names ignore case.
+fn normal(path: &str) -> String {
+    let path = path.trim().replace('\\', "/");
+    let b = path.as_bytes();
+    let drive = b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':';
+    let share = path.starts_with("//");
+    // The root's parts (a drive, or a share's server and name) stay.
+    let fixed = if share { 2 } else { usize::from(drive) };
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                if parts.len() > fixed {
+                    parts.pop();
+                }
+            }
+            p => parts.push(p),
+        }
+    }
+    let joined = if share {
+        format!("//{}", parts.join("/"))
+    } else if drive {
+        parts.join("/")
+    } else {
+        format!("/{}", parts.join("/"))
+    };
+    if drive || share || cfg!(target_os = "macos") {
+        joined.to_lowercase()
+    } else {
+        joined
     }
 }
 
@@ -890,7 +1072,11 @@ mod tests {
             ),
         ];
         for (mode, flagged, action, target, want, why) in cases {
-            assert_eq!(decide(mode, flagged, &action, &target, None), want, "{why}");
+            assert_eq!(
+                decide(mode, flagged, &action, &target, &Scope::default()),
+                want,
+                "{why}"
+            );
         }
     }
 
@@ -899,8 +1085,10 @@ mod tests {
     #[test]
     fn scope_holds_the_granted_programs() {
         use Verdict::*;
-        let apps = ["code.exe".to_string()];
-        let scope = Some(&apps[..]);
+        let scope = Scope {
+            apps: Some(vec!["code.exe".into()]),
+            folders: None,
+        };
         let alt_tab = combo(&[Key::Alt, Key::Named("tab")]);
         let win_digit = combo(&[Key::Meta, Key::Char('2')]);
         let locked = Target {
@@ -954,10 +1142,168 @@ mod tests {
         ];
         for (action, target, want, why) in cases {
             assert_eq!(
-                decide(Approval::Auto, false, &action, &target, scope),
+                decide(Approval::Auto, false, &action, &target, &scope),
                 want,
                 "{why}"
             );
+        }
+    }
+
+    /// AI scope's folders: the file view's folder, typed paths, and the
+    /// ways back in; the apps grant is not implied.
+    #[test]
+    fn scope_checks_the_granted_folders() {
+        use Verdict::*;
+        let scope = Scope {
+            apps: None,
+            folders: Some(vec![r"C:\Work\Report".into()]),
+        };
+        let explorer = |folder: Option<&str>, role: Option<Role>| Target {
+            folder: folder.map(Into::into),
+            role,
+            ..on("explorer.exe")
+        };
+        let dialog = |folder: &str| Target {
+            folder: Some(folder.into()),
+            file_dialog: true,
+            ..on("notepad.exe")
+        };
+        let typed = |text: &str| Action::Type { text: text.into() };
+        let scroll = Action::Scroll {
+            at: Some(Point { x: 1, y: 1 }),
+            dx: 0,
+            dy: 3,
+            modifiers: vec![],
+        };
+        let inside = Some(r"C:\Work\Report\2026");
+        let outside = Some(r"C:\Users\me\Documents");
+        let cases: Vec<(Action, Target, Verdict, &str)> = vec![
+            (
+                click(),
+                explorer(inside, None),
+                Run,
+                "a click in a granted folder",
+            ),
+            (
+                click(),
+                explorer(Some(r"c:/work/report"), None),
+                Run,
+                "the folder itself, any case and separator",
+            ),
+            (
+                click(),
+                explorer(outside, None),
+                Ask(Class::OutsideFolders),
+                "a click in another folder",
+            ),
+            (
+                click(),
+                explorer(None, None),
+                Ask(Class::OutsideFolders),
+                "a folder not on disk (This PC)",
+            ),
+            (
+                click(),
+                explorer(Some(r"C:\Work\ReportOld"), None),
+                Ask(Class::OutsideFolders),
+                "a sibling sharing the name's start",
+            ),
+            (scroll, explorer(outside, None), Run, "scrolling"),
+            (
+                click(),
+                explorer(outside, Some(Role::Text)),
+                Run,
+                "a click into the address bar",
+            ),
+            (
+                typed(r"C:\Work\Report\q3"),
+                explorer(outside, Some(Role::Text)),
+                Run,
+                "typing the way back in",
+            ),
+            (
+                typed(r"C:\Work\Report\..\Secrets"),
+                explorer(inside, Some(Role::Text)),
+                Refuse(Class::OutsideFolders),
+                "a path climbing out",
+            ),
+            (
+                typed(r"..\..\Secrets"),
+                explorer(inside, Some(Role::Text)),
+                Refuse(Class::OutsideFolders),
+                "a relative path climbing out",
+            ),
+            (
+                typed("notes.txt"),
+                explorer(outside, Some(Role::Text)),
+                Ask(Class::OutsideFolders),
+                "a name typed into another folder",
+            ),
+            (
+                combo(&[Key::Named("enter")]),
+                dialog(r"C:\Users\me\Documents"),
+                Ask(Class::OutsideFolders),
+                "saving in another folder",
+            ),
+            (
+                typed(r"copy D:\elsewhere\a.txt"),
+                on("code.exe"),
+                Refuse(Class::OutsideFolders),
+                "a path typed anywhere",
+            ),
+            (
+                typed("hello world"),
+                on("code.exe"),
+                Run,
+                "plain text elsewhere",
+            ),
+            (
+                click(),
+                on("notepad.exe"),
+                Run,
+                "the folders grant no apps limit",
+            ),
+        ];
+        for (action, target, want, why) in cases {
+            assert_eq!(
+                decide(Approval::Auto, false, &action, &target, &scope),
+                want,
+                "{why}"
+            );
+        }
+    }
+
+    /// Typed paths: each kind of start, where it ends, and what cannot be
+    /// made absolute.
+    #[test]
+    fn typed_paths_are_found() {
+        let var = |v: &str| match v {
+            "USERPROFILE" => Some(r"C:\Users\me".to_string()),
+            "HOME" => Some("/home/me".to_string()),
+            _ => None,
+        };
+        let some = |s: &str| Some(s.to_string());
+        type Case<'a> = (&'a str, Option<&'a str>, Vec<Option<String>>);
+        let cases: Vec<Case> = vec![
+            (r"C:\a b\c", None, vec![some(r"C:\a b\c")]),
+            (r#"open "D:\x" now"#, None, vec![some(r"D:\x")]),
+            (r"\\server\share\f", None, vec![some(r"\\server\share\f")]),
+            ("cat /etc/passwd", None, vec![some("/etc/passwd")]),
+            ("~/notes", None, vec![some(r"C:\Users\me/notes")]),
+            (
+                r"%USERPROFILE%\Desktop",
+                None,
+                vec![some(r"C:\Users\me\Desktop")],
+            ),
+            ("${HOME}/x", None, vec![some("/home/me/x")]),
+            (r"%NOPE%\x", None, vec![None]),
+            (r"..\up", Some(r"C:\w"), vec![some(r"C:\w/..\up")]),
+            ("../up", None, vec![None]),
+            ("https://example.com/a and/or 1/2", None, vec![]),
+            ("line one\n/tmp/x", None, vec![some("/tmp/x")]),
+        ];
+        for (text, folder, want) in cases {
+            assert_eq!(typed_paths(text, folder, &var), want, "{text}");
         }
     }
 

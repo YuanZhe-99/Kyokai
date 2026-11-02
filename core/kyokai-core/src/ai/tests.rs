@@ -2116,6 +2116,67 @@ fn scope_refuses_other_programs() {
     );
 }
 
+/// With folders granted, a file changed outside them while the AI acts
+/// pauses the task before its next action and stays on its record; changes
+/// inside them and bookkeeping (a hidden folder) do not; a full path is
+/// required.
+#[test]
+fn folders_pause_on_changes_outside() {
+    let turns = vec![
+        (0, claude_turn("m1", click_save())),
+        (1500, claude_turn("m2", click_save())),
+        (0, claude_end("ok")),
+    ];
+    let server = server(turns);
+    let rig = rig("folders", "claude", &server.url);
+    let home = std::env::temp_dir().join(format!("kyokai-home-{}", std::process::id()));
+    let granted = home.join("Work");
+    std::fs::create_dir_all(&granted).unwrap();
+    std::fs::create_dir_all(home.join(".cache")).unwrap();
+    assert!(rig.ai.set_folders(Some(vec!["Work".into()])).is_err());
+    rig.ai.watch_home(&home);
+    rig.ai
+        .set_folders(Some(vec![granted.to_string_lossy().into()]))
+        .unwrap();
+    assert_eq!(rig.ai.settings()["folders"], json!([granted]));
+    let t0 = Instant::now();
+    while !rig.ai.watching() {
+        assert!(
+            t0.elapsed() < Duration::from_secs(10),
+            "the watch did not start"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    while rig.task(id)["steps"]
+        .as_array()
+        .is_none_or(|s| s.is_empty())
+    {
+        assert!(t0.elapsed() < Duration::from_secs(20), "no first step");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    std::fs::write(granted.join("report.txt"), "in").unwrap();
+    std::fs::write(home.join(".cache").join("x"), "noise").unwrap();
+    let secret = home.join("secret.txt");
+    std::fs::write(&secret, "out").unwrap();
+    let t = rig.state(id, "paused");
+    assert_eq!(t["paused"], "folders");
+    assert_eq!(t["outside"], json!([secret]));
+    let paused = t["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["outcome"] == "paused")
+        .unwrap()
+        .clone();
+    assert_eq!(paused["action"]["kind"], "click");
+    assert!(paused["detail"].as_str().unwrap().contains("secret.txt"));
+    rig.ai.cancel(id).unwrap();
+    rig.ai.set_folders(None).unwrap();
+    assert!(!rig.ai.watching());
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 /// Real `openai-chat` round trips through OpenRouter on the synthetic
 /// screens (nothing touches the real desktop): each model of
 /// `KYOKAI_LIVE_MODELS` (comma-separated) must press SAVE in its own

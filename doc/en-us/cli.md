@@ -58,7 +58,7 @@ standard input instead of its variable.
 | This device | `status`, `password`, `regenerate`, `permanent`, `name-set`, `access`, `password-grants`, `trusted`, `untrust`, `backup`, `restore`, `reset-identity` |
 | Networks | `network`, `network-set`, `networks`, `network-profile`, `network-remove`, `network-direct`, `network-backend`, `cores`, `core-install` |
 | Sessions and devices | `connect`, `identify`, `close`, `allow`, `deny`, `forget`, `remove`, `devices`, `route-add`, `route-remove`, `route-prefer`, `screenshot`, `watch`, `watch-status` |
-| AI | `ai`, `ai-set`, `ai-key`, `ai-models`, `ai-start`, `ai-reply`, `ai-tasks`, `ai-follow`, `ai-rename`, `ai-fork`, `ai-compact`, `ai-export`, `ai-pause`, `ai-resume`, `ai-cancel`, `ai-approve`, `ai-decline`, `ai-apps`, `ai-scope`, `ai-clear`, `ai-stop` |
+| AI | `ai`, `ai-set`, `ai-key`, `ai-models`, `ai-start`, `ai-reply`, `ai-tasks`, `ai-follow`, `ai-rename`, `ai-fork`, `ai-compact`, `ai-export`, `ai-pause`, `ai-resume`, `ai-cancel`, `ai-approve`, `ai-decline`, `ai-apps`, `ai-scope`, `ai-folders`, `ai-clear`, `ai-stop` |
 | Keys, tunnels and sign-ins | `keys`, `keys-generate`, `keys-remove`, `authorized`, `authorized-add`, `authorized-remove`, `tunnel`, `credentials-set`, `credentials-get`, `credentials-forget` |
 | The engine | `background`, `helper-update`, `move`, `capture-show`, `no-logs`, `protect`, `clipboard-mine`, `logs`, `shutdown` |
 | Itself | `help`, `version` |
@@ -86,5 +86,7 @@ and ten seconds without one is a failure.
 
 `kyokai ai-apps` lists the programs with windows on this device's screen, by the names the AI scope
 uses; `kyokai ai-scope --apps A,B` grants the AI only those programs' windows for this session, and
-`kyokai ai-scope` with no apps gives it the whole desktop again ([computer-use.md](computer-use.md#ai-scope)).
+`kyokai ai-scope` with no apps gives it the whole desktop again ([computer-use.md](computer-use.md#ai-scope));
+`kyokai ai-folders --folders "C:\Work;D:\Shared"` (separated as `PATH` is: `;` on Windows, `:` elsewhere)
+grants only those folders, checked, not enforced, and with no folders every folder again. `ai` shows both.
 The scope is the host user's to set, so these commands speak to this device's own engine only.

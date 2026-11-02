@@ -1117,6 +1117,76 @@ func (msgs Messages) AISaved() string {
 	return Catalog.Format(msgs.locale, "AISaved", nil)
 }
 
+// AIFoldersAll says "All folders"
+// in the language the app shows.
+func AIFoldersAll() string { return In(i18n.Locale()).AIFoldersAll() }
+
+// AIFoldersAll says "All folders"
+// in the language of msgs.
+func (msgs Messages) AIFoldersAll() string {
+	return Catalog.Format(msgs.locale, "AIFoldersAll", nil)
+}
+
+// AIFoldersCount says "Folders: {count}"
+// in the language the app shows.
+func AIFoldersCount(count int) string { return In(i18n.Locale()).AIFoldersCount(count) }
+
+// AIFoldersCount says "Folders: {count}"
+// in the language of msgs.
+func (msgs Messages) AIFoldersCount(count int) string {
+	return Catalog.Format(msgs.locale, "AIFoldersCount", map[string]any{"count": count})
+}
+
+// AIFoldersAdd says "Add a folder…"
+// in the language the app shows.
+func AIFoldersAdd() string { return In(i18n.Locale()).AIFoldersAdd() }
+
+// AIFoldersAdd says "Add a folder…"
+// in the language of msgs.
+func (msgs Messages) AIFoldersAdd() string {
+	return Catalog.Format(msgs.locale, "AIFoldersAdd", nil)
+}
+
+// AIFoldersChecked says "Kyokai checks folders but cannot enforce them"
+// in the language the app shows.
+func AIFoldersChecked() string { return In(i18n.Locale()).AIFoldersChecked() }
+
+// AIFoldersChecked says "Kyokai checks folders but cannot enforce them"
+// in the language of msgs.
+func (msgs Messages) AIFoldersChecked() string {
+	return Catalog.Format(msgs.locale, "AIFoldersChecked", nil)
+}
+
+// AIStatePausedFolders says "Paused: files changed outside the granted folders"
+// in the language the app shows.
+func AIStatePausedFolders() string { return In(i18n.Locale()).AIStatePausedFolders() }
+
+// AIStatePausedFolders says "Paused: files changed outside the granted folders"
+// in the language of msgs.
+func (msgs Messages) AIStatePausedFolders() string {
+	return Catalog.Format(msgs.locale, "AIStatePausedFolders", nil)
+}
+
+// AIWhyOutsideFolders says "This works in a folder outside the folders you granted."
+// in the language the app shows.
+func AIWhyOutsideFolders() string { return In(i18n.Locale()).AIWhyOutsideFolders() }
+
+// AIWhyOutsideFolders says "This works in a folder outside the folders you granted."
+// in the language of msgs.
+func (msgs Messages) AIWhyOutsideFolders() string {
+	return Catalog.Format(msgs.locale, "AIWhyOutsideFolders", nil)
+}
+
+// AIOutsideChanged says "Changed outside the granted folders:\n{files}"
+// in the language the app shows.
+func AIOutsideChanged(files string) string { return In(i18n.Locale()).AIOutsideChanged(files) }
+
+// AIOutsideChanged says "Changed outside the granted folders:\n{files}"
+// in the language of msgs.
+func (msgs Messages) AIOutsideChanged(files string) string {
+	return Catalog.Format(msgs.locale, "AIOutsideChanged", map[string]any{"files": files})
+}
+
 // AIScopeAll says "All apps"
 // in the language the app shows.
 func AIScopeAll() string { return In(i18n.Locale()).AIScopeAll() }

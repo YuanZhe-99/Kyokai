@@ -120,7 +120,7 @@ an input device's id; running streams switch; the helper passes it to its agent)
 (→ `[{id, name}]`, the input devices; the agent's in the helper), and for AI tasks ([computer-use.md](computer-use.md)):
 `ai.settings.get`, `ai.settings.set` (`{sources?, model?: {source, id}, approval?}`; the answer adds
 `keys` per source), `ai.key.set` (`{source, key}`, null removes it; a key is never returned),
-`ai.models.list` (`{source}` → `{models}`, asks the source), `ai.scope.set` (`{apps}`, null for the whole desktop; the answer is the settings with `scope`), `ai.apps` (→ the programs with windows on the screen), `ai.task.start`
+`ai.models.list` (`{source}` → `{models}`, asks the source), `ai.scope.set` (`{apps}`, null for the whole desktop; the answer is the settings with `scope`), `ai.folders.set` (`{folders}`, full paths, null for every folder; the answer is the settings with `folders`), `ai.apps` (→ the programs with windows on the screen), `ai.task.start`
 (`{key, instruction, choice?: {model?, thinking?}}` → `{id}`; the key makes it idempotent), `ai.task.reply` (`{id, text, choice?}`),
 `ai.task.pause`, `ai.task.resume`, `ai.task.cancel` (`{id}`), `ai.task.decide` (`{id, approve}`),
 `ai.task.rename` (`{id, name}`), `ai.task.fork` (`{id, run?}` → `{id}`), `ai.task.compact` (`{id}`),

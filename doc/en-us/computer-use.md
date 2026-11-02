@@ -732,8 +732,9 @@ declines in one task it asks before every action.
 
 ### AI scope
 
-The host user may grant the AI only some apps for the session (the AI pane's apps chip, or
-`ai.scope.set`; kept in memory, not saved). With a scope:
+The host user may grant the AI only some apps (the AI pane's apps chip, or `ai.scope.set`) and
+only some folders (its folders chip, or `ai.folders.set`) for the session; each is kept in memory,
+not saved, and neither implies the other. With apps granted:
 
 - **What the AI sees**: every screenshot and zoom is dimmed to a dark grey wherever the granted
   programs' windows do not show — other windows, the desktop, and the parts of a granted window
@@ -748,9 +749,33 @@ The host user may grant the AI only some apps for the session (the AI pane's app
 - Programs are named as the policy names them (an executable's file name, a macOS app's name);
   `ai.apps` lists the programs with windows on the screen now, for choosing.
 
-Granting is the host user's; a controller cannot widen it. Folders are not part of the scope yet,
-and the AI cannot work in one window while the host user works in another: local input still takes
-over at once (PLAN.md).
+With folders granted (full paths; a folder grants what is inside it), the folders are **checked,
+not enforced** — the AI acts as the host user, with their access to every file, and only a separate
+account, container or virtual machine could hold it to some folders; the folders chip says so:
+
+- **A file view's folder**: a File Explorer window's folder (from the shell's window list; with
+  several tabs, the tab whose name starts the window's title) and a file chooser's (from its
+  address bar). In a file view showing another folder, or one not on disk (This PC, Libraries,
+  Desktop as a place), an action asks (class "outside folders") unless it scrolls, clicks into a
+  text field (the address bar, a name box) or types paths that are all in the granted folders —
+  the way back in. Finder and Linux file managers' folders are not read yet, so there everything
+  but those asks.
+- **Typed paths**: text the AI types that names a path outside the folders is refused, wherever it
+  goes: drives and shares (`C:\…`, `\server\…`), `/…` at the start or after a space or quote, the
+  home folder and variables (`~/…`, `%USERPROFILE%\…`, `$HOME/…`, an unknown variable counting as
+  outside) and `../…` taken against the file view's folder; `.` and `..` are resolved, so a path
+  climbing out is outside.
+- **Changes seen while the AI acts**: while folders are granted, the engine watches the home
+  folder of the account it runs as (`notify`: ReadDirectoryChangesW, FSEvents, inotify) for files
+  created, written, renamed or removed. A change outside the folders while a task runs (not while
+  it is paused: those are the host user's) pauses it before its next action ("Paused: files
+  changed outside the granted folders"), the step noting the first paths; the task keeps up to 20
+  of them (`outside`), shown under it, also when it finished. Bookkeeping is left out: hidden files
+  and folders, AppData and Library, the temporary folder and Kyokai's own state. A change is not
+  known to be the AI's: another program may have made it.
+
+Granting is the host user's; a controller cannot widen it. The AI cannot work in one window while
+the host user works in another: local input still takes over at once (PLAN.md).
 
 ### States
 

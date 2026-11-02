@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -227,6 +228,9 @@ func (t *aiTab) conversation(c *ui.Context, rec AIRecord, s aiPaneState) {
 	})
 	if task.Error != "" {
 		ui.Text(c, task.Error).FontSize(sizeSmall).TextColor(th.TextMuted).Selectable()
+	}
+	if len(task.Outside) > 0 {
+		ui.Text(c, L.AIOutsideChanged(strings.Join(task.Outside, "\n"))).FontSize(sizeSmall).TextColor(textTone(th, th.Warning)).Selectable()
 	}
 	if seen := strconv.Itoa(len(task.Steps)) + task.State + strconv.Itoa(len(t.sent)); seen != t.seen {
 		t.seen = seen
@@ -557,6 +561,35 @@ func (t *aiTab) chips(c *ui.Context, rec AIRecord, s aiPaneState) {
 						a.setAIScope(scope)
 					}
 				}
+			})
+		}
+		if set != nil {
+			label := L.AIFoldersAll()
+			switch len(set.Folders) {
+			case 0:
+			case 1:
+				label = filepath.Base(set.Folders[0])
+			default:
+				label = L.AIFoldersCount(len(set.Folders))
+			}
+			aiChip(c, "ai-chip-folders-"+t.id, nil, ui.Transparent, label, func(m *ui.Menu) {
+				if m.Item(L.AIFoldersAll()).Checked(len(set.Folders) == 0).Chosen() && len(set.Folders) > 0 {
+					a.setAIFolders(nil)
+				}
+				for _, f := range set.Folders {
+					if m.Item(f).Checked(true).Chosen() {
+						rest := slices.DeleteFunc(slices.Clone(set.Folders), func(s string) bool { return s == f })
+						if len(rest) == 0 {
+							rest = nil
+						}
+						a.setAIFolders(rest)
+					}
+				}
+				m.Separator()
+				if m.Item(L.AIFoldersAdd()).Chosen() {
+					a.addAIFolder(set.Folders)
+				}
+				m.Item(L.AIFoldersChecked()).Disabled(true)
 			})
 		}
 		aiChip(c, "ai-chip-where-"+t.id, kindDesktop, ui.Transparent, L.PickThisComputer(), where)

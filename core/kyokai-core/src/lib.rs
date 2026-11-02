@@ -1637,6 +1637,16 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 Ok(c.ctx.ai.settings())
             })
         }
+        "ai.folders.set" => {
+            // {"folders": ["C:\\Work", …]} grants those folders; {"folders":
+            // null} every folder again.
+            let folders: Option<Vec<String>> = serde_json::from_value(req.params["folders"].take())
+                .map_err(|e| format!("bad folders: {e}"))?;
+            try_core(|c| {
+                c.ctx.ai.set_folders(folders)?;
+                Ok(c.ctx.ai.settings())
+            })
+        }
         "ai.apps" => try_core(|c| c.ctx.ai.apps().map(|a| json!(a))),
         "ai.key.set" => {
             // {"source": "claude", "key": "…"} stores it, {"key": null} removes

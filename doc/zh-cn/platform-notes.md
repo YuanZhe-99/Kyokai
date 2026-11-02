@@ -78,6 +78,7 @@ Studio 2026）：
 | Pi spike（2026-11-01，0.7.0） | `spikes/s5-pi`：Pi 1.4.0（`pi-coding-agent` 的 SDK，会话与设置在内存中，用自己的 `streamSimple` 注册的 Kyokai 提供方，只有 Kyokai 的操作作为工具）运行在一个 sidecar 中，由扮演引擎与本地 `openai-chat` 提供方的测试程序通过 JSON 行驱动。用 Bun 1.4.4 编译（`--compile --minify`）：Windows ARM64 102 MB，0.36 s 输出第一行，结束时常驻 86 MB；Windows x64（模拟运行）117 MB、1.7 s、137 MB；macOS arm64 / x64 与 Linux arm64 / x64 为 92–111 MB（Linux arm64 版在 WSL 中启动，并随管道关闭而结束；macOS 版未运行）。截图逐字节到达提供方（图片缩放已关闭），每个请求都带着引擎通过管道送来的密钥，只联系了提供方的主机，工作目录与 `~/.pi` 中没有写入任何东西，操作中途中止后没有再发出请求，引擎的管道关闭时 sidecar 随之结束 |
 | 经 sidecar 的 AI 实测（2026-11-01，0.7.0） | 引擎让一个任务经 `kyokai-agent`（源码运行，Bun 1.4.4）在合成屏幕上调用 OpenRouter 的 GPT Luna：一次就按中 SAVE，输入 5,427 token，其中第二个请求有 2,138 个从服务商缓存读取，输出 108 |
 | 命令行（2026-11-01，0.7.0） | 本机 Windows 11 ARM64，`kyokai` 连接开发用引擎：`status`、`ai-apps`（本机屏幕上的程序）、`ai-scope --apps … --json`、`ai --json`，被拒绝的设置与未知会话退出码为 4，没有引擎时为 3，未知命令为 2；用登录密钥按地址 `connect` 到测试虚拟机（Windows 11 ARM64），然后 `screenshot --id 2 --out vm.png` 保存了虚拟机 1920×1080 的桌面，带与不带 `--json` 均可 |
+| AI 范围的文件夹（2026-11-02，0.7.0） | 本机 Windows 11 ARM64：在某个文件夹上打开的文件资源管理器窗口，从 shell 的窗口列表读出的正是该文件夹（`explorer_shows_its_folder`，手动运行；Windows 11 的地址栏是 XAML，因此面包屑读取在那里找不到内容，它用于文件选择器，文件选择器未实际打开测试）；对测试主文件夹的监视在已授权文件夹之外写入文件时暂停了任务，而忽略了文件夹之内和隐藏文件夹中的文件（`folders_pause_on_changes_outside`） |
 
 ## macOS
 

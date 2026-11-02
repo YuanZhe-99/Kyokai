@@ -486,6 +486,8 @@ func aiWhy(class string) string {
 		return L.AIWhyRemoteDesktop()
 	case "outside-scope":
 		return L.AIWhyOutsideScope()
+	case "outside-folders":
+		return L.AIWhyOutsideFolders()
 	}
 	return ""
 }
@@ -510,6 +512,8 @@ func aiStateLabel(t *localapi.AITask) string {
 			return L.AIStatePausedSleep()
 		case "locked":
 			return L.AIStatePausedLocked()
+		case "folders":
+			return L.AIStatePausedFolders()
 		}
 		return L.AIStatePaused()
 	case "done":
@@ -718,6 +722,36 @@ func (a *App) setAIScope(apps []string) {
 			return
 		}
 		a.update(func() { a.ai.settings = resp.AISettings })
+	}()
+}
+
+// setAIFolders grants the AI only these folders in this session, or every
+// folder with nil: checked, not enforced (doc/en-us/computer-use.md, "AI
+// scope").
+func (a *App) setAIFolders(folders []string) {
+	go func() {
+		req := localapi.Request{Type: localapi.RequestAIFoldersSet}
+		if folders != nil {
+			req.Folders = &folders
+		}
+		resp, err := a.requestWith(req)
+		if err != nil || !resp.OK || resp.AISettings == nil {
+			return
+		}
+		a.update(func() { a.ai.settings = resp.AISettings })
+	}()
+}
+
+// addAIFolder asks the user for a folder and grants it beside the granted
+// ones.
+// Notes: the dialog waits for the user on a goroutine of its own.
+func (a *App) addAIFolder(granted []string) {
+	go func() {
+		picked, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: a.window, Title: L.AIFoldersAdd(), Directory: true})
+		if err != nil || len(picked) == 0 {
+			return
+		}
+		a.setAIFolders(slices.Concat(granted, picked))
 	}()
 }
 

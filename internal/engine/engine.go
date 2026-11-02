@@ -196,7 +196,7 @@ var protectedAllows = map[localapi.RequestType]bool{
 	localapi.RequestPermission: true, localapi.RequestAgentRestart: true, localapi.RequestHelperUpdate: true,
 	localapi.RequestAISettingsGet: true, localapi.RequestAISettingsSet: true, localapi.RequestAIKeySet: true,
 	localapi.RequestAIModels: true, localapi.RequestAITaskStart: true, localapi.RequestAIDraft: true,
-	localapi.RequestAIScopeSet: true, localapi.RequestAIApps: true,
+	localapi.RequestAIScopeSet: true, localapi.RequestAIFoldersSet: true, localapi.RequestAIApps: true,
 	localapi.RequestAITaskReply: true, localapi.RequestAITaskPause: true, localapi.RequestAITaskResume: true,
 	localapi.RequestAITaskCancel: true, localapi.RequestAITaskDecide: true, localapi.RequestAITasks: true,
 	localapi.RequestAIHistoryClear: true, localapi.RequestAIStop: true, localapi.RequestClipboardMine: true,
@@ -640,6 +640,8 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 		return localapi.Response{OK: true, AIModels: out.Models}
 	case localapi.RequestAIScopeSet:
 		return h.aiSettings("ai.scope.set", map[string]*[]string{"apps": req.Apps})
+	case localapi.RequestAIFoldersSet:
+		return h.aiSettings("ai.folders.set", map[string]*[]string{"folders": req.Folders})
 	case localapi.RequestAIApps:
 		var apps []string
 		if err := h.lib.Call("ai.apps", nil, &apps); err != nil {

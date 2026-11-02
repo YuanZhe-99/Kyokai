@@ -285,6 +285,8 @@ pub enum Pause {
     Sleep,
     /// The session is locked or the sign-in screen shows.
     Locked,
+    /// Files changed outside the granted folders (AI scope).
+    Folders,
 }
 
 /// One action of a task, as the history keeps it.
@@ -451,6 +453,10 @@ pub struct Task {
     /// has grown (`AUTO_COMPACT`).
     #[serde(default)]
     pub context: u64,
+    /// Files changed outside the granted folders while it acted (AI scope;
+    /// at most `MAX_OUTSIDE`), for the host user to look at.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outside: Vec<String>,
     /// Its conversation is being compacted (`Ai::compact`).
     #[serde(
         default,
@@ -505,9 +511,85 @@ struct Shared {
     /// The instruction being written, shared by the host's user and every
     /// controller: its text and a serial that changes with it.
     draft: Mutex<(u64, String)>,
-    /// The programs the host user granted the AI in this session (AI
-    /// scope), or None for the whole desktop; kept in memory only.
-    scope: Mutex<Option<Vec<String>>>,
+    /// What the host user granted the AI in this session (AI scope); kept
+    /// in memory only.
+    scope: Mutex<policy::Scope>,
+    /// Files changing under the home folder, while folders are granted.
+    watch: Mutex<Option<Watch>>,
+    /// The home folder the watch covers.
+    home: Mutex<PathBuf>,
+}
+
+/// Most changed paths a watch holds between two looks.
+const MAX_CHANGES: usize = 1000;
+/// Most paths a task keeps of what changed outside its folders.
+const MAX_OUTSIDE: usize = 20;
+
+/// A watch on a folder tree (AI scope's folders): the paths created,
+/// written, renamed or removed in it, kept until taken.
+struct Watch {
+    _watcher: notify::RecommendedWatcher,
+    seen: Arc<Mutex<Vec<PathBuf>>>,
+}
+
+impl Watch {
+    /// Watches `root` and everything under it.
+    /// Notes: on Linux this adds a watch per folder, which takes a while in
+    /// a large home; call it off the async threads.
+    fn start(root: &Path) -> Result<Watch, String> {
+        use notify::{EventKind, Watcher, event::ModifyKind};
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let into = seen.clone();
+        let mut watcher = notify::recommended_watcher(move |e: notify::Result<notify::Event>| {
+            let Ok(e) = e else { return };
+            if matches!(
+                e.kind,
+                EventKind::Create(_)
+                    | EventKind::Remove(_)
+                    | EventKind::Modify(
+                        ModifyKind::Data(_) | ModifyKind::Name(_) | ModifyKind::Any
+                    )
+            ) {
+                let mut seen = into.lock().expect("watch");
+                let room = MAX_CHANGES.saturating_sub(seen.len());
+                seen.extend(e.paths.into_iter().take(room));
+            }
+        })
+        .map_err(|e| format!("watch: {e}"))?;
+        watcher
+            .watch(root, notify::RecursiveMode::Recursive)
+            .map_err(|e| format!("watch: {e}"))?;
+        Ok(Watch {
+            _watcher: watcher,
+            seen,
+        })
+    }
+
+    /// The paths changed since the last look.
+    fn take(&self) -> Vec<PathBuf> {
+        std::mem::take(&mut *self.seen.lock().expect("watch"))
+    }
+}
+
+/// Whether a changed path is the system's or a program's own bookkeeping,
+/// not a person's files: hidden folders and files, AppData and Library in
+/// the home folder, the temporary folder, and Kyokai's own state.
+fn bookkeeping(path: &Path, home: &Path, state: &Path) -> bool {
+    let temp = std::env::temp_dir();
+    if path.starts_with(state) || (path.starts_with(&temp) && !home.starts_with(&temp)) {
+        return true;
+    }
+    let Ok(rel) = path.strip_prefix(home) else {
+        return false;
+    };
+    let mut parts = rel.components().map(|c| c.as_os_str().to_string_lossy());
+    let first = parts.next().unwrap_or_default();
+    let lower = first.to_lowercase();
+    lower == "appdata"
+        || lower == "library"
+        || lower.starts_with("ntuser.")
+        || first.starts_with('.')
+        || parts.any(|p| p.starts_with('.') || p.starts_with('~'))
 }
 
 /// The host's AI runtime, owned by the core.
@@ -556,7 +638,14 @@ impl Ai {
                 url,
                 agent,
                 draft: Mutex::new((0, String::new())),
-                scope: Mutex::new(None),
+                scope: Mutex::new(policy::Scope::default()),
+                watch: Mutex::new(None),
+                home: Mutex::new(
+                    std::env::var_os("USERPROFILE")
+                        .or_else(|| std::env::var_os("HOME"))
+                        .map(PathBuf::from)
+                        .unwrap_or_default(),
+                ),
             }),
             client: Arc::new(Client::new()?),
             rt: Some(rt),
@@ -581,7 +670,8 @@ impl Ai {
             "model": s.model,
             "approval": s.approval,
             "keys": keys,
-            "scope": self.shared.scope.lock().expect("scope").clone(),
+            "scope": self.shared.scope().apps,
+            "folders": self.shared.scope().folders,
         })
     }
 
@@ -606,7 +696,55 @@ impl Ai {
         {
             return Err("too many or too long app names".into());
         }
-        *self.shared.scope.lock().expect("scope") = apps;
+        self.shared.scope.lock().expect("scope").apps = apps;
+        self.shared.changed.notify_waiters();
+        Ok(())
+    }
+
+    /// Grants the AI only these folders (absolute paths), or every folder
+    /// with None: checked, not enforced (doc/en-us/computer-use.md, "AI
+    /// scope").
+    /// Side effects: applies from the next action; while folders are
+    /// granted, files changing under the home folder are watched (started
+    /// on a thread of its own); not saved.
+    pub fn set_folders(&self, folders: Option<Vec<String>>) -> Result<(), String> {
+        let folders = folders.map(|list| {
+            let mut list: Vec<String> = list
+                .iter()
+                .map(|f| f.trim().to_owned())
+                .filter(|f| !f.is_empty())
+                .collect();
+            list.sort();
+            list.dedup();
+            list
+        });
+        if let Some(list) = &folders {
+            if list.len() > 64 || list.iter().any(|f| f.len() > 1024) {
+                return Err("too many or too long folders".into());
+            }
+            if let Some(f) = list.iter().find(|f| !policy::absolute(f)) {
+                return Err(format!("not a full path: {f}"));
+            }
+        }
+        let watching = folders.is_some();
+        self.shared.scope.lock().expect("scope").folders = folders;
+        if !watching {
+            *self.shared.watch.lock().expect("watch") = None;
+        } else if self.shared.watch.lock().expect("watch").is_none() {
+            let shared = self.shared.clone();
+            std::thread::spawn(move || {
+                let home = shared.home.lock().expect("home").clone();
+                match Watch::start(&home) {
+                    Ok(w) => {
+                        let mut slot = shared.watch.lock().expect("watch");
+                        if shared.scope().folders.is_some() && slot.is_none() {
+                            *slot = Some(w);
+                        }
+                    }
+                    Err(e) => log::warn!("AI scope: {e}"),
+                }
+            });
+        }
         self.shared.changed.notify_waiters();
         Ok(())
     }
@@ -725,6 +863,18 @@ impl Ai {
         self.shared.draft.lock().expect("draft").clone()
     }
 
+    /// Sets the home folder a folder grant watches (tests use their own).
+    #[cfg(test)]
+    pub fn watch_home(&self, home: &Path) {
+        *self.shared.home.lock().expect("home") = home.to_path_buf();
+    }
+
+    /// Whether the folder grant's watch has started.
+    #[cfg(test)]
+    pub fn watching(&self) -> bool {
+        self.shared.watch.lock().expect("watch").is_some()
+    }
+
     /// Starts a task with the settings' model and the usual thinking (the
     /// tests' shorthand).
     #[cfg(test)]
@@ -804,6 +954,7 @@ impl Ai {
                 }],
                 kept: Kept::None,
                 context: 0,
+                outside: Vec::new(),
                 compacting: false,
                 reply: None,
                 conversation: None,
@@ -1141,6 +1292,7 @@ impl Ai {
                 runs: t.runs.iter().take(run + 1).cloned().collect(),
                 kept: Kept::None,
                 context: 0,
+                outside: Vec::new(),
                 compacting: false,
                 reply: None,
                 conversation: None,
@@ -1215,7 +1367,7 @@ const HISTORY: &str = "ai-tasks.json";
 
 impl Shared {
     /// The session's AI scope (`Ai::set_scope`).
-    fn scope(&self) -> Option<Vec<String>> {
+    fn scope(&self) -> policy::Scope {
         self.scope.lock().expect("scope").clone()
     }
 
@@ -1239,8 +1391,33 @@ impl Shared {
             t.updated = now();
             f(t);
         }
+        if event == Event::Resume {
+            // What changed while paused was the host user's doing.
+            self.outside();
+        }
         self.changed.notify_waiters();
         Ok(())
+    }
+
+    /// The files changed outside the granted folders since the last look
+    /// (AI scope), bookkeeping left out; empty without granted folders.
+    fn outside(&self) -> Vec<String> {
+        let Some(changed) = self.watch.lock().expect("watch").as_ref().map(Watch::take) else {
+            return Vec::new();
+        };
+        let Some(folders) = self.scope().folders else {
+            return Vec::new();
+        };
+        let home = self.home.lock().expect("home").clone();
+        let mut out: Vec<String> = changed
+            .iter()
+            .filter(|p| !bookkeeping(p, &home, &self.dir))
+            .map(|p| p.to_string_lossy().into_owned())
+            .filter(|p| !policy::within(p, &folders))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
     }
 
     /// Changes a task without a state change.
@@ -1799,7 +1976,9 @@ async fn drive(
     source: &Source,
     start: Start,
 ) -> Result<Agent, Stop> {
-    let mut seen = observe(desk, start.coords, shared.scope()).await?;
+    // Changes before the run are not the AI's.
+    shared.outside();
+    let mut seen = observe(desk, start.coords, shared.scope().apps).await?;
     let system = system_prompt(&seen);
     let mut agent = match (start.conversation, start.reply) {
         (Some(mut a), Some(text)) => {
@@ -1903,7 +2082,7 @@ async fn drive(
                 if last {
                     shared.running(id).await?;
                     if source.protocol != Protocol::Anthropic {
-                        seen = observe(desk, seen.coords, shared.scope()).await?;
+                        seen = observe(desk, seen.coords, shared.scope().apps).await?;
                         shot = Some((&seen.shot).into());
                     }
                 }
@@ -1915,12 +2094,44 @@ async fn drive(
                 })?;
             }
             FromSidecar::State { state } => shared.keep(id, state, &system),
-            FromSidecar::Done { .. } => return Ok(agent),
+            FromSidecar::Done { .. } => {
+                // What the last actions changed outside the folders stays
+                // on the task.
+                let outside = shared.outside();
+                if !outside.is_empty() {
+                    shared.edit(id, |t| note_outside(t, &outside));
+                }
+                return Ok(agent);
+            }
             FromSidecar::Failed { error } => return Err(Stop::Failed(error)),
             FromSidecar::Aborted => return Err(Stop::Cancelled),
             FromSidecar::Hello { .. } => {}
         }
     }
+}
+
+/// Adds changed paths to a task's record of what changed outside its
+/// folders, up to `MAX_OUTSIDE`.
+fn note_outside(t: &mut Task, paths: &[String]) {
+    for p in paths {
+        if t.outside.len() < MAX_OUTSIDE && !t.outside.contains(p) {
+            t.outside.push(p.clone());
+        }
+    }
+}
+
+/// A step's note of files changed outside the granted folders: the first
+/// few and how many more.
+fn outside_detail(paths: &[String]) -> String {
+    const SHOWN: usize = 3;
+    let mut s = format!(
+        "changed outside the granted folders: {}",
+        paths[..paths.len().min(SHOWN)].join(", ")
+    );
+    if paths.len() > SHOWN {
+        s += &format!(" (+{})", paths.len() - SHOWN);
+    }
+    s
 }
 
 /// An outcome as the sidecar takes it.
@@ -1991,6 +2202,17 @@ async fn act_one(
         shared.record(id, action_json, "paused", None);
         return Ok(Outcome::Paused);
     }
+    // AI scope's folders: files changed outside them since the last action
+    // pause the task for the host user to look.
+    let outside = shared.outside();
+    if !outside.is_empty() {
+        let _ = shared.apply(id, Event::Pause, |t| {
+            t.paused = Some(Pause::Folders);
+            note_outside(t, &outside);
+        });
+        shared.record(id, action_json, "paused", Some(outside_detail(&outside)));
+        return Ok(Outcome::Paused);
+    }
     let checked = proposed.map_err(|e| e.to_string()).and_then(|a| {
         let (w, h) = seen.size();
         action::validate(&a, w as i32, h as i32).map_err(|e| e.to_string())?;
@@ -2022,7 +2244,7 @@ async fn act_one(
     let target = tokio::task::block_in_place(|| target_of(desk, &action, seen));
     let scope = shared.scope();
     let unacknowledged = !turn.flagged.is_empty() && !turn.acknowledged;
-    let class = match policy::decide(mode, unacknowledged, &action, &target, scope.as_deref()) {
+    let class = match policy::decide(mode, unacknowledged, &action, &target, &scope) {
         Verdict::Run => None,
         Verdict::Ask(class) => Some(class),
         Verdict::Refuse(class) => {
@@ -2133,6 +2355,9 @@ fn refusal(class: Class) -> &'static str {
         Class::OutsideScope => {
             "it reaches a program outside the apps the host user granted; stay in those apps' windows"
         }
+        Class::OutsideFolders => {
+            "it names a folder outside the folders the host user granted; work only in those folders"
+        }
         _ => "this action is not allowed here",
     }
 }
@@ -2193,14 +2418,14 @@ async fn execute(
     seen: &mut Seen,
 ) -> Outcome {
     match action {
-        Action::Screenshot => match observe(desk, seen.coords, shared.scope()).await {
+        Action::Screenshot => match observe(desk, seen.coords, shared.scope().apps).await {
             Ok(s) => {
                 *seen = s;
                 Outcome::Image(seen.shot.clone())
             }
             Err(why) => Outcome::Failed(why),
         },
-        Action::Zoom { region } => match capture(desk, shared.scope()).await {
+        Action::Zoom { region } => match capture(desk, shared.scope().apps).await {
             Ok(frame) => {
                 let r = desktop::frame_region(*region, seen.size(), (frame.width, frame.height));
                 Outcome::Image(tokio::task::block_in_place(|| {

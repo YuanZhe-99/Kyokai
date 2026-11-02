@@ -162,7 +162,7 @@ var requests = map[string]localapi.RequestType{
 	"ai-clear": localapi.RequestAIHistoryClear, "ai-stop": localapi.RequestAIStop,
 	"route-add": localapi.RequestRoutesSet, "route-remove": localapi.RequestRoutesSet, "route-prefer": localapi.RequestRoutesSet,
 	"ai-rename": localapi.RequestAITaskRename, "ai-export": localapi.RequestAITaskExport, "ai-fork": localapi.RequestAITaskFork, "ai-compact": localapi.RequestAITaskCompact,
-	"ai-scope": localapi.RequestAIScopeSet, "ai-apps": localapi.RequestAIApps,
+	"ai-scope": localapi.RequestAIScopeSet, "ai-folders": localapi.RequestAIFoldersSet, "ai-apps": localapi.RequestAIApps,
 }
 
 // run sends one request to the user's engine and prints the answer.
@@ -237,6 +237,7 @@ func run(args []string) error {
 	sourcesFile := fs.String("sources-file", "", "ai-set: a JSON list of AI sources replacing the current ones")
 	approval := fs.String("approval", "", "ai-set: auto or every-action")
 	text := fs.String("text", "", "ai-start, ai-reply, watch: what the AI should do (watch: on the host)")
+	folders := fs.String("folders", "", "ai-folders: the folders the AI may work in, full paths separated as PATH is (; on Windows, : elsewhere; empty: every folder)")
 	apps := fs.String("apps", "", "ai-scope: the programs the AI may work in, as ai-apps names them (comma-separated; empty: the whole desktop)")
 	route := fs.String("route", "auto", "route-prefer: auto, network, or one of the device's addresses")
 	run := fs.Int("run", 0, "ai-fork: the run to begin after, 1 first as ai-tasks lists them (none: the latest, a clone)")
@@ -404,6 +405,10 @@ func run(args []string) error {
 		if a := list(*apps); len(a) > 0 {
 			req.Apps = &a
 		}
+	case "ai-folders":
+		if f := filepath.SplitList(*folders); len(f) > 0 {
+			req.Folders = &f
+		}
 	case "ai-key":
 		req.AIKey = &localapi.AIKey{Source: *source}
 		if !*remove {
@@ -543,6 +548,12 @@ func run(args []string) error {
 			fmt.Printf("model %s:%s\n", s.Model.Source, s.Model.ID)
 		}
 		fmt.Printf("approval %s\n", s.Approval)
+		if len(s.Scope) > 0 {
+			fmt.Printf("apps %s\n", strings.Join(s.Scope, ","))
+		}
+		for _, f := range s.Folders {
+			fmt.Printf("folder %s\n", f)
+		}
 		for _, src := range s.Sources {
 			ids := make([]string, len(src.Models))
 			for i, m := range src.Models {

@@ -25,6 +25,7 @@ ignore = [
   { id = "RUSTSEC-2026-0367", reason = "build-time only; PROTOC is set" },
   { id = "RUSTSEC-2026-0368", reason = "build-time only; PROTOC is set" },
   { id = "RUSTSEC-2026-0369", reason = "build-time only; PROTOC is set" },
+  { id = "RUSTSEC-2026-0429", reason = "build-time only; PROTOC is set" },
   # zstd 0.13 / zstd-safe 7 (zip 8's zstd feature): streaming decompression
   # flaws. Reached only through the same unused zip build dependency.
   { id = "RUSTSEC-2026-0391", reason = "build-time only, through zip; PROTOC is set" },
