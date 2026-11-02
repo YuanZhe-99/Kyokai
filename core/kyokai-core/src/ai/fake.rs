@@ -30,6 +30,8 @@ pub struct Log {
     /// What `target()` reports (a plain editor unless a test sets it).
     pub target: Option<super::policy::Target>,
     pub released: u32,
+    /// What `elements()` reports (none unless a test sets it).
+    pub elements: Option<super::elements::Listed>,
 }
 
 /// A desktop that shows the synthetic screens and records what it is sent.
@@ -86,6 +88,10 @@ impl Desktop for Fake {
 
     fn stop_requested(&mut self) -> bool {
         std::mem::take(&mut self.0.lock().unwrap().stop)
+    }
+
+    fn elements(&mut self) -> Option<super::elements::Listed> {
+        self.0.lock().unwrap().elements.clone()
     }
 
     fn target(&mut self, _at: Option<(f32, f32)>) -> super::policy::Target {

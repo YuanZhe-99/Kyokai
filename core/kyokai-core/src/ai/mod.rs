@@ -6,6 +6,7 @@ pub mod action;
 mod chat;
 mod claude;
 pub mod desktop;
+pub mod elements;
 #[cfg(test)]
 pub(crate) mod fake;
 mod openai;
@@ -51,6 +52,18 @@ pub struct Source {
     /// The base URL, such as `https://api.anthropic.com/v1`.
     pub url: String,
     pub models: Vec<Model>,
+    /// Whether its tasks see the element list beside each screenshot
+    /// (`elements`); None: on for `openai-chat` sources only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elements: Option<bool>,
+}
+
+impl Source {
+    /// Whether its tasks see the element list (`Source::elements`).
+    pub fn lists_elements(&self) -> bool {
+        self.elements
+            .unwrap_or(self.protocol == Protocol::OpenaiChat)
+    }
 }
 
 /// A model of a source.
@@ -89,6 +102,7 @@ fn default_sources() -> Vec<Source> {
                 name: String::new(),
                 coordinates: Default::default(),
             }],
+            elements: None,
         },
         Source {
             id: "openai".into(),
@@ -101,6 +115,7 @@ fn default_sources() -> Vec<Source> {
                 name: String::new(),
                 coordinates: Default::default(),
             }],
+            elements: None,
         },
     ]
 }
@@ -111,6 +126,8 @@ pub struct Shot {
     pub b64: String,
     pub width: u32,
     pub height: u32,
+    /// The element list beside it (`elements::table`), when it has one.
+    pub elements: Option<String>,
 }
 
 /// Tokens a model turn took, as its provider reports them: all the input

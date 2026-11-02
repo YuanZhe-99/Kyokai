@@ -697,6 +697,12 @@ impl crate::ai::desktop::Desktop for RemoteDesktop {
             .call("ai.target", json!({"desk": self.id, "at": at}))
             .unwrap_or_default()
     }
+
+    fn elements(&mut self) -> Option<crate::ai::elements::Listed> {
+        self.link
+            .call("ai.elements", json!({"desk": self.id}))
+            .unwrap_or_default()
+    }
 }
 
 impl Drop for RemoteDesktop {
@@ -1127,6 +1133,7 @@ impl Agent {
                     }
                     "ai.cursor" => json!(d.cursor()),
                     "ai.windows" => json!(d.windows()),
+                    "ai.elements" => json!(d.elements()),
                     "ai.target" => {
                         let at = serde_json::from_value::<Option<(f32, f32)>>(req["at"].clone())
                             .unwrap_or(None);

@@ -16,6 +16,7 @@ use zeroize::Zeroizing;
 
 use super::action::{self, Action, Coordinates};
 use super::desktop::{self, Desktop, Frame, Step};
+use super::elements;
 use super::policy::{self, Approval, Class, Verdict};
 use super::sidecar::{Agent, FromSidecar, ToSidecar, WireOutcome};
 use super::{Client, Outcome, Protocol, Shot, Source, default_sources, key_name};
@@ -1621,6 +1622,11 @@ struct Seen {
     frame: Frame,
     shot: Shot,
     coords: Coordinates,
+    /// Whether screenshots come with the element list (`Source::lists_elements`).
+    lists: bool,
+    /// The centres of the listed elements in the model's unit, numbered from
+    /// 1; None without a list, or once an action may have changed the screen.
+    centres: Option<Vec<[i32; 2]>>,
 }
 
 impl Seen {
@@ -1648,15 +1654,18 @@ async fn capture(desk: &Desk, scope: Option<Vec<String>>) -> Result<Frame, Strin
     .map_err(|_| "capture failed".to_string())?
 }
 
-/// Takes a screenshot for a model that gives positions as `coords` says.
+/// Takes a screenshot for a model that gives positions as `coords` says,
+/// with the element list beside it when `lists` (`ai::elements`): never a
+/// window of a program outside the granted apps, which the screenshot dims.
 async fn observe(
     desk: &Desk,
     coords: Coordinates,
     scope: Option<Vec<String>>,
+    lists: bool,
 ) -> Result<Seen, String> {
     let multiple = coords.multiple();
-    let frame = capture(desk, scope).await?;
-    let shot = tokio::task::block_in_place(|| {
+    let frame = capture(desk, scope.clone()).await?;
+    let mut shot = tokio::task::block_in_place(|| {
         desktop::shot(
             &frame,
             [0, 0, frame.width, frame.height],
@@ -1664,10 +1673,33 @@ async fn observe(
             multiple,
         )
     });
+    let mut centres = None;
+    if lists {
+        // UI Automation can wait on a slow program: off the async thread.
+        let listed = tokio::task::block_in_place(|| desk.lock().expect("desktop").elements())
+            .filter(|l| {
+                scope
+                    .as_ref()
+                    .is_none_or(|apps| l.program.as_ref().is_some_and(|p| apps.contains(p)))
+            });
+        if let Some((table, c)) = listed.and_then(|l| {
+            elements::table(
+                &l,
+                (frame.width, frame.height),
+                (shot.width, shot.height),
+                coords,
+            )
+        }) {
+            shot.elements = Some(table);
+            centres = Some(c);
+        }
+    }
     Ok(Seen {
         frame,
         shot,
         coords,
+        lists,
+        centres,
     })
 }
 
@@ -1752,7 +1784,7 @@ fn task_source(shared: &Shared, id: &str) -> Result<Source, String> {
 /// others, whose providers have their own computer tools.
 fn chat_tools(source: &Source) -> Value {
     if source.protocol == Protocol::OpenaiChat {
-        super::chat::tools()
+        super::chat::tools(source.lists_elements())
     } else {
         Value::Null
     }
@@ -1785,6 +1817,7 @@ async fn summarize(
             b64: String::new(),
             width: 0,
             height: 0,
+            elements: None,
         },
         tools: chat_tools(source),
         resume: Some(c.state.clone()),
@@ -1978,7 +2011,13 @@ async fn drive(
 ) -> Result<Agent, Stop> {
     // Changes before the run are not the AI's.
     shared.outside();
-    let mut seen = observe(desk, start.coords, shared.scope().apps).await?;
+    let mut seen = observe(
+        desk,
+        start.coords,
+        shared.scope().apps,
+        source.lists_elements(),
+    )
+    .await?;
     let system = system_prompt(&seen);
     let mut agent = match (start.conversation, start.reply) {
         (Some(mut a), Some(text)) => {
@@ -2069,12 +2108,24 @@ async fn drive(
                 input,
                 last,
             } => {
+                let mut input = input;
                 let proposed = if name == "openai" {
                     super::openai::parse_action(&input)
                 } else {
-                    super::claude::parse_member(&name, &input)
+                    // An element number becomes its centre first, so every
+                    // check sees a position.
+                    elements::resolve(&mut input, seen.centres.as_deref())
+                        .and_then(|()| super::claude::parse_member(&name, &input))
                 };
                 let outcome = act_one(shared, id, &mut turn, desk, proposed, &mut seen).await?;
+                // After anything that may change the screen, the list's
+                // numbers no longer hold (a screenshot brought a new list).
+                if !matches!(
+                    name.as_str(),
+                    "screenshot" | "zoom" | "cursor_position" | "wait"
+                ) {
+                    seen.centres = None;
+                }
                 // The turn's answer goes out only while the task runs: after
                 // a pause it waits for the resume, with a fresh screenshot
                 // where the provider answers with one.
@@ -2082,7 +2133,7 @@ async fn drive(
                 if last {
                     shared.running(id).await?;
                     if source.protocol != Protocol::Anthropic {
-                        seen = observe(desk, seen.coords, shared.scope().apps).await?;
+                        seen = observe(desk, seen.coords, shared.scope().apps, seen.lists).await?;
                         shot = Some((&seen.shot).into());
                     }
                 }
@@ -2418,13 +2469,15 @@ async fn execute(
     seen: &mut Seen,
 ) -> Outcome {
     match action {
-        Action::Screenshot => match observe(desk, seen.coords, shared.scope().apps).await {
-            Ok(s) => {
-                *seen = s;
-                Outcome::Image(seen.shot.clone())
+        Action::Screenshot => {
+            match observe(desk, seen.coords, shared.scope().apps, seen.lists).await {
+                Ok(s) => {
+                    *seen = s;
+                    Outcome::Image(seen.shot.clone())
+                }
+                Err(why) => Outcome::Failed(why),
             }
-            Err(why) => Outcome::Failed(why),
-        },
+        }
         Action::Zoom { region } => match capture(desk, shared.scope().apps).await {
             Ok(frame) => {
                 let r = desktop::frame_region(*region, seen.size(), (frame.width, frame.height));

@@ -29,6 +29,9 @@ pub struct WireShot {
     pub b64: String,
     pub width: u32,
     pub height: u32,
+    /// The element list beside it, for the model to read with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elements: Option<String>,
 }
 
 impl From<&Shot> for WireShot {
@@ -37,6 +40,7 @@ impl From<&Shot> for WireShot {
             b64: s.b64.clone(),
             width: s.width,
             height: s.height,
+            elements: s.elements.clone(),
         }
     }
 }
@@ -303,6 +307,7 @@ mod tests {
             b64: "AAAA".into(),
             width: 1280,
             height: 720,
+            elements: None,
         }
     }
 

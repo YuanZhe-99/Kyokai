@@ -9,13 +9,22 @@ use serde_json::{Value, json};
 /// Kyokai's actions as function tools, named and shaped like the members of
 /// Claude's computer toolset (positions in the unit the system prompt
 /// gives, `Coordinates::describe`).
-pub fn tools() -> Value {
+/// Inputs: `elements` — screenshots come with the element list, so a click
+/// or a move may name an element (`ai::elements`) instead of a position.
+pub fn tools(elements: bool) -> Value {
     let point = json!({"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2,
         "description": "[x, y] on the latest full screenshot, in the unit the instructions give"});
     let modifiers = json!({"type": "string", "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\""});
+    let element = json!({"type": "integer",
+        "description": "instead of coordinate: an element's number in the latest element list"});
     let at = |what: &str| {
-        json!({"type": "object", "properties": {"coordinate": point, "text": modifiers},
-            "required": ["coordinate"], "description": what})
+        if elements {
+            json!({"type": "object", "properties": {"coordinate": point, "element": element, "text": modifiers},
+                "description": format!("{what}: a coordinate or an element")})
+        } else {
+            json!({"type": "object", "properties": {"coordinate": point, "text": modifiers},
+                "required": ["coordinate"], "description": what})
+        }
     };
     let none = json!({"type": "object", "properties": {}});
     let f = |name: &str, description: &str, parameters: Value| json!({"type": "function", "function": {"name": name, "description": description, "parameters": parameters}});

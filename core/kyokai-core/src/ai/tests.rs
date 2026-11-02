@@ -1905,6 +1905,81 @@ fn grid_models_click_where_they_mean() {
     );
 }
 
+/// An `openai-chat` task sees the element list beside its screenshot and
+/// clicks an element by number, which lands on its centre; a second number
+/// in the same turn is refused as stale; an app outside the scope is never
+/// listed; a Claude source lists nothing unless turned on.
+#[test]
+fn elements_are_listed_and_clicked_by_number() {
+    use super::elements::{Element, Listed};
+    let click = |id: &str| json!({"type": "function", "id": id, "function": {"name": "left_click", "arguments": "{\"element\": 1}"}});
+    let turn = json!({"choices": [{"finish_reason": "tool_calls", "message": {"role": "assistant",
+        "content": "", "tool_calls": [click("c1"), click("c2")]}}]});
+    let done = json!({"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "Saved."}}]});
+    let srv = server(vec![(0, turn), (0, done.clone())]);
+    let one = rig_with_model(
+        "elements",
+        &srv.url,
+        json!({"id": "m", "coordinates": "pixels"}),
+    );
+    let b = screens::BUTTON;
+    one.log.lock().unwrap().elements = Some(Listed {
+        window: "Save".into(),
+        program: Some("notepad.exe".into()),
+        elements: vec![Element {
+            role: "button".into(),
+            name: "SAVE".into(),
+            text: String::new(),
+            rect: [b[0] as i32, b[1] as i32, b[2] as i32, b[3] as i32],
+        }],
+    });
+    let id = one.ai.start("k", "Save the file", None).unwrap();
+    let t = one.state(id, "done");
+    assert!(
+        one.log.lock().unwrap().pressed,
+        "the element's centre is SAVE"
+    );
+    assert_eq!(t["steps"][0]["action"]["at"], json!({"x": 639, "y": 424}));
+    assert_eq!(t["steps"][1]["outcome"], "failed");
+    assert!(t["steps"][1]["detail"].as_str().unwrap().contains("stale"));
+    let requests = srv.requests.lock().unwrap();
+    let first = requests[0].1.to_string();
+    assert!(first.contains("Elements on screen"), "{first}");
+    assert!(
+        first.contains("1 button \\\"SAVE\\\" [560,400,719,449]"),
+        "{first}"
+    );
+    assert!(requests[0].1["tools"].to_string().contains("\"element\""));
+    drop(requests);
+
+    // Outside the granted apps nothing is listed.
+    let srv2 = server(vec![(0, done)]);
+    let rig2 = rig_with_model("elements-scope", &srv2.url, json!({"id": "m"}));
+    rig2.log.lock().unwrap().elements = one.log.lock().unwrap().elements.clone();
+    rig2.ai.set_scope(Some(vec!["code.exe".into()])).unwrap();
+    let id = rig2.ai.start("k", "Save the file", None).unwrap();
+    rig2.state(id, "done");
+    assert!(
+        !srv2.requests.lock().unwrap()[0]
+            .1
+            .to_string()
+            .contains("Elements on screen")
+    );
+
+    // Claude: off by default.
+    let srv3 = server(vec![(0, claude_end("ok"))]);
+    let rig3 = rig("elements-claude", "claude", &srv3.url);
+    rig3.log.lock().unwrap().elements = one.log.lock().unwrap().elements.clone();
+    let id = rig3.ai.start("k", "Save the file", None).unwrap();
+    rig3.state(id, "done");
+    assert!(
+        !srv3.requests.lock().unwrap()[0]
+            .1
+            .to_string()
+            .contains("Elements on screen")
+    );
+}
+
 /// A target the fake desktop reports from now on.
 fn set_target(rig: &Rig, target: super::policy::Target) {
     rig.log.lock().unwrap().target = Some(target);

@@ -5,12 +5,22 @@
 // src/ai/{claude,openai,chat}.rs; the golden test holds both to the same
 // bodies). Actions are not parsed here: the engine parses and checks them.
 
-/** A screenshot on the wire: a base64 PNG and its size. */
+/** A screenshot on the wire: a base64 PNG and its size, with the element
+ * list the engine read beside it, if any (core/kyokai-core/src/ai/elements.rs). */
 export interface Shot {
 	b64: string;
 	width: number;
 	height: number;
+	elements?: string;
 }
+
+/** How an element list begins (the engine's `elements::HEADING`). */
+export const LISTED = "Elements on screen";
+/** Whether a content part is an element list. */
+const isList = (p: any) => typeof p?.text === "string" && p.text.startsWith(LISTED);
+/** A shot's element list as one text part of a provider's shape, if it has one. */
+const listOf = (shot: Shot | undefined, part: (text: string) => any) => (shot?.elements ? [part(shot.elements)] : []);
+const textPart = (text: string) => ({ type: "text", text });
 
 /** What became of one action, as the engine answers it. */
 export type Outcome =
@@ -118,7 +128,7 @@ class Claude implements Conversation {
 					},
 				],
 			},
-			messages: [{ role: "user", content: [claudeImage(shot.b64), { type: "text", text: task }] }],
+			messages: [{ role: "user", content: [claudeImage(shot.b64), ...listOf(shot, textPart), { type: "text", text: task }] }],
 		};
 	}
 	body() {
@@ -156,17 +166,24 @@ class Claude implements Conversation {
 		this.request.messages.push({ role: "user", content: results });
 	}
 	followUp(text: string, shot: Shot) {
-		this.request.messages.push({ role: "user", content: [claudeImage(shot.b64), { type: "text", text }] });
+		this.request.messages.push({ role: "user", content: [claudeImage(shot.b64), ...listOf(shot, textPart), { type: "text", text }] });
 	}
 	state() {
 		// Thinking is dropped: its signature binds it to the exact history it
-		// came from, which no longer holds its screenshots.
+		// came from, which no longer holds its screenshots; element lists go
+		// with their screenshots.
 		const gone = (b: any): any =>
-			b?.type === "image" ? { type: "text", text: GONE } : b?.type === "tool_result" && Array.isArray(b.content) ? { ...b, content: b.content.map(gone) } : b;
+			b?.type === "image"
+				? { type: "text", text: GONE }
+				: b?.type === "tool_result" && Array.isArray(b.content)
+					? { ...b, content: b.content.filter((p: any) => !isList(p)).map(gone) }
+					: b;
 		return {
 			messages: this.request.messages.map((m: any) => ({
 				role: m.role,
-				content: Array.isArray(m.content) ? m.content.filter((b: any) => b.type !== "thinking" && b.type !== "redacted_thinking").map(gone) : m.content,
+				content: Array.isArray(m.content)
+					? m.content.filter((b: any) => b.type !== "thinking" && b.type !== "redacted_thinking" && !isList(b)).map(gone)
+					: m.content,
 			})),
 		};
 	}
@@ -188,7 +205,7 @@ function toolResult(id: string, o: Outcome) {
 		o.kind === "ok"
 			? [[{ type: "text", text: "OK" }], false]
 			: o.kind === "image"
-				? [[claudeImage(o.shot.b64)], false]
+				? [[claudeImage(o.shot.b64), ...listOf(o.shot, textPart)], false]
 				: o.kind === "text"
 					? [[{ type: "text", text: o.text }], false]
 					: o.kind === "failed"
@@ -204,6 +221,7 @@ function toolResult(id: string, o: Outcome) {
 // ---- OpenAI: Responses API with the computer tool ----
 
 const dataUrl = (b64: string) => `data:image/png;base64,${b64}`;
+const inputText = (text: string) => ({ type: "input_text", text });
 
 class OpenAI implements Conversation {
 	readonly protocol = "openai-responses";
@@ -223,6 +241,7 @@ class OpenAI implements Conversation {
 				content: [
 					{ type: "input_text", text: task },
 					{ type: "input_image", image_url: dataUrl(shot.b64), detail: "high" },
+					...listOf(shot, inputText),
 				],
 			},
 		];
@@ -288,7 +307,9 @@ class OpenAI implements Conversation {
 			this.input.push(item);
 		}
 		this.pending = [];
-		if (notes.length) this.input.push({ role: "user", content: [{ type: "input_text", text: notes.join("\n") }] });
+		// A screenshot output carries no text: its element list follows it.
+		const parts = [...(notes.length ? [inputText(notes.join("\n"))] : []), ...listOf(after, inputText)];
+		if (parts.length) this.input.push({ role: "user", content: parts });
 	}
 	followUp(text: string, shot: Shot) {
 		this.input.push({
@@ -296,6 +317,7 @@ class OpenAI implements Conversation {
 			content: [
 				{ type: "input_text", text },
 				{ type: "input_image", image_url: dataUrl(shot.b64), detail: "high" },
+				...listOf(shot, inputText),
 			],
 		});
 	}
@@ -342,7 +364,7 @@ class Chat implements Conversation {
 	) {
 		this.messages = [
 			{ role: "system", content: system },
-			{ role: "user", content: [{ type: "text", text: task }, chatImage(shot.b64)] },
+			{ role: "user", content: [{ type: "text", text: task }, chatImage(shot.b64), ...listOf(shot, textPart)] },
 		];
 	}
 	body() {
@@ -353,7 +375,10 @@ class Chat implements Conversation {
 		for (const m of messages) {
 			if (!Array.isArray(m.content)) continue;
 			for (let i = 0; i < m.content.length; i++) {
-				if (m.content[i].type === "image_url" && ++seen <= omit) m.content[i] = { type: "text", text: "[an earlier screenshot, omitted]" };
+				if (m.content[i].type !== "image_url" || ++seen > omit) continue;
+				m.content[i] = { type: "text", text: "[an earlier screenshot, omitted]" };
+				// Its element list goes with it.
+				if (isList(m.content[i + 1])) m.content.splice(i + 1, 1);
 			}
 		}
 		return { model: this.model, messages, tools: this.tools, tool_choice: "auto" };
@@ -406,7 +431,7 @@ class Chat implements Conversation {
 				o.kind === "ok"
 					? "done"
 					: o.kind === "image"
-						? (images.push(chatImage(o.shot.b64)), "the image follows")
+						? (images.push(chatImage(o.shot.b64), ...listOf(o.shot, textPart)), "the image follows")
 						: o.kind === "text"
 							? o.text
 							: o.kind === "failed"
@@ -417,16 +442,18 @@ class Chat implements Conversation {
 			this.messages.push({ role: "tool", tool_call_id: id, content });
 		});
 		this.calls = [];
-		images.push({ type: "text", text: "The screen now:" }, chatImage(after?.b64 ?? ""));
+		images.push({ type: "text", text: "The screen now:" }, chatImage(after?.b64 ?? ""), ...listOf(after, textPart));
 		this.messages.push({ role: "user", content: images });
 	}
 	followUp(text: string, shot: Shot) {
-		this.messages.push({ role: "user", content: [{ type: "text", text }, chatImage(shot.b64)] });
+		this.messages.push({ role: "user", content: [{ type: "text", text }, chatImage(shot.b64), ...listOf(shot, textPart)] });
 	}
 	state() {
 		return {
 			messages: this.messages.map((m: any) =>
-				Array.isArray(m.content) ? { ...m, content: m.content.map((p: any) => (p.type === "image_url" ? { type: "text", text: GONE } : p)) } : m,
+				Array.isArray(m.content)
+					? { ...m, content: m.content.filter((p: any) => !isList(p)).map((p: any) => (p.type === "image_url" ? { type: "text", text: GONE } : p)) }
+					: m,
 			),
 		};
 	}

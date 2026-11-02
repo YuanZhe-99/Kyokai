@@ -79,6 +79,7 @@ Studio 2026）：
 | 经 sidecar 的 AI 实测（2026-11-01，0.7.0） | 引擎让一个任务经 `kyokai-agent`（源码运行，Bun 1.4.4）在合成屏幕上调用 OpenRouter 的 GPT Luna：一次就按中 SAVE，输入 5,427 token，其中第二个请求有 2,138 个从服务商缓存读取，输出 108 |
 | 命令行（2026-11-01，0.7.0） | 本机 Windows 11 ARM64，`kyokai` 连接开发用引擎：`status`、`ai-apps`（本机屏幕上的程序）、`ai-scope --apps … --json`、`ai --json`，被拒绝的设置与未知会话退出码为 4，没有引擎时为 3，未知命令为 2；用登录密钥按地址 `connect` 到测试虚拟机（Windows 11 ARM64），然后 `screenshot --id 2 --out vm.png` 保存了虚拟机 1920×1080 的桌面，带与不带 `--json` 均可 |
 | AI 范围的文件夹（2026-11-02，0.7.0） | 本机 Windows 11 ARM64：在某个文件夹上打开的文件资源管理器窗口，从 shell 的窗口列表读出的正是该文件夹（`explorer_shows_its_folder`，手动运行；Windows 11 的地址栏是 XAML，因此面包屑读取在那里找不到内容，它用于文件选择器，文件选择器未实际打开测试）；对测试主文件夹的监视在已授权文件夹之外写入文件时暂停了任务，而忽略了文件夹之内和隐藏文件夹中的文件（`folders_pause_on_changes_outside`） |
+| 元素列表（2026-11-02，0.7.0） | 本机 Windows 11 ARM64：UI Automation 读取了一个文件资源管理器窗口的控件视图，0.3 秒内得到 71 个元素（按钮、编辑框、菜单项、标签页项、树项、拆分按钮与单选按钮、文本），当时会话处于锁定状态（`explorer_shows_its_folder`，手动运行）；一个 chat 任务按元素编号点击了假屏幕上的 SAVE，同一轮中的第二个编号因过时被拒绝（`elements_are_listed_and_clicked_by_number`）。尚未让模型实际使用列表运行 |
 
 ## macOS
 

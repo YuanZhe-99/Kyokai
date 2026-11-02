@@ -676,6 +676,32 @@ screenshot, its limits (text up to 16 KiB, up to 100 repeats, waits and holds up
 failure stops the turn: the actions after it are answered "not executed". Every action ends by
 releasing whatever it holds.
 
+### Element list
+
+Beside each full screenshot a task may also get the **element list** (`ai::elements`): the
+foreground window's visible controls on the primary display, read from the system's accessibility
+tree. The screenshot stays the only observation required; the list is a help for models that
+place clicks poorly. It is on by default for `openai-chat` sources and off for Claude and OpenAI,
+where it is an experiment (`elements` on a source in `ai.json`, true or false).
+
+- **What it holds**: Windows: one cached UI Automation query of the window's control view; the
+  controls people act on (buttons, edits, links, check boxes, list, menu, tab and tree items, …)
+  and named text and images, not off screen, at most 150, in the tree's order. Each line is its
+  number, role, name, its value (an edit's text) and bounds in the model's unit on that screenshot
+  (`1 button "Save" [560,400,719,449]`); names and values are cut at 80 characters. A password
+  field's value is never read. Kyokai's own windows are never listed, nor, with apps granted ([AI
+  scope](#ai-scope)), a window of another program, which the screenshot dims. macOS and Linux list
+  nothing yet (no AX or AT-SPI reader), and Remote Desktop and VNC windows are pixels to the tree.
+- **How the model sees it**: as text right after its screenshot — Claude in the same message or
+  tool result, OpenAI as a message after the screenshot output (which carries no text), chat after
+  "The screen now:". It leaves with its screenshot: the kept history and `openai-chat`'s dropped
+  screenshots take their lists with them.
+- **Acting on it**: with the list on, a chat source's click tools also take `"element": N` instead
+  of `coordinate`. The number becomes the element's centre before anything checks the action, so the
+  bounds check, the policy and the guards see an ordinary position. Numbers hold only for the latest
+  list: after any action that may change the screen (anything but a screenshot, a zoom, the
+  pointer's position and a wait) they are refused as stale until the next screenshot.
+
 ### Approvals
 
 A task's approval mode is **Auto** (the default; `auto` in `ai.json`, which reads the first

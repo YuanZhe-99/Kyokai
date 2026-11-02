@@ -54,6 +54,13 @@ pub trait Desktop: Send {
     fn windows(&mut self) -> Vec<Shown> {
         Vec::new()
     }
+    /// The foreground window's visible controls on the captured display,
+    /// from the system's accessibility tree (`ai::elements`): none for
+    /// Kyokai's own windows, a password field's value left out. The default
+    /// (and a system without the tree) lists none.
+    fn elements(&mut self) -> Option<super::elements::Listed> {
+        None
+    }
 }
 
 /// A window on the screen as AI scope reads it (`Desktop::windows`).
@@ -148,6 +155,7 @@ pub fn shot(frame: &Frame, region: [u32; 4], max: (u32, u32), multiple: u32) -> 
         b64: base64::engine::general_purpose::STANDARD.encode(&png_bytes),
         width: w,
         height: h,
+        elements: None,
     }
 }
 
@@ -533,6 +541,10 @@ mod windows_impl {
         fn windows(&mut self) -> Vec<Shown> {
             facts::windows()
         }
+
+        fn elements(&mut self) -> Option<crate::ai::elements::Listed> {
+            facts::elements()
+        }
     }
 
     mod facts {
@@ -916,6 +928,144 @@ mod windows_impl {
             path_in(&text)
         }
 
+        /// The foreground window's controls (`Desktop::elements`): one
+        /// cached UI Automation query of its control view, kept when on the
+        /// primary display, not off screen, and either a control people act
+        /// on or a named text or image; at most `MAX_ELEMENTS`, in the
+        /// tree's order.
+        /// Returns: None for no window, Kyokai's own, or no tree.
+        pub fn elements() -> Option<crate::ai::elements::Listed> {
+            // SAFETY: plain queries; a null window gives a null root.
+            let root = physical(|| unsafe { GetAncestor(GetForegroundWindow(), GA_ROOT) });
+            elements_of(root)
+        }
+
+        /// The controls of one top-level window, as `elements` lists them.
+        fn elements_of(root: HWND) -> Option<crate::ai::elements::Listed> {
+            use crate::ai::elements::{Element, Listed, MAX_ELEMENTS};
+            use crate::input::kyokai_process;
+            use windows::Win32::System::Variant::{VT_BSTR, VariantClear};
+            use windows::Win32::UI::Accessibility::{
+                TreeScope_Descendants, UIA_BoundingRectanglePropertyId, UIA_ControlTypePropertyId,
+                UIA_IsOffscreenPropertyId, UIA_IsPasswordPropertyId, UIA_NamePropertyId,
+                UIA_ValueValuePropertyId,
+            };
+            use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
+            physical(|| {
+                // SAFETY: plain queries of the window and its process; COM
+                // on this thread (as `element`), every object released when
+                // dropped, each VARIANT cleared after reading.
+                unsafe {
+                    if root.is_invalid() {
+                        return None;
+                    }
+                    let mut pid = 0u32;
+                    GetWindowThreadProcessId(root, Some(&mut pid));
+                    if pid == 0 || kyokai_process(pid) {
+                        return None;
+                    }
+                    let mut title = [0u16; 512];
+                    let n = GetWindowTextW(root, &mut title) as usize;
+                    let (w, h) = (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
+                    let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+                    let uia: IUIAutomation =
+                        CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+                    let window = uia.ElementFromHandle(root).ok()?;
+                    let cache = uia.CreateCacheRequest().ok()?;
+                    for p in [
+                        UIA_ControlTypePropertyId,
+                        UIA_NamePropertyId,
+                        UIA_BoundingRectanglePropertyId,
+                        UIA_IsOffscreenPropertyId,
+                        UIA_IsPasswordPropertyId,
+                        UIA_ValueValuePropertyId,
+                    ] {
+                        cache.AddProperty(p).ok()?;
+                    }
+                    let found = window
+                        .FindAllBuildCache(
+                            TreeScope_Descendants,
+                            &uia.ControlViewCondition().ok()?,
+                            &cache,
+                        )
+                        .ok()?;
+                    let mut elements = Vec::new();
+                    for i in 0..found.Length().unwrap_or(0) {
+                        if elements.len() == MAX_ELEMENTS {
+                            break;
+                        }
+                        let Ok(e) = found.GetElement(i) else { continue };
+                        let Some(role) = e.CachedControlType().ok().and_then(|t| role(t.0)) else {
+                            continue;
+                        };
+                        if e.CachedIsOffscreen().is_ok_and(|o| o.as_bool()) {
+                            continue;
+                        }
+                        let Ok(r) = e.CachedBoundingRectangle() else {
+                            continue;
+                        };
+                        let rect = [r.left.max(0), r.top.max(0), r.right.min(w), r.bottom.min(h)];
+                        if rect[2] <= rect[0] || rect[3] <= rect[1] {
+                            continue;
+                        }
+                        let name = e.CachedName().map(|n| n.to_string()).unwrap_or_default();
+                        let password = e.CachedIsPassword().is_ok_and(|p| p.as_bool());
+                        let mut text = String::new();
+                        if !password
+                            && let Ok(mut v) = e.GetCachedPropertyValue(UIA_ValueValuePropertyId)
+                        {
+                            if v.Anonymous.Anonymous.vt == VT_BSTR {
+                                text = v.Anonymous.Anonymous.Anonymous.bstrVal.to_string();
+                            }
+                            let _ = VariantClear(&mut v);
+                        }
+                        // Text and images only when they say something.
+                        if matches!(role, "text" | "image") && name.trim().is_empty() {
+                            continue;
+                        }
+                        elements.push(Element {
+                            role: role.into(),
+                            name,
+                            text,
+                            rect,
+                        });
+                    }
+                    Some(Listed {
+                        window: String::from_utf16_lossy(&title[..n]),
+                        program: program(root),
+                        elements,
+                    })
+                }
+            })
+        }
+
+        /// A UI Automation control type as the element list names it, or
+        /// None for containers and parts that are not acted on (panes,
+        /// groups, bars, scroll bars, separators, the window itself).
+        fn role(control_type: i32) -> Option<&'static str> {
+            Some(match control_type {
+                50000 => "button",
+                50002 => "checkbox",
+                50003 => "combobox",
+                50004 => "edit",
+                50005 => "link",
+                50006 => "image",
+                50007 => "listitem",
+                50011 => "menuitem",
+                50013 => "radiobutton",
+                50015 => "slider",
+                50016 => "spinner",
+                50019 => "tabitem",
+                50020 => "text",
+                50024 => "treeitem",
+                50029 => "dataitem",
+                50030 => "document",
+                50031 => "splitbutton",
+                50035 => "headeritem",
+                _ => return None,
+            })
+        }
+
         /// A File Explorer window opened on a folder reads as that folder,
         /// from the shell's list and from its address bar. Opens and closes
         /// a window on this desktop: run by hand (`--ignored`).
@@ -958,11 +1108,47 @@ mod windows_impl {
                 Some(want.clone())
             );
             eprintln!("address bar: {:?}", address_bar(root));
+            let t0 = std::time::Instant::now();
+            let listed = elements_of(root).expect("Explorer's elements");
+            let mut roles: Vec<&str> = listed.elements.iter().map(|e| e.role.as_str()).collect();
+            roles.sort();
+            roles.dedup();
+            eprintln!(
+                "elements: {} in {:?}, roles {roles:?}",
+                listed.elements.len(),
+                t0.elapsed()
+            );
+            assert!(!listed.elements.is_empty());
             // SAFETY: asks the window to close, as its close button does.
             unsafe {
                 let _ = PostMessageW(Some(root), WM_CLOSE, WPARAM(0), LPARAM(0));
             }
             let _ = std::fs::remove_dir(&dir);
+        }
+
+        /// The foreground window's elements read from this desktop, with
+        /// how long the read took; prints counts and roles only, no names.
+        /// Run by hand (`--ignored`).
+        #[test]
+        #[ignore]
+        fn elements_of_the_foreground_window() {
+            let t0 = std::time::Instant::now();
+            let listed = elements();
+            let took = t0.elapsed();
+            let Some(l) = listed else {
+                eprintln!("no list (no window, Kyokai's own, or no tree) in {took:?}");
+                return;
+            };
+            let mut roles: Vec<&str> = l.elements.iter().map(|e| e.role.as_str()).collect();
+            roles.sort();
+            roles.dedup();
+            eprintln!(
+                "{:?}: {} elements in {took:?}; roles {roles:?}; with text {}",
+                l.program,
+                l.elements.len(),
+                l.elements.iter().filter(|e| !e.text.is_empty()).count()
+            );
+            assert!(l.elements.len() <= crate::ai::elements::MAX_ELEMENTS);
         }
 
         /// Address bar texts in any language name their folder from its

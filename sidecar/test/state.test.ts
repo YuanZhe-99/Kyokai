@@ -70,3 +70,36 @@ test("a chat conversation keeps its messages without screenshots", () => {
 	expect(body.messages[1].content[1]).toEqual({ type: "text", text: GONE });
 	expect(body.messages[3].content[0].text).toBe("Now close it");
 });
+
+test("element lists follow their screenshots and leave with them", () => {
+	const LIST = 'Elements on screen (window "Save As"):\n1 button "Save" [10,10,40,20]';
+	const listed = { ...NEXT, elements: LIST };
+	const isList = (p: any) => p?.text === LIST || p?.text === LIST.replace("Save As", "First");
+	const first = { ...SHOT, elements: LIST.replace("Save As", "First") };
+
+	// Claude: beside the screenshot in the first message and in a tool result.
+	const c = open("anthropic", "claude-x", "sys", "Save", first, null);
+	expect(c.body()).toMatchObject({ messages: [{ content: [{ type: "image" }, { text: first.elements }, { text: "Save" }] }] });
+	c.accept({ content: [{ type: "tool_use", id: "t1", name: "screenshot", input: {}, toolset_name: "computer" }], stop_reason: "tool_use", usage: {} });
+	c.answer([{ kind: "image", shot: listed }], undefined, false);
+	expect((c.body() as any).messages[2].content[0].content[1].text).toBe(LIST);
+	expect(JSON.stringify(c.state())).not.toContain("Elements on screen");
+
+	// OpenAI: after the screenshot output, as text.
+	const o = open("openai-responses", "gpt-x", "sys", "Save", first, null);
+	expect((o.body() as any).input[0].content[2]).toEqual({ type: "input_text", text: first.elements });
+	o.accept({ id: "r1", output: [{ type: "computer_call", call_id: "c1", action: { type: "screenshot" } }] });
+	o.answer([{ kind: "ok" }], listed, false);
+	expect((o.body() as any).input[1]).toEqual({ role: "user", content: [{ type: "input_text", text: LIST }] });
+
+	// Chat: after the screen, dropped with it, and gone from the kept state.
+	const ch = open("openai-chat", "m", "sys", "Save", first, []);
+	for (let i = 0; i < 9; i++) {
+		ch.accept({ choices: [{ finish_reason: "tool_calls", message: { content: "", tool_calls: [{ id: `c${i}`, function: { name: "screenshot", arguments: "{}" } }] } }] });
+		ch.answer([{ kind: "ok" }], listed, false);
+	}
+	const parts = (ch.body() as any).messages.flatMap((m: any) => (Array.isArray(m.content) ? m.content : []));
+	const images = parts.filter((p: any) => p.type === "image_url").length;
+	expect(parts.filter(isList).length).toBe(images);
+	expect(JSON.stringify(ch.state())).not.toContain("Elements on screen");
+});
