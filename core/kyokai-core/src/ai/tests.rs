@@ -1102,7 +1102,7 @@ fn live_claude_task_on_synthetic_screens() {
         eprintln!("skipped: set KYOKAI_LIVE_CLAUDE=1 and ANTHROPIC_API_KEY");
         return;
     };
-    let rig = rig("live", "claude", &format!("{}/messages", claude::BASE_URL));
+    let rig = rig("live", "claude", claude::BASE_URL);
     rig.ai.set_key("claude", Some(&key)).unwrap();
     let id = rig
         .ai
@@ -1842,7 +1842,7 @@ fn live_openrouter_models_click_where_they_mean() {
         }
         let rig = rig_with_model(
             &format!("live-or-{i}"),
-            "https://openrouter.ai/api/v1/chat/completions",
+            "https://openrouter.ai/api/v1",
             m,
         );
         rig.ai.set_key("chat", Some(&key)).unwrap();

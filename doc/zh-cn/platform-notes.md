@@ -76,6 +76,7 @@ Studio 2026）：
 | `cargo deny` | 把 VS 的 clang 加入 `PATH` 后通过（advisories、bans、licenses、sources） |
 | 坐标模式实测（2026-11-01，0.7.0） | 通过 OpenRouter 在合成屏幕上运行 `cargo test … live_openrouter`（1280×720 的对话框，SAVE 位于 560–720 × 400–450）：Qwen3-VL 30B-A3B、Qwen 3.8 27B 与 Qwen 3.5 Flash 在 0–1000 网格上、Gemini 3.5 Flash Lite 在 0–999 上一次就按中 SAVE（各用 5.4k–7k 输入 token）；Qwen 3.8 27B 用像素也按中了，Qwen 3.5 Flash 没有（它把网格上的回答 501,591 当作像素点了四次：71k token），因此“自动”给 Qwen 3.5 及之后的模型网格；Gemini 2.5 Flash Lite 在 0–999 上点偏（点在 268 而不是约 425 的高度）；免费的 Gemma 4 答复 429 |
 | Pi spike（2026-11-01，0.7.0） | `spikes/s5-pi`：Pi 1.4.0（`pi-coding-agent` 的 SDK，会话与设置在内存中，用自己的 `streamSimple` 注册的 Kyokai 提供方，只有 Kyokai 的操作作为工具）运行在一个 sidecar 中，由扮演引擎与本地 `openai-chat` 提供方的测试程序通过 JSON 行驱动。用 Bun 1.4.4 编译（`--compile --minify`）：Windows ARM64 102 MB，0.36 s 输出第一行，结束时常驻 86 MB；Windows x64（模拟运行）117 MB、1.7 s、137 MB；macOS arm64 / x64 与 Linux arm64 / x64 为 92–111 MB（Linux arm64 版在 WSL 中启动，并随管道关闭而结束；macOS 版未运行）。截图逐字节到达提供方（图片缩放已关闭），每个请求都带着引擎通过管道送来的密钥，只联系了提供方的主机，工作目录与 `~/.pi` 中没有写入任何东西，操作中途中止后没有再发出请求，引擎的管道关闭时 sidecar 随之结束 |
+| 经 sidecar 的 AI 实测（2026-11-01，0.7.0） | 引擎让一个任务经 `kyokai-agent`（源码运行，Bun 1.4.4）在合成屏幕上调用 OpenRouter 的 GPT Luna：一次就按中 SAVE，输入 5,427 token，其中第二个请求有 2,138 个从服务商缓存读取，输出 108 |
 
 ## macOS
 
