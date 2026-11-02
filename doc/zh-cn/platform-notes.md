@@ -74,6 +74,7 @@ Studio 2026）：
 | 安全与性能检查（2026-11-01，0.6.14） | Windows 11 ARM64：完整检查，以及每个新的回归测试（SSH 名称、SCP、字体输入框、RDP 仅限网络级身份验证、VNC 类型与上限、登录计数、恢复令牌、被控端证明、紧急队列、root 时拒绝文件、AI 租约、密钥只经 HTTPS、`clipboard.mine`、所有者级别、受保护的数据流、助手文件夹检查、并发核心调用、不取核心锁的媒体、缩小的视频、偏好设置写入器）；在 Debian（WSL，arm64）上于竞态检测器下运行 Go 测试。尚未：仅限 Linux 与 macOS 的 Rust 代码（X11 输入线程、macOS 窗口列表、unix 收件文件夹）只在 CI 中编译与运行；没有实际会话、RDP、VNC 或 SSH 服务器，没有检查原生应用，没有安装助手 |
 | 切换路径（2026-11-01，0.6.15） | 本机 Windows 11 ARM64，一个进程中的三个 EasyTier 节点（一个服务器和两个对端，测试 `threenode`，两对端之间的直连经 `testproxy` 切断）：交给 EasyTier 时，失效的直连约 12 秒后被断开，新连接约 14.5 秒后经中继到达对端，而切断之前已打开的 TCP 连接从不继续（约 25.5 秒时结束）；切断 2 秒后断开直连（`close_direct`）时，新连接在切断后 3.1 秒到达对端；切断恢复后，EasyTier 的连接器约 0.1 秒内重建直连 |
 | `cargo deny` | 把 VS 的 clang 加入 `PATH` 后通过（advisories、bans、licenses、sources） |
+| 坐标模式实测（2026-11-01，0.7.0） | 通过 OpenRouter 在合成屏幕上运行 `cargo test … live_openrouter`（1280×720 的对话框，SAVE 位于 560–720 × 400–450）：Qwen3-VL 30B-A3B、Qwen 3.8 27B 与 Qwen 3.5 Flash 在 0–1000 网格上、Gemini 3.5 Flash Lite 在 0–999 上一次就按中 SAVE（各用 5.4k–7k 输入 token）；Qwen 3.8 27B 用像素也按中了，Qwen 3.5 Flash 没有（它把网格上的回答 501,591 当作像素点了四次：71k token），因此“自动”给 Qwen 3.5 及之后的模型网格；Gemini 2.5 Flash Lite 在 0–999 上点偏（点在 268 而不是约 425 的高度）；免费的 Gemma 4 答复 429 |
 
 ## macOS
 

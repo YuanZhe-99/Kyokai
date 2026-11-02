@@ -1551,6 +1551,9 @@ fn coordinate_modes_resolve_by_model() {
         (Auto, true, "Qwen/Qwen2-VL-7B", SmartResize28),
         (Auto, true, "llava-v1.6", Pixels),
         (Auto, true, "qwen3-coder", Pixels),
+        (Auto, true, "qwen/qwen3.5-flash-02-23", Grid1000),
+        (Auto, true, "qwen/qwen3.8-27b", Grid1000),
+        (Auto, true, "qwen/qwen3-32b", Pixels),
         (Grid1000, true, "my-model", Grid1000),
         (SmartResize32, true, "gemini-3", SmartResize32),
         (Auto, false, "gemini-3", Pixels),
@@ -1955,4 +1958,75 @@ fn scope_refuses_other_programs() {
             .to_string()
             .contains("outside the apps")
     );
+}
+
+/// Real `openai-chat` round trips through OpenRouter on the synthetic
+/// screens (nothing touches the real desktop): each model of
+/// `KYOKAI_LIVE_MODELS` (comma-separated) must press SAVE in its own
+/// coordinate unit. Runs with `KYOKAI_LIVE_OPENROUTER=1` and
+/// `OPENROUTER_API_KEY`; `KYOKAI_LIVE_COORDS` fixes the mode (else Auto).
+#[test]
+fn live_openrouter_models_click_where_they_mean() {
+    let (Ok("1"), Ok(key), Ok(models)) = (
+        std::env::var("KYOKAI_LIVE_OPENROUTER").as_deref(),
+        std::env::var("OPENROUTER_API_KEY"),
+        std::env::var("KYOKAI_LIVE_MODELS"),
+    ) else {
+        eprintln!(
+            "skipped: set KYOKAI_LIVE_OPENROUTER=1, OPENROUTER_API_KEY and KYOKAI_LIVE_MODELS"
+        );
+        return;
+    };
+    let coords = std::env::var("KYOKAI_LIVE_COORDS").unwrap_or_default();
+    let mut failed = Vec::new();
+    for (i, model) in models.split(',').map(str::trim).enumerate() {
+        let mut m = json!({"id": model});
+        if !coords.is_empty() {
+            m["coordinates"] = json!(coords);
+        }
+        let rig = rig_with_model(
+            &format!("live-or-{i}"),
+            "https://openrouter.ai/api/v1/chat/completions",
+            m,
+        );
+        rig.ai.set_key("chat", Some(&key)).unwrap();
+        let id = rig
+            .ai
+            .start(
+                "k",
+                "Press the SAVE button in the dialog, then confirm that the file was saved.",
+                None,
+            )
+            .unwrap();
+        let t0 = Instant::now();
+        let t = loop {
+            let t = rig.task(id);
+            if t["state"] == "done"
+                || t["state"] == "failed"
+                || t0.elapsed() > Duration::from_secs(180)
+            {
+                let _ = rig.ai.cancel(id);
+                break t;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        };
+        let pressed = rig.log.lock().unwrap().pressed;
+        let clicks: Vec<_> = t["steps"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|s| s["action"].clone())
+            .collect();
+        eprintln!(
+            "{model}: pressed {pressed}, state {}, tokens {}, error {}, actions {}",
+            t["state"],
+            t["tokens"],
+            t["error"],
+            json!(clicks)
+        );
+        if !pressed {
+            failed.push(model.to_string());
+        }
+    }
+    assert!(failed.is_empty(), "did not press SAVE: {failed:?}");
 }

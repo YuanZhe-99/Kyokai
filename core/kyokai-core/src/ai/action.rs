@@ -359,9 +359,15 @@ impl Coordinates {
         }
         let id = model.to_ascii_lowercase();
         let vl = id.contains("vl");
+        // Qwen is natively multimodal from 3.5 on, with Qwen3-VL's 0–1000
+        // grid (3.5 Flash clicked its grid answer as pixels, 2026-11-01).
+        let qwen_grid = (vl && id.contains("qwen3"))
+            || ["qwen3.5", "qwen3.6", "qwen3.7", "qwen3.8", "qwen3.9"]
+                .iter()
+                .any(|v| id.contains(v));
         if id.contains("gemini") {
             Coordinates::Grid999
-        } else if vl && id.contains("qwen3") {
+        } else if qwen_grid {
             Coordinates::Grid1000
         } else if vl && (id.contains("qwen2.5") || id.contains("qwen2-")) {
             Coordinates::SmartResize28

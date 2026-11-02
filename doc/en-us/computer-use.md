@@ -638,7 +638,7 @@ in Settings › AI):
 
 | Mode | The model is told | Its answers |
 |---|---|---|
-| Automatic (the default) | by the model's id: `gemini` → 0–999; `qwen3` with `vl` → 0–1000; `qwen2.5` or `qwen2-` with `vl` → smart resize 28; anything else → pixels | |
+| Automatic (the default) | by the model's id: `gemini` → 0–999; `qwen3` with `vl`, and Qwen 3.5 and later (`qwen3.5` to `qwen3.9`) → 0–1000; `qwen2.5` or `qwen2-` with `vl` → smart resize 28; anything else → pixels | |
 | `pixels` | the screenshot's size in pixels | as they are |
 | `0-999`, `0-1000` | a grid over the latest full screenshot, whatever its size | mapped onto its pixels (`v × side / 1000`, rounded); a value past the grid stays past the screenshot, so the bounds check refuses it |
 | `smart-resize-28`, `smart-resize-32` | the screenshot's size in pixels, its sides rounded down to multiples of 28 or 32 so that the model's own resize leaves it as it is | as they are |
