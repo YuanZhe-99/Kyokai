@@ -72,6 +72,13 @@ pub struct Model {
     /// The name the provider lists, when it lists one.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub name: String,
+    /// How it gives positions (`openai-chat` sources only).
+    #[serde(default, skip_serializing_if = "is_auto")]
+    pub coordinates: action::Coordinates,
+}
+
+fn is_auto(c: &action::Coordinates) -> bool {
+    *c == action::Coordinates::Auto
 }
 
 /// The secrets-store entry holding a source's API key.
@@ -91,6 +98,7 @@ fn default_sources() -> Vec<Source> {
             models: vec![Model {
                 id: claude::DEFAULT_MODEL.into(),
                 name: String::new(),
+                coordinates: Default::default(),
             }],
         },
         Source {
@@ -102,6 +110,7 @@ fn default_sources() -> Vec<Source> {
             models: vec![Model {
                 id: openai::DEFAULT_MODEL.into(),
                 name: String::new(),
+                coordinates: Default::default(),
             }],
         },
     ]
@@ -385,6 +394,7 @@ fn parse_models(doc: &Value) -> Vec<Model> {
             Some(Model {
                 id: id.to_string(),
                 name: name.chars().take(128).collect(),
+                coordinates: Default::default(),
             })
         })
         .collect();

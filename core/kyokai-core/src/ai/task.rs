@@ -14,7 +14,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::Notify;
 use zeroize::Zeroizing;
 
-use super::action::{self, Action, Key};
+use super::action::{self, Action, Coordinates, Key};
 use super::desktop::{self, Desktop, Frame, Step};
 use super::{
     Client, Conversation, End, Endpoint, Outcome, Protocol, Shot, Source, default_sources, key_name,
@@ -138,6 +138,14 @@ impl Settings {
                     && !m.name.chars().any(char::is_control);
                 if !ok || !models.insert(m.id.as_str()) {
                     return Err(format!("bad or repeated model {:?} in {}", m.id, s.name));
+                }
+                if s.protocol != super::Protocol::OpenaiChat
+                    && !matches!(m.coordinates, Coordinates::Auto | Coordinates::Pixels)
+                {
+                    return Err(format!(
+                        "{} answers in pixels; its models take no other coordinates",
+                        s.name
+                    ));
                 }
             }
         }
@@ -962,10 +970,12 @@ impl From<String> for Stop {
     }
 }
 
-/// The last screenshot the model saw and the frame it came from.
+/// The last screenshot the model saw, the frame it came from, and how the
+/// model gives positions on it.
 struct Seen {
     frame: Frame,
     shot: Shot,
+    coords: Coordinates,
 }
 
 impl Seen {
@@ -985,22 +995,39 @@ async fn capture(desk: &Desk) -> Result<Frame, String> {
         .map_err(|_| "capture failed".to_string())?
 }
 
-/// Takes a screenshot for the model.
-async fn observe(desk: &Desk) -> Result<Seen, String> {
+/// Takes a screenshot for a model that gives positions as `coords` says.
+async fn observe(desk: &Desk, coords: Coordinates) -> Result<Seen, String> {
+    let multiple = coords.multiple();
     let frame = capture(desk).await?;
     let shot = tokio::task::block_in_place(|| {
-        desktop::shot(&frame, [0, 0, frame.width, frame.height], desktop::SHOT_MAX)
+        desktop::shot(
+            &frame,
+            [0, 0, frame.width, frame.height],
+            desktop::SHOT_MAX,
+            multiple,
+        )
     });
-    Ok(Seen { frame, shot })
+    Ok(Seen {
+        frame,
+        shot,
+        coords,
+    })
 }
 
 /// The instructions every task starts with.
-fn system_prompt(width: u32, height: u32) -> String {
-    let os = if cfg!(windows) { "Windows" } else { "macOS" };
+fn system_prompt(seen: &Seen) -> String {
+    let os = if cfg!(windows) {
+        "Windows"
+    } else if cfg!(target_os = "linux") {
+        "Linux"
+    } else {
+        "macOS"
+    };
+    let (width, height) = seen.size();
+    let coordinates = seen.coords.describe(width, height);
     format!(
         "You are operating a {os} computer for its user through the computer tools, on the \
-         screen the user sees. Screenshots are {width}x{height} pixels; coordinates refer to \
-         the latest full screenshot. The user can pause or stop you at any time and may decline \
+         screen the user sees. {coordinates} The user can pause or stop you at any time and may decline \
          an action. Before anything irreversible or sensitive - deleting data, sending messages, \
          purchases, changing security settings, entering passwords - stop and ask the user in \
          text instead of acting. After acting, take a screenshot to check the result. When the \
@@ -1049,6 +1076,12 @@ async fn run(shared: &Arc<Shared>, client: &Client, id: u64) -> Result<Conversat
         (source, key)
     };
     let key = key.ok_or_else(|| "the provider's API key is missing".to_string())?;
+    let coords = source
+        .models
+        .iter()
+        .find(|m| m.id == model)
+        .map_or(Coordinates::Auto, |m| m.coordinates)
+        .resolve(source.protocol == super::Protocol::OpenaiChat, &model);
     let endpoint = Endpoint {
         protocol: source.protocol,
         url: shared.url.clone().unwrap_or_else(|| {
@@ -1073,6 +1106,7 @@ async fn run(shared: &Arc<Shared>, client: &Client, id: u64) -> Result<Conversat
             instruction,
             reply,
             conversation,
+            coords,
         },
     )
     .await;
@@ -1101,6 +1135,8 @@ async fn watch(shared: Arc<Shared>, id: u64, desk: Desk) {
 /// How a runner begins: a new conversation, or a reply to a finished one.
 struct Start {
     model: String,
+    /// How the model gives positions (resolved).
+    coords: Coordinates,
     instruction: String,
     reply: Option<String>,
     conversation: Option<Conversation>,
@@ -1115,7 +1151,7 @@ async fn drive(
     key: &str,
     start: Start,
 ) -> Result<Conversation, Stop> {
-    let mut seen = observe(desk).await?;
+    let mut seen = observe(desk, start.coords).await?;
     let mut conv = match (start.conversation, start.reply) {
         (Some(mut c), Some(text)) => {
             c.follow_up(&text, &seen.shot);
@@ -1124,7 +1160,7 @@ async fn drive(
         _ => Conversation::new(
             endpoint.protocol,
             &start.model,
-            &system_prompt(seen.shot.width, seen.shot.height),
+            &system_prompt(&seen),
             &start.instruction,
             &seen.shot,
         ),
@@ -1167,7 +1203,7 @@ async fn drive(
         // waits for the resume, with a fresh screenshot.
         shared.running(id).await?;
         let last = if conv.wants_final_shot() {
-            seen = observe(desk).await?;
+            seen = observe(desk, seen.coords).await?;
             Some(seen.shot.clone())
         } else {
             None
@@ -1227,6 +1263,12 @@ async fn act(
         _ => u64::MAX,
     };
     for proposed in &turn.actions {
+        // Positions on a grid become screenshot pixels before anything
+        // checks, shows or records them.
+        let proposed = proposed
+            .clone()
+            .map(|a| seen.coords.to_pixels(a, seen.size()));
+        let proposed = &proposed;
         let action_json = proposed.as_ref().map_or(Value::Null, |a| json!(a));
         if failed {
             outcomes.push(Outcome::NotExecuted);
@@ -1385,7 +1427,7 @@ async fn execute(
     seen: &mut Seen,
 ) -> Outcome {
     match action {
-        Action::Screenshot => match observe(desk).await {
+        Action::Screenshot => match observe(desk, seen.coords).await {
             Ok(s) => {
                 *seen = s;
                 Outcome::Image(seen.shot.clone())
@@ -1396,7 +1438,7 @@ async fn execute(
             Ok(frame) => {
                 let r = desktop::frame_region(*region, seen.size(), (frame.width, frame.height));
                 Outcome::Image(tokio::task::block_in_place(|| {
-                    desktop::shot(&frame, r, desktop::SHOT_MAX)
+                    desktop::shot(&frame, r, desktop::SHOT_MAX, 1)
                 }))
             }
             Err(why) => Outcome::Failed(why),
@@ -1404,11 +1446,12 @@ async fn execute(
         Action::CursorPosition => match desk.lock().expect("desktop").cursor() {
             Some((x, y)) => {
                 let (w, h) = seen.size();
-                Outcome::Text(format!(
-                    "X={}, Y={}",
+                let px = (
                     ((x * w as f32) as u32).min(w - 1),
-                    ((y * h as f32) as u32).min(h - 1)
-                ))
+                    ((y * h as f32) as u32).min(h - 1),
+                );
+                let (x, y) = seen.coords.in_model_units(px.0, px.1, (w, h));
+                Outcome::Text(format!("X={x}, Y={y}"))
             }
             None => Outcome::Failed("the cursor position is not known".into()),
         },

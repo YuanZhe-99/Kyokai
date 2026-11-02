@@ -53,9 +53,10 @@ pub enum Step {
 }
 
 /// Scales `region` (`[x0, y0, x1, y1]` in frame pixels) of a frame into a
-/// screenshot that fits `max`.
+/// screenshot that fits `max`, its sides rounded down to `multiple`s (1:
+/// as they come; a smart-resize model's 28 or 32, `Coordinates::multiple`).
 /// Returns: the PNG as base64 and its size.
-pub fn shot(frame: &Frame, region: [u32; 4], max: (u32, u32)) -> Shot {
+pub fn shot(frame: &Frame, region: [u32; 4], max: (u32, u32), multiple: u32) -> Shot {
     let [x0, y0, x1, y1] = region;
     let (rw, rh) = (x1 - x0, y1 - y0);
     let scale = (max.0 as f64 / rw as f64)
@@ -63,6 +64,10 @@ pub fn shot(frame: &Frame, region: [u32; 4], max: (u32, u32)) -> Shot {
         .min(1.0);
     let w = ((rw as f64 * scale).round() as u32).max(1);
     let h = ((rh as f64 * scale).round() as u32).max(1);
+    let (w, h) = (
+        (w / multiple * multiple).max(multiple),
+        (h / multiple * multiple).max(multiple),
+    );
     let mut rgb = Vec::with_capacity((w * h * 3) as usize);
     let stride = frame.width as usize * 4;
     // Each output pixel averages the source pixels it covers.

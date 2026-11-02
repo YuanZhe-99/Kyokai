@@ -358,6 +358,11 @@ type AISource struct {
 type AIModel struct {
 	ID   string `json:"id"`
 	Name string `json:"name,omitempty"`
+	// Coordinates is how the model gives screen positions (`openai-chat`
+	// sources): empty for automatic, "pixels", "0-999", "0-1000",
+	// "smart-resize-28" or "smart-resize-32" (doc/en-us/computer-use.md,
+	// "Coordinates").
+	Coordinates string `json:"coordinates,omitempty"`
 }
 
 // AIModelRef names one model of one source.

@@ -317,3 +317,142 @@ pub fn validate(action: &Action, width: i32, height: i32) -> Result<(), ParseErr
     }
     Ok(())
 }
+
+/// How a model gives positions on the screenshot (doc/en-us/computer-use.md,
+/// "Coordinates"): Kyokai's own unit is screenshot pixels, and a model
+/// trained on a grid is told that grid and its answers are mapped onto the
+/// pixels before they are checked.
+/// Notes: only `openai-chat` sources use anything but pixels; Claude's and
+/// OpenAI's computer tools always answer in pixels.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Coordinates {
+    /// Chosen by the model's id (`Coordinates::for_model`).
+    #[default]
+    Auto,
+    /// Screenshot pixels.
+    Pixels,
+    /// A 0–999 grid over the screenshot (Gemini).
+    #[serde(rename = "0-999")]
+    Grid999,
+    /// A 0–1000 grid over the screenshot (Qwen3-VL).
+    #[serde(rename = "0-1000")]
+    Grid1000,
+    /// Pixels of a screenshot whose sides are multiples of 28 (Qwen2.5-VL's
+    /// smart resize, which then leaves the picture as it is).
+    #[serde(rename = "smart-resize-28")]
+    SmartResize28,
+    /// The same with multiples of 32.
+    #[serde(rename = "smart-resize-32")]
+    SmartResize32,
+}
+
+impl Coordinates {
+    /// What `Auto` means for a model of a source speaking `chat` (true for
+    /// `openai-chat`), by its id; every other mode stays as it is.
+    pub fn resolve(self, chat: bool, model: &str) -> Coordinates {
+        if !chat {
+            return Coordinates::Pixels;
+        }
+        if self != Coordinates::Auto {
+            return self;
+        }
+        let id = model.to_ascii_lowercase();
+        let vl = id.contains("vl");
+        if id.contains("gemini") {
+            Coordinates::Grid999
+        } else if vl && id.contains("qwen3") {
+            Coordinates::Grid1000
+        } else if vl && (id.contains("qwen2.5") || id.contains("qwen2-")) {
+            Coordinates::SmartResize28
+        } else {
+            Coordinates::Pixels
+        }
+    }
+
+    /// The multiple a screenshot's sides are rounded down to (1: none).
+    pub fn multiple(self) -> u32 {
+        match self {
+            Coordinates::SmartResize28 => 28,
+            Coordinates::SmartResize32 => 32,
+            _ => 1,
+        }
+    }
+
+    /// The grid's largest value, for the grid modes.
+    fn grid(self) -> Option<i32> {
+        match self {
+            Coordinates::Grid999 => Some(999),
+            Coordinates::Grid1000 => Some(1000),
+            _ => None,
+        }
+    }
+
+    /// The sentence the prompt and the tools use for a position.
+    pub fn describe(self, width: u32, height: u32) -> String {
+        match self.grid() {
+            Some(max) => format!(
+                "Coordinates are on a 0-{max} grid over the latest full screenshot, whatever its \
+                 size: [0, 0] is its top left corner and [{max}, {max}] its bottom right."
+            ),
+            None => format!(
+                "Screenshots are {width}x{height} pixels; coordinates are pixels of the latest \
+                 full screenshot."
+            ),
+        }
+    }
+
+    /// One value from the model's unit into pixels of a side `size` long.
+    /// Notes: a value past the grid maps past the side, so the bounds check
+    /// refuses it rather than clamping it onto the edge.
+    fn to_pixel(self, v: i32, size: u32) -> i32 {
+        let Some(max) = self.grid() else {
+            return v;
+        };
+        let size = size as i64;
+        let p = ((v as i64 * size + 500).div_euclid(1000)) as i32;
+        if (0..=max).contains(&v) {
+            p.min(size as i32 - 1)
+        } else {
+            p.max(size as i32)
+        }
+    }
+
+    /// A pixel position in the model's unit (the cursor's, reported back).
+    pub fn in_model_units(self, x: u32, y: u32, size: (u32, u32)) -> (u32, u32) {
+        match self.grid() {
+            Some(max) => {
+                let on = |v: u32, side: u32| {
+                    (((v as u64 * 1000 + side as u64 / 2) / side as u64) as u32).min(max as u32)
+                };
+                (on(x, size.0), on(y, size.1))
+            }
+            None => (x, y),
+        }
+    }
+
+    /// The action with its positions mapped from the model's unit into
+    /// pixels of a screenshot of `size`.
+    pub fn to_pixels(self, mut action: Action, size: (u32, u32)) -> Action {
+        if self.grid().is_none() {
+            return action;
+        }
+        let point = |p: &mut Point| {
+            p.x = self.to_pixel(p.x, size.0);
+            p.y = self.to_pixel(p.y, size.1);
+        };
+        match &mut action {
+            Action::Zoom { region } => {
+                region[0] = self.to_pixel(region[0], size.0);
+                region[1] = self.to_pixel(region[1], size.1);
+                region[2] = self.to_pixel(region[2], size.0);
+                region[3] = self.to_pixel(region[3], size.1);
+            }
+            Action::Move { to, .. } => point(to),
+            Action::Click { at: Some(p), .. } | Action::Scroll { at: Some(p), .. } => point(p),
+            Action::Drag { path, .. } => path.iter_mut().for_each(point),
+            _ => {}
+        }
+        action
+    }
+}

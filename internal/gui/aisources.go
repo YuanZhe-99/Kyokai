@@ -337,11 +337,23 @@ func (a *App) aiSourceEditor(c *ui.Context, e *aiEdit, busy bool) {
 					ui.Text(c, friendlyModelName(m.ID, m.Name, f.src.Name))
 					ui.Text(c, m.ID).FontSize(sizeSmall).TextColor(t.TextMuted).Selectable()
 				})
+				if f.src.Protocol == "openai-chat" {
+					labels := coordinateLabels()
+					cur := labels[max(0, slices.Index(aiCoordinates, m.Coordinates))]
+					if ui.Select(c.Key("ai-ed-m-xy-"+m.ID), &cur, labels).Width(240).Disabled(busy).Changed() {
+						f.src.Models = slices.Clone(f.src.Models)
+						f.src.Models[i].Coordinates = aiCoordinates[slices.Index(labels, cur)]
+						a.update(func() { *a.ai.edit = f })
+					}
+				}
 				if ui.Button(c.Key("ai-ed-m-rm-"+m.ID), L.ActionRemove()).Disabled(busy).Clicked() {
 					f.src.Models = slices.Delete(slices.Clone(f.src.Models), i, i+1)
 					a.update(func() { *a.ai.edit = f })
 				}
 			})
+		}
+		if f.src.Protocol == "openai-chat" && len(f.src.Models) > 0 {
+			ui.Text(c, L.AICoordinates()+": "+L.AICoordinatesNote()).FontSize(sizeSmall).TextColor(t.TextMuted)
 		}
 		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
 			keep(ui.TextInput(c.Key("ai-ed-new"), &f.newModel).Placeholder(L.AIModelID()).Grow(1).Disabled(busy))
@@ -382,6 +394,15 @@ func (a *App) aiSourceEditor(c *ui.Context, e *aiEdit, busy bool) {
 			}
 		})
 	})
+}
+
+// aiCoordinates are the engine's coordinate modes in the order the source
+// editor offers them; "" is automatic (by the model's name).
+var aiCoordinates = []string{"", "pixels", "0-999", "0-1000", "smart-resize-28", "smart-resize-32"}
+
+// coordinateLabels names aiCoordinates for people, in the same order.
+func coordinateLabels() []string {
+	return []string{L.AICoordAuto(), L.AICoordPixels(), L.AICoordGrid999(), L.AICoordGrid1000(), L.AICoordResize28(), L.AICoordResize32()}
 }
 
 func addModel(models []localapi.AIModel, m localapi.AIModel) []localapi.AIModel {

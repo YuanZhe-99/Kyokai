@@ -31,6 +31,8 @@ and Latin words only where it helps readability.
 | Device ID | 设备 ID |
 | temporary password | 临时密码 |
 | permanent password | 固定密码 |
+| coordinate mode | 坐标模式 |
+| Screen positions (a model's coordinate mode) | 屏幕位置 |
 | trusted device | 受信任设备 |
 | friendly name | 别名 |
 | No privileges / Follow Kyokai / Background service (run modes) | 免授权 / 随界面 / 后台服务 |

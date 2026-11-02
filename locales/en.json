@@ -58,6 +58,14 @@
     }
   },
   "AIChatNote": "Needs a model that accepts images and calls tools; Kyokai offers its actions as tools.",
+  "AICoordAuto": "Automatic",
+  "AICoordGrid1000": "Grid 0–1000 (Qwen3-VL)",
+  "AICoordGrid999": "Grid 0–999 (Gemini)",
+  "AICoordPixels": "Pixels",
+  "AICoordResize28": "Pixels in steps of 28 (Qwen2.5-VL)",
+  "AICoordResize32": "Pixels in steps of 32",
+  "AICoordinates": "Screen positions",
+  "AICoordinatesNote": "How the model names a point on the screen; Automatic picks by its name.",
   "AICustom": "Custom",
   "AIDoClick": "Click at {x}, {y}",
   "@AIDoClick": {

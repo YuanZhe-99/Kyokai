@@ -165,10 +165,11 @@ fn image(b64: &str) -> Value {
 }
 
 /// Kyokai's actions as function tools, named and shaped like the members of
-/// Claude's computer toolset (coordinates in screenshot pixels).
+/// Claude's computer toolset (positions in the unit the system prompt
+/// gives, `Coordinates::describe`).
 fn tools() -> Value {
     let point = json!({"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2,
-        "description": "[x, y] in screenshot pixels"});
+        "description": "[x, y] on the latest full screenshot, in the unit the instructions give"});
     let modifiers = json!({"type": "string", "description": "keys held during the action, such as \"shift\" or \"ctrl+alt\""});
     let at = |what: &str| {
         json!({"type": "object", "properties": {"coordinate": point, "text": modifiers},
@@ -187,7 +188,7 @@ fn tools() -> Value {
             "View a region of the screen at full resolution.",
             json!({"type": "object",
             "properties": {"region": {"type": "array", "items": {"type": "integer"}, "minItems": 4, "maxItems": 4,
-                "description": "[x0, y0, x1, y1] in screenshot pixels"}}, "required": ["region"]})
+                "description": "[x0, y0, x1, y1] on the latest full screenshot, in the unit the instructions give"}}, "required": ["region"]})
         ),
         f(
             "left_click",

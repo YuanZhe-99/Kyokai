@@ -267,6 +267,86 @@ func (msgs Messages) AIChatNote() string {
 	return Catalog.Format(msgs.locale, "AIChatNote", nil)
 }
 
+// AICoordAuto says "Automatic"
+// in the language the app shows.
+func AICoordAuto() string { return In(i18n.Locale()).AICoordAuto() }
+
+// AICoordAuto says "Automatic"
+// in the language of msgs.
+func (msgs Messages) AICoordAuto() string {
+	return Catalog.Format(msgs.locale, "AICoordAuto", nil)
+}
+
+// AICoordGrid1000 says "Grid 0–1000 (Qwen3-VL)"
+// in the language the app shows.
+func AICoordGrid1000() string { return In(i18n.Locale()).AICoordGrid1000() }
+
+// AICoordGrid1000 says "Grid 0–1000 (Qwen3-VL)"
+// in the language of msgs.
+func (msgs Messages) AICoordGrid1000() string {
+	return Catalog.Format(msgs.locale, "AICoordGrid1000", nil)
+}
+
+// AICoordGrid999 says "Grid 0–999 (Gemini)"
+// in the language the app shows.
+func AICoordGrid999() string { return In(i18n.Locale()).AICoordGrid999() }
+
+// AICoordGrid999 says "Grid 0–999 (Gemini)"
+// in the language of msgs.
+func (msgs Messages) AICoordGrid999() string {
+	return Catalog.Format(msgs.locale, "AICoordGrid999", nil)
+}
+
+// AICoordPixels says "Pixels"
+// in the language the app shows.
+func AICoordPixels() string { return In(i18n.Locale()).AICoordPixels() }
+
+// AICoordPixels says "Pixels"
+// in the language of msgs.
+func (msgs Messages) AICoordPixels() string {
+	return Catalog.Format(msgs.locale, "AICoordPixels", nil)
+}
+
+// AICoordResize28 says "Pixels in steps of 28 (Qwen2.5-VL)"
+// in the language the app shows.
+func AICoordResize28() string { return In(i18n.Locale()).AICoordResize28() }
+
+// AICoordResize28 says "Pixels in steps of 28 (Qwen2.5-VL)"
+// in the language of msgs.
+func (msgs Messages) AICoordResize28() string {
+	return Catalog.Format(msgs.locale, "AICoordResize28", nil)
+}
+
+// AICoordResize32 says "Pixels in steps of 32"
+// in the language the app shows.
+func AICoordResize32() string { return In(i18n.Locale()).AICoordResize32() }
+
+// AICoordResize32 says "Pixels in steps of 32"
+// in the language of msgs.
+func (msgs Messages) AICoordResize32() string {
+	return Catalog.Format(msgs.locale, "AICoordResize32", nil)
+}
+
+// AICoordinates says "Screen positions"
+// in the language the app shows.
+func AICoordinates() string { return In(i18n.Locale()).AICoordinates() }
+
+// AICoordinates says "Screen positions"
+// in the language of msgs.
+func (msgs Messages) AICoordinates() string {
+	return Catalog.Format(msgs.locale, "AICoordinates", nil)
+}
+
+// AICoordinatesNote says "How the model names a point on the screen; Automatic picks by its name."
+// in the language the app shows.
+func AICoordinatesNote() string { return In(i18n.Locale()).AICoordinatesNote() }
+
+// AICoordinatesNote says "How the model names a point on the screen; Automatic picks by its name."
+// in the language of msgs.
+func (msgs Messages) AICoordinatesNote() string {
+	return Catalog.Format(msgs.locale, "AICoordinatesNote", nil)
+}
+
 // AICustom says "Custom"
 // in the language the app shows.
 func AICustom() string { return In(i18n.Locale()).AICustom() }

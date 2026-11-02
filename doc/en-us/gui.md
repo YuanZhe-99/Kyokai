@@ -286,8 +286,9 @@ when `SCREENSHOT_DIR` is set.
   choice and Add provider beside the title, each source by its letter with its template, model
   count and key state (key stored, no key, none needed), Edit and Remove; the editor, under its
   row (a new one's on top), has the name, the address (a template's sites by name), the format
-  for Custom, a write-only key, the models with Remove, an id to add and List models (a saved
-  source); Other devices, which leads to Access (not in protected mode); AI sessions: Send a
+  for Custom, a write-only key, the models with Remove (and, for an `openai-chat` source, each one's Screen positions:
+  its coordinate mode, [computer-use.md](computer-use.md#coordinates)), an id to add and List
+  models (a saved source); Other devices, which leads to Access (not in protected mode); AI sessions: Send a
   prompt with (Enter, Shift+Enter or the send button only; `send_key` in `gui.json`) and Recent
   tasks with Clear history (this computer's history and the sessions kept here, but those open
   in a pane). The tasks themselves are AI sessions' panes ([AI sessions](#ai-sessions)). While

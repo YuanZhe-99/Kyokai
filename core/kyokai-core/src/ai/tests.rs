@@ -7,7 +7,9 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use super::action::{Action, Button, Key, ParseError, Point, normalize_key, parse_combo, validate};
+use super::action::{
+    Action, Button, Coordinates, Key, ParseError, Point, normalize_key, parse_combo, validate,
+};
 use super::desktop::{self, Frame, Step};
 use super::fake::*;
 use super::task::{Pause, State, testing};
@@ -798,16 +800,21 @@ fn screenshots_fit_the_model_and_regions_map_back() {
         width: 2732,
         height: 1536,
     };
-    let s = desktop::shot(&frame, [0, 0, 2732, 1536], desktop::SHOT_MAX);
+    let s = desktop::shot(&frame, [0, 0, 2732, 1536], desktop::SHOT_MAX, 1);
     assert_eq!((s.width, s.height), (1366, 768));
-    let s = desktop::shot(&frame, [100, 100, 200, 150], desktop::SHOT_MAX);
+    let s = desktop::shot(&frame, [100, 100, 200, 150], desktop::SHOT_MAX, 1);
     assert_eq!((s.width, s.height), (100, 50), "a zoom is never scaled up");
     assert_eq!(
         desktop::frame_region([683, 384, 1366, 768], (1366, 768), (2732, 1536)),
         [1366, 768, 2732, 1536]
     );
     let small = screens::screen(false).frame();
-    let s = desktop::shot(&small, [0, 0, small.width, small.height], desktop::SHOT_MAX);
+    let s = desktop::shot(
+        &small,
+        [0, 0, small.width, small.height],
+        desktop::SHOT_MAX,
+        1,
+    );
     assert_eq!((s.width, s.height), (1280, 720));
     use base64::Engine;
     let png = base64::engine::general_purpose::STANDARD
@@ -1260,7 +1267,7 @@ fn real_screen_capture_and_hooks() {
         frame.bgra.chunks(4).any(|p| p[..3] != [0, 0, 0]),
         "not a black picture"
     );
-    let s = desktop::shot(&frame, [0, 0, w, h], desktop::SHOT_MAX);
+    let s = desktop::shot(&frame, [0, 0, w, h], desktop::SHOT_MAX, 1);
     assert!(s.width <= desktop::SHOT_MAX.0 && s.height <= desktop::SHOT_MAX.1);
     let (x, y) = screen.cursor().unwrap();
     assert!((0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y));
@@ -1512,4 +1519,213 @@ fn sleep_pauses_the_task() {
     let t = rig.state(id, "paused");
     assert_eq!(t["paused"], "sleep");
     assert_eq!(rig.clicks(), 0);
+}
+
+/// Each mode as it is chosen: by the model's id on `openai-chat` sources,
+/// always pixels on Claude's and OpenAI's own tools.
+#[test]
+fn coordinate_modes_resolve_by_model() {
+    use Coordinates::*;
+    let cases = [
+        (Auto, true, "google/gemini-3-flash", Grid999),
+        (Auto, true, "gemini-2.5-computer-use", Grid999),
+        (Auto, true, "qwen/qwen3-vl-235b-a22b-instruct", Grid1000),
+        (Auto, true, "Qwen3.8-VL-27B", Grid1000),
+        (Auto, true, "qwen2.5-vl-72b-instruct", SmartResize28),
+        (Auto, true, "Qwen/Qwen2-VL-7B", SmartResize28),
+        (Auto, true, "llava-v1.6", Pixels),
+        (Auto, true, "qwen3-coder", Pixels),
+        (Grid1000, true, "my-model", Grid1000),
+        (SmartResize32, true, "gemini-3", SmartResize32),
+        (Auto, false, "gemini-3", Pixels),
+        (Grid999, false, "claude-opus-5-5", Pixels),
+    ];
+    for (set, chat, model, want) in cases {
+        assert_eq!(set.resolve(chat, model), want, "{set:?} {chat} {model}");
+    }
+}
+
+/// A grid answer lands where the model means: an answer on 0–999 used as
+/// pixels would land at about 73 % across and 130 % down of the real point.
+#[test]
+fn grid_positions_become_screenshot_pixels() {
+    let size = (1366, 768);
+    let click = |x, y| Action::Click {
+        at: Some(p(x, y)),
+        button: Button::Left,
+        count: 1,
+        modifiers: vec![],
+    };
+    // (mode, the model's point, the pixel it means)
+    let cases = [
+        (Coordinates::Grid999, (500, 500), (683, 384)),
+        (Coordinates::Grid999, (0, 0), (0, 0)),
+        (Coordinates::Grid999, (999, 999), (1365, 767)),
+        (Coordinates::Grid1000, (1000, 1000), (1365, 767)),
+        (Coordinates::Grid1000, (250, 750), (342, 576)),
+        (Coordinates::Pixels, (500, 500), (500, 500)),
+        (Coordinates::SmartResize28, (700, 300), (700, 300)),
+    ];
+    for (mode, (x, y), (px, py)) in cases {
+        assert_eq!(
+            mode.to_pixels(click(x, y), size),
+            click(px, py),
+            "{mode:?} {x},{y}"
+        );
+        assert!(validate(&mode.to_pixels(click(x, y), size), 1366, 768).is_ok());
+    }
+    // Past the grid is refused, not clamped onto the edge.
+    for (mode, x) in [
+        (Coordinates::Grid999, 1000),
+        (Coordinates::Grid1000, 1001),
+        (Coordinates::Grid999, -1),
+    ] {
+        let a = mode.to_pixels(click(x, 10), size);
+        assert!(validate(&a, 1366, 768).is_err(), "{mode:?} {x}: {a:?}");
+    }
+    // Every position of an action is mapped.
+    let drag = Action::Drag {
+        path: vec![p(0, 0), p(500, 500)],
+        modifiers: vec![],
+    };
+    assert_eq!(
+        Coordinates::Grid1000.to_pixels(drag, size),
+        Action::Drag {
+            path: vec![p(0, 0), p(683, 384)],
+            modifiers: vec![]
+        }
+    );
+    let zoom = Action::Zoom {
+        region: [0, 0, 500, 1000],
+    };
+    assert_eq!(
+        Coordinates::Grid1000.to_pixels(zoom, size),
+        Action::Zoom {
+            region: [0, 0, 683, 767]
+        }
+    );
+    // The cursor goes back in the model's unit.
+    assert_eq!(
+        Coordinates::Grid1000.in_model_units(683, 384, size),
+        (500, 500)
+    );
+    assert_eq!(
+        Coordinates::Grid999.in_model_units(1365, 767, size),
+        (999, 999)
+    );
+    assert_eq!(
+        Coordinates::Pixels.in_model_units(683, 384, size),
+        (683, 384)
+    );
+}
+
+/// A smart-resize model gets a screenshot its own resize leaves as it is.
+#[test]
+fn smart_resize_screenshots_have_multiple_sides() {
+    let frame = Frame {
+        bgra: [10, 20, 30, 255].repeat(2732 * 1536),
+        width: 2732,
+        height: 1536,
+    };
+    for (multiple, want) in [(1, (1366, 768)), (28, (1344, 756)), (32, (1344, 768))] {
+        let s = desktop::shot(&frame, [0, 0, 2732, 1536], desktop::SHOT_MAX, multiple);
+        assert_eq!((s.width, s.height), want, "multiple {multiple}");
+    }
+}
+
+/// A grid mode belongs to `openai-chat` sources only.
+#[test]
+fn grid_coordinates_need_a_chat_source() {
+    let rig = rig("coords-native", "claude", "http://127.0.0.1:9");
+    let mut s = rig.ai.settings();
+    s["sources"][0]["models"][0]["coordinates"] = json!("0-999");
+    assert!(
+        rig.ai
+            .set_settings(&json!({"sources": s["sources"]}))
+            .is_err()
+    );
+    let rig = rig_with_model(
+        "coords-chat",
+        "http://127.0.0.1:9",
+        json!({"id": "m", "coordinates": "0-1000"}),
+    );
+    assert_eq!(
+        rig.ai.settings()["sources"][2]["models"][0]["coordinates"],
+        "0-1000"
+    );
+}
+
+/// A rig whose `openai-chat` source has this one model.
+fn rig_with_model(name: &str, url: &str, model: Value) -> Rig {
+    let rig = rig(name, "chat", url);
+    let mut s = rig.ai.settings();
+    let id = model["id"].clone();
+    s["sources"][2]["models"] = json!([model]);
+    rig.ai
+        .set_settings(&json!({"sources": s["sources"], "model": {"source": "chat", "id": id}}))
+        .unwrap();
+    rig
+}
+
+/// Gemini (0–999), Qwen3-VL (0–1000) and Qwen2.5-VL (smart resize 28)
+/// press the test screen's SAVE button (`screens::BUTTON`, 560–720 ×
+/// 400–450 of 1280×720) by their own units, through `openai-chat`.
+#[test]
+fn grid_models_click_where_they_mean() {
+    let call = |args: &str| {
+        json!({"choices": [{"finish_reason": "tool_calls", "message": {"role": "assistant",
+        "content": "", "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "left_click", "arguments": args}}]}}]})
+    };
+    let done = json!({"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": "Saved."}}]});
+    // (model, its answer for the button's middle, the sentence its prompt has)
+    let cases = [
+        (
+            "google/gemini-3-flash",
+            "{\"coordinate\": [500, 590]}",
+            "0-999 grid",
+        ),
+        (
+            "qwen/qwen3-vl-32b-instruct",
+            "{\"coordinate\": [500, 590]}",
+            "0-1000 grid",
+        ),
+        (
+            "qwen2.5-vl-72b-instruct",
+            "{\"coordinate\": [630, 413]}",
+            "Screenshots are 1260x700 pixels",
+        ),
+    ];
+    for (model, answer, prompt) in cases {
+        let server = server(vec![(0, call(answer)), (0, done.clone())]);
+        let rig = rig_with_model(
+            &format!("grid-{}", model.len()),
+            &server.url,
+            json!({"id": model}),
+        );
+        let id = rig.ai.start("k", "Save the file", None).unwrap();
+        rig.state(id, "done");
+        assert!(rig.log.lock().unwrap().pressed, "{model} pressed SAVE");
+        let first = &server.requests.lock().unwrap()[0].1;
+        assert!(
+            first["messages"][0]["content"]
+                .as_str()
+                .unwrap()
+                .contains(prompt),
+            "{model}: {}",
+            first["messages"][0]["content"]
+        );
+    }
+    // The same answer taken as pixels misses the button.
+    let server = server(vec![(0, call("{\"coordinate\": [500, 590]}")), (0, done)]);
+    let rig = rig_with_model(
+        "grid-pixels",
+        &server.url,
+        json!({"id": "m", "coordinates": "pixels"}),
+    );
+    let id = rig.ai.start("k", "Save the file", None).unwrap();
+    rig.state(id, "done");
+    assert!(
+        !rig.log.lock().unwrap().pressed,
+        "as pixels it lands elsewhere"
+    );
 }

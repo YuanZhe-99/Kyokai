@@ -628,6 +628,25 @@ Requests go over HTTPS (rustls with the ring provider and the system's roots), f
 most each, retried three times on overload and server errors. Errors shown to the user never
 contain the key.
 
+### Coordinates
+
+Kyokai's own unit is screenshot pixels. Claude's and OpenAI's computer tools always answer in
+them; a model reached through `openai-chat` may have been trained on another unit, and an answer on
+a 0–999 grid taken as pixels passes the bounds check and clicks elsewhere. Each model of an
+`openai-chat` source therefore has a coordinate mode (`coordinates` in `ai.json`, chosen per model
+in Settings › AI):
+
+| Mode | The model is told | Its answers |
+|---|---|---|
+| Automatic (the default) | by the model's id: `gemini` → 0–999; `qwen3` with `vl` → 0–1000; `qwen2.5` or `qwen2-` with `vl` → smart resize 28; anything else → pixels | |
+| `pixels` | the screenshot's size in pixels | as they are |
+| `0-999`, `0-1000` | a grid over the latest full screenshot, whatever its size | mapped onto its pixels (`v × side / 1000`, rounded); a value past the grid stays past the screenshot, so the bounds check refuses it |
+| `smart-resize-28`, `smart-resize-32` | the screenshot's size in pixels, its sides rounded down to multiples of 28 or 32 so that the model's own resize leaves it as it is | as they are |
+
+The mapping happens before anything checks, asks for approval, runs or records an action, so the
+approval and the history show screenshot pixels; the cursor's position goes back in the model's
+unit. The system prompt says which unit is used, and the tools' descriptions refer to it.
+
 ### Screenshots and actions
 
 The host captures its primary display with RustDesk's GDI capturer at the display's pixel size
