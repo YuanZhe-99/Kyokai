@@ -435,15 +435,18 @@ mod tests {
         sigchld_on_stack();
         child.wait().await.unwrap();
         // SAFETY: reads the current action into a zeroed struct.
-        let flags = unsafe {
+        let action = unsafe {
             let mut action: libc::sigaction = std::mem::zeroed();
             assert_eq!(
                 libc::sigaction(libc::SIGCHLD, std::ptr::null(), &mut action),
                 0
             );
-            action.sa_flags
+            action
         };
-        assert_ne!(flags & libc::SA_ONSTACK, 0);
+        // Where tokio reaps children without a handler (pidfd on Linux),
+        // there is none to fix.
+        let handled = ![libc::SIG_DFL, libc::SIG_IGN].contains(&action.sa_sigaction);
+        assert!(!handled || action.sa_flags & libc::SA_ONSTACK != 0);
     }
 
     /// Kyokai's own keys are refused wherever they sit; the person's other
