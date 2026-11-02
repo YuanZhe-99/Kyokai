@@ -88,6 +88,9 @@ pub enum ToSidecar {
         outcome: WireOutcome,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         shot: Option<WireShot>,
+        /// The host user approved the turn's safety checks (`turn.flagged`).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        acknowledged: bool,
     },
 }
 
@@ -101,12 +104,17 @@ pub enum FromSidecar {
     /// Asks for the provider key for the next request.
     #[serde(rename = "key?")]
     KeyRequest,
-    /// One proposed action, in the computer toolset's member shape
-    /// (`left_click` with `coordinate`, …), which the engine parses itself.
+    /// One proposed action, which the engine parses itself: a computer
+    /// toolset member (`left_click` with `coordinate`, …), or OpenAI's
+    /// action object under `name: "openai"`. `last` marks the turn's last
+    /// action: its result carries the screen after the batch when the
+    /// provider answers with one.
     Act {
         id: String,
         name: String,
         input: Value,
+        #[serde(default)]
+        last: bool,
     },
     /// A model turn: its text, progress notes, the provider's safety notes
     /// and the tokens it took.
@@ -241,6 +249,7 @@ mod tests {
                     id: "c1".into(),
                     outcome: WireOutcome::Failed { error: "no".into() },
                     shot: None,
+                    acknowledged: false,
                 },
                 json!({"t": "result", "id": "c1", "outcome": {"kind": "failed", "error": "no"}}),
             ),
@@ -257,8 +266,9 @@ mod tests {
                     id: "c1".into(),
                     name: "left_click".into(),
                     input: json!({"coordinate": [1, 2]}),
+                    last: true,
                 },
-                json!({"t": "act", "id": "c1", "name": "left_click", "input": {"coordinate": [1, 2]}}),
+                json!({"t": "act", "id": "c1", "name": "left_click", "input": {"coordinate": [1, 2]}, "last": true}),
             ),
             (FromSidecar::Aborted, json!({"t": "aborted"})),
         ];

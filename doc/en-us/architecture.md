@@ -197,8 +197,8 @@ another version.
 | `hello` | sidecar → engine | `v` |
 | `start` | engine → sidecar | `task`, `protocol`, `url`, `model`, `coordinates`, `system`, `instruction`, `shot` (`{b64, width, height}`) |
 | `key?` / `key` | sidecar → engine / back | — / `key` (null: none) |
-| `act` | sidecar → engine | `id`, `name`, `input` (a member call) |
-| `result` | engine → sidecar | `id`, `outcome` (`{kind: ok \| image \| text \| failed \| not-executed \| paused, …}`), `shot?` |
+| `act` | sidecar → engine | `id`, `name`, `input` (a computer toolset member call, or OpenAI's action object under `name: "openai"`), `last` (the turn's last action: its result carries the screen after the batch when the provider answers with one; the engine answers the actions after a turn's first failure "not executed") |
+| `result` | engine → sidecar | `id`, `outcome` (`{kind: ok \| image \| text \| failed \| not-executed \| paused, …}`), `shot?`, `acknowledged` (the host user approved the turn's safety checks) |
 | `turn` | sidecar → engine | `text`, `progress`, `flagged`, `usage` (`{input, cached, output}`) |
 | `steer`, `follow-up` | engine → sidecar | `text` (`follow-up`: and `shot`) |
 | `abort` | engine → sidecar | — |
