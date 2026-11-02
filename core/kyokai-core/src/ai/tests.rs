@@ -1840,11 +1840,7 @@ fn live_openrouter_models_click_where_they_mean() {
         if !coords.is_empty() {
             m["coordinates"] = json!(coords);
         }
-        let rig = rig_with_model(
-            &format!("live-or-{i}"),
-            "https://openrouter.ai/api/v1",
-            m,
-        );
+        let rig = rig_with_model(&format!("live-or-{i}"), "https://openrouter.ai/api/v1", m);
         rig.ai.set_key("chat", Some(&key)).unwrap();
         let id = rig
             .ai

@@ -164,7 +164,7 @@ jobs:
           bun-version-file: sidecar/package.json
       - name: Rust tests
         run: |
-          (cd sidecar && bun install --frozen-lockfile)
+          bun install --cwd sidecar --frozen-lockfile
           cargo test --manifest-path core/Cargo.toml --workspace
 
   test:
