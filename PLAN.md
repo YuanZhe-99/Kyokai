@@ -122,7 +122,7 @@ The AI update.
 
 Each lands with its docs and tests; the Rust loop stays until step 4 replaces it.
 
-1. **The sidecar protocol** (architecture.md, "The agent sidecar"): versioned JSON lines on the
+1. Done (2026-11-01): **the sidecar protocol** (architecture.md, "The agent sidecar"; `ai::sidecar`): versioned JSON lines on the
    sidecar's stdin and stdout — `hello {v}`, `start {task, model, protocol, coordinates, system,
    instruction, shot}`, `steer`, `follow-up`, `abort`, `key?`/`key` (per request, never kept),
    `act {id, action}`/`result {id, outcome, shot?}`, `turn {text, progress, usage}`, `done`,

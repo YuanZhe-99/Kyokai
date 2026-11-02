@@ -103,6 +103,29 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
   （`localapi.IsOwner`）：所有者或助手的操作者还可以用引擎的密钥签名（`keys.sign`）并读取保存的服务密码（`credentials.get`）；
   助手的 `kyokai` 组不可以。
 
+## agent sidecar
+
+从 0.7.0 起，AI 任务的循环运行在 `kyokai-agent` 中，这是一个基于 Pi 的 sidecar（PLAN.md，“Pi in the
+product”），由引擎为每个任务启动。sidecar 负责循环与发给服务商的请求；引擎负责一切会产生作用的事：用自己的
+解析器解析每个提议的操作（computer 工具集的成员，`ai::claude::parse_member`），检查它，运用批准策略与输入租约，
+执行它并答复。服务商密钥每次只为一个请求交给 sidecar，从不写到任何地方。双方在 sidecar 的标准输入与输出上
+以 JSON 行通信（`ai::sidecar`），协议 1；sidecar 先发 `hello`，引擎拒绝其他版本。
+
+| 消息 | 方向 | 字段 |
+|---|---|---|
+| `hello` | sidecar → 引擎 | `v` |
+| `start` | 引擎 → sidecar | `task`、`protocol`、`url`、`model`、`coordinates`、`system`、`instruction`、`shot`（`{b64, width, height}`） |
+| `key?` / `key` | sidecar → 引擎 / 返回 | — / `key`（null：没有） |
+| `act` | sidecar → 引擎 | `id`、`name`、`input`（一次成员调用） |
+| `result` | 引擎 → sidecar | `id`、`outcome`（`{kind: ok \| image \| text \| failed \| not-executed \| paused, …}`）、`shot?` |
+| `turn` | sidecar → 引擎 | `text`、`progress`、`flagged`、`usage`（`{input, cached, output}`） |
+| `steer`、`follow-up` | 引擎 → sidecar | `text`（`follow-up` 另有 `shot`） |
+| `abort` | 引擎 → sidecar | — |
+| `done`、`failed`、`aborted` | sidecar → 引擎 | `text` / `error` / — |
+
+sidecar 发来的一行最长 1 MiB；无法解析、未知或过长的行，或管道关闭，都会以说明原因的方式结束任务。引擎的管道
+关闭时 sidecar 随之结束，因此引擎不在后没有任何任务会自行恢复。
+
 ## 状态
 
 | 路径 | 内容 |

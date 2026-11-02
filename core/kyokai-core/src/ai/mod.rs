@@ -12,6 +12,7 @@ mod openai;
 pub mod policy;
 #[cfg(test)]
 mod screens;
+pub mod sidecar;
 mod task;
 #[cfg(test)]
 mod tests;

@@ -181,6 +181,33 @@ runtime statically, so nothing is resolved through the search path.
   operator, may also sign with the engine's keys (`keys.sign`) and read a saved service password
   (`credentials.get`); the helper's `kyokai` group may not.
 
+## The agent sidecar
+
+From 0.7.0 an AI task's loop runs in `kyokai-agent`, a sidecar built on Pi (PLAN.md, "Pi in the
+product"), which the engine starts per task. The sidecar owns the loop and the provider requests;
+the engine owns everything that acts: it parses each proposed action with its own parser (the
+computer toolset's members, `ai::claude::parse_member`), checks it, applies the approval policy
+and the input lease, runs it, and answers. The provider key goes to the sidecar for one request
+at a time and is never written anywhere. They speak JSON lines on the sidecar's standard input
+and output (`ai::sidecar`), protocol 1; the sidecar says `hello` first and the engine refuses
+another version.
+
+| Message | Direction | Fields |
+|---|---|---|
+| `hello` | sidecar → engine | `v` |
+| `start` | engine → sidecar | `task`, `protocol`, `url`, `model`, `coordinates`, `system`, `instruction`, `shot` (`{b64, width, height}`) |
+| `key?` / `key` | sidecar → engine / back | — / `key` (null: none) |
+| `act` | sidecar → engine | `id`, `name`, `input` (a member call) |
+| `result` | engine → sidecar | `id`, `outcome` (`{kind: ok \| image \| text \| failed \| not-executed \| paused, …}`), `shot?` |
+| `turn` | sidecar → engine | `text`, `progress`, `flagged`, `usage` (`{input, cached, output}`) |
+| `steer`, `follow-up` | engine → sidecar | `text` (`follow-up`: and `shot`) |
+| `abort` | engine → sidecar | — |
+| `done`, `failed`, `aborted` | sidecar → engine | `text` / `error` / — |
+
+A line from the sidecar is at most 1 MiB; an unreadable, unknown or overlong line, or the pipe
+closing, ends the task with a reason. The sidecar ends when the engine's pipe closes, so nothing
+resumes after the engine is gone.
+
 ## State
 
 | Path | Holds |
