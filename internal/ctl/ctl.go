@@ -134,7 +134,7 @@ var requests = map[string]localapi.RequestType{
 	"ai-pause": localapi.RequestAITaskPause, "ai-resume": localapi.RequestAITaskResume, "ai-cancel": localapi.RequestAITaskCancel,
 	"ai-approve": localapi.RequestAITaskDecide, "ai-decline": localapi.RequestAITaskDecide,
 	"ai-clear": localapi.RequestAIHistoryClear, "ai-stop": localapi.RequestAIStop,
-	"ai-rename": localapi.RequestAITaskRename, "ai-export": localapi.RequestAITaskExport,
+	"ai-rename": localapi.RequestAITaskRename, "ai-export": localapi.RequestAITaskExport, "ai-fork": localapi.RequestAITaskFork,
 	"ai-scope": localapi.RequestAIScopeSet, "ai-apps": localapi.RequestAIApps,
 }
 
@@ -181,7 +181,7 @@ func run(args []string) error {
 	device := fs.String("device", "", "connect, forget, remove: the Device ID")
 	want := fs.String("want", localapi.PermViewScreen+","+localapi.PermControlInput, "connect: the permissions to ask for")
 	grant := fs.String("grant", "", "allow: the permissions to grant (default: all asked for); password-grants: what a correct password grants without asking (empty: none)")
-	id := fs.Uint64("id", 0, "close, allow, deny, screenshot, watch: the session or request id; ai-reply, ai-pause, ai-resume, ai-cancel, ai-approve, ai-decline, ai-rename, ai-export: the task")
+	id := fs.Uint64("id", 0, "close, allow, deny, screenshot, watch: the session or request id; ai-reply, ai-pause, ai-resume, ai-cancel, ai-approve, ai-decline, ai-rename, ai-export, ai-fork: the task")
 	key := fs.String("key", "", "untrust: the device key")
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
 	file := fs.String("file", "", "backup, restore: the backup file")
@@ -210,6 +210,7 @@ func run(args []string) error {
 	approval := fs.String("approval", "", "ai-set: auto or every-action")
 	text := fs.String("text", "", "ai-start, ai-reply, watch: what the AI should do (watch: on the host)")
 	apps := fs.String("apps", "", "ai-scope: the programs the AI may work in, as ai-apps names them (comma-separated; empty: the whole desktop)")
+	run := fs.Int("run", 0, "ai-fork: the run to begin after, 1 first as ai-tasks lists them (none: the latest, a clone)")
 	out := fs.String("out", "", "screenshot: the PNG file to write; ai-export: the Markdown file to write (none: standard output)")
 	if err := parse(fs, args[1:]); err != nil {
 		return err
@@ -384,6 +385,12 @@ func run(args []string) error {
 		req.AITask = &localapi.AITaskRequest{Text: *text}
 	case "ai-rename":
 		req.AITask = &localapi.AITaskRequest{Name: *name}
+	case "ai-fork":
+		req.AITask = &localapi.AITaskRequest{}
+		if *run > 0 {
+			r := *run - 1
+			req.AITask.Run = &r
+		}
 	case "ai-approve", "ai-decline":
 		req.AITask = &localapi.AITaskRequest{Approve: cmd == "ai-approve"}
 	case "reset-identity":
@@ -468,7 +475,7 @@ func run(args []string) error {
 			return err
 		}
 		fmt.Println("backup written to", *file)
-	case resp.ID != 0 && cmd == "ai-start":
+	case resp.ID != 0 && (cmd == "ai-start" || cmd == "ai-fork"):
 		fmt.Println("task", resp.ID)
 	case resp.ID != 0:
 		fmt.Println("session", resp.ID)
@@ -515,6 +522,9 @@ func printTask(t localapi.AITask) {
 	}
 	if t.Resumable {
 		fmt.Println("  a reply continues it")
+	}
+	for i, r := range t.Runs {
+		fmt.Printf("  run %d  %q → %q\n", i+1, r.Message, r.Text)
 	}
 	if t.Paused != "" {
 		fmt.Println("  paused:", t.Paused)

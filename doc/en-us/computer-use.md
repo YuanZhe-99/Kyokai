@@ -799,7 +799,10 @@ that finished, the sidecar hands the engine the conversation as it stands, which
 only the last response's id, the provider holding the rest) — in memory only while No logs is on.
 A reply continues the task in its sidecar while that lives, and otherwise, after the engine
 restarted, in a new one that resumes the kept conversation with the reply and the screen as it is
-now (`resumable` says a reply can); clearing the history, or a task leaving it, deletes its
+now (`resumable` says a reply can). A task can be forked after any of its finished runs, or cloned as
+it is (`ai.task.fork`): a new finished task with the runs, steps and answer up to there and the
+conversation as it stood then (the kept file notes where each run left it: the history's length,
+or OpenAI's response id), which a reply continues; the original is untouched. Clearing the history, or a task leaving it, deletes its
 conversation. A task takes at most 200 runs.
 
 ## macOS

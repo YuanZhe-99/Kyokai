@@ -109,6 +109,7 @@ const (
 	RequestAITaskCancel         RequestType = "ai.task.cancel"             // cancel a task (Request.ID)
 	RequestAITaskDecide         RequestType = "ai.task.decide"             // answer an approval (Request.ID, Request.AITask.Approve)
 	RequestAITaskRename         RequestType = "ai.task.rename"             // name a task, or give it back its instruction's name (Request.ID, Request.AITask.Name)
+	RequestAITaskFork           RequestType = "ai.task.fork"               // a new finished task from another's conversation after one of its runs (Request.ID, Request.AITask.Run; none: as it is now) (→ Response.ID)
 	RequestAITaskExport         RequestType = "ai.task.export"             // a task as Markdown, never a screenshot (Request.ID; → Response.Document)
 	RequestAITasks              RequestType = "ai.tasks"                   // every task, newest first
 	RequestAIHistoryClear       RequestType = "ai.history.clear"           // forget the finished tasks
@@ -398,6 +399,9 @@ type AITaskRequest struct {
 	Approve     bool   `json:"approve,omitempty"`
 	// Name is ai.task.rename's (empty: the instruction names the task).
 	Name string `json:"name,omitempty"`
+	// Run is the run ai.task.fork begins after (0 first; nil: the latest,
+	// a clone).
+	Run *int `json:"run,omitempty"`
 }
 
 // AITask is one AI task on this host.

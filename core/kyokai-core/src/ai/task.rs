@@ -302,15 +302,58 @@ pub struct Run {
     pub at: u64,
 }
 
-/// Where a task's kept conversation is (`FromSidecar::State`).
+/// Where a task's kept conversation is.
 #[derive(Default)]
 enum Kept {
     #[default]
     None,
     /// In memory only (No logs, or the file could not be written).
-    Memory(Value),
+    Memory(Conversation),
     /// In `ai-conversations/<id>.json`.
     Disk,
+}
+
+/// A task's kept conversation: the latest one the sidecar handed over
+/// (`FromSidecar::State`) and where each finished run left it, so a fork
+/// can begin after any of them.
+#[derive(Clone, Serialize, Deserialize)]
+struct Conversation {
+    state: Value,
+    #[serde(default)]
+    cuts: Vec<Cut>,
+}
+
+/// Where a finished run left the conversation: the length of the
+/// provider's history (Claude, chat), or OpenAI's response id.
+#[derive(Clone, Serialize, Deserialize)]
+struct Cut {
+    run: usize,
+    at: Value,
+}
+
+impl Conversation {
+    /// The conversation as it was when `run` finished; None when that run
+    /// did not finish or the record does not fit.
+    fn at(&self, run: usize) -> Option<Value> {
+        let cut = self.cuts.iter().find(|c| c.run == run)?;
+        match &cut.at {
+            Value::Number(n) => {
+                let messages = self.state["messages"].as_array()?;
+                let n = usize::try_from(n.as_u64()?).ok()?;
+                Some(json!({"messages": messages.get(..n)?}))
+            }
+            Value::String(_) => Some(json!({"previous": cut.at})),
+            _ => None,
+        }
+    }
+}
+
+/// Where a conversation stands: its history's length, or OpenAI's last
+/// response id.
+fn cut_of(state: &Value) -> Value {
+    state["messages"]
+        .as_array()
+        .map_or_else(|| state["previous"].clone(), |m| json!(m.len()))
 }
 
 /// One AI task.
@@ -899,6 +942,72 @@ impl Ai {
         saved
     }
 
+    /// Starts a new finished task from another's conversation as it was
+    /// after run `run` (a fork), or as it is now (a clone, None): the runs,
+    /// steps and answer up to there, and the kept conversation a reply
+    /// continues; the original is untouched.
+    /// Returns: the new task's id.
+    /// Side effects: saves the history and the new task's conversation.
+    pub fn fork(&self, id: u64, run: Option<usize>) -> Result<u64, String> {
+        let (new, conversation) = {
+            let mut tasks = self.shared.tasks.lock().expect("tasks");
+            let t = tasks.iter().find(|t| t.id == id).ok_or("no such task")?;
+            if !t.state.finished() {
+                return Err("the task is still working".into());
+            }
+            let c = self
+                .shared
+                .conversation(t)
+                .ok_or("this task's conversation was not kept")?;
+            let run = run
+                .or_else(|| c.cuts.last().map(|x| x.run))
+                .ok_or("this task never finished a run")?;
+            let state = c.at(run).ok_or("the task did not finish that run")?;
+            let end = t
+                .runs
+                .get(run + 1)
+                .map_or(t.steps.len(), |r| r.first)
+                .min(t.steps.len());
+            let new = tasks.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+            let now = now();
+            let copy = Task {
+                id: new,
+                key: String::new(),
+                instruction: t.instruction.clone(),
+                origin: None,
+                source: t.source.clone(),
+                model: t.model.clone(),
+                state: State::Done,
+                paused: None,
+                error: None,
+                text: t.runs.get(run).map(|r| r.text.clone()).unwrap_or_default(),
+                progress: Vec::new(),
+                steps: t.steps[..end].to_vec(),
+                approval: None,
+                created: now,
+                updated: now,
+                lease: 0,
+                since: None,
+                decision: None,
+                refusals: 0,
+                tokens: Default::default(),
+                name: t.name.clone(),
+                runs: t.runs.iter().take(run + 1).cloned().collect(),
+                kept: Kept::None,
+                reply: None,
+                conversation: None,
+            };
+            let cuts = c.cuts.into_iter().filter(|x| x.run <= run).collect();
+            tasks.push(copy);
+            trim_history(&self.shared.dir, &mut tasks);
+            save_history(&self.shared.dir, &tasks)?;
+            (new, Conversation { state, cuts })
+        };
+        let kept = self.shared.store(new, conversation);
+        self.shared.edit(new, |t| t.kept = kept);
+        Ok(new)
+    }
+
     /// A task as Markdown for the user to keep: its name, model and runs,
     /// each with its message, steps and answer; never a screenshot.
     pub fn export(&self, id: u64) -> Result<String, String> {
@@ -1084,38 +1193,61 @@ impl Shared {
                     run.text = text;
                 }
             }
-            let over = tasks.iter().filter(|t| t.state.finished()).count();
-            if over > MAX_HISTORY {
-                let mut drop = over - MAX_HISTORY;
-                let dir = &self.dir;
-                tasks.retain(|t| {
-                    let gone = drop > 0 && t.state.finished();
-                    drop -= gone as usize;
-                    if gone {
-                        forget_conversation(dir, t.id);
-                    }
-                    !gone
-                });
-            }
+            trim_history(&self.dir, &mut tasks);
             let _ = save_history(&self.dir, &tasks);
         }
         self.changed.notify_waiters();
     }
 
-    /// Keeps a task's conversation as the sidecar handed it over: on disk,
-    /// or only in memory while No logs is on.
-    fn keep(&self, id: u64, state: Value) {
+    /// A task's kept conversation, read from disk when it is there.
+    fn conversation(&self, t: &Task) -> Option<Conversation> {
+        match &t.kept {
+            Kept::None => None,
+            Kept::Memory(c) => Some(c.clone()),
+            Kept::Disk => read_json(&conversation_path(&self.dir, t.id)),
+        }
+    }
+
+    /// Stores a task's kept conversation: on disk, or only in memory while
+    /// No logs is on.
+    /// Returns: where it is now.
+    fn store(&self, id: u64, c: Conversation) -> Kept {
         let memory = self.secrets.get(crate::access::NO_HISTORY_NAME).is_some();
         let path = conversation_path(&self.dir, id);
-        let kept = if !memory
+        if !memory
             && std::fs::create_dir_all(self.dir.join(CONVERSATIONS)).is_ok()
-            && write_json(&path, &state).is_ok()
+            && write_json(&path, &c).is_ok()
         {
             Kept::Disk
         } else {
             let _ = std::fs::remove_file(&path);
-            Kept::Memory(state)
+            Kept::Memory(c)
+        }
+    }
+
+    /// Keeps a task's conversation as the sidecar handed it over after its
+    /// latest run, noting where that run left it.
+    fn keep(&self, id: u64, state: Value) {
+        let Some((old, run)) = ({
+            let tasks = self.tasks.lock().expect("tasks");
+            tasks
+                .iter()
+                .find(|t| t.id == id)
+                .map(|t| (self.conversation(t), t.runs.len().saturating_sub(1)))
+        }) else {
+            return;
         };
+        let mut c = old.unwrap_or(Conversation {
+            state: Value::Null,
+            cuts: Vec::new(),
+        });
+        c.cuts.retain(|x| x.run < run);
+        c.cuts.push(Cut {
+            run,
+            at: cut_of(&state),
+        });
+        c.state = state;
+        let kept = self.store(id, c);
         self.edit(id, |t| t.kept = kept);
     }
 
@@ -1273,11 +1405,7 @@ pub fn open_screen() -> Result<Box<dyn Desktop>, String> {
 async fn run(shared: &Arc<Shared>, id: u64) -> Result<Agent, Stop> {
     let (source, model, instruction, reply, conversation, kept) = shared
         .edit(id, |t| {
-            let kept = match &t.kept {
-                Kept::None => None,
-                Kept::Memory(v) => Some(v.clone()),
-                Kept::Disk => read_json(&conversation_path(&shared.dir, id)),
-            };
+            let kept = shared.conversation(t).map(|c| c.state);
             (
                 t.source.clone(),
                 t.model.clone(),
@@ -1856,6 +1984,21 @@ fn record(t: &Task) -> Value {
         t.state == State::Done && (t.conversation.is_some() || !matches!(t.kept, Kept::None))
     );
     v
+}
+
+/// Drops the oldest finished tasks past `MAX_HISTORY`, with their kept
+/// conversations.
+fn trim_history(dir: &Path, tasks: &mut Vec<Task>) {
+    let over = tasks.iter().filter(|t| t.state.finished()).count();
+    let mut drop = over.saturating_sub(MAX_HISTORY);
+    tasks.retain(|t| {
+        let gone = drop > 0 && t.state.finished();
+        drop -= gone as usize;
+        if gone {
+            forget_conversation(dir, t.id);
+        }
+        !gone
+    });
 }
 
 /// Where a task's kept conversation is written.

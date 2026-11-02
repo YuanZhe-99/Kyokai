@@ -1704,6 +1704,18 @@ fn call(input: &[u8]) -> Result<Value, String> {
             let name = req.params["name"].as_str().ok_or("bad name")?.to_owned();
             try_core(|c| c.ctx.ai.rename(id, &name).map(|()| json!({})))
         }
+        "ai.task.fork" => {
+            let id = req.params["id"].as_u64().ok_or("bad task id")?;
+            let run = match &req.params["run"] {
+                Value::Null => None,
+                v => Some(
+                    v.as_u64()
+                        .and_then(|r| usize::try_from(r).ok())
+                        .ok_or("bad run")?,
+                ),
+            };
+            try_core(|c| Ok(json!({"id": c.ctx.ai.fork(id, run)?})))
+        }
         "ai.task.export" => {
             let id = req.params["id"].as_u64().ok_or("bad task id")?;
             try_core(|c| c.ctx.ai.export(id).map(|m| json!({"markdown": m})))

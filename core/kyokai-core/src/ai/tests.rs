@@ -1449,6 +1449,57 @@ fn a_reply_after_a_restart_continues_the_kept_conversation() {
     );
 }
 
+/// A fork begins after an earlier run, with that run's steps and answer
+/// and the conversation as it stood then; a clone copies it as it is; the
+/// original is untouched.
+#[test]
+fn forks_and_clones_continue_from_where_they_were_taken() {
+    let call = json!({"choices": [{"finish_reason": "tool_calls", "message": {"role": "assistant", "content": "",
+        "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "left_click", "arguments": "{\"coordinate\": [640, 425]}"}}]}}]});
+    let server = server(vec![
+        (0, call),
+        (0, chat_said("Opened the file.")),
+        (0, chat_said("Saved it.")),
+        (0, chat_said("Closed it instead.")),
+    ]);
+    let rig = rig("fork", "chat", &server.url);
+    let id = rig.ai.start("k1", "Open the file", None).unwrap();
+    rig.state(id, "done");
+    rig.ai.reply(id, "Now save it").unwrap();
+    rig.until(id, "the reply's answer", |t| t["text"] == "Saved it.");
+
+    let fork = rig.ai.fork(id, Some(0)).unwrap();
+    let f = rig.task(fork);
+    assert_eq!(f["state"], "done");
+    assert_eq!(f["text"], "Opened the file.");
+    assert_eq!(f["runs"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        f["steps"].as_array().unwrap().len(),
+        1,
+        "the first run's click"
+    );
+    assert_eq!(f["resumable"], true);
+    rig.ai.reply(fork, "Close it").unwrap();
+    rig.until(fork, "the fork's answer", |t| {
+        t["text"] == "Closed it instead."
+    });
+    let requests = server.requests.lock().unwrap();
+    let sent = serde_json::to_string(&requests[3].1["messages"]).unwrap();
+    assert!(sent.contains("Opened the file.") && sent.contains("Close it"));
+    assert!(
+        !sent.contains("Now save it"),
+        "the fork never saw the later run"
+    );
+    drop(requests);
+
+    let clone = rig.ai.fork(id, None).unwrap();
+    let c = rig.task(clone);
+    assert_eq!(c["runs"].as_array().unwrap().len(), 2);
+    assert_eq!(c["text"], "Saved it.");
+    assert_eq!(rig.task(id)["runs"].as_array().unwrap().len(), 2);
+    assert!(rig.ai.fork(id, Some(5)).is_err(), "no such run");
+}
+
 /// Under No logs a kept conversation stays in memory: a reply continues it
 /// while the engine runs, nothing is written, and after a restart the task
 /// can no longer continue.
