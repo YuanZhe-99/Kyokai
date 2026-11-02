@@ -81,8 +81,9 @@
 （`{document, passphrase}`）、`identity.reset`、`device.set_name`（`{name?, publish?}`：二者之一或都有；"" 表示使用电脑的名称，`publish` 让它在登录之前就显示在网络中；状态中带有 `name`、`publish_name` 与本机的 `about`）、`access.settings`（`{password_mode?: temporary|permanent|both|none, without_asking?, by_address?: {on, ranges}, service_ports?: {ssh?, rdp?, vnc?}, nanokvm?: {on, video, serial}}`；`by_address` 立即启动或停止监听；`service_ports` 是隧道到达的回环端口，`nanokvm` 是提供的 NanoKVM USB，[remote-services.md](remote-services.md)）、`nanokvm.devices`（→ `{video, serial, suggested}`：本机的采集卡与 USB 串口，以及看起来属于同一台 NanoKVM USB 的那一对）、`permission.request`（`{name}`：macOS 上的 `screen`、`accessibility`、`input-monitoring` 或 `keychain` → `{granted}`；`keychain` 会重新打开存储，打开后重建核心；在助手中由代理请求）、`store.start_over`（已保存的存储无法解锁：把它移到一旁，在新存储上重建核心 → `{kept}`）、`agent.restart`（助手的会话代理退出，由其监管者再次启动）、`store.export`（`{passphrase}` → `{document}`）、`store.import`（`{document, passphrase, replace?}`：整个存储，版本 2；带有历史记录的另一个身份只有在 `replace` 时才会被替换）、`store.clear`（`{to}`：切换运行方式时使用；留下 `moved.json`，[run-modes.md](run-modes.md)）、`sessions.close_controllers`（结束本引擎的控制端会话）、`host.serve`（`{serve}`：`all`、`unattended` 或 `none`，由引擎依据运行方式设定）、`capture.show`（`{show}`：采集中是否显示 Kyokai 的窗口，依“安全”中的“在屏幕采集中隐藏 Kyokai”；macOS 的采集即时跟随；助手会转告其代理；在界面说明之前保持隐藏）、`input.kyokai`（`{allow}`：人的远程输入能否到达 Kyokai 的窗口，依同一个开关，界面与 `capture.show` 一起发送；每个会话按事件判断，AI 永远不能，有确认或批准在等待时也不能，并随事件告知助手的代理；在界面说明之前拒绝；旧引擎会拒绝这个请求并继续保护）、`kyokai.shown`（`{shown}`：Kyokai 的某个窗口显示在 Wayland 桌面上，而 Wayland 既不能把它排除在画面之外，也不能让输入避开它，因此在它显示期间画面保持不动，除非关闭了“对采集隐藏 Kyokai”，否则不注入任何远程或 AI 输入；其他系统忽略）、`sound.source`（`{source}`：共享的声音，"" 为本机正在播放的声音，否则为输入设备的 id；正在进行的流随之切换；助手会转告其代理）、`sound.devices`（→ `[{id, name}]`，输入设备；助手模式下为代理的），以及 AI 任务的方法（[computer-use.md](computer-use.md)）：`ai.settings.get`、
 `ai.settings.set`（`{sources?, model?: {source, id}, approval?}`；答复按来源附上 `keys`）、`ai.key.set`（`{source, key}`，null 表示移除；密钥从不返回）、
 `ai.models.list`（`{source}` → `{models}`，向来源查询）、`ai.scope.set`（`{apps}`，null 表示整个桌面；答复为带 `scope` 的设置）、`ai.apps`（→ 当前在屏幕上有窗口的程序）、
-`ai.task.start`（`{key, instruction}` → `{id}`；key 使其幂等）、`ai.task.reply`（`{id, text}`）、`ai.task.pause`、`ai.task.resume`、
-`ai.task.cancel`（`{id}`）、`ai.task.decide`（`{id, approve}`）、`ai.tasks`（最新的在前）、`ai.draft.set`（`{text}`：下一条指令的共享草稿）、`ai.history.clear`、`ai.stop`（取消所有任务）。
+`ai.task.start`（`{key, instruction, choice?: {model?, thinking?}}` → `{id}`；key 使其幂等）、`ai.task.reply`（`{id, text, choice?}`）、`ai.task.pause`、`ai.task.resume`、
+`ai.task.cancel`（`{id}`）、`ai.task.decide`（`{id, approve}`）、`ai.task.rename`（`{id, name}`）、`ai.task.fork`（`{id, run?}` → `{id}`）、
+`ai.task.compact`（`{id}`）、`ai.task.export`（`{id}` → `{markdown}`）、`ai.tasks`（最新的在前）、`ai.draft.set`（`{text}`：下一条指令的共享草稿）、`ai.history.clear`、`ai.stop`（取消所有任务）。
 状态中还包含 `permanent_password`、`password_mode` 与 `without_asking`（访问设置）、`service_ports`（实际使用的 `{ssh, rdp, vnc}`）、`nanokvm`（`{on, video, serial}`）、`by_address`（`{on, ranges, port, error}`：地址直接连接，[networking.md](networking.md)）、`keeps_history`、`protected`、`ai_draft`（共享草稿）、`permissions`（macOS 上为 `{screen, accessibility, input_monitoring, keychain}`，在助手中为代理的权限；其他系统为 null）、`password_grants`（正确密码无需确认即可授予的权限；用 `access.password_grants` `{grants}` 设置）、`requests`（待处理的被控端确认，各带 `password`：控制端是否给出了密码或密钥，以及 `key`：该密钥的名称）、`sessions`（隧道的带有其 `service`；控制端的带有其 `route`）、`recent`（连接过的被控端，最新的在前，各带其 `routes`（`{address, added, last_ok, rtt_ms, kbps, fails, probe}`）、`network_route`、`prefer`（手动选择的路径）、被控端声明的 `features`，以及 `saved`：为它保存的每种登录方式一个标志）、`watching` 与 `watchers`（本机发起的与针对本机的状态查看）以及
 `ai`（进行中的任务及其状态与来源，或 null）。Go 绑定把传给核心的响应槽放在堆内存中，从不放在
 goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows 上以绝对路径、
@@ -130,6 +131,19 @@ product”），由引擎为每个任务启动。sidecar 负责循环与发给�
 sidecar 发来的一行最长 4 MiB；无法解析、未知或过长的行，或管道关闭，都会以说明原因的方式结束任务。引擎的管道
 关闭时 sidecar 随之结束，因此引擎不在后没有任何任务会自行恢复。
 
+### AI 任务中各部分归谁
+
+| 部分 | 归属 | 说明 |
+|---|---|---|
+| 操作的格式及其解析器 | 引擎（`ai::action`、`ai::claude::parse_member`、`ai::openai::parse_action`） | 无论 sidecar 发来什么，每个提议都在这里解析 |
+| 执行器 | 引擎（`ai::task::act_one`、`ai::desktop`） | 唯一会产生作用的部分：在任务的租约下一次执行一个操作 |
+| 策略 | 引擎（`ai::policy::decide`） | 根据操作、其目标的事实、范围与类别表决定运行、询问、拒绝或暂停（[computer-use.md](computer-use.md#批准)） |
+| 观察 | 引擎（`ai::task::observe`、`desktop::dim_outside`） | 截屏、范围之外的变暗、截图的尺寸与网格 |
+| 任务及其租约与批准 | 引擎（`ai::task::Ai`） | 各状态、暂停与接管、紧急停止 |
+| 记录与保留的对话 | 引擎（`ai-tasks.json`、`ai-conversations/`） | 各次运行、步骤、token；不含截图的对话，“不保留日志”时只在内存中 |
+| 循环与发给服务商的请求 | sidecar（`kyokai-agent`：Pi 与 `conversation.ts`） | 只追加的请求；可在上面带版本的协议之后替换 |
+| 密钥 | 引擎的机密存储 | 每次只为一个请求交给 sidecar |
+
 ## 状态
 
 | 路径 | 内容 |
@@ -141,6 +155,7 @@ sidecar 发来的一行最长 4 MiB；无法解析、未知或过长的行，或
 | `gui.json` | 界面偏好设置 |
 | `ai.json` | AI 设置：服务商、模型、批准方式（不含密钥） |
 | `ai-tasks.json` | 已结束的 AI 任务，不含截图 |
+| `ai-conversations/<id>.json` | 任务保留的对话（截图换成一条说明），回复从它继续；“不保留日志”时不写入 |
 | `logs/engine.log` | 引擎日志，不含机密：引擎自己的记录、核心的记录（其 stderr）与崩溃跟踪 |
 | `logs/gui-crash.log` | 界面的 stderr：它的崩溃跟踪、它所加载核心中的 panic、以错误结束的引擎 |
 

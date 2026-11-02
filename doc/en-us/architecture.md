@@ -121,8 +121,10 @@ an input device's id; running streams switch; the helper passes it to its agent)
 `ai.settings.get`, `ai.settings.set` (`{sources?, model?: {source, id}, approval?}`; the answer adds
 `keys` per source), `ai.key.set` (`{source, key}`, null removes it; a key is never returned),
 `ai.models.list` (`{source}` → `{models}`, asks the source), `ai.scope.set` (`{apps}`, null for the whole desktop; the answer is the settings with `scope`), `ai.apps` (→ the programs with windows on the screen), `ai.task.start`
-(`{key, instruction}` → `{id}`; the key makes it idempotent), `ai.task.reply` (`{id, text}`),
+(`{key, instruction, choice?: {model?, thinking?}}` → `{id}`; the key makes it idempotent), `ai.task.reply` (`{id, text, choice?}`),
 `ai.task.pause`, `ai.task.resume`, `ai.task.cancel` (`{id}`), `ai.task.decide` (`{id, approve}`),
+`ai.task.rename` (`{id, name}`), `ai.task.fork` (`{id, run?}` → `{id}`), `ai.task.compact` (`{id}`),
+`ai.task.export` (`{id}` → `{markdown}`),
 `ai.tasks` (newest first), `ai.draft.set` (`{text}`: the shared draft of the next instruction), `ai.history.clear`, `ai.stop` (cancels every task). The status also
 carries `permanent_password`, `permissions` (macOS: `{screen, accessibility, input_monitoring, keychain}`, the agent's in the helper; null elsewhere),
 `password_mode` and `without_asking` (the access settings), `service_ports` (`{ssh, rdp, vnc}` in effect), `nanokvm` (`{on, video, serial}`), `by_address` (`{on, ranges, port, error}`: connections by address, [networking.md](networking.md)), `keeps_history`, `protected`, `ai_draft` (the shared draft),
@@ -212,6 +214,19 @@ A line from the sidecar is at most 4 MiB; an unreadable, unknown or overlong lin
 closing, ends the task with a reason. The sidecar ends when the engine's pipe closes, so nothing
 resumes after the engine is gone.
 
+### Who owns what in an AI task
+
+| Part | Owner | Notes |
+|---|---|---|
+| The action schema and its parsers | the engine (`ai::action`, `ai::claude::parse_member`, `ai::openai::parse_action`) | every proposal is parsed here, whatever the sidecar sent |
+| The executor | the engine (`ai::task::act_one`, `ai::desktop`) | the only thing that acts: one action at a time under the task's lease |
+| The policy | the engine (`ai::policy::decide`) | run, ask, refuse or pause, from the action, its target's facts, the scope and the class table ([computer-use.md](computer-use.md#approvals)) |
+| Observation | the engine (`ai::task::observe`, `desktop::dim_outside`) | capture, the scope's dimming, the screenshot's size and grid |
+| The task, its lease and approvals | the engine (`ai::task::Ai`) | states, pause and take-over, the emergency stop |
+| The record and the kept conversation | the engine (`ai-tasks.json`, `ai-conversations/`) | runs, steps, tokens; the conversation without screenshots, in memory only under No logs |
+| The loop and the provider requests | the sidecar (`kyokai-agent`: Pi and `conversation.ts`) | append-only requests; replaceable behind the versioned protocol above |
+| Keys | the engine's secrets store | handed to the sidecar for one request at a time |
+
 ## State
 
 | Path | Holds |
@@ -223,6 +238,7 @@ resumes after the engine is gone.
 | `gui.json` | GUI preferences |
 | `ai.json` | AI settings: provider, models, approval policy (no key) |
 | `ai-tasks.json` | Finished AI tasks, without screenshots |
+| `ai-conversations/<id>.json` | A task's kept conversation (screenshots replaced by a note), which a reply continues; not written under No logs |
 | `logs/engine.log` | Engine log, without secrets: the engine's lines, the core's (its stderr) and a crash trace |
 | `logs/gui-crash.log` | The GUI's stderr: its crash trace, a panic in its copy of the core, an engine that ended with an error |
 
