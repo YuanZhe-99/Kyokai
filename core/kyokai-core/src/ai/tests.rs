@@ -1376,6 +1376,108 @@ fn chat_task_clicks_and_finishes() {
     assert_eq!(answer.last().unwrap()["content"][1]["type"], "image_url");
 }
 
+fn chat_said(text: &str) -> Value {
+    json!({"choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": text}}]})
+}
+
+/// A reply after the engine restarted continues the kept conversation: a
+/// new sidecar resumes it with every screenshot replaced by a note, and the
+/// task keeps each run, its name and its export.
+#[test]
+fn a_reply_after_a_restart_continues_the_kept_conversation() {
+    let server = server(vec![
+        (0, chat_said("Opened the file.")),
+        (0, chat_said("Saved it.")),
+    ]);
+    let mut rig = rig("resume", "chat", &server.url);
+    let id = rig.ai.start("k1", "Open the file", None).unwrap();
+    assert_eq!(rig.state(id, "done")["resumable"], true);
+    let kept = rig.dir.join("ai-conversations").join(format!("{id}.json"));
+    let saved = std::fs::read_to_string(&kept).expect("the conversation is kept");
+    assert!(saved.contains("Opened the file.") && saved.contains("not kept"));
+    assert!(!saved.contains("base64"), "no screenshot is kept");
+
+    rig.restart(&server.url);
+    assert_eq!(rig.task(id)["resumable"], true);
+    rig.ai.reply(id, "Now save it").unwrap();
+    let t = rig.until(id, "the reply's answer", |t| t["text"] == "Saved it.");
+    let runs: Vec<(&str, &str)> = t["runs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| (r["message"].as_str().unwrap(), r["text"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        runs,
+        [
+            ("Open the file", "Opened the file."),
+            ("Now save it", "Saved it.")
+        ]
+    );
+    let requests = server.requests.lock().unwrap();
+    let sent = requests[1].1["messages"].as_array().unwrap();
+    assert_eq!(sent[1]["content"][0]["text"], "Open the file");
+    assert_eq!(
+        sent[1]["content"][1]["type"], "text",
+        "the old screenshot is a note"
+    );
+    assert_eq!(sent[2]["content"], "Opened the file.");
+    let reply = sent.last().unwrap();
+    assert_eq!(reply["content"][0]["text"], "Now save it");
+    assert_eq!(
+        reply["content"][1]["type"], "image_url",
+        "with the screen now"
+    );
+    drop(requests);
+
+    rig.ai.rename(id, "Saving").unwrap();
+    assert_eq!(rig.task(id)["name"], "Saving");
+    let md = rig.ai.export(id).unwrap();
+    assert!(md.starts_with("# Saving\n"), "{md}");
+    assert!(md.contains("## You\n\nNow save it") && md.contains("## AI\n\nSaved it."));
+    rig.ai.rename(id, " ").unwrap();
+    assert!(
+        rig.task(id).get("name").is_none(),
+        "an empty name gives it back"
+    );
+    assert!(rig.ai.rename(id, &"x".repeat(201)).is_err());
+
+    rig.ai.clear().unwrap();
+    assert!(
+        !kept.exists(),
+        "clearing the history forgets the conversation"
+    );
+}
+
+/// Under No logs a kept conversation stays in memory: a reply continues it
+/// while the engine runs, nothing is written, and after a restart the task
+/// can no longer continue.
+#[test]
+fn no_logs_keeps_the_conversation_in_memory() {
+    let server = server(vec![
+        (0, chat_said("Opened the file.")),
+        (0, chat_said("Saved it.")),
+    ]);
+    let mut rig = rig("resume-nolog", "chat", &server.url);
+    rig.secrets
+        .set(crate::access::NO_HISTORY_NAME, "true")
+        .unwrap();
+    let id = rig.ai.start("k1", "Open the file", None).unwrap();
+    rig.state(id, "done");
+    assert!(
+        !rig.dir
+            .join("ai-conversations")
+            .join(format!("{id}.json"))
+            .exists()
+    );
+    rig.ai.reply(id, "Now save it").unwrap();
+    rig.until(id, "the reply's answer", |t| t["text"] == "Saved it.");
+
+    rig.restart(&server.url);
+    assert_eq!(rig.task(id)["resumable"], false);
+    assert!(rig.ai.reply(id, "And close it").is_err());
+}
+
 /// Sleep pauses the task in progress, so it never acts on a screen from
 /// before the sleep.
 #[test]

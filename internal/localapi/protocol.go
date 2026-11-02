@@ -108,6 +108,8 @@ const (
 	RequestAITaskResume         RequestType = "ai.task.resume"             // resume a paused task (Request.ID)
 	RequestAITaskCancel         RequestType = "ai.task.cancel"             // cancel a task (Request.ID)
 	RequestAITaskDecide         RequestType = "ai.task.decide"             // answer an approval (Request.ID, Request.AITask.Approve)
+	RequestAITaskRename         RequestType = "ai.task.rename"             // name a task, or give it back its instruction's name (Request.ID, Request.AITask.Name)
+	RequestAITaskExport         RequestType = "ai.task.export"             // a task as Markdown, never a screenshot (Request.ID; → Response.Document)
 	RequestAITasks              RequestType = "ai.tasks"                   // every task, newest first
 	RequestAIHistoryClear       RequestType = "ai.history.clear"           // forget the finished tasks
 	RequestAIStop               RequestType = "ai.stop"                    // the emergency stop: cancel every task
@@ -394,6 +396,8 @@ type AITaskRequest struct {
 	Instruction string `json:"instruction,omitempty"`
 	Text        string `json:"text,omitempty"`
 	Approve     bool   `json:"approve,omitempty"`
+	// Name is ai.task.rename's (empty: the instruction names the task).
+	Name string `json:"name,omitempty"`
 }
 
 // AITask is one AI task on this host.
@@ -420,6 +424,23 @@ type AITask struct {
 	Approval *AIApproval `json:"approval,omitempty"`
 	Created  int64       `json:"created"` // Unix seconds
 	Updated  int64       `json:"updated"`
+	// Name is the name the user gave the task; empty while its
+	// instruction names it.
+	Name string `json:"name,omitempty"`
+	// Runs are its instruction and each reply, with the model's answer to
+	// each (none from a host before 0.7.0).
+	Runs []AIRun `json:"runs,omitempty"`
+	// Resumable means a reply can continue it: its conversation is kept.
+	Resumable bool `json:"resumable,omitempty"`
+}
+
+// AIRun is one run of a task: the message that began it and the answer.
+type AIRun struct {
+	Message string `json:"message"`
+	Text    string `json:"text"`
+	// First is the index of its first step in the task's steps.
+	First int   `json:"first"`
+	At    int64 `json:"at"`
 }
 
 // AIStep is one action of a task and what became of it.

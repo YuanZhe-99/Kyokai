@@ -147,6 +147,23 @@ Each lands with its docs and tests; the Rust loop stays until step 4 replaces it
    automatically, model and thinking choices, for the host user and controllers under their
    permissions; the history kept without screenshots (memory only under No logs). Done when:
    table tests of the session store and a view test of each command.
+   A session is the engine's task (its conversation, continued by replies), which the GUI's AI
+   session pane already follows; in that order, each shippable:
+   - 5a. Done (2026-11-02; computer-use.md, "History and settings"; left: a live run on the VM): **Durable conversations**: the sidecar hands the engine its conversation after each run
+     (the provider's own request, screenshots replaced by a note; for OpenAI the last response
+     id), the engine keeps it per task (in memory only under No logs) with each run's message
+     and answer, and a reply after the engine restarted resumes it with a fresh screenshot.
+     Sidecar protocol v2. Tasks get a name (rename) and an export (Markdown, no screenshots).
+   - 5b. **Fork and clone**: a new task from another's conversation as it was after any of its
+     runs (fork) or as it is (clone).
+   - 5c. **Compact**: by hand, and automatically before a reply once the last request passed a
+     threshold: the model summarises, the conversation restarts from the summary and a fresh
+     screenshot.
+   - 5d. **Model and thinking per task**: chosen at start, changeable between runs within one
+     protocol (a different protocol forks through a compaction).
+   - 5e. **The GUI and the CLI**: the pane's menu (Rename, Fork, Clone, Export, Compact), the
+     model and thinking chips; `kyokai ai-*` commands for each.
+   - 5f. **Controllers**: the same under `run-ai-task`, behind a feature token on the wire.
 ### Research behind 0.7.0 (2026-10-23)
 
 Two research rounds (agent backend and computer-use options; approvals, tokens and window scope)

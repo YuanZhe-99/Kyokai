@@ -158,7 +158,7 @@ change with `logs.set`) then:
   Device ID with a new key is no longer flagged and Recent starts empty. The choice itself
   (`no_history`) is kept, so the next start keeps none either;
 - keep the GUI's AI sessions (`ai_sessions` in `gui.json`: which device each ran on, and when)
-  only in memory.
+  and the AI tasks' kept conversations (`ai-conversations`) only in memory.
 
 Saved passwords, names given to devices, per-device viewer settings and this computer's AI task
 history (`ai-tasks.json`) are the user's own settings and stay. Reports the system writes itself (macOS crash reports in

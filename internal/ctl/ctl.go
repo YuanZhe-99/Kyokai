@@ -134,6 +134,7 @@ var requests = map[string]localapi.RequestType{
 	"ai-pause": localapi.RequestAITaskPause, "ai-resume": localapi.RequestAITaskResume, "ai-cancel": localapi.RequestAITaskCancel,
 	"ai-approve": localapi.RequestAITaskDecide, "ai-decline": localapi.RequestAITaskDecide,
 	"ai-clear": localapi.RequestAIHistoryClear, "ai-stop": localapi.RequestAIStop,
+	"ai-rename": localapi.RequestAITaskRename, "ai-export": localapi.RequestAITaskExport,
 	"ai-scope": localapi.RequestAIScopeSet, "ai-apps": localapi.RequestAIApps,
 }
 
@@ -170,7 +171,7 @@ func run(args []string) error {
 	byAddress := fs.String("by-address", "", "access: accept connections by address (true, false)")
 	ranges := fs.String("ranges", "", "access: the address ranges connections by address are accepted from (comma-separated; with --by-address)")
 	direct := fs.Bool("direct", false, "network-set: try direct (hole-punched) paths; omitted keeps the current choice")
-	name := fs.String("name", "", "network-set, network-profile: the network name; name-set: this device's friendly name")
+	name := fs.String("name", "", "network-set, network-profile: the network name; name-set: this device's friendly name; ai-rename: the task's name (empty: its instruction names it)")
 	network := fs.String("network", "", "network-profile, network-remove: the network's id (network-profile: none adds one)")
 	label := fs.String("label", "", "network-profile: the name the network is shown by (empty: its network name)")
 	joined := fs.String("joined", "", "network-profile: join the network or leave it (true, false)")
@@ -180,7 +181,7 @@ func run(args []string) error {
 	device := fs.String("device", "", "connect, forget, remove: the Device ID")
 	want := fs.String("want", localapi.PermViewScreen+","+localapi.PermControlInput, "connect: the permissions to ask for")
 	grant := fs.String("grant", "", "allow: the permissions to grant (default: all asked for); password-grants: what a correct password grants without asking (empty: none)")
-	id := fs.Uint64("id", 0, "close, allow, deny: the session or request id")
+	id := fs.Uint64("id", 0, "close, allow, deny, screenshot, watch: the session or request id; ai-reply, ai-pause, ai-resume, ai-cancel, ai-approve, ai-decline, ai-rename, ai-export: the task")
 	key := fs.String("key", "", "untrust: the device key")
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
 	file := fs.String("file", "", "backup, restore: the backup file")
@@ -209,7 +210,7 @@ func run(args []string) error {
 	approval := fs.String("approval", "", "ai-set: auto or every-action")
 	text := fs.String("text", "", "ai-start, ai-reply, watch: what the AI should do (watch: on the host)")
 	apps := fs.String("apps", "", "ai-scope: the programs the AI may work in, as ai-apps names them (comma-separated; empty: the whole desktop)")
-	out := fs.String("out", "", "screenshot: the PNG file to write")
+	out := fs.String("out", "", "screenshot: the PNG file to write; ai-export: the Markdown file to write (none: standard output)")
 	if err := parse(fs, args[1:]); err != nil {
 		return err
 	}
@@ -381,6 +382,8 @@ func run(args []string) error {
 		req.AITask = &localapi.AITaskRequest{Key: strconv.FormatInt(time.Now().UnixNano(), 36), Instruction: *text}
 	case "ai-reply":
 		req.AITask = &localapi.AITaskRequest{Text: *text}
+	case "ai-rename":
+		req.AITask = &localapi.AITaskRequest{Name: *name}
 	case "ai-approve", "ai-decline":
 		req.AITask = &localapi.AITaskRequest{Approve: cmd == "ai-approve"}
 	case "reset-identity":
@@ -450,6 +453,15 @@ func run(args []string) error {
 		return fmt.Errorf("no device there: %s", resp.Failure)
 	case resp.Password != "":
 		fmt.Println(resp.Password)
+	case resp.Document != "" && cmd == "ai-export":
+		if *out == "" {
+			fmt.Print(resp.Document)
+			return nil
+		}
+		if err := os.WriteFile(*out, []byte(resp.Document), 0o600); err != nil {
+			return err
+		}
+		fmt.Println("written to", *out)
 	case resp.Document != "":
 		// Owner-only: the file is encrypted, but it is still the identity.
 		if err := os.WriteFile(*file, []byte(resp.Document), 0o600); err != nil {
@@ -498,6 +510,12 @@ func run(args []string) error {
 // printTask writes one AI task: its state, its actions and the model's text.
 func printTask(t localapi.AITask) {
 	fmt.Printf("task %d  %s  %s:%s  %q\n", t.ID, t.State, t.Source, t.Model, t.Instruction)
+	if t.Name != "" {
+		fmt.Printf("  name %q\n", t.Name)
+	}
+	if t.Resumable {
+		fmt.Println("  a reply continues it")
+	}
 	if t.Paused != "" {
 		fmt.Println("  paused:", t.Paused)
 	}

@@ -112,21 +112,22 @@ goroutine 栈上，因为栈可能在取地址与调用之间移动。Windows �
 product”），由引擎为每个任务启动。sidecar 负责循环与发给服务商的请求；引擎负责一切会产生作用的事：用自己的
 解析器解析每个提议的操作（computer 工具集的成员，`ai::claude::parse_member`），检查它，运用批准策略与输入租约，
 执行它并答复。服务商密钥每次只为一个请求交给 sidecar，从不写到任何地方。双方在 sidecar 的标准输入与输出上
-以 JSON 行通信（`ai::sidecar`），协议 1；sidecar 先发 `hello`，引擎拒绝其他版本。
+以 JSON 行通信（`ai::sidecar`），协议 2；sidecar 先发 `hello`，引擎拒绝其他版本。
 
 | 消息 | 方向 | 字段 |
 |---|---|---|
 | `hello` | sidecar → 引擎 | `v` |
-| `start` | 引擎 → sidecar | `task`、`protocol`、`url`、`model`、`coordinates`、`system`、`instruction`、`shot`（`{b64, width, height}`） |
+| `start` | 引擎 → sidecar | `task`、`protocol`、`url`、`model`、`coordinates`、`system`、`instruction`、`shot`（`{b64, width, height}`）、`resume?`（保留的对话，由 `instruction` 与 `shot` 接续） |
 | `key?` / `key` | sidecar → 引擎 / 返回 | — / `key`（null：没有） |
 | `act` | sidecar → 引擎 | `id`、`name`、`input`（一次 computer 工具集成员调用，或 `name: "openai"` 下的 OpenAI 操作对象）、`last`（本轮最后一个操作：服务商需要时，它的结果带上该批操作之后的屏幕；本轮第一个失败之后的操作，引擎答复“未执行”） |
 | `result` | 引擎 → sidecar | `id`、`outcome`（`{kind: ok \| image \| text \| failed \| not-executed \| paused, …}`）、`shot?`、`acknowledged`（被控端用户批准了本轮的安全检查） |
 | `turn` | sidecar → 引擎 | `text`、`progress`、`flagged`、`usage`（`{input, cached, output}`） |
 | `steer`、`follow-up` | 引擎 → sidecar | `text`（`follow-up` 另有 `shot`） |
 | `abort` | 引擎 → sidecar | — |
+| `state` | sidecar → 引擎 | `state`：一次运行之后的对话，在 `done` 之前发送——服务商自己的历史，每张截图换成一条说明，并去掉 Claude 的思考内容（其签名把它绑定在产生它的历史上），或 OpenAI 的最后一个响应 id |
 | `done`、`failed`、`aborted` | sidecar → 引擎 | `text` / `error` / — |
 
-sidecar 发来的一行最长 1 MiB；无法解析、未知或过长的行，或管道关闭，都会以说明原因的方式结束任务。引擎的管道
+sidecar 发来的一行最长 4 MiB；无法解析、未知或过长的行，或管道关闭，都会以说明原因的方式结束任务。引擎的管道
 关闭时 sidecar 随之结束，因此引擎不在后没有任何任务会自行恢复。
 
 ## 状态

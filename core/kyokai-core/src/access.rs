@@ -122,7 +122,7 @@ const SERVICE_PORTS_NAME: &str = "service_ports";
 /// The NanoKVM USB the host's user offers (`crate::kvm::Settings`).
 const NANOKVM_NAME: &str = "nanokvm";
 /// Set while this device keeps no connection history (Settings, No logs).
-const NO_HISTORY_NAME: &str = "no_history";
+pub(crate) const NO_HISTORY_NAME: &str = "no_history";
 /// Set while the host is in protected mode: its interface offers only the
 /// AI settings and tasks until the permanent password turns it off.
 const PROTECTED_NAME: &str = "protected";

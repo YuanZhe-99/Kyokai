@@ -53,6 +53,8 @@ var commands = []struct{ name, summary string }{
 	{"ai-start", "start an AI task on this device"},
 	{"ai-reply", "answer an AI task's question"},
 	{"ai-tasks", "list the AI tasks"},
+	{"ai-rename", "name an AI task"},
+	{"ai-export", "write an AI task as Markdown, without screenshots"},
 	{"ai-pause", "pause the AI task"},
 	{"ai-resume", "resume the AI task"},
 	{"ai-cancel", "cancel the AI task"},

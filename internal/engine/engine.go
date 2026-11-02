@@ -200,6 +200,7 @@ var protectedAllows = map[localapi.RequestType]bool{
 	localapi.RequestAITaskReply: true, localapi.RequestAITaskPause: true, localapi.RequestAITaskResume: true,
 	localapi.RequestAITaskCancel: true, localapi.RequestAITaskDecide: true, localapi.RequestAITasks: true,
 	localapi.RequestAIHistoryClear: true, localapi.RequestAIStop: true, localapi.RequestClipboardMine: true,
+	localapi.RequestAITaskRename: true, localapi.RequestAITaskExport: true,
 }
 
 // ownerOnly are the requests served only to the engine's owner or the
@@ -679,6 +680,17 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 			return localapi.Fail(localapi.CodeInternal, "%v", err)
 		}
 		return localapi.Response{OK: true, AITasks: tasks}
+	case localapi.RequestAITaskRename:
+		if req.AITask == nil {
+			return localapi.Fail(localapi.CodeInvalid, "name missing")
+		}
+		return h.command("ai.task.rename", map[string]any{"id": req.ID, "name": req.AITask.Name})
+	case localapi.RequestAITaskExport:
+		var out struct{ Markdown string }
+		if err := h.lib.Call("ai.task.export", map[string]uint64{"id": req.ID}, &out); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true, Document: out.Markdown}
 	case localapi.RequestAIHistoryClear:
 		return h.command("ai.history.clear", nil)
 	case localapi.RequestAIStop:

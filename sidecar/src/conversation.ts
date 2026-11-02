@@ -54,7 +54,14 @@ export interface Conversation {
 	/** Answers the last turn; `after` is the screen after the batch. */
 	answer(outcomes: Outcome[], after: Shot | undefined, acknowledged: boolean): void;
 	followUp(text: string, shot: Shot): void;
+	/** What a later sidecar needs to continue the conversation (`restore`):
+	 * the provider's own history with every screenshot replaced by a note, or
+	 * for OpenAI the last response's id. Taken between runs, never mid-turn. */
+	state(): unknown;
 }
+
+/** What an earlier screenshot becomes in a kept conversation. */
+export const GONE = "[an earlier screenshot, not kept]";
 
 const num = (v: any) => (typeof v === "number" ? v : 0);
 const at = (v: any, path: string) => path.split(".").reduce((o, k) => o?.[k], v);
@@ -134,6 +141,23 @@ class Claude implements Conversation {
 	}
 	followUp(text: string, shot: Shot) {
 		this.request.messages.push({ role: "user", content: [claudeImage(shot.b64), { type: "text", text }] });
+	}
+	state() {
+		// Thinking is dropped: its signature binds it to the exact history it
+		// came from, which no longer holds its screenshots.
+		const gone = (b: any): any =>
+			b?.type === "image" ? { type: "text", text: GONE } : b?.type === "tool_result" && Array.isArray(b.content) ? { ...b, content: b.content.map(gone) } : b;
+		return {
+			messages: this.request.messages.map((m: any) => ({
+				role: m.role,
+				content: Array.isArray(m.content) ? m.content.filter((b: any) => b.type !== "thinking" && b.type !== "redacted_thinking").map(gone) : m.content,
+			})),
+		};
+	}
+	static restore(model: string, system: string, state: any): Claude {
+		const c = new Claude(model, system, "", { b64: "", width: 0, height: 0 });
+		c.request.messages = structuredClone(state.messages);
+		return c;
 	}
 }
 
@@ -251,6 +275,16 @@ class OpenAI implements Conversation {
 			],
 		});
 	}
+	state() {
+		// The provider keeps the history; the last response names it.
+		return { previous: this.previous };
+	}
+	static restore(model: string, system: string, state: any): OpenAI {
+		const c = new OpenAI(model, system, "", { b64: "", width: 0, height: 0 });
+		c.previous = typeof state.previous === "string" ? state.previous : undefined;
+		c.input = [];
+		return c;
+	}
 }
 
 // ---- OpenAI-compatible chat completions with Kyokai's function tools ----
@@ -358,6 +392,34 @@ class Chat implements Conversation {
 	}
 	followUp(text: string, shot: Shot) {
 		this.messages.push({ role: "user", content: [{ type: "text", text }, chatImage(shot.b64)] });
+	}
+	state() {
+		return {
+			messages: this.messages.map((m: any) =>
+				Array.isArray(m.content) ? { ...m, content: m.content.map((p: any) => (p.type === "image_url" ? { type: "text", text: GONE } : p)) } : m,
+			),
+		};
+	}
+	static restore(model: string, system: string, state: any, tools: unknown): Chat {
+		const c = new Chat(model, system, "", { b64: "", width: 0, height: 0 }, tools);
+		// The system prompt is today's; the rest is the kept history.
+		c.messages = [{ role: "system", content: system }, ...structuredClone(state.messages).filter((m: any) => m.role !== "system")];
+		return c;
+	}
+}
+
+/** A conversation kept by `state`, to continue with a follow-up.
+ * Notes: the state comes from the engine, which got it from an earlier
+ * sidecar; a malformed one fails the task. */
+export function restore(protocol: Protocol, model: string, system: string, state: any, tools: unknown): Conversation {
+	if (!state || typeof state !== "object" || (protocol !== "openai-responses" && !Array.isArray(state.messages))) throw new Error("the kept conversation is unreadable");
+	switch (protocol) {
+		case "anthropic":
+			return Claude.restore(model, system, state);
+		case "openai-responses":
+			return OpenAI.restore(model, system, state);
+		case "openai-chat":
+			return Chat.restore(model, system, state, tools);
 	}
 }
 

@@ -37,7 +37,7 @@ const chatCall = (calls: [string, string, unknown][]) => ({
 const chatDone = { choices: [{ finish_reason: "stop", message: { role: "assistant", content: "Saved." } }], usage: { prompt_tokens: 200, completion_tokens: 3 } };
 
 /** Runs the sidecar against `url`; `onAct` answers each action. */
-async function drive(url: string, onAct: (m: any, write: (m: unknown) => void) => Promise<void> | void) {
+async function drive(url: string, onAct: (m: any, write: (m: unknown) => void) => Promise<void> | void, start: object = {}) {
 	const p = Bun.spawn(["bun", join(import.meta.dir, "../src/main.ts")], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
 	const write = (m: unknown) => {
 		p.stdin.write(`${JSON.stringify(m)}\n`);
@@ -54,7 +54,7 @@ async function drive(url: string, onAct: (m: any, write: (m: unknown) => void) =
 			const m = JSON.parse(buf.slice(0, i));
 			buf = buf.slice(i + 1);
 			seen.push(m);
-			if (m.t === "hello") write({ t: "start", task: 1, protocol: "openai-chat", url, model: "m", system: "sys", instruction: "Save the file", shot: SHOT, tools: [] });
+			if (m.t === "hello") write({ t: "start", task: 1, protocol: "openai-chat", url, model: "m", system: "sys", instruction: "Save the file", shot: SHOT, tools: [], ...start });
 			else if (m.t === "key?") write({ t: "key", key: KEY });
 			else if (m.t === "act") await onAct(m, write);
 			else if (m.t === "done" || m.t === "failed" || m.t === "aborted") p.stdin.end();
@@ -70,8 +70,8 @@ test("a task runs through the sidecar, every action through the engine", async (
 		write({ t: "result", id: m.id, outcome: m.last ? { kind: "failed", error: "no" } : { kind: "ok" }, shot: m.last ? AFTER : undefined }),
 	);
 	prov.stop();
-	expect(seen.map((m) => m.t)).toEqual(["hello", "key?", "turn", "act", "act", "key?", "turn", "done"]);
-	expect(seen[0].v).toBe(1);
+	expect(seen.map((m) => m.t)).toEqual(["hello", "key?", "turn", "act", "act", "key?", "turn", "state", "done"]);
+	expect(seen[0].v).toBe(2);
 	const acts = seen.filter((m) => m.t === "act");
 	expect(acts.map((a) => [a.name, a.input, a.last])).toEqual([
 		["left_click", { coordinate: [640, 425] }, false],
@@ -84,6 +84,33 @@ test("a task runs through the sidecar, every action through the engine", async (
 	expect(answer.filter((m: any) => m.role === "tool").map((m: any) => m.content)).toEqual(["done", "error: no"]);
 	expect(answer.at(-1).content.at(-1).image_url.url).toBe(`data:image/png;base64,${AFTER.b64}`);
 	expect(seen.at(-1)).toEqual({ t: "done", text: "Saved." });
+	// The conversation it kept: every screenshot replaced by a note.
+	const kept = JSON.stringify(seen.find((m) => m.t === "state").state);
+	expect(kept).not.toContain(SHOT.b64);
+	expect(kept).not.toContain(AFTER.b64);
+	expect(kept).toContain("an earlier screenshot, not kept");
+});
+
+test("a kept conversation continues with the reply and a fresh screen", async () => {
+	const prov = provider([chatDone]);
+	const resume = { messages: [{ role: "system", content: "old" }, { role: "user", content: [{ type: "text", text: "Open the file" }, { type: "text", text: "[an earlier screenshot, not kept]" }] }, { role: "assistant", content: "Opened." }] };
+	const seen = await drive(prov.url, () => {}, { instruction: "Now save it", resume });
+	prov.stop();
+	expect(seen.map((m) => m.t)).toEqual(["hello", "key?", "turn", "state", "done"]);
+	const sent = prov.bodies[0].messages;
+	// Today's system prompt, the kept history, then the reply with the screen.
+	expect(sent[0]).toEqual({ role: "system", content: "sys" });
+	expect(sent.slice(1, 3)).toEqual(resume.messages.slice(1));
+	expect(sent[3].content[0].text).toBe("Now save it");
+	expect(sent[3].content[1].image_url.url).toBe(`data:image/png;base64,${SHOT.b64}`);
+});
+
+test("an unreadable kept conversation fails the task", async () => {
+	const prov = provider([chatDone]);
+	const seen = await drive(prov.url, () => {}, { resume: { nothing: true } });
+	prov.stop();
+	expect(prov.bodies.length).toBe(0);
+	expect(seen.at(-1)?.t).not.toBe("done");
 });
 
 test("an abort during an action ends the task with nothing more sent", async () => {

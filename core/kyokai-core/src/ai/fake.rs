@@ -175,6 +175,7 @@ pub struct Rig {
     pub ai: Arc<Ai>,
     pub log: Arc<Mutex<Log>>,
     pub dir: PathBuf,
+    pub secrets: Arc<Secrets>,
 }
 
 impl Drop for Rig {
@@ -193,9 +194,10 @@ pub fn rig(name: &str, provider_kind: &str, url: &str) -> Rig {
     std::fs::create_dir_all(&dir).unwrap();
     let log = Arc::new(Mutex::new(Log::default()));
     let shared = log.clone();
+    let secrets = Arc::new(Secrets::memory());
     let ai = testing::ai(
         &dir,
-        Arc::new(Secrets::memory()),
+        secrets.clone(),
         Arc::new(move || Ok(Box::new(Fake(shared.clone())) as Box<dyn Desktop>)),
         url.into(),
     );
@@ -220,10 +222,24 @@ pub fn rig(name: &str, provider_kind: &str, url: &str) -> Rig {
         ai: Arc::new(ai),
         log,
         dir,
+        secrets,
     }
 }
 
 impl Rig {
+    /// Starts the AI runtime again on the same state directory and secrets,
+    /// as an engine restart does: the tasks and their kept conversations
+    /// come from what was saved, the sidecars are gone.
+    pub fn restart(&mut self, url: &str) {
+        let shared = self.log.clone();
+        self.ai = Arc::new(testing::ai(
+            &self.dir,
+            self.secrets.clone(),
+            Arc::new(move || Ok(Box::new(Fake(shared.clone())) as Box<dyn Desktop>)),
+            url.into(),
+        ));
+    }
+
     pub fn task(&self, id: u64) -> Value {
         self.ai
             .tasks()

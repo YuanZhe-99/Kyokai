@@ -1699,6 +1699,15 @@ fn call(input: &[u8]) -> Result<Value, String> {
                 .map(|()| json!({}))
             })
         }
+        "ai.task.rename" => {
+            let id = req.params["id"].as_u64().ok_or("bad task id")?;
+            let name = req.params["name"].as_str().ok_or("bad name")?.to_owned();
+            try_core(|c| c.ctx.ai.rename(id, &name).map(|()| json!({})))
+        }
+        "ai.task.export" => {
+            let id = req.params["id"].as_u64().ok_or("bad task id")?;
+            try_core(|c| c.ctx.ai.export(id).map(|m| json!({"markdown": m})))
+        }
         "ai.tasks" => with_core(|c| c.ctx.ai.tasks()),
         "ai.history.clear" => try_core(|c| c.ctx.ai.clear().map(|()| json!({}))),
         "ai.draft.set" => {

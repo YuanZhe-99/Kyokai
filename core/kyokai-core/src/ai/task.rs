@@ -289,6 +289,30 @@ pub struct Pending {
     pub class: Option<Class>,
 }
 
+/// One run of a task: the message that began it (the instruction, then
+/// each reply) and the model's answer to it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Run {
+    pub message: String,
+    #[serde(default)]
+    pub text: String,
+    /// Its first step's index in the task's steps.
+    #[serde(default)]
+    pub first: usize,
+    pub at: u64,
+}
+
+/// Where a task's kept conversation is (`FromSidecar::State`).
+#[derive(Default)]
+enum Kept {
+    #[default]
+    None,
+    /// In memory only (No logs, or the file could not be written).
+    Memory(Value),
+    /// In `ai-conversations/<id>.json`.
+    Disk,
+}
+
 /// One AI task.
 #[derive(Serialize, Deserialize)]
 pub struct Task {
@@ -337,6 +361,15 @@ pub struct Task {
     /// The tokens its model turns took, summed.
     #[serde(default)]
     pub tokens: super::Usage,
+    /// The name the user gave it; None while its instruction names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Its runs in order (none in a record from before 0.7.0).
+    #[serde(default)]
+    pub runs: Vec<Run>,
+    /// The conversation a reply continues once the sidecar is gone.
+    #[serde(skip)]
+    kept: Kept,
     /// The host user's next message for a finished task.
     #[serde(skip)]
     reply: Option<String>,
@@ -351,6 +384,12 @@ const MAX_PROGRESS: usize = 20;
 const MAX_STEPS: usize = 500;
 /// Most finished tasks kept in the history.
 const MAX_HISTORY: usize = 100;
+/// Most runs a task takes (its instruction and replies).
+const MAX_RUNS: usize = 200;
+/// Longest name a task may be given.
+const MAX_TASK_NAME: usize = 200;
+/// The kept conversations' folder in the state directory.
+const CONVERSATIONS: &str = "ai-conversations";
 /// Steps a session's task snapshot carries.
 const SESSION_STEPS: usize = 20;
 /// How often local input is checked while the model thinks.
@@ -409,7 +448,12 @@ impl Ai {
             .build()
             .map_err(|e| format!("AI runtime: {e}"))?;
         let settings = Settings::load(&dir.join(SETTINGS));
-        let tasks: Vec<Task> = read_json(&dir.join(HISTORY)).unwrap_or_default();
+        let mut tasks: Vec<Task> = read_json(&dir.join(HISTORY)).unwrap_or_default();
+        for t in &mut tasks {
+            if conversation_path(dir, t.id).exists() {
+                t.kept = Kept::Disk;
+            }
+        }
         Ok(Ai {
             shared: Arc::new(Shared {
                 tasks: Mutex::new(tasks),
@@ -641,6 +685,14 @@ impl Ai {
                 decision: None,
                 refusals: 0,
                 tokens: Default::default(),
+                name: None,
+                runs: vec![Run {
+                    message: instruction.into(),
+                    text: String::new(),
+                    first: 0,
+                    at: now,
+                }],
+                kept: Kept::None,
                 reply: None,
                 conversation: None,
             });
@@ -667,10 +719,19 @@ impl Ai {
                 .iter_mut()
                 .find(|t| t.id == id)
                 .ok_or("no such task")?;
-            if t.conversation.is_none() {
+            if t.conversation.is_none() && matches!(t.kept, Kept::None) {
                 return Err("this task can no longer continue".into());
             }
+            if t.runs.len() >= MAX_RUNS {
+                return Err("this task is too long to continue; start a new one".into());
+            }
             t.state = next(t.state, Event::Reply).ok_or("the task is not finished")?;
+            t.runs.push(Run {
+                message: text.into(),
+                text: String::new(),
+                first: t.steps.len(),
+                at: now(),
+            });
             t.reply = Some(text.into());
             t.error = None;
             t.since = Some(Instant::now());
@@ -765,7 +826,7 @@ impl Ai {
     pub fn latest(&self) -> Option<Value> {
         let tasks = self.shared.tasks.lock().expect("tasks");
         let t = tasks.iter().next_back()?;
-        let mut v = json!(t);
+        let mut v = record(t);
         let trim = |v: &mut Value, keep: usize| {
             if let Some(a) = v.as_array_mut() {
                 let extra = a.len().saturating_sub(keep);
@@ -774,6 +835,7 @@ impl Ai {
         };
         trim(&mut v["steps"], SESSION_STEPS);
         trim(&mut v["progress"], 3);
+        trim(&mut v["runs"], SESSION_STEPS);
         Some(v)
     }
 
@@ -810,10 +872,39 @@ impl Ai {
         }
     }
 
-    /// Every task, newest first.
+    /// Every task, newest first, each saying whether a reply can continue
+    /// it (`resumable`).
     pub fn tasks(&self) -> Value {
         let tasks = self.shared.tasks.lock().expect("tasks");
-        tasks.iter().rev().map(|t| json!(t)).collect()
+        tasks.iter().rev().map(record).collect()
+    }
+
+    /// Names a task, or gives it back its instruction's name (empty).
+    /// Side effects: saves the history.
+    pub fn rename(&self, id: u64, name: &str) -> Result<(), String> {
+        let name = name.trim();
+        if name.chars().count() > MAX_TASK_NAME {
+            return Err("the name is too long".into());
+        }
+        let mut tasks = self.shared.tasks.lock().expect("tasks");
+        let t = tasks
+            .iter_mut()
+            .find(|t| t.id == id)
+            .ok_or("no such task")?;
+        t.name = (!name.is_empty()).then(|| name.to_owned());
+        t.updated = now();
+        let saved = save_history(&self.shared.dir, &tasks);
+        drop(tasks);
+        self.shared.changed.notify_waiters();
+        saved
+    }
+
+    /// A task as Markdown for the user to keep: its name, model and runs,
+    /// each with its message, steps and answer; never a screenshot.
+    pub fn export(&self, id: u64) -> Result<String, String> {
+        let tasks = self.shared.tasks.lock().expect("tasks");
+        let t = tasks.iter().find(|t| t.id == id).ok_or("no such task")?;
+        Ok(markdown(t))
     }
 
     /// The task in progress, for the status poll: its id, state and whether
@@ -832,6 +923,9 @@ impl Ai {
     /// Side effects: rewrites the history file.
     pub fn clear(&self) -> Result<(), String> {
         let mut tasks = self.shared.tasks.lock().expect("tasks");
+        for t in tasks.iter().filter(|t| t.state.finished()) {
+            forget_conversation(&self.shared.dir, t.id);
+        }
         tasks.retain(|t| !t.state.finished());
         save_history(&self.shared.dir, &tasks)
     }
@@ -985,19 +1079,44 @@ impl Shared {
                 }
                 t.approval = None;
                 t.updated = now();
+                let text = t.text.clone();
+                if let Some(run) = t.runs.last_mut() {
+                    run.text = text;
+                }
             }
             let over = tasks.iter().filter(|t| t.state.finished()).count();
             if over > MAX_HISTORY {
                 let mut drop = over - MAX_HISTORY;
+                let dir = &self.dir;
                 tasks.retain(|t| {
                     let gone = drop > 0 && t.state.finished();
                     drop -= gone as usize;
+                    if gone {
+                        forget_conversation(dir, t.id);
+                    }
                     !gone
                 });
             }
             let _ = save_history(&self.dir, &tasks);
         }
         self.changed.notify_waiters();
+    }
+
+    /// Keeps a task's conversation as the sidecar handed it over: on disk,
+    /// or only in memory while No logs is on.
+    fn keep(&self, id: u64, state: Value) {
+        let memory = self.secrets.get(crate::access::NO_HISTORY_NAME).is_some();
+        let path = conversation_path(&self.dir, id);
+        let kept = if !memory
+            && std::fs::create_dir_all(self.dir.join(CONVERSATIONS)).is_ok()
+            && write_json(&path, &state).is_ok()
+        {
+            Kept::Disk
+        } else {
+            let _ = std::fs::remove_file(&path);
+            Kept::Memory(state)
+        };
+        self.edit(id, |t| t.kept = kept);
     }
 
     /// Adds a step to the task's history.
@@ -1152,17 +1271,26 @@ pub fn open_screen() -> Result<Box<dyn Desktop>, String> {
 /// Returns: the agent sidecar when the model finished (so the task can
 /// continue later).
 async fn run(shared: &Arc<Shared>, id: u64) -> Result<Agent, Stop> {
-    let (source, model, instruction, reply, conversation) = shared
+    let (source, model, instruction, reply, conversation, kept) = shared
         .edit(id, |t| {
+            let kept = match &t.kept {
+                Kept::None => None,
+                Kept::Memory(v) => Some(v.clone()),
+                Kept::Disk => read_json(&conversation_path(&shared.dir, id)),
+            };
             (
                 t.source.clone(),
                 t.model.clone(),
                 t.instruction.clone(),
                 t.reply.take(),
                 t.conversation.take(),
+                kept,
             )
         })
         .ok_or(Stop::Cancelled)?;
+    if reply.is_some() && conversation.is_none() && kept.is_none() {
+        return Err(Stop::Failed("the task's conversation was not kept".into()));
+    }
     let (source, key) = {
         let settings = shared.settings.lock().expect("settings");
         let source = settings
@@ -1192,6 +1320,7 @@ async fn run(shared: &Arc<Shared>, id: u64) -> Result<Agent, Stop> {
             instruction,
             reply,
             conversation,
+            resume: kept,
             coords,
         },
     )
@@ -1226,6 +1355,8 @@ struct Start {
     instruction: String,
     reply: Option<String>,
     conversation: Option<Agent>,
+    /// The kept conversation a reply continues when the sidecar is gone.
+    resume: Option<Value>,
 }
 
 /// Runs a task through the agent sidecar (doc/en-us/architecture.md, "The
@@ -1250,7 +1381,11 @@ async fn drive(
             })?;
             a
         }
-        _ => {
+        (_, reply) => {
+            // A reply to a task whose sidecar is gone continues the kept
+            // conversation in a new one.
+            let resume = reply.is_some().then_some(start.resume).flatten();
+            let instruction = reply.unwrap_or(start.instruction);
             let mut a = Agent::start(&shared.agent).await?;
             let url = shared.url.clone().unwrap_or_else(|| source.url.clone());
             a.send(&ToSidecar::Start {
@@ -1260,13 +1395,14 @@ async fn drive(
                 model: start.model.clone(),
                 coordinates: start.coords,
                 system: system_prompt(&seen),
-                instruction: start.instruction.clone(),
+                instruction,
                 shot: (&seen.shot).into(),
                 tools: if source.protocol == Protocol::OpenaiChat {
                     super::chat::tools()
                 } else {
                     Value::Null
                 },
+                resume,
             })?;
             a
         }
@@ -1351,6 +1487,7 @@ async fn drive(
                     acknowledged: turn.acknowledged && !turn.flagged.is_empty(),
                 })?;
             }
+            FromSidecar::State { state } => shared.keep(id, state),
             FromSidecar::Done { .. } => return Ok(agent),
             FromSidecar::Failed { error } => return Err(Stop::Failed(error)),
             FromSidecar::Aborted => return Err(Stop::Cancelled),
@@ -1709,6 +1846,69 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
 fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let data = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
     crate::store::write_atomic(path, &data)
+}
+
+/// A task as the API shows it: its record and whether a reply can continue
+/// it.
+fn record(t: &Task) -> Value {
+    let mut v = json!(t);
+    v["resumable"] = json!(
+        t.state == State::Done && (t.conversation.is_some() || !matches!(t.kept, Kept::None))
+    );
+    v
+}
+
+/// Where a task's kept conversation is written.
+fn conversation_path(dir: &Path, id: u64) -> PathBuf {
+    dir.join(CONVERSATIONS).join(format!("{id}.json"))
+}
+
+/// Deletes a task's kept conversation, if it was written.
+fn forget_conversation(dir: &Path, id: u64) {
+    let _ = std::fs::remove_file(conversation_path(dir, id));
+}
+
+/// A task as Markdown (`Ai::export`).
+fn markdown(t: &Task) -> String {
+    use std::fmt::Write;
+    let title = t
+        .name
+        .clone()
+        .unwrap_or_else(|| t.instruction.lines().next().unwrap_or("").to_owned());
+    let mut out = format!("# {title}\n\n{}:{}\n", t.source, t.model);
+    // A task from before 0.7.0 has no runs: its instruction and last answer.
+    let runs = if t.runs.is_empty() {
+        vec![Run {
+            message: t.instruction.clone(),
+            text: t.text.clone(),
+            first: 0,
+            at: t.created,
+        }]
+    } else {
+        t.runs.clone()
+    };
+    for (i, run) in runs.iter().enumerate() {
+        let end = runs.get(i + 1).map_or(t.steps.len(), |r| r.first);
+        let _ = write!(out, "\n## You\n\n{}\n", run.message);
+        let steps = t.steps.get(run.first.min(end)..end).unwrap_or_default();
+        if !steps.is_empty() {
+            out.push_str("\n### Steps\n\n");
+            for s in steps {
+                let _ = write!(out, "- {} `{}`", s.outcome, s.action);
+                if let Some(d) = &s.detail {
+                    let _ = write!(out, " ({d})");
+                }
+                out.push('\n');
+            }
+        }
+        if !run.text.is_empty() {
+            let _ = write!(out, "\n## AI\n\n{}\n", run.text);
+        }
+    }
+    if let Some(e) = &t.error {
+        let _ = write!(out, "\n*Failed: {e}*\n");
+    }
+    out
 }
 
 /// Saves the finished tasks (instructions, texts and actions; never

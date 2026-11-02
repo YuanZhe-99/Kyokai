@@ -791,7 +791,16 @@ the model's text and progress notes, the actions and what became of them, the to
 (`tokens`: input, the part read from the provider's cache, output, as the provider reports them), never a
 screenshot — up
 to 100; Settings › AI clears it (Recent tasks), with the AI sessions the GUI keeps in `gui.json`.
-A finished task's conversation stays in memory, so a reply continues it until the engine stops.
+Each task keeps its runs (`runs`: the instruction, then each reply, with the model's answer to each),
+and may be given a name (`ai.task.rename`; empty gives it back its instruction's) and exported as
+Markdown (`ai.task.export`: the runs with their steps and answers, never a screenshot). After a run
+that finished, the sidecar hands the engine the conversation as it stands, which the engine keeps in
+`ai-conversations/<id>.json` (screenshots replaced by a note, Claude's thinking dropped; for OpenAI
+only the last response's id, the provider holding the rest) — in memory only while No logs is on.
+A reply continues the task in its sidecar while that lives, and otherwise, after the engine
+restarted, in a new one that resumes the kept conversation with the reply and the screen as it is
+now (`resumable` says a reply can); clearing the history, or a task leaving it, deletes its
+conversation. A task takes at most 200 runs.
 
 ## macOS
 

@@ -16,11 +16,12 @@ use super::action::Coordinates;
 use super::{Protocol, Shot, Usage};
 
 /// The protocol version this engine speaks.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// The longest line the engine reads from the sidecar: its messages are
-/// small (actions, text, usage); screenshots only go the other way.
-pub const MAX_LINE: usize = 1 << 20;
+/// small (actions, text, usage) but for the kept conversation (`State`),
+/// which carries no screenshots; screenshots only go the other way.
+pub const MAX_LINE: usize = 4 << 20;
 
 /// A screenshot on the wire: a base64 PNG and its size.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,6 +73,10 @@ pub enum ToSidecar {
         /// whose providers have their own computer tools.
         #[serde(default)]
         tools: Value,
+        /// A conversation an earlier sidecar kept (`FromSidecar::State`),
+        /// which `instruction` and `shot` then continue.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resume: Option<Value>,
     },
     /// A message from the person for the running turn.
     Steer { text: String },
@@ -128,6 +133,13 @@ pub enum FromSidecar {
         flagged: Vec<String>,
         #[serde(default)]
         usage: Usage,
+    },
+    /// The conversation as it stands after a run, sent before `done`:
+    /// the provider's history with every screenshot replaced by a note (or
+    /// OpenAI's last response id), for the engine to keep and hand to a
+    /// later sidecar as `resume`.
+    State {
+        state: Value,
     },
     Done {
         #[serde(default)]
@@ -301,10 +313,12 @@ mod tests {
                     instruction: "Save".into(),
                     shot: shot(),
                     tools: Value::Null,
+                    resume: Some(json!({"previous": "resp_1"})),
                 },
                 json!({"t": "start", "task": 7, "protocol": "openai-chat", "url": "https://openrouter.ai/api/v1",
                     "model": "qwen/qwen3.8-27b", "coordinates": "0-1000", "system": "sys", "instruction": "Save",
-                    "shot": {"b64": "AAAA", "width": 1280, "height": 720}, "tools": null}),
+                    "shot": {"b64": "AAAA", "width": 1280, "height": 720}, "tools": null,
+                    "resume": {"previous": "resp_1"}}),
             ),
             (ToSidecar::Abort, json!({"t": "abort"})),
             (
@@ -326,7 +340,13 @@ mod tests {
             assert_eq!(serde_json::from_value::<ToSidecar>(wire).unwrap(), m);
         }
         let from = [
-            (FromSidecar::Hello { v: 1 }, json!({"t": "hello", "v": 1})),
+            (FromSidecar::Hello { v: 2 }, json!({"t": "hello", "v": 2})),
+            (
+                FromSidecar::State {
+                    state: json!({"messages": []}),
+                },
+                json!({"t": "state", "state": {"messages": []}}),
+            ),
             (FromSidecar::KeyRequest, json!({"t": "key?"})),
             (
                 FromSidecar::Act {
@@ -349,9 +369,9 @@ mod tests {
     /// with a reason, never a panic.
     #[test]
     fn the_handshake_checks_the_version() {
-        assert!(hello(link("{\"t\":\"hello\",\"v\":1}\n").recv().unwrap()).is_ok());
-        let other = hello(link("{\"t\":\"hello\",\"v\":2}\n").recv().unwrap()).unwrap_err();
-        assert!(other.contains("protocol 2"), "{other}");
+        assert!(hello(link("{\"t\":\"hello\",\"v\":2}\n").recv().unwrap()).is_ok());
+        let other = hello(link("{\"t\":\"hello\",\"v\":1}\n").recv().unwrap()).unwrap_err();
+        assert!(other.contains("protocol 1"), "{other}");
         assert!(hello(link("{\"t\":\"done\"}\n").recv().unwrap()).is_err());
         assert!(link("").recv().unwrap_err().contains("ended"));
     }

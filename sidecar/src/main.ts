@@ -17,10 +17,10 @@ import {
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { CLAUDE_BETAS, CLAUDE_VERSION, type Conversation, open, type Outcome, type Shot, type Turn } from "./conversation";
+import { CLAUDE_BETAS, CLAUDE_VERSION, type Conversation, open, type Outcome, restore, type Shot, type Turn } from "./conversation";
 
 /** The protocol version this sidecar speaks. */
-export const VERSION = 1;
+export const VERSION = 2;
 
 const send = (m: unknown) => process.stdout.write(`${JSON.stringify(m)}\n`);
 
@@ -35,6 +35,9 @@ type Start = {
 	instruction: string;
 	shot: Shot;
 	tools: unknown;
+	/** A conversation an earlier sidecar kept (`state`), which `instruction`
+	 * and `shot` then continue. */
+	resume?: unknown;
 };
 type Result = { id: string; outcome: Outcome; shot?: Shot; acknowledged?: boolean };
 
@@ -137,7 +140,13 @@ const start = await new Promise<Start>((resolve) => {
 	send({ t: "hello", v: VERSION });
 });
 
-const conv: Conversation = open(start.protocol, start.model, start.system, start.instruction, start.shot, start.tools);
+let conv: Conversation;
+if (start.resume !== undefined) {
+	conv = restore(start.protocol, start.model, start.system, start.resume, start.tools);
+	conv.followUp(start.instruction, start.shot);
+} else {
+	conv = open(start.protocol, start.model, start.system, start.instruction, start.shot, start.tools);
+}
 /** Whether the last turn waits for its answer, which the next request carries. */
 let answered = true;
 /** The outcomes of the last turn's actions, by call id, from the engine. */
@@ -300,7 +309,12 @@ async function run(text: string) {
 		const last: any = session.messages.at(-1);
 		if (aborted || last?.stopReason === "aborted") send({ t: "aborted" });
 		else if (last?.stopReason === "error") send({ t: "failed", error: last.errorMessage ?? "the task failed" });
-		else send({ t: "done", text: lastTurn?.text ?? "" });
+		else {
+			// The conversation as it stands, for the engine to keep: a
+			// reply after this sidecar is gone continues from it.
+			send({ t: "state", state: conv.state() });
+			send({ t: "done", text: lastTurn?.text ?? "" });
+		}
 	} catch (e: any) {
 		send(aborted ? { t: "aborted" } : { t: "failed", error: String(e?.message ?? e) });
 	}

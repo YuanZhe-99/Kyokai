@@ -192,22 +192,23 @@ the engine owns everything that acts: it parses each proposed action with its ow
 computer toolset's members, `ai::claude::parse_member`), checks it, applies the approval policy
 and the input lease, runs it, and answers. The provider key goes to the sidecar for one request
 at a time and is never written anywhere. They speak JSON lines on the sidecar's standard input
-and output (`ai::sidecar`), protocol 1; the sidecar says `hello` first and the engine refuses
+and output (`ai::sidecar`), protocol 2; the sidecar says `hello` first and the engine refuses
 another version.
 
 | Message | Direction | Fields |
 |---|---|---|
 | `hello` | sidecar → engine | `v` |
-| `start` | engine → sidecar | `task`, `protocol`, `url`, `model`, `coordinates`, `system`, `instruction`, `shot` (`{b64, width, height}`) |
+| `start` | engine → sidecar | `task`, `protocol`, `url`, `model`, `coordinates`, `system`, `instruction`, `shot` (`{b64, width, height}`), `resume?` (a kept conversation, which `instruction` and `shot` continue) |
 | `key?` / `key` | sidecar → engine / back | — / `key` (null: none) |
 | `act` | sidecar → engine | `id`, `name`, `input` (a computer toolset member call, or OpenAI's action object under `name: "openai"`), `last` (the turn's last action: its result carries the screen after the batch when the provider answers with one; the engine answers the actions after a turn's first failure "not executed") |
 | `result` | engine → sidecar | `id`, `outcome` (`{kind: ok \| image \| text \| failed \| not-executed \| paused, …}`), `shot?`, `acknowledged` (the host user approved the turn's safety checks) |
 | `turn` | sidecar → engine | `text`, `progress`, `flagged`, `usage` (`{input, cached, output}`) |
 | `steer`, `follow-up` | engine → sidecar | `text` (`follow-up`: and `shot`) |
 | `abort` | engine → sidecar | — |
+| `state` | sidecar → engine | `state`: the conversation after a run, sent before `done` — the provider's own history with every screenshot replaced by a note and Claude's thinking dropped (its signature binds it to the history it came from), or OpenAI's last response id |
 | `done`, `failed`, `aborted` | sidecar → engine | `text` / `error` / — |
 
-A line from the sidecar is at most 1 MiB; an unreadable, unknown or overlong line, or the pipe
+A line from the sidecar is at most 4 MiB; an unreadable, unknown or overlong line, or the pipe
 closing, ends the task with a reason. The sidecar ends when the engine's pipe closes, so nothing
 resumes after the engine is gone.
 
