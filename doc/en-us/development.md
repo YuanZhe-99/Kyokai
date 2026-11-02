@@ -156,7 +156,9 @@ KYOKAI_PROFILE=ctl kyokai-svc ctl watch --id 1 --seconds 600 --keys shift --keys
 `spikes/` holds the Phase 0 feasibility programs, each with its own `go.mod` or Cargo workspace so
 that the product gate never builds them. Their results go into [upstream.md](upstream.md) and
 [platform-notes.md](platform-notes.md); code that proves itself moves into the product in a later
-phase.
+phase. s5-pi (0.7.0) is a Bun package (package.json pinned exactly, un.lock): un install, then
+`bun harness.ts` runs its checks against `sidecar.ts`, or against a build of it
+(`bun build sidecar.ts --compile --minify --target=bun-<os>-<arch> --outfile out/…`) given as the argument.
 
 ## Testing principles
 

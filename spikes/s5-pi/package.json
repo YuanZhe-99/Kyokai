@@ -1,0 +1,11 @@
+{
+  "name": "kyokai-spike-pi",
+  "private": true,
+  "type": "module",
+  "description": "Spike 5: Pi as Kyokai's agent loop (PLAN.md, 0.7.0). Never part of the product build.",
+  "dependencies": {
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-agent-core": "1.4.0",
+    "@earendil-works/pi-coding-agent": "1.4.0"
+  }
+}

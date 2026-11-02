@@ -7,6 +7,9 @@ mygo_windows_*.syso
 /core/target/
 /spikes/*/target/
 /spikes/*/.dev/
+/spikes/*/node_modules/
+/spikes/*/out/
+/spikes/*/.bun-cache/
 # Stray build outputs at the repository root
 /kyokai
 /kyokai.exe

@@ -111,6 +111,8 @@ KYOKAI_PROFILE=ctl kyokai-svc ctl watch --id 1 --seconds 600 --keys shift --keys
 
 `spikes/` 存放 Phase 0 的可行性验证程序，各自带有自己的 `go.mod` 或 Cargo 工作区，产品检查不会构建它们。结果写入
 [upstream.md](upstream.md) 与 [platform-notes.md](platform-notes.md)；验证成功的代码在之后的阶段移入产品。
+`s5-pi`（0.7.0）是一个 Bun 包（`package.json` 版本精确固定，带 `bun.lock`）：先 `bun install`，然后 `bun harness.ts` 对 `sidecar.ts`
+运行它的检查，或者以参数给出它的编译产物（`bun build sidecar.ts --compile --minify --target=bun-<os>-<arch> --outfile out/…`）。
 
 ## 测试原则
 
