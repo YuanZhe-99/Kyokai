@@ -118,6 +118,35 @@ The AI update.
 | AI through Remote Desktop, VNC and NanoKVM USB | the host's AI operates a computer the host reaches through its own services: a Remote Desktop or VNC session the host opens to itself or to a machine on its network, and the computer wired to the host's NanoKVM USB (HDMI capture in, USB keyboard and mouse out). The picture the model sees is that session's or the capture card's, its actions go to that client or the NanoKVM's HID, never to the host's own desktop; the same executor, lease, approvals, take-over and emergency stop hold, and a host user's input on that pane takes over as on the desktop. No element tree there (pixels only), so the Auto classes treat it as Remote Desktop and VNC windows; NanoKVM typing is HID usages, US layout, with the target's keyboard layout named by the host user. Each source is a grant of its own, off by default, never implied by `run-ai-task` | a task runs through each of the three on a real target with approvals and take-over intact, recorded in platform-notes |
 | CLI (added 2026-11-01) | A console `kyokai` command, shipped in the app's `bin` folder beside the engine and not added to PATH (Decided), grows out of `kyokai-svc ctl` into a supported command line for people and scripts, still only a client of the user's own engine over the local API (no new trust boundary, nothing it may do that the GUI may not). Coverage: status and this device; devices (list, addresses, rename, remove); connect and disconnect, sessions, answering connection requests; files (list, send, get) and tunnels (a local port for SSH, Remote Desktop, VNC); networks and access settings; sign-in keys and saved sign-ins; AI (start, follow, reply, approve and decline, and the sessions, models and approval modes the Pi work brings); logs, backup and restore; a session's picture only as a screenshot taken when the command asks for one, saved to the path the command names (no followed picture, nothing written by default; Decided), under the session's `view-screen` grant like the viewer. Human output by default and `--json` on every command, stable exit codes; secrets only from the environment or standard input, never arguments; a `help` per command. `kyokai-svc ctl` stays as another name for the same commands (Decided) | each command's arguments → local API request in table tests, `--json` output stable in golden tests; `doc/en-us/cli.md` (and its mirror) describes every command; a session, a file copy, a tunnel and an AI task driven from the CLI alone on Windows, recorded in platform-notes |
 
+### Pi in the product: steps
+
+Each lands with its docs and tests; the Rust loop stays until step 4 replaces it.
+
+1. **The sidecar protocol** (architecture.md, "The agent sidecar"): versioned JSON lines on the
+   sidecar's stdin and stdout — `hello {v}`, `start {task, model, protocol, coordinates, system,
+   instruction, shot}`, `steer`, `follow-up`, `abort`, `key?`/`key` (per request, never kept),
+   `act {id, action}`/`result {id, outcome, shot?}`, `turn {text, progress, usage}`, `done`,
+   `failed`, `aborted`; the engine refuses a version it does not speak. Done when: the protocol
+   is documented and the engine's side has table tests against a fake sidecar.
+2. **The sidecar program** (`sidecar/`, TypeScript on Pi, Bun pinned in `tools/deps`): the
+   spike's session set-up, Kyokai's three providers translating to the providers' native shapes
+   with the prefix append-only (Claude's hour-long breakpoints and server clearing, OpenAI's
+   `computer` tool with `previous_response_id`, `openai-chat` with batched screenshot drops), the
+   actions as Kyokai's tool schema, usage reported per turn. Done when: its own tests replay the
+   Rust adapters' fixtures byte for byte, and the harness checks pass.
+3. **Building and shipping it**: `scripts/build.sh` compiles `kyokai-agent` per target into
+   `bin/`, the CI and release jobs install the pinned Bun, the bundle signature and the helper's
+   checks cover it, packaging.md and third-party.md list Pi and Bun. Done when: a release build
+   on each target holds it and the helper accepts it.
+4. **The engine drives it**: a task runs through the sidecar (the executor, policy, lease,
+   approvals, pause, take-over and emergency stop unchanged), the sidecar starts per task and
+   ends with it, a crash fails the task loudly; the Rust adapters go. Done when: every AI test
+   passes through the sidecar, and a live run (Haiku 5.5 or GPT Luna through OpenRouter) on the
+   test VM.
+5. **Sessions**: several per host, fork, clone, resume, name, export, compact by hand and
+   automatically, model and thinking choices, for the host user and controllers under their
+   permissions; the history kept without screenshots (memory only under No logs). Done when:
+   table tests of the session store and a view test of each command.
 ### Research behind 0.7.0 (2026-10-23)
 
 Two research rounds (agent backend and computer-use options; approvals, tokens and window scope)
