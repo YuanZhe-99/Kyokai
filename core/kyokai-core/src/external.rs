@@ -256,6 +256,8 @@ impl External {
                 .kill_on_drop(true)
                 .spawn()
                 .map_err(|e| format!("EasyTier {tag}: {e}"))?;
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            sigchld_on_stack();
             let ext = External {
                 child: tokio::sync::Mutex::new(child),
                 cli,
@@ -332,6 +334,32 @@ fn command(program: &Path) -> tokio::process::Command {
     cmd
 }
 
+/// Sets SA_ONSTACK on the SIGCHLD handler tokio installed for its child
+/// processes (signal-hook-registry leaves it out): in a Go process (the
+/// GUI, kyokai-svc) a child's exit may be signalled on a Go thread, and Go
+/// aborts on a handler without it ("non-Go code set up signal handler
+/// without SA_ONSTACK flag").
+/// Side effects: changes SIGCHLD's handler flags for the whole process.
+/// Notes: called after each spawn; tokio installs the handler with its
+/// first child. A thread without an alternate stack runs the handler on
+/// its own stack as before.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn sigchld_on_stack() {
+    // SAFETY: reads the current action into a zeroed struct this function
+    // owns, then sets it back with one more flag; the handler is unchanged.
+    unsafe {
+        let mut action: libc::sigaction = std::mem::zeroed();
+        if libc::sigaction(libc::SIGCHLD, std::ptr::null(), &mut action) == 0
+            && action.sa_sigaction != libc::SIG_DFL
+            && action.sa_sigaction != libc::SIG_IGN
+            && action.sa_flags & libc::SA_ONSTACK == 0
+        {
+            action.sa_flags |= libc::SA_ONSTACK;
+            libc::sigaction(libc::SIGCHLD, &action, std::ptr::null_mut());
+        }
+    }
+}
+
 /// A loopback port free now, for a portal of the core.
 fn free_loopback() -> Result<SocketAddr, String> {
     std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
@@ -392,6 +420,31 @@ async fn socks5(portal: SocketAddr, to: SocketAddrV4) -> std::io::Result<TcpStre
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression: tokio's SIGCHLD handler lacked SA_ONSTACK, and the Go
+    /// process the core runs in aborted when a child's exit was signalled
+    /// on a Go thread (seen in CI's ABI smoke test on macOS).
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[tokio::test]
+    async fn sigchld_runs_on_the_signal_stack() {
+        let mut child = command(Path::new("/bin/sh"))
+            .arg("-c")
+            .arg("exit 0")
+            .spawn()
+            .unwrap();
+        sigchld_on_stack();
+        child.wait().await.unwrap();
+        // SAFETY: reads the current action into a zeroed struct.
+        let flags = unsafe {
+            let mut action: libc::sigaction = std::mem::zeroed();
+            assert_eq!(
+                libc::sigaction(libc::SIGCHLD, std::ptr::null(), &mut action),
+                0
+            );
+            action.sa_flags
+        };
+        assert_ne!(flags & libc::SA_ONSTACK, 0);
+    }
 
     /// Kyokai's own keys are refused wherever they sit; the person's other
     /// keys are listed, tables key by key.
