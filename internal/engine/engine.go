@@ -200,7 +200,7 @@ var protectedAllows = map[localapi.RequestType]bool{
 	localapi.RequestAITaskReply: true, localapi.RequestAITaskPause: true, localapi.RequestAITaskResume: true,
 	localapi.RequestAITaskCancel: true, localapi.RequestAITaskDecide: true, localapi.RequestAITasks: true,
 	localapi.RequestAIHistoryClear: true, localapi.RequestAIStop: true, localapi.RequestClipboardMine: true,
-	localapi.RequestAITaskRename: true, localapi.RequestAITaskExport: true, localapi.RequestAITaskFork: true,
+	localapi.RequestAITaskRename: true, localapi.RequestAITaskExport: true, localapi.RequestAITaskFork: true, localapi.RequestAITaskCompact: true,
 }
 
 // ownerOnly are the requests served only to the engine's owner or the
@@ -696,6 +696,8 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 		}
 		h.changed()
 		return localapi.Response{OK: true, ID: out.ID}
+	case localapi.RequestAITaskCompact:
+		return h.command("ai.task.compact", map[string]uint64{"id": req.ID})
 	case localapi.RequestAITaskExport:
 		var out struct{ Markdown string }
 		if err := h.lib.Call("ai.task.export", map[string]uint64{"id": req.ID}, &out); err != nil {

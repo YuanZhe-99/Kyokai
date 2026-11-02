@@ -58,7 +58,19 @@ export interface Conversation {
 	 * the provider's own history with every screenshot replaced by a note, or
 	 * for OpenAI the last response's id. Taken between runs, never mid-turn. */
 	state(): unknown;
+	/** The request that asks the model, with its tools off, to summarise the
+	 * conversation (compaction); the conversation itself is unchanged. */
+	summarize(prompt: string): unknown;
 }
+
+/** What compaction asks the model. */
+export const SUMMARIZE =
+	"Summarize this task so far, so that it can continue later without the history: what the user asked, " +
+	"what was done and found, where things stand on the screen, and what is left to do. Plain text, at most " +
+	"300 words. Do not act.";
+
+/** A conversation compaction replaced: its summary begins the next one. */
+export const summarized = (summary: string, instruction: string) => `Earlier in this task, summarized:\n${summary}\n\nNow: ${instruction}`;
 
 /** What an earlier screenshot becomes in a kept conversation. */
 export const GONE = "[an earlier screenshot, not kept]";
@@ -153,6 +165,12 @@ class Claude implements Conversation {
 				content: Array.isArray(m.content) ? m.content.filter((b: any) => b.type !== "thinking" && b.type !== "redacted_thinking").map(gone) : m.content,
 			})),
 		};
+	}
+	summarize(prompt: string) {
+		const body = structuredClone(this.request);
+		body.messages.push({ role: "user", content: [{ type: "text", text: prompt }] });
+		body.tool_choice = { type: "none" };
+		return body;
 	}
 	static restore(model: string, system: string, state: any): Claude {
 		const c = new Claude(model, system, "", { b64: "", width: 0, height: 0 });
@@ -279,6 +297,12 @@ class OpenAI implements Conversation {
 		// The provider keeps the history; the last response names it.
 		return { previous: this.previous };
 	}
+	summarize(prompt: string) {
+		const body: any = this.body();
+		body.input = [...body.input, { role: "user", content: [{ type: "input_text", text: prompt }] }];
+		body.tool_choice = "none";
+		return body;
+	}
 	static restore(model: string, system: string, state: any): OpenAI {
 		const c = new OpenAI(model, system, "", { b64: "", width: 0, height: 0 });
 		c.previous = typeof state.previous === "string" ? state.previous : undefined;
@@ -400,12 +424,27 @@ class Chat implements Conversation {
 			),
 		};
 	}
+	summarize(prompt: string) {
+		const body: any = this.body();
+		body.messages.push({ role: "user", content: prompt });
+		body.tool_choice = "none";
+		return body;
+	}
 	static restore(model: string, system: string, state: any, tools: unknown): Chat {
 		const c = new Chat(model, system, "", { b64: "", width: 0, height: 0 }, tools);
 		// The system prompt is today's; the rest is the kept history.
 		c.messages = [{ role: "system", content: system }, ...structuredClone(state.messages).filter((m: any) => m.role !== "system")];
 		return c;
 	}
+}
+
+/** Continues a kept conversation with `instruction` and the screen now:
+ * one compaction replaced (`{summary}`) starts afresh from its summary. */
+export function resume(protocol: Protocol, model: string, system: string, state: any, instruction: string, shot: Shot, tools: unknown): Conversation {
+	if (typeof state?.summary === "string") return open(protocol, model, system, summarized(state.summary, instruction), shot, tools);
+	const conv = restore(protocol, model, system, state, tools);
+	conv.followUp(instruction, shot);
+	return conv;
 }
 
 /** A conversation kept by `state`, to continue with a follow-up.

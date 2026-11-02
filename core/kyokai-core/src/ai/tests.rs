@@ -1500,6 +1500,74 @@ fn forks_and_clones_continue_from_where_they_were_taken() {
     assert!(rig.ai.fork(id, Some(5)).is_err(), "no such run");
 }
 
+/// Compaction by hand: the model summarises the kept conversation with its
+/// tools off, and the next reply starts afresh from the summary.
+#[test]
+fn compaction_by_hand_continues_from_the_summary() {
+    let server = server(vec![
+        (0, chat_said("Opened the file.")),
+        (0, chat_said("The file is open; saving is left.")),
+        (0, chat_said("Saved it.")),
+    ]);
+    let rig = rig("compact", "chat", &server.url);
+    let id = rig.ai.start("k1", "Open the file", None).unwrap();
+    rig.state(id, "done");
+    rig.ai.compact(id).unwrap();
+    let t = rig.until(id, "the compaction", |t| t.get("compacting").is_none());
+    assert!(t.get("error").is_none(), "{t:#}");
+    assert_eq!(t["state"], "done");
+    let kept = std::fs::read_to_string(rig.dir.join("ai-conversations").join(format!("{id}.json")))
+        .unwrap();
+    assert!(kept.contains("saving is left") && !kept.contains("Opened the file."));
+    rig.ai.reply(id, "Now save it").unwrap();
+    rig.until(id, "the reply's answer", |t| t["text"] == "Saved it.");
+    let requests = server.requests.lock().unwrap();
+    let ask = &requests[1].1;
+    assert_eq!(ask["tool_choice"], "none");
+    assert!(
+        ask["messages"].as_array().unwrap().last().unwrap()["content"]
+            .as_str()
+            .unwrap()
+            .starts_with("Summarize this task")
+    );
+    let sent = requests[2].1["messages"].as_array().unwrap();
+    assert_eq!(
+        sent.len(),
+        2,
+        "the system prompt and the summary with the reply"
+    );
+    let first = sent[1]["content"][0]["text"].as_str().unwrap();
+    assert!(
+        first.contains("The file is open; saving is left.") && first.ends_with("Now: Now save it")
+    );
+}
+
+/// A reply to a task whose last request passed the threshold compacts it
+/// first, in the same run.
+#[test]
+fn a_long_conversation_is_compacted_before_a_reply() {
+    let mut long = chat_said("Opened the file.");
+    long["usage"] = json!({"prompt_tokens": 200_000, "completion_tokens": 10});
+    let server = server(vec![
+        (0, long),
+        (0, chat_said("The file is open; saving is left.")),
+        (0, chat_said("Saved it.")),
+    ]);
+    let rig = rig("autocompact", "chat", &server.url);
+    let id = rig.ai.start("k1", "Open the file", None).unwrap();
+    assert_eq!(rig.state(id, "done")["context"], 200_000);
+    rig.ai.reply(id, "Now save it").unwrap();
+    let t = rig.until(id, "the reply's answer", |t| t["text"] == "Saved it.");
+    assert_ne!(t["context"], 200_000);
+    let requests = server.requests.lock().unwrap();
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[1].1["tool_choice"], "none", "the summary first");
+    let first = requests[2].1["messages"][1]["content"][0]["text"]
+        .as_str()
+        .unwrap();
+    assert!(first.contains("saving is left") && first.ends_with("Now: Now save it"));
+}
+
 /// Under No logs a kept conversation stays in memory: a reply continues it
 /// while the engine runs, nothing is written, and after a restart the task
 /// can no longer continue.

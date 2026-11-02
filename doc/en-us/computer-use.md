@@ -802,7 +802,14 @@ restarted, in a new one that resumes the kept conversation with the reply and th
 now (`resumable` says a reply can). A task can be forked after any of its finished runs, or cloned as
 it is (`ai.task.fork`): a new finished task with the runs, steps and answer up to there and the
 conversation as it stood then (the kept file notes where each run left it: the history's length,
-or OpenAI's response id), which a reply continues; the original is untouched. Clearing the history, or a task leaving it, deletes its
+or OpenAI's response id), which a reply continues; the original is untouched. Compaction (`ai.task.compact`, by hand on a
+finished task; automatically before a reply once the task's latest request took 150,000 input
+tokens, `context`) has the model summarise the conversation with its tools off, in a sidecar of its
+own that never takes the screen or the input lease and sends the instructions the task ran with,
+so the provider's cached prefix is read back; the summary replaces the kept conversation, and the
+next reply starts a new one from it, the reply and the screen as it is now. Its tokens count to the
+task's; while it runs the task shows `compacting` and takes no reply; a failure is the task's
+`error`, the task staying done; afterwards a fork can begin only after the latest run. Clearing the history, or a task leaving it, deletes its
 conversation. A task takes at most 200 runs.
 
 ## macOS

@@ -105,6 +105,31 @@ test("a kept conversation continues with the reply and a fresh screen", async ()
 	expect(sent[3].content[1].image_url.url).toBe(`data:image/png;base64,${SHOT.b64}`);
 });
 
+test("compaction summarises the kept conversation with the tools off", async () => {
+	const prov = provider([{ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "Opened the file; saving is left." } }], usage: { prompt_tokens: 50, completion_tokens: 9 } }]);
+	const resume = { messages: [{ role: "system", content: "sys" }, { role: "user", content: [{ type: "text", text: "Open the file" }] }, { role: "assistant", content: "Opened." }] };
+	const seen = await drive(prov.url, () => {}, { compact: true, resume, instruction: "", shot: { b64: "", width: 0, height: 0 } });
+	prov.stop();
+	expect(seen.map((m) => m.t)).toEqual(["hello", "key?", "turn", "state", "done"]);
+	expect(seen[3].state).toEqual({ summary: "Opened the file; saving is left." });
+	expect(seen[2].usage).toEqual({ input: 50, cached: 0, output: 9 });
+	const body = prov.bodies[0];
+	expect(body.tool_choice).toBe("none");
+	expect(body.messages.at(-1).content).toContain("Summarize this task so far");
+	expect(body.messages.slice(1, 3)).toEqual(resume.messages.slice(1));
+});
+
+test("a reply after compaction starts from the summary", async () => {
+	const prov = provider([chatDone]);
+	const seen = await drive(prov.url, () => {}, { instruction: "Now save it", resume: { summary: "Opened the file." } });
+	prov.stop();
+	expect(seen.at(-1)).toEqual({ t: "done", text: "Saved." });
+	const sent = prov.bodies[0].messages;
+	expect(sent.length).toBe(2);
+	expect(sent[1].content[0].text).toBe("Earlier in this task, summarized:\nOpened the file.\n\nNow: Now save it");
+	expect(sent[1].content[1].image_url.url).toBe(`data:image/png;base64,${SHOT.b64}`);
+});
+
 test("an unreadable kept conversation fails the task", async () => {
 	const prov = provider([chatDone]);
 	const seen = await drive(prov.url, () => {}, { resume: { nothing: true } });

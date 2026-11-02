@@ -17,7 +17,7 @@ import {
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { CLAUDE_BETAS, CLAUDE_VERSION, type Conversation, open, type Outcome, restore, type Shot, type Turn } from "./conversation";
+import { CLAUDE_BETAS, CLAUDE_VERSION, type Conversation, open, type Outcome, restore, resume, SUMMARIZE, type Shot, type Turn } from "./conversation";
 
 /** The protocol version this sidecar speaks. */
 export const VERSION = 2;
@@ -38,6 +38,8 @@ type Start = {
 	/** A conversation an earlier sidecar kept (`state`), which `instruction`
 	 * and `shot` then continue. */
 	resume?: unknown;
+	/** Only summarise `resume` (compaction): no screen, no actions. */
+	compact?: boolean;
 };
 type Result = { id: string; outcome: Outcome; shot?: Shot; acknowledged?: boolean };
 
@@ -140,13 +142,36 @@ const start = await new Promise<Start>((resolve) => {
 	send({ t: "hello", v: VERSION });
 });
 
-let conv: Conversation;
-if (start.resume !== undefined) {
-	conv = restore(start.protocol, start.model, start.system, start.resume, start.tools);
-	conv.followUp(start.instruction, start.shot);
-} else {
-	conv = open(start.protocol, start.model, start.system, start.instruction, start.shot, start.tools);
+if (start.compact) {
+	// Compaction: the model summarises the kept conversation with its tools
+	// off; the summary becomes the conversation the next reply continues.
+	try {
+		// Already a summary: nothing more to compact.
+		const earlier = (start.resume as any)?.summary;
+		if (typeof earlier === "string") {
+			send({ t: "state", state: { summary: earlier } });
+			send({ t: "done", text: "" });
+			await new Promise(() => {});
+		}
+		const kept = restore(start.protocol, start.model, start.system, start.resume, start.tools);
+		const key = (await ask<{ key: string | null }>("key", { t: "key?" })).key;
+		const turn = kept.accept(await post(start, kept.summarize(SUMMARIZE), key));
+		const summary = turn.text.trim();
+		if (!summary) throw new Error("the model gave no summary");
+		send({ t: "turn", text: "", progress: [], flagged: [], usage: turn.usage });
+		send({ t: "state", state: { summary } });
+		send({ t: "done", text: "" });
+	} catch (e: any) {
+		send({ t: "failed", error: String(e?.message ?? e) });
+	}
+	// The engine ends the sidecar; nothing else runs.
+	await new Promise(() => {});
 }
+
+const conv: Conversation =
+	start.resume !== undefined
+		? resume(start.protocol, start.model, start.system, start.resume, start.instruction, start.shot, start.tools)
+		: open(start.protocol, start.model, start.system, start.instruction, start.shot, start.tools);
 /** Whether the last turn waits for its answer, which the next request carries. */
 let answered = true;
 /** The outcomes of the last turn's actions, by call id, from the engine. */

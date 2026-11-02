@@ -156,7 +156,7 @@ Each lands with its docs and tests; the Rust loop stays until step 4 replaces it
      Sidecar protocol v2. Tasks get a name (rename) and an export (Markdown, no screenshots).
    - 5b. Done (2026-11-02; computer-use.md, "History and settings"): **Fork and clone**: a new task from another's conversation as it was after any of its
      runs (fork) or as it is (clone).
-   - 5c. **Compact**: by hand, and automatically before a reply once the last request passed a
+   - 5c. Done (2026-11-02; computer-use.md, "History and settings"): **Compact**: by hand, and automatically before a reply once the last request passed a
      threshold: the model summarises, the conversation restarts from the summary and a fresh
      screenshot.
    - 5d. **Model and thinking per task**: chosen at start, changeable between runs within one

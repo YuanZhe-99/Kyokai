@@ -134,7 +134,7 @@ var requests = map[string]localapi.RequestType{
 	"ai-pause": localapi.RequestAITaskPause, "ai-resume": localapi.RequestAITaskResume, "ai-cancel": localapi.RequestAITaskCancel,
 	"ai-approve": localapi.RequestAITaskDecide, "ai-decline": localapi.RequestAITaskDecide,
 	"ai-clear": localapi.RequestAIHistoryClear, "ai-stop": localapi.RequestAIStop,
-	"ai-rename": localapi.RequestAITaskRename, "ai-export": localapi.RequestAITaskExport, "ai-fork": localapi.RequestAITaskFork,
+	"ai-rename": localapi.RequestAITaskRename, "ai-export": localapi.RequestAITaskExport, "ai-fork": localapi.RequestAITaskFork, "ai-compact": localapi.RequestAITaskCompact,
 	"ai-scope": localapi.RequestAIScopeSet, "ai-apps": localapi.RequestAIApps,
 }
 
@@ -181,7 +181,7 @@ func run(args []string) error {
 	device := fs.String("device", "", "connect, forget, remove: the Device ID")
 	want := fs.String("want", localapi.PermViewScreen+","+localapi.PermControlInput, "connect: the permissions to ask for")
 	grant := fs.String("grant", "", "allow: the permissions to grant (default: all asked for); password-grants: what a correct password grants without asking (empty: none)")
-	id := fs.Uint64("id", 0, "close, allow, deny, screenshot, watch: the session or request id; ai-reply, ai-pause, ai-resume, ai-cancel, ai-approve, ai-decline, ai-rename, ai-export, ai-fork: the task")
+	id := fs.Uint64("id", 0, "close, allow, deny, screenshot, watch: the session or request id; ai-reply, ai-pause, ai-resume, ai-cancel, ai-approve, ai-decline, ai-rename, ai-export, ai-fork, ai-compact: the task")
 	key := fs.String("key", "", "untrust: the device key")
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
 	file := fs.String("file", "", "backup, restore: the backup file")
@@ -521,7 +521,10 @@ func printTask(t localapi.AITask) {
 		fmt.Printf("  name %q\n", t.Name)
 	}
 	if t.Resumable {
-		fmt.Println("  a reply continues it")
+		fmt.Printf("  a reply continues it (%d tokens so far)\n", t.Context)
+	}
+	if t.Compacting {
+		fmt.Println("  compacting")
 	}
 	for i, r := range t.Runs {
 		fmt.Printf("  run %d  %q → %q\n", i+1, r.Message, r.Text)

@@ -110,6 +110,7 @@ const (
 	RequestAITaskDecide         RequestType = "ai.task.decide"             // answer an approval (Request.ID, Request.AITask.Approve)
 	RequestAITaskRename         RequestType = "ai.task.rename"             // name a task, or give it back its instruction's name (Request.ID, Request.AITask.Name)
 	RequestAITaskFork           RequestType = "ai.task.fork"               // a new finished task from another's conversation after one of its runs (Request.ID, Request.AITask.Run; none: as it is now) (→ Response.ID)
+	RequestAITaskCompact        RequestType = "ai.task.compact"            // summarise a finished task's conversation, which a reply then continues (Request.ID); runs in the background (AITask.Compacting)
 	RequestAITaskExport         RequestType = "ai.task.export"             // a task as Markdown, never a screenshot (Request.ID; → Response.Document)
 	RequestAITasks              RequestType = "ai.tasks"                   // every task, newest first
 	RequestAIHistoryClear       RequestType = "ai.history.clear"           // forget the finished tasks
@@ -436,6 +437,11 @@ type AITask struct {
 	Runs []AIRun `json:"runs,omitempty"`
 	// Resumable means a reply can continue it: its conversation is kept.
 	Resumable bool `json:"resumable,omitempty"`
+	// Context is the input tokens of its latest request: how long its
+	// conversation has grown (a reply past 150,000 compacts it first).
+	Context int64 `json:"context,omitempty"`
+	// Compacting means its conversation is being summarised.
+	Compacting bool `json:"compacting,omitempty"`
 }
 
 // AIRun is one run of a task: the message that began it and the answer.

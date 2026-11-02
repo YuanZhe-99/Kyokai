@@ -321,6 +321,10 @@ struct Conversation {
     state: Value,
     #[serde(default)]
     cuts: Vec<Cut>,
+    /// The instructions it ran with, which compaction sends again so the
+    /// provider's cached prefix still matches.
+    #[serde(default)]
+    system: String,
 }
 
 /// Where a finished run left the conversation: the length of the
@@ -343,14 +347,19 @@ impl Conversation {
                 Some(json!({"messages": messages.get(..n)?}))
             }
             Value::String(_) => Some(json!({"previous": cut.at})),
+            // A compaction's summary.
+            Value::Object(_) => Some(cut.at.clone()),
             _ => None,
         }
     }
 }
 
-/// Where a conversation stands: its history's length, or OpenAI's last
-/// response id.
+/// Where a conversation stands: its history's length, OpenAI's last
+/// response id, or after a compaction the summary itself.
 fn cut_of(state: &Value) -> Value {
+    if state.get("summary").is_some() {
+        return state.clone();
+    }
     state["messages"]
         .as_array()
         .map_or_else(|| state["previous"].clone(), |m| json!(m.len()))
@@ -413,6 +422,17 @@ pub struct Task {
     /// The conversation a reply continues once the sidecar is gone.
     #[serde(skip)]
     kept: Kept,
+    /// The input tokens of its latest request: how long its conversation
+    /// has grown (`AUTO_COMPACT`).
+    #[serde(default)]
+    pub context: u64,
+    /// Its conversation is being compacted (`Ai::compact`).
+    #[serde(
+        default,
+        skip_deserializing,
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub compacting: bool,
     /// The host user's next message for a finished task.
     #[serde(skip)]
     reply: Option<String>,
@@ -433,6 +453,9 @@ const MAX_RUNS: usize = 200;
 const MAX_TASK_NAME: usize = 200;
 /// The kept conversations' folder in the state directory.
 const CONVERSATIONS: &str = "ai-conversations";
+/// A reply to a task whose latest request took at least this many input
+/// tokens compacts its conversation first.
+const AUTO_COMPACT: u64 = 150_000;
 /// Steps a session's task snapshot carries.
 const SESSION_STEPS: usize = 20;
 /// How often local input is checked while the model thinks.
@@ -736,6 +759,8 @@ impl Ai {
                     at: now,
                 }],
                 kept: Kept::None,
+                context: 0,
+                compacting: false,
                 reply: None,
                 conversation: None,
             });
@@ -764,6 +789,9 @@ impl Ai {
                 .ok_or("no such task")?;
             if t.conversation.is_none() && matches!(t.kept, Kept::None) {
                 return Err("this task can no longer continue".into());
+            }
+            if t.compacting {
+                return Err("the task is being compacted; reply in a moment".into());
             }
             if t.runs.len() >= MAX_RUNS {
                 return Err("this task is too long to continue; start a new one".into());
@@ -942,6 +970,46 @@ impl Ai {
         saved
     }
 
+    /// Compacts a finished task's conversation by hand: the model
+    /// summarises it, and a reply then continues from the summary.
+    /// Side effects: runs in the background, the task showing `compacting`
+    /// meanwhile; a failure is its `error`, the task staying done.
+    pub fn compact(&self, id: u64) -> Result<(), String> {
+        {
+            let mut tasks = self.shared.tasks.lock().expect("tasks");
+            let t = tasks
+                .iter_mut()
+                .find(|t| t.id == id)
+                .ok_or("no such task")?;
+            if t.state != State::Done {
+                return Err("only a finished task can be compacted".into());
+            }
+            if t.compacting {
+                return Err("the task is already being compacted".into());
+            }
+            if t.conversation.is_none() && matches!(t.kept, Kept::None) {
+                return Err("this task's conversation was not kept".into());
+            }
+            t.compacting = true;
+            t.error = None;
+        }
+        self.shared.changed.notify_waiters();
+        let shared = self.shared.clone();
+        self.rt
+            .as_ref()
+            .expect("running until dropped")
+            .spawn(async move {
+                let outcome = compact(&shared, id).await;
+                shared.edit(id, |t| {
+                    t.compacting = false;
+                    t.error = outcome.err();
+                });
+                let tasks = shared.tasks.lock().expect("tasks");
+                let _ = save_history(&shared.dir, &tasks);
+            });
+        Ok(())
+    }
+
     /// Starts a new finished task from another's conversation as it was
     /// after run `run` (a fork), or as it is now (a clone, None): the runs,
     /// steps and answer up to there, and the kept conversation a reply
@@ -994,6 +1062,8 @@ impl Ai {
                 name: t.name.clone(),
                 runs: t.runs.iter().take(run + 1).cloned().collect(),
                 kept: Kept::None,
+                context: 0,
+                compacting: false,
                 reply: None,
                 conversation: None,
             };
@@ -1001,7 +1071,14 @@ impl Ai {
             tasks.push(copy);
             trim_history(&self.shared.dir, &mut tasks);
             save_history(&self.shared.dir, &tasks)?;
-            (new, Conversation { state, cuts })
+            (
+                new,
+                Conversation {
+                    state,
+                    cuts,
+                    system: c.system,
+                },
+            )
         };
         let kept = self.shared.store(new, conversation);
         self.shared.edit(new, |t| t.kept = kept);
@@ -1226,8 +1303,9 @@ impl Shared {
     }
 
     /// Keeps a task's conversation as the sidecar handed it over after its
-    /// latest run, noting where that run left it.
-    fn keep(&self, id: u64, state: Value) {
+    /// latest run, noting where that run left it and the instructions it
+    /// ran with.
+    fn keep(&self, id: u64, state: Value, system: &str) {
         let Some((old, run)) = ({
             let tasks = self.tasks.lock().expect("tasks");
             tasks
@@ -1240,6 +1318,7 @@ impl Shared {
         let mut c = old.unwrap_or(Conversation {
             state: Value::Null,
             cuts: Vec::new(),
+            system: String::new(),
         });
         c.cuts.retain(|x| x.run < run);
         c.cuts.push(Cut {
@@ -1247,6 +1326,7 @@ impl Shared {
             at: cut_of(&state),
         });
         c.state = state;
+        c.system = system.to_owned();
         let kept = self.store(id, c);
         self.edit(id, |t| t.kept = kept);
     }
@@ -1399,37 +1479,154 @@ pub fn open_screen() -> Result<Box<dyn Desktop>, String> {
     }
 }
 
+/// The source a task uses, checked to have its key (the sidecar asks for
+/// the key per request).
+fn task_source(shared: &Shared, id: &str) -> Result<Source, String> {
+    let settings = shared.settings.lock().expect("settings");
+    let source = settings
+        .source(id)
+        .cloned()
+        .ok_or("the task's provider was removed")?;
+    shared
+        .key(&source)
+        .ok_or("the provider's API key is missing")?;
+    Ok(source)
+}
+
+/// The function tools an `openai-chat` source is offered; null for the
+/// others, whose providers have their own computer tools.
+fn chat_tools(source: &Source) -> Value {
+    if source.protocol == Protocol::OpenaiChat {
+        super::chat::tools()
+    } else {
+        Value::Null
+    }
+}
+
+/// Compacts a kept conversation: the model summarises it with its tools
+/// off, in a sidecar of its own (no screen, no lease, no action), and the
+/// summary replaces it, as where run `run` left it.
+/// Returns: the compacted conversation, for the caller to store.
+/// Side effects: adds the summary's tokens to the task.
+async fn summarize(
+    shared: &Arc<Shared>,
+    id: u64,
+    source: &Source,
+    model: &str,
+    c: &Conversation,
+    run: usize,
+) -> Result<Conversation, String> {
+    let mut a = Agent::start(&shared.agent).await?;
+    a.send(&ToSidecar::Start {
+        task: id,
+        protocol: source.protocol,
+        url: shared.url.clone().unwrap_or_else(|| source.url.clone()),
+        model: model.to_owned(),
+        coordinates: Coordinates::Auto,
+        system: c.system.clone(),
+        instruction: String::new(),
+        shot: super::sidecar::WireShot {
+            b64: String::new(),
+            width: 0,
+            height: 0,
+        },
+        tools: chat_tools(source),
+        resume: Some(c.state.clone()),
+        compact: true,
+    })?;
+    loop {
+        match a.recv().await? {
+            FromSidecar::KeyRequest => {
+                let key = shared
+                    .key(source)
+                    .ok_or("the provider's API key is missing")?;
+                a.send(&ToSidecar::Key {
+                    key: (!key.is_empty()).then(|| key.to_string()),
+                })?;
+            }
+            FromSidecar::Turn { usage, .. } => {
+                shared.edit(id, |t| t.tokens.add(usage));
+            }
+            FromSidecar::State { state } => {
+                return Ok(Conversation {
+                    cuts: vec![Cut {
+                        run,
+                        at: state.clone(),
+                    }],
+                    state,
+                    system: c.system.clone(),
+                });
+            }
+            FromSidecar::Failed { error } => return Err(format!("compaction failed: {error}")),
+            _ => return Err("compaction failed: the summary did not come".into()),
+        }
+    }
+}
+
+/// Compacts a finished task's kept conversation by hand (`Ai::compact`).
+async fn compact(shared: &Arc<Shared>, id: u64) -> Result<(), String> {
+    let (source, model, kept, runs) = shared
+        .edit(id, |t| {
+            (
+                t.source.clone(),
+                t.model.clone(),
+                shared.conversation(t),
+                t.runs.len(),
+            )
+        })
+        .ok_or("no such task")?;
+    let kept = kept.ok_or("this task's conversation was not kept")?;
+    let source = task_source(shared, &source)?;
+    let c = summarize(shared, id, &source, &model, &kept, runs.saturating_sub(1)).await?;
+    let kept = shared.store(id, c);
+    shared.edit(id, |t| {
+        t.kept = kept;
+        t.context = 0;
+        // The sidecar's conversation is the long one: a reply resumes the
+        // summary in a new sidecar.
+        t.conversation = None;
+    });
+    Ok(())
+}
+
 /// Runs a task until it finishes, fails or is cancelled.
 /// Returns: the agent sidecar when the model finished (so the task can
 /// continue later).
 async fn run(shared: &Arc<Shared>, id: u64) -> Result<Agent, Stop> {
-    let (source, model, instruction, reply, conversation, kept) = shared
+    let (source, model, instruction, reply, conversation, kept, context, runs) = shared
         .edit(id, |t| {
-            let kept = shared.conversation(t).map(|c| c.state);
             (
                 t.source.clone(),
                 t.model.clone(),
                 t.instruction.clone(),
                 t.reply.take(),
                 t.conversation.take(),
-                kept,
+                shared.conversation(t),
+                t.context,
+                t.runs.len(),
             )
         })
         .ok_or(Stop::Cancelled)?;
     if reply.is_some() && conversation.is_none() && kept.is_none() {
         return Err(Stop::Failed("the task's conversation was not kept".into()));
     }
-    let (source, key) = {
-        let settings = shared.settings.lock().expect("settings");
-        let source = settings
-            .source(&source)
-            .cloned()
-            .ok_or_else(|| "the task's provider was removed".to_string())?;
-        let key = shared.key(&source);
-        (source, key)
+    let source = task_source(shared, &source)?;
+    // A long conversation is compacted before a reply continues it; the
+    // reply then starts afresh from the summary.
+    let (conversation, kept) = match kept {
+        Some(c) if reply.is_some() && context >= AUTO_COMPACT => {
+            drop(conversation);
+            let c = summarize(shared, id, &source, &model, &c, runs.saturating_sub(2)).await?;
+            let state = c.state.clone();
+            let kept = shared.store(id, c);
+            shared.edit(id, |t| {
+                t.kept = kept;
+                t.context = 0;
+            });
+            (None, Some(state))
+        }
+        other => (conversation, other.map(|c| c.state)),
     };
-    // Checked before anything starts; the sidecar asks for it per request.
-    key.ok_or_else(|| "the provider's API key is missing".to_string())?;
     let coords = source
         .models
         .iter()
@@ -1501,6 +1698,7 @@ async fn drive(
     start: Start,
 ) -> Result<Agent, Stop> {
     let mut seen = observe(desk, start.coords, shared.scope()).await?;
+    let system = system_prompt(&seen);
     let mut agent = match (start.conversation, start.reply) {
         (Some(mut a), Some(text)) => {
             a.send(&ToSidecar::FollowUp {
@@ -1522,15 +1720,12 @@ async fn drive(
                 url,
                 model: start.model.clone(),
                 coordinates: start.coords,
-                system: system_prompt(&seen),
+                system: system.clone(),
                 instruction,
                 shot: (&seen.shot).into(),
-                tools: if source.protocol == Protocol::OpenaiChat {
-                    super::chat::tools()
-                } else {
-                    Value::Null
-                },
+                tools: chat_tools(source),
                 resume,
+                compact: false,
             })?;
             a
         }
@@ -1579,6 +1774,7 @@ async fn drive(
                         t.text = text.clone();
                     }
                     t.tokens.add(usage);
+                    t.context = usage.input;
                     t.progress.extend(progress.iter().cloned());
                     let extra = t.progress.len().saturating_sub(MAX_PROGRESS);
                     t.progress.drain(..extra);
@@ -1615,7 +1811,7 @@ async fn drive(
                     acknowledged: turn.acknowledged && !turn.flagged.is_empty(),
                 })?;
             }
-            FromSidecar::State { state } => shared.keep(id, state),
+            FromSidecar::State { state } => shared.keep(id, state, &system),
             FromSidecar::Done { .. } => return Ok(agent),
             FromSidecar::Failed { error } => return Err(Stop::Failed(error)),
             FromSidecar::Aborted => return Err(Stop::Cancelled),

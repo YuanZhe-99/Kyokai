@@ -1704,6 +1704,10 @@ fn call(input: &[u8]) -> Result<Value, String> {
             let name = req.params["name"].as_str().ok_or("bad name")?.to_owned();
             try_core(|c| c.ctx.ai.rename(id, &name).map(|()| json!({})))
         }
+        "ai.task.compact" => {
+            let id = req.params["id"].as_u64().ok_or("bad task id")?;
+            try_core(|c| c.ctx.ai.compact(id).map(|()| json!({})))
+        }
         "ai.task.fork" => {
             let id = req.params["id"].as_u64().ok_or("bad task id")?;
             let run = match &req.params["run"] {

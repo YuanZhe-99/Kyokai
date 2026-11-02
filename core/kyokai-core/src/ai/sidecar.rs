@@ -77,6 +77,10 @@ pub enum ToSidecar {
         /// which `instruction` and `shot` then continue.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resume: Option<Value>,
+        /// Only summarise `resume` (compaction): the sidecar answers with a
+        /// `state` of `{summary}`; no screen, no actions.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        compact: bool,
     },
     /// A message from the person for the running turn.
     Steer { text: String },
@@ -314,6 +318,7 @@ mod tests {
                     shot: shot(),
                     tools: Value::Null,
                     resume: Some(json!({"previous": "resp_1"})),
+                    compact: false,
                 },
                 json!({"t": "start", "task": 7, "protocol": "openai-chat", "url": "https://openrouter.ai/api/v1",
                     "model": "qwen/qwen3.8-27b", "coordinates": "0-1000", "system": "sys", "instruction": "Save",

@@ -55,6 +55,7 @@ var commands = []struct{ name, summary string }{
 	{"ai-tasks", "list the AI tasks"},
 	{"ai-rename", "name an AI task"},
 	{"ai-fork", "copy an AI task, as it is or as it was after one of its runs"},
+	{"ai-compact", "summarise an AI task's conversation, which a reply then continues"},
 	{"ai-export", "write an AI task as Markdown, without screenshots"},
 	{"ai-pause", "pause the AI task"},
 	{"ai-resume", "resume the AI task"},
