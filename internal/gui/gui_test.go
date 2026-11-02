@@ -599,7 +599,9 @@ func TestViewerInputMapping(t *testing.T) {
 			&inputEvent{Kind: "key", Key: "c", Down: false, Mods: &inputMods{}}},
 		{"a release never pressed is dropped", ui.InputEvent{Kind: ui.InputKeyUp, Key: ui.KeyC}, "", nil},
 		{"enter", ui.InputEvent{Kind: ui.InputKeyDown, Key: ui.KeyEnter}, "", &inputEvent{Kind: "key", Key: "enter", Down: true, Mods: &inputMods{}}},
-		{"touchpad scroll in pixels", ui.InputEvent{Kind: ui.InputScroll, DY: 80, Precise: true}, "", &inputEvent{Kind: "scroll", DY: 2}},
+		{"touchpad scroll in pixels", ui.InputEvent{Kind: ui.InputScroll, DY: 2 * notchDIPs(), Precise: true}, "", &inputEvent{Kind: "scroll", DY: 2}},
+		// Regression: a notch\x27s DIPs went out as about 99 notches.
+		{"one wheel notch", ui.InputEvent{Kind: ui.InputScroll, DY: -notchDIPs()}, "", &inputEvent{Kind: "scroll", DY: -1}},
 		// While the core grabs the keyboard, keys come from the grab; text that
 		// still reaches the window (characters another program injects as text)
 		// goes as text, and a release whose press was sent still goes.

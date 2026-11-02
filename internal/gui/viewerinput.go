@@ -91,6 +91,28 @@ func pictureBox(box ui.Rect, pw, ph int) (ox, oy, w, h float32) {
 	return (box.W - w) / 2, (box.H - h) / 2, w, h
 }
 
+// wheelNotches is a scroll in wheel notches, the unit the host and the
+// Remote Desktop and VNC clients take, from the DIPs MyGo reports: one
+// notch is 3 lines of 33 DIPs on Windows (at the system's default lines
+// per notch, so the controller's own setting carries over), a line of 40
+// on macOS and a step of 50 in GTK; a touchpad's pixels count the same.
+// Regression: the wheel's DIPs went out as notches, about 99 for one.
+func wheelNotches(ev ui.InputEvent) (dx, dy float32) {
+	per := notchDIPs()
+	return ev.DX / per, ev.DY / per
+}
+
+// notchDIPs is how many DIPs MyGo reports for one wheel notch here.
+func notchDIPs() float32 {
+	switch runtime.GOOS {
+	case "windows":
+		return 99
+	case "darwin":
+		return 40
+	}
+	return 50
+}
+
 // toEvent turns a viewer input event into the host's, or reports false
 // for one to leave alone. held tracks keys sent down, so a key's release is
 // sent exactly when its press was. grabbed is the keyboard mode the core
@@ -130,11 +152,7 @@ func toEvent(ev ui.InputEvent, box ui.Rect, pw, ph int, held map[ui.Key]bool, gr
 		}
 		return inputEvent{Kind: "pointer", Action: action, Button: button, X: x, Y: y}, true
 	case ui.InputScroll:
-		dx, dy := ev.DX, ev.DY
-		if ev.Precise {
-			// Touchpads report pixels: about 40 to a line.
-			dx, dy = dx/40, dy/40
-		}
+		dx, dy := wheelNotches(ev)
 		if dx == 0 && dy == 0 {
 			return inputEvent{}, false
 		}

@@ -260,11 +260,9 @@ func (sc *screenClient) input(ev ui.InputEvent) bool {
 		_ = sc.desk.pointer(x, y, buttons)
 		return true
 	case ui.InputScroll:
-		dx, dy := ev.DX, ev.DY
-		if !ev.Precise {
-			dx, dy = dx*40, dy*40 // lines, about 40 pixels each
-		}
-		_ = sc.desk.scroll(x, y, float64(dx), float64(dy))
+		// Both clients scroll 20 pixels a notch.
+		dx, dy := wheelNotches(ev)
+		_ = sc.desk.scroll(x, y, float64(dx*20), float64(dy*20))
 		return true
 	case ui.InputText:
 		if grabbed == "map" || ev.Text == "" {
