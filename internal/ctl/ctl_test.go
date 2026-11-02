@@ -1,14 +1,16 @@
 package ctl
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 // TestCommandsAreServed checks that help lists exactly the commands the
 // command line serves.
 func TestCommandsAreServed(t *testing.T) {
-	own := map[string]bool{"help": true, "version": true, "move": true, "watch": true, "screenshot": true}
+	own := map[string]bool{"help": true, "version": true, "move": true, "watch": true, "screenshot": true, "devices": true, "ai-follow": true}
 	listed := map[string]bool{}
 	for _, c := range commands {
 		if c.name == "" {
@@ -76,5 +78,49 @@ func TestExitCodes(t *testing.T) {
 		if got := Main("kyokai", c.args); got != c.want {
 			t.Errorf("kyokai %v: exit %d, want %d", c.args, got, c.want)
 		}
+	}
+}
+
+// TestLoopbackOnly: a tunnel listens on this computer's loopback only.
+func TestLoopbackOnly(t *testing.T) {
+	for _, c := range []struct {
+		in, want string
+		ok       bool
+	}{
+		{"2222", "127.0.0.1:2222", true},
+		{"127.0.0.1:3390", "127.0.0.1:3390", true},
+		{"[::1]:5901", "[::1]:5901", true},
+		{"localhost:22", "localhost:22", true},
+		{"0.0.0.0:2222", "", false},
+		{"192.168.1.5:22", "", false},
+		{"example.com:22", "", false},
+		{"ssh", "", false},
+		{"70000", "", false},
+	} {
+		got, err := loopback(c.in)
+		if got != c.want || (err == nil) != c.ok {
+			t.Errorf("loopback(%q) = %q, %v; want %q, ok %v", c.in, got, err, c.want, c.ok)
+		}
+	}
+}
+
+// TestSecretFromStdin: --secret-stdin reads the first line once, without
+// its line ending; otherwise the environment gives the secret.
+func TestSecretFromStdin(t *testing.T) {
+	t.Setenv("KYOKAI_TEST_SECRET", "from-env")
+	defer func() { secretStdin, stdin, stdinLine = false, os.Stdin, nil }()
+	secretStdin, stdinLine = false, nil
+	if s, ok := secret("KYOKAI_TEST_SECRET"); s != "from-env" || !ok {
+		t.Errorf("env: %q %v", s, ok)
+	}
+	secretStdin, stdin = true, strings.NewReader("pa ss\r\nsecond\n")
+	for range 2 {
+		if s, ok := secret("KYOKAI_TEST_SECRET"); s != "pa ss" || !ok {
+			t.Errorf("stdin: %q %v", s, ok)
+		}
+	}
+	secretStdin, stdin, stdinLine = true, strings.NewReader(""), nil
+	if _, ok := secret("KYOKAI_TEST_SECRET"); ok {
+		t.Error("an empty standard input gives a secret")
 	}
 }

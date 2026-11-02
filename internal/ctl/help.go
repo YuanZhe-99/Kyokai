@@ -42,6 +42,10 @@ var commands = []struct{ name, summary string }{
 	{"deny", "turn a connection request away"},
 	{"forget", "forget a host"},
 	{"remove", "remove a device from the list"},
+	{"devices", "list the devices this one connected to, with their addresses"},
+	{"route-add", "keep an address a device is reached at"},
+	{"route-remove", "forget an address of a device"},
+	{"route-prefer", "choose how a device is reached: auto, network or an address"},
 	{"screenshot", "save a controlled host's screen as a PNG file"},
 	{"watch", "watch a controlled host's stream and report on it (for testing)"},
 	{"watch-status", "watch hosts' status, printing each sample"},
@@ -53,6 +57,7 @@ var commands = []struct{ name, summary string }{
 	{"ai-start", "start an AI task on this device"},
 	{"ai-reply", "answer an AI task's question"},
 	{"ai-tasks", "list the AI tasks"},
+	{"ai-follow", "print an AI task as it goes, until it ends"},
 	{"ai-rename", "name an AI task"},
 	{"ai-fork", "copy an AI task, as it is or as it was after one of its runs"},
 	{"ai-compact", "summarise an AI task's conversation, which a reply then continues"},
@@ -73,7 +78,7 @@ var commands = []struct{ name, summary string }{
 	{"authorized", "list the keys that may sign in to this device"},
 	{"authorized-add", "let a key sign in to this device"},
 	{"authorized-remove", "stop a key signing in to this device"},
-	{"tunnel", "pipe a host's SSH, Remote Desktop or VNC to standard input and output"},
+	{"tunnel", "pipe a host's SSH, Remote Desktop or VNC to standard input and output, or serve it on a local port"},
 	{"credentials-set", "save a host service's sign-in (password from KYOKAI_SERVICE_PASSWORD)"},
 	{"credentials-get", "show a saved sign-in, never its password"},
 	{"credentials-forget", "forget saved sign-ins"},
@@ -94,7 +99,7 @@ var commands = []struct{ name, summary string }{
 
 // streams are the commands that print as things arrive, which --json does
 // not cover.
-var streams = map[string]bool{"watch": true, "watch-status": true, "tunnel": true, "logs": true}
+var streams = map[string]bool{"watch": true, "watch-status": true, "tunnel": true, "logs": true, "ai-follow": true}
 
 // summary is what cmd does; empty for an unknown command.
 func summary(cmd string) string {

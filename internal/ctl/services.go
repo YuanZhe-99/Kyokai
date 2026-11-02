@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
@@ -103,10 +104,15 @@ func ctlTunnel(args []string) error {
 	device := fs.String("device", "", "the Device ID")
 	address := fs.String("address", "", "the device's IP address or domain name, instead of the network")
 	service := fs.String("service", "ssh", "ssh, rdp or vnc")
+	listen := fs.String("listen", "", "serve the tunnel on this port of this computer's loopback (PORT or 127.0.0.1:PORT), one tunnel per connection, instead of standard input and output")
 	if err := parse(fs, args[1:]); err != nil {
 		return err
 	}
-	conn, err := localapi.NewClient(*socket).Tunnel(context.Background(), localapi.TunnelRequest{DeviceID: *device, Address: *address, Service: *service})
+	want := localapi.TunnelRequest{DeviceID: *device, Address: *address, Service: *service}
+	if *listen != "" {
+		return serveTunnel(*socket, *listen, want)
+	}
+	conn, err := localapi.NewClient(*socket).Tunnel(context.Background(), want)
 	if err != nil {
 		return fmt.Errorf("no tunnel: %w", err)
 	}
@@ -143,7 +149,7 @@ func ctlCredentials(args []string) error {
 	case "credentials-set":
 		req.Type = localapi.RequestCredentialsSet
 		req.Credentials = &localapi.Credentials{User: *user, Domain: *domain, KeyID: *keyID}
-		if p, ok := os.LookupEnv(servicePasswordEnv); ok {
+		if p, ok := secret(servicePasswordEnv); ok {
 			req.Credentials.Password = &p
 		}
 	case "credentials-get":
@@ -230,4 +236,59 @@ func ctlLogs(args []string) error {
 	}
 	_, err = io.WriteString(os.Stdout, resp.Document)
 	return err
+}
+
+// serveTunnel listens on a loopback port and gives each connection a
+// tunnel of its own to the device's service, until it is stopped.
+// Notes: only loopback: the host's service never becomes reachable from
+// this computer's network.
+func serveTunnel(socket, listen string, want localapi.TunnelRequest) error {
+	addr, err := loopback(listen)
+	if err != nil {
+		return err
+	}
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	defer l.Close()
+	fmt.Println("listening on", l.Addr())
+	client := localapi.NewClient(socket)
+	for {
+		c, err := l.Accept()
+		if err != nil {
+			return err
+		}
+		go func() {
+			defer c.Close()
+			t, err := client.Tunnel(context.Background(), want)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "no tunnel:", err)
+				return
+			}
+			defer t.Close()
+			go func() {
+				_, _ = io.Copy(t, c)
+				time.Sleep(stdinGrace)
+				_ = t.Close()
+			}()
+			_, _ = io.Copy(c, t)
+		}()
+	}
+}
+
+// loopback is a --listen value as an address on this computer's loopback:
+// a port alone is 127.0.0.1's; any other host is refused.
+func loopback(listen string) (string, error) {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		host, port = "127.0.0.1", listen
+	}
+	if n, err := strconv.Atoi(port); err != nil || n < 0 || n > 65535 {
+		return "", fmt.Errorf("--listen wants a port, or 127.0.0.1:PORT")
+	}
+	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		return "", fmt.Errorf("a tunnel listens on this computer's loopback only, not %s", host)
+	}
+	return net.JoinHostPort(host, port), nil
 }

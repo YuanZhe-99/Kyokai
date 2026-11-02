@@ -5,6 +5,7 @@
 package ctl
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -51,18 +53,41 @@ const (
 // errUsage reports a command line already explained on standard error.
 var errUsage = errors.New("usage")
 
-// prog is what the program is called in messages; jsonOut is --json.
+// prog is what the program is called in messages; jsonOut is --json;
+// secretStdin is --secret-stdin, stdin where it reads and stdinLine what
+// it read (once).
 var (
-	prog    = "kyokai"
-	jsonOut bool
+	prog        = "kyokai"
+	jsonOut     bool
+	secretStdin bool
+	stdin       io.Reader = os.Stdin
+	stdinLine   *string
 )
+
+// secret is the command's secret: the first line of standard input with
+// --secret-stdin (read once), else the environment variable env.
+// Returns: it, and whether one was given.
+func secret(env string) (string, bool) {
+	if !secretStdin {
+		return os.LookupEnv(env)
+	}
+	if stdinLine == nil {
+		line, err := bufio.NewReader(stdin).ReadString('\n')
+		if err != nil && line == "" {
+			return "", false
+		}
+		line = strings.TrimRight(line, "\r\n")
+		stdinLine = &line
+	}
+	return *stdinLine, true
+}
 
 // Main runs one command line and returns its exit code.
 // Inputs: name, the program as messages name it ("kyokai", "kyokai-svc
 // ctl"); args, the command and its flags.
 // Side effects: talks to the user's engine; prints to stdout and stderr.
 func Main(name string, args []string) int {
-	prog, jsonOut = name, false
+	prog, jsonOut, secretStdin, stdinLine = name, false, false, nil
 	err := run(args)
 	var refused *localapi.RequestError
 	code := ExitFailed
@@ -90,6 +115,7 @@ func newFlags(cmd string) (*flag.FlagSet, *string) {
 	socket := fs.String("socket", localapi.UserSocketPath(os.Getenv("KYOKAI_PROFILE")), "the engine's local API socket")
 	if !streams[cmd] {
 		fs.BoolVar(&jsonOut, "json", false, "print the engine's answer as JSON")
+		fs.BoolVar(&secretStdin, "secret-stdin", false, "read the command's secret (a password, passphrase, network secret or key) from the first line of standard input instead of its environment variable")
 	}
 	return fs, socket
 }
@@ -134,6 +160,7 @@ var requests = map[string]localapi.RequestType{
 	"ai-pause": localapi.RequestAITaskPause, "ai-resume": localapi.RequestAITaskResume, "ai-cancel": localapi.RequestAITaskCancel,
 	"ai-approve": localapi.RequestAITaskDecide, "ai-decline": localapi.RequestAITaskDecide,
 	"ai-clear": localapi.RequestAIHistoryClear, "ai-stop": localapi.RequestAIStop,
+	"route-add": localapi.RequestRoutesSet, "route-remove": localapi.RequestRoutesSet, "route-prefer": localapi.RequestRoutesSet,
 	"ai-rename": localapi.RequestAITaskRename, "ai-export": localapi.RequestAITaskExport, "ai-fork": localapi.RequestAITaskFork, "ai-compact": localapi.RequestAITaskCompact,
 	"ai-scope": localapi.RequestAIScopeSet, "ai-apps": localapi.RequestAIApps,
 }
@@ -167,7 +194,7 @@ func run(args []string) error {
 		servers = append(servers, s)
 		return nil
 	})
-	address := fs.String("address", "", "identify, connect: the host's IP address or domain name (connect: instead of the network)")
+	address := fs.String("address", "", "identify, connect: the host's IP address or domain name (connect: instead of the network); route-add, route-remove: the address")
 	byAddress := fs.String("by-address", "", "access: accept connections by address (true, false)")
 	ranges := fs.String("ranges", "", "access: the address ranges connections by address are accepted from (comma-separated; with --by-address)")
 	direct := fs.Bool("direct", false, "network-set: try direct (hole-punched) paths; omitted keeps the current choice")
@@ -178,10 +205,10 @@ func run(args []string) error {
 	tomlFile := fs.String("toml-file", "", "network-profile: a file with the official core's own options for the network (EasyTier chosen)")
 	easytier := fs.String("easytier", "", "network-backend: the official EasyTier core's tag (empty: Kyokai Network)")
 	tag := fs.String("tag", "", "core-install: the EasyTier release to download")
-	device := fs.String("device", "", "connect, forget, remove: the Device ID")
+	device := fs.String("device", "", "connect, forget, remove, route-add, route-remove, route-prefer: the Device ID")
 	want := fs.String("want", localapi.PermViewScreen+","+localapi.PermControlInput, "connect: the permissions to ask for")
 	grant := fs.String("grant", "", "allow: the permissions to grant (default: all asked for); password-grants: what a correct password grants without asking (empty: none)")
-	id := fs.Uint64("id", 0, "close, allow, deny, screenshot, watch: the session or request id; ai-reply, ai-pause, ai-resume, ai-cancel, ai-approve, ai-decline, ai-rename, ai-export, ai-fork, ai-compact: the task")
+	id := fs.Uint64("id", 0, "close, allow, deny, screenshot, watch: the session or request id; ai-reply, ai-pause, ai-resume, ai-cancel, ai-approve, ai-decline, ai-rename, ai-export, ai-fork, ai-compact, ai-follow: the task")
 	key := fs.String("key", "", "untrust: the device key")
 	remove := fs.Bool("remove", false, "permanent: remove the permanent password")
 	file := fs.String("file", "", "backup, restore: the backup file")
@@ -211,6 +238,7 @@ func run(args []string) error {
 	approval := fs.String("approval", "", "ai-set: auto or every-action")
 	text := fs.String("text", "", "ai-start, ai-reply, watch: what the AI should do (watch: on the host)")
 	apps := fs.String("apps", "", "ai-scope: the programs the AI may work in, as ai-apps names them (comma-separated; empty: the whole desktop)")
+	route := fs.String("route", "auto", "route-prefer: auto, network, or one of the device's addresses")
 	run := fs.Int("run", 0, "ai-fork: the run to begin after, 1 first as ai-tasks lists them (none: the latest, a clone)")
 	out := fs.String("out", "", "screenshot: the PNG file to write; ai-export: the Markdown file to write (none: standard output)")
 	if err := parse(fs, args[1:]); err != nil {
@@ -219,6 +247,10 @@ func run(args []string) error {
 	switch cmd {
 	case "screenshot":
 		return screenshot(*socket, *id, *out, *display)
+	case "devices":
+		return devices(*socket)
+	case "ai-follow":
+		return follow(*socket, *id)
 	case "move":
 		dest := "user"
 		if *to == helper.SocketPath {
@@ -285,7 +317,7 @@ func run(args []string) error {
 			j := *joined == "true"
 			req.Profile.Joined = &j
 		}
-		if s, ok := os.LookupEnv(networkSecretEnv); ok {
+		if s, ok := secret(networkSecretEnv); ok {
 			req.Profile.Secret = &s
 		}
 		if *tomlFile != "" {
@@ -304,7 +336,8 @@ func run(args []string) error {
 		req.LogsOff = on
 	case "protect":
 		// Off needs the permanent password, from the environment.
-		req.Protect = &localapi.ProtectRequest{On: *on, Password: os.Getenv(permanentEnv)}
+		p, _ := secret(permanentEnv)
+		req.Protect = &localapi.ProtectRequest{On: *on, Password: p}
 	case "helper-update":
 		req.From = *from
 	case "clipboard-mine":
@@ -316,26 +349,26 @@ func run(args []string) error {
 				req.Network.Direct = direct
 			}
 		})
-		if s, ok := os.LookupEnv(networkSecretEnv); ok {
+		if s, ok := secret(networkSecretEnv); ok {
 			req.Network.Secret = &s
 		}
 	case "permanent":
 		req.Permanent = &localapi.PermanentPassword{}
 		if !*remove {
-			p, ok := os.LookupEnv(permanentEnv)
+			p, ok := secret(permanentEnv)
 			if !ok {
 				return fmt.Errorf("set %s (or pass --remove)", permanentEnv)
 			}
 			req.Permanent.Password = &p
 		}
 	case "connect":
-		p, ok := os.LookupEnv(passwordEnv)
+		p, ok := secret(passwordEnv)
 		if !ok {
 			return fmt.Errorf("set %s to the host's password (empty asks without one)", passwordEnv)
 		}
 		req.Connect = &localapi.ConnectRequest{DeviceID: *device, Password: p, Want: list(*want), Address: *address}
 	case "backup", "restore":
-		p, ok := os.LookupEnv(passphraseEnv)
+		p, ok := secret(passphraseEnv)
 		if !ok || *file == "" {
 			return fmt.Errorf("set %s and pass --file", passphraseEnv)
 		}
@@ -374,7 +407,7 @@ func run(args []string) error {
 	case "ai-key":
 		req.AIKey = &localapi.AIKey{Source: *source}
 		if !*remove {
-			k, ok := os.LookupEnv(aiKeyEnv)
+			k, ok := secret(aiKeyEnv)
 			if !ok {
 				return fmt.Errorf("set %s (or pass --remove)", aiKeyEnv)
 			}
@@ -393,6 +426,20 @@ func run(args []string) error {
 				return errors.New("--model wants SOURCE:MODEL")
 			}
 			req.AITask.Model = &localapi.AIModelRef{Source: s, ID: id}
+		}
+	case "route-add", "route-remove", "route-prefer":
+		req.Routes = &localapi.RoutesChange{DeviceID: *device}
+		switch cmd {
+		case "route-add":
+			req.Routes.Add = *address
+		case "route-remove":
+			req.Routes.Remove = *address
+		default:
+			r := *route
+			if r == "auto" {
+				r = ""
+			}
+			req.Routes.Prefer = &r
 		}
 	case "ai-rename":
 		req.AITask = &localapi.AITaskRequest{Name: *name}
@@ -1039,5 +1086,71 @@ func screenshot(socket string, id uint64, out string, display int) error {
 			fmt.Printf("%s (%d×%d)\n", out, pic.Rect.Dx(), pic.Rect.Dy())
 			return nil
 		}
+	}
+}
+
+// devices lists the devices this one connected to, newest first: each
+// one's Device ID, name, system, when it was last connected, its kept
+// addresses and the route chosen.
+func devices(socket string) error {
+	resp, err := localapi.NewClient(socket).Do(context.Background(), localapi.Request{Type: localapi.RequestStatus})
+	if err != nil {
+		return err
+	}
+	recent := resp.Status.Recent
+	if jsonOut {
+		return printJSON(recent)
+	}
+	for _, r := range recent {
+		fmt.Printf("%s %q  %s  last %s\n", r.DeviceID, r.About.Name, r.About.OS, time.Unix(r.Last, 0).Format(time.DateTime))
+		prefer := r.Prefer
+		if prefer == "" {
+			prefer = "auto"
+		}
+		fmt.Printf("  route %s", prefer)
+		for _, rt := range r.Routes {
+			fmt.Printf(", %s", rt.Address)
+		}
+		fmt.Println()
+	}
+	return nil
+}
+
+// follow prints an AI task as it goes, a line per new step and per change
+// of state, until it is no longer working.
+func follow(socket string, id uint64) error {
+	if id == 0 {
+		return errors.New("pass --id")
+	}
+	client := localapi.NewClient(socket)
+	steps, state := 0, ""
+	for {
+		resp, err := client.Do(context.Background(), localapi.Request{Type: localapi.RequestAITasks})
+		if err != nil {
+			return err
+		}
+		i := slices.IndexFunc(resp.AITasks, func(t localapi.AITask) bool { return t.ID == id })
+		if i < 0 {
+			return errors.New("no such task")
+		}
+		t := resp.AITasks[i]
+		for _, s := range t.Steps[min(steps, len(t.Steps)):] {
+			fmt.Printf("%s  %s  %s\n", time.Unix(s.At, 0).Format(time.TimeOnly), s.Outcome, s.Action)
+		}
+		steps = len(t.Steps)
+		if t.State != state {
+			state = t.State
+			fmt.Println(state)
+		}
+		if t.State == "done" || t.State == "failed" || t.State == "cancelled" {
+			if t.Text != "" {
+				fmt.Println(t.Text)
+			}
+			if t.Error != "" {
+				return errors.New(t.Error)
+			}
+			return nil
+		}
+		time.Sleep(time.Second)
 	}
 }

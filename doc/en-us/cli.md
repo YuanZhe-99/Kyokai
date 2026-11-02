@@ -38,8 +38,9 @@ commands that print as things arrive (`watch`, `watch-status`, `tunnel`, `logs`)
 
 ## Secrets
 
-Secrets come only from the environment, never from arguments, where other processes could read
-them.
+Secrets come only from the environment or standard input, never from arguments, where other
+processes could read them: `--secret-stdin` reads the command's secret from the first line of
+standard input instead of its variable.
 
 | Variable | Read by |
 |---|---|
@@ -56,11 +57,18 @@ them.
 |---|---|
 | This device | `status`, `password`, `regenerate`, `permanent`, `name-set`, `access`, `password-grants`, `trusted`, `untrust`, `backup`, `restore`, `reset-identity` |
 | Networks | `network`, `network-set`, `networks`, `network-profile`, `network-remove`, `network-direct`, `network-backend`, `cores`, `core-install` |
-| Sessions and devices | `connect`, `identify`, `close`, `allow`, `deny`, `forget`, `remove`, `screenshot`, `watch`, `watch-status` |
-| AI | `ai`, `ai-set`, `ai-key`, `ai-models`, `ai-start`, `ai-reply`, `ai-tasks`, `ai-rename`, `ai-fork`, `ai-compact`, `ai-export`, `ai-pause`, `ai-resume`, `ai-cancel`, `ai-approve`, `ai-decline`, `ai-apps`, `ai-scope`, `ai-clear`, `ai-stop` |
+| Sessions and devices | `connect`, `identify`, `close`, `allow`, `deny`, `forget`, `remove`, `devices`, `route-add`, `route-remove`, `route-prefer`, `screenshot`, `watch`, `watch-status` |
+| AI | `ai`, `ai-set`, `ai-key`, `ai-models`, `ai-start`, `ai-reply`, `ai-tasks`, `ai-follow`, `ai-rename`, `ai-fork`, `ai-compact`, `ai-export`, `ai-pause`, `ai-resume`, `ai-cancel`, `ai-approve`, `ai-decline`, `ai-apps`, `ai-scope`, `ai-clear`, `ai-stop` |
 | Keys, tunnels and sign-ins | `keys`, `keys-generate`, `keys-remove`, `authorized`, `authorized-add`, `authorized-remove`, `tunnel`, `credentials-set`, `credentials-get`, `credentials-forget` |
 | The engine | `background`, `helper-update`, `move`, `capture-show`, `no-logs`, `protect`, `clipboard-mine`, `logs`, `shutdown` |
 | Itself | `help`, `version` |
+
+`devices` lists the devices this one connected to with their kept addresses; the names the GUI
+gives devices are the GUI's own and stay there. `tunnel --listen PORT` serves a host's SSH, Remote
+Desktop or VNC on this computer's loopback (never another address), a tunnel per connection;
+without it the tunnel is standard input and output, as OpenSSH's `ProxyCommand` wants, which also
+carries files: `sftp` and `scp` with `-o ProxyCommand="kyokai tunnel --device ID --service ssh"`.
+`ai-follow --id N` prints a task's steps and states as they come, until it ends.
 
 `watch` is for testing the stream (frames per second, gaps, the host's reports, injected input); the
 others are what the GUI does, one request each.

@@ -31,7 +31,7 @@
 
 ## 机密
 
-机密只来自环境变量，绝不来自参数，因为其他进程可以读取参数。
+机密只来自环境变量或标准输入，绝不来自参数，因为其他进程可以读取参数：`--secret-stdin` 从标准输入的第一行读取命令的机密，代替它的环境变量。
 
 | 变量 | 读取它的命令 |
 |---|---|
@@ -48,11 +48,15 @@
 |---|---|
 | 这台设备 | `status`、`password`、`regenerate`、`permanent`、`name-set`、`access`、`password-grants`、`trusted`、`untrust`、`backup`、`restore`、`reset-identity` |
 | 网络 | `network`、`network-set`、`networks`、`network-profile`、`network-remove`、`network-direct`、`network-backend`、`cores`、`core-install` |
-| 会话与设备 | `connect`、`identify`、`close`、`allow`、`deny`、`forget`、`remove`、`screenshot`、`watch`、`watch-status` |
-| AI | `ai`、`ai-set`、`ai-key`、`ai-models`、`ai-start`、`ai-reply`、`ai-tasks`、`ai-rename`、`ai-fork`、`ai-compact`、`ai-export`、`ai-pause`、`ai-resume`、`ai-cancel`、`ai-approve`、`ai-decline`、`ai-apps`、`ai-scope`、`ai-clear`、`ai-stop` |
+| 会话与设备 | `connect`、`identify`、`close`、`allow`、`deny`、`forget`、`remove`、`devices`、`route-add`、`route-remove`、`route-prefer`、`screenshot`、`watch`、`watch-status` |
+| AI | `ai`、`ai-set`、`ai-key`、`ai-models`、`ai-start`、`ai-reply`、`ai-tasks`、`ai-follow`、`ai-rename`、`ai-fork`、`ai-compact`、`ai-export`、`ai-pause`、`ai-resume`、`ai-cancel`、`ai-approve`、`ai-decline`、`ai-apps`、`ai-scope`、`ai-clear`、`ai-stop` |
 | 密钥、隧道与登录信息 | `keys`、`keys-generate`、`keys-remove`、`authorized`、`authorized-add`、`authorized-remove`、`tunnel`、`credentials-set`、`credentials-get`、`credentials-forget` |
 | 引擎 | `background`、`helper-update`、`move`、`capture-show`、`no-logs`、`protect`、`clipboard-mine`、`logs`、`shutdown` |
 | 命令行本身 | `help`、`version` |
+
+`devices` 列出本机连接过的设备及其保存的地址；界面为设备起的名称属于界面自己，留在那里。`tunnel --listen PORT` 在这台电脑的回环地址上（绝不是其他地址）提供被控端的 SSH、远程桌面或 VNC，
+每个连接一条隧道；不带它时隧道是标准输入与输出，正如 OpenSSH 的 `ProxyCommand` 所要求，也可以用来传输文件：`sftp` 与 `scp` 加上
+`-o ProxyCommand="kyokai tunnel --device ID --service ssh"`。`ai-follow --id N` 随任务进行打印它的步骤与状态，直到结束。
 
 `watch` 用于测试画面流（每秒帧数、间隔、被控端的报告、注入的输入）；其余命令做的都是界面所做的事，每条一个请求。
 
