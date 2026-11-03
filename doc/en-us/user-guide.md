@@ -127,7 +127,8 @@ dragging it back onto the main window, returns it. The toolbar floating
 over the top of the picture holds the controls — or, when the pane's header has room, sits in the
 middle of the header, leaving room on either side to move the window; rest the pointer on an icon to see its name. Drag
 it by its grip at the left end to wherever along the top edge suits you, and fold it with ⌃ to a small handle;
-Kyokai remembers both. **Display** chooses the screen when the other computer has several, and
+Kyokai remembers both. **Display** chooses the screen when the other computer has several (or opens another of them in a
+new pane beside this one, so each screen shows in a pane of its own), and
 **Fit** (the whole screen in the window) or **Original size** (one point per pixel of the other
 computer, with scroll bars to drag when it is larger than the window). **Quality** sets
 **Faster**, **Balanced** or **Sharper**, a frame-rate cap, the **Resolution** where the other

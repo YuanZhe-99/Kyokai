@@ -417,7 +417,10 @@ when `SCREENSHOT_DIR` is set.
 
 ## Connections
 
-- One connection per device, shown as a pane from the start, as RustDesk shows a tab. Connecting
+- One connection per device, shown as a pane from the start, as RustDesk shows a tab; a host with
+  several displays may have one desktop pane per display, opened from the Display menu's "Open
+  Display 2 in a new pane" (its header names the display; [computer-use.md](computer-use.md),
+  "Video"). Connecting
   opens its pane in the main window, in an entry of its own, a card of Home's in its middle with
   the device's avatar and name: Connecting…; while the device's user
   is asked, "Waiting for the other device to allow it…" with "Or enter its password", Remember
@@ -432,8 +435,8 @@ when `SCREENSHOT_DIR` is set.
   takes the focus with them, a pane's menu or split list taking them while open, and in
   every mode a picture (a Remote Desktop or VNC screen's too) keeps the controller's input method
   off ([computer-use.md](computer-use.md), "Keyboard modes"). A pane is a desktop or one of a
-  device's services (SSH, Remote Desktop, VNC; `viewer`, `serviceTab`), one per device and kind,
-  and every kind drags, moves and closes alike.
+  device's services (SSH, Remote Desktop, VNC; `viewer`, `serviceTab`), one per device and kind (a
+  desktop one per display, SSH any number), and every kind drags, moves and closes alike.
 - A service pane ([remote-services.md](remote-services.md), "Clients") is headed by the device's
   name with the service beside it. It shows "Connecting to SSH…" with the loading indicator, then, when nothing saved
   is remembered, a sign-in form: the way to sign in (a segmented choice — SSH: Key, Password; VNC:

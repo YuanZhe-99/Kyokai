@@ -1446,11 +1446,29 @@ func (v *viewer) disconnect() {
 	go v.app.closeSession(id)
 }
 
-// tabKey is the viewer's tab's identity: the Device ID, or the device's
-// NanoKVM key (serviceKey).
+// tabKey is the viewer's tab's identity: the Device ID, a further desktop
+// pane's desktopKey, or the device's NanoKVM key (serviceKey).
 func (v *viewer) tabKey() string {
 	if v.kvm {
 		return serviceKey(v.device, serviceNanokvm)
+	}
+	return desktopKey(v.device, v.n)
+}
+
+// desktopKey is a device's desktop pane's tabKey: the Device ID for its
+// first, "<device>/desktop/<n>" for a further one from 2.
+func desktopKey(device string, n int) string {
+	if n > 1 {
+		return device + "/desktop/" + strconv.Itoa(n)
+	}
+	return device
+}
+
+// prefsKey is where the viewer's settings are kept: its tabKey, the
+// device's further desktop panes sharing their first's.
+func (v *viewer) prefsKey() string {
+	if v.kvm {
+		return v.tabKey()
 	}
 	return v.device
 }
@@ -1465,7 +1483,13 @@ func (v *viewer) head() paneHead {
 	if v.kvm {
 		return paneHead{icon: kindNanokvm, title: title, sub: sub, kind: L.ServiceNanokvm()}
 	}
-	return paneHead{icon: kindDesktop, title: title, sub: sub, kind: L.PaneDesktop()}
+	kind := L.PaneDesktop()
+	if v.screen > 0 {
+		// A pane kept to one of the host's displays names it, so that the
+		// device's panes tell apart.
+		kind = L.ViewerDisplayN(strconv.Itoa(v.screen))
+	}
+	return paneHead{icon: kindDesktop, title: title, sub: sub, kind: kind}
 }
 
 // splitTitle parts a device's title (deviceTitle) into its name and its

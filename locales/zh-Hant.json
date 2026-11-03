@@ -977,6 +977,14 @@
   "ViewerMoveBar": "拖曳以移動控制列",
   "ViewerNoDecoder": "無法顯示畫面：缺少 Kyokai 的核心程式庫。",
   "ViewerNoPicture": "此工作階段不顯示螢幕。",
+  "ViewerOpenDisplay": "在新小窗中開啟{display}",
+  "@ViewerOpenDisplay": {
+    "placeholders": {
+      "display": {
+        "type": "String"
+      }
+    }
+  },
   "ViewerOriginal": "原始大小",
   "ViewerPasswordAgain": "輸入對方的密碼：",
   "ViewerPasswordHint": "或輸入對方的密碼：",

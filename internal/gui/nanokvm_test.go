@@ -39,10 +39,10 @@ func TestNanokvmViewerBesideTheDesktop(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
 	// The preferences' writer is done before the folder goes.
 	t.Cleanup(func() { _ = a.writePrefs() })
-	desk := a.newViewer("482916735", localapi.About{}, nil, false)
+	desk := a.newViewer("482916735", localapi.About{}, nil, false, 0)
 	desk.setCodec("av1")
 	desk.keepSettings()
-	kvm := a.newViewer("482916735", localapi.About{}, []string{localapi.PermUseNanokvm}, true)
+	kvm := a.newViewer("482916735", localapi.About{}, []string{localapi.PermUseNanokvm}, true, 0)
 	if kvm.codec != "auto" {
 		t.Errorf("the NanoKVM pane took the desktop's codec %q", kvm.codec)
 	}
@@ -83,8 +83,8 @@ func TestOwnNanokvmPane(t *testing.T) {
 	if !a.ownKvmReady() {
 		t.Fatal("devices chosen: ready")
 	}
-	own := a.newViewer("482916735", localapi.About{Name: "Desk"}, []string{localapi.PermUseNanokvm}, true)
-	other := a.newViewer("123456789", localapi.About{Name: "Desk"}, []string{localapi.PermUseNanokvm}, true)
+	own := a.newViewer("482916735", localapi.About{Name: "Desk"}, []string{localapi.PermUseNanokvm}, true, 0)
+	other := a.newViewer("123456789", localapi.About{Name: "Desk"}, []string{localapi.PermUseNanokvm}, true, 0)
 	if !own.own || other.own || own.title == other.title {
 		t.Errorf("own %v %q, other %v %q", own.own, own.title, other.own, other.title)
 	}
@@ -118,17 +118,17 @@ func TestNanokvmSwapOnlyWhenChosen(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
 	// The preferences' writer is done before the folder goes.
 	t.Cleanup(func() { _ = a.writePrefs() })
-	kvm := a.newViewer("482916735", localapi.About{}, []string{localapi.PermUseNanokvm}, true)
+	kvm := a.newViewer("482916735", localapi.About{}, []string{localapi.PermUseNanokvm}, true, 0)
 	kvm.phase.Peer.OS = "windows"
 	if kvm.swapping() {
 		t.Error("swapped without a choice")
 	}
 	kvm.setSwap(true)
-	again := a.newViewer("482916735", localapi.About{}, []string{localapi.PermUseNanokvm}, true)
+	again := a.newViewer("482916735", localapi.About{}, []string{localapi.PermUseNanokvm}, true, 0)
 	if !again.swapping() {
 		t.Error("the choice was not kept for the pane")
 	}
-	if desk := a.newViewer("482916735", localapi.About{}, nil, false); desk.swap != nil {
+	if desk := a.newViewer("482916735", localapi.About{}, nil, false, 0); desk.swap != nil {
 		t.Error("the desktop took the NanoKVM pane's choice")
 	}
 }

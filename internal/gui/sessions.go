@@ -401,7 +401,7 @@ func (a *App) renameCard(c *ui.Context, f renameForm) {
 // given here are forgotten.
 // Notes: call on the main thread.
 func (a *App) removeDevice(device string) {
-	for _, v := range []*viewer{a.viewerFor(device), a.kvmViewerFor(device)} {
+	for _, v := range append(a.desktops(device), a.kvmViewerFor(device)) {
 		if v == nil {
 			continue
 		}

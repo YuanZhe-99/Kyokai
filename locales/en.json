@@ -1752,6 +1752,14 @@
   "ViewerMoveBar": "Drag to move the controls",
   "ViewerNoDecoder": "The picture can't be shown: Kyokai's core library is missing.",
   "ViewerNoPicture": "This session does not show the screen.",
+  "ViewerOpenDisplay": "Open {display} in a new pane",
+  "@ViewerOpenDisplay": {
+    "placeholders": {
+      "display": {
+        "type": "String"
+      }
+    }
+  },
   "ViewerOriginal": "Original size",
   "ViewerPasswordAgain": "Enter its password:",
   "ViewerPasswordHint": "Or enter its password:",

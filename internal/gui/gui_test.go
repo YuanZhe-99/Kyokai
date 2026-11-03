@@ -1210,7 +1210,7 @@ func TestViewerToolbarDrags(t *testing.T) {
 	t.Cleanup(func() { _ = a.writePrefs() })
 	pic := image.NewRGBA(image.Rect(0, 0, 320, 180))
 	open := func() (*viewer, *ui.Tester) {
-		v := a.newViewer("482916735", localapi.About{}, nil, false)
+		v := a.newViewer("482916735", localapi.About{}, nil, false, 0)
 		v.start, v.bm, v.pumping, v.control = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(pic), true, true
 		tt := ui.NewTester(v.view, 1100, 560)
 		tt.SetPreferences(ui.Preferences{ReduceMotion: true})
@@ -1281,7 +1281,7 @@ func TestViewerToolbarMenus(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
 	// The preferences' writer is done before the folder goes.
 	t.Cleanup(func() { _ = a.writePrefs() })
-	v := a.newViewer("482916735", localapi.About{}, nil, false)
+	v := a.newViewer("482916735", localapi.About{}, nil, false, 0)
 	v.start, v.bm, v.pumping, v.control = videoStart{Codec: "h264", Width: 320, Height: 180}, ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 320, 180))), true, true
 	v.actions = &hostActions{}
 	tt := ui.NewTester(v.view, 1100, 560)
@@ -1343,7 +1343,7 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 	a := &App{stateDir: t.TempDir(), viewers: map[string]*viewer{}}
 	// The preferences' writer is done before the folder goes.
 	t.Cleanup(func() { _ = a.writePrefs() })
-	v := a.newViewer("482916735", localapi.About{}, nil, false)
+	v := a.newViewer("482916735", localapi.About{}, nil, false, 0)
 	v.setQuality(2, "60 fps", true)
 	v.setCodec("av1")
 	v.setSize("1440")
@@ -1352,11 +1352,11 @@ func TestViewerSettingsPerDevice(t *testing.T) {
 	v.folded = true
 	v.mu.Unlock()
 	v.keepSettings()
-	again := a.newViewer("482916735", localapi.About{}, nil, false)
+	again := a.newViewer("482916735", localapi.About{}, nil, false, 0)
 	if again.preset != 2 || again.fpsCap != "60 fps" || !again.full || again.codec != "av1" || again.size != "1440" || again.swap == nil || *again.swap || !again.folded {
 		t.Errorf("reopened %d %q %v %q %v %v", again.preset, again.fpsCap, again.full, again.codec, again.swap, again.folded)
 	}
-	if other := a.newViewer("123456789", localapi.About{}, nil, false); other.preset != 1 || other.codec != "auto" || other.size != "auto" || other.swap != nil {
+	if other := a.newViewer("123456789", localapi.About{}, nil, false, 0); other.preset != 1 || other.codec != "auto" || other.size != "auto" || other.swap != nil {
 		t.Errorf("another device %d %q", other.preset, other.codec)
 	}
 	_ = a.writePrefs() // as quitting does

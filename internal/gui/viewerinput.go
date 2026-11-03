@@ -338,7 +338,7 @@ func (v *viewer) keepSettings() {
 	vp := ViewerPrefs{Preset: v.preset, FPS: v.fpsCap, Full: v.full, Codec: v.codec, Size: v.size, Swap: v.swap, Mute: v.mute, Folded: v.folded,
 		Original: v.original, NoClipboard: v.clip.off, Custom: v.custom, Software: v.software, LockAfter: v.lockAfter}
 	v.mu.Unlock()
-	v.app.setViewerPrefs(v.tabKey(), vp)
+	v.app.setViewerPrefs(v.prefsKey(), vp)
 }
 
 // setSound plays the host's sound or not; the host captures it only while

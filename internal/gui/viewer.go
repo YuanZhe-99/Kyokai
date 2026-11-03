@@ -142,6 +142,14 @@ type viewer struct {
 	// desktop; own: this computer's own NanoKVM, opened here without a
 	// network session (both fixed at creation).
 	kvm, own bool
+	// n numbers the device's further desktop panes from 2, one per host
+	// display (openDisplay); 0 is its first (fixed at creation).
+	n int
+	// screen is the host display this pane keeps to, numbered from 1 as
+	// the Display menu numbers them; 0 until one is chosen or the pane had
+	// to move off a display another of the device's panes shows. On the
+	// main thread.
+	screen int
 	// ai serves this computer's own NanoKVM pane to its AI (aipane.go),
 	// nil while it is not; aiX and aiY are where the AI's pointer is.
 	ai       *paneServe
@@ -348,6 +356,18 @@ func (a *App) viewerFor(device string) *viewer {
 	return a.viewers[device]
 }
 
+// viewerOf is the pane that follows a session, or nil.
+func (a *App) viewerOf(id uint64) *viewer {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, v := range a.viewers {
+		if v.session() == id {
+			return v
+		}
+	}
+	return nil
+}
+
 // kvmViewerFor is the connection to the computer wired to a device's
 // NanoKVM USB, or nil.
 func (a *App) kvmViewerFor(device string) *viewer {
@@ -371,7 +391,7 @@ func (a *App) connectNanokvm(device, address string) string {
 		}
 		return v.tabKey()
 	}
-	v := a.newViewer(device, a.recentAbout(device), []string{localapi.PermUseNanokvm}, true)
+	v := a.newViewer(device, a.recentAbout(device), []string{localapi.PermUseNanokvm}, true, 0)
 	v.address = address
 	a.main.add(v)
 	v.redial("", false)
@@ -383,7 +403,8 @@ func (a *App) connectNanokvm(device, address string) string {
 // connection that ended connects again. address, when set, is where to
 // dial the device instead of the network (an IP address or domain name).
 // Its AI has a link of its own (ailink.go).
-// Notes: call on the main thread; one connection per device.
+// Notes: call on the main thread; this is the device's first desktop pane,
+// further ones keep to other displays (openDisplay).
 func (a *App) connectDevice(device, address string, about localapi.About) {
 	if v := a.viewerFor(device); v != nil {
 		if address != "" {
@@ -399,15 +420,101 @@ func (a *App) connectDevice(device, address string, about localapi.About) {
 		}
 		return
 	}
-	v := a.newViewer(device, about, desktopWant, false)
+	v := a.newViewer(device, about, desktopWant, false, 0)
 	v.address = address
 	a.main.add(v)
 	v.redial("", false)
 }
 
+// openDisplay opens another desktop pane of v's device that keeps to the
+// host's display screen (numbered from 1), in v's window as an entry of its
+// own: a session of its own, the panes numbered from the device's second.
+// Notes: call on the main thread; the Display menu offers only displays no
+// pane of the device shows (freeScreens).
+func (a *App) openDisplay(v *viewer, screen int) {
+	n := 2
+	a.mu.Lock()
+	for a.viewers[desktopKey(v.device, n)] != nil {
+		n++
+	}
+	a.mu.Unlock()
+	v.mu.Lock()
+	address := v.address
+	v.mu.Unlock()
+	nv := a.newViewer(v.device, a.recentAbout(v.device), desktopWant, false, n)
+	nv.address, nv.screen = address, screen
+	w := v.home.Load()
+	if w == nil {
+		w = a.main
+	}
+	w.add(nv)
+	nv.redial("", false)
+}
+
+// desktops are the open desktop panes of a device, its first among them.
+func (a *App) desktops(device string) []*viewer {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	var out []*viewer
+	for _, v := range a.viewers {
+		if !v.kvm && v.device == device {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// takenScreens are the host displays (numbered from 1) the device's other
+// desktop panes keep to or show, so that no two panes show one display.
+// Notes: call on the main thread.
+func (a *App) takenScreens(v *viewer) map[int]bool {
+	taken := map[int]bool{}
+	for _, o := range a.desktops(v.device) {
+		if o == v {
+			continue
+		}
+		o.mu.Lock()
+		shows := len(o.displays.List) > 1
+		current := o.displays.Current + 1
+		o.mu.Unlock()
+		switch {
+		case o.screen > 0:
+			taken[o.screen] = true
+		case shows:
+			taken[current] = true
+		}
+	}
+	return taken
+}
+
+// keepScreen follows the host's display list in v: a pane keeps to its
+// display, and one on a display another pane of the device shows moves to
+// the first free one.
+// Returns: the display (numbered from 1) to ask the host for, 0 for none.
+// Notes: call on the main thread, after v.displays took the list.
+func (v *viewer) keepScreen(d hostDisplays, taken map[int]bool) int {
+	n := len(d.List)
+	if n < 2 {
+		return 0
+	}
+	if v.screen == 0 && taken[d.Current+1] {
+		for i := 1; i <= n; i++ {
+			if !taken[i] {
+				v.screen = i
+				break
+			}
+		}
+	}
+	if v.screen == 0 || v.screen > n || v.screen == d.Current+1 {
+		return 0
+	}
+	return v.screen
+}
+
 // newViewer makes a device's connection, not yet dialed, and registers it:
-// to its desktop, or with kvm to the computer wired to its NanoKVM USB.
-func (a *App) newViewer(device string, about localapi.About, want []string, kvm bool) *viewer {
+// to its desktop, or with kvm to the computer wired to its NanoKVM USB; n
+// from 2 makes a further desktop pane (openDisplay).
+func (a *App) newViewer(device string, about localapi.About, want []string, kvm bool, n int) *viewer {
 	a.mu.Lock()
 	about = a.prefs.named(device, about)
 	a.mu.Unlock()
@@ -418,11 +525,11 @@ func (a *App) newViewer(device string, about localapi.About, want []string, kvm 
 	if own {
 		title = L.PickThisComputer()
 	}
-	v := &viewer{app: a, device: device, kvm: kvm, own: own, title: title, want: want,
+	v := &viewer{app: a, device: device, kvm: kvm, own: own, title: title, want: want, n: n,
 		counted: time.Now(), out: make(chan []byte, 256), moved: make(chan struct{}, 1), preset: 1, fpsCap: "30 fps", codec: "auto", size: "auto", custom: 50}
 	// The settings chosen for this connection last time; a custom quality
 	// the host does not take is Balanced.
-	if vp, ok := a.viewerPrefs(v.tabKey()); ok {
+	if vp, ok := a.viewerPrefs(v.prefsKey()); ok {
 		v.preset, v.full, v.swap, v.mute, v.folded = min(max(vp.Preset, 0), presetCustom), vp.Full, vp.Swap, vp.Mute, vp.Folded
 		v.original, v.clip.off, v.software, v.lockAfter = vp.Original, vp.NoClipboard, vp.Software, vp.LockAfter
 		if slices.Contains(customLevels, vp.Custom) {
@@ -568,16 +675,19 @@ func (a *App) syncViewers() {
 		if !desktopController(s) && !kvm || closed[s.ID] || owned[s.ID] || dialing[s.DeviceID] && a.viewerFor(s.DeviceID) == nil {
 			continue
 		}
-		find := a.viewerFor
-		if kvm {
-			find = a.kvmViewerFor
+		// A session a pane follows stays with it: a device's further
+		// desktop panes have sessions of their own (openDisplay).
+		v := a.viewerOf(s.ID)
+		if v == nil && kvm {
+			v = a.kvmViewerFor(s.DeviceID)
+		} else if v == nil {
+			v = a.viewerFor(s.DeviceID)
 		}
-		v := find(s.DeviceID)
 		if v == nil {
 			if s.State != "connected" {
 				continue
 			}
-			v = a.newViewer(s.DeviceID, s.Peer, s.Granted, kvm)
+			v = a.newViewer(s.DeviceID, s.Peer, s.Granted, kvm, 0)
 			v.sid.Store(s.ID)
 			a.main.add(v)
 		}
@@ -781,6 +891,14 @@ func (v *viewer) pump() {
 					v.mu.Lock()
 					v.displays = d
 					v.mu.Unlock()
+					if v.app == nil || v.kvm {
+						return
+					}
+					// The host opens a new session (and a resumed one) on
+					// its primary display.
+					if s := v.keepScreen(d, v.app.takenScreens(v)); s > 0 {
+						v.sendControl(map[string]any{"type": "display", "index": s - 1})
+					}
 				})
 			}
 		case packetCodecs:
@@ -2089,13 +2207,36 @@ func (v *viewer) barControls(c *ui.Context, b bar, a *hostActions, control bool)
 
 	barMenu(c, v.app, "bar-display", barDisplay, L.ViewerDisplay(), func(m *ui.Menu) {
 		if n := len(b.displays.List); n > 1 {
+			// A display another pane of the device shows is not offered
+			// again: each pane has a display of its own.
+			taken := map[int]bool{}
+			if v.app != nil && !v.kvm {
+				taken = v.app.takenScreens(v)
+			}
 			for i := range n {
-				if m.Item(L.ViewerDisplayN(strconv.Itoa(i + 1))).Checked(i == b.displays.Current).Chosen() {
+				if m.Item(L.ViewerDisplayN(strconv.Itoa(i + 1))).Checked(i == b.displays.Current).Disabled(taken[i+1]).Chosen() {
+					v.screen = i + 1
 					v.sendControl(map[string]any{"type": "display", "index": i})
 					back()
 				}
 			}
 			m.Separator()
+			if v.app != nil && !v.kvm {
+				free := false
+				for i := range n {
+					if i == b.displays.Current || taken[i+1] {
+						continue
+					}
+					free = true
+					if m.Item(L.ViewerOpenDisplay(L.ViewerDisplayN(strconv.Itoa(i + 1)))).Chosen() {
+						v.app.openDisplay(v, i+1)
+						v.app.menuClosed()
+					}
+				}
+				if free {
+					m.Separator()
+				}
+			}
 		}
 		for i, label := range []string{L.ViewerFit(), L.ViewerOriginal()} {
 			if m.Item(label).Checked(original == (i == 1)).Chosen() {

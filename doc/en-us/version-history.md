@@ -1,5 +1,15 @@
 # Version history
 
+## 0.7.1 (2026-11-03)
+
+One pane per display.
+
+- A host with several displays may show each in a desktop pane of its own: the Display menu opens
+  another display in a new pane (a session of its own), and no two panes of one device show the
+  same display.
+- Upstreams checked, unchanged: MyGo v0.7.4, EasyTier v2.7.0, RustDesk 1.5.1, vcpkg 2026.10.16,
+  smoltcp 0.14.0, Rust 1.99.1, Bun 1.4.4, Pi 1.5.0.
+
 ## 0.7.0 (2026-11-02)
 
 The AI update: Pi as the agent loop, AI sessions, Auto approvals, scope, and a command line.

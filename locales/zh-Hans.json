@@ -977,6 +977,14 @@
   "ViewerMoveBar": "拖动以移动控制栏",
   "ViewerNoDecoder": "无法显示画面：缺少 Kyokai 的核心库。",
   "ViewerNoPicture": "此会话不显示屏幕。",
+  "ViewerOpenDisplay": "在新小窗中打开{display}",
+  "@ViewerOpenDisplay": {
+    "placeholders": {
+      "display": {
+        "type": "String"
+      }
+    }
+  },
   "ViewerOriginal": "原始大小",
   "ViewerPasswordAgain": "输入对方的密码：",
   "ViewerPasswordHint": "或输入对方的密码：",

@@ -977,6 +977,14 @@
   "ViewerMoveBar": "ドラッグしてコントロールを移動",
   "ViewerNoDecoder": "画面を表示できません。Kyokai のコアライブラリが見つかりません。",
   "ViewerNoPicture": "このセッションでは画面を表示しません。",
+  "ViewerOpenDisplay": "{display}を新しいペインで開く",
+  "@ViewerOpenDisplay": {
+    "placeholders": {
+      "display": {
+        "type": "String"
+      }
+    }
+  },
   "ViewerOriginal": "原寸",
   "ViewerPasswordAgain": "パスワードを入力：",
   "ViewerPasswordHint": "またはパスワードを入力：",

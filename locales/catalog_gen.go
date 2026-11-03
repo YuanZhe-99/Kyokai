@@ -9785,6 +9785,16 @@ func (msgs Messages) ViewerNoPicture() string {
 	return Catalog.Format(msgs.locale, "ViewerNoPicture", nil)
 }
 
+// ViewerOpenDisplay says "Open {display} in a new pane"
+// in the language the app shows.
+func ViewerOpenDisplay(display string) string { return In(i18n.Locale()).ViewerOpenDisplay(display) }
+
+// ViewerOpenDisplay says "Open {display} in a new pane"
+// in the language of msgs.
+func (msgs Messages) ViewerOpenDisplay(display string) string {
+	return Catalog.Format(msgs.locale, "ViewerOpenDisplay", map[string]any{"display": display})
+}
+
 // ViewerOriginal says "Original size"
 // in the language the app shows.
 func ViewerOriginal() string { return In(i18n.Locale()).ViewerOriginal() }

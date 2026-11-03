@@ -75,7 +75,12 @@ failure to open the display again is logged once.
 
 With more than one display the host sends the list (the primary first, the others left to
 right) with the stream, and the viewer offers them by number; choosing one restarts capture on it
-and moves input and the pointer there. AI tasks always use the primary display.
+and moves input and the pointer there. The viewer also opens another of the host's displays in a pane
+of its own: a session of its own, each with its own capture, input and pointer, so a host with three
+displays may show in two panes or three; no two panes of one device show the same display (one
+shown elsewhere is not offered, and a pane that opens on one moves to the first free display).
+Since a new or resumed session starts on the primary display, each pane asks for its display again
+when the host's list says it shows another. AI tasks always use the primary display.
 
 Desktop duplication leaves the pointer out of the picture, so the host reports where its pointer
 is — at most 60 times a second, when it moves or leaves the display shown — and the viewer marks it
