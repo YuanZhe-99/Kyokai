@@ -112,9 +112,10 @@ func (s *split) leaf(t tab) (p, parent *pane) {
 }
 
 // place puts t where it was dropped on the pane showing target: the middle
-// puts it in target's place; an edge splits that pane in two with t on
-// that side. A tab shown elsewhere moves rather than shows twice; with
-// maxPanes shown already an edge counts as the middle. t takes the focus.
+// puts it in target's place, or swaps the two when t shows in the split
+// already; an edge splits that pane in two with t on that side. A tab shown
+// elsewhere moves rather than shows twice; with maxPanes shown already an
+// edge counts as the middle. t takes the focus.
 func (s *split) place(t, target tab, z dropZone) {
 	if s.root == nil {
 		s.single(t)
@@ -128,6 +129,15 @@ func (s *split) place(t, target tab, z dropZone) {
 	moving := false
 	for _, o := range shown {
 		moving = moving || o == t
+	}
+	if moving && z == zoneMiddle {
+		if a, _ := s.leaf(t); a != nil {
+			if b, _ := s.leaf(target); b != nil {
+				a.tab, b.tab = target, t
+				s.focus = t
+				return
+			}
+		}
 	}
 	if z != zoneMiddle && !moving && len(shown) >= maxPanes {
 		z = zoneMiddle

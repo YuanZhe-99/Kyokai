@@ -273,6 +273,7 @@
   "DropHere": "ここに置き換え",
   "DropLeft": "左",
   "DropRight": "右",
+  "DropSwap": "位置を入れ替える",
   "EngineDown": "Kyokai のエンジンが動いていません。",
   "EngineStarting": "起動中…",
   "FailAbsent": "接続を許可できる人がそのコンピューターの前にいません。",

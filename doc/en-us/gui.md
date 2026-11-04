@@ -51,12 +51,16 @@ when `SCREENSHOT_DIR` is set.
   of the other panes and Open a device…, or without room a greyed-out item saying why
   (`foldedButtons`). In a group the pane in focus has an
   accent edge; the focus follows the keyboard and clicks into a pane.
-- **Groups.** Each pane opened gets an entry of its own and shows. A pane dropped on an edge of
-  another splits that pane there — beside, above or below it — and joins its group, so one side
-  may hold one pane at full height and the other two (`split`, a tree of panes; at most four
-  shown, a fifth takes a place); dropped in a pane's middle it takes that pane's place, and that
-  pane keeps an entry of its own; dropped on the sidebar's list it leaves its group for an entry of
-  its own. A group left with one pane is that pane's entry; an emptied entry goes and the one
+- **Groups.** Each pane opened gets an entry of its own and shows. A pane from elsewhere —
+  another entry of the sidebar, or a window of its own — dropped on an edge of another splits
+  that pane there — beside, above or below it — and joins its group, so one side may hold one
+  pane at full height and the other two (`split`, a tree of panes; at most four shown: over a
+  group of four only the middle shows); dropped in a pane's middle it takes that pane's place, and
+  that pane keeps an entry of its own. A pane of the group shown, dragged by its header or its row
+  in the group's card, only swaps places with the pane it is dropped on: that pane shows one zone,
+  Swap places (`paneDraw.zones`). Dropped on the sidebar's list a pane leaves its group for an
+  entry of its own. A drop takes effect once the frame is drawn (`dropLater`): changing the panes
+  halfway through it drew a desktop twice and crashed. A group left with one pane is that pane's entry; an emptied entry goes and the one
   before it shows; with nothing left, Home shows. The dividers move, and stop where a pane would
   go below its minimum (`keepRoom`; MyGo's split keeps none of its own).
 - **Pane sizes.** A pane in a group is at least 360 × 280 points (`paneMinW`, `paneMinH`), so
@@ -64,7 +68,8 @@ when `SCREENSHOT_DIR` is set.
   side by side from 737 points wide with its margin, above and below from 577 tall. Without room
   the split buttons and their ⋯ items grey out and say why; a pane dragged over another shows only
   the zones that fit, each named (Left, Right, Above, Below, In its place), the middle taking the
-  room of the sides that do not, and a pill says which way there is no room (`dropZonesFor`);
+  room of the sides that do not, and a pill says which way there is no room (`dropZonesFor`; a
+  pane from elsewhere only);
   anything else that puts a pane beside another (the + picker's Beside current, an AI session's
   Watch its screen) takes the other way, or an entry of its own (`sideLocked`). The main window's
   minimum follows the group shown: the sidebar or the rail, the panes' least room and the margins,

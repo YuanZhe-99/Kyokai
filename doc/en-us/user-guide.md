@@ -118,8 +118,10 @@ altogether, its button then at the start of the top-left pane's header, where a 
 back. To see several at once, choose **Split
 right** or **Split down** in a pane's header and pick another open pane, or **Open a device…** to
 open one there, or drag a pane by its
-title onto another: drop it at an edge to show it beside, above or below that one (up to four, in
-any arrangement), and the sidebar lists them together as one group. The one you click in takes the
+title (or its row in the sidebar, or a window of its own) onto another: drop it at an edge to show
+it beside, above or below that one (up to four, in any arrangement), and the sidebar lists them
+together as one group. Two panes of the same group only swap places: drag one onto the other and
+drop it on **Swap places**. The one you click in takes the
 keyboard, and **Maximize** in its header shows it alone until **Restore**; dropped on the sidebar,
 a pane leaves its group. Drag a pane out of the window, or choose **Open in a window of its own**
 in its header, for a window of its own; **Back to the main window** in that window's header, or

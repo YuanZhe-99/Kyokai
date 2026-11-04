@@ -276,7 +276,7 @@ func (a *App) sidebarView(c *ui.Context, vw *viewerWindow) {
 			list.Background(t.Accent.Alpha(0.08)).Radius(10)
 		}
 		if d, ok := ui.Drop[tabDrag](list); ok {
-			a.moveTab(d.key, vw)
+			vw.dropLater(func() { a.moveTab(d.key, vw) })
 		}
 		list.Children(func() {
 			for i, e := range entries {

@@ -2777,6 +2777,16 @@ func (msgs Messages) DropRight() string {
 	return Catalog.Format(msgs.locale, "DropRight", nil)
 }
 
+// DropSwap says "Swap places"
+// in the language the app shows.
+func DropSwap() string { return In(i18n.Locale()).DropSwap() }
+
+// DropSwap says "Swap places"
+// in the language of msgs.
+func (msgs Messages) DropSwap() string {
+	return Catalog.Format(msgs.locale, "DropSwap", nil)
+}
+
 // EngineDown says "The Kyokai engine is not running."
 // in the language the app shows.
 func EngineDown() string { return In(i18n.Locale()).EngineDown() }

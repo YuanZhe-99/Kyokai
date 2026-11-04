@@ -273,6 +273,7 @@
   "DropHere": "原位",
   "DropLeft": "左側",
   "DropRight": "右側",
+  "DropSwap": "交換位置",
   "EngineDown": "Kyokai 引擎沒有執行。",
   "EngineStarting": "正在啟動…",
   "FailAbsent": "那台電腦前沒有人能允許這次連線。",

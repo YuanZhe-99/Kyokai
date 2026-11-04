@@ -585,6 +585,7 @@
   "DropHere": "In its place",
   "DropLeft": "Left",
   "DropRight": "Right",
+  "DropSwap": "Swap places",
   "EngineDown": "The Kyokai engine is not running.",
   "EngineStarting": "Starting…",
   "FailAbsent": "Nobody is at that computer to allow the connection.",

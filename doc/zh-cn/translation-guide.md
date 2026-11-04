@@ -124,6 +124,7 @@ OpenAI、Claude、Anthropic）以及协议名（Noise、OPAQUE）。
 | tile (a permission a password grants) / Manage (the keys) | 图块 / 管理 |
 | In use / Switch (a run mode) | 使用中 / 切换 |
 | Split right / Split down / Maximize, Restore (a pane) | 向右分屏 / 向下分屏 / 最大化、还原（小窗） |
+| Swap places (a pane dropped on another of its group) | 交换位置（放到同一分组另一个小窗上的小窗） |
 | + picker / On its own / Beside current / Open a device… | + 选择器 / 单独打开 / 在当前小窗旁 / 打开设备… |
 | search (the palette, Ctrl+K) / Open panes / Actions | 搜索（面板，Ctrl+K） / 已打开的小窗 / 操作 |
 | … isn't available (a kind a device does not offer) / This computer (an AI task here) | …不可用 / 这台电脑（在本机运行的 AI 任务） |

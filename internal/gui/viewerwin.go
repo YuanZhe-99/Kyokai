@@ -87,9 +87,14 @@ type viewerWindow struct {
 	// groups are the sidebar's entries, in its order; cur is the one shown.
 	groups []*group
 	cur    *group
-	// dragging: a pane was dragged over the panes in the last frame, which
-	// then show where it may be dropped.
-	dragging bool
+	// dragged is the tabKey of the pane dragged over the panes in the last
+	// frame ("" for none), which then show where it may be dropped.
+	dragged string
+	// dropped is what a drop in the frame being built does, run once the
+	// frame is built (view): a drop changes the panes, which drawn halfway
+	// through a frame would draw one pane twice (regression: a crash
+	// dropping a pane beside the pane next to it).
+	dropped func()
 	// full: the window is in full screen, which shows the pane in focus
 	// alone, without its header.
 	full bool
@@ -870,17 +875,32 @@ func (vw *viewerWindow) view(c *ui.Context) {
 			v.syncGrab(false)
 		}
 	}
+	vw.mu.Lock()
+	drop := vw.dropped
+	vw.dropped = nil
+	vw.mu.Unlock()
+	if drop != nil {
+		drop()
+		c.Invalidate()
+	}
+}
+
+// dropLater has the frame being built end with drop (dropped).
+func (vw *viewerWindow) dropLater(drop func()) {
+	vw.mu.Lock()
+	vw.dropped = drop
+	vw.mu.Unlock()
 }
 
 // paneDraw is how the panes of the group shown draw: the group, the pane
 // whose header starts with the sidebar's button while the sidebar is hidden,
-// the one whose header ends with the window's buttons, whether a pane is
-// dragged over them, and their room as the last frame laid it out.
+// the one whose header ends with the window's buttons, the pane dragged
+// over them (nil for none), and their room as the last frame laid it out.
 type paneDraw struct {
 	g        group
 	topLeft  tab
 	topRight tab
-	dragging bool
+	from     tab
 	area     size
 }
 
@@ -899,14 +919,20 @@ func (d paneDraw) splits(v tab) (across, down bool) {
 // maximized alone; while a pane is dragged over them, where it may go.
 func (vw *viewerWindow) panesView(c *ui.Context, g group) {
 	area := ui.Column(c.Key("panes")).Grow(1).FillWidth().MinHeight(0)
-	_, over := ui.DragOver[tabDrag](area)
+	dr, over := ui.DragOver[tabDrag](area)
 	r := area.LayoutBounds()
 	vw.mu.Lock()
-	dragging := vw.dragging || over
-	vw.dragging = over
+	dragged := vw.dragged
+	vw.dragged = ""
+	if over {
+		dragged, vw.dragged = dr.key, dr.key
+	}
 	vw.area = size{r.W, r.H}
 	vw.mu.Unlock()
-	d := paneDraw{g: g, topLeft: g.split.topLeft(), topRight: g.split.topRight(), dragging: dragging, area: size{r.W, r.H}}
+	d := paneDraw{g: g, topLeft: g.split.topLeft(), topRight: g.split.topRight(), area: size{r.W, r.H}}
+	if dragged != "" {
+		d.from = vw.app.tabFor(dragged)
+	}
 	if g.zoom != nil {
 		d.topLeft, d.topRight = g.zoom, g.zoom
 	}
@@ -982,9 +1008,9 @@ func (vw *viewerWindow) tabPane(c *ui.Context, d paneDraw, v tab) {
 }
 
 // paneBox fills a pane's box: the accent edge in focus, its header and its
-// content, and while a pane is dragged over it the drop zones that fit
-// (dropZonesFor), each named, the middle also saying which way it has no
-// room.
+// content, and while another pane is dragged over it where it may go
+// (zones), each named, the middle also saying which way it has no room; a
+// drop takes effect once the frame is built (dropLater).
 func (vw *viewerWindow) paneBox(c *ui.Context, d paneDraw, v tab, box ui.Element, several bool) {
 	t := c.Theme()
 	key := v.tabKey()
@@ -1008,27 +1034,30 @@ func (vw *viewerWindow) paneBox(c *ui.Context, d paneDraw, v tab, box ui.Element
 	box.Children(func() {
 		vw.paneHeader(c, d, v)
 		ui.Column(c.Key("tab-" + key)).Grow(1).FillWidth().MinHeight(0).Children(func() { v.view(c) })
-		if !d.dragging || !vw.main {
+		if d.from == nil || d.from == v || !vw.main {
 			return
 		}
-		across, down := d.splits(v)
-		note := noRoomNote(across, down)
-		for _, z := range dropZonesFor(across, down) {
+		zones, here, note := d.zones(v)
+		for _, z := range zones {
 			zone := ui.Box(c.Key("drop-" + key + "-" + strconv.Itoa(int(z.zone)))).Absolute().
 				LeftPercent(z.x).TopPercent(z.y).WidthPercent(z.w).HeightPercent(z.h).Radius(8).Center()
 			fg := t.TextMuted
-			if _, on := ui.DragOver[tabDrag](zone); on {
+			if dr, on := ui.DragOver[tabDrag](zone); on {
 				vw.mu.Lock()
-				vw.dragging = true
+				vw.dragged = dr.key
 				vw.mu.Unlock()
 				zone.Background(t.Accent.Alpha(0.28)).Border(2, t.Accent)
 				fg = t.Accent
 			}
 			// Each name in a pill of its own, readable over any picture; the
 			// middle's says which way there is no room.
+			name := here
+			if z.zone != zoneMiddle {
+				name = zoneName(z.zone)
+			}
 			zone.Children(func() {
 				ui.Column(c).Gap(6).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, zoneName(z.zone)).FontSize(sizeSmall).Bold().TextColor(fg).SingleLine().
+					ui.Text(c, name).FontSize(sizeSmall).Bold().TextColor(fg).SingleLine().
 						Padding(4, 10).Radius(12).Background(t.Background).Border(1, t.Border)
 					if z.zone == zoneMiddle && note != "" {
 						ui.Text(c, note).FontSize(sizeSmall).TextColor(t.TextMuted).SingleLine().
@@ -1037,10 +1066,28 @@ func (vw *viewerWindow) paneBox(c *ui.Context, d paneDraw, v tab, box ui.Element
 				})
 			})
 			if dr, ok := ui.Drop[tabDrag](zone); ok {
-				vw.app.dropTab(dr.key, vw, v, z.zone)
+				vw.dropLater(func() { vw.app.dropTab(dr.key, vw, v, z.zone) })
 			}
 		}
 	})
+}
+
+// zones are where on v's pane the pane dragged over it may go, the
+// middle's name, and the note saying which way v has no room (or ""): a
+// pane of v's own group only swaps places with v, a pane from elsewhere
+// (another entry of the sidebar, a window of its own) goes beside v on
+// each side that fits (dropZonesFor), or in v's place alone while the group
+// already shows maxPanes.
+func (d paneDraw) zones(v tab) ([]zoneRect, string, string) {
+	shown := d.g.split.shownTabs() // a maximized one's too
+	switch {
+	case slices.Contains(shown, d.from):
+		return dropZonesFor(false, false), L.DropSwap(), ""
+	case len(shown) >= maxPanes:
+		return dropZonesFor(false, false), L.DropHere(), ""
+	}
+	across, down := d.splits(v)
+	return dropZonesFor(across, down), L.DropHere(), noRoomNote(across, down)
 }
 
 // zoneName names a drop zone where it shows on a pane.

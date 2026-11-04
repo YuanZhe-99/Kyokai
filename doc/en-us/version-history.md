@@ -1,5 +1,16 @@
 # Version history
 
+## 0.7.2 (2026-11-03)
+
+Panes in a group swap places.
+
+- Fixed: dropping a pane of a group beside the pane next to it closed Kyokai. A drop now takes
+  effect once the frame is drawn.
+- A pane of the group shown, dropped on another of the group, only swaps places with it (one
+  zone, Swap places); the five zones (left, right, above, below, in its place) are for a pane from
+  another sidebar entry or a window of its own, and over a group of four only the middle shows.
+- Upstreams checked, unchanged: MyGo v0.7.4, EasyTier v2.7.0, RustDesk 1.5.1, vcpkg 2026.10.16,
+  smoltcp 0.14.0, Rust 1.99.1, Bun 1.4.4, Pi 1.5.0.
 ## 0.7.1 (2026-11-03)
 
 One pane per display.
