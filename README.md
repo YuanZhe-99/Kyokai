@@ -1,154 +1,161 @@
 # Kyokai (鏡界)
 
-**AI Computer Use Across Devices**
+**AI Computer Use across devices.**
 
-Kyokai is a cross-platform Computer Use application that enables people and AI agents to interact
-with computers across devices. It combines secure peer-to-peer connectivity, direct human control,
-and host-side AI execution in one unified experience.
+Kyokai lets a person, or an AI agent, operate another computer. Devices find each other by a
+Device ID over standard [EasyTier](https://github.com/EasyTier/EasyTier) networks, every connection
+is end-to-end encrypted and authorized by the host, and AI tasks always run on the computer being
+operated, with that computer's own provider key, policies and approvals. One app does both sides:
+let others in, and reach your other machines.
 
-> **Status:** 0.6.7: Windows (x64, ARM64), macOS (Apple silicon, Intel) and, new in 0.6.7, Linux
-> (x64, ARM64; X11 and Wayland). The app, its engine, connections, manual control, AI tasks, SSH /
-> Remote Desktop / VNC through Kyokai and the optional privileged helper work on each; some macOS
-> checks, viewer controls and Linux's keyboard grab and Wayland input on GNOME and KDE remain. See
-> [PLAN.md](PLAN.md), the [platform notes](doc/en-us/platform-notes.md) (what was verified where)
-> and the [user guide](doc/en-us/user-guide.md).
+[Download](https://github.com/YuanZhe-99/Kyokai/releases/latest) ·
+[User guide](doc/en-us/user-guide.md) · [Documentation](doc/en-us/README.md) ·
+[中文文档](doc/zh-cn/README.md)
 
-## Features
+> **0.7.3** — Windows (x64, ARM64), macOS 14+ (Apple silicon, Intel) and Linux (x64, ARM64; X11
+> and Wayland). Windows is the most complete and the most tested. On macOS a few checks remain;
+> on Linux, GNOME and KDE Wayland desktops, the keyboard grab in a real session and parts of the
+> privileged helper still wait for a run. What was verified where, and how, is in the
+> [platform notes](doc/en-us/platform-notes.md); what is left is in [PLAN.md](PLAN.md).
 
-| Feature | Status |
+## What it does
+
+### AI Computer Use
+
+Send a task in plain language to another computer. The host captures its own screen, asks its AI
+provider for the next actions, checks each one against its own policy and performs the allowed
+ones itself. The controller never sees the host's key and never runs anything on the host.
+
+- Claude, OpenAI and 20+ templates (OpenRouter, Gemini, Qwen, Ollama, LM Studio, …) or any
+  OpenAI-compatible server that sees images and calls tools; the agent loop runs on
+  [Pi](https://github.com/earendil-works/pi).
+- AI sessions: conversations kept across replies and restarts, with fork, compact and export to
+  Markdown, and a model and thinking level per task.
+- Approvals: ask for every action, or **Auto**, where routine actions run and risky ones (system
+  shortcuts, settings, terminals, deleting, sending, paying, installing, …) still ask.
+- Scope: the host user grants apps, windows and folders; the rest of the screen is dimmed for the
+  AI and actions there are refused.
+- The host user always wins: their own keyboard or mouse takes over at once; pause, cancel and
+  emergency stop are always there, and tasks pause when the computer sleeps.
+- An element list beside each screenshot (UI Automation, AX, AT-SPI, with the system's OCR) and,
+  on Windows, an AI that works in its window while the person uses another.
+
+### Manual control
+
+- The host's screen in H.264, HEVC, VP9, AV1 or VP8, in hardware where the system has it (Media
+  Foundation, VideoToolbox, VA-API), full colour 4:4:4, with adaptive quality that recovers on slow
+  and lossy paths.
+- Mouse and keyboard in RustDesk's modes: **Map** sends every key by its place, so the host's own
+  input method types Chinese or Japanese and every shortcut reaches the host; **Translate** types
+  with your layout; **Legacy**.
+- Clipboard text, images and files; sound; the remote pointer; several displays, each in a pane of
+  its own; waking a dark display, on the lock screen too.
+- Session actions on Windows hosts: lock, Ctrl+Alt+Del, block the host's input, privacy mode, lock
+  when the session ends.
+
+### The device's own services
+
+- SSH, Remote Desktop and VNC (Apple Screen Sharing too) through tunnels inside Kyokai's encrypted
+  sessions, in built-in clients: nothing listens on the network, and each is a permission the host
+  turns on.
+- SSH signs in with your Kyokai keys, whose private parts never leave the engine; a files panel
+  copies over SFTP, or SCP where there is none.
+- A Sipeed NanoKVM USB wired to a host reaches the computer behind it, its firmware setup too,
+  with nothing installed on that computer ([remote-services.md](doc/en-us/remote-services.md)).
+
+### Getting there
+
+- A persistent Device ID such as `482 916 735`, derived from a device key that stays on the device,
+  plus a friendly name and an encrypted identity backup.
+- Up to 8 EasyTier networks at once, on standard, unmodified EasyTier servers, with no TUN device,
+  no administrator rights and no Kyokai server; or by IP address or domain name. At every
+  connection Kyokai picks the best route by latency and past throughput, and moves a healthy
+  session to a clearly better one, AI task and tunnels included.
+- Sign-in by a temporary password, a permanent password (both checked with OPAQUE, so neither is
+  ever sent) or an SSH-style Ed25519 key, each chosen on its own; trusted devices, saved
+  passwords and keys, and unattended access.
+- Home shows your devices as cards with their live status: CPU, memory, GPU, disk, network and
+  battery.
+
+### Around it
+
+- The viewer: tabs that tear out into windows or split one window into up to four panes, a
+  floating toolbar, full screen, codec, resolution, quality and frame rate, the route in use.
+- The `kyokai` command line: status, devices, sessions, screenshots, AI tasks and tunnels on a
+  local port (OpenSSH's `sftp` and `scp` go through them), with `--json` and exit codes.
+- An optional privileged helper for UAC prompts, the lock and sign-in screens and unattended
+  access; run modes switch both ways and keep everything.
+- English, Simplified Chinese, Traditional Chinese and Japanese.
+
+## Security and privacy
+
+- **Network membership grants nothing.** Every connection is authenticated, and each permission
+  stands alone: viewing does not imply control, control does not imply AI tasks or SSH.
+- **Secrets never travel.** The device key, passwords, private keys, the network secret and API
+  keys live encrypted in the system's credential store; they are never logged or sent.
+- **The AI cannot grant itself anything.** Screen content is untrusted data; the host's executor
+  validates every action; a model answer that arrives after a pause or cancel never acts.
+- **Kyokai's own windows stay out of the picture**, and remote input never reaches them, unless
+  the host user turns that off.
+- **Nothing by default:** no autostart, no service, no elevation and no AI after exit. The
+  privileged helper asks for administrator rights once, when you install it.
+- **Logs hold no secrets**, and **No logs** (Security) keeps none at all: no log, no crash trace,
+  the connection history in memory only.
+
+A computer that sleeps leaves the network; waking it needs Wake-on-LAN or hardware.
+
+## Install
+
+Download from the [latest release](https://github.com/YuanZhe-99/Kyokai/releases/latest);
+`SHA256SUMS.txt` lists every file's checksum.
+
+| System | Download |
 |---|---|
-| Persistent Device ID backed by a cryptographic device key, with a friendly name and backup | done |
-| Sign-in by temporary password, permanent password or SSH-style Ed25519 key, each chosen on its own; connect without asking, saved passwords and keys, trusted devices, unattended access | done |
-| Connect by Device ID over standard EasyTier networks (several joined at once, one Device ID in all), or by IP address or domain name; a device's routes (network and addresses) chosen by latency and past throughput at every connection | done |
-| Home: a grid of device cards with the host's live status (CPU, memory, GPU, disk, network, battery) for devices with a saved password or key, and a details page per device | done |
-| Manual Computer Use: the host's screen (H.264, HEVC, VP9 through Media Foundation; H.264 and HEVC through VideoToolbox; VP8, VP9 and AV1 in software; full colour 4:4:4; adaptive quality), mouse, RustDesk's keyboard modes (Chinese and Japanese input methods included), clipboard text, images and files, monitors, the remote pointer, sound | done (Windows); macOS: capture, VideoToolbox, input and keyboard |
-| A picture that recovers at high latency, input that never jams on a stalled path, a dark display woken on request or by itself, locked or not | done |
-| SSH, Remote Desktop and VNC (Apple Screen Sharing too) of a device through Kyokai's own sessions, with built-in clients; each a permission, off by default; ports set by the host | done |
-| Session actions: lock the screen, Ctrl+Alt+Del, block the host's input, privacy mode | done (Windows) |
-| AI Computer Use with Claude, OpenAI or any of 20+ provider templates and custom OpenAI-compatible servers, executed on the host with its own key; one AI record and a shared draft for every controller | done; Claude verified live on Windows |
-| Human take-over, pause, cancel, emergency stop; tasks pause at sleep | done |
-| Optional privileged helper for UAC prompts, the lock and sign-in screens and unattended access; run modes switch both ways keeping everything | done (Windows); macOS: install, update and removal |
-| Viewer: tabs in the title bar that tear out into windows or split one window (up to four side by side), a floating toolbar, full screen, original size, codec and quality, the route in use, per-session clipboard switch and history | done |
-| Protected mode: only the AI settings and tasks until the permanent password turns it off | done |
-| No logs: no logs or crash traces, connection history in memory only (off by default) | done |
-| English, Simplified Chinese, Traditional Chinese, Japanese | done |
+| Windows | `kyokai-setup-<version>-amd64.exe` or `-arm64.exe`: installs for your user, no administrator rights. `Kyokai-<version>-windows-amd64.zip` or `-arm64.zip` is portable. Not code signed, so SmartScreen warns on first launch |
+| macOS | `kyokai-<version>-arm64.dmg` (Apple silicon) or `-amd64.dmg` (Intel). Signed but not notarized: if macOS calls the app damaged, run `xattr -dr com.apple.quarantine /Applications/Kyokai.app` once |
+| Linux | `kyokai_<version>_amd64.deb` or `_arm64.deb`; `install.sh`, which installs for your user into `~/.local` and keeps Kyokai up to date; or `Kyokai-<version>-x86_64.AppImage` or `-aarch64.AppImage`. GNOME shows the tray icon only with its AppIndicator extension |
 
-## AI Computer Use
+Kyokai updates itself, from **Settings › About & updates**, except the Debian package and the
+AppImage. Then follow the [user guide](doc/en-us/user-guide.md).
 
-You send a task in plain language to another computer. That computer — the host — captures its own
-screen, asks its configured AI provider (Claude, OpenAI, or another provider or local model server
-that sees images and calls tools) for the next actions, checks every action
-against its own policies, and performs the allowed ones itself. The controller never sees the
-host's API key. The host user can always take over or stop the task.
+## Build from source
 
-## Manual Computer Use
+Go 1.27.2 and Rust 1.99.1 (`rust-toolchain.toml`), plus:
 
-The same connection shows the host's screen and forwards your mouse, keyboard, clipboard and files,
-with quality presets, monitor choice, the host's sound and RustDesk's session actions (lock,
-Ctrl+Alt+Del, blocking the host's input, privacy mode). It works without any AI provider
-configured. When the host's display is dark, Kyokai wakes it, on the lock screen too.
-
-## SSH, Remote Desktop and VNC
-
-A device's own SSH server, Remote Desktop and VNC (including a Mac's Screen Sharing) open in tabs
-next to its desktop, through tunnels inside Kyokai's encrypted sessions: nothing listens on the
-network, and the host's user decides, per permission, which a correct password or key reaches
-without asking. SSH runs in a built-in terminal and can sign in with your Kyokai keys, whose private
-parts never leave the engine; sign-ins can be remembered per device.
-
-## Device ID, Passwords and Keys
-
-Every installation has a persistent Device ID such as `482 916 735`, derived from a device key that
-stays on the device. A host offers a temporary password (shown on Home) and, optionally, a permanent
-password, both checked with a password-authenticated key exchange, so neither is ever sent. Devices
-can also sign in with SSH-style Ed25519 keys. The host chooses which of these let others in, in any
-combination; with none, every connection asks.
-
-## Home
-
-Home lists your devices as cards. For a device with a saved password or key, its card shows live
-status — CPU, memory, GPU, disk, network and battery — watched quietly without opening its screen,
-and offers the connections that work there without the other side's user.
-
-## EasyTier Network Configuration
-
-Kyokai embeds [EasyTier](https://github.com/EasyTier/EasyTier) and connects through standard,
-unmodified EasyTier servers: for each network you enter the server address(es), the network
-name and the network secret. Kyokai keeps up to 8 networks and can join several at once, with the
-same Device ID in each. No TUN device, no administrator rights and no Kyokai server are needed;
-traffic goes through the server unless you turn on direct connections (Advanced). A device can also
-be reached by IP address or domain name (off on the host by default), and Kyokai picks the best way
-to reach it at every connection. Membership of a network grants nothing by itself: every connection
-still needs the host's password, key or confirmation.
-
-## AI Provider Configuration
-
-The host adds providers from templates (Claude, OpenAI, OpenRouter, Gemini, Qwen, Ollama, LM Studio
-and more) or as a custom address, stores each key in its own credential store and picks the model
-tasks use. Controllers only see the model name.
-
-## Security & Privacy
-
-- Secrets (device key, passwords, private keys, network secret, API keys) are kept encrypted with
-  the operating system's credential store and never logged or sent.
-- The host confirms who connects and what they may do; each permission stands alone: viewing does
-  not imply control, control does not imply AI tasks or SSH.
-- Screen content is treated as untrusted data; the AI cannot grant itself permissions.
-- Kyokai's own windows stay out of the picture and out of reach of remote input by default.
-- By default Kyokai starts nothing at boot, installs no service and never asks for administrator
-  rights. The optional privileged helper asks once, when you install it.
-- A computer that sleeps or hibernates leaves the network and cannot be reached; waking it needs
-  Wake-on-LAN or hardware.
-
-## Getting Started
-
-Download the installer for your computer from the
-[latest release](https://github.com/YuanZhe-99/Kyokai/releases/latest): `Kyokai.Setup.<version>.amd64.exe`
-or `.arm64.exe` for Windows, `Kyokai.<version>.arm64.dmg` (Apple silicon) or `.amd64.dmg` (Intel)
-for macOS, `kyokai_<version>_amd64.deb` or `_arm64.deb`, `Kyokai-<version>-x86_64.AppImage` or
-`-aarch64.AppImage`, or `install.sh` (installs for your user and keeps Kyokai up to date) for
-Linux; the `.zip` files are portable Windows builds. `SHA256SUMS.txt` lists every file's
-checksum. Then follow the [user guide](doc/en-us/user-guide.md). To build it yourself, see
-[Building from Source](#building-from-source).
-
-## Building from Source
-
-Requirements: Go 1.27.2, Rust 1.99.1 (`rust-toolchain.toml`), and on Windows Visual Studio
-2026 with the C++ tools for your architecture plus the "C++ Clang Compiler for Windows" component;
-on macOS Xcode command line tools; on Linux `libpipewire-0.3-dev`, `libva-dev`, `libgbm-dev`, `libclang-dev` and NASM. Details: [doc/en-us/development.md](doc/en-us/development.md).
+- **Windows:** Visual Studio 2026 with the C++ tools for your architecture and the "C++ Clang
+  Compiler for Windows" component.
+- **macOS:** the Xcode command line tools.
+- **Linux:** `libpipewire-0.3-dev`, `libva-dev`, `libgbm-dev`, `libclang-dev` and NASM.
 
 ```bash
-scripts/build.sh               # this platform: Rust core, engine, then `mygo build`
+scripts/codecs.sh   # once: libvpx and libaom through vcpkg
+scripts/build.sh    # this platform: the Rust core, the engine, then `mygo build`
 ```
 
-## GitHub Actions
-
-Continuous integration and releases run on GitHub Actions; see
-[doc/en-us/ci-cd.md](doc/en-us/ci-cd.md).
+Details, the test gate and the dev loop: [development.md](doc/en-us/development.md). Continuous
+integration and releases run on GitHub Actions: [ci-cd.md](doc/en-us/ci-cd.md).
 
 ## Architecture
 
-A Go + [MyGo](https://github.com/egoist/mygo) GUI, a headless engine (`kyokai-svc`) and a Rust core
-library loaded by both; the core embeds EasyTier. See
-[doc/en-us/architecture.md](doc/en-us/architecture.md).
-
-## Documentation
-
-- [English documentation](doc/en-us/README.md) · [中文文档](doc/zh-cn/README.md)
+A Go GUI on [MyGo](https://github.com/egoist/mygo), a headless engine (`kyokai-svc`), the `kyokai`
+command line and a Rust core library that the GUI and the engine both load, which embeds EasyTier
+and RustDesk's capture, codecs and input; AI tasks run in an agent sidecar (`kyokai-agent`). See
+[architecture.md](doc/en-us/architecture.md).
 
 ## Acknowledgements
 
-- **[RustDesk](https://github.com/rustdesk/rustdesk)** — for its mature open-source desktop
-  capture, input control, video processing, and cross-platform desktop technologies.
-- **[EasyTier](https://github.com/EasyTier/EasyTier)** — for its open-source peer-to-peer
-  networking, NAT traversal, and connectivity technologies.
-- **[MyGo](https://github.com/egoist/mygo)** — for its cross-platform desktop application
-  framework and application integration capabilities.
-- **[Arion](https://github.com/AstraFoundry/Arion)** — the design of Kyokai's first-run tour draws
+- **[RustDesk](https://github.com/rustdesk/rustdesk)**: its mature open-source desktop capture,
+  input control, video processing and cross-platform desktop technologies.
+- **[EasyTier](https://github.com/EasyTier/EasyTier)**: its open-source peer-to-peer networking,
+  NAT traversal and connectivity.
+- **[MyGo](https://github.com/egoist/mygo)**: its cross-platform desktop application framework and
+  application integration.
+- **[Pi](https://github.com/earendil-works/pi)**: the agent loop that runs Kyokai's AI tasks.
+- **[Arion](https://github.com/AstraFoundry/Arion)**: the design of Kyokai's first-run tour draws
   on Arion's onboarding; no code from Arion is used.
 
-## Open Source Licenses
+## License
 
 Kyokai is licensed under [AGPL-3.0-only](LICENSE). Third-party components and their licenses are
 listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
-[doc/en-us/third-party.md](doc/en-us/third-party.md).
+[third-party.md](doc/en-us/third-party.md).

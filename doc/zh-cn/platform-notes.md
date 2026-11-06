@@ -4,7 +4,7 @@
 |---|---|
 | Windows（x64、ARM64） | 0.1.0 基础已实现，并在 Windows 11 ARM64 上验证，x64 在模拟下验证（见下）。 |
 | macOS（Apple 芯片、Intel） | 已在 GitHub 的 macOS 运行器上构建与测试（Apple 芯片：完整检查，包括 `scripts/smoke.sh user` 与未签名安装包；Intel：构建与 Go 测试）；2026-10-17 在一台 MacBook Pro（M1，macOS 27.0.1）上运行过（见下）。 |
-| Linux | 进行中（0.6.7，`PLAN.md`）：核心、引擎与本地 API 在 Debian 13 x86_64 上可以构建并通过检查（见下文）；尚无采集、输入与安装包。 |
+| Linux（x64、ARM64） | 自 0.6.7 起；进行中（`PLAN.md`）。在 Debian 13 x86_64 上（见下文）：检查、X11 上的采集与输入（Xvfb）、Wayland 上的采集（无头 sway）、特权助手、安装包的构建、VA-API 与键盘抓取（Xephyr）。尚未运行：GNOME 与 KDE 的 Wayland 桌面、两台真实 Linux 桌面之间的会话。 |
 
 ## Windows
 

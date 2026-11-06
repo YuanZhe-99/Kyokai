@@ -4,7 +4,7 @@
 |---|---|
 | Windows (x64, ARM64) | 0.1.0 foundation implemented and verified on Windows 11 ARM64, x64 under emulation (below). |
 | macOS (Apple silicon, Intel) | Built and tested on GitHub's macOS runners (Apple silicon: full gate including `scripts/smoke.sh user` and the unsigned package; Intel: build and Go tests); run on a MacBook Pro (M1, macOS 27.0.1) on 2026-10-17 (below). |
-| Linux | In progress (0.6.7, `PLAN.md`): the core, the engine and the local API build and pass the gate on Debian 13 x86_64 (below); no capture, input or packages yet. |
+| Linux (x64, ARM64) | Since 0.6.7; in progress (`PLAN.md`). On Debian 13 x86_64 (below): the gate, capture and input on X11 (Xvfb), capture on Wayland (headless sway), the helper, the packages built, VA-API and the keyboard grab (Xephyr). Not yet run: GNOME and KDE Wayland desktops, a session between two real Linux desktops. |
 
 ## Windows
 

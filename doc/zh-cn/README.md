@@ -4,7 +4,7 @@
 多步骤计划进行期间只存在于仓库的 `PLAN.md` 中。
 
 Kyokai 是一款 AI 电脑操作（Computer Use）应用：人或 AI 代理通过内嵌的 EasyTier P2P 网络操作另一台电脑，
-AI 任务在被操作的那台电脑上运行。支持 Windows（x64、ARM64）与 macOS（Apple 芯片、Intel）。
+AI 任务在被操作的那台电脑上运行。支持 Windows（x64、ARM64）、macOS（Apple 芯片、Intel）与 Linux（x64、ARM64；X11 与 Wayland）。
 
 | 文档 | 内容 |
 |---|---|
