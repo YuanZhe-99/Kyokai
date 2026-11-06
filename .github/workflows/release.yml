@@ -88,9 +88,9 @@ jobs:
           mkdir -p dist
           version=$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)
           for arch in amd64 arm64; do
-            (cd build && zip -qr "../dist/Kyokai-$version-windows-$arch.zip" "windows-$arch" -x '*Setup*.exe' '*.tar.gz' '*.delta' '*/update-*.json')
+            (cd build && zip -qr "../dist/Kyokai-$version-windows-$arch.zip" "windows-$arch" -x '*[Ss]etup*.exe' '*.tar.gz' '*.delta' '*/update-*.json')
           done
-          find build -maxdepth 2 -type f \( -name '*Setup*.exe' -o -name '*.tar.gz' -o -name '*.delta' -o -name 'update-*.json' \) -exec cp {} dist/ \;
+          find build -maxdepth 2 -type f \( -iname '*setup*.exe' -o -name '*.tar.gz' -o -name '*.delta' -o -name 'update-*.json' \) -exec cp {} dist/ \;
           ls -l dist
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -270,9 +270,8 @@ jobs:
           merge-multiple: true
       - name: Checksums
         working-directory: dist
-        # GitHub serves "Kyokai Setup 0.1.0 arm64.exe" as
-        # "Kyokai.Setup.0.1.0.arm64.exe"; rename first so the list names the
-        # files people download.
+        # GitHub serves a name with spaces with dots in their place; rename
+        # first so the list names the files people download.
         run: |
           for f in *\ *; do
             [ -e "$f" ] || continue
