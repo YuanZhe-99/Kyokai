@@ -5,9 +5,14 @@
 //! keys to the GUI toolkit.
 //!
 //! Windows takes the keys with a low-level keyboard hook, macOS with an
-//! event tap (it needs Kyokai's Accessibility permission); both route them
-//! through `Grab`.
-#![cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+//! event tap (it needs Kyokai's Accessibility permission), Linux with a
+//! GTK seat grab of the viewer's window (an X11 keyboard grab, Wayland's
+//! keyboard-shortcuts inhibitor) and an event handler in front of GTK's;
+//! all route them through `Grab`.
+#![cfg_attr(
+    not(any(windows, target_os = "macos", target_os = "linux")),
+    allow(dead_code)
+)]
 
 use std::collections::BTreeSet;
 
@@ -214,6 +219,14 @@ impl Grab {
         }
     }
 
+    /// Marks the right Alt key that comes next as AltGr, where the system
+    /// says so by the key's own meaning rather than by a made-up Ctrl
+    /// (Linux: its keyval is ISO_Level3_Shift).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn altgr_coming(&mut self) {
+        self.altgr_next = true;
+    }
+
     /// Whether a sent key also reaches the controller's windows.
     fn passes(&self, code: u32) -> bool {
         LOCKS.contains(&code) || (self.mode == Mode::Translate && MODIFIERS.contains(&code))
@@ -274,7 +287,10 @@ impl Standing {
 /// Inputs: `secure` — the program holding Secure Event Input, when it is
 /// on; `behind` — asked last (it reads the window list): the program in
 /// front of Kyokai's window, None while Kyokai's is in front.
-#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
+#[cfg_attr(
+    not(any(windows, target_os = "macos", target_os = "linux")),
+    allow(dead_code)
+)]
 fn standing(
     grabbed: bool,
     running: bool,
@@ -296,6 +312,8 @@ fn standing(
     }
 }
 
+#[cfg(target_os = "linux")]
+pub use linux_impl::{grab, next, state};
 #[cfg(target_os = "macos")]
 pub use mac_impl::{grab, next, state};
 #[cfg(windows)]
@@ -303,21 +321,21 @@ pub use windows_impl::{grab, next, state};
 
 /// Grabs the keyboard for a viewer window. Not available here.
 /// Returns: false.
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 pub fn grab(_window: usize, _ask: Ask) -> bool {
     false
 }
 
 /// The next key taken for a viewer. Not available here.
 /// Returns: None.
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 pub fn next(_timeout: std::time::Duration) -> Option<KeyEvent> {
     None
 }
 
 /// How a viewer window's grab stands. Not available here.
 /// Returns: `Standing::None`.
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 pub fn state(_window: usize) -> Standing {
     Standing::None
 }
@@ -1186,6 +1204,616 @@ mod windows_impl {
             st.push(window, code, down);
         }
         verdict.swallow
+    }
+}
+
+/// The keyboard grab on Linux, inside the GUI's own GTK: while a viewer
+/// grabs, a seat grab of its window takes the keyboard from the desktop (on
+/// X11 an active keyboard grab, ahead of the window manager's shortcuts; on
+/// Wayland the keyboard-shortcuts inhibitor, which GNOME asks the user to
+/// allow), and an event handler in front of GTK's takes the window's keys by
+/// their evdev codes before Kyokai's own interface sees them.
+/// Notes: GTK is called only on its main thread: a call from another
+/// thread queues the change there (`sync`). Nothing here loads GTK: without
+/// the GUI's GTK in the process there is no grab.
+#[cfg(target_os = "linux")]
+mod linux_impl {
+    use super::*;
+    use std::collections::{HashMap, VecDeque};
+    use std::ffi::{CStr, c_void};
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+    use std::sync::{Condvar, Mutex, OnceLock};
+    use std::time::{Duration, Instant};
+
+    /// Most keys waiting for the GUI; newer ones are dropped beyond it.
+    const QUEUE: usize = 1024;
+    /// How long after the GUI last asked for a key the grab still takes
+    /// keys: a GUI that stopped reading never keeps them from its window.
+    const READER_GONE: Duration = Duration::from_secs(1);
+
+    // GDK's values (gdkevents.h, gdkseat.h, gdktypes.h).
+    const KEY_PRESS: i32 = 8;
+    const KEY_RELEASE: i32 = 9;
+    const GRAB_BROKEN: i32 = 35;
+    const SEAT_KEYBOARD: i32 = 1 << 3;
+    const GRAB_SUCCESS: i32 = 0;
+    const LOCK_MASK: u32 = 1 << 1;
+    /// Ctrl, Alt (Mod1), Super (Mod4, and GDK's virtual Super and Meta):
+    /// with any of them a key makes a shortcut, not a character.
+    const SHORTCUT_MASK: u32 = 1 << 2 | 1 << 3 | 1 << 6 | 1 << 26 | 1 << 28;
+    /// NumLock (Mod2).
+    const NUM_MASK: u32 = 1 << 4;
+    /// The keyvals of AltGr: ISO_Level3_Shift and Mode_switch.
+    const ALTGR: [u32; 2] = [0xFE03, 0xFF7E];
+
+    type Ptr = *mut c_void;
+
+    /// GTK's, GDK's and GLib's functions, from the libraries the GUI
+    /// loaded.
+    struct Gtk {
+        display_get_default: unsafe extern "C" fn() -> Ptr,
+        display_get_default_seat: unsafe extern "C" fn(Ptr) -> Ptr,
+        seat_get_keyboard: unsafe extern "C" fn(Ptr) -> Ptr,
+        seat_grab: unsafe extern "C" fn(Ptr, Ptr, i32, i32, Ptr, Ptr, Ptr, Ptr) -> i32,
+        seat_ungrab: unsafe extern "C" fn(Ptr),
+        device_grab_info: unsafe extern "C" fn(Ptr, Ptr, *mut Ptr, *mut i32) -> i32,
+        event_handler_set: unsafe extern "C" fn(unsafe extern "C" fn(Ptr, Ptr), Ptr, Ptr),
+        main_do_event: unsafe extern "C" fn(Ptr),
+        widget_get_window: unsafe extern "C" fn(Ptr) -> Ptr,
+        window_get_toplevel: unsafe extern "C" fn(Ptr) -> Ptr,
+        event_get_event_type: unsafe extern "C" fn(Ptr) -> i32,
+        event_get_window: unsafe extern "C" fn(Ptr) -> Ptr,
+        event_get_keycode: unsafe extern "C" fn(Ptr, *mut u16) -> i32,
+        event_get_keyval: unsafe extern "C" fn(Ptr, *mut u32) -> i32,
+        event_get_state: unsafe extern "C" fn(Ptr, *mut u32) -> i32,
+        keyval_to_unicode: unsafe extern "C" fn(u32) -> u32,
+        main_context_default: unsafe extern "C" fn() -> Ptr,
+        main_context_is_owner: unsafe extern "C" fn(Ptr) -> i32,
+        idle_add: unsafe extern "C" fn(unsafe extern "C" fn(Ptr) -> i32, Ptr) -> u32,
+    }
+
+    /// GTK's functions, when the GUI loaded GTK 3 into this process.
+    fn gtk() -> Option<&'static Gtk> {
+        static GTK: OnceLock<Option<Gtk>> = OnceLock::new();
+        GTK.get_or_init(load).as_ref()
+    }
+
+    /// Finds the functions in the GTK, GDK and GLib already loaded.
+    /// Returns: None when one is not loaded or lacks a function.
+    fn load() -> Option<Gtk> {
+        let open = |name: &CStr| {
+            // SAFETY: a NUL-terminated name; RTLD_NOLOAD only finds a library
+            // already loaded, and the handle is kept for the process.
+            let h = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_NOLOAD) };
+            (!h.is_null()).then_some(h)
+        };
+        let (gdk, gtk, glib) = (
+            open(c"libgdk-3.so.0")?,
+            open(c"libgtk-3.so.0")?,
+            open(c"libglib-2.0.so.0")?,
+        );
+        /// A function by name, as the type it is declared with in `Gtk`.
+        fn sym<T: Copy>(lib: Ptr, name: &CStr) -> Option<T> {
+            // SAFETY: a handle from dlopen and a NUL-terminated name.
+            let p = unsafe { libc::dlsym(lib, name.as_ptr()) };
+            // SAFETY: `T` is a function pointer type matching the symbol's C
+            // declaration (the fields of `Gtk`), the size of a data pointer.
+            (!p.is_null()).then(|| unsafe { std::mem::transmute_copy::<Ptr, T>(&p) })
+        }
+        Some(Gtk {
+            display_get_default: sym(gdk, c"gdk_display_get_default")?,
+            display_get_default_seat: sym(gdk, c"gdk_display_get_default_seat")?,
+            seat_get_keyboard: sym(gdk, c"gdk_seat_get_keyboard")?,
+            seat_grab: sym(gdk, c"gdk_seat_grab")?,
+            seat_ungrab: sym(gdk, c"gdk_seat_ungrab")?,
+            device_grab_info: sym(gdk, c"gdk_device_grab_info_libgtk_only")?,
+            event_handler_set: sym(gdk, c"gdk_event_handler_set")?,
+            main_do_event: sym(gtk, c"gtk_main_do_event")?,
+            widget_get_window: sym(gtk, c"gtk_widget_get_window")?,
+            window_get_toplevel: sym(gdk, c"gdk_window_get_toplevel")?,
+            event_get_event_type: sym(gdk, c"gdk_event_get_event_type")?,
+            event_get_window: sym(gdk, c"gdk_event_get_window")?,
+            event_get_keycode: sym(gdk, c"gdk_event_get_keycode")?,
+            event_get_keyval: sym(gdk, c"gdk_event_get_keyval")?,
+            event_get_state: sym(gdk, c"gdk_event_get_state")?,
+            keyval_to_unicode: sym(gdk, c"gdk_keyval_to_unicode")?,
+            main_context_default: sym(glib, c"g_main_context_default")?,
+            main_context_is_owner: sym(glib, c"g_main_context_is_owner")?,
+            idle_add: sym(glib, c"g_idle_add")?,
+        })
+    }
+
+    /// The grab's state, shared by GTK's main thread (the event handler,
+    /// `apply`) and the GUI's calls.
+    #[derive(Default)]
+    struct State {
+        /// The viewer windows that grab, by native handle (a GtkWindow),
+        /// and the one that grabbed last, whose keys are taken.
+        windows: HashMap<usize, Grab>,
+        front: Option<usize>,
+        /// The front window's toplevel GdkWindow, which its keys come for
+        /// (0 until GTK's main thread looked it up), and the GdkWindow
+        /// GTK's seat grab holds the keyboard for, while it does.
+        front_gdk: usize,
+        held: Option<usize>,
+        /// The handler is in front of GTK's; a change waits for the main
+        /// thread.
+        handler: bool,
+        pending: bool,
+        /// The controller's CapsLock and NumLock, from the last key's.
+        caps: bool,
+        num: bool,
+        queue: VecDeque<KeyEvent>,
+        /// When the GUI last asked for a key.
+        read: Option<Instant>,
+    }
+
+    impl State {
+        fn push(&mut self, window: usize, code: u32, down: bool) {
+            if self.queue.len() < QUEUE {
+                self.queue.push_back(KeyEvent {
+                    window,
+                    code,
+                    down: down as u8,
+                    caps: self.caps as u8,
+                    num: self.num as u8,
+                    _pad: 0,
+                });
+                READY.notify_all();
+            }
+        }
+
+        /// Queues the release of every key a window's grab sent down.
+        fn release(&mut self, window: usize) {
+            if let Some(g) = self.windows.get_mut(&window) {
+                for code in std::mem::take(&mut g.sent) {
+                    self.push(window, code, false);
+                }
+            }
+        }
+    }
+
+    static STATE: Mutex<Option<State>> = Mutex::new(None);
+    static READY: Condvar = Condvar::new();
+
+    /// Grabs the keyboard for a viewer window in a mode, or ends its grab
+    /// (`Ask::Off`). A grab asked again takes the seat again where GTK's
+    /// grab was lost.
+    /// Returns: whether the window grabs (false without GTK in this
+    /// process, or for an ended grab); whether the seat grab holds, its
+    /// state says.
+    /// Side effects: queues the release of the keys a window's grab held
+    /// when its grab ends or changes mode; on GTK's main thread, grabs the
+    /// seat for the front window and lets it go with the last grab.
+    pub fn grab(window: usize, ask: Ask) -> bool {
+        let Some(g) = gtk() else {
+            return false;
+        };
+        {
+            let Ok(mut guard) = STATE.lock() else {
+                return false;
+            };
+            let st = guard.get_or_insert_with(State::default);
+            let keeps = |g: &Grab| matches!(ask, Ask::Grab(mode) if g.mode == mode);
+            if st.windows.get(&window).is_some_and(|g| !keeps(g)) {
+                st.release(window);
+                st.windows.remove(&window);
+            }
+            match ask {
+                Ask::Grab(mode) => {
+                    st.windows.entry(window).or_insert_with(|| Grab::new(mode));
+                    st.front = Some(window);
+                }
+                Ask::Off if st.front == Some(window) => st.front = None,
+                Ask::Off => {}
+            }
+        }
+        sync(g);
+        ask != Ask::Off
+    }
+
+    /// How a viewer window's grab stands now (`Standing`): `off` while
+    /// GTK's seat grab does not hold the keyboard for it.
+    pub fn state(window: usize) -> Standing {
+        let Ok(guard) = STATE.lock() else {
+            return Standing::Off;
+        };
+        let Some(st) = guard.as_ref() else {
+            return Standing::None;
+        };
+        standing(
+            st.windows.contains_key(&window),
+            st.front_gdk != 0 && st.held == Some(st.front_gdk),
+            None,
+            st.front == Some(window),
+            st.read.is_some_and(|t| t.elapsed() <= READER_GONE),
+            || None,
+        )
+    }
+
+    /// Waits up to `timeout` for the next key taken for a viewer.
+    pub fn next(timeout: Duration) -> Option<KeyEvent> {
+        let mut guard = STATE.lock().ok()?;
+        guard.get_or_insert_with(State::default).read = Some(Instant::now());
+        let (mut guard, _) = READY
+            .wait_timeout_while(guard, timeout, |st| {
+                st.as_ref().is_none_or(|st| st.queue.is_empty())
+            })
+            .ok()?;
+        guard.as_mut()?.queue.pop_front()
+    }
+
+    /// Brings GTK's seat grab in line with the state: at once on GTK's main
+    /// thread, else from an idle callback there.
+    fn sync(g: &'static Gtk) {
+        // SAFETY: GLib's main-context calls may be made from any thread.
+        if unsafe { (g.main_context_is_owner)((g.main_context_default)()) } != 0 {
+            apply(g);
+            return;
+        }
+        let queue = STATE.lock().ok().and_then(|mut st| {
+            st.as_mut()
+                .map(|st| !std::mem::replace(&mut st.pending, true))
+        });
+        if queue == Some(true) {
+            // SAFETY: g_idle_add may be called from any thread; the callback
+            // takes no data.
+            unsafe { (g.idle_add)(idle, std::ptr::null_mut()) };
+        }
+    }
+
+    /// The idle callback that runs `apply` on GTK's main thread.
+    /// Returns: G_SOURCE_REMOVE.
+    unsafe extern "C" fn idle(_data: Ptr) -> i32 {
+        if let Some(g) = gtk() {
+            let _ = catch_unwind(|| apply(g));
+        }
+        0
+    }
+
+    /// Puts the event handler in front of GTK's, grabs the seat for the
+    /// front window and lets go of the grab with the last one. A grab
+    /// another part of Kyokai holds (a menu's) is neither taken nor let go.
+    /// Notes: call on GTK's main thread only.
+    fn apply(g: &Gtk) {
+        let (front, held, install) = {
+            let Ok(mut guard) = STATE.lock() else {
+                return;
+            };
+            let Some(st) = guard.as_mut() else {
+                return;
+            };
+            st.pending = false;
+            (st.front, st.held, !std::mem::replace(&mut st.handler, true))
+        };
+        // SAFETY: on GTK's main thread (the caller's contract); `front` is a
+        // GtkWindow the GUI grabs for, alive while it does; the out
+        // pointers are locals.
+        let (target, now) = unsafe {
+            if install {
+                (g.event_handler_set)(handler, std::ptr::null_mut(), std::ptr::null_mut());
+            }
+            let display = (g.display_get_default)();
+            if display.is_null() {
+                return;
+            }
+            let seat = (g.display_get_default_seat)(display);
+            let keyboard = (g.seat_get_keyboard)(seat);
+            let mut grabbed: Ptr = std::ptr::null_mut();
+            let mut owner = 0;
+            let current = match keyboard.is_null() {
+                false if (g.device_grab_info)(display, keyboard, &mut grabbed, &mut owner) != 0 => {
+                    grabbed as usize
+                }
+                _ => 0,
+            };
+            let target = match front {
+                Some(w) => match (g.widget_get_window)(w as Ptr) {
+                    gdk if gdk.is_null() => 0,
+                    gdk => (g.window_get_toplevel)(gdk) as usize,
+                },
+                None => 0,
+            };
+            let now = match () {
+                _ if target == 0 => {
+                    if current != 0 && held == Some(current) {
+                        (g.seat_ungrab)(seat);
+                    }
+                    0
+                }
+                _ if current == target => target,
+                _ if current != 0 && held != Some(current) => 0,
+                _ => {
+                    let null = std::ptr::null_mut();
+                    let status = (g.seat_grab)(
+                        seat,
+                        target as Ptr,
+                        SEAT_KEYBOARD,
+                        1,
+                        null,
+                        null,
+                        null,
+                        null,
+                    );
+                    if status == GRAB_SUCCESS { target } else { 0 }
+                }
+            };
+            (target, now)
+        };
+        if let Ok(mut guard) = STATE.lock()
+            && let Some(st) = guard.as_mut()
+        {
+            st.front_gdk = target;
+            st.held = (now != 0).then_some(now);
+        }
+    }
+
+    /// The event handler in front of GTK's: takes the front viewer's keys
+    /// and passes every other event, and the keys it leaves, to GTK.
+    unsafe extern "C" fn handler(event: Ptr, _data: Ptr) {
+        let Some(g) = gtk() else {
+            return;
+        };
+        let taken = catch_unwind(AssertUnwindSafe(|| {
+            // SAFETY: GTK hands the handler a valid event on its main thread.
+            let kind = unsafe { (g.event_get_event_type)(event) };
+            match kind {
+                KEY_PRESS | KEY_RELEASE => key(g, event, kind == KEY_PRESS),
+                GRAB_BROKEN => {
+                    broken(g, event);
+                    false
+                }
+                _ => false,
+            }
+        }));
+        if !matches!(taken, Ok(true)) {
+            // SAFETY: as above; GTK's own handler takes the event.
+            unsafe { (g.main_do_event)(event) };
+        }
+    }
+
+    /// The toplevel GdkWindow an event came for (0 for none).
+    fn toplevel(g: &Gtk, event: Ptr) -> usize {
+        // SAFETY: a valid event, on GTK's main thread.
+        unsafe {
+            match (g.event_get_window)(event) {
+                w if w.is_null() => 0,
+                w => (g.window_get_toplevel)(w) as usize,
+            }
+        }
+    }
+
+    /// Notes that GTK's seat grab ended (another grab took the seat, the
+    /// window was hidden): the state says so until a grab is asked again.
+    fn broken(g: &Gtk, event: Ptr) {
+        let window = toplevel(g, event);
+        if let Ok(mut guard) = STATE.try_lock()
+            && let Some(st) = guard.as_mut()
+            && st.held == Some(window)
+        {
+            st.held = None;
+        }
+    }
+
+    /// Handles one key event in the handler.
+    /// Returns: whether it is taken from GTK.
+    fn key(g: &Gtk, event: Ptr, down: bool) -> bool {
+        let window = toplevel(g, event);
+        let (mut keycode, mut keyval, mut mods) = (0u16, 0u32, 0u32);
+        // SAFETY: a valid key event; the out pointers are locals.
+        unsafe {
+            (g.event_get_keycode)(event, &mut keycode);
+            (g.event_get_keyval)(event, &mut keyval);
+            (g.event_get_state)(event, &mut mods);
+        }
+        // The main thread never waits: a key that comes while another
+        // thread holds the state passes.
+        let Ok(mut guard) = STATE.try_lock() else {
+            return false;
+        };
+        let Some(st) = guard.as_mut() else {
+            return false;
+        };
+        // SAFETY: gdk_keyval_to_unicode is a pure lookup.
+        route(st, window, keycode, keyval, mods, down, |k| unsafe {
+            (g.keyval_to_unicode)(k)
+        })
+    }
+
+    /// Routes one key of a Kyokai window: the front viewer's are taken by
+    /// scan code (`Grab::route`), keys for another window or with nobody
+    /// reading pass and let go of what the viewer held.
+    /// Inputs: `window` — the toplevel GdkWindow the key came for;
+    /// `keycode` — GDK's hardware keycode (the evdev code plus 8, on X11
+    /// and Wayland alike); `keyval`, `mods` — its keyval and the modifiers
+    /// and locks before it; `unicode` — a keyval's character (0 for none).
+    /// Returns: whether to take the key from GTK.
+    fn route(
+        st: &mut State,
+        window: usize,
+        keycode: u16,
+        keyval: u32,
+        mods: u32,
+        down: bool,
+        unicode: impl Fn(u32) -> u32,
+    ) -> bool {
+        let Some(front) = st.front else {
+            return false;
+        };
+        if window == 0
+            || window != st.front_gdk
+            || st.read.is_none_or(|t| t.elapsed() > READER_GONE)
+        {
+            st.release(front);
+            return false;
+        }
+        // Keys no scan code names (the media keys most keyboards have
+        // beyond those, a laptop's own) stay this computer's.
+        let Some(code) = keycode
+            .checked_sub(8)
+            .and_then(|e| u8::try_from(e).ok())
+            .and_then(crate::linux::evdev_scan)
+        else {
+            return false;
+        };
+        // The state is the one before the key: a lock's press turns its
+        // lock over.
+        st.caps = (mods & LOCK_MASK != 0) ^ (down && code == 0x3A);
+        st.num = (mods & NUM_MASK != 0) ^ (down && code == 0x45);
+        let Some(grab) = st.windows.get_mut(&front) else {
+            return false;
+        };
+        if down && code == RIGHT_ALT && ALTGR.contains(&keyval) {
+            grab.altgr_coming();
+        }
+        let types =
+            || mods & SHORTCUT_MASK == 0 && matches!(unicode(keyval), c if c >= 0x20 && c != 0x7F);
+        let verdict = grab.route(Some(code), down, types);
+        if let Some((code, down)) = verdict.send {
+            st.push(front, code, down);
+        }
+        verdict.swallow
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// The handler's routing of Linux key events (hardware keycodes,
+        /// keyvals, modifiers): in Map mode Ctrl+C and a letter go by scan
+        /// code and stay off Kyokai's interface; in Translate a letter stays
+        /// the controller's (its text follows) while Ctrl+C, Enter and
+        /// Super go, and Shift goes both ways; AltGr stays the controller's
+        /// in Translate and goes as right Alt in Map; keys for another
+        /// window, without a reader, or with no scan code pass, and leave
+        /// nothing held.
+        #[test]
+        fn linux_keys_reach_the_viewer_by_scan_code() {
+            const CTRL: u32 = 1 << 2;
+            const SHIFT: u32 = 1;
+            // keycode (evdev + 8), keyval, modifiers before, down
+            type Key = (u16, u32, u32, bool);
+            let fresh = |mode: Mode| State {
+                windows: HashMap::from([(7, Grab::new(mode))]),
+                front: Some(7),
+                front_gdk: 70,
+                read: Some(Instant::now()),
+                ..State::default()
+            };
+            let unicode = |k: u32| if (0x20..0x7F).contains(&k) { k } else { 0 };
+            let run = |st: &mut State, window: usize, keys: &[Key]| {
+                let taken: Vec<bool> = keys
+                    .iter()
+                    .map(|&(code, val, mods, down)| {
+                        route(st, window, code, val, mods, down, unicode)
+                    })
+                    .collect();
+                let sent: Vec<(u32, bool)> =
+                    st.queue.drain(..).map(|k| (k.code, k.down != 0)).collect();
+                (taken, sent)
+            };
+            let copy: [Key; 4] = [
+                (37, 0xFFE3, 0, true), // Control_L
+                (54, 'c' as u32, CTRL, true),
+                (54, 'c' as u32, CTRL, false),
+                (37, 0xFFE3, CTRL, false),
+            ];
+            let mut st = fresh(Mode::Map);
+            assert_eq!(
+                run(&mut st, 70, &copy),
+                (
+                    vec![true; 4],
+                    vec![(0x1D, true), (0x2E, true), (0x2E, false), (0x1D, false)]
+                )
+            );
+            let mut st = fresh(Mode::Translate);
+            let (taken, sent) = run(&mut st, 70, &copy);
+            assert_eq!(taken, [false, true, true, false], "Ctrl goes both ways");
+            assert_eq!(sent.len(), 4);
+            let shifted: [Key; 4] = [
+                (50, 0xFFE1, 0, true), // Shift_L
+                (38, 'A' as u32, SHIFT, true),
+                (38, 'A' as u32, SHIFT, false),
+                (50, 0xFFE1, SHIFT, false),
+            ];
+            let mut st = fresh(Mode::Translate);
+            assert_eq!(
+                run(&mut st, 70, &shifted),
+                (vec![false; 4], vec![(0x2A, true), (0x2A, false)]),
+                "the letter types on the controller; Shift goes too"
+            );
+            let mut st = fresh(Mode::Map);
+            assert_eq!(run(&mut st, 70, &shifted).1.len(), 4);
+            let other: [Key; 3] = [
+                (36, 0xFF0D, 0, true),
+                (36, 0xFF0D, 0, false),
+                (133, 0xFFEB, 0, true),
+            ];
+            let mut st = fresh(Mode::Translate);
+            assert_eq!(
+                run(&mut st, 70, &other),
+                (
+                    vec![true; 3],
+                    vec![(0x1C, true), (0x1C, false), (0xE05B, true)]
+                ),
+                "Enter and Super go by scan code in Translate"
+            );
+            let altgr: [Key; 4] = [
+                (108, 0xFE03, 0, true), // ISO_Level3_Shift
+                (24, '@' as u32, 1 << 7, true),
+                (24, '@' as u32, 1 << 7, false),
+                (108, 0xFE03, 1 << 7, false),
+            ];
+            let mut st = fresh(Mode::Translate);
+            assert_eq!(run(&mut st, 70, &altgr), (vec![false; 4], vec![]));
+            let mut st = fresh(Mode::Map);
+            assert_eq!(run(&mut st, 70, &altgr).1[0], (RIGHT_ALT, true));
+            // A key for another of Kyokai's windows passes and lets go of
+            // what the viewer held; so does one with nobody reading.
+            let mut st = fresh(Mode::Map);
+            run(&mut st, 70, &copy[..2]);
+            assert_eq!(
+                run(&mut st, 71, &[(38, 'a' as u32, 0, true)]),
+                (vec![false], vec![(0x1D, false), (0x2E, false)])
+            );
+            let mut st = fresh(Mode::Map);
+            st.read = None;
+            assert_eq!(run(&mut st, 70, &copy[..1]), (vec![false], vec![]));
+            // A key with no scan code (XF86Launch1) passes.
+            let mut st = fresh(Mode::Map);
+            assert_eq!(
+                run(&mut st, 70, &[(156 + 8, 0x1008FF41, 0, true)]),
+                (vec![false], vec![])
+            );
+        }
+
+        /// The keys carry the controller's locks after them: CapsLock's
+        /// press turns the state GDK reports before it over.
+        #[test]
+        fn linux_keys_carry_the_locks() {
+            let mut st = State {
+                windows: HashMap::from([(7, Grab::new(Mode::Map))]),
+                front: Some(7),
+                front_gdk: 70,
+                read: Some(Instant::now()),
+                ..State::default()
+            };
+            let none = |_| 0;
+            route(&mut st, 70, 66, 0xFFE5, 0, true, none); // CapsLock on
+            route(&mut st, 70, 66, 0xFFE5, LOCK_MASK, false, none);
+            route(
+                &mut st,
+                70,
+                38,
+                'A' as u32,
+                LOCK_MASK | NUM_MASK,
+                true,
+                none,
+            );
+            let caps: Vec<(u32, u8, u8)> =
+                st.queue.iter().map(|k| (k.code, k.caps, k.num)).collect();
+            assert_eq!(caps, [(0x3A, 1, 0), (0x3A, 1, 0), (0x1E, 1, 1)]);
+        }
     }
 }
 

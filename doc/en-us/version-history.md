@@ -1,5 +1,18 @@
 # Version history
 
+## 0.7.3 (2026-11-06)
+
+Map and Translate on Linux.
+
+- A Linux controller grabs the keyboard as Windows and macOS do: Map sends every key by its place
+  (Super, Alt+Tab, modifiers on their own and every shortcut go to the other computer, whose input
+  method then types Chinese or Japanese), and Translate types with this computer's layout and sends
+  the other keys by place. The grab is GTK's seat grab of the viewer's window: on X11 a keyboard
+  grab, on Wayland the keyboard-shortcuts inhibitor, which GNOME asks to allow once. Before, Linux
+  viewers had Legacy mode only.
+- Upstreams checked, unchanged: MyGo v0.7.4, EasyTier v2.7.0, RustDesk 1.5.1, vcpkg 2026.10.16,
+  smoltcp 0.14.0, Rust 1.99.1, Bun 1.4.4, Pi 1.5.0.
+
 ## 0.7.2 (2026-11-03)
 
 Panes in a group swap places.

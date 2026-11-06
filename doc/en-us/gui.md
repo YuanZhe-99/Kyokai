@@ -494,7 +494,7 @@ when `SCREENSHOT_DIR` is set.
   720p — only for a host whose stream says which applies (0.6.15 and later,
   [computer-use.md](computer-use.md), "Quality and bandwidth"), Codec with Auto and what both
   computers do, by codec name only, when there is a choice, Full colour and Hardware codec), Keyboard (with `control-input`, on
-  Windows and macOS: the keyboard mode Map, Translate or Legacy, remembered for every viewer, and
+  Windows, macOS and Linux: the keyboard mode Map, Translate or Legacy, remembered for every viewer, and
   Swap Ctrl and Cmd where a Mac is on either side and on every NanoKVM pane (off there until chosen: the wired computer's system is not known); on a Mac without Kyokai's Accessibility
   permission the icon takes the warning colour and its tooltip says to allow it; in Map and
   Translate two dots under the icon, the first green while Kyokai holds the keyboard, the second

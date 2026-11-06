@@ -152,7 +152,8 @@ computer: **Map** (the default) sends each key by its place, so the other comput
 decides what it types and shortcuts such as the Windows key, Alt+Tab or Cmd+Tab go there too;
 **Translate** types with your own layout; **Legacy** sends only the keys the viewer window
 receives. On a Mac, Map and Translate need **Accessibility** for Kyokai in System Settings,
-Privacy & Security. Your own input method is off inside the picture, in every mode (only there;
+Privacy & Security; on Linux under GNOME on Wayland, GNOME asks once whether Kyokai may inhibit
+shortcuts: allow it, so that the system's shortcuts reach the other computer. Your own input method is off inside the picture, in every mode (only there;
 elsewhere it works as usual): to type Chinese or Japanese, use **Map** and the other computer's own
 input method — switch it on there, for example with Win+Space. If the connection stalls, typing pauses
 ("Input paused" in the toolbar) instead of arriving late, and your own keyboard keeps working. Between a Mac and Windows, **Swap Ctrl and Cmd** (on by default) makes

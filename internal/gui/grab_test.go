@@ -119,8 +119,9 @@ func TestGrabCall(t *testing.T) {
 }
 
 // Which keys that reached the window had to get past the grab: every key
-// in Map; in Translate the keys that never type and shortcuts, Cmd or Ctrl
-// on a Mac, Win, or Ctrl or Alt alone elsewhere (Ctrl+Alt is AltGr).
+// in Map; in Translate the keys that never type and shortcuts: Cmd or Ctrl
+// on a Mac; Win, Ctrl or Alt on Linux; Win, or Ctrl or Alt alone, on
+// Windows (Ctrl+Alt is AltGr there).
 func TestGrabLetPass(t *testing.T) {
 	down := func(k ui.Key, m ui.Modifiers) ui.InputEvent {
 		return ui.InputEvent{Kind: ui.InputKeyDown, Key: k, Mods: m}
@@ -150,6 +151,12 @@ func TestGrabLetPass(t *testing.T) {
 		{"translate", "windows", down(ui.KeyF, ui.Alt), true},
 		{"translate", "windows", down(ui.KeyQ, ui.Ctrl|ui.Alt), false}, // AltGr
 		{"translate", "windows", down(ui.KeyD, ui.Super), true},
+		{"map", "linux", down(ui.KeyA, 0), true},
+		{"translate", "linux", down(ui.KeyA, ui.Shift), false},
+		{"translate", "linux", down(ui.KeyEnter, 0), true},
+		{"translate", "linux", down(ui.KeyC, ui.Ctrl), true},
+		{"translate", "linux", down(ui.KeyQ, ui.Ctrl|ui.Alt), true}, // AltGr is its own key
+		{"translate", "linux", down(ui.KeyD, ui.Super), true},
 	} {
 		if got := grabLetPass(c.mode, c.ev, c.goos); got != c.passed {
 			t.Errorf("%s on %s, %+v: passed %v, want %v", c.mode, c.goos, c.ev, got, c.passed)

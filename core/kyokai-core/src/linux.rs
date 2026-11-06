@@ -789,6 +789,16 @@ pub fn scan_evdev(code: u32) -> Option<u8> {
     })
 }
 
+/// The PC scan code of an evdev code, as a Linux controller's keyboard grab
+/// sends a key: `scan_evdev` the other way round.
+/// Returns: None for an evdev code no scan code names.
+pub fn evdev_scan(evdev: u8) -> Option<u32> {
+    (0x01..=0x7D)
+        .chain(0xE010..=0xE05D)
+        .chain([0xE11D])
+        .find(|&code| scan_evdev(code) == Some(evdev))
+}
+
 /// The evdev code of a key name (`input::vk`'s names), through the scan
 /// code of the key at that place on a PC keyboard.
 pub fn keycode(name: &str) -> Option<u8> {
@@ -2134,6 +2144,14 @@ mod tests {
                 panic!("{other:#x} and {scan:#x} both reach {k}");
             }
         }
+        // A Linux controller's grab sends each evdev key back by the scan
+        // code that reaches it.
+        for (&evdev, &scan) in &seen {
+            assert_eq!(evdev_scan(evdev), Some(scan), "evdev {evdev}");
+        }
+        assert_eq!(evdev_scan(30), Some(0x1E));
+        assert_eq!(evdev_scan(100), Some(0xE038), "right Alt");
+        assert_eq!(evdev_scan(156), None, "no scan code");
         for (name, scan) in [
             ("a", 0x1E),
             ("z", 0x2C),

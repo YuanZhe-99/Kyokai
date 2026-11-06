@@ -690,9 +690,9 @@ func (v *viewer) writer(w io.Writer, done <-chan struct{}) {
 var keyboardModes = []string{"map", "translate", "legacy"}
 
 // grabsKeyboard is whether the core can grab the keyboard here (Map and
-// Translate: a hook on Windows, an event tap on macOS); elsewhere every
-// viewer works in Legacy mode.
-const grabsKeyboard = runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+// Translate: a hook on Windows, an event tap on macOS, a GTK seat grab on
+// Linux); elsewhere every viewer works in Legacy mode.
+const grabsKeyboard = runtime.GOOS == "windows" || runtime.GOOS == "darwin" || runtime.GOOS == "linux"
 
 // setKeyboardMode remembers the viewers' keyboard mode; each viewer grabs
 // in it the next time the pointer is over its picture.
@@ -992,8 +992,9 @@ func holderNote(holder string) string {
 // sees did; in Translate the keys that type stay the controller's by design,
 // so only those that never type (Enter, Esc, Backspace, Tab, Delete,
 // Insert, the arrows, Home, End, Page Up and Down, the F keys) and shortcuts
-// did — Cmd or Ctrl on a Mac, Win, or Ctrl or Alt alone, elsewhere (Ctrl
-// and Alt together are AltGr, which types).
+// did — Cmd or Ctrl on a Mac; Win, Ctrl or Alt on Linux (AltGr is a key of
+// its own there); Win, or Ctrl or Alt alone, on Windows (Ctrl and Alt
+// together are AltGr, which types).
 func grabLetPass(mode string, ev ui.InputEvent, goos string) bool {
 	if ev.Kind != ui.InputKeyDown {
 		return false
@@ -1005,7 +1006,8 @@ func grabLetPass(mode string, ev ui.InputEvent, goos string) bool {
 		return true
 	}
 	ctrl, alt, meta := ev.Mods&ui.Ctrl != 0, ev.Mods&ui.Alt != 0, ev.Mods&ui.Super != 0
-	if meta || goos == "darwin" && ctrl || goos != "darwin" && ctrl != alt {
+	switch {
+	case meta, goos == "darwin" && ctrl, goos == "linux" && (ctrl || alt), goos == "windows" && ctrl != alt:
 		return true
 	}
 	return !typing[ev.Key] && !punctuation[ev.Key]

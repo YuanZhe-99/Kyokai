@@ -343,6 +343,22 @@ slices that look at a stop flag, so a stop asked before it ran is not lost (in 0
 could clear the shared handle a newer tap needed, which then stayed off once macOS switched it off,
 and a stop asked too early left a tap running).
 
+On Linux the grab is GTK's own, inside the GUI (0.7.3; before, Linux viewers had Legacy mode
+only): while a viewer grabs, a seat grab of its window takes the keyboard from the desktop — on X11
+an active keyboard grab, ahead of the window manager's shortcuts (Super, Alt+Tab, Alt+F4); on
+Wayland the keyboard-shortcuts inhibitor, which GNOME asks the person to allow for Kyokai once
+(refused, the system's shortcuts stay the desktop's and the other keys still go by position) — and
+an event handler in front of GTK's takes the viewer window's keys by their hardware keycodes (the
+evdev code plus 8, on X11 and Wayland alike), turned into the PC scan codes the host maps back,
+before Kyokai's interface sees them; keys no scan code names stay the controller's. The handler
+takes keys only for the window that grabbed last and while the viewer reads them, and never waits
+for its lock (a key that comes while another thread holds it passes). GTK is called only on its
+main thread: a grab asked from another thread is made there from an idle callback. A seat grab GTK
+lost (another grab took the seat, the window was hidden) is taken again when the viewer renews its
+grab; one another part of Kyokai holds (a menu's) is neither taken nor let go. In Translate a key
+that types passes to GTK, whose layout types it; dead keys go by position (with the input method
+off, GTK composes nothing), and AltGr (ISO_Level3_Shift) stays the controller's.
+
 The keyboard follows the pointer. In Map and Translate a viewer grabs while its picture shows and the
 pointer is anywhere in its pane — its header, its toolbar, its clipboard panel, the picture — and the
 picture keeps the text focus meanwhile, so typed text and keys go to the same session; with panes
@@ -374,7 +390,8 @@ Shift+Cmd+Z before the window sees them; their edit commands are sent as those s
 
 A grab can stop taking keys without Kyokai being told: macOS switches a tap off when it waited too
 long, and hands no key to any tap while another program holds Secure Event Input (Terminal's secure
-keyboard entry, a password prompt); Windows removes a low-level hook that kept it waiting too long.
+keyboard entry, a password prompt); Windows removes a low-level hook that kept it waiting too long;
+on Linux another grab can take the seat.
 So a viewer renews its grab when its window becomes active again, when the pointer comes back into
 its pane, after a key got past it, and when the core says the tap or hook is off, the grab gone or
 another window's: on macOS the tap is turned on again, or started anew if its thread ended; on
@@ -395,7 +412,7 @@ noted on its own: switching programs does that).
 The controller's input method is off in the picture, in every mode, and in a Remote Desktop or VNC
 screen too (MyGo's `InputMethod(false)`): only for that element while it has the keyboard focus —
 Windows detaches the window's input context (`ImmAssociateContextEx(hwnd, 0, 0)`) and ends an open
-composition, a Mac's keys skip the input method — so keys type the layout's characters and nothing
+composition, a Mac's keys skip the input method, GTK's input context loses the focus on Linux — so keys type the layout's characters and nothing
 composes. It is back as the focus leaves the picture; the system's input-method setting is never
 changed. Chinese and Japanese are typed with the host's own input method, switched on there
 (Win+Space, for example), in Map mode.
@@ -410,8 +427,8 @@ with Ctrl or Cmd).
 
 | Mode | On the controller | On the host |
 |---|---|---|
-| Map | while the pointer is over the picture and its window is in front (and, on Windows, topmost there), a low-level keyboard hook in the core takes every key by scan code before the controller's windows see it: Win, Alt+Tab, Alt+F4 and every shortcut go to the host; CapsLock, NumLock and ScrollLock act on the controller too | each key by scan code, so the host's layout and input method decide what it types, as in RustDesk |
-| Translate | a key that makes a character on the controller's layout with the modifiers held (a dead key too; not with Win, or with Ctrl or Alt alone) stays with the controller, whose layout types it, and its text is sent; Shift, Ctrl, Alt and the lock keys go both ways; AltGr stays the controller's; every other key and shortcut is taken by scan code. Nothing is held back for an input method (after a key that typed on a Chinese, Japanese or Korean layout, Enter, Esc, Backspace, Tab, the arrows, Space and the digits passed to the controller's for up to a second, and an Enter typed then could be lost) | text as Unicode, the other keys by scan code |
+| Map | while the pointer is over the picture and its window is in front (and, on Windows, topmost there), the core's grab (the low-level hook, the event tap, GTK's seat grab) takes every key by scan code before the controller's windows see it: Win, Alt+Tab, Alt+F4 and every shortcut go to the host; CapsLock, NumLock and ScrollLock act on the controller too | each key by scan code, so the host's layout and input method decide what it types, as in RustDesk |
+| Translate | a key that makes a character on the controller's layout with the modifiers held (a dead key too, except on Linux; not with Win, or with Ctrl or Alt alone, and on Linux with none of Ctrl, Alt and Super) stays with the controller, whose layout types it, and its text is sent; Shift, Ctrl, Alt and the lock keys go both ways; AltGr stays the controller's; every other key and shortcut is taken by scan code. Nothing is held back for an input method (after a key that typed on a Chinese, Japanese or Korean layout, Enter, Esc, Backspace, Tab, the arrows, Space and the digits passed to the controller's for up to a second, and an Enter typed then could be lost) | text as Unicode, the other keys by scan code |
 | Legacy | the GUI toolkit's key events as above: no Win key, no shortcut the window consumes, no left or right modifier, numpad keys by their meaning | named keys and Unicode |
 
 Each key the grab takes carries the controller's CapsLock and NumLock: before a letter the host
@@ -423,7 +440,9 @@ another program injects on the controller — another remote-control program ope
 Kyokai runs inside a RustDesk session — are taken like typed ones; only Kyokai's own (tagged) and
 characters injected as text (`VK_PACKET`, RustDesk's Translate and Legacy modes) are left alone,
 and such text reaches the viewer, which sends it as text in every mode. The hook is installed with the first grab
-and removed with the last. Ctrl+Alt+Del cannot be taken (Windows shows it to no hook); the Actions
+and removed with the last (on Linux the seat grab follows the viewer that grabbed last and is let go
+with the last grab; the event handler, once in front of GTK's, passes every event while nothing
+grabs). Ctrl+Alt+Del cannot be taken (Windows shows it to no hook); the Actions
 menu sends it in the helper modes.
 
 ### Session actions

@@ -591,11 +591,14 @@ pub extern "C" fn kyokai_decoder_close(id: u64) {
 /// Grabs the keyboard for a viewer window, or ends its grab
 /// (doc/en-us/computer-use.md, "Keyboard modes"); a grab asked again
 /// renews it (the macOS tap switched on again or started anew, the Windows
-/// hook installed again). Needs no started core.
-/// Inputs: `window` — the viewer's native window handle; `mode`/`len` — the
-/// mode's name (`map`, `translate`, `off`), borrowed for the call.
+/// hook installed again, the Linux seat grab taken again). Needs no started
+/// core.
+/// Inputs: `window` — the viewer's native window handle (on Linux its
+/// GtkWindow); `mode`/`len` — the mode's name (`map`, `translate`, `off`),
+/// borrowed for the call.
 /// Returns: 0; -1 for an unknown mode or no window; -2 when the keyboard cannot be
-/// grabbed here (no hook; on macOS, no Accessibility permission).
+/// grabbed here (no hook; on macOS, no Accessibility permission; on Linux,
+/// no GTK 3 in the process).
 ///
 /// # Safety
 /// `mode` points to `len` readable bytes.
@@ -640,7 +643,7 @@ pub unsafe extern "C" fn kyokai_keyboard_read(
 ) -> i32 {
     // Regression: this answered -2 off Windows, so a Mac viewer's reader
     // stopped and the keys its grab took went nowhere.
-    if out.is_null() || !cfg!(any(windows, target_os = "macos")) {
+    if out.is_null() || !cfg!(any(windows, target_os = "macos", target_os = "linux")) {
         return -2;
     }
     match catch_unwind(|| keyboard::next(std::time::Duration::from_millis(timeout_ms.into()))) {
@@ -674,7 +677,7 @@ pub unsafe extern "C" fn kyokai_keyboard_state(window: usize, out: *mut u8, cap:
     if out.is_null() {
         return -1;
     }
-    if !cfg!(any(windows, target_os = "macos")) {
+    if !cfg!(any(windows, target_os = "macos", target_os = "linux")) {
         return -2;
     }
     let Ok(standing) = catch_unwind(|| keyboard::state(window)) else {

@@ -52,8 +52,9 @@ func TestRealLibrary(t *testing.T) {
 			t.Fatalf("keyboard state: %v %+v, want one of %v", err, ks, want)
 		}
 	}
-	// A system without a grab (Linux) says so for its state and a grab
-	// alike, and its viewers use Legacy mode.
+	// A system without a grab says so for its state and a grab alike, and
+	// its viewers use Legacy mode; Linux without GTK in the process (this
+	// test) refuses the grab.
 	if _, err := l.KeyboardState(0x1234); errors.Is(err, ErrNoKeyboard) {
 		if err := l.KeyboardGrab(0x1234, "map"); !errors.Is(err, ErrNoKeyboard) {
 			t.Fatalf("grab without a grab here: %v", err)
@@ -135,9 +136,9 @@ func TestRealLibrary(t *testing.T) {
 	if l.KeyboardGrab(1, "legacy") == nil || l.KeyboardGrab(0, "map") == nil {
 		t.Fatal("a bad grab must fail")
 	}
-	// Read answers on Windows and macOS (a Mac viewer grabs keys too) and
-	// fails elsewhere.
-	if _, ok, err := l.Keyboard().Read(time.Millisecond); ok || (err != nil) != (runtime.GOOS != "windows" && runtime.GOOS != "darwin") {
+	// Read answers on Windows, macOS and Linux (their viewers grab keys)
+	// and fails elsewhere.
+	if _, ok, err := l.Keyboard().Read(time.Millisecond); ok || (err != nil) != (runtime.GOOS != "windows" && runtime.GOOS != "darwin" && runtime.GOOS != "linux") {
 		t.Fatalf("read: %v %v", ok, err)
 	}
 	// The viewer's decoder: raw test-pattern frames pass through.
