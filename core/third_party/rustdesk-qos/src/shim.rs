@@ -107,14 +107,7 @@ pub fn base_bitrate(width: u32, height: u32) -> u32 {
 
     let bitrate = (*preset_bitrate as f32 * (pixels as f32 / preset_pixels as f32)).round() as u32;
 
-    #[cfg(target_os = "android")]
-    {
-        let fix = crate::Display::fix_quality() as u32;
-        log::debug!("Android screen, fix quality:{}", fix);
-        bitrate * fix
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        bitrate
-    }
+    // Kyokai: RustDesk's Android screen fix (`Display::fix_quality`) is
+    // left out: Kyokai on Android is a controller and never encodes.
+    bitrate
 }

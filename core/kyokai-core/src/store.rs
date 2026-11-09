@@ -614,7 +614,23 @@ mod os {
     }
 }
 
-#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+#[cfg(target_os = "android")]
+mod os {
+    //! The key the app keeps under the Android Keystore and passes as the
+    //! core starts (`crate::android`); without one, memory only.
+    use super::Persistence;
+    use std::path::Path;
+    use zeroize::Zeroizing;
+
+    pub fn master_key(
+        _state_dir: &Path,
+        _profile: &str,
+    ) -> Result<Zeroizing<[u8; 32]>, Persistence> {
+        crate::android::master_key().ok_or(Persistence::MemoryOnly)
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux", target_os = "android")))]
 mod os {
     //! No supported OS credential store.
     use super::Persistence;

@@ -99,12 +99,19 @@ pub fn system() -> Option<Box<dyn Clipboard>> {
     if let Some(link) = crate::agent::link() {
         return Some(link.clipboard());
     }
-    let c = arboard::Clipboard::new().ok()?;
-    Some(Box::new(System(c)))
+    #[cfg(target_os = "android")]
+    return Some(Box::new(crate::android::Board));
+    #[cfg(not(target_os = "android"))]
+    {
+        let c = arboard::Clipboard::new().ok()?;
+        Some(Box::new(System(c)))
+    }
 }
 
+#[cfg(not(target_os = "android"))]
 struct System(arboard::Clipboard);
 
+#[cfg(not(target_os = "android"))]
 impl Clipboard for System {
     fn serial(&mut self) -> Option<u32> {
         #[cfg(windows)]

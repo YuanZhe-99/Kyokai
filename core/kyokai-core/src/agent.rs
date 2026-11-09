@@ -1921,6 +1921,17 @@ mod unix_impl {
         Some((cred.uid, path))
     }
 
+    /// Android has no helper and no session agent (only a controller).
+    #[cfg(target_os = "android")]
+    fn peer(_stream: &UnixStream) -> Option<(u32, PathBuf)> {
+        None
+    }
+
+    #[cfg(target_os = "android")]
+    fn console_uid() -> Option<u32> {
+        None
+    }
+
     /// The user signed in at the screen (macOS: the owner of /dev/console).
     #[cfg(target_os = "macos")]
     fn console_uid() -> Option<u32> {
@@ -1962,6 +1973,11 @@ mod unix_impl {
     }
 
     fn held_by_root(stream: &UnixStream) -> bool {
+        #[cfg(target_os = "android")]
+        {
+            let _ = stream;
+            false
+        }
         #[cfg(target_os = "macos")]
         {
             let (mut uid, mut gid) = (1, 1);

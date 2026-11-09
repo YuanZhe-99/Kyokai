@@ -47,7 +47,6 @@ opaque-ke = { version = "4.0.1", features = ["argon2"] }
 # and SHA-512 come from rand_core 0.6 and sha2 0.10.
 rand_core = { version = "0.6", features = ["getrandom"] }
 rustdesk-qos = { path = "../third_party/rustdesk-qos" }
-rustdesk-codec = { path = "../third_party/rustdesk-codec" }
 sha2_10 = { package = "sha2", version = "0.10" }
 snow = "0.10.0"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -65,10 +64,16 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 # SSH user-auth signatures with RSA and ECDSA sign-in keys (keys.rs); in the
 # tree already through rustls.
 ring = "0.17.14"
-arboard = { version = "3.7.0", default-features = false, features = ["image-data"] }
 # The NanoKVM USB capture card's MJPEG, decoded on the host to encode it
 # again and on the viewer for Raw (kvm.rs); in the tree already.
 zune-jpeg = "0.5.15"
+
+# libvpx, libaom, Opus and the system clipboard everywhere but on Android,
+# which is only a controller: its app decodes, and the clipboard is the
+# app's (src/android/).
+[target.'cfg(not(target_os = "android"))'.dependencies]
+rustdesk-codec = { path = "../third_party/rustdesk-codec" }
+arboard = { version = "3.7.0", default-features = false, features = ["image-data"] }
 
 [target."cfg(windows)".dependencies]
 rustdesk-dxgi = { path = "../third_party/rustdesk-dxgi" }
@@ -119,4 +124,8 @@ objc2-application-services = "0.3.2"
 # Vision: the element list's OCR layer (ai/ocr.rs).
 objc2-vision = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-video", "objc2-core-foundation", "VNRequest", "VNRequestHandler", "VNRecognizeTextRequest", "VNObservation", "VNTypes"] }
 # The helper's socket to its session agent: the peer's process and user.
+libc = "0.2.190"
+
+[target.'cfg(target_os = "android")'.dependencies]
+# The files panel's ownership checks and no-follow opens (files.rs).
 libc = "0.2.190"

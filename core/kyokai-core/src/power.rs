@@ -74,6 +74,8 @@ pub fn display_off() -> bool {
     {
         crate::linux::display_off()
     }
+    #[cfg(target_os = "android")]
+    false
 }
 
 #[cfg(windows)]
@@ -84,6 +86,12 @@ use mac_impl as imp;
 
 #[cfg(target_os = "linux")]
 use linux_impl as imp;
+
+/// Android is only a controller: it has no displays to wake for a capture.
+#[cfg(target_os = "android")]
+mod imp {
+    pub fn wake() {}
+}
 
 /// Keeps the computer and its displays awake while held; every holder
 /// shares one power request.
@@ -205,7 +213,7 @@ impl Suspend {
                 _watch: linux_impl::SleepWatch::start(Arc::downgrade(ai)),
             }
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "android"))]
         {
             let _ = ai;
             Suspend {}

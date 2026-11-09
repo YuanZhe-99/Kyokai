@@ -9,6 +9,8 @@
 mod about;
 mod access;
 mod agent;
+#[cfg(target_os = "android")]
+mod android;
 mod ai;
 mod annexb;
 mod audio;
@@ -35,12 +37,14 @@ mod media;
 #[cfg(windows)]
 mod mf;
 mod net;
+#[cfg_attr(target_os = "android", path = "android/opus.rs")]
 mod opus;
 mod password;
 mod power;
 #[cfg(windows)]
 mod privacy;
 mod session;
+#[cfg_attr(target_os = "android", path = "android/soft.rs")]
 mod soft;
 mod store;
 mod system;
@@ -195,6 +199,11 @@ struct StartConfig {
     /// its LaunchAgent connects to (macOS).
     #[serde(default)]
     agent: Option<PathBuf>,
+    /// Android: the secrets store's key (base64 of 32 bytes), which the app
+    /// keeps under the Android Keystore; without it secrets stay in memory.
+    #[cfg(target_os = "android")]
+    #[serde(default)]
+    master_key: Option<zeroize::Zeroizing<String>>,
 }
 
 /// A request to `kyokai_call`.
@@ -823,6 +832,10 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
     std::fs::create_dir_all(&cfg.state_dir).map_err(|e| format!("state directory: {e}"))?;
     #[cfg(target_os = "linux")]
     wayland::set_state_dir(&cfg.state_dir);
+    #[cfg(target_os = "android")]
+    if let Some(key) = &cfg.master_key {
+        android::set_master_key(key)?;
+    }
     let (secrets, persistence) = store::open(&cfg.state_dir, &cfg.profile);
     build_on(cfg, secrets, persistence)
 }
@@ -1535,6 +1548,22 @@ fn call(input: &[u8]) -> Result<Value, String> {
         }
         // A text Kyokai is about to put on the clipboard (a password, the
         // Device ID): no session ever offers it. Allowed in protected mode.
+        // Android: what the person copied on the device, offered to hosts.
+        #[cfg(target_os = "android")]
+        "android.clipboard" => {
+            let text = req.params["text"].as_str().ok_or("bad clipboard text")?;
+            android::put_clipboard(text.to_owned());
+            Ok(Value::Null)
+        }
+        // Android: the codecs the app decodes, named to hosts from the next
+        // session on.
+        #[cfg(target_os = "android")]
+        "android.decoders" => {
+            let decode: Vec<String> = serde_json::from_value(req.params["decode"].clone())
+                .map_err(|_| "bad decoders")?;
+            android::set_decoders(decode);
+            Ok(Value::Null)
+        }
         "clipboard.mine" => {
             let hex = req.params["digest"].as_str().ok_or("bad digest")?;
             clipboard::mine(sha256_hex(hex).ok_or("bad digest")?);

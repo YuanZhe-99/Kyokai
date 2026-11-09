@@ -158,6 +158,7 @@ fn chroma_of(r: i32, g: i32, b: i32) -> (u8, u8) {
     )
 }
 
+#[cfg(not(target_os = "android"))]
 /// Converts a BGRA picture (`stride` bytes per row) into planar YUV laid
 /// out as `layout` (the software encoders' I420 or, with `i444`, I444),
 /// scaling to the layout's size with the nearest pixel.
@@ -691,6 +692,7 @@ pub fn hevc_hardware() -> bool {
 /// the system's FFmpeg on Linux) and the software ones (always).
 /// Inputs: `system` false leaves the system's decoders out: with the
 /// viewer's hardware codec off, the stream comes in a software codec.
+#[cfg(not(target_os = "android"))]
 pub fn decodable(system: bool) -> (Vec<String>, Vec<String>) {
     #[cfg(windows)]
     let mut decode: Vec<String> = crate::mf::decodable()
@@ -725,6 +727,14 @@ pub fn decodable(system: bool) -> (Vec<String>, Vec<String>) {
     (decode, i444)
 }
 
+/// `decodable` on Android: the codecs the app decodes through MediaCodec
+/// (`crate::android`), none in full colour; the core has no software
+/// codecs there, and the app names what MediaCodec has whatever `system`.
+#[cfg(target_os = "android")]
+pub fn decodable(_system: bool) -> (Vec<String>, Vec<String>) {
+    (crate::android::decoders(), Vec::new())
+}
+
 /// A display of the host: its place on the virtual desktop, in pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Display {
@@ -753,6 +763,8 @@ pub fn displays() -> Vec<Display> {
     {
         crate::linux::displays()
     }
+    #[cfg(target_os = "android")]
+    Vec::new()
 }
 
 /// Puts displays in the order the viewer numbers them: the primary first,
@@ -948,7 +960,14 @@ impl Source {
             let _ = (display, choices, tx, frames);
             return Source::pattern("cannot-capture", "this session's screen cannot be captured");
         }
+        // An Android device is only a controller (Kyokai-Mobile).
+        #[cfg(target_os = "android")]
         {
+            let _ = (display, choices, tx, frames, want);
+            return Source::pattern("cannot-capture", "an Android device is only a controller");
+        }
+        #[cfg(not(target_os = "android"))]
+        return {
             // A sleeping display is missing from macOS's active displays:
             // it is woken and looked for again.
             let mut found = display.or_else(|| displays().first().copied());
@@ -996,7 +1015,7 @@ impl Source {
                 }
             }
             Source::pattern("no-encoder", &why)
-        }
+        };
     }
 
     /// The placeholder alone, the test pattern: for a host that cannot
