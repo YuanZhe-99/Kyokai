@@ -1551,6 +1551,11 @@ fn call(input: &[u8]) -> Result<Value, String> {
         // Android: what the person copied on the device, offered to hosts.
         #[cfg(target_os = "android")]
         "android.clipboard" => {
+            // Text, or an image as base64 PNG (8-bit RGBA), offered as is.
+            if let Some(png) = req.params["png"].as_str() {
+                android::put_clipboard_png(png.to_owned());
+                return Ok(Value::Null);
+            }
             let text = req.params["text"].as_str().ok_or("bad clipboard text")?;
             android::put_clipboard(text.to_owned());
             Ok(Value::Null)

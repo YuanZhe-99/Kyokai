@@ -6,9 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
-// openParams opens a client (ssh.open, rdp.open, vnc.open).
+// openParams opens a client (ssh.open, sftp.open, rdp.open, vnc.open).
 //
 //	device_id  the device; address, where to dial it ("" through the network)
 //	method     the sign-in the person chose in the form: ssh key|password;
@@ -18,6 +19,7 @@ import (
 //	user, domain, password  the form's; remember keeps them (kept)
 //	trust      ssh: the server key line the person chose to trust
 //	cols, rows ssh: the terminal's size; locale, the app's language tag
+//	           sftp.open signs in as ssh.open does, with its saved sign-in
 //	width, height  rdp: the desktop size asked for (default 1600 × 900)
 type openParams struct {
 	DeviceID string `json:"device_id"`
@@ -95,8 +97,8 @@ func kept(plan signIn, remember, typed bool) *credentials {
 
 // reason is an error as a state packet names it: a tunnel's failure or the
 // host's refusal, need-sign-in, sign-in-required, sign-in-failed,
-// no-answer, no-secure-sign-in, host-key-changed, closed; else the error's
-// text.
+// no-answer, no-secure-sign-in, host-key-changed, no-sftp (sftp.open: the
+// server offers no SFTP), closed; else the error's text.
 func reason(err error) string {
 	var te tunnelError
 	switch {
@@ -111,7 +113,9 @@ func reason(err error) string {
 // run runs one call.
 func run(method string, raw json.RawMessage) (any, error) {
 	switch method {
-	case "ssh.open", "rdp.open", "vnc.open":
+	case "key.import":
+		return importKey(raw)
+	case "ssh.open", "sftp.open", "rdp.open", "vnc.open":
 		var p openParams
 		if err := json.Unmarshal(raw, &p); err != nil || p.DeviceID == "" {
 			return nil, fmt.Errorf("bad open")
@@ -123,12 +127,17 @@ func run(method string, raw json.RawMessage) (any, error) {
 		switch method {
 		case "ssh.open":
 			go runSSH(ctx, c, p)
+		case "sftp.open":
+			go runSFTP(ctx, c, p)
 		case "rdp.open":
 			go runRDP(ctx, c, p)
 		default:
 			go runVNC(ctx, c, p)
 		}
 		return map[string]any{"id": c.id}, nil
+	}
+	if strings.HasPrefix(method, "sftp.") {
+		return filesCall(method, raw)
 	}
 	var p struct {
 		ID      uint64  `json:"id"`
@@ -144,6 +153,9 @@ func run(method string, raw json.RawMessage) (any, error) {
 		Keysym  uint32  `json:"keysym"`
 		Down    bool    `json:"down"`
 		Text    string  `json:"text"`
+		Width   int     `json:"width"`
+		Height  int     `json:"height"`
+		Scale   int     `json:"scale"`
 	}
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, fmt.Errorf("bad params")
@@ -183,6 +195,8 @@ func run(method string, raw json.RawMessage) (any, error) {
 		err = d.text(p.Text)
 	case method == "clipboard":
 		err = d.clipboard(p.Text)
+	case method == "display":
+		err = d.display(p.Width, p.Height, p.Scale)
 	default:
 		return nil, fmt.Errorf("unknown method %q", method)
 	}

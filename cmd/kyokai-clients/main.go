@@ -22,9 +22,12 @@
 //
 // kyokai_clients_call takes {"method", "params"} and answers {"ok": true,
 // "result"} or {"ok": false, "error"} in memory the caller frees with
-// kyokai_clients_free. Methods (calls.go): ssh.open, rdp.open, vnc.open
-// (each answers {"id"} at once and connects on its own), write, resize,
-// pointer, scroll, scancode, key, text, clipboard, close.
+// kyokai_clients_free. Methods (calls.go): ssh.open, sftp.open, rdp.open,
+// vnc.open (each answers {"id"} at once and connects on its own), write,
+// resize, pointer, scroll, scancode, key, text, clipboard, display, close;
+// on an sftp.open client the files calls of sftp.go: sftp.list, sftp.mkdir,
+// sftp.remove, sftp.rename, sftp.download, sftp.upload, sftp.cancel; and
+// key.import (keys.go).
 //
 // kyokai_clients_read returns the next packet of client id (packets.go):
 // its length; -1 when none came within timeout_ms; -2 when the client ended

@@ -47,6 +47,15 @@ pub fn put_clipboard(text: String) {
     }
 }
 
+/// Puts an image the person copied on this device (base64 PNG) where
+/// sessions offer it.
+pub fn put_clipboard_png(png: String) {
+    if let Ok(mut b) = BOARD.lock() {
+        b.0 = b.0.wrapping_add(1);
+        b.1 = Some(Item::Png(png));
+    }
+}
+
 /// Sets the codecs the app decodes.
 pub fn set_decoders(names: Vec<String>) {
     if let Ok(mut d) = DECODE.lock() {

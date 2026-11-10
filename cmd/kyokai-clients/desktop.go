@@ -32,6 +32,9 @@ type desk interface {
 	key(keysym uint32, down bool) error
 	text(s string) error
 	clipboard(text string) error
+	// display asks for a desktop of width × height at scale percent (0:
+	// 100); VNC keeps the server's size.
+	display(width, height, scale int) error
 	close()
 }
 
@@ -128,6 +131,7 @@ func (d rdpDesk) scancode(code int, down bool) error {
 func (d rdpDesk) key(sym uint32, down bool) error { return d.c.SendKey(sym, down) }
 func (d rdpDesk) text(s string) error             { return d.c.SendText(s) }
 func (d rdpDesk) clipboard(s string) error        { return d.c.SetClipboard(s) }
+func (d rdpDesk) display(w, h, scale int) error   { return d.c.SetDisplay(w, h, scale) }
 func (d rdpDesk) close()                          { _ = d.c.Close() }
 
 type rdpEvents struct {
@@ -223,7 +227,8 @@ func (d vncDesk) text(s string) error                   { return d.c.SendText(s)
 func (d vncDesk) clipboard(s string) error {
 	return d.c.SetClipboard(rfb.NewTextClipboard(s))
 }
-func (d vncDesk) close() { _ = d.c.Close() }
+func (d vncDesk) display(int, int, int) error { return nil }
+func (d vncDesk) close()                      { _ = d.c.Close() }
 
 type vncEvents struct {
 	c  *client

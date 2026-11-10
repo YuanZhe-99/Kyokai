@@ -116,12 +116,23 @@ func coreSigners() []ssh.Signer {
 // keyLine is a public key in authorized_keys form, as host keys are pinned.
 func keyLine(k ssh.PublicKey) string { return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(k))) }
 
-// sshDial signs in with plan's method alone and opens a shell.
+// sshConn is a signed-in SSH connection through a tunnel.
+type sshConn struct {
+	tunnel net.Conn
+	client *ssh.Client
+}
+
+func (s *sshConn) close() {
+	_ = s.client.Close()
+	_ = s.tunnel.Close()
+}
+
+// sshConnect signs in with plan's method alone.
 // Inputs: pinned, the server key saved; trust, the key the person chose
-// to trust after a change; lang, the shell's LANG.
-// Returns: the shell and the server key it showed; errHostKeyChanged with
-// the key it offered instead.
-func sshDial(ctx context.Context, device, address string, plan signIn, pinned, trust, lang string, cols, rows int) (*sshTerm, string, error) {
+// to trust after a change.
+// Returns: the connection and the server key it showed; errHostKeyChanged
+// with the key it offered instead.
+func sshConnect(ctx context.Context, device, address string, plan signIn, pinned, trust string) (*sshConn, string, error) {
 	if plan.User == "" {
 		return nil, "", errNeedSignIn
 	}
@@ -175,8 +186,14 @@ func sshDial(ctx context.Context, device, address string, plan signIn, pinned, t
 		return nil, "", err
 	}
 	_ = tunnel.SetDeadline(time.Time{})
-	client := ssh.NewClient(conn, chans, reqs)
-	sess, err := client.NewSession()
+	return &sshConn{tunnel: tunnel, client: ssh.NewClient(conn, chans, reqs)}, seen, nil
+}
+
+// shell opens a shell of xterm-256color on the connection.
+// Inputs: lang, the shell's LANG; cols, rows, the terminal's size.
+// Side effects: on failure the connection is closed.
+func (s *sshConn) shell(lang string, cols, rows int) (*sshTerm, error) {
+	sess, err := s.client.NewSession()
 	if err == nil {
 		_ = sess.Setenv("LANG", lang)
 		_ = sess.Setenv("COLORTERM", "truecolor")
@@ -195,11 +212,10 @@ func sshDial(ctx context.Context, device, address string, plan signIn, pinned, t
 		err = sess.Shell()
 	}
 	if err != nil {
-		_ = client.Close()
-		_ = tunnel.Close()
-		return nil, "", err
+		s.close()
+		return nil, err
 	}
-	return &sshTerm{tunnel: tunnel, client: client, sess: sess, in: in, out: out}, seen, nil
+	return &sshTerm{tunnel: s.tunnel, client: s.client, sess: sess, in: in, out: out}, nil
 }
 
 // hostKeys checks the server's key at each key exchange: the first against
@@ -246,21 +262,23 @@ func sshLang(locale string) string {
 	return "en_US.UTF-8"
 }
 
-// runSSH connects client c to a device's SSH server and relays the shell.
-func runSSH(ctx context.Context, c *client, p openParams) {
+// sshSignIn signs client c in to a device's SSH server for ssh.open and
+// sftp.open, both with the SSH service's sign-in and pinned key.
+// Returns: the connection; nil when it failed, c ended with why.
+// Side effects: a successful sign-in from the form is saved as asked, and
+// the server's key pinned.
+func sshSignIn(ctx context.Context, c *client, p openParams) *sshConn {
 	saved := savedCredential(p.DeviceID, "ssh")
 	plan := p.plan(saved)
-	t, seen, err := sshDial(ctx, p.DeviceID, p.Address, plan, saved.HostKey, p.Trust, sshLang(p.Locale), max(p.Cols, 20), max(p.Rows, 5))
+	conn, seen, err := sshConnect(ctx, p.DeviceID, p.Address, plan, saved.HostKey, p.Trust)
 	if err != nil {
 		fields := map[string]any{"state": "failed", "error": reason(err)}
 		if errors.Is(err, errHostKeyChanged) {
 			fields["host_key"] = seen
 		}
 		c.end(fields)
-		return
+		return nil
 	}
-	// What a successful sign-in leaves: the sign-in as asked, and the
-	// server's key pinned.
 	cr := kept(plan, p.Remember, p.typed())
 	if cr == nil && seen != saved.HostKey {
 		cr = &credentials{User: plan.User, Method: plan.Method}
@@ -268,6 +286,20 @@ func runSSH(ctx context.Context, c *client, p openParams) {
 	if cr != nil {
 		cr.HostKey = seen
 		saveCredential(p.DeviceID, "ssh", *cr)
+	}
+	return conn
+}
+
+// runSSH connects client c to a device's SSH server and relays the shell.
+func runSSH(ctx context.Context, c *client, p openParams) {
+	conn := sshSignIn(ctx, c, p)
+	if conn == nil {
+		return
+	}
+	t, err := conn.shell(sshLang(p.Locale), max(p.Cols, 20), max(p.Rows, 5))
+	if err != nil {
+		c.end(map[string]any{"state": "failed", "error": reason(err)})
+		return
 	}
 	c.mu.Lock()
 	c.term = t
