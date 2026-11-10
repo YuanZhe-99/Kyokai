@@ -630,7 +630,12 @@ mod os {
     }
 }
 
-#[cfg(not(any(windows, target_os = "macos", target_os = "linux", target_os = "android")))]
+#[cfg(not(any(
+    windows,
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "android"
+)))]
 mod os {
     //! No supported OS credential store.
     use super::Persistence;

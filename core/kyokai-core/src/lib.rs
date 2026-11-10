@@ -9,9 +9,9 @@
 mod about;
 mod access;
 mod agent;
+mod ai;
 #[cfg(target_os = "android")]
 mod android;
-mod ai;
 mod annexb;
 mod audio;
 mod auth;
@@ -204,6 +204,11 @@ struct StartConfig {
     #[cfg(target_os = "android")]
     #[serde(default)]
     master_key: Option<zeroize::Zeroizing<String>>,
+    /// Android: the app's cache folder, where clipboard files the hosts
+    /// copied are received.
+    #[cfg(target_os = "android")]
+    #[serde(default)]
+    cache_dir: Option<PathBuf>,
 }
 
 /// A request to `kyokai_call`.
@@ -835,6 +840,10 @@ fn build(cfg: StartConfig) -> Result<Core, String> {
     #[cfg(target_os = "android")]
     if let Some(key) = &cfg.master_key {
         android::set_master_key(key)?;
+    }
+    #[cfg(target_os = "android")]
+    if let Some(dir) = &cfg.cache_dir {
+        android::set_cache_dir(dir.clone());
     }
     let (secrets, persistence) = store::open(&cfg.state_dir, &cfg.profile);
     build_on(cfg, secrets, persistence)
@@ -1564,8 +1573,8 @@ fn call(input: &[u8]) -> Result<Value, String> {
         // session on.
         #[cfg(target_os = "android")]
         "android.decoders" => {
-            let decode: Vec<String> = serde_json::from_value(req.params["decode"].clone())
-                .map_err(|_| "bad decoders")?;
+            let decode: Vec<String> =
+                serde_json::from_value(req.params["decode"].clone()).map_err(|_| "bad decoders")?;
             android::set_decoders(decode);
             Ok(Value::Null)
         }

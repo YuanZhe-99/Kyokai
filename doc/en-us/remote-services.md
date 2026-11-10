@@ -155,7 +155,8 @@ is a pane like a desktop's ([gui.md](gui.md), "Connections").
   user name or password only Network Level Authentication is asked for: a server that refuses it,
   or picks TLS alone, gets no password (`rdp.ErrNLAUnavailable`), and the form says so and points to
   On the remote screen; the password goes in Client Info only after it. The graphics
-  pipeline without H.264 except on macOS (VideoToolbox). The server's certificate is accepted
+  pipeline uses H.264 on macOS (VideoToolbox) and in the Android clients library (the NDK's
+  MediaCodec, decoding into an image reader), and none elsewhere. The server's certificate is accepted
   without pinning: the tunnel reaches the device's own port inside an authenticated Kyokai
   session. Keys go as scan codes.
 - **VNC** (vendored, `internal/rfb`): security None, VNC password (2), Apple's Diffie-Hellman (30),

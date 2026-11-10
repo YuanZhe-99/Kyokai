@@ -553,8 +553,11 @@ the contents in pieces of up to 64 KiB, one file after another, reading as the c
 them, so a file is never held in memory whole. The receiving side writes them into a folder of
 its own for the session (`Kyokai\<random>` in the temporary folder on Windows; on Linux and macOS
 `Kyokai/<random>`, 0700, in the user's cache folder, refused when a link or someone else's folder
-is there) and, once everything arrived,
-puts those files on its clipboard, so they paste anywhere. A new copy replaces a transfer in
+is there; on Android, Kyokai-Mobile's cache folder, which it names when it starts the core) and,
+once everything arrived, puts those files on its clipboard, so they paste anywhere. A controller's
+viewer history (media `CLIPBOARD`) then lists the entries with `paths`, where the copied items
+were written, so an app without a desktop clipboard (Kyokai-Mobile) can keep them before the
+session ends. A new copy replaces a transfer in
 progress, and a file whose size changed while it was sent, or that is no longer the file listed
 (a link swapped in), ends its transfer. Once a newer offer arrived whole, the previous one's folder
 is deleted. The folder is

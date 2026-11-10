@@ -1143,6 +1143,9 @@ enum Crossed<'a> {
     Text(&'a str),
     Png(&'a str),
     Files(&'a [crate::files::Entry]),
+    /// Files received whole, with where they were written on this computer
+    /// (the inbox, removed with the session): the viewer may keep them.
+    Received(&'a [crate::files::Entry], &'a [std::path::PathBuf]),
 }
 
 /// Adds what crossed a controller's session to its viewer's clipboard
@@ -1160,6 +1163,9 @@ fn clip_history(queue: &Option<Arc<media::Queue>>, from: &str, what: Crossed) {
         Crossed::Text(text) => json!({"from": from, "at": at, "text": text}),
         Crossed::Png(png) => json!({"from": from, "at": at, "png": png}),
         Crossed::Files(files) => json!({"from": from, "at": at, "files": files}),
+        Crossed::Received(files, paths) => {
+            json!({"from": from, "at": at, "files": files, "paths": paths})
+        }
     };
     let mut packet = vec![media::packet::CLIPBOARD];
     if let Ok(b) = serde_json::to_vec(&body) {
@@ -4268,7 +4274,7 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
                     }
                     Step::Received(paths) => {
                         if let Some(f) = receiving_files.take() {
-                            clip_history(&queue, "host", Crossed::Files(&f));
+                            clip_history(&queue, "host", Crossed::Received(&f, &paths));
                         }
                         if let Some(c) = &clip {
                             let _ = c.writes.send(crate::clipboard::Item::Files(paths));

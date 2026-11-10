@@ -100,7 +100,7 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
   显示它，其 `Resize` 发送窗口大小变化，采用为该设备选择的外观（[gui.md](gui.md)，“终端外观”）。其中的程序不能写入剪贴板（OSC 52）；Command 或 Control+点击只打开网页与邮件链接
   （`http`、`https`、`mailto`，`ui.SafeToOpen`）：程序给出的其他目标（文件、共享或其他协议）都会被忽略。输入的密码在登录结束后即丢弃。其文件见[通过 SSH 传输文件](#通过-ssh-传输文件)。
 - **远程桌面**（复用代码，`internal/rdp`）：“用户名和密码”使用网络级身份验证（CredSSP 与 NTLMv2），“在远程屏幕上”只用
-  TLS，此时显示 Windows 的登录界面（只允许网络级身份验证的服务器会要求换一种方式）。有用户名或密码时只请求网络级身份验证：拒绝它或只选 TLS 的服务器得不到密码（`rdp.ErrNLAUnavailable`），表单会说明并建议“在远程屏幕上”；密码只在其后才放进 Client Info。图形管道除 macOS（VideoToolbox）外不使用 H.264。服务器的证书不固定即接受：
+  TLS，此时显示 Windows 的登录界面（只允许网络级身份验证的服务器会要求换一种方式）。有用户名或密码时只请求网络级身份验证：拒绝它或只选 TLS 的服务器得不到密码（`rdp.ErrNLAUnavailable`），表单会说明并建议“在远程屏幕上”；密码只在其后才放进 Client Info。图形管道在 macOS（VideoToolbox）和 Android 客户端库（NDK 的 MediaCodec，解码到 image reader）中使用 H.264，其他平台不使用。服务器的证书不固定即接受：
   隧道是在经过认证的 Kyokai 会话中到达设备自己的端口。按键以扫描码发送。
 - **VNC**（复用代码，`internal/rfb`）：安全类型 None、VNC 密码（2），服务器提供时还有 Apple 的 Diffie-Hellman（30）、
   RSA（33）与 SRP（36）用户名加密码登录；按键以 keysym 发送。已由他人登录的 Mac 共享其屏幕（控制台会话）。在 Windows 上，

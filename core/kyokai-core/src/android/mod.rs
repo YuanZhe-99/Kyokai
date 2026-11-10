@@ -1,7 +1,8 @@
 //! What the core takes from its app on Android (Kyokai-Mobile), where the
 //! system's services it uses elsewhere are the app's: the secrets store's
 //! key (the app keeps it under the Android Keystore), the clipboard (only
-//! the app may read it, and only in front) and the codecs the app decodes
+//! the app may read it, and only in front), the cache folder for received
+//! clipboard files and the codecs the app decodes
 //! through MediaCodec. An Android device is only a controller.
 
 use crate::clipboard::{Clipboard, Item};
@@ -14,6 +15,10 @@ static MASTER_KEY: Mutex<Option<Zeroizing<[u8; 32]>>> = Mutex::new(None);
 
 /// What the app put on the clipboard, numbered by its changes.
 static BOARD: Mutex<(u32, Option<Item>)> = Mutex::new((0, None));
+
+/// The app's cache folder (`kyokai_start`'s `cache_dir`), where received
+/// clipboard files are written.
+static CACHE: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
 
 /// The codecs the app decodes (`video::decodable`): set before a session.
 static DECODE: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -54,6 +59,20 @@ pub fn put_clipboard_png(png: String) {
         b.0 = b.0.wrapping_add(1);
         b.1 = Some(Item::Png(png));
     }
+}
+
+/// Keeps the app's cache folder; a relative path is ignored.
+pub fn set_cache_dir(dir: std::path::PathBuf) {
+    if dir.is_absolute()
+        && let Ok(mut c) = CACHE.lock()
+    {
+        *c = Some(dir);
+    }
+}
+
+/// The app's cache folder, for received clipboard files (`files::base_dir`).
+pub fn cache_dir() -> Option<std::path::PathBuf> {
+    CACHE.lock().ok()?.clone()
 }
 
 /// Sets the codecs the app decodes.

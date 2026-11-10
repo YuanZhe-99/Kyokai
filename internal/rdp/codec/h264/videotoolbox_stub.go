@@ -4,7 +4,7 @@
 // derivative work may use the name of that application or imply association with it without
 // prior consent. Modified by Kyokai: import paths.
 
-//go:build !darwin || !cgo
+//go:build (!darwin && !android) || !cgo
 
 package h264
 

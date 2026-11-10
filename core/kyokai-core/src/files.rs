@@ -757,7 +757,8 @@ fn within(path: &Path, root: &Path) -> bool {
 
 /// The folder that holds the inbox, of the user the files are for: on
 /// Windows their TEMP; on Linux their cache folder (`xdg_base`), on macOS
-/// their Caches, never the temporary folder all users share.
+/// their Caches, never the temporary folder all users share; on Android the
+/// app's cache.
 fn base_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     {
@@ -772,7 +773,12 @@ fn base_dir() -> Option<PathBuf> {
         home.is_absolute()
             .then(|| home.join("Library").join("Caches"))
     }
-    #[cfg(all(unix, not(target_os = "macos")))]
+    // The app's cache folder, which it names at start.
+    #[cfg(target_os = "android")]
+    {
+        crate::android::cache_dir()
+    }
+    #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
     {
         xdg_base(|v| std::env::var_os(v))
     }
@@ -783,7 +789,7 @@ fn base_dir() -> Option<PathBuf> {
 /// without either (regression: it came first, but it is a tmpfs often
 /// capped at a tenth of the memory, and an offer reaches 1 GiB).
 /// Returns: None when no absolute folder is named.
-#[cfg(any(all(unix, not(target_os = "macos")), test))]
+#[cfg(any(all(unix, not(any(target_os = "macos", target_os = "android"))), test))]
 fn xdg_base(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
     let abs = |v: &str| var(v).map(PathBuf::from).filter(|p| p.is_absolute());
     abs("XDG_CACHE_HOME")
