@@ -120,6 +120,17 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
 - **保存的登录信息**：见上面的登录方式；SSH 还保存第一次使用时固定的服务器密钥，密钥对记住的登录而言是新的时，
   连同记住的方式与用户名一起保存。
 
+
+### 在 Android 上
+
+Android 控制端 Kyokai-Mobile 没有引擎，也没有 Go 界面。`cmd/kyokai-clients` 把同样的 SSH、远程桌面与 VNC
+客户端编译为 C 库（`libkyokai_clients.so`，`-buildmode=c-shared`），应用像使用 core 一样使用它：一个 JSON
+调用（`ssh.open`、`rdp.open`、`vnc.open`，以及之后的输入），以及每个客户端一条数据包流——状态、SSH shell
+的输出、画面中改变的部分（RGBA，读取时才截取，读得慢也不会积压）与被控端的剪贴板文本。应用把 core 的
+`kyokai_call`、`kyokai_free`、`kyokai_media_read` 与 `kyokai_media_write` 交给它；它自己用
+`tunnel.open`/`tunnel.wait` 打开隧道并收发 14 号数据包，用 `keys.sign` 为 SSH 密钥签名，并按与桌面相同的规则用
+`credentials.set` 保存登录信息。它从不启动或停止 core。SSH 部分复制自 `internal/gui/ssh.go`（该文件依赖 MyGo）。
+
 ## 通过 SSH 传输文件
 
 SSH 小窗的文件面板（标题栏的“文件”按钮；`internal/gui`：`sshfiles.go`、`sshpanel.go`）显示服务器上的文件，并通过该小窗自己的

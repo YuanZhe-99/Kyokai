@@ -189,6 +189,19 @@ is a pane like a desktop's ([gui.md](gui.md), "Connections").
 - **Sign-ins kept**: see the sign-in method above; SSH also saves the server's key pinned on first
   use, with the remembered method and user when the key is new to a remembered sign-in.
 
+
+### On Android
+
+Kyokai-Mobile, the Android controller, has no engine and no Go GUI. `cmd/kyokai-clients` builds the
+same SSH, Remote Desktop and VNC clients as a C library (`libkyokai_clients.so`, `-buildmode=c-shared`)
+that the app drives like the core: a JSON call (`ssh.open`, `rdp.open`, `vnc.open`, then input) and,
+per client, a stream of packets — its state, an SSH shell's output, the changed part of a picture as
+RGBA (cut at read time, so a slow reader never falls behind) and the host's clipboard text. The app
+gives it the core's `kyokai_call`, `kyokai_free`, `kyokai_media_read` and `kyokai_media_write`; it
+opens tunnels with `tunnel.open`/`tunnel.wait` and pumps packet 14 itself, signs SSH keys with
+`keys.sign`, and saves sign-ins with `credentials.set` by the same rules as the desktop. It never
+starts or stops the core. The SSH logic is a copy of `internal/gui/ssh.go`'s, which imports MyGo.
+
 ## Files over SSH
 
 An SSH pane's files panel (its header's Files button; `internal/gui`: `sshfiles.go`,
