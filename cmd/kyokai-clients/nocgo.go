@@ -1,9 +1,10 @@
-//go:build !cgo
+//go:build !cgo || windows
 
 package main
 
 // Without cgo there is no core to call: this builds the clients' logic for
-// its tests on a machine without a C compiler (the library itself always
+// its tests on a machine without a C compiler, and on Windows, whose
+// runners' cgo may be an x86 toolchain on ARM64 (the library itself always
 // builds with cgo, for Android).
 
 import (

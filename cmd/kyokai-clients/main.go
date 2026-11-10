@@ -1,4 +1,4 @@
-//go:build cgo
+//go:build cgo && !windows
 
 // Command kyokai-clients is Kyokai's SSH, Remote Desktop and VNC clients as
 // a C library (libkyokai_clients.so) for the Android app, Kyokai-Mobile,
