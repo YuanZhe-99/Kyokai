@@ -9,7 +9,7 @@ require (
 	github.com/egoist/mygo v0.7.4
 	github.com/pkg/sftp v1.13.12
 	golang.org/x/crypto v0.58.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 )
 
 require (
