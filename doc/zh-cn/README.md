@@ -33,7 +33,7 @@ AI 任务在被操作的那台电脑上运行。支持 Windows（x64、ARM64）�
 
 | 组件 | 版本 | 依据 |
 |---|---|---|
-| Go | 1.27.3 | `go.mod` |
+| Go | 1.27.4 | `go.mod` |
 | MyGo | v0.9.1 | `go.mod` |
 | Rust | 1.100.0 | `rust-toolchain.toml` |
 | EasyTier（已内嵌） | v2.7.1，预发布版，提交 `0d9c52b` | `third_party/upstream.json` |

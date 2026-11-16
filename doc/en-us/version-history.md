@@ -17,7 +17,7 @@ Clipboard on Linux and clipboard images across systems.
   16-bit PNGs expand to 8-bit RGBA.
 - Linux devices report their operating system, host name and hardware (`about.os` `"linux"`), and
   **Swap Ctrl and Cmd** is on by default between a Mac and Linux as between a Mac and Windows.
-- Upstreams: MyGo v0.7.4 → v0.9.1, EasyTier v2.7.0 → v2.7.1 (`0d9c52b`), RustDesk 1.5.1 → 1.5.3
+- Upstreams: Go 1.27.3 → 1.27.4, MyGo v0.7.4 → v0.9.1, EasyTier v2.7.0 → v2.7.1 (`0d9c52b`), RustDesk 1.5.1 → 1.5.3
   (vendored code unchanged), Rust 1.99.1 → 1.100.0, Pi 1.5.0 → 1.5.2; checked, unchanged: vcpkg
   2026.10.16, smoltcp 0.14.0, Bun 1.4.4.
 

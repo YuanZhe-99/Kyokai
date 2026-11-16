@@ -1,6 +1,6 @@
 module github.com/YuanZhe-99/Kyokai
 
-go 1.27.3
+go 1.27.4
 
 tool github.com/egoist/mygo/cmd/mygo
 

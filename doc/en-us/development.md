@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Go 1.27.2 (`go.mod`; an older Go downloads it automatically). MyGo is a Go tool dependency
+- Go 1.27.4 (`go.mod`; an older Go downloads it automatically). MyGo is a Go tool dependency
   (`go tool mygo …`).
 - Rust 1.100.0 with `rustfmt` and `clippy` (`rust-toolchain.toml`; rustup installs it on first use).
 - Windows: Visual Studio 2026 (or its Build Tools) with the C++ tools for the target architecture

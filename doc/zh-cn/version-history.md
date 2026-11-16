@@ -7,7 +7,7 @@ Linux 剪贴板与跨系统剪贴板图片。
 - Linux 剪贴板（X11 以及经 Xwayland 的 GNOME Wayland）：写入剪贴板的文本同时提供 `text/plain;charset=utf-8`、`text/plain` 与 `UTF8_STRING`（`arboard` 在 `TARGETS` 中声明了它们却拒绝读取，导致 Chromium、Electron 与 GNOME Wayland 应用无法粘贴）；文件除 `text/uri-list` 外还提供 `x-special/gnome-copied-files`；较大的图片在 X11 上双向支持 `INCR` 分块传输；剪贴板窗口在会话结束时保留；非 Go 线程上的 `SIGPIPE` 不再使引擎退出。
 - 跨系统的剪贴板图片：剪贴板上同时有图片和 URL、标题或 HTML 等后备文本时优先发送图片；Windows 在 `image` 0.25.10 偏移 124 字节文件头的像素起点时仍能读取 `CF_DIBV5` 与 `CF_DIB` 位图，并把 GDI 全零的透明通道转为不透明；macOS 除 `public.tiff` 外也读取 `public.png`，并在轮询前先看 `NSPasteboard` 的 `changeCount`；RGB、调色板与 16 位 PNG 均展开为 8 位 RGBA。
 - Linux 设备报告其操作系统、主机名与硬件型号（`about.os` 为 `"linux"`），Mac 与 Linux 之间像 Mac 与 Windows 之间一样默认开启**互换 Ctrl 与 Cmd**。
-- 上游：MyGo v0.7.4 → v0.9.1、EasyTier v2.7.0 → v2.7.1（`0d9c52b`）、RustDesk 1.5.1 → 1.5.3（所复用的代码未变）、Rust 1.99.1 → 1.100.0、Pi 1.5.0 → 1.5.2；已检查、未变化：vcpkg 2026.10.16、smoltcp 0.14.0、Bun 1.4.4。
+- 上游：Go 1.27.3 → 1.27.4、MyGo v0.7.4 → v0.9.1、EasyTier v2.7.0 → v2.7.1（`0d9c52b`）、RustDesk 1.5.1 → 1.5.3（所复用的代码未变）、Rust 1.99.1 → 1.100.0、Pi 1.5.0 → 1.5.2；已检查、未变化：vcpkg 2026.10.16、smoltcp 0.14.0、Bun 1.4.4。
 
 ## 0.7.3（2026-11-06）
 

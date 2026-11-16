@@ -35,7 +35,7 @@ embedded EasyTier P2P network, and AI tasks run on the computer being operated. 
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Go | 1.27.3 | `go.mod` |
+| Go | 1.27.4 | `go.mod` |
 | MyGo | v0.9.1 | `go.mod` |
 | Rust | 1.100.0 | `rust-toolchain.toml` |
 | EasyTier (embedded) | v2.7.1, prerelease, commit `0d9c52b` | `third_party/upstream.json` |
