@@ -1422,17 +1422,23 @@ impl Sessions {
         Some((e.control_tx.clone(), e.input.clone()))
     }
 
-    fn side(&self, id: u64) -> Option<Side> {
-        let s = self.inner.lock().ok()?;
-        let e = s.1.iter().find(|e| e.id == id)?;
-        Some(Side::Controller {
-            queue: e.media.clone(),
-            control: e.control_rx.clone(),
-            choices: e.choices.clone(),
-            input: e.input.clone(),
-            meter: e.meter.clone(),
-            host: e.features.clone(),
-        })
+    /// Marks a controller session connected and prepares its `Side`: what
+    /// was queued on `control` before the connection is drained (`Side::controller`)
+    /// before `state` becomes `Connected`.
+    fn side(&self, id: u64, granted: Vec<Permission>) -> Option<Side> {
+        let mut s = self.inner.lock().ok()?;
+        let e = s.1.iter_mut().find(|e| e.id == id)?;
+        let side = Side::controller(
+            e.media.clone(),
+            e.control_rx.clone(),
+            e.choices.clone(),
+            e.input.clone(),
+            e.features.clone(),
+            e.meter.clone(),
+        );
+        e.state = State::Connected;
+        e.granted = granted;
+        Some(side)
     }
 
     /// The connected host sessions of this computer's NanoKVM.
@@ -2503,11 +2509,7 @@ pub fn local_kvm(
             ctx.sessions.end(id, Some(Failure::Broken));
             return;
         };
-        ctx.sessions.update(id, |e| {
-            e.state = State::Connected;
-            e.granted = vec![Permission::UseNanokvm];
-        });
-        let Some(viewer) = ctx.sessions.side(id) else {
+        let Some(viewer) = ctx.sessions.side(id, vec![Permission::UseNanokvm]) else {
             return;
         };
         let host = Side::Host {
@@ -2911,11 +2913,7 @@ pub async fn connect<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         }
         Ok((ch, granted, token, Kind::Desktop | Kind::Nanokvm)) => {
             let clipboard = shared(&ctx, &granted);
-            ctx.sessions.update(id, |e| {
-                e.state = State::Connected;
-                e.granted = granted;
-            });
-            let side = ctx.sessions.side(id).ok_or(Failure::Broken);
+            let side = ctx.sessions.side(id, granted).ok_or(Failure::Broken);
             let result = match side {
                 Ok(side) => run(ch, &stop, side, clipboard).await,
                 Err(f) => Err(f),
@@ -3191,6 +3189,37 @@ pub enum Side {
         host: Peer,
         meter: Arc<RouteMeter>,
     },
+}
+
+impl Side {
+    /// Prepares a controller session to run: input and AI commands queued
+    /// while it connected or reconnected are dropped, never delivered late
+    /// (the host sends its current AI task instead), the viewer's settings
+    /// among them are kept in `choices`, and `input` opens for the new
+    /// connection.
+    fn controller(
+        queue: Arc<media::Queue>,
+        control: Arc<tokio::sync::Mutex<mpsc::Receiver<Value>>>,
+        choices: Arc<Mutex<Choices>>,
+        input: Arc<InputGate>,
+        host: Peer,
+        meter: Arc<RouteMeter>,
+    ) -> Self {
+        if let Ok(mut rx) = control.try_lock() {
+            while let Ok(m) = rx.try_recv() {
+                keep_choice(&choices, &m);
+            }
+        }
+        input.start();
+        Side::Controller {
+            queue,
+            control,
+            choices,
+            input,
+            host,
+            meter,
+        }
+    }
 }
 
 /// The host's AI as one session sees it: which controller it serves and
@@ -3726,16 +3755,24 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
         not(any(windows, target_os = "macos", target_os = "linux")),
         allow(unused_variables)
     )]
-    let (injector, mut displays) = tokio::task::spawn_blocking(move || {
+    let (injector, mut displays) = if injects || lists {
+        tokio::task::spawn_blocking(move || {
+            #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
+            let injector = injects.then(crate::input::Injector::default);
+            #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+            let injector = ();
+            let displays = if lists { video::displays() } else { Vec::new() };
+            (injector, displays)
+        })
+        .await
+        .map_err(|_| Failure::Broken)?
+    } else {
         #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
-        let injector = injects.then(crate::input::Injector::default);
+        let injector = None;
         #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
         let injector = ();
-        let displays = if lists { video::displays() } else { Vec::new() };
-        (injector, displays)
-    })
-    .await
-    .map_err(|_| Failure::Broken)?;
+        (injector, Vec::new())
+    };
     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     let mut injector = injector;
     // On X11 the injector's thread asks again, just before each event,
@@ -3755,23 +3792,6 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
             p.accessibility,
             p.input_monitoring
         );
-    }
-    // Input and AI commands queued while a session reconnected are dropped,
-    // never delivered late (the host sends its current AI task instead);
-    // the viewer's settings among them are kept, and sent below. Input
-    // flows again.
-    if let Side::Controller {
-        control,
-        choices,
-        input,
-        ..
-    } = &side
-    {
-        let mut rx = control.lock().await;
-        while let Ok(m) = rx.try_recv() {
-            keep_choice(choices, &m);
-        }
-        input.start();
     }
     // A controller says which codecs it decodes before anything else;
     // a resumed one first gives the viewer's quality and codec again, so
@@ -7627,14 +7647,14 @@ mod tests {
             }
         });
         let (_control_tx, control_rx) = mpsc::channel(4);
-        let side = Side::Controller {
+        let side = Side::controller(
             queue,
-            control: Arc::new(tokio::sync::Mutex::new(control_rx)),
-            choices: Arc::default(),
-            input: Arc::default(),
-            host: Peer::default(),
-            meter: Arc::default(),
-        };
+            Arc::new(tokio::sync::Mutex::new(control_rx)),
+            Arc::default(),
+            Arc::default(),
+            Peer::default(),
+            Arc::default(),
+        );
         let stopped = stop.clone();
         let task = tokio::spawn(async move { run(ctl_end, &stopped, side, None).await });
         let until = Instant::now() + Duration::from_millis(3500);
@@ -7739,14 +7759,14 @@ mod tests {
         ] {
             control_tx.try_send(m).unwrap();
         }
-        let side = Side::Controller {
-            queue: Arc::default(),
-            control: Arc::new(tokio::sync::Mutex::new(control_rx)),
-            choices: Arc::default(),
-            input: Arc::default(),
-            host: Peer::default(),
-            meter: Arc::default(),
-        };
+        let side = Side::controller(
+            Arc::default(),
+            Arc::new(tokio::sync::Mutex::new(control_rx)),
+            Arc::default(),
+            Arc::default(),
+            Peer::default(),
+            Arc::default(),
+        );
         let stopped = stop.clone();
         let task = tokio::spawn(async move { run(ctl_end, &stopped, side, None).await });
         let until = Instant::now() + Duration::from_millis(800);
