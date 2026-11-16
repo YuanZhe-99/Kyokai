@@ -4,7 +4,7 @@
 
 - Go 1.27.2 (`go.mod`; an older Go downloads it automatically). MyGo is a Go tool dependency
   (`go tool mygo …`).
-- Rust 1.99.1 with `rustfmt` and `clippy` (`rust-toolchain.toml`; rustup installs it on first use).
+- Rust 1.100.0 with `rustfmt` and `clippy` (`rust-toolchain.toml`; rustup installs it on first use).
 - Windows: Visual Studio 2026 (or its Build Tools) with the C++ tools for the target architecture
   (ARM64 and/or x64), the Windows SDK, and the component "C++ Clang Compiler for Windows" — `ring`
   needs clang on `aarch64-pc-windows-msvc`; put the installation's `VC\Tools\Llvm\ARM64\bin` on

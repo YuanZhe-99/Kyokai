@@ -152,7 +152,9 @@ impl Local {
 const OS: &str = "windows";
 #[cfg(target_os = "macos")]
 const OS: &str = "macos";
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(target_os = "linux")]
+const OS: &str = "linux";
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 const OS: &str = "";
 
 /// The computer's name as the system shows it.
@@ -167,7 +169,16 @@ fn computer_name() -> String {
     command("/usr/sbin/scutil", &["--get", "ComputerName"])
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+/// The computer's host name.
+#[cfg(target_os = "linux")]
+fn computer_name() -> String {
+    std::fs::read_to_string("/etc/hostname")
+        .ok()
+        .and_then(|s| s.lines().next().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 fn computer_name() -> String {
     String::new()
 }
@@ -214,7 +225,19 @@ fn hardware() -> (String, String) {
     )
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+/// The hardware maker and model from the firmware tables (SMBIOS / DMI).
+#[cfg(target_os = "linux")]
+fn hardware() -> (String, String) {
+    let read = |name: &str| {
+        std::fs::read_to_string(format!("/sys/class/dmi/id/{name}"))
+            .ok()
+            .and_then(|s| s.lines().next().map(str::to_owned))
+            .unwrap_or_default()
+    };
+    (read("sys_vendor"), read("product_name"))
+}
+
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 fn hardware() -> (String, String) {
     (String::new(), String::new())
 }

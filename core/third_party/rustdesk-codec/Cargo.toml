@@ -19,3 +19,5 @@ test = false
 
 [dependencies]
 rustdesk-qos = { path = "../rustdesk-qos" }
+
+[lints]

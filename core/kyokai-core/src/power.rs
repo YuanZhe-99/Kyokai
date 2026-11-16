@@ -272,7 +272,7 @@ mod linux_impl {
                         )
                         .await
                         .ok()?;
-                    reply.body().deserialize::<zbus::zvariant::OwnedFd>().ok()
+                    reply.body().deserialize::<zbus::OwnedFd>().ok()
                 };
                 let saver = async {
                     let c = zbus::Connection::session().await.ok()?;
@@ -360,8 +360,8 @@ mod linux_impl {
                     let Ok(rule) = zbus::MatchRule::builder()
                         .msg_type(zbus::message::Type::Signal)
                         .interface("org.freedesktop.login1.Manager")
-                        .and_then(|b| b.member("PrepareForSleep"))
-                        .map(|b| b.build())
+                        .member("PrepareForSleep")
+                        .build()
                     else {
                         return;
                     };

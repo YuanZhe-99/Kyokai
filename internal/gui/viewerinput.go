@@ -375,13 +375,15 @@ func (v *viewer) swapping() bool {
 }
 
 // swapDefault is whether Ctrl and Cmd are swapped unless chosen: between a
-// Mac and Windows, so each person's shortcuts do on the other computer what
-// they do on their own (Cmd+C copies on Windows, Ctrl+C on a Mac).
+// Mac and Windows or Linux, so each person's shortcuts do on the other
+// computer what they do on their own (Cmd+C copies on Windows and Linux,
+// Ctrl+C on a Mac).
 // Inputs: the controller's and the host's systems (GOOS names and the
-// About OS names: "darwin" or "macos", "windows").
+// About OS names: "darwin" or "macos", "windows", "linux").
 func swapDefault(mine, peer string) bool {
 	mac := func(os string) bool { return os == "darwin" || os == "macos" }
-	return mac(mine) && peer == "windows" || mine == "windows" && mac(peer)
+	pc := func(os string) bool { return os == "windows" || os == "linux" }
+	return mac(mine) && pc(peer) || pc(mine) && mac(peer)
 }
 
 // swapCtrlMeta exchanges Ctrl and Cmd (the Windows key) in a key event:

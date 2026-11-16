@@ -120,7 +120,7 @@ AppImage. Then follow the [user guide](doc/en-us/user-guide.md).
 
 ## Build from source
 
-Go 1.27.2 and Rust 1.99.1 (`rust-toolchain.toml`), plus:
+Go 1.27.3 and Rust 1.100.0 (`rust-toolchain.toml`), plus:
 
 - **Windows:** Visual Studio 2026 with the C++ tools for your architecture and the "C++ Clang
   Compiler for Windows" component.

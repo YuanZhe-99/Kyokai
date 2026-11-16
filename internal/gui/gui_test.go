@@ -1168,7 +1168,7 @@ func TestViewerPictureTakesText(t *testing.T) {
 }
 
 // TestKeyboardAcrossSystems: Ctrl and Cmd are swapped by default between a
-// Mac and Windows only, in modifiers and keys sent by position; a Mac
+// Mac and Windows or Linux, in modifiers and keys sent by position; a Mac
 // menu's edit commands come back as Cmd shortcuts.
 func TestKeyboardAcrossSystems(t *testing.T) {
 	for _, tc := range []struct {
@@ -1176,7 +1176,8 @@ func TestKeyboardAcrossSystems(t *testing.T) {
 		want       bool
 	}{
 		{"darwin", "windows", true}, {"windows", "macos", true},
-		{"darwin", "macos", false}, {"windows", "windows", false}, {"darwin", "", false},
+		{"darwin", "linux", true}, {"linux", "macos", true},
+		{"darwin", "macos", false}, {"windows", "windows", false}, {"linux", "linux", false}, {"windows", "linux", false}, {"darwin", "", false},
 	} {
 		if got := swapDefault(tc.mine, tc.peer); got != tc.want {
 			t.Errorf("%s → %s: %v", tc.mine, tc.peer, got)

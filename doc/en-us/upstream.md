@@ -4,7 +4,7 @@ What Kyokai relies on from each upstream, verified by reading the pinned source 
 documentation on 2026-10-16. Measured results from the Phase 0 spikes are added to each section
 when they run; anything not listed here is not assumed.
 
-## MyGo v0.7.4
+## MyGo v0.9.1
 
 - **Windows chrome and materials (spike, 2026-10-23).** A window created with `Vibrancy` shows the
   material where the view draws no background (`Context.Vibrancy` true on Windows 11; the root
@@ -92,11 +92,11 @@ when they run; anything not listed here is not assumed.
   MyGo's frame statistics show vsync-bound frames of about 16 ms with build and layout near 1 ms;
   the viewer costs about 21–25 % of one core (process 31–37 % minus the test pattern's drawing).
 
-## EasyTier v2.7.0
+## EasyTier v2.7.1
 
 - **Source.** Prerelease of 2026-10-06 (latest stable: v2.6.4). Root license LGPL-3.0 (no "or
   later" grant). crates.io stops at 2.0.3, so the crate is a git dependency pinned by commit
-  (`8b7f1f0196edb5b580829ed5f135050fb5853478`); several of its own dependencies are git
+  (`0d9c52b169dc2112687ddefcf571cd01d383193c`); several of its own dependencies are git
   dependencies too. Edition 2024, rust-version 1.95. The moving `nightly` tag is not a release.
 - **Build.** Needs `protoc` (the build script downloads an x64 one on Windows only); `ring` needs
   clang on `aarch64-pc-windows-msvc`; on x86/x64 Windows `thunk-rs` downloads VC-LTL/YY-Thunks and
@@ -167,7 +167,7 @@ when they run; anything not listed here is not assumed.
   license field (the repository is LGPL-3.0), and its pins keep hickory-proto at 0.25 and zip at 8,
   whose advisories `core/deny.toml` records with the reason each does not apply.
 
-## RustDesk 1.5.1
+## RustDesk 1.5.3
 
 | Module | License status | Kyokai's use |
 |---|---|---|

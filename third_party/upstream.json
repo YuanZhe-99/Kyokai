@@ -1,15 +1,15 @@
 {
   "easytier": {
     "repository": "EasyTier/EasyTier",
-    "tag": "v2.7.0",
-    "commit": "8b7f1f0196edb5b580829ed5f135050fb5853478",
+    "tag": "v2.7.1",
+    "commit": "0d9c52b169dc2112687ddefcf571cd01d383193c",
     "license": "LGPL-3.0",
     "prerelease": true
   },
   "rustdesk": {
     "repository": "rustdesk/rustdesk",
-    "tag": "1.5.1",
-    "commit": "23e5bb471a040d62f0a6ad52591fb30784265b73",
+    "tag": "1.5.3",
+    "commit": "95cca3f661f635b3cc85c04935fe8d96d8f432ef",
     "license": "AGPL-3.0"
   },
   "vcpkg": {

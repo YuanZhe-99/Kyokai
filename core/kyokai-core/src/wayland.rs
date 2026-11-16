@@ -189,8 +189,8 @@ const APP_ID: &str = "com.yuanzhe.kyokai";
 /// The sources a session shares: every monitor, the pointer drawn in.
 fn sources() -> SelectSourcesOptions {
     SelectSourcesOptions::default()
-        .set_cursor_mode(CursorMode::Embedded)
-        .set_sources(ashpd::enumflags2::BitFlags::from_flag(SourceType::Monitor))
+        .set_cursor_mode(CursorMode::EMBEDDED)
+        .set_sources(SourceType::MONITOR)
         .set_multiple(true)
 }
 
@@ -206,7 +206,7 @@ async fn start_remote(
 )> {
     let session = rd.create_session(Default::default()).await?;
     let mut devices =
-        SelectDevicesOptions::default().set_devices(DeviceType::Keyboard | DeviceType::Pointer);
+        SelectDevicesOptions::default().set_devices(DeviceType::KEYBOARD | DeviceType::POINTER);
     if persist.is_some() {
         devices = devices
             .set_persist_mode(PersistMode::ExplicitlyRevoked)
@@ -287,7 +287,7 @@ async fn serve(ready: std::sync::mpsc::Sender<Result<Portal, String>>) {
                         cmds,
                         streams: shared(started.streams()),
                         remote,
-                        input: started.devices().contains(DeviceType::Pointer),
+                        input: started.devices().contains(DeviceType::POINTER),
                     }));
                     while let Some(cmd) = rx.recv().await {
                         let r = match cmd {

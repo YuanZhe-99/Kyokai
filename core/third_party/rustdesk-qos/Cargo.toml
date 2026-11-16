@@ -11,3 +11,5 @@ publish = false
 
 [dependencies]
 log = "0.4"
+
+[lints]

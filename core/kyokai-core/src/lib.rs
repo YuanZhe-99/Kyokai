@@ -756,6 +756,14 @@ pub(crate) fn now() -> String {
 fn diagnostics() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
+        // In a Go host process, Go's SIGPIPE handler aborts on a non-Go
+        // thread (an X11 or Wayland clipboard socket or pipe closed by the
+        // peer); ignoring SIGPIPE lets write return EPIPE as Rust expects.
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        // SAFETY: sets SIGPIPE's disposition to SIG_IGN for the process.
+        unsafe {
+            libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+        }
         if log::set_logger(&StderrLog).is_ok() {
             log::set_max_level(log::LevelFilter::Info);
         }

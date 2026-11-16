@@ -1,5 +1,26 @@
 # Version history
 
+## 0.7.4 (2026-11-16)
+
+Clipboard on Linux and clipboard images across systems.
+
+- Linux clipboard (X11 and GNOME Wayland through Xwayland): text placed on the clipboard now serves
+  `text/plain;charset=utf-8` and `text/plain` alongside `UTF8_STRING` (`arboard` advertised them in
+  `TARGETS` and refused them, so Chromium, Electron and GNOME Wayland apps pasted nothing); files
+  serve `x-special/gnome-copied-files` alongside `text/uri-list`; large images cross X11 in both
+  directions with `INCR`; the selection window stays alive across sessions; `SIGPIPE` on a non-Go
+  thread no longer ends the engine.
+- Clipboard images across systems: an image on the clipboard wins over a URL, title or HTML fallback
+  placed beside it; Windows reads `CF_DIBV5` and `CF_DIB` bitmaps when `image` 0.25.10 shifts the
+  124-byte header's pixel offset, and turns all-zero GDI alpha opaque; macOS reads `public.png` as
+  well as `public.tiff` and checks `NSPasteboard`'s `changeCount` before polling; RGB, palette and
+  16-bit PNGs expand to 8-bit RGBA.
+- Linux devices report their operating system, host name and hardware (`about.os` `"linux"`), and
+  **Swap Ctrl and Cmd** is on by default between a Mac and Linux as between a Mac and Windows.
+- Upstreams: MyGo v0.7.4 → v0.9.1, EasyTier v2.7.0 → v2.7.1 (`0d9c52b`), RustDesk 1.5.1 → 1.5.3
+  (vendored code unchanged), Rust 1.99.1 → 1.100.0, Pi 1.5.0 → 1.5.2; checked, unchanged: vcpkg
+  2026.10.16, smoltcp 0.14.0, Bun 1.4.4.
+
 ## 0.7.3 (2026-11-06)
 
 Map and Translate on Linux.

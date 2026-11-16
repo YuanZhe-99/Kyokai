@@ -20,3 +20,4 @@ vram = []
 
 # Upstream's tests need RustDesk's dev-dependencies and stay switched off in
 # their files (cfg(any())); the tests that run are Kyokai's own (scale.rs).
+[lints]

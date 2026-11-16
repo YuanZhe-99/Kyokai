@@ -1805,8 +1805,7 @@ impl Desktop for Screen {
 mod atspi {
     use crate::ai::elements::{Element, Listed, MAX_ELEMENTS};
     use crate::input::Area;
-    use zbus::Connection;
-    use zbus::zvariant::OwnedObjectPath;
+    use zbus::{Connection, OwnedObjectPath, OwnedVariant};
 
     /// An accessible object: its bus name and path.
     type Node = (String, OwnedObjectPath);
@@ -1850,7 +1849,6 @@ mod atspi {
             .ok()?;
         let address: String = reply.body().deserialize().ok()?;
         zbus::connection::Builder::address(address.as_str())
-            .ok()?
             .build()
             .await
             .ok()
@@ -1909,7 +1907,7 @@ mod atspi {
             &(iface, name),
         )
         .await?;
-        let v: zbus::zvariant::OwnedValue = reply.body().deserialize().ok()?;
+        let v: OwnedVariant = reply.body().deserialize().ok()?;
         String::try_from(v).ok()
     }
 

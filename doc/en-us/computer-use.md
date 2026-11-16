@@ -511,14 +511,13 @@ hardware, outside Kyokai.
 ## Clipboard
 
 While a session has `clipboard`, both engines look at their clipboard twice a second (on Windows
-reading it only when its sequence number changed; on Linux through X11, or Wayland's data-control
-protocol where the desktop has it — KDE, wlroots; GNOME's Wayland clipboard reaches Kyokai through
-Xwayland) and offer what was copied since the session
+and macOS reading it only when its sequence number or change count changed; on Linux through X11,
+or Wayland's data-control protocol where the desktop has it — KDE, wlroots; GNOME's Wayland
+clipboard reaches Kyokai through Xwayland) and offer what was copied since the session
 began to the other side, which puts it on its own clipboard; what arrived this way is not offered
 back. What was on a clipboard before the session is not offered,
 nor is text that Kyokai itself copied (the Device ID, a password: on Windows the clipboard's owner
-is a Kyokai process). Text up to 1 MiB, or an image up to 3840×2160 sent as PNG (at most 3 MiB; text wins when both are
-there; files are under Files). In the helper modes images from a controller are not taken, because the
+is a Kyokai process). Text up to 1 MiB, or an image up to 3840×2160 sent as PNG (at most 3 MiB; an image wins when a text fallback such as a URL or title is there beside it; files are under Files). In the helper modes images from a controller are not taken, because the
 helper and its agent are privileged and never decode remote media ([run-modes.md](run-modes.md)).
 
 On a controller with several connections, only the one whose pane is in front — the one in focus in

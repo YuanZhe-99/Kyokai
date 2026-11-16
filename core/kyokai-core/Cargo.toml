@@ -25,8 +25,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # data plane, AES-GCM, DHCP, the standard server connectors and a DNS
 # resolver for STUN (doc/en-us/networking.md). No TUN, SOCKS5, KCP, faketcp,
 # magic DNS, CLI or web.
-easytier = { version = "2.7.0", git = "https://github.com/EasyTier/EasyTier", rev = "8b7f1f0196edb5b580829ed5f135050fb5853478", default-features = false, features = ["smoltcp", "aes-gcm", "dhcp-ipv4", "dns-resolver", "websocket", "quic", "wireguard"] }
-easytier-core = { version = "2.7.0", git = "https://github.com/EasyTier/EasyTier", rev = "8b7f1f0196edb5b580829ed5f135050fb5853478", default-features = false }
+easytier = { version = "2.7.1", git = "https://github.com/EasyTier/EasyTier", rev = "0d9c52b169dc2112687ddefcf571cd01d383193c", default-features = false, features = ["smoltcp", "aes-gcm", "dhcp-ipv4", "dns-resolver", "websocket", "quic", "wireguard"] }
+easytier-core = { version = "2.7.1", git = "https://github.com/EasyTier/EasyTier", rev = "0d9c52b169dc2112687ddefcf571cd01d383193c", default-features = false }
 # EasyTier's in-process TCP/IP stack (vendored, core/Cargo.toml [patch]):
 # named here only to switch on CUBIC congestion control, which Cargo's
 # feature unification gives every socket EasyTier makes (tests/smoltcp.rs
@@ -37,7 +37,7 @@ smoltcp = { version = "0.14.0", default-features = false, features = ["std", "so
 network-interface = "2.0.5"
 # AI scope's folders: files changed outside them while the AI acts
 # (ai/task.rs, `Watch`).
-notify = "8.2.1"
+notify = "8.2.2"
 base64 = "0.23.1"
 chacha20poly1305 = "0.11.0"
 ed25519-dalek = "3.0.0"
@@ -77,7 +77,7 @@ arboard = { version = "3.7.0", default-features = false, features = ["image-data
 
 [target."cfg(windows)".dependencies]
 rustdesk-dxgi = { path = "../third_party/rustdesk-dxgi" }
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Devices", "Win32_Devices_Communication", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_FunctionDiscovery", "Win32_Media", "Win32_Media_Audio", "Win32_Media_MediaFoundation", "Win32_System_DataExchange", "Win32_System_Environment", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Shutdown", "Win32_System_SystemInformation", "Win32_System_Performance", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Pipes", "Win32_System_RemoteDesktop", "Win32_System_StationsAndDesktops", "Win32_Storage_FileSystem", "Win32_Storage_Xps", "Win32_Security", "Win32_Security_Authorization", "Win32_UI_Accessibility", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Media_Ocr", "Graphics_Imaging", "Security_Cryptography", "Storage_Streams", "Foundation", "Foundation_Collections", "Win32_UI_Shell_PropertiesSystem", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Devices", "Win32_Devices_Communication", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_FunctionDiscovery", "Win32_Media", "Win32_Media_Audio", "Win32_Media_MediaFoundation", "Win32_System_DataExchange", "Win32_System_Environment", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Memory", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_System_Power", "Win32_System_Registry", "Win32_System_Shutdown", "Win32_System_SystemInformation", "Win32_System_Performance", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Pipes", "Win32_System_RemoteDesktop", "Win32_System_StationsAndDesktops", "Win32_Storage_FileSystem", "Win32_Storage_Xps", "Win32_Security", "Win32_Security_Authorization", "Win32_UI_Accessibility", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_Shell_Common", "Media_Ocr", "Graphics_Imaging", "Security_Cryptography", "Storage_Streams", "Foundation", "Foundation_Collections", "Win32_UI_Shell_PropertiesSystem", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -87,10 +87,10 @@ secret-service = { version = "5.2.0", default-features = false, features = ["rt-
 # statvfs for the system sample's disk; System V shared memory for capture.
 libc = "0.2.190"
 # X11 capture, input, the local-input watch and DPMS (doc/en-us/computer-use.md).
-x11rb = { version = "0.13.2", features = ["shm", "randr", "xtest", "xinput", "res", "dpms"] }
+x11rb = { version = "0.14.0", features = ["shm", "randr", "xtest", "xinput", "res", "dpms"] }
 # Wayland: the ScreenCast and RemoteDesktop portals, and the PipeWire
 # stream the pictures come in (doc/en-us/computer-use.md, "Linux").
-ashpd = { version = "0.13.13", default-features = false, features = ["tokio", "screencast", "remote_desktop"] }
+ashpd = { version = "0.14.0", default-features = false, features = ["tokio", "screencast", "remote_desktop"] }
 pipewire = "0.10.1"
 # H.264 through the GPU (VA-API): encoding on a host, H.264 and HEVC
 # decoding on a controller (doc/en-us/computer-use.md, "Linux").
@@ -100,7 +100,7 @@ cros-codecs = { version = "0.0.6", features = ["vaapi"] }
 arboard = { version = "3.7.0", default-features = false, features = ["image-data", "wayland-data-control"] }
 # logind and the desktop's screen saver over D-Bus (keeping awake, the sleep
 # watch); the same zbus the portals use.
-zbus = { version = "5.19.0", default-features = false, features = ["tokio"] }
+zbus = { version = "6.2.1", default-features = false, features = ["tokio"] }
 futures-util = "0.3.34"
 
 [target.'cfg(target_os = "macos")'.dependencies]

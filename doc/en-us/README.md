@@ -35,8 +35,8 @@ embedded EasyTier P2P network, and AI tasks run on the computer being operated. 
 
 | Component | Version | Source of truth |
 |---|---|---|
-| Go | 1.27.2 | `go.mod` |
-| MyGo | v0.6.3 | `go.mod` |
-| Rust | 1.99.1 | `rust-toolchain.toml` |
-| EasyTier (embedded) | v2.7.0, prerelease, commit `8b7f1f0` | `third_party/upstream.json` |
-| RustDesk (source of vendored code) | 1.5.1, commit `23e5bb4` | `third_party/upstream.json` |
+| Go | 1.27.3 | `go.mod` |
+| MyGo | v0.9.1 | `go.mod` |
+| Rust | 1.100.0 | `rust-toolchain.toml` |
+| EasyTier (embedded) | v2.7.1, prerelease, commit `0d9c52b` | `third_party/upstream.json` |
+| RustDesk (source of vendored code) | 1.5.3, commit `95cca3f` | `third_party/upstream.json` |

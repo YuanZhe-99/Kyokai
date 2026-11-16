@@ -3,7 +3,7 @@
 ## 环境要求
 
 - Go 1.27.2（`go.mod`；较旧的 Go 会自动下载它）。MyGo 是 Go 工具依赖（`go tool mygo …`）。
-- Rust 1.99.1，带 `rustfmt` 与 `clippy`（`rust-toolchain.toml`；rustup 首次使用时安装）。
+- Rust 1.100.0，带 `rustfmt` 与 `clippy`（`rust-toolchain.toml`；rustup 首次使用时安装）。
 - Windows：Visual Studio 2026（或其 Build Tools），装好目标架构（ARM64 和/或 x64）的 C++ 工具、Windows SDK，以及
   “C++ Clang Compiler for Windows” 组件——`ring` 在 `aarch64-pc-windows-msvc` 上需要 clang；请把 VS 安装中的 `VC\Tools\Llvm\ARM64\bin`
   加入 `PATH`（该组件不会自动加入）。Git for Windows 提供 bash 与 OpenSSL。

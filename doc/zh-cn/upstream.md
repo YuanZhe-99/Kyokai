@@ -3,7 +3,7 @@
 Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版本的源码或官方文档核实。Phase 0 可行性验证运行后，
 会把实测结果补充到对应小节；这里没有列出的内容一律不作假设。
 
-## MyGo v0.7.4
+## MyGo v0.9.1
 
 - **Windows 窗口外观与材质（验证，2026-10-23）。** 以 `Vibrancy` 创建的窗口，在界面不画背景的地方显示材质
   （Windows 11 上 `Context.Vibrancy` 为 true；根元素须为 `ui.Transparent`）；`PrintWindow` 截图不包含背景材质。
@@ -66,10 +66,10 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   每秒显示 59–60 帧，MyGo 的帧统计显示受垂直同步约束的约 16 毫秒帧，构建与布局约 1 毫秒；画面显示约占一个核心的
   21–25 %（进程 31–37 % 减去测试图案的绘制）。
 
-## EasyTier v2.7.0
+## EasyTier v2.7.1
 
 - **来源。** 2026-10-06 的预发布版（最新稳定版：v2.6.4）。根目录许可证为 LGPL-3.0（没有“或更新版本”条款）。
-  crates.io 上停在 2.0.3，因此按提交固定为 git 依赖（`8b7f1f0196edb5b580829ed5f135050fb5853478`）；它自己的若干依赖也是
+  crates.io 上停在 2.0.3，因此按提交固定为 git 依赖（`0d9c52b169dc2112687ddefcf571cd01d383193c`）；它自己的若干依赖也是
   git 依赖。Edition 2024，rust-version 1.95。会移动的 `nightly` 标签不算发布。
 - **构建。** 需要 `protoc`（构建脚本只在 Windows 上下载一个 x64 版本）；在 `aarch64-pc-windows-msvc` 上 `ring` 需要 clang；
   在 x86/x64 Windows 上 `thunk-rs` 会下载 VC-LTL/YY-Thunks，WinDivert 从 C 源码编译。`kcp` 功能需要 libclang。
@@ -121,7 +121,7 @@ Kyokai 依赖各上游的哪些行为。均于 2026-10-16 通过阅读固定版�
   为 LGPL-3.0），其固定版本让 hickory-proto 停在 0.25、zip 停在 8，这些安全公告记录在 `core/deny.toml` 中，并写明
   每条为何不适用。
 
-## RustDesk 1.5.1
+## RustDesk 1.5.3
 
 | 模块 | 许可状态 | Kyokai 的用法 |
 |---|---|---|

@@ -33,8 +33,8 @@ AI 任务在被操作的那台电脑上运行。支持 Windows（x64、ARM64）�
 
 | 组件 | 版本 | 依据 |
 |---|---|---|
-| Go | 1.27.2 | `go.mod` |
-| MyGo | v0.6.3 | `go.mod` |
-| Rust | 1.99.1 | `rust-toolchain.toml` |
-| EasyTier（已内嵌） | v2.7.0，预发布版，提交 `8b7f1f0` | `third_party/upstream.json` |
-| RustDesk（所复用代码的来源） | 1.5.1，提交 `23e5bb4` | `third_party/upstream.json` |
+| Go | 1.27.3 | `go.mod` |
+| MyGo | v0.9.1 | `go.mod` |
+| Rust | 1.100.0 | `rust-toolchain.toml` |
+| EasyTier（已内嵌） | v2.7.1，预发布版，提交 `0d9c52b` | `third_party/upstream.json` |
+| RustDesk（所复用代码的来源） | 1.5.3，提交 `95cca3f` | `third_party/upstream.json` |

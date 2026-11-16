@@ -14,12 +14,30 @@ version = 2
 # Each comes in through EasyTier, whose pins exclude the fixed releases;
 # revisited on every EasyTier update (doc/en-us/ci-cd.md).
 ignore = [
-  # hickory-proto 0.25: NSEC3 validation loop. Only DNSSEC validation, which
-  # Kyokai does not enable (the resolver answers STUN server lookups).
+  # hickory-proto / hickory-resolver 0.25: DNSSEC validation flaws. Only
+  # DNSSEC validation, which Kyokai does not enable (the resolver answers
+  # STUN server lookups).
   { id = "RUSTSEC-2026-0118", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0504", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0505", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0511", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0512", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0514", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0530", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0531", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0532", reason = "DNSSEC validation is not enabled" },
   # hickory-proto 0.25: O(n^2) name compression when encoding. Kyokai only
   # encodes its own small STUN lookups.
   { id = "RUSTSEC-2026-0119", reason = "only small, self-made queries are encoded" },
+  # hickory-proto 0.25: panics when parsing zone files or record text. Kyokai
+  # never parses zone files (the resolver decodes DNS wire messages only).
+  { id = "RUSTSEC-2026-0487", reason = "zone files are never parsed" },
+  { id = "RUSTSEC-2026-0489", reason = "zone files are never parsed" },
+  { id = "RUSTSEC-2026-0490", reason = "zone files are never parsed" },
+  # hickory-proto 0.25 (pinned by EasyTier): initial vector capacity from the
+  # DNS message header's record counts. Only the system DNS resolver is
+  # queried for STUN lookups.
+  { id = "RUSTSEC-2026-0491", reason = "pinned by EasyTier at 0.25; only the system resolver is queried for STUN" },
   # zip 8: extraction flaws. A build dependency of easytier-proto for its
   # protoc download, which never runs: the build sets PROTOC.
   { id = "RUSTSEC-2026-0367", reason = "build-time only; PROTOC is set" },
@@ -38,6 +56,7 @@ ignore = [
   { id = "RUSTSEC-2026-0387", reason = "OPAQUE uses Ristretto255, not elliptic-curve's arithmetic" },
   # Unmaintained, no known vulnerability.
   { id = "RUSTSEC-2021-0153", reason = "encoding: unmaintained, used by EasyTier" },
+  { id = "RUSTSEC-2024-0384", reason = "instant: unmaintained, used by EasyTier's reed-solomon-erasure" },
   { id = "RUSTSEC-2024-0436", reason = "paste: unmaintained proc macro" },
 ]
 
