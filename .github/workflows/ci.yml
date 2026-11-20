@@ -50,7 +50,7 @@ jobs:
 
       # The Go version comes from go.mod, so a Go release never changes the
       # build underneath a working checkout.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
 
@@ -82,7 +82,7 @@ jobs:
         run: cd sidecar && bun install --frozen-lockfile && bun test
 
       - name: Dependency licenses and advisories
-        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2.1.2
         with:
           manifest-path: core/Cargo.toml
 
@@ -196,7 +196,7 @@ jobs:
       CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ matrix.package && '3' || '1' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
       # scripts/build.sh compiles kyokai-agent with Bun.
@@ -304,7 +304,7 @@ jobs:
           dbus-run-session -- bash -c 'gnome-keyring-daemon --start --components=secrets >/dev/null && scripts/smoke.sh user'
 
       # Packages ship every Rust crate's license text (scripts/build.sh).
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         if: matrix.package
         with:
           tool: cargo-about
