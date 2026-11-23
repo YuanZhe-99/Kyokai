@@ -2449,6 +2449,50 @@ fn folders_pause_on_changes_outside() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// Directory events on the watch root (as macOS FSEvents emits) and system
+/// or application bookkeeping paths are ignored, while user files stay flagged.
+#[test]
+fn watch_root_and_bookkeeping_paths_are_ignored() {
+    let base = std::env::temp_dir().join("kyokai-bookkeeping-test");
+    let home = base.join("home");
+    let state = base.join("state");
+    let cases = [
+        (home.clone(), true, "watch root itself"),
+        (
+            PathBuf::from(format!("{}/", home.display())),
+            true,
+            "watch root with trailing slash",
+        ),
+        (home.join(".cache").join("x"), true, "hidden folder"),
+        (
+            home.join("Library").join("Caches").join("x"),
+            true,
+            "macOS Library",
+        ),
+        (
+            home.join("AppData").join("Local").join("x"),
+            true,
+            "Windows AppData",
+        ),
+        (home.join("Work").join("~tmp"), true, "tilde temp file"),
+        (state.join("ai-tasks.json"), true, "Kyokai state"),
+        (home.join("secret.txt"), false, "top-level user file"),
+        (
+            home.join("Work").join("report.txt"),
+            false,
+            "nested user file",
+        ),
+    ];
+    for (path, want, label) in cases {
+        assert_eq!(
+            testing::is_bookkeeping(&path, &home, &state),
+            want,
+            "{label}: {}",
+            path.display()
+        );
+    }
+}
+
 /// Real `openai-chat` round trips through OpenRouter on the synthetic
 /// screens (nothing touches the real desktop): each model of
 /// `KYOKAI_LIVE_MODELS` (comma-separated) must press SAVE in its own

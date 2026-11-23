@@ -595,6 +595,9 @@ impl Watch {
                     let room = MAX_CHANGES.saturating_sub(seen.len());
                     seen.extend(e.paths.into_iter().take(room).map(
                         |p| match p.strip_prefix(&real) {
+                            Ok(rest) if real != given && rest.as_os_str().is_empty() => {
+                                given.clone()
+                            }
                             Ok(rest) if real != given => given.join(rest),
                             _ => p,
                         },
@@ -618,8 +621,10 @@ impl Watch {
 }
 
 /// Whether a changed path is the system's or a program's own bookkeeping,
-/// not a person's files: hidden folders and files, AppData and Library in
-/// the home folder, the temporary folder, and Kyokai's own state.
+/// not a person's files: the home folder root itself (directory events on
+/// the watch root, as macOS FSEvents reports), hidden folders and files,
+/// AppData and Library in the home folder, the temporary folder, and
+/// Kyokai's own state.
 fn bookkeeping(path: &Path, home: &Path, state: &Path) -> bool {
     let temp = std::env::temp_dir();
     if path.starts_with(state) || (path.starts_with(&temp) && !home.starts_with(&temp)) {
@@ -629,7 +634,9 @@ fn bookkeeping(path: &Path, home: &Path, state: &Path) -> bool {
         return false;
     };
     let mut parts = rel.components().map(|c| c.as_os_str().to_string_lossy());
-    let first = parts.next().unwrap_or_default();
+    let Some(first) = parts.next() else {
+        return true;
+    };
     let lower = first.to_lowercase();
     lower == "appdata"
         || lower == "library"
@@ -3158,6 +3165,11 @@ pub(super) mod testing {
         let main = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../sidecar/src/main.ts");
         let agent = vec!["bun".into(), main.to_string_lossy().into_owned()];
         Ai::with(dir, secrets, open_desktop, Some(url), agent).expect("AI runtime")
+    }
+
+    /// Exposes `bookkeeping` for unit tests.
+    pub fn is_bookkeeping(path: &Path, home: &Path, state: &Path) -> bool {
+        bookkeeping(path, home, state)
     }
 
     pub fn next_state(state: State, event: &str) -> Option<State> {
