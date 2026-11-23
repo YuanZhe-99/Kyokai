@@ -5,7 +5,7 @@
 | Windows (x64, ARM64) | 0.1.0 foundation implemented and verified on Windows 11 ARM64, x64 under emulation (below). |
 | macOS (Apple silicon, Intel) | Built and tested on GitHub's macOS runners (Apple silicon: full gate including `scripts/smoke.sh user` and the unsigned package; Intel: build and Go tests); run on a MacBook Pro (M1, macOS 27.0.1) on 2026-10-17 (below). |
 | Linux (x64, ARM64) | Since 0.6.7; in progress (`PLAN.md`). On Debian 13 x86_64 (below): the gate, capture and input on X11 (Xvfb), capture on Wayland (headless sway), the helper, the packages built, VA-API and the keyboard grab (Xephyr). Not yet run: GNOME and KDE Wayland desktops, a session between two real Linux desktops. |
-| Android (`arm64-v8a`, Android 8.0+) | Since 0.8.0 (controller only). `arm64-v8a` and `x86_64` APKs built and 16 KB page-size verified (`zipalign -c -P 16 4`); run on the Android 17 (API 37) `x86_64` emulator (below). Real `arm64-v8a` phone upgrade over `Kyokai-Mobile` `0.1.3` and 30-minute battery run still to record (`PLAN.md`). |
+| Android (`arm64-v8a`, Android 8.0+) | Since 0.8.0 (controller only). `arm64-v8a` and `x86_64` APKs built and 16 KB page-size verified (`zipalign -c -P 16 4`); `0.8.0` run on the Android 17 (API 37) `x86_64` emulator and Galaxy Z Fold 8 (including in-place upgrade over `Kyokai-Mobile` `0.1.3`, below). `0.8.1` UI/laptop-deck overhaul and remaining service/battery runs still to record on device (`PLAN.md`). |
 
 ## Windows
 

@@ -4,7 +4,7 @@
 多步骤计划进行期间只存在于仓库的 `PLAN.md` 中。
 
 Kyokai 是一款 AI 电脑操作（Computer Use）应用：人或 AI 代理通过内嵌的 EasyTier P2P 网络操作另一台电脑，
-AI 任务在被操作的那台电脑上运行。支持 Windows（x64、ARM64）、macOS（Apple 芯片、Intel）与 Linux（x64、ARM64；X11 与 Wayland）。
+AI 任务在被操作的那台电脑上运行。支持 Windows（x64、ARM64）、macOS（Apple 芯片、Intel）、Linux（x64、ARM64；X11 与 Wayland）以及 Android（`arm64-v8a`，Android 8.0+，仅控制端）。
 
 | 文档 | 内容 |
 |---|---|
@@ -34,7 +34,7 @@ AI 任务在被操作的那台电脑上运行。支持 Windows（x64、ARM64）�
 | 组件 | 版本 | 依据 |
 |---|---|---|
 | Go | 1.27.4 | `go.mod` |
-| MyGo | v0.9.1 | `go.mod` |
+| MyGo | v0.10.0 | `go.mod` |
 | Rust | 1.100.0 | `rust-toolchain.toml` |
 | EasyTier（已内嵌） | v2.7.1，预发布版，提交 `0d9c52b` | `third_party/upstream.json` |
 | RustDesk（所复用代码的来源） | 1.5.3，提交 `95cca3f` | `third_party/upstream.json` |

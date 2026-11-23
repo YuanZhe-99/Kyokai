@@ -6,7 +6,8 @@ multi-step plan is active it lives only in the repository's `PLAN.md`.
 
 Kyokai is an AI Computer Use application: a person or an AI agent operates another computer over an
 embedded EasyTier P2P network, and AI tasks run on the computer being operated. It runs on Windows
-(x64, ARM64), macOS (Apple silicon, Intel) and Linux (x64, ARM64; X11 and Wayland).
+(x64, ARM64), macOS (Apple silicon, Intel), Linux (x64, ARM64; X11 and Wayland) and Android
+(`arm64-v8a`, Android 8.0+, controller only).
 
 | Document | Covers |
 |---|---|
@@ -36,7 +37,7 @@ embedded EasyTier P2P network, and AI tasks run on the computer being operated. 
 | Component | Version | Source of truth |
 |---|---|---|
 | Go | 1.27.4 | `go.mod` |
-| MyGo | v0.9.1 | `go.mod` |
+| MyGo | v0.10.0 | `go.mod` |
 | Rust | 1.100.0 | `rust-toolchain.toml` |
 | EasyTier (embedded) | v2.7.1, prerelease, commit `0d9c52b` | `third_party/upstream.json` |
 | RustDesk (source of vendored code) | 1.5.3, commit `95cca3f` | `third_party/upstream.json` |

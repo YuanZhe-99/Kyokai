@@ -5,7 +5,7 @@
 | Windows（x64、ARM64） | 0.1.0 基础已实现，并在 Windows 11 ARM64 上验证，x64 在模拟下验证（见下）。 |
 | macOS（Apple 芯片、Intel） | 已在 GitHub 的 macOS 运行器上构建与测试（Apple 芯片：完整检查，包括 `scripts/smoke.sh user` 与未签名安装包；Intel：构建与 Go 测试）；2026-10-17 在一台 MacBook Pro（M1，macOS 27.0.1）上运行过（见下）。 |
 | Linux（x64、ARM64） | 自 0.6.7 起；进行中（`PLAN.md`）。在 Debian 13 x86_64 上（见下文）：检查、X11 上的采集与输入（Xvfb）、Wayland 上的采集（无头 sway）、特权助手、安装包的构建、VA-API 与键盘抓取（Xephyr）。尚未运行：GNOME 与 KDE 的 Wayland 桌面、两台真实 Linux 桌面之间的会话。 |
-| Android（`arm64-v8a`，Android 8.0+） | 自 0.8.0 起（仅控制端）。已构建 `arm64-v8a` 与 `x86_64` APK 并校验 16 KB 页大小对齐（`zipalign -c -P 16 4`）；已在 Android 17（API 37）`x86_64` 模拟器上实际运行（见下文）。在 `arm64-v8a` 真机上覆盖升级 `Kyokai-Mobile` `0.1.3` 及 30 分钟续航实测待记录（`PLAN.md`）。 |
+| Android（`arm64-v8a`，Android 8.0+） | 自 0.8.0 起（仅控制端）。已构建 `arm64-v8a` 与 `x86_64` APK 并校验 16 KB 页大小对齐（`zipalign -c -P 16 4`）；`0.8.0` 已在 Android 17（API 37）`x86_64` 模拟器与 Galaxy Z Fold 8 真机上实际运行（含覆盖升级 `Kyokai-Mobile` `0.1.3`，见下文）。`0.8.1` 界面/笔记本模式改动与其余服务及续航实测待在真机记录（`PLAN.md`）。 |
 
 ## Windows
 
