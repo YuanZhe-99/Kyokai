@@ -86,9 +86,10 @@ func (d rdpDesk) scroll(x, y int, dx, dy float64) error { return d.c.SendScroll(
 func (d rdpDesk) key(k remoteKey, down bool) error {
 	return d.c.SendScancode(uint8(k.scan), k.scan&0xE000 != 0, down)
 }
-func (d rdpDesk) text(s string) error         { return d.c.SendText(s) }
-func (d rdpDesk) clipboard(text string) error { return d.c.SetClipboard(text) }
-func (d rdpDesk) close()                      { _ = d.c.Close() }
+func (d rdpDesk) text(s string) error              { return d.c.SendText(s) }
+func (d rdpDesk) clipboard(text string) error      { return d.c.SetClipboard(text) }
+func (d rdpDesk) setDisplay(w, h, scale int) error { return d.c.SetDisplay(w, h, scale) }
+func (d rdpDesk) close()                           { _ = d.c.Close() }
 
 // rdpEvents are the Remote Desktop client's events for a picture tab.
 type rdpEvents struct{ sc *screenClient }
@@ -195,7 +196,8 @@ func (d vncDesk) text(s string) error { return d.c.SendText(s) }
 func (d vncDesk) clipboard(text string) error {
 	return d.c.SetClipboard(rfb.NewTextClipboard(text))
 }
-func (d vncDesk) close() { _ = d.c.Close() }
+func (d vncDesk) setDisplay(int, int, int) error { return nil }
+func (d vncDesk) close()                         { _ = d.c.Close() }
 
 // vncEvents are the VNC client's events for a picture tab.
 type vncEvents struct{ sc *screenClient }

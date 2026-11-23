@@ -146,8 +146,34 @@ func save(path string, img image.Image) {
 	}
 }
 
+// foreground is the adaptive icon's foreground layer at a design-space point
+// (over its #04342C background).
+func foreground(p pt) color.NRGBA {
+	r := math.Hypot(p.x-50, p.y-50)
+	c := transparent
+	if p.x <= 50 && r <= 31 {
+		c = teal
+	}
+	if p.x >= 50 && r >= 26 && r <= 31 {
+		c = mint
+	}
+	if segDist(p, pt{50, 15}, pt{50, 85}) <= 0.75 {
+		c = foam
+	}
+	if inPoly(p, cursor) || polyDist(p, cursor) <= 0.8 {
+		c = bg
+	}
+	if inPoly(p, cursor) && polyDist(p, cursor) > 0.8 {
+		c = white
+	}
+	return c
+}
+
 func main() {
 	save(os.Args[1], render(1024, 40, 4, func(p pt) (color.NRGBA, float64) { return app(p), 1 }))
+	if len(os.Args) > 3 {
+		save(os.Args[3], render(1024, 240, 4, func(p pt) (color.NRGBA, float64) { return foreground(p), 1 }))
+	}
 	for path, ink := range map[string]color.NRGBA{
 		os.Args[2]: white,
 		strings.TrimSuffix(os.Args[2], ".png") + "-black.png": {A: 255},

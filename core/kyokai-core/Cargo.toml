@@ -64,14 +64,14 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 # SSH user-auth signatures with RSA and ECDSA sign-in keys (keys.rs); in the
 # tree already through rustls.
 ring = "0.17.14"
-# The NanoKVM USB capture card's MJPEG, decoded on the host to encode it
-# again and on the viewer for Raw (kvm.rs); in the tree already.
-zune-jpeg = "0.5.15"
 
 # libvpx, libaom, Opus and the system clipboard everywhere but on Android,
 # which is only a controller: its app decodes, and the clipboard is the
 # app's (src/android/).
 [target.'cfg(not(target_os = "android"))'.dependencies]
+# The NanoKVM USB capture card's MJPEG, decoded on the host to encode it
+# again and on the viewer for Raw (kvm.rs); in the tree already.
+zune-jpeg = "0.5.15"
 rustdesk-codec = { path = "../third_party/rustdesk-codec" }
 arboard = { version = "3.7.0", default-features = false, features = ["image-data"] }
 

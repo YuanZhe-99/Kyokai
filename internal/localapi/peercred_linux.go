@@ -35,6 +35,10 @@ func peerGroups(fd int) ([]uint32, error) {
 		switch errno {
 		case 0:
 			return buf[:n/4], nil
+		case unix.ENOPROTOOPT:
+			// Android restricts SO_PEERGROUPS; the primary gid from SO_PEERCRED
+			// still identifies the app's own UID/GID on its private socket.
+			return nil, nil
 		case unix.ERANGE:
 			if int(n/4) <= len(buf) {
 				return nil, errno

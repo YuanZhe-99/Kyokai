@@ -120,6 +120,7 @@ const WITHOUT_ASKING_NAME: &str = "connect_without_asking";
 const BY_ADDRESS_NAME: &str = "connect_by_address";
 const SERVICE_PORTS_NAME: &str = "service_ports";
 /// The NanoKVM USB the host's user offers (`crate::kvm::Settings`).
+#[cfg(any(windows, target_os = "macos", target_os = "linux"))]
 const NANOKVM_NAME: &str = "nanokvm";
 /// Set while this device keeps no connection history (Settings, No logs).
 pub(crate) const NO_HISTORY_NAME: &str = "no_history";

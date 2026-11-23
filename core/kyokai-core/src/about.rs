@@ -154,7 +154,14 @@ const OS: &str = "windows";
 const OS: &str = "macos";
 #[cfg(target_os = "linux")]
 const OS: &str = "linux";
-#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+#[cfg(target_os = "android")]
+const OS: &str = "android";
+#[cfg(not(any(
+    windows,
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "android"
+)))]
 const OS: &str = "";
 
 /// The computer's name as the system shows it.

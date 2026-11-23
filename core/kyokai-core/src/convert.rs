@@ -5,6 +5,8 @@
 //! sixteen pixels at a time in fixed-size arrays, which the compiler turns
 //! into vector instructions (NEON, SSE2 or AVX2) without `unsafe`.
 
+#![cfg_attr(target_os = "android", allow(dead_code))]
+
 /// Pixels converted together, in fixed-size arrays the compiler vectorizes.
 const L: usize = 16;
 

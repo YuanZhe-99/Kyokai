@@ -5,10 +5,13 @@ import (
 	"errors"
 	"net"
 	"os"
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/egoist/mygo"
 
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
 	L "github.com/YuanZhe-99/Kyokai/locales"
@@ -304,6 +307,9 @@ func (l *aiLink) packet(kind byte, body []byte) {
 			return
 		}
 		err := os.WriteFile(path, []byte(e.Markdown), 0o600)
+		if runtime.GOOS == "android" && err == nil {
+			_ = mygo.Share(mygo.ShareOptions{Files: []string{path}})
+		}
 		l.app.update(func() {
 			if err != nil {
 				l.app.setToast(err.Error(), true)

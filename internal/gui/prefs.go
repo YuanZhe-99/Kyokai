@@ -4,6 +4,7 @@ import (
 	"log"
 	"maps"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/YuanZhe-99/Kyokai/internal/fsutil"
@@ -100,6 +101,53 @@ type Prefs struct {
 	// SendKey is what sends an AI prompt: "" Enter (Shift+Enter breaks the
 	// line), "shift-enter" the reverse, "button" only the send button.
 	SendKey string `json:"send_key,omitempty"`
+
+	// Mobile controller preferences (Android).
+	// NavPlacement is "side_on_wide" (default), "bottom" or "side".
+	NavPlacement string `json:"nav_placement,omitempty"`
+	// RailOnRight places the side navigation rail on the right edge.
+	RailOnRight bool `json:"rail_on_right,omitempty"`
+	// PointerMode is "trackpad" (default) or "touch".
+	PointerMode string `json:"pointer_mode,omitempty"`
+	// PointerSpeed scales touchpad motion (0 means 1.6).
+	PointerSpeed float32 `json:"pointer_speed,omitempty"`
+	// CursorSize is the drawn remote cursor diameter in DIPs (0 means 16).
+	CursorSize float32 `json:"cursor_size,omitempty"`
+	// PictureTop aligns letterboxed remote pictures to the top edge.
+	PictureTop bool `json:"picture_top,omitempty"`
+	// SplitKeyboard splits wide on-screen keyboards around a center touchpad.
+	SplitKeyboard bool `json:"split_keyboard,omitempty"`
+	// LaptopMode auto-splits at the hinge on half-opened foldables.
+	LaptopMode bool `json:"laptop_mode,omitempty"`
+	// LaptopSafeArea keeps clear of system bars in laptop mode (nil means true).
+	LaptopSafeArea *bool `json:"laptop_safe_area,omitempty"`
+	// VideoOverlay shows the live codec/decoder/FPS/RTT bar over the picture.
+	VideoOverlay bool `json:"video_overlay,omitempty"`
+	// SoundMuted mutes host sound by default on mobile (false means sound on).
+	SoundMuted bool `json:"sound_muted,omitempty"`
+	// ToolbarHandle is the normalized (0..1) edge position of the collapsed
+	// floating toolbar arrow on mobile; nil means top-center (0.5, 0).
+	ToolbarHandle *[2]float32 `json:"toolbar_handle,omitempty"`
+	// KeyboardOS overrides the on-screen keyboard layout per "<device>:<kind>"
+	// ("windows", "macos", "linux", or "" auto).
+	KeyboardOS map[string]string `json:"keyboard_os,omitempty"`
+	// MobileRecentTargets holds up to 8 recent address/ID strings typed into Connect.
+	MobileRecentTargets []string `json:"mobile_recent_targets,omitempty"`
+	// MobileAIHistory holds up to 100 task summaries per host seen while connected
+	// (never written while NoLogs is on).
+	MobileAIHistory map[string][]MobileAITaskSummary `json:"mobile_ai_history,omitempty"`
+}
+
+// MobileAITaskSummary is one host AI task summary persisted on mobile across
+// restarts (no screenshots or full step payloads).
+type MobileAITaskSummary struct {
+	ID          uint64 `json:"id"`
+	Instruction string `json:"instruction"`
+	State       string `json:"state"`
+	Steps       int    `json:"steps,omitempty"`
+	InputTokens int    `json:"input_tokens,omitempty"`
+	OutTokens   int    `json:"output_tokens,omitempty"`
+	Updated     int64  `json:"updated"`
 }
 
 // AIRecord is an AI session as this computer keeps it (doc/en-us/gui.md,
@@ -158,7 +206,13 @@ type ViewerPrefs struct {
 	LockAfter bool `json:"lock_after,omitempty"`
 }
 
-func defaultPrefs() Prefs { return Prefs{Theme: "system", CheckAppUpdates: true, AutoInstallHour: 3} }
+func defaultPrefs() Prefs {
+	p := Prefs{Theme: "system", CheckAppUpdates: true, AutoInstallHour: 3}
+	if runtime.GOOS == "android" {
+		p.OthersInNetworks = true
+	}
+	return p
+}
 
 func prefsPath(stateDir string) string { return filepath.Join(stateDir, "gui.json") }
 
@@ -173,6 +227,7 @@ func loadPrefs(stateDir string) Prefs {
 func savePrefs(stateDir string, p Prefs) error {
 	if p.NoLogs {
 		p.AISessions = nil
+		p.MobileAIHistory = nil
 	}
 	return fsutil.WriteJSON(prefsPath(stateDir), p)
 }

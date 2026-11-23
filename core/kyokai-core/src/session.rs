@@ -15,7 +15,9 @@ use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream};
+#[cfg(any(windows, target_os = "macos", target_os = "linux", test))]
+use tokio::io::DuplexStream;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::{Notify, mpsc};
 
 use crate::{audio, media, video};
@@ -3750,6 +3752,8 @@ async fn run<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     // threads.
     #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     let injects = matches!(side, Side::Host { input: true, .. }) && !wired;
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    let injects = false;
     let lists = wants_video && !wired;
     #[cfg_attr(
         not(any(windows, target_os = "macos", target_os = "linux")),

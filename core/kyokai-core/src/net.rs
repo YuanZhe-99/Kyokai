@@ -869,6 +869,7 @@ impl Network {
 
     /// Runs work of the core's own on the network's runtime (this
     /// computer's own NanoKVM session, `session::local_kvm`).
+    #[cfg(any(windows, target_os = "macos", target_os = "linux"))]
     pub fn spawn(&self, work: impl Future<Output = ()> + Send + 'static) {
         self.rt.spawn(work);
     }

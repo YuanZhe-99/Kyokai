@@ -1803,6 +1803,7 @@ mod unix_impl {
     //! older one.
     use super::{LINK, Link, serve};
     use std::os::unix::fs::PermissionsExt;
+    #[cfg(not(target_os = "android"))]
     use std::os::unix::io::AsRawFd;
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::path::{Path, PathBuf};

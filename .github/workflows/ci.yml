@@ -61,7 +61,8 @@ jobs:
             echo "gofmt needed:"; echo "$unformatted"; exit 1
           fi
 
-      # The app targets Windows, macOS and Linux.
+      # The app targets Windows, macOS and Linux (Android requires cgo + NDK
+      # clang and is vetted and built in the android job below).
       - run: GOOS=windows go vet ./...
       - run: GOOS=darwin go vet ./...
       - run: GOOS=linux go vet ./...
@@ -331,4 +332,98 @@ jobs:
             build/*/*.exe
             build/*/*.dmg
             build/*/*.deb
+          if-no-files-found: error
+
+  android:
+    name: Android (arm64-v8a)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_PROFILE_RELEASE_LTO: "off"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: sidecar/package.json
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: "1.100.0"
+          targets: aarch64-linux-android
+          components: clippy
+      - name: Only the pinned toolchain
+        shell: bash
+        run: |
+          keep=$(rustup show active-toolchain | cut -d' ' -f1)
+          for t in $(rustup toolchain list | cut -d' ' -f1); do
+            [ "$t" = "$keep" ] || rustup toolchain uninstall "$t"
+          done
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: core
+          key: android
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        with:
+          tool: cargo-about
+      - name: Android SDK & NDK
+        run: |
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          yes | "$sdk/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$sdk/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865" >/dev/null
+      - name: License notices
+        run: |
+          mkdir -p resources/licenses
+          cp LICENSE THIRD_PARTY_NOTICES.md third_party/licenses/*.txt resources/licenses/
+          cargo about generate --manifest-path core/Cargo.toml -c core/about.toml -o resources/licenses/RUST_LICENSES.txt core/about.hbs
+          (cd sidecar && bun install --frozen-lockfile >/dev/null && bun licenses.ts ../resources/licenses/SIDECAR_LICENSES.txt)
+      - name: Core library (Android arm64-v8a)
+        run: scripts/build-android-core.sh arm64-v8a
+      - name: APK
+        env:
+          KEYSTORE_B64: ${{ secrets.KYOKAI_ANDROID_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KYOKAI_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KYOKAI_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KYOKAI_ANDROID_KEY_PASSWORD }}
+        run: |
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          ndk=$(ls -d "$sdk"/ndk/* | sort -V | tail -1)
+          CGO_ENABLED=1 GOOS=android GOARCH=arm64 CC="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android26-clang" go vet ./...
+          version=$(sed -n 's/^const Version = "\(.*\)"/\1/p' internal/version/version.go)
+          mkdir -p dist
+          if [ -n "$KEYSTORE_B64" ]; then
+            ks="$RUNNER_TEMP/release.jks"
+            echo "$KEYSTORE_B64" | base64 --decode > "$ks"
+            python3 - "$ks" "${KEY_ALIAS:-kyokai}" <<'PY'
+          import json, sys
+          with open("mygo.json", "r", encoding="utf-8") as f:
+              cfg = json.load(f)
+          cfg.setdefault("android", {})["keystore"] = sys.argv[1]
+          cfg["android"]["keyAlias"] = sys.argv[2]
+          with open("mygo.json", "w", encoding="utf-8") as f:
+              json.dump(cfg, f, indent=2)
+              f.write("\n")
+          PY
+            MYGO_ANDROID_KEYSTORE_PASSWORD="$KEYSTORE_PASSWORD" MYGO_ANDROID_KEY_PASSWORD="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}" \
+              go tool mygo build -platform android/arm64 .
+            rm -f "$ks"
+            git checkout -- mygo.json
+          else
+            go tool mygo build -platform android/arm64 .
+          fi
+          bt=$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)
+          "$bt/zipalign" -c -P 16 4 "build/android/kyokai-$version.apk"
+          cp "build/android/kyokai-$version.apk" "dist/Kyokai-$version-android-arm64.apk"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-arm64
+          path: dist/Kyokai-*-android-arm64.apk
           if-no-files-found: error

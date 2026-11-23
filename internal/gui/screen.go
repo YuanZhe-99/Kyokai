@@ -25,6 +25,7 @@ type remoteDesk interface {
 	key(k remoteKey, down bool) error
 	text(s string) error
 	clipboard(text string) error
+	setDisplay(w, h, scale int) error
 	close()
 }
 

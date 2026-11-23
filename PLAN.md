@@ -7,7 +7,8 @@ this file when the plan is complete.
 
 ## Decisions in force
 
-- Platforms: Windows x64 + ARM64, macOS arm64 + x64 (macOS 14+), Linux x64 + arm64 (since 0.6.7).
+- Platforms: Windows x64 + ARM64, macOS arm64 + x64 (macOS 14+), Linux x64 + arm64 (since 0.6.7),
+  Android arm64-v8a (Android 8.0+, controller only, since 0.8.0).
 - AI runs only on the host; providers from templates (Claude, OpenAI and OpenAI-compatible).
 - EasyTier v2.7 line (in-process data plane), pinned by commit, minimal feature subset, following
   every upstream release; direct paths off in No privileges unless the person turns them on.
@@ -115,6 +116,25 @@ needs to be seen doing:
 | AI on a pane live | a Remote Desktop or VNC pane lent to the AI on the test VM (the host user types the sign-in) | a task done there, recorded in platform-notes |
 | Viewer controls seen live | the custom quality and more frame-rate caps, the Hardware codec switch, Lock when the session ends; the wheel in notches | in a real session to the test VM: a custom quality changes the bitrate, Hardware codec off moves the stream to a software codec, the VM locks when the session ends, one notch scrolls as one on a host and in a Remote Desktop and a VNC pane; recorded in platform-notes |
 
+## 0.8.0: Android controller — left to see on a real phone
+
+Built and verified on the Android 17 (API 37) emulator and on Galaxy Z Fold 8 (`arm64-v8a`) (2026-11-22, `platform-notes.md`; `cmd/kyokai-clients` retired, `ci.yml` and `release.yml` updated). What remains for post-`0.8.0` polish and upstream `egoist/mygo` follow-ups:
+
+| Item | Scope | Done when |
+|---|---|---|
+| Upstream `mygo` mobile gaps (**U1–U3**) | **U1**: `Element.Touches()` on mobile (`internal/mobile/surface.go`) for simultaneous 2-thumb modifier hold on the on-screen keyboard and native 2/3-finger touchpad touches; **U2**: Android `KeyEvent` → USB HID `ui.KeyCode` + mouse button bitmask for external Bluetooth/USB keyboards & mice; **U3**: `plugins/terminal` `libghostty-vt` Android cross-build so Android SSH can switch from `miniTerm` to Ghostty VT | landed in `egoist/mygo`, bumped via `go run ./tools/deps update`, verified on Android |
+| Remaining live phone checks | SSH/SFTP, RDP, VNC, AI tasks, `SessionService` ≥ 5 min background survival, and 30-min battery measurement on Galaxy Z Fold 8; archive `Kyokai-Mobile` once `0.8.0` ships | recorded in `platform-notes.md` and `Kyokai-Mobile` archived |
+
+## 0.8.1+: Android UI, keyboard tactile polish, and foldable laptop mode
+
+Deferred to a follow-up milestone so future sessions can pick up cleanly without blocking `0.8.0`:
+
+| Item | Scope | Done when |
+|---|---|---|
+| On-screen keyboard visual & tactile polish | Match or surpass the Flutter `Kyokai-Mobile` `0.1.3` computer keyboard feel (`internal/gui/mobile_keyboard.go`): keycap elevation/subtle shadows, distinct tonal contrast between character keys, modifiers, strip keys and Enter, crisp press-highlight/popup feedback, haptic tap (`mygo.Haptic`), refined typography and key spacing across compact, full and split layouts | inspected side-by-side on Galaxy Z Fold 8 (folded & unfolded), key press feedback and visual hierarchy verified |
+| Mobile shell & card visual harmony | Harmonize typography scale, card padding/radii, list-row density, status pills, segmented controls, bottom sheets, and Settings sub-page spacing across `internal/gui/mobile_shell.go` and `internal/gui/mobile_viewer.go` so the MyGo mobile UI feels as cohesive and balanced as the Flutter build in both light and dark themes | inspected with native screenshots on compact phone and unfolded foldable viewports in light & dark themes |
+| Foldable tabletop / laptop posture mode | Complete end-to-end foldable hover / half-opened posture ("laptop mode") on Galaxy Z Fold 8 (`PostureWatcher` in `internal/androidhost` + `mobileKyokaiViewer` / `mobileDesktopServiceViewer`): verify `WindowInfoTracker` `FoldingFeature.State.HALF_OPENED` and `TYPE_HINGE_ANGLE` lifecycle attachment across activity/fold transitions, auto-split the remote screen strictly above `hingeTop` and the split keyboard + center touchpad below `hingeBottom` (for both Kyokai/NanoKVM and RDP/VNC sessions), hide or dock the floating toolbar cleanly above the crease, and add a smooth layout transition | folding Galaxy Z Fold 8 to ~90–120° tabletop posture automatically enters laptop mode with remote display on the top half and split keyboard + touchpad on the bottom half, verified on device and recorded in `platform-notes.md` |
+
 ## Left
 
 | Item | Scope | Done when |
@@ -133,6 +153,15 @@ needs to be seen doing:
 
 ## Decided
 
+- Android controller merge (2026-11-21): fold `Kyokai-Mobile` (`0.1.3`, controller only, Android
+  8.0+ `arm64-v8a`) into this repository on MyGo `v0.10.0+`, running `internal/engine` in-process
+  with `host.serve = "none"`, reusing `internal/rdp`, `internal/rfb` and `internal/gui`'s SSH/SFTP
+  directly (retiring `cmd/kyokai-clients`), unifying video rendering on NDK `AMediaCodec` +
+  `AImageReader` (`NV12`) → `ui.Bitmap.UpdateYUV` (with `Update` for `raw-rgba` and NanoKVM
+  `mjpeg`), preserving `${filesDir}/kyokai` and `noBackupFilesDir/master.key` (`kyokai-master`) for
+  seamless in-place upgrades over `com.yuanzhe.kyokai`, and scheduling the three upstream `mygo`
+  mobile gaps (`Touches`, hardware `KeyCode`, `plugins/terminal` Android build) flexibly; iOS stays
+  out of scope for now.
 - The AI beside the host user (2026-11-02): best effort. With "Work beside me" on (apps granted),
   the AI sees and acts in its granted window without the host user's pointer or keyboard where the
   system lets it — the window captured on its own even when covered, actions on its elements through

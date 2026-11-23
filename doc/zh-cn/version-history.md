@@ -1,5 +1,21 @@
 # 版本历史
 
+## 0.8.0（2026-11-22）
+
+Android 控制端合入 Kyokai。
+
+- Android 控制端（`com.yuanzhe.kyokai`，Android 8.0+ / `minSdk = 26`，16 KB 页大小对齐，仅作控制端）：将 `Kyokai-Mobile`
+  （`0.1.3`）完整合入主仓库的 MyGo 代码库，并移除 `cmd/kyokai-clients`。`internal/engine` 在同一进程内以
+  `host.serve = "none"` 运行，按 SONAME 加载 `libkyokai_core.so`，并保留 `${filesDir}/kyokai` 与 Android Keystore
+  `"kyokai-master"` 主密钥（`noBackupFilesDir/master.key`），支持就地覆盖升级（`versionCode = 800`）。
+- 自适应手机、平板与折叠屏界面（`internal/gui`）：紧凑屏幕使用底部导航栏，宽屏（`≥ 600 dp`）使用侧边栏与双栏主从视图；通过 NDK
+  `AMediaCodec` + `AImageReader`（`NV12`）解码 H.264/HEVC 并经 `ui.Bitmap.UpdateYUV` 渲染，同时支持 NanoKVM
+  `mjpeg`、`raw-rgba` 与 48 kHz Opus 声音；带速度加速与惯性滚动的多指触控板；手机、全尺寸与分体式电脑屏幕键盘（`Shift` 与
+  macOS `Option` 层、Set-1 扫描码、RDP 扫描码与 VNC keysym）；折叠屏半折笔记本姿态；会话前台保活服务（`SessionService`）；
+  双向文本、图片与文件剪贴板（支持保存与分享）；被控端 AI 任务面板与历史记录；以及内置 SSH、SFTP/SCP、远程桌面与 VNC。
+- 上游：MyGo v0.9.1 → v0.10.0、Bun 1.4.4 → 1.4.5、Pi 1.5.2 → 1.6.0；已检查、未变化：EasyTier v2.7.1
+  （`0d9c52b`）、RustDesk 1.5.3、vcpkg 2026.10.16、smoltcp 0.14.0、Rust 1.100.0（2026-11-22 检查）。
+
 ## 0.7.4（2026-11-16）
 
 Linux 剪贴板与跨系统剪贴板图片。

@@ -4,7 +4,7 @@
 
 | Process | Binary | Runs as | Role |
 |---|---|---|---|
-| GUI | `Kyokai` (MyGo) | the user, never elevated | Window, tray, settings. Holds no identity; shows what the engine pushes. |
+| GUI | `Kyokai` (MyGo) | the user, never elevated | Window, tray, settings (on Android, the adaptive controller app running `internal/engine` in-process with `host.serve = "none"`). Holds no identity; shows what the engine pushes. |
 | Engine | `kyokai-svc run --host user` | the user, a child of the GUI | Loads the Rust core, which owns the device identity, the passwords, the embedded EasyTier node ([networking.md](networking.md)) and both ends of sessions ([protocol.md](protocol.md)); serves the local API. |
 | Command line | `kyokai …` (also `kyokai-svc ctl …`) | the user | Client of the local API for people and scripts ([cli.md](cli.md)). |
 
@@ -36,7 +36,8 @@ described in [run-modes.md](run-modes.md).
 | `internal/gui` | GUI state, views, tray, app updates, the engine child |
 | `internal/engine` | Engine host: lifeline, local API handlers over the core |
 | `internal/localapi` | Versioned NDJSON protocol over AF_UNIX, peer-credential authorization |
-| `internal/core` | purego binding to the Rust core |
+| `internal/core` | purego binding to the Rust core (`libkyokai_core.so` loaded by SONAME on Android) |
+| `internal/androidhost` | Android native module (Kotlin + Cgo): Keystore `"kyokai-master"`, `SessionService` foreground service, `MediaCodec` probing & NDK `AMediaCodec` + `AImageReader` (`NV12`) decoder, Opus audio, clipboard images, foldable hinge posture |
 | `internal/fsutil` | Atomic writes and JSON documents |
 | `internal/version` | The single product version |
 | `core/kyokai-core` | Rust core library: C ABI, secrets store, device identity, passwords and OPAQUE (`auth`), access decisions (`access`), sessions (`session`), EasyTier node (`net`), screen capture and codecs (`video`, `mf` for Media Foundation, `vt` for VideoToolbox, `va` for VA-API's H.264 and HEVC, `ff` for the system's FFmpeg, `soft` for libvpx and libaom, `annexb` for the H.264 and HEVC framing, `convert` for the viewer's conversion of decoded pictures into the GUI's buffer), the host's sound (`audio`, `opus`), the input service (`input`), the viewer's keyboard grab (`keyboard`), the NanoKVM USB (`kvm`: its capture card, its serial keyboard and mouse), AI tasks (`ai`: the providers, the task runtime, the desktop it drives), sign-in keys (`keys`), tunnels to the host's own services (`tunnel`), the host's status (`system`) and its watchers (`watch`) |

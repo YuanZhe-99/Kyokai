@@ -562,6 +562,13 @@ impl Choice {
                 i444: false,
             });
         }
+        #[cfg(target_os = "android")]
+        if codec == "mjpeg" {
+            return Some(Choice {
+                codec: "mjpeg",
+                i444: false,
+            });
+        }
         ORDER
             .into_iter()
             .find(|c| *c == codec)
@@ -728,11 +735,16 @@ pub fn decodable(system: bool) -> (Vec<String>, Vec<String>) {
 }
 
 /// `decodable` on Android: the codecs the app decodes through MediaCodec
-/// (`crate::android`), none in full colour; the core has no software
-/// codecs there, and the app names what MediaCodec has whatever `system`.
+/// (`crate::android`), and `mjpeg` (decoded in Go for a NanoKVM's Raw
+/// stream), none in full colour; the core has no software codecs there, and
+/// the app names what MediaCodec has whatever `system`.
 #[cfg(target_os = "android")]
 pub fn decodable(_system: bool) -> (Vec<String>, Vec<String>) {
-    (crate::android::decoders(), Vec::new())
+    let mut decode = crate::android::decoders();
+    if !decode.iter().any(|c| c == "mjpeg") {
+        decode.push("mjpeg".into());
+    }
+    (decode, Vec::new())
 }
 
 /// A display of the host: its place on the virtual desktop, in pixels.
@@ -964,7 +976,7 @@ impl Source {
         #[cfg(target_os = "android")]
         {
             let _ = (display, choices, tx, frames, want);
-            return Source::pattern("cannot-capture", "an Android device is only a controller");
+            Source::pattern("cannot-capture", "an Android device is only a controller")
         }
         #[cfg(not(target_os = "android"))]
         return {

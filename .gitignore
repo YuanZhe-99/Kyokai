@@ -25,3 +25,4 @@ mygo_windows_*.syso
 *.pem
 /resources/licenses/
 /core/vcpkg_installed/
+/internal/androidhost/kotlin/src/main/jniLibs/

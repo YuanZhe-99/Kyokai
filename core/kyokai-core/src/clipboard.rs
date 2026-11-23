@@ -237,7 +237,7 @@ fn owned_by_kyokai() -> bool {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(all(not(windows), not(target_os = "android")))]
 fn owned_by_kyokai() -> bool {
     false
 }

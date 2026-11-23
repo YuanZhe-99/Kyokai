@@ -3,6 +3,8 @@
 //! the system's MediaCodec (`video::decodable`), so nothing here encodes or
 //! decodes: each opens with an error, as a missing codec does elsewhere.
 
+#![allow(dead_code)]
+
 use crate::convert::Sink;
 
 /// A software codec, by the name the wire and the stream description use.

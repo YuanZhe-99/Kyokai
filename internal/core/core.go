@@ -89,6 +89,12 @@ type Config struct {
 	// Agent, set when the engine is the privileged helper, is the kyokai-svc
 	// the core starts as the session agent in the console session.
 	Agent string `json:"agent,omitempty"`
+	// MasterKey, set on Android, is the base64 32-byte key wrapped by the
+	// Android Keystore; empty keeps secrets in memory only.
+	MasterKey string `json:"master_key,omitempty"`
+	// CacheDir, set on Android, is the app's cache folder where received
+	// clipboard files are written.
+	CacheDir string `json:"cache_dir,omitempty"`
 }
 
 // Status is the core's state as hosts show it; it never holds a secret.
@@ -156,14 +162,21 @@ type Status struct {
 	About       json.RawMessage `json:"about"`
 }
 
-// Load opens the library at path (absolute) and checks its ABI version.
+// Load opens the library at path (absolute, or SONAME on Android where the
+// library stays inside the APK) and checks its ABI version.
 // Side effects: maps the library into the process for its lifetime.
 func Load(path string) (*Lib, error) {
-	if !filepath.IsAbs(path) {
-		return nil, fmt.Errorf("core library path must be absolute: %s", path)
-	}
-	if _, err := os.Stat(path); err != nil {
-		return nil, fmt.Errorf("core library: %w", err)
+	if runtime.GOOS == "android" && !filepath.IsAbs(path) {
+		if path == "" {
+			path = LibraryName()
+		}
+	} else {
+		if !filepath.IsAbs(path) {
+			return nil, fmt.Errorf("core library path must be absolute: %s", path)
+		}
+		if _, err := os.Stat(path); err != nil {
+			return nil, fmt.Errorf("core library: %w", err)
+		}
 	}
 	h, err := open(path)
 	if err != nil {

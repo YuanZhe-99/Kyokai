@@ -205,7 +205,7 @@ impl Source {
                 if now != generation || (ended && tried.elapsed() >= RESTART) {
                     generation = now;
                     tried = Instant::now();
-                    drop(capture.take());
+                    let _ = capture.take();
                     capture = match Capture::start(pcm.clone(), &source) {
                         Ok(c) => Some(c),
                         Err(e) => {

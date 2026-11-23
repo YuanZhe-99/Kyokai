@@ -2,14 +2,14 @@
   "name": "kyokai-agent",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.4.4",
+  "packageManager": "bun@1.4.5",
   "description": "Kyokai's agent sidecar: Pi's loop with Kyokai's providers (doc/en-us/architecture.md, \"The agent sidecar\").",
   "scripts": {
     "test": "bun test"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "1.5.2",
-    "@earendil-works/pi-agent-core": "1.5.2",
-    "@earendil-works/pi-coding-agent": "1.5.2"
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-agent-core": "1.6.0",
+    "@earendil-works/pi-coding-agent": "1.6.0"
   }
 }

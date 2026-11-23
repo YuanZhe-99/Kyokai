@@ -114,10 +114,14 @@ type codecImpl struct {
 }
 
 // coreLib loads the core library into the GUI once, for the viewers'
-// decoders: next to kyokai-svc, or KYOKAI_CORE_LIB in development.
+// decoders: next to kyokai-svc, SONAME on Android, or KYOKAI_CORE_LIB in
+// development.
 var coreLib = sync.OnceValues(func() (*core.Lib, error) {
 	if p := os.Getenv("KYOKAI_CORE_LIB"); p != "" {
 		return core.Load(p)
+	}
+	if runtime.GOOS == "android" {
+		return core.Load(core.LibraryName())
 	}
 	svc, err := engineBinary()
 	if err != nil {
@@ -214,11 +218,17 @@ type viewer struct {
 	// The stream's pictures: the one the bitmap shows (-1: none of them,
 	// as a new stream starts), the newest decoded one waiting for the main
 	// thread (-1: none), and the third, which the next frame decodes into.
-	imgs    [3]*image.RGBA
-	shown   int
-	ready   int
-	readyAt time.Time
-	state   string // "", or why nothing shows (ended, unsupported)
+	imgs      [3]*image.RGBA
+	nv12s     [3][]byte
+	nv12Sizes [3][2]int
+	nv12Mode  bool
+	shown     int
+	ready     int
+	readyAt   time.Time
+	// streamBegan and firstFrameMS track time-to-first-frame for diagnostics.
+	streamBegan  time.Time
+	firstFrameMS int64
+	state        string // "", or why nothing shows (ended, unsupported)
 	// The last second's frame rate, bitrate, and decode and draw times;
 	// the counts and sums of the second going on.
 	fps, kbps, decodeMS, drawMS float64
@@ -1217,6 +1227,10 @@ func (v *viewer) watchdog(done <-chan struct{}, keyRequest []byte) {
 // nothing but a key frame next.
 // Notes: runs on one locked OS thread, which the decoder is tied to.
 func (v *viewer) decodeVideo(lib *core.Lib, video <-chan []byte, pool packetPool, keyRequest []byte) {
+	if runtime.GOOS == "android" {
+		v.decodeVideoAndroid(lib, video, pool, keyRequest)
+		return
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	var dec *core.Decoder
@@ -1294,6 +1308,10 @@ func (v *viewer) decodeVideo(lib *core.Lib, video <-chan []byte, pool packetPool
 // playSound plays the host's sound packets while the viewer has sound on,
 // until sound closes.
 func (v *viewer) playSound(lib *core.Lib, sound <-chan []byte, pool packetPool) {
+	if runtime.GOOS == "android" {
+		v.playSoundAndroid(sound, pool)
+		return
+	}
 	var snd *viewerSound
 	defer func() {
 		if snd != nil {
@@ -1325,7 +1343,8 @@ func (v *viewer) begin(s videoStart) {
 	r := image.Rect(0, 0, s.Width, s.Height)
 	imgs := [3]*image.RGBA{image.NewRGBA(r), image.NewRGBA(r), image.NewRGBA(r)}
 	v.mu.Lock()
-	v.start, v.imgs, v.shown, v.ready, v.decoder = s, imgs, -1, -1, codecImpl{}
+	v.start, v.imgs, v.nv12Mode, v.shown, v.ready, v.decoder = s, imgs, false, -1, -1, codecImpl{}
+	v.streamBegan, v.firstFrameMS = time.Now(), 0
 	v.mu.Unlock()
 	v.whole = nil
 	v.setState("")
@@ -1492,6 +1511,9 @@ const builtLately = 250 * time.Millisecond
 // its view was built within builtLately of now, or its pane is shown (a
 // still picture rebuilds nothing for a while).
 func (v *viewer) seen(now time.Time) bool {
+	if runtime.GOOS == "android" {
+		return true
+	}
 	if now.UnixNano()-v.builtAt.Load() <= int64(builtLately) {
 		return true
 	}
@@ -1509,9 +1531,33 @@ func (v *viewer) seen(now time.Time) bool {
 func (v *viewer) present() {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	// None: a newer update showed it already, or no stream began yet (its
-	// pictures are nil).
-	if v.ready < 0 || v.imgs[v.ready] == nil {
+	if v.ready < 0 {
+		return
+	}
+	if v.nv12Mode {
+		buf := v.nv12s[v.ready]
+		sz := v.nv12Sizes[v.ready]
+		w, h := sz[0], sz[1]
+		if w <= 0 || h <= 0 || len(buf) < w*h*3/2 {
+			return
+		}
+		if v.bm == nil {
+			v.bm = ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 1, 1)))
+		}
+		v.bm.UpdateYUV(&ui.YUVImage{
+			Format:  ui.NV12,
+			Width:   w,
+			Height:  h,
+			Planes:  [3][]byte{buf[:w*h], buf[w*h : w*h*3/2]},
+			Strides: [3]int{w, w},
+			Matrix:  ui.BT601,
+		})
+		v.drawing += time.Since(v.readyAt)
+		v.drawn++
+		v.shown, v.ready = v.ready, -1
+		return
+	}
+	if v.imgs[v.ready] == nil {
 		return
 	}
 	img := v.imgs[v.ready]

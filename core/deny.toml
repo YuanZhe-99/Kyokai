@@ -7,6 +7,10 @@ targets = [
   "x86_64-pc-windows-msvc",
   "aarch64-apple-darwin",
   "x86_64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-gnu",
+  "aarch64-linux-android",
+  "x86_64-linux-android",
 ]
 
 [advisories]
@@ -26,6 +30,9 @@ ignore = [
   { id = "RUSTSEC-2026-0530", reason = "DNSSEC validation is not enabled" },
   { id = "RUSTSEC-2026-0531", reason = "DNSSEC validation is not enabled" },
   { id = "RUSTSEC-2026-0532", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0549", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0550", reason = "DNSSEC validation is not enabled" },
+  { id = "RUSTSEC-2026-0551", reason = "DNSSEC validation is not enabled" },
   # hickory-proto 0.25: O(n^2) name compression when encoding. Kyokai only
   # encodes its own small STUN lookups.
   { id = "RUSTSEC-2026-0119", reason = "only small, self-made queries are encoded" },
@@ -44,6 +51,10 @@ ignore = [
   { id = "RUSTSEC-2026-0368", reason = "build-time only; PROTOC is set" },
   { id = "RUSTSEC-2026-0369", reason = "build-time only; PROTOC is set" },
   { id = "RUSTSEC-2026-0429", reason = "build-time only; PROTOC is set" },
+  { id = "RUSTSEC-2026-0545", reason = "build-time only; PROTOC is set" },
+  { id = "RUSTSEC-2026-0546", reason = "build-time only; PROTOC is set" },
+  { id = "RUSTSEC-2026-0547", reason = "build-time only; PROTOC is set" },
+  { id = "RUSTSEC-2026-0548", reason = "build-time only; PROTOC is set" },
   # zstd 0.13 / zstd-safe 7 (zip 8's zstd feature): streaming decompression
   # flaws. Reached only through the same unused zip build dependency.
   { id = "RUSTSEC-2026-0391", reason = "build-time only, through zip; PROTOC is set" },
@@ -58,6 +69,10 @@ ignore = [
   { id = "RUSTSEC-2021-0153", reason = "encoding: unmaintained, used by EasyTier" },
   { id = "RUSTSEC-2024-0384", reason = "instant: unmaintained, used by EasyTier's reed-solomon-erasure" },
   { id = "RUSTSEC-2024-0436", reason = "paste: unmaintained proc macro" },
+  { id = "RUSTSEC-2026-0370", reason = "zvariant: folded into zbus 6; secret-service 5.2 is on zbus 5" },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names: folded into zbus 6; secret-service 5.2 is on zbus 5" },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive: folded into zbus 6; secret-service 5.2 is on zbus 5" },
+  { id = "RUSTSEC-2026-0543", reason = "chrono: unmaintained advisory, used by EasyTier and core timestamps" },
 ]
 
 [licenses]

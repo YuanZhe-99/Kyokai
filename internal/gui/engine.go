@@ -166,7 +166,9 @@ func (a *App) connectLoop() {
 		client := localapi.NewClient(socket)
 		// The helper is a service: only the GUI's own engine is started.
 		var err error
-		if !a.usesHelper() {
+		if runtime.GOOS == "android" {
+			err = a.ensureInProcessEngine(a.ctx, socket)
+		} else if !a.usesHelper() {
 			err = a.engine.ensure(a.ctx, socket)
 		}
 		if err != nil {
@@ -261,7 +263,12 @@ func (a *App) statusPushed(st *localapi.Status) {
 	}
 	// The connections' tabs follow the sessions (main thread), with or
 	// without the main window.
-	a.later(a.syncViewers)
+	a.later(func() {
+		a.syncViewers()
+		if runtime.GOOS == "android" {
+			a.mobileSyncSessions()
+		}
+	})
 }
 
 // request sends one request to the engine.

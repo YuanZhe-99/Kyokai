@@ -11100,3 +11100,3193 @@ func FilesSettings() string { return In(i18n.Locale()).FilesSettings() }
 func (msgs Messages) FilesSettings() string {
 	return Catalog.Format(msgs.locale, "FilesSettings", nil)
 }
+
+// MobileAboutText says "Kyokai for Android, core {version}. Connects to your Kyokai computers over your own networks."
+// in the language the app shows.
+func MobileAboutText(version string) string { return In(i18n.Locale()).MobileAboutText(version) }
+
+// MobileAboutText says "Kyokai for Android, core {version}. Connects to your Kyokai computers over your own networks."
+// in the language of msgs.
+func (msgs Messages) MobileAboutText(version string) string {
+	return Catalog.Format(msgs.locale, "MobileAboutText", map[string]any{"version": version})
+}
+
+// MobileActionBlockInput says "Block the host's own input"
+// in the language the app shows.
+func MobileActionBlockInput() string { return In(i18n.Locale()).MobileActionBlockInput() }
+
+// MobileActionBlockInput says "Block the host's own input"
+// in the language of msgs.
+func (msgs Messages) MobileActionBlockInput() string {
+	return Catalog.Format(msgs.locale, "MobileActionBlockInput", nil)
+}
+
+// MobileActionLock says "Lock the host"
+// in the language the app shows.
+func MobileActionLock() string { return In(i18n.Locale()).MobileActionLock() }
+
+// MobileActionLock says "Lock the host"
+// in the language of msgs.
+func (msgs Messages) MobileActionLock() string {
+	return Catalog.Format(msgs.locale, "MobileActionLock", nil)
+}
+
+// MobileActionPrivacy says "Privacy screen"
+// in the language the app shows.
+func MobileActionPrivacy() string { return In(i18n.Locale()).MobileActionPrivacy() }
+
+// MobileActionPrivacy says "Privacy screen"
+// in the language of msgs.
+func (msgs Messages) MobileActionPrivacy() string {
+	return Catalog.Format(msgs.locale, "MobileActionPrivacy", nil)
+}
+
+// MobileActionWake says "Wake the screen"
+// in the language the app shows.
+func MobileActionWake() string { return In(i18n.Locale()).MobileActionWake() }
+
+// MobileActionWake says "Wake the screen"
+// in the language of msgs.
+func (msgs Messages) MobileActionWake() string {
+	return Catalog.Format(msgs.locale, "MobileActionWake", nil)
+}
+
+// MobileActionWakeHint says "Turns the host's display back on"
+// in the language the app shows.
+func MobileActionWakeHint() string { return In(i18n.Locale()).MobileActionWakeHint() }
+
+// MobileActionWakeHint says "Turns the host's display back on"
+// in the language of msgs.
+func (msgs Messages) MobileActionWakeHint() string {
+	return Catalog.Format(msgs.locale, "MobileActionWakeHint", nil)
+}
+
+// MobileAiAsksBefore says "Asks before: {actions}"
+// in the language the app shows.
+func MobileAiAsksBefore(actions string) string { return In(i18n.Locale()).MobileAiAsksBefore(actions) }
+
+// MobileAiAsksBefore says "Asks before: {actions}"
+// in the language of msgs.
+func (msgs Messages) MobileAiAsksBefore(actions string) string {
+	return Catalog.Format(msgs.locale, "MobileAiAsksBefore", map[string]any{"actions": actions})
+}
+
+// MobileAiCancelled says "Cancelled"
+// in the language the app shows.
+func MobileAiCancelled() string { return In(i18n.Locale()).MobileAiCancelled() }
+
+// MobileAiCancelled says "Cancelled"
+// in the language of msgs.
+func (msgs Messages) MobileAiCancelled() string {
+	return Catalog.Format(msgs.locale, "MobileAiCancelled", nil)
+}
+
+// MobileAiConfirming says "Waiting for the host to confirm"
+// in the language the app shows.
+func MobileAiConfirming() string { return In(i18n.Locale()).MobileAiConfirming() }
+
+// MobileAiConfirming says "Waiting for the host to confirm"
+// in the language of msgs.
+func (msgs Messages) MobileAiConfirming() string {
+	return Catalog.Format(msgs.locale, "MobileAiConfirming", nil)
+}
+
+// MobileAiDone says "Done"
+// in the language the app shows.
+func MobileAiDone() string { return In(i18n.Locale()).MobileAiDone() }
+
+// MobileAiDone says "Done"
+// in the language of msgs.
+func (msgs Messages) MobileAiDone() string {
+	return Catalog.Format(msgs.locale, "MobileAiDone", nil)
+}
+
+// MobileAiFailed says "Failed"
+// in the language the app shows.
+func MobileAiFailed() string { return In(i18n.Locale()).MobileAiFailed() }
+
+// MobileAiFailed says "Failed"
+// in the language of msgs.
+func (msgs Messages) MobileAiFailed() string {
+	return Catalog.Format(msgs.locale, "MobileAiFailed", nil)
+}
+
+// MobileAiNoTask says "No task running"
+// in the language the app shows.
+func MobileAiNoTask() string { return In(i18n.Locale()).MobileAiNoTask() }
+
+// MobileAiNoTask says "No task running"
+// in the language of msgs.
+func (msgs Messages) MobileAiNoTask() string {
+	return Catalog.Format(msgs.locale, "MobileAiNoTask", nil)
+}
+
+// MobileAiNotAllowed says "This device may not run or approve AI tasks on this host."
+// in the language the app shows.
+func MobileAiNotAllowed() string { return In(i18n.Locale()).MobileAiNotAllowed() }
+
+// MobileAiNotAllowed says "This device may not run or approve AI tasks on this host."
+// in the language of msgs.
+func (msgs Messages) MobileAiNotAllowed() string {
+	return Catalog.Format(msgs.locale, "MobileAiNotAllowed", nil)
+}
+
+// MobileAiOnHost says "AI on the host"
+// in the language the app shows.
+func MobileAiOnHost() string { return In(i18n.Locale()).MobileAiOnHost() }
+
+// MobileAiOnHost says "AI on the host"
+// in the language of msgs.
+func (msgs Messages) MobileAiOnHost() string {
+	return Catalog.Format(msgs.locale, "MobileAiOnHost", nil)
+}
+
+// MobileAiPause says "Pause"
+// in the language the app shows.
+func MobileAiPause() string { return In(i18n.Locale()).MobileAiPause() }
+
+// MobileAiPause says "Pause"
+// in the language of msgs.
+func (msgs Messages) MobileAiPause() string {
+	return Catalog.Format(msgs.locale, "MobileAiPause", nil)
+}
+
+// MobileAiPaused says "Paused"
+// in the language the app shows.
+func MobileAiPaused() string { return In(i18n.Locale()).MobileAiPaused() }
+
+// MobileAiPaused says "Paused"
+// in the language of msgs.
+func (msgs Messages) MobileAiPaused() string {
+	return Catalog.Format(msgs.locale, "MobileAiPaused", nil)
+}
+
+// MobileAiPausedBy says "Paused by {who}"
+// in the language the app shows.
+func MobileAiPausedBy(who string) string { return In(i18n.Locale()).MobileAiPausedBy(who) }
+
+// MobileAiPausedBy says "Paused by {who}"
+// in the language of msgs.
+func (msgs Messages) MobileAiPausedBy(who string) string {
+	return Catalog.Format(msgs.locale, "MobileAiPausedBy", map[string]any{"who": who})
+}
+
+// MobileAiReplyHint says "Reply or add an instruction"
+// in the language the app shows.
+func MobileAiReplyHint() string { return In(i18n.Locale()).MobileAiReplyHint() }
+
+// MobileAiReplyHint says "Reply or add an instruction"
+// in the language of msgs.
+func (msgs Messages) MobileAiReplyHint() string {
+	return Catalog.Format(msgs.locale, "MobileAiReplyHint", nil)
+}
+
+// MobileAiResume says "Resume"
+// in the language the app shows.
+func MobileAiResume() string { return In(i18n.Locale()).MobileAiResume() }
+
+// MobileAiResume says "Resume"
+// in the language of msgs.
+func (msgs Messages) MobileAiResume() string {
+	return Catalog.Format(msgs.locale, "MobileAiResume", nil)
+}
+
+// MobileAiRunning says "Running"
+// in the language the app shows.
+func MobileAiRunning() string { return In(i18n.Locale()).MobileAiRunning() }
+
+// MobileAiRunning says "Running"
+// in the language of msgs.
+func (msgs Messages) MobileAiRunning() string {
+	return Catalog.Format(msgs.locale, "MobileAiRunning", nil)
+}
+
+// MobileAiSteps says "Steps"
+// in the language the app shows.
+func MobileAiSteps() string { return In(i18n.Locale()).MobileAiSteps() }
+
+// MobileAiSteps says "Steps"
+// in the language of msgs.
+func (msgs Messages) MobileAiSteps() string {
+	return Catalog.Format(msgs.locale, "MobileAiSteps", nil)
+}
+
+// MobileAiStop says "Stop"
+// in the language the app shows.
+func MobileAiStop() string { return In(i18n.Locale()).MobileAiStop() }
+
+// MobileAiStop says "Stop"
+// in the language of msgs.
+func (msgs Messages) MobileAiStop() string {
+	return Catalog.Format(msgs.locale, "MobileAiStop", nil)
+}
+
+// MobileAiTask says "AI task"
+// in the language the app shows.
+func MobileAiTask() string { return In(i18n.Locale()).MobileAiTask() }
+
+// MobileAiTask says "AI task"
+// in the language of msgs.
+func (msgs Messages) MobileAiTask() string {
+	return Catalog.Format(msgs.locale, "MobileAiTask", nil)
+}
+
+// MobileAiTaskHint says "What should the host do?"
+// in the language the app shows.
+func MobileAiTaskHint() string { return In(i18n.Locale()).MobileAiTaskHint() }
+
+// MobileAiTaskHint says "What should the host do?"
+// in the language of msgs.
+func (msgs Messages) MobileAiTaskHint() string {
+	return Catalog.Format(msgs.locale, "MobileAiTaskHint", nil)
+}
+
+// MobileAiWaitingApproval says "Waiting for your approval"
+// in the language the app shows.
+func MobileAiWaitingApproval() string { return In(i18n.Locale()).MobileAiWaitingApproval() }
+
+// MobileAiWaitingApproval says "Waiting for your approval"
+// in the language of msgs.
+func (msgs Messages) MobileAiWaitingApproval() string {
+	return Catalog.Format(msgs.locale, "MobileAiWaitingApproval", nil)
+}
+
+// MobileApprove says "Approve"
+// in the language the app shows.
+func MobileApprove() string { return In(i18n.Locale()).MobileApprove() }
+
+// MobileApprove says "Approve"
+// in the language of msgs.
+func (msgs Messages) MobileApprove() string {
+	return Catalog.Format(msgs.locale, "MobileApprove", nil)
+}
+
+// MobileAuto says "Auto"
+// in the language the app shows.
+func MobileAuto() string { return In(i18n.Locale()).MobileAuto() }
+
+// MobileAuto says "Auto"
+// in the language of msgs.
+func (msgs Messages) MobileAuto() string {
+	return Catalog.Format(msgs.locale, "MobileAuto", nil)
+}
+
+// MobileCancel says "Cancel"
+// in the language the app shows.
+func MobileCancel() string { return In(i18n.Locale()).MobileCancel() }
+
+// MobileCancel says "Cancel"
+// in the language of msgs.
+func (msgs Messages) MobileCancel() string {
+	return Catalog.Format(msgs.locale, "MobileCancel", nil)
+}
+
+// MobileConfirmingOnHost says "Someone at the host needs to accept this connection."
+// in the language the app shows.
+func MobileConfirmingOnHost() string { return In(i18n.Locale()).MobileConfirmingOnHost() }
+
+// MobileConfirmingOnHost says "Someone at the host needs to accept this connection."
+// in the language of msgs.
+func (msgs Messages) MobileConfirmingOnHost() string {
+	return Catalog.Format(msgs.locale, "MobileConfirmingOnHost", nil)
+}
+
+// MobileConnect says "Connect"
+// in the language the app shows.
+func MobileConnect() string { return In(i18n.Locale()).MobileConnect() }
+
+// MobileConnect says "Connect"
+// in the language of msgs.
+func (msgs Messages) MobileConnect() string {
+	return Catalog.Format(msgs.locale, "MobileConnect", nil)
+}
+
+// MobileConnectHint says "Device ID, name or address"
+// in the language the app shows.
+func MobileConnectHint() string { return In(i18n.Locale()).MobileConnectHint() }
+
+// MobileConnectHint says "Device ID, name or address"
+// in the language of msgs.
+func (msgs Messages) MobileConnectHint() string {
+	return Catalog.Format(msgs.locale, "MobileConnectHint", nil)
+}
+
+// MobileConnecting says "Connecting…"
+// in the language the app shows.
+func MobileConnecting() string { return In(i18n.Locale()).MobileConnecting() }
+
+// MobileConnecting says "Connecting…"
+// in the language of msgs.
+func (msgs Messages) MobileConnecting() string {
+	return Catalog.Format(msgs.locale, "MobileConnecting", nil)
+}
+
+// MobileCopied says "Copied"
+// in the language the app shows.
+func MobileCopied() string { return In(i18n.Locale()).MobileCopied() }
+
+// MobileCopied says "Copied"
+// in the language of msgs.
+func (msgs Messages) MobileCopied() string {
+	return Catalog.Format(msgs.locale, "MobileCopied", nil)
+}
+
+// MobileCopy says "Copy"
+// in the language the app shows.
+func MobileCopy() string { return In(i18n.Locale()).MobileCopy() }
+
+// MobileCopy says "Copy"
+// in the language of msgs.
+func (msgs Messages) MobileCopy() string {
+	return Catalog.Format(msgs.locale, "MobileCopy", nil)
+}
+
+// MobileCopyReport says "Copy report"
+// in the language the app shows.
+func MobileCopyReport() string { return In(i18n.Locale()).MobileCopyReport() }
+
+// MobileCopyReport says "Copy report"
+// in the language of msgs.
+func (msgs Messages) MobileCopyReport() string {
+	return Catalog.Format(msgs.locale, "MobileCopyReport", nil)
+}
+
+// MobileCopyStatus says "Copy core status"
+// in the language the app shows.
+func MobileCopyStatus() string { return In(i18n.Locale()).MobileCopyStatus() }
+
+// MobileCopyStatus says "Copy core status"
+// in the language of msgs.
+func (msgs Messages) MobileCopyStatus() string {
+	return Catalog.Format(msgs.locale, "MobileCopyStatus", nil)
+}
+
+// MobileDecline says "Decline"
+// in the language the app shows.
+func MobileDecline() string { return In(i18n.Locale()).MobileDecline() }
+
+// MobileDecline says "Decline"
+// in the language of msgs.
+func (msgs Messages) MobileDecline() string {
+	return Catalog.Format(msgs.locale, "MobileDecline", nil)
+}
+
+// MobileDesktop says "Desktop"
+// in the language the app shows.
+func MobileDesktop() string { return In(i18n.Locale()).MobileDesktop() }
+
+// MobileDesktop says "Desktop"
+// in the language of msgs.
+func (msgs Messages) MobileDesktop() string {
+	return Catalog.Format(msgs.locale, "MobileDesktop", nil)
+}
+
+// MobileDeviceGone says "This device is no longer in your list."
+// in the language the app shows.
+func MobileDeviceGone() string { return In(i18n.Locale()).MobileDeviceGone() }
+
+// MobileDeviceGone says "This device is no longer in your list."
+// in the language of msgs.
+func (msgs Messages) MobileDeviceGone() string {
+	return Catalog.Format(msgs.locale, "MobileDeviceGone", nil)
+}
+
+// MobileDeviceId says "Device ID"
+// in the language the app shows.
+func MobileDeviceId() string { return In(i18n.Locale()).MobileDeviceId() }
+
+// MobileDeviceId says "Device ID"
+// in the language of msgs.
+func (msgs Messages) MobileDeviceId() string {
+	return Catalog.Format(msgs.locale, "MobileDeviceId", nil)
+}
+
+// MobileDeviceName says "Device name"
+// in the language the app shows.
+func MobileDeviceName() string { return In(i18n.Locale()).MobileDeviceName() }
+
+// MobileDeviceName says "Device name"
+// in the language of msgs.
+func (msgs Messages) MobileDeviceName() string {
+	return Catalog.Format(msgs.locale, "MobileDeviceName", nil)
+}
+
+// MobileDiagnostics says "Diagnostics"
+// in the language the app shows.
+func MobileDiagnostics() string { return In(i18n.Locale()).MobileDiagnostics() }
+
+// MobileDiagnostics says "Diagnostics"
+// in the language of msgs.
+func (msgs Messages) MobileDiagnostics() string {
+	return Catalog.Format(msgs.locale, "MobileDiagnostics", nil)
+}
+
+// MobileDiagnosticsHint says "Build, decoders, network, and logs to share"
+// in the language the app shows.
+func MobileDiagnosticsHint() string { return In(i18n.Locale()).MobileDiagnosticsHint() }
+
+// MobileDiagnosticsHint says "Build, decoders, network, and logs to share"
+// in the language of msgs.
+func (msgs Messages) MobileDiagnosticsHint() string {
+	return Catalog.Format(msgs.locale, "MobileDiagnosticsHint", nil)
+}
+
+// MobileDirectPaths says "Direct paths"
+// in the language the app shows.
+func MobileDirectPaths() string { return In(i18n.Locale()).MobileDirectPaths() }
+
+// MobileDirectPaths says "Direct paths"
+// in the language of msgs.
+func (msgs Messages) MobileDirectPaths() string {
+	return Catalog.Format(msgs.locale, "MobileDirectPaths", nil)
+}
+
+// MobileDirectPathsHint says "Try to reach devices directly instead of through a relay"
+// in the language the app shows.
+func MobileDirectPathsHint() string { return In(i18n.Locale()).MobileDirectPathsHint() }
+
+// MobileDirectPathsHint says "Try to reach devices directly instead of through a relay"
+// in the language of msgs.
+func (msgs Messages) MobileDirectPathsHint() string {
+	return Catalog.Format(msgs.locale, "MobileDirectPathsHint", nil)
+}
+
+// MobileDisconnect says "Disconnect"
+// in the language the app shows.
+func MobileDisconnect() string { return In(i18n.Locale()).MobileDisconnect() }
+
+// MobileDisconnect says "Disconnect"
+// in the language of msgs.
+func (msgs Messages) MobileDisconnect() string {
+	return Catalog.Format(msgs.locale, "MobileDisconnect", nil)
+}
+
+// MobileDisplayN says "Display {n}"
+// in the language the app shows.
+func MobileDisplayN(n int) string { return In(i18n.Locale()).MobileDisplayN(n) }
+
+// MobileDisplayN says "Display {n}"
+// in the language of msgs.
+func (msgs Messages) MobileDisplayN(n int) string {
+	return Catalog.Format(msgs.locale, "MobileDisplayN", map[string]any{"n": n})
+}
+
+// MobileDisplays says "Displays"
+// in the language the app shows.
+func MobileDisplays() string { return In(i18n.Locale()).MobileDisplays() }
+
+// MobileDisplays says "Displays"
+// in the language of msgs.
+func (msgs Messages) MobileDisplays() string {
+	return Catalog.Format(msgs.locale, "MobileDisplays", nil)
+}
+
+// MobileFailAbsent says "The device isn't online"
+// in the language the app shows.
+func MobileFailAbsent() string { return In(i18n.Locale()).MobileFailAbsent() }
+
+// MobileFailAbsent says "The device isn't online"
+// in the language of msgs.
+func (msgs Messages) MobileFailAbsent() string {
+	return Catalog.Format(msgs.locale, "MobileFailAbsent", nil)
+}
+
+// MobileFailBroken says "The connection broke"
+// in the language the app shows.
+func MobileFailBroken() string { return In(i18n.Locale()).MobileFailBroken() }
+
+// MobileFailBroken says "The connection broke"
+// in the language of msgs.
+func (msgs Messages) MobileFailBroken() string {
+	return Catalog.Format(msgs.locale, "MobileFailBroken", nil)
+}
+
+// MobileFailBusy says "The host is busy"
+// in the language the app shows.
+func MobileFailBusy() string { return In(i18n.Locale()).MobileFailBusy() }
+
+// MobileFailBusy says "The host is busy"
+// in the language of msgs.
+func (msgs Messages) MobileFailBusy() string {
+	return Catalog.Format(msgs.locale, "MobileFailBusy", nil)
+}
+
+// MobileFailDenied says "The host declined"
+// in the language the app shows.
+func MobileFailDenied() string { return In(i18n.Locale()).MobileFailDenied() }
+
+// MobileFailDenied says "The host declined"
+// in the language of msgs.
+func (msgs Messages) MobileFailDenied() string {
+	return Catalog.Format(msgs.locale, "MobileFailDenied", nil)
+}
+
+// MobileFailIncompatible says "The host's Kyokai version isn't compatible"
+// in the language the app shows.
+func MobileFailIncompatible() string { return In(i18n.Locale()).MobileFailIncompatible() }
+
+// MobileFailIncompatible says "The host's Kyokai version isn't compatible"
+// in the language of msgs.
+func (msgs Messages) MobileFailIncompatible() string {
+	return Catalog.Format(msgs.locale, "MobileFailIncompatible", nil)
+}
+
+// MobileFailKeyChanged says "The host's identity changed. Forget it and connect again only if you trust it."
+// in the language the app shows.
+func MobileFailKeyChanged() string { return In(i18n.Locale()).MobileFailKeyChanged() }
+
+// MobileFailKeyChanged says "The host's identity changed. Forget it and connect again only if you trust it."
+// in the language of msgs.
+func (msgs Messages) MobileFailKeyChanged() string {
+	return Catalog.Format(msgs.locale, "MobileFailKeyChanged", nil)
+}
+
+// MobileFailPassword says "Wrong password"
+// in the language the app shows.
+func MobileFailPassword() string { return In(i18n.Locale()).MobileFailPassword() }
+
+// MobileFailPassword says "Wrong password"
+// in the language of msgs.
+func (msgs Messages) MobileFailPassword() string {
+	return Catalog.Format(msgs.locale, "MobileFailPassword", nil)
+}
+
+// MobileFailRateLimited says "Too many attempts. Try again later."
+// in the language the app shows.
+func MobileFailRateLimited() string { return In(i18n.Locale()).MobileFailRateLimited() }
+
+// MobileFailRateLimited says "Too many attempts. Try again later."
+// in the language of msgs.
+func (msgs Messages) MobileFailRateLimited() string {
+	return Catalog.Format(msgs.locale, "MobileFailRateLimited", nil)
+}
+
+// MobileFailSelf says "That's this device"
+// in the language the app shows.
+func MobileFailSelf() string { return In(i18n.Locale()).MobileFailSelf() }
+
+// MobileFailSelf says "That's this device"
+// in the language of msgs.
+func (msgs Messages) MobileFailSelf() string {
+	return Catalog.Format(msgs.locale, "MobileFailSelf", nil)
+}
+
+// MobileFailServiceDown says "The service isn't running on the host"
+// in the language the app shows.
+func MobileFailServiceDown() string { return In(i18n.Locale()).MobileFailServiceDown() }
+
+// MobileFailServiceDown says "The service isn't running on the host"
+// in the language of msgs.
+func (msgs Messages) MobileFailServiceDown() string {
+	return Catalog.Format(msgs.locale, "MobileFailServiceDown", nil)
+}
+
+// MobileFailTimeout says "Timed out"
+// in the language the app shows.
+func MobileFailTimeout() string { return In(i18n.Locale()).MobileFailTimeout() }
+
+// MobileFailTimeout says "Timed out"
+// in the language of msgs.
+func (msgs Messages) MobileFailTimeout() string {
+	return Catalog.Format(msgs.locale, "MobileFailTimeout", nil)
+}
+
+// MobileFailUnknown says "Couldn't connect"
+// in the language the app shows.
+func MobileFailUnknown() string { return In(i18n.Locale()).MobileFailUnknown() }
+
+// MobileFailUnknown says "Couldn't connect"
+// in the language of msgs.
+func (msgs Messages) MobileFailUnknown() string {
+	return Catalog.Format(msgs.locale, "MobileFailUnknown", nil)
+}
+
+// MobileFailUnreachable says "Can't reach the device"
+// in the language the app shows.
+func MobileFailUnreachable() string { return In(i18n.Locale()).MobileFailUnreachable() }
+
+// MobileFailUnreachable says "Can't reach the device"
+// in the language of msgs.
+func (msgs Messages) MobileFailUnreachable() string {
+	return Catalog.Format(msgs.locale, "MobileFailUnreachable", nil)
+}
+
+// MobileFailUnsupported says "The host doesn't support this"
+// in the language the app shows.
+func MobileFailUnsupported() string { return In(i18n.Locale()).MobileFailUnsupported() }
+
+// MobileFailUnsupported says "The host doesn't support this"
+// in the language of msgs.
+func (msgs Messages) MobileFailUnsupported() string {
+	return Catalog.Format(msgs.locale, "MobileFailUnsupported", nil)
+}
+
+// MobileFailWrongDevice says "A different device answered at that address"
+// in the language the app shows.
+func MobileFailWrongDevice() string { return In(i18n.Locale()).MobileFailWrongDevice() }
+
+// MobileFailWrongDevice says "A different device answered at that address"
+// in the language of msgs.
+func (msgs Messages) MobileFailWrongDevice() string {
+	return Catalog.Format(msgs.locale, "MobileFailWrongDevice", nil)
+}
+
+// MobileFilterAll says "All"
+// in the language the app shows.
+func MobileFilterAll() string { return In(i18n.Locale()).MobileFilterAll() }
+
+// MobileFilterAll says "All"
+// in the language of msgs.
+func (msgs Messages) MobileFilterAll() string {
+	return Catalog.Format(msgs.locale, "MobileFilterAll", nil)
+}
+
+// MobileFilterOffline says "Offline"
+// in the language the app shows.
+func MobileFilterOffline() string { return In(i18n.Locale()).MobileFilterOffline() }
+
+// MobileFilterOffline says "Offline"
+// in the language of msgs.
+func (msgs Messages) MobileFilterOffline() string {
+	return Catalog.Format(msgs.locale, "MobileFilterOffline", nil)
+}
+
+// MobileFilterOnline says "Online"
+// in the language the app shows.
+func MobileFilterOnline() string { return In(i18n.Locale()).MobileFilterOnline() }
+
+// MobileFilterOnline says "Online"
+// in the language of msgs.
+func (msgs Messages) MobileFilterOnline() string {
+	return Catalog.Format(msgs.locale, "MobileFilterOnline", nil)
+}
+
+// MobileForget says "Forget"
+// in the language the app shows.
+func MobileForget() string { return In(i18n.Locale()).MobileForget() }
+
+// MobileForget says "Forget"
+// in the language of msgs.
+func (msgs Messages) MobileForget() string {
+	return Catalog.Format(msgs.locale, "MobileForget", nil)
+}
+
+// MobileForgetIdentity says "Start over"
+// in the language the app shows.
+func MobileForgetIdentity() string { return In(i18n.Locale()).MobileForgetIdentity() }
+
+// MobileForgetIdentity says "Start over"
+// in the language of msgs.
+func (msgs Messages) MobileForgetIdentity() string {
+	return Catalog.Format(msgs.locale, "MobileForgetIdentity", nil)
+}
+
+// MobileForgetIdentityHint says "A new device ID; every host has to trust this phone again"
+// in the language the app shows.
+func MobileForgetIdentityHint() string { return In(i18n.Locale()).MobileForgetIdentityHint() }
+
+// MobileForgetIdentityHint says "A new device ID; every host has to trust this phone again"
+// in the language of msgs.
+func (msgs Messages) MobileForgetIdentityHint() string {
+	return Catalog.Format(msgs.locale, "MobileForgetIdentityHint", nil)
+}
+
+// MobileInputPaused says "Input paused"
+// in the language the app shows.
+func MobileInputPaused() string { return In(i18n.Locale()).MobileInputPaused() }
+
+// MobileInputPaused says "Input paused"
+// in the language of msgs.
+func (msgs Messages) MobileInputPaused() string {
+	return Catalog.Format(msgs.locale, "MobileInputPaused", nil)
+}
+
+// MobileKeyAdmitted says "Admitted"
+// in the language the app shows.
+func MobileKeyAdmitted() string { return In(i18n.Locale()).MobileKeyAdmitted() }
+
+// MobileKeyAdmitted says "Admitted"
+// in the language of msgs.
+func (msgs Messages) MobileKeyAdmitted() string {
+	return Catalog.Format(msgs.locale, "MobileKeyAdmitted", nil)
+}
+
+// MobileKeyName says "Key name"
+// in the language the app shows.
+func MobileKeyName() string { return In(i18n.Locale()).MobileKeyName() }
+
+// MobileKeyName says "Key name"
+// in the language of msgs.
+func (msgs Messages) MobileKeyName() string {
+	return Catalog.Format(msgs.locale, "MobileKeyName", nil)
+}
+
+// MobileKeyNew says "New key"
+// in the language the app shows.
+func MobileKeyNew() string { return In(i18n.Locale()).MobileKeyNew() }
+
+// MobileKeyNew says "New key"
+// in the language of msgs.
+func (msgs Messages) MobileKeyNew() string {
+	return Catalog.Format(msgs.locale, "MobileKeyNew", nil)
+}
+
+// MobileKeyboard says "Keyboard"
+// in the language the app shows.
+func MobileKeyboard() string { return In(i18n.Locale()).MobileKeyboard() }
+
+// MobileKeyboard says "Keyboard"
+// in the language of msgs.
+func (msgs Messages) MobileKeyboard() string {
+	return Catalog.Format(msgs.locale, "MobileKeyboard", nil)
+}
+
+// MobileLanguage says "Language"
+// in the language the app shows.
+func MobileLanguage() string { return In(i18n.Locale()).MobileLanguage() }
+
+// MobileLanguage says "Language"
+// in the language of msgs.
+func (msgs Messages) MobileLanguage() string {
+	return Catalog.Format(msgs.locale, "MobileLanguage", nil)
+}
+
+// MobileLatencyFirst says "Lowest latency first"
+// in the language the app shows.
+func MobileLatencyFirst() string { return In(i18n.Locale()).MobileLatencyFirst() }
+
+// MobileLatencyFirst says "Lowest latency first"
+// in the language of msgs.
+func (msgs Messages) MobileLatencyFirst() string {
+	return Catalog.Format(msgs.locale, "MobileLatencyFirst", nil)
+}
+
+// MobileLatencyFirstHint says "Prefer the fastest path over the cheapest"
+// in the language the app shows.
+func MobileLatencyFirstHint() string { return In(i18n.Locale()).MobileLatencyFirstHint() }
+
+// MobileLatencyFirstHint says "Prefer the fastest path over the cheapest"
+// in the language of msgs.
+func (msgs Messages) MobileLatencyFirstHint() string {
+	return Catalog.Format(msgs.locale, "MobileLatencyFirstHint", nil)
+}
+
+// MobileLogsPrivacy says "Logs hold device IDs, addresses and errors, never passwords or keys."
+// in the language the app shows.
+func MobileLogsPrivacy() string { return In(i18n.Locale()).MobileLogsPrivacy() }
+
+// MobileLogsPrivacy says "Logs hold device IDs, addresses and errors, never passwords or keys."
+// in the language of msgs.
+func (msgs Messages) MobileLogsPrivacy() string {
+	return Catalog.Format(msgs.locale, "MobileLogsPrivacy", nil)
+}
+
+// MobileMemoryOnly says "Secrets in memory only"
+// in the language the app shows.
+func MobileMemoryOnly() string { return In(i18n.Locale()).MobileMemoryOnly() }
+
+// MobileMemoryOnly says "Secrets in memory only"
+// in the language of msgs.
+func (msgs Messages) MobileMemoryOnly() string {
+	return Catalog.Format(msgs.locale, "MobileMemoryOnly", nil)
+}
+
+// MobileMemoryOnlyHint says "This phone's keystore isn't available, so saved passwords and keys are lost when the app closes."
+// in the language the app shows.
+func MobileMemoryOnlyHint() string { return In(i18n.Locale()).MobileMemoryOnlyHint() }
+
+// MobileMemoryOnlyHint says "This phone's keystore isn't available, so saved passwords and keys are lost when the app closes."
+// in the language of msgs.
+func (msgs Messages) MobileMemoryOnlyHint() string {
+	return Catalog.Format(msgs.locale, "MobileMemoryOnlyHint", nil)
+}
+
+// MobileMore says "More"
+// in the language the app shows.
+func MobileMore() string { return In(i18n.Locale()).MobileMore() }
+
+// MobileMore says "More"
+// in the language of msgs.
+func (msgs Messages) MobileMore() string {
+	return Catalog.Format(msgs.locale, "MobileMore", nil)
+}
+
+// MobileMouseLeft says "Left click"
+// in the language the app shows.
+func MobileMouseLeft() string { return In(i18n.Locale()).MobileMouseLeft() }
+
+// MobileMouseLeft says "Left click"
+// in the language of msgs.
+func (msgs Messages) MobileMouseLeft() string {
+	return Catalog.Format(msgs.locale, "MobileMouseLeft", nil)
+}
+
+// MobileMouseRight says "Right click"
+// in the language the app shows.
+func MobileMouseRight() string { return In(i18n.Locale()).MobileMouseRight() }
+
+// MobileMouseRight says "Right click"
+// in the language of msgs.
+func (msgs Messages) MobileMouseRight() string {
+	return Catalog.Format(msgs.locale, "MobileMouseRight", nil)
+}
+
+// MobileNavDevices says "Devices"
+// in the language the app shows.
+func MobileNavDevices() string { return In(i18n.Locale()).MobileNavDevices() }
+
+// MobileNavDevices says "Devices"
+// in the language of msgs.
+func (msgs Messages) MobileNavDevices() string {
+	return Catalog.Format(msgs.locale, "MobileNavDevices", nil)
+}
+
+// MobileNavSessions says "Sessions"
+// in the language the app shows.
+func MobileNavSessions() string { return In(i18n.Locale()).MobileNavSessions() }
+
+// MobileNavSessions says "Sessions"
+// in the language of msgs.
+func (msgs Messages) MobileNavSessions() string {
+	return Catalog.Format(msgs.locale, "MobileNavSessions", nil)
+}
+
+// MobileNavSettings says "Settings"
+// in the language the app shows.
+func MobileNavSettings() string { return In(i18n.Locale()).MobileNavSettings() }
+
+// MobileNavSettings says "Settings"
+// in the language of msgs.
+func (msgs Messages) MobileNavSettings() string {
+	return Catalog.Format(msgs.locale, "MobileNavSettings", nil)
+}
+
+// MobileNetConnecting says "Connecting"
+// in the language the app shows.
+func MobileNetConnecting() string { return In(i18n.Locale()).MobileNetConnecting() }
+
+// MobileNetConnecting says "Connecting"
+// in the language of msgs.
+func (msgs Messages) MobileNetConnecting() string {
+	return Catalog.Format(msgs.locale, "MobileNetConnecting", nil)
+}
+
+// MobileNetError says "Network error"
+// in the language the app shows.
+func MobileNetError() string { return In(i18n.Locale()).MobileNetError() }
+
+// MobileNetError says "Network error"
+// in the language of msgs.
+func (msgs Messages) MobileNetError() string {
+	return Catalog.Format(msgs.locale, "MobileNetError", nil)
+}
+
+// MobileNetOff says "No network"
+// in the language the app shows.
+func MobileNetOff() string { return In(i18n.Locale()).MobileNetOff() }
+
+// MobileNetOff says "No network"
+// in the language of msgs.
+func (msgs Messages) MobileNetOff() string {
+	return Catalog.Format(msgs.locale, "MobileNetOff", nil)
+}
+
+// MobileNetOnline says "Online"
+// in the language the app shows.
+func MobileNetOnline() string { return In(i18n.Locale()).MobileNetOnline() }
+
+// MobileNetOnline says "Online"
+// in the language of msgs.
+func (msgs Messages) MobileNetOnline() string {
+	return Catalog.Format(msgs.locale, "MobileNetOnline", nil)
+}
+
+// MobileNetworkAdd says "Add network"
+// in the language the app shows.
+func MobileNetworkAdd() string { return In(i18n.Locale()).MobileNetworkAdd() }
+
+// MobileNetworkAdd says "Add network"
+// in the language of msgs.
+func (msgs Messages) MobileNetworkAdd() string {
+	return Catalog.Format(msgs.locale, "MobileNetworkAdd", nil)
+}
+
+// MobileNetworkDevices says "{count, plural, one {1 device} other {# devices}}"
+// in the language the app shows.
+func MobileNetworkDevices(count int) string { return In(i18n.Locale()).MobileNetworkDevices(count) }
+
+// MobileNetworkDevices says "{count, plural, one {1 device} other {# devices}}"
+// in the language of msgs.
+func (msgs Messages) MobileNetworkDevices(count int) string {
+	return Catalog.Format(msgs.locale, "MobileNetworkDevices", map[string]any{"count": count})
+}
+
+// MobileNetworkEdit says "Edit network"
+// in the language the app shows.
+func MobileNetworkEdit() string { return In(i18n.Locale()).MobileNetworkEdit() }
+
+// MobileNetworkEdit says "Edit network"
+// in the language of msgs.
+func (msgs Messages) MobileNetworkEdit() string {
+	return Catalog.Format(msgs.locale, "MobileNetworkEdit", nil)
+}
+
+// MobileNetworkLabel says "Label"
+// in the language the app shows.
+func MobileNetworkLabel() string { return In(i18n.Locale()).MobileNetworkLabel() }
+
+// MobileNetworkLabel says "Label"
+// in the language of msgs.
+func (msgs Messages) MobileNetworkLabel() string {
+	return Catalog.Format(msgs.locale, "MobileNetworkLabel", nil)
+}
+
+// MobileNetworkName says "Network name"
+// in the language the app shows.
+func MobileNetworkName() string { return In(i18n.Locale()).MobileNetworkName() }
+
+// MobileNetworkName says "Network name"
+// in the language of msgs.
+func (msgs Messages) MobileNetworkName() string {
+	return Catalog.Format(msgs.locale, "MobileNetworkName", nil)
+}
+
+// MobileNetworkSecret says "Network secret"
+// in the language the app shows.
+func MobileNetworkSecret() string { return In(i18n.Locale()).MobileNetworkSecret() }
+
+// MobileNetworkSecret says "Network secret"
+// in the language of msgs.
+func (msgs Messages) MobileNetworkSecret() string {
+	return Catalog.Format(msgs.locale, "MobileNetworkSecret", nil)
+}
+
+// MobileNetworkSecretKeep says "Leave empty to keep the current secret"
+// in the language the app shows.
+func MobileNetworkSecretKeep() string { return In(i18n.Locale()).MobileNetworkSecretKeep() }
+
+// MobileNetworkSecretKeep says "Leave empty to keep the current secret"
+// in the language of msgs.
+func (msgs Messages) MobileNetworkSecretKeep() string {
+	return Catalog.Format(msgs.locale, "MobileNetworkSecretKeep", nil)
+}
+
+// MobileNetworkServers says "Servers"
+// in the language the app shows.
+func MobileNetworkServers() string { return In(i18n.Locale()).MobileNetworkServers() }
+
+// MobileNetworkServers says "Servers"
+// in the language of msgs.
+func (msgs Messages) MobileNetworkServers() string {
+	return Catalog.Format(msgs.locale, "MobileNetworkServers", nil)
+}
+
+// MobileNetworks says "Networks"
+// in the language the app shows.
+func MobileNetworks() string { return In(i18n.Locale()).MobileNetworks() }
+
+// MobileNetworks says "Networks"
+// in the language of msgs.
+func (msgs Messages) MobileNetworks() string {
+	return Catalog.Format(msgs.locale, "MobileNetworks", nil)
+}
+
+// MobileNetworksExplain says "Join up to 8 EasyTier networks. Devices on any of them can reach each other."
+// in the language the app shows.
+func MobileNetworksExplain() string { return In(i18n.Locale()).MobileNetworksExplain() }
+
+// MobileNetworksExplain says "Join up to 8 EasyTier networks. Devices on any of them can reach each other."
+// in the language of msgs.
+func (msgs Messages) MobileNetworksExplain() string {
+	return Catalog.Format(msgs.locale, "MobileNetworksExplain", nil)
+}
+
+// MobileNoDeviceSelected says "Choose a device"
+// in the language the app shows.
+func MobileNoDeviceSelected() string { return In(i18n.Locale()).MobileNoDeviceSelected() }
+
+// MobileNoDeviceSelected says "Choose a device"
+// in the language of msgs.
+func (msgs Messages) MobileNoDeviceSelected() string {
+	return Catalog.Format(msgs.locale, "MobileNoDeviceSelected", nil)
+}
+
+// MobileNoDevices says "No devices yet"
+// in the language the app shows.
+func MobileNoDevices() string { return In(i18n.Locale()).MobileNoDevices() }
+
+// MobileNoDevices says "No devices yet"
+// in the language of msgs.
+func (msgs Messages) MobileNoDevices() string {
+	return Catalog.Format(msgs.locale, "MobileNoDevices", nil)
+}
+
+// MobileNoDevicesHint says "Devices on your networks appear here. You can also connect by ID or address."
+// in the language the app shows.
+func MobileNoDevicesHint() string { return In(i18n.Locale()).MobileNoDevicesHint() }
+
+// MobileNoDevicesHint says "Devices on your networks appear here. You can also connect by ID or address."
+// in the language of msgs.
+func (msgs Messages) MobileNoDevicesHint() string {
+	return Catalog.Format(msgs.locale, "MobileNoDevicesHint", nil)
+}
+
+// MobileNoDevicesNoNetwork says "Join a network in Settings to see your devices."
+// in the language the app shows.
+func MobileNoDevicesNoNetwork() string { return In(i18n.Locale()).MobileNoDevicesNoNetwork() }
+
+// MobileNoDevicesNoNetwork says "Join a network in Settings to see your devices."
+// in the language of msgs.
+func (msgs Messages) MobileNoDevicesNoNetwork() string {
+	return Catalog.Format(msgs.locale, "MobileNoDevicesNoNetwork", nil)
+}
+
+// MobileNoSessions says "No open sessions"
+// in the language the app shows.
+func MobileNoSessions() string { return In(i18n.Locale()).MobileNoSessions() }
+
+// MobileNoSessions says "No open sessions"
+// in the language of msgs.
+func (msgs Messages) MobileNoSessions() string {
+	return Catalog.Format(msgs.locale, "MobileNoSessions", nil)
+}
+
+// MobileNoViewPermission says "This device may not view the host's screen."
+// in the language the app shows.
+func MobileNoViewPermission() string { return In(i18n.Locale()).MobileNoViewPermission() }
+
+// MobileNoViewPermission says "This device may not view the host's screen."
+// in the language of msgs.
+func (msgs Messages) MobileNoViewPermission() string {
+	return Catalog.Format(msgs.locale, "MobileNoViewPermission", nil)
+}
+
+// MobileNotInThisBuild says "Not in this build yet"
+// in the language the app shows.
+func MobileNotInThisBuild() string { return In(i18n.Locale()).MobileNotInThisBuild() }
+
+// MobileNotInThisBuild says "Not in this build yet"
+// in the language of msgs.
+func (msgs Messages) MobileNotInThisBuild() string {
+	return Catalog.Format(msgs.locale, "MobileNotInThisBuild", nil)
+}
+
+// MobileNotSaved says "Not saved"
+// in the language the app shows.
+func MobileNotSaved() string { return In(i18n.Locale()).MobileNotSaved() }
+
+// MobileNotSaved says "Not saved"
+// in the language of msgs.
+func (msgs Messages) MobileNotSaved() string {
+	return Catalog.Format(msgs.locale, "MobileNotSaved", nil)
+}
+
+// MobileOfflineHint says "The device is offline. It shows up when it's back on a network you share."
+// in the language the app shows.
+func MobileOfflineHint() string { return In(i18n.Locale()).MobileOfflineHint() }
+
+// MobileOfflineHint says "The device is offline. It shows up when it's back on a network you share."
+// in the language of msgs.
+func (msgs Messages) MobileOfflineHint() string {
+	return Catalog.Format(msgs.locale, "MobileOfflineHint", nil)
+}
+
+// MobileOk says "OK"
+// in the language the app shows.
+func MobileOk() string { return In(i18n.Locale()).MobileOk() }
+
+// MobileOk says "OK"
+// in the language of msgs.
+func (msgs Messages) MobileOk() string {
+	return Catalog.Format(msgs.locale, "MobileOk", nil)
+}
+
+// MobileOpenDesktop says "Open desktop"
+// in the language the app shows.
+func MobileOpenDesktop() string { return In(i18n.Locale()).MobileOpenDesktop() }
+
+// MobileOpenDesktop says "Open desktop"
+// in the language of msgs.
+func (msgs Messages) MobileOpenDesktop() string {
+	return Catalog.Format(msgs.locale, "MobileOpenDesktop", nil)
+}
+
+// MobilePassword says "Password"
+// in the language the app shows.
+func MobilePassword() string { return In(i18n.Locale()).MobilePassword() }
+
+// MobilePassword says "Password"
+// in the language of msgs.
+func (msgs Messages) MobilePassword() string {
+	return Catalog.Format(msgs.locale, "MobilePassword", nil)
+}
+
+// MobilePasswordFor says "Password for {name}"
+// in the language the app shows.
+func MobilePasswordFor(name string) string { return In(i18n.Locale()).MobilePasswordFor(name) }
+
+// MobilePasswordFor says "Password for {name}"
+// in the language of msgs.
+func (msgs Messages) MobilePasswordFor(name string) string {
+	return Catalog.Format(msgs.locale, "MobilePasswordFor", map[string]any{"name": name})
+}
+
+// MobilePasswordHint says "The host's connection password"
+// in the language the app shows.
+func MobilePasswordHint() string { return In(i18n.Locale()).MobilePasswordHint() }
+
+// MobilePasswordHint says "The host's connection password"
+// in the language of msgs.
+func (msgs Messages) MobilePasswordHint() string {
+	return Catalog.Format(msgs.locale, "MobilePasswordHint", nil)
+}
+
+// MobilePathAddress says "Via {address}"
+// in the language the app shows.
+func MobilePathAddress(address string) string { return In(i18n.Locale()).MobilePathAddress(address) }
+
+// MobilePathAddress says "Via {address}"
+// in the language of msgs.
+func (msgs Messages) MobilePathAddress(address string) string {
+	return Catalog.Format(msgs.locale, "MobilePathAddress", map[string]any{"address": address})
+}
+
+// MobilePathDirect says "Direct"
+// in the language the app shows.
+func MobilePathDirect() string { return In(i18n.Locale()).MobilePathDirect() }
+
+// MobilePathDirect says "Direct"
+// in the language of msgs.
+func (msgs Messages) MobilePathDirect() string {
+	return Catalog.Format(msgs.locale, "MobilePathDirect", nil)
+}
+
+// MobilePathLan says "Local network"
+// in the language the app shows.
+func MobilePathLan() string { return In(i18n.Locale()).MobilePathLan() }
+
+// MobilePathLan says "Local network"
+// in the language of msgs.
+func (msgs Messages) MobilePathLan() string {
+	return Catalog.Format(msgs.locale, "MobilePathLan", nil)
+}
+
+// MobilePathRelay says "Relay"
+// in the language the app shows.
+func MobilePathRelay() string { return In(i18n.Locale()).MobilePathRelay() }
+
+// MobilePathRelay says "Relay"
+// in the language of msgs.
+func (msgs Messages) MobilePathRelay() string {
+	return Catalog.Format(msgs.locale, "MobilePathRelay", nil)
+}
+
+// MobilePointerSpeed says "Pointer speed"
+// in the language the app shows.
+func MobilePointerSpeed() string { return In(i18n.Locale()).MobilePointerSpeed() }
+
+// MobilePointerSpeed says "Pointer speed"
+// in the language of msgs.
+func (msgs Messages) MobilePointerSpeed() string {
+	return Catalog.Format(msgs.locale, "MobilePointerSpeed", nil)
+}
+
+// MobileCursorSize says "Cursor size"
+// in the language the app shows.
+func MobileCursorSize() string { return In(i18n.Locale()).MobileCursorSize() }
+
+// MobileCursorSize says "Cursor size"
+// in the language of msgs.
+func (msgs Messages) MobileCursorSize() string {
+	return Catalog.Format(msgs.locale, "MobileCursorSize", nil)
+}
+
+// MobilePointerTouch says "Touch"
+// in the language the app shows.
+func MobilePointerTouch() string { return In(i18n.Locale()).MobilePointerTouch() }
+
+// MobilePointerTouch says "Touch"
+// in the language of msgs.
+func (msgs Messages) MobilePointerTouch() string {
+	return Catalog.Format(msgs.locale, "MobilePointerTouch", nil)
+}
+
+// MobilePointerTrackpad says "Trackpad"
+// in the language the app shows.
+func MobilePointerTrackpad() string { return In(i18n.Locale()).MobilePointerTrackpad() }
+
+// MobilePointerTrackpad says "Trackpad"
+// in the language of msgs.
+func (msgs Messages) MobilePointerTrackpad() string {
+	return Catalog.Format(msgs.locale, "MobilePointerTrackpad", nil)
+}
+
+// MobilePrimary says "Primary"
+// in the language the app shows.
+func MobilePrimary() string { return In(i18n.Locale()).MobilePrimary() }
+
+// MobilePrimary says "Primary"
+// in the language of msgs.
+func (msgs Messages) MobilePrimary() string {
+	return Catalog.Format(msgs.locale, "MobilePrimary", nil)
+}
+
+// MobilePublicKeyCopied says "Public key copied"
+// in the language the app shows.
+func MobilePublicKeyCopied() string { return In(i18n.Locale()).MobilePublicKeyCopied() }
+
+// MobilePublicKeyCopied says "Public key copied"
+// in the language of msgs.
+func (msgs Messages) MobilePublicKeyCopied() string {
+	return Catalog.Format(msgs.locale, "MobilePublicKeyCopied", nil)
+}
+
+// MobileQuality says "Quality"
+// in the language the app shows.
+func MobileQuality() string { return In(i18n.Locale()).MobileQuality() }
+
+// MobileQuality says "Quality"
+// in the language of msgs.
+func (msgs Messages) MobileQuality() string {
+	return Catalog.Format(msgs.locale, "MobileQuality", nil)
+}
+
+// MobileQualityBalanced says "Balanced"
+// in the language the app shows.
+func MobileQualityBalanced() string { return In(i18n.Locale()).MobileQualityBalanced() }
+
+// MobileQualityBalanced says "Balanced"
+// in the language of msgs.
+func (msgs Messages) MobileQualityBalanced() string {
+	return Catalog.Format(msgs.locale, "MobileQualityBalanced", nil)
+}
+
+// MobileQualityBest says "Best picture"
+// in the language the app shows.
+func MobileQualityBest() string { return In(i18n.Locale()).MobileQualityBest() }
+
+// MobileQualityBest says "Best picture"
+// in the language of msgs.
+func (msgs Messages) MobileQualityBest() string {
+	return Catalog.Format(msgs.locale, "MobileQualityBest", nil)
+}
+
+// MobileQualityCodec says "Codec"
+// in the language the app shows.
+func MobileQualityCodec() string { return In(i18n.Locale()).MobileQualityCodec() }
+
+// MobileQualityCodec says "Codec"
+// in the language of msgs.
+func (msgs Messages) MobileQualityCodec() string {
+	return Catalog.Format(msgs.locale, "MobileQualityCodec", nil)
+}
+
+// MobileQualityFps says "Frame rate"
+// in the language the app shows.
+func MobileQualityFps() string { return In(i18n.Locale()).MobileQualityFps() }
+
+// MobileQualityFps says "Frame rate"
+// in the language of msgs.
+func (msgs Messages) MobileQualityFps() string {
+	return Catalog.Format(msgs.locale, "MobileQualityFps", nil)
+}
+
+// MobileQualityPreset says "Preset"
+// in the language the app shows.
+func MobileQualityPreset() string { return In(i18n.Locale()).MobileQualityPreset() }
+
+// MobileQualityPreset says "Preset"
+// in the language of msgs.
+func (msgs Messages) MobileQualityPreset() string {
+	return Catalog.Format(msgs.locale, "MobileQualityPreset", nil)
+}
+
+// MobileQualityResolution says "Resolution"
+// in the language the app shows.
+func MobileQualityResolution() string { return In(i18n.Locale()).MobileQualityResolution() }
+
+// MobileQualityResolution says "Resolution"
+// in the language of msgs.
+func (msgs Messages) MobileQualityResolution() string {
+	return Catalog.Format(msgs.locale, "MobileQualityResolution", nil)
+}
+
+// MobileQualitySpeed says "Fastest"
+// in the language the app shows.
+func MobileQualitySpeed() string { return In(i18n.Locale()).MobileQualitySpeed() }
+
+// MobileQualitySpeed says "Fastest"
+// in the language of msgs.
+func (msgs Messages) MobileQualitySpeed() string {
+	return Catalog.Format(msgs.locale, "MobileQualitySpeed", nil)
+}
+
+// MobileReconnecting says "Reconnecting…"
+// in the language the app shows.
+func MobileReconnecting() string { return In(i18n.Locale()).MobileReconnecting() }
+
+// MobileReconnecting says "Reconnecting…"
+// in the language of msgs.
+func (msgs Messages) MobileReconnecting() string {
+	return Catalog.Format(msgs.locale, "MobileReconnecting", nil)
+}
+
+// MobileRememberPassword says "Remember password"
+// in the language the app shows.
+func MobileRememberPassword() string { return In(i18n.Locale()).MobileRememberPassword() }
+
+// MobileRememberPassword says "Remember password"
+// in the language of msgs.
+func (msgs Messages) MobileRememberPassword() string {
+	return Catalog.Format(msgs.locale, "MobileRememberPassword", nil)
+}
+
+// MobileRemove says "Remove"
+// in the language the app shows.
+func MobileRemove() string { return In(i18n.Locale()).MobileRemove() }
+
+// MobileRemove says "Remove"
+// in the language of msgs.
+func (msgs Messages) MobileRemove() string {
+	return Catalog.Format(msgs.locale, "MobileRemove", nil)
+}
+
+// MobileRemoveDevice says "Remove device"
+// in the language the app shows.
+func MobileRemoveDevice() string { return In(i18n.Locale()).MobileRemoveDevice() }
+
+// MobileRemoveDevice says "Remove device"
+// in the language of msgs.
+func (msgs Messages) MobileRemoveDevice() string {
+	return Catalog.Format(msgs.locale, "MobileRemoveDevice", nil)
+}
+
+// MobileRemoveDeviceHint says "Remove {name} and what this phone saved for it?"
+// in the language the app shows.
+func MobileRemoveDeviceHint(name string) string {
+	return In(i18n.Locale()).MobileRemoveDeviceHint(name)
+}
+
+// MobileRemoveDeviceHint says "Remove {name} and what this phone saved for it?"
+// in the language of msgs.
+func (msgs Messages) MobileRemoveDeviceHint(name string) string {
+	return Catalog.Format(msgs.locale, "MobileRemoveDeviceHint", map[string]any{"name": name})
+}
+
+// MobileRouteAdd says "Add an address"
+// in the language the app shows.
+func MobileRouteAdd() string { return In(i18n.Locale()).MobileRouteAdd() }
+
+// MobileRouteAdd says "Add an address"
+// in the language of msgs.
+func (msgs Messages) MobileRouteAdd() string {
+	return Catalog.Format(msgs.locale, "MobileRouteAdd", nil)
+}
+
+// MobileRouteAddHint says "IP or host name, optionally with :port"
+// in the language the app shows.
+func MobileRouteAddHint() string { return In(i18n.Locale()).MobileRouteAddHint() }
+
+// MobileRouteAddHint says "IP or host name, optionally with :port"
+// in the language of msgs.
+func (msgs Messages) MobileRouteAddHint() string {
+	return Catalog.Format(msgs.locale, "MobileRouteAddHint", nil)
+}
+
+// MobileRouteAuto says "Automatic"
+// in the language the app shows.
+func MobileRouteAuto() string { return In(i18n.Locale()).MobileRouteAuto() }
+
+// MobileRouteAuto says "Automatic"
+// in the language of msgs.
+func (msgs Messages) MobileRouteAuto() string {
+	return Catalog.Format(msgs.locale, "MobileRouteAuto", nil)
+}
+
+// MobileRouteAutoHint says "Use the best path Kyokai finds"
+// in the language the app shows.
+func MobileRouteAutoHint() string { return In(i18n.Locale()).MobileRouteAutoHint() }
+
+// MobileRouteAutoHint says "Use the best path Kyokai finds"
+// in the language of msgs.
+func (msgs Messages) MobileRouteAutoHint() string {
+	return Catalog.Format(msgs.locale, "MobileRouteAutoHint", nil)
+}
+
+// MobileRouteNetwork says "Through the network"
+// in the language the app shows.
+func MobileRouteNetwork() string { return In(i18n.Locale()).MobileRouteNetwork() }
+
+// MobileRouteNetwork says "Through the network"
+// in the language of msgs.
+func (msgs Messages) MobileRouteNetwork() string {
+	return Catalog.Format(msgs.locale, "MobileRouteNetwork", nil)
+}
+
+// MobileRouteOk says "Reachable"
+// in the language the app shows.
+func MobileRouteOk() string { return In(i18n.Locale()).MobileRouteOk() }
+
+// MobileRouteOk says "Reachable"
+// in the language of msgs.
+func (msgs Messages) MobileRouteOk() string {
+	return Catalog.Format(msgs.locale, "MobileRouteOk", nil)
+}
+
+// MobileSave says "Save"
+// in the language the app shows.
+func MobileSave() string { return In(i18n.Locale()).MobileSave() }
+
+// MobileSave says "Save"
+// in the language of msgs.
+func (msgs Messages) MobileSave() string {
+	return Catalog.Format(msgs.locale, "MobileSave", nil)
+}
+
+// MobileSaved says "Saved"
+// in the language the app shows.
+func MobileSaved() string { return In(i18n.Locale()).MobileSaved() }
+
+// MobileSaved says "Saved"
+// in the language of msgs.
+func (msgs Messages) MobileSaved() string {
+	return Catalog.Format(msgs.locale, "MobileSaved", nil)
+}
+
+// MobileSavedPassword says "Saved password"
+// in the language the app shows.
+func MobileSavedPassword() string { return In(i18n.Locale()).MobileSavedPassword() }
+
+// MobileSavedPassword says "Saved password"
+// in the language of msgs.
+func (msgs Messages) MobileSavedPassword() string {
+	return Catalog.Format(msgs.locale, "MobileSavedPassword", nil)
+}
+
+// MobileScroll says "Scroll"
+// in the language the app shows.
+func MobileScroll() string { return In(i18n.Locale()).MobileScroll() }
+
+// MobileScroll says "Scroll"
+// in the language of msgs.
+func (msgs Messages) MobileScroll() string {
+	return Catalog.Format(msgs.locale, "MobileScroll", nil)
+}
+
+// MobileSectionAbout says "About"
+// in the language the app shows.
+func MobileSectionAbout() string { return In(i18n.Locale()).MobileSectionAbout() }
+
+// MobileSectionAbout says "About"
+// in the language of msgs.
+func (msgs Messages) MobileSectionAbout() string {
+	return Catalog.Format(msgs.locale, "MobileSectionAbout", nil)
+}
+
+// MobileSectionAppearance says "Appearance"
+// in the language the app shows.
+func MobileSectionAppearance() string { return In(i18n.Locale()).MobileSectionAppearance() }
+
+// MobileSectionAppearance says "Appearance"
+// in the language of msgs.
+func (msgs Messages) MobileSectionAppearance() string {
+	return Catalog.Format(msgs.locale, "MobileSectionAppearance", nil)
+}
+
+// MobileSectionInput says "Input"
+// in the language the app shows.
+func MobileSectionInput() string { return In(i18n.Locale()).MobileSectionInput() }
+
+// MobileSectionInput says "Input"
+// in the language of msgs.
+func (msgs Messages) MobileSectionInput() string {
+	return Catalog.Format(msgs.locale, "MobileSectionInput", nil)
+}
+
+// MobileSectionKeys says "Sign-in keys"
+// in the language the app shows.
+func MobileSectionKeys() string { return In(i18n.Locale()).MobileSectionKeys() }
+
+// MobileSectionKeys says "Sign-in keys"
+// in the language of msgs.
+func (msgs Messages) MobileSectionKeys() string {
+	return Catalog.Format(msgs.locale, "MobileSectionKeys", nil)
+}
+
+// MobileSectionNetworks says "Networks"
+// in the language the app shows.
+func MobileSectionNetworks() string { return In(i18n.Locale()).MobileSectionNetworks() }
+
+// MobileSectionNetworks says "Networks"
+// in the language of msgs.
+func (msgs Messages) MobileSectionNetworks() string {
+	return Catalog.Format(msgs.locale, "MobileSectionNetworks", nil)
+}
+
+// MobileSectionRoutes says "Paths"
+// in the language the app shows.
+func MobileSectionRoutes() string { return In(i18n.Locale()).MobileSectionRoutes() }
+
+// MobileSectionRoutes says "Paths"
+// in the language of msgs.
+func (msgs Messages) MobileSectionRoutes() string {
+	return Catalog.Format(msgs.locale, "MobileSectionRoutes", nil)
+}
+
+// MobileSectionSignIn says "Sign-in"
+// in the language the app shows.
+func MobileSectionSignIn() string { return In(i18n.Locale()).MobileSectionSignIn() }
+
+// MobileSectionSignIn says "Sign-in"
+// in the language of msgs.
+func (msgs Messages) MobileSectionSignIn() string {
+	return Catalog.Format(msgs.locale, "MobileSectionSignIn", nil)
+}
+
+// MobileSectionStatus says "Status"
+// in the language the app shows.
+func MobileSectionStatus() string { return In(i18n.Locale()).MobileSectionStatus() }
+
+// MobileSectionStatus says "Status"
+// in the language of msgs.
+func (msgs Messages) MobileSectionStatus() string {
+	return Catalog.Format(msgs.locale, "MobileSectionStatus", nil)
+}
+
+// MobileSectionThisDevice says "This device"
+// in the language the app shows.
+func MobileSectionThisDevice() string { return In(i18n.Locale()).MobileSectionThisDevice() }
+
+// MobileSectionThisDevice says "This device"
+// in the language of msgs.
+func (msgs Messages) MobileSectionThisDevice() string {
+	return Catalog.Format(msgs.locale, "MobileSectionThisDevice", nil)
+}
+
+// MobileSend says "Send"
+// in the language the app shows.
+func MobileSend() string { return In(i18n.Locale()).MobileSend() }
+
+// MobileSend says "Send"
+// in the language of msgs.
+func (msgs Messages) MobileSend() string {
+	return Catalog.Format(msgs.locale, "MobileSend", nil)
+}
+
+// MobileServiceRdp says "Remote Desktop (RDP)"
+// in the language the app shows.
+func MobileServiceRdp() string { return In(i18n.Locale()).MobileServiceRdp() }
+
+// MobileServiceRdp says "Remote Desktop (RDP)"
+// in the language of msgs.
+func (msgs Messages) MobileServiceRdp() string {
+	return Catalog.Format(msgs.locale, "MobileServiceRdp", nil)
+}
+
+// MobileServiceSsh says "Terminal (SSH)"
+// in the language the app shows.
+func MobileServiceSsh() string { return In(i18n.Locale()).MobileServiceSsh() }
+
+// MobileServiceSsh says "Terminal (SSH)"
+// in the language of msgs.
+func (msgs Messages) MobileServiceSsh() string {
+	return Catalog.Format(msgs.locale, "MobileServiceSsh", nil)
+}
+
+// MobileServiceVnc says "VNC"
+// in the language the app shows.
+func MobileServiceVnc() string { return In(i18n.Locale()).MobileServiceVnc() }
+
+// MobileServiceVnc says "VNC"
+// in the language of msgs.
+func (msgs Messages) MobileServiceVnc() string {
+	return Catalog.Format(msgs.locale, "MobileServiceVnc", nil)
+}
+
+// MobileSessionEnded says "Session ended"
+// in the language the app shows.
+func MobileSessionEnded() string { return In(i18n.Locale()).MobileSessionEnded() }
+
+// MobileSessionEnded says "Session ended"
+// in the language of msgs.
+func (msgs Messages) MobileSessionEnded() string {
+	return Catalog.Format(msgs.locale, "MobileSessionEnded", nil)
+}
+
+// MobileShareClipboard says "Share clipboard"
+// in the language the app shows.
+func MobileShareClipboard() string { return In(i18n.Locale()).MobileShareClipboard() }
+
+// MobileShareClipboard says "Share clipboard"
+// in the language of msgs.
+func (msgs Messages) MobileShareClipboard() string {
+	return Catalog.Format(msgs.locale, "MobileShareClipboard", nil)
+}
+
+// MobileShareLogs says "Share logs"
+// in the language the app shows.
+func MobileShareLogs() string { return In(i18n.Locale()).MobileShareLogs() }
+
+// MobileShareLogs says "Share logs"
+// in the language of msgs.
+func (msgs Messages) MobileShareLogs() string {
+	return Catalog.Format(msgs.locale, "MobileShareLogs", nil)
+}
+
+// MobileSharePublicKey says "Share public key"
+// in the language the app shows.
+func MobileSharePublicKey() string { return In(i18n.Locale()).MobileSharePublicKey() }
+
+// MobileSharePublicKey says "Share public key"
+// in the language of msgs.
+func (msgs Messages) MobileSharePublicKey() string {
+	return Catalog.Format(msgs.locale, "MobileSharePublicKey", nil)
+}
+
+// MobileShowVideoDetails says "Show video details"
+// in the language the app shows.
+func MobileShowVideoDetails() string { return In(i18n.Locale()).MobileShowVideoDetails() }
+
+// MobileShowVideoDetails says "Show video details"
+// in the language of msgs.
+func (msgs Messages) MobileShowVideoDetails() string {
+	return Catalog.Format(msgs.locale, "MobileShowVideoDetails", nil)
+}
+
+// MobileShowVideoDetailsHint says "Codec, decoder, frame rate and latency over the picture"
+// in the language the app shows.
+func MobileShowVideoDetailsHint() string { return In(i18n.Locale()).MobileShowVideoDetailsHint() }
+
+// MobileShowVideoDetailsHint says "Codec, decoder, frame rate and latency over the picture"
+// in the language of msgs.
+func (msgs Messages) MobileShowVideoDetailsHint() string {
+	return Catalog.Format(msgs.locale, "MobileShowVideoDetailsHint", nil)
+}
+
+// MobileSignInKey says "Sign-in key"
+// in the language the app shows.
+func MobileSignInKey() string { return In(i18n.Locale()).MobileSignInKey() }
+
+// MobileSignInKey says "Sign-in key"
+// in the language of msgs.
+func (msgs Messages) MobileSignInKey() string {
+	return Catalog.Format(msgs.locale, "MobileSignInKey", nil)
+}
+
+// MobileSignInKeys says "Sign-in keys"
+// in the language the app shows.
+func MobileSignInKeys() string { return In(i18n.Locale()).MobileSignInKeys() }
+
+// MobileSignInKeys says "Sign-in keys"
+// in the language of msgs.
+func (msgs Messages) MobileSignInKeys() string {
+	return Catalog.Format(msgs.locale, "MobileSignInKeys", nil)
+}
+
+// MobileSignInKeysExplain says "A key lets this phone sign in without a password once a host admits it."
+// in the language the app shows.
+func MobileSignInKeysExplain() string { return In(i18n.Locale()).MobileSignInKeysExplain() }
+
+// MobileSignInKeysExplain says "A key lets this phone sign in without a password once a host admits it."
+// in the language of msgs.
+func (msgs Messages) MobileSignInKeysExplain() string {
+	return Catalog.Format(msgs.locale, "MobileSignInKeysExplain", nil)
+}
+
+// MobileSignInKeysHint says "Sign in without typing passwords"
+// in the language the app shows.
+func MobileSignInKeysHint() string { return In(i18n.Locale()).MobileSignInKeysHint() }
+
+// MobileSignInKeysHint says "Sign in without typing passwords"
+// in the language of msgs.
+func (msgs Messages) MobileSignInKeysHint() string {
+	return Catalog.Format(msgs.locale, "MobileSignInKeysHint", nil)
+}
+
+// MobileSound says "Sound"
+// in the language the app shows.
+func MobileSound() string { return In(i18n.Locale()).MobileSound() }
+
+// MobileSound says "Sound"
+// in the language of msgs.
+func (msgs Messages) MobileSound() string {
+	return Catalog.Format(msgs.locale, "MobileSound", nil)
+}
+
+// MobileSplitKeyboard says "Split keyboard"
+// in the language the app shows.
+func MobileSplitKeyboard() string { return In(i18n.Locale()).MobileSplitKeyboard() }
+
+// MobileSplitKeyboard says "Split keyboard"
+// in the language of msgs.
+func (msgs Messages) MobileSplitKeyboard() string {
+	return Catalog.Format(msgs.locale, "MobileSplitKeyboard", nil)
+}
+
+// MobileSplitKeyboardHint says "On wide screens, split the keys with the touchpad between them"
+// in the language the app shows.
+func MobileSplitKeyboardHint() string { return In(i18n.Locale()).MobileSplitKeyboardHint() }
+
+// MobileSplitKeyboardHint says "On wide screens, split the keys with the touchpad between them"
+// in the language of msgs.
+func (msgs Messages) MobileSplitKeyboardHint() string {
+	return Catalog.Format(msgs.locale, "MobileSplitKeyboardHint", nil)
+}
+
+// MobileStartFailed says "Kyokai couldn't start"
+// in the language the app shows.
+func MobileStartFailed() string { return In(i18n.Locale()).MobileStartFailed() }
+
+// MobileStartFailed says "Kyokai couldn't start"
+// in the language of msgs.
+func (msgs Messages) MobileStartFailed() string {
+	return Catalog.Format(msgs.locale, "MobileStartFailed", nil)
+}
+
+// MobileStarting says "Starting…"
+// in the language the app shows.
+func MobileStarting() string { return In(i18n.Locale()).MobileStarting() }
+
+// MobileStarting says "Starting…"
+// in the language of msgs.
+func (msgs Messages) MobileStarting() string {
+	return Catalog.Format(msgs.locale, "MobileStarting", nil)
+}
+
+// MobileStatBattery says "Battery"
+// in the language the app shows.
+func MobileStatBattery() string { return In(i18n.Locale()).MobileStatBattery() }
+
+// MobileStatBattery says "Battery"
+// in the language of msgs.
+func (msgs Messages) MobileStatBattery() string {
+	return Catalog.Format(msgs.locale, "MobileStatBattery", nil)
+}
+
+// MobileStatCpu says "CPU"
+// in the language the app shows.
+func MobileStatCpu() string { return In(i18n.Locale()).MobileStatCpu() }
+
+// MobileStatCpu says "CPU"
+// in the language of msgs.
+func (msgs Messages) MobileStatCpu() string {
+	return Catalog.Format(msgs.locale, "MobileStatCpu", nil)
+}
+
+// MobileStatDisk says "Disk"
+// in the language the app shows.
+func MobileStatDisk() string { return In(i18n.Locale()).MobileStatDisk() }
+
+// MobileStatDisk says "Disk"
+// in the language of msgs.
+func (msgs Messages) MobileStatDisk() string {
+	return Catalog.Format(msgs.locale, "MobileStatDisk", nil)
+}
+
+// MobileStatGpu says "GPU"
+// in the language the app shows.
+func MobileStatGpu() string { return In(i18n.Locale()).MobileStatGpu() }
+
+// MobileStatGpu says "GPU"
+// in the language of msgs.
+func (msgs Messages) MobileStatGpu() string {
+	return Catalog.Format(msgs.locale, "MobileStatGpu", nil)
+}
+
+// MobileStatMemory says "Memory"
+// in the language the app shows.
+func MobileStatMemory() string { return In(i18n.Locale()).MobileStatMemory() }
+
+// MobileStatMemory says "Memory"
+// in the language of msgs.
+func (msgs Messages) MobileStatMemory() string {
+	return Catalog.Format(msgs.locale, "MobileStatMemory", nil)
+}
+
+// MobileStatUptime says "Uptime"
+// in the language the app shows.
+func MobileStatUptime() string { return In(i18n.Locale()).MobileStatUptime() }
+
+// MobileStatUptime says "Uptime"
+// in the language of msgs.
+func (msgs Messages) MobileStatUptime() string {
+	return Catalog.Format(msgs.locale, "MobileStatUptime", nil)
+}
+
+// MobileStateConfirming says "Waiting for the host"
+// in the language the app shows.
+func MobileStateConfirming() string { return In(i18n.Locale()).MobileStateConfirming() }
+
+// MobileStateConfirming says "Waiting for the host"
+// in the language of msgs.
+func (msgs Messages) MobileStateConfirming() string {
+	return Catalog.Format(msgs.locale, "MobileStateConfirming", nil)
+}
+
+// MobileStateConnected says "Connected"
+// in the language the app shows.
+func MobileStateConnected() string { return In(i18n.Locale()).MobileStateConnected() }
+
+// MobileStateConnected says "Connected"
+// in the language of msgs.
+func (msgs Messages) MobileStateConnected() string {
+	return Catalog.Format(msgs.locale, "MobileStateConnected", nil)
+}
+
+// MobileStatusNeedsSignIn says "Sign in once to see this device's status."
+// in the language the app shows.
+func MobileStatusNeedsSignIn() string { return In(i18n.Locale()).MobileStatusNeedsSignIn() }
+
+// MobileStatusNeedsSignIn says "Sign in once to see this device's status."
+// in the language of msgs.
+func (msgs Messages) MobileStatusNeedsSignIn() string {
+	return Catalog.Format(msgs.locale, "MobileStatusNeedsSignIn", nil)
+}
+
+// MobileTheme says "Theme"
+// in the language the app shows.
+func MobileTheme() string { return In(i18n.Locale()).MobileTheme() }
+
+// MobileTheme says "Theme"
+// in the language of msgs.
+func (msgs Messages) MobileTheme() string {
+	return Catalog.Format(msgs.locale, "MobileTheme", nil)
+}
+
+// MobileThemeDark says "Dark"
+// in the language the app shows.
+func MobileThemeDark() string { return In(i18n.Locale()).MobileThemeDark() }
+
+// MobileThemeDark says "Dark"
+// in the language of msgs.
+func (msgs Messages) MobileThemeDark() string {
+	return Catalog.Format(msgs.locale, "MobileThemeDark", nil)
+}
+
+// MobileThemeLight says "Light"
+// in the language the app shows.
+func MobileThemeLight() string { return In(i18n.Locale()).MobileThemeLight() }
+
+// MobileThemeLight says "Light"
+// in the language of msgs.
+func (msgs Messages) MobileThemeLight() string {
+	return Catalog.Format(msgs.locale, "MobileThemeLight", nil)
+}
+
+// MobileThemeSystem says "System"
+// in the language the app shows.
+func MobileThemeSystem() string { return In(i18n.Locale()).MobileThemeSystem() }
+
+// MobileThemeSystem says "System"
+// in the language of msgs.
+func (msgs Messages) MobileThemeSystem() string {
+	return Catalog.Format(msgs.locale, "MobileThemeSystem", nil)
+}
+
+// MobileThinkHigh says "Thorough"
+// in the language the app shows.
+func MobileThinkHigh() string { return In(i18n.Locale()).MobileThinkHigh() }
+
+// MobileThinkHigh says "Thorough"
+// in the language of msgs.
+func (msgs Messages) MobileThinkHigh() string {
+	return Catalog.Format(msgs.locale, "MobileThinkHigh", nil)
+}
+
+// MobileThinkLow says "Quick"
+// in the language the app shows.
+func MobileThinkLow() string { return In(i18n.Locale()).MobileThinkLow() }
+
+// MobileThinkLow says "Quick"
+// in the language of msgs.
+func (msgs Messages) MobileThinkLow() string {
+	return Catalog.Format(msgs.locale, "MobileThinkLow", nil)
+}
+
+// MobileThinkMedium says "Normal"
+// in the language the app shows.
+func MobileThinkMedium() string { return In(i18n.Locale()).MobileThinkMedium() }
+
+// MobileThinkMedium says "Normal"
+// in the language of msgs.
+func (msgs Messages) MobileThinkMedium() string {
+	return Catalog.Format(msgs.locale, "MobileThinkMedium", nil)
+}
+
+// MobileThisDevice says "This device · {id}"
+// in the language the app shows.
+func MobileThisDevice(id string) string { return In(i18n.Locale()).MobileThisDevice(id) }
+
+// MobileThisDevice says "This device · {id}"
+// in the language of msgs.
+func (msgs Messages) MobileThisDevice(id string) string {
+	return Catalog.Format(msgs.locale, "MobileThisDevice", map[string]any{"id": id})
+}
+
+// MobileTryAgain says "Try again"
+// in the language the app shows.
+func MobileTryAgain() string { return In(i18n.Locale()).MobileTryAgain() }
+
+// MobileTryAgain says "Try again"
+// in the language of msgs.
+func (msgs Messages) MobileTryAgain() string {
+	return Catalog.Format(msgs.locale, "MobileTryAgain", nil)
+}
+
+// MobileTypePassword says "Enter password"
+// in the language the app shows.
+func MobileTypePassword() string { return In(i18n.Locale()).MobileTypePassword() }
+
+// MobileTypePassword says "Enter password"
+// in the language of msgs.
+func (msgs Messages) MobileTypePassword() string {
+	return Catalog.Format(msgs.locale, "MobileTypePassword", nil)
+}
+
+// MobileTypeText says "Type text"
+// in the language the app shows.
+func MobileTypeText() string { return In(i18n.Locale()).MobileTypeText() }
+
+// MobileTypeText says "Type text"
+// in the language of msgs.
+func (msgs Messages) MobileTypeText() string {
+	return Catalog.Format(msgs.locale, "MobileTypeText", nil)
+}
+
+// MobileTypeTextHint says "Sent to the host as typing"
+// in the language the app shows.
+func MobileTypeTextHint() string { return In(i18n.Locale()).MobileTypeTextHint() }
+
+// MobileTypeTextHint says "Sent to the host as typing"
+// in the language of msgs.
+func (msgs Messages) MobileTypeTextHint() string {
+	return Catalog.Format(msgs.locale, "MobileTypeTextHint", nil)
+}
+
+// MobileVideoUnsupported says "This phone can't decode {codec} video"
+// in the language the app shows.
+func MobileVideoUnsupported(codec string) string {
+	return In(i18n.Locale()).MobileVideoUnsupported(codec)
+}
+
+// MobileVideoUnsupported says "This phone can't decode {codec} video"
+// in the language of msgs.
+func (msgs Messages) MobileVideoUnsupported(codec string) string {
+	return Catalog.Format(msgs.locale, "MobileVideoUnsupported", map[string]any{"codec": codec})
+}
+
+// MobileWaitingForPicture says "Waiting for the picture…"
+// in the language the app shows.
+func MobileWaitingForPicture() string { return In(i18n.Locale()).MobileWaitingForPicture() }
+
+// MobileWaitingForPicture says "Waiting for the picture…"
+// in the language of msgs.
+func (msgs Messages) MobileWaitingForPicture() string {
+	return Catalog.Format(msgs.locale, "MobileWaitingForPicture", nil)
+}
+
+// MobileWeakSecret says "Weak secret"
+// in the language the app shows.
+func MobileWeakSecret() string { return In(i18n.Locale()).MobileWeakSecret() }
+
+// MobileWeakSecret says "Weak secret"
+// in the language of msgs.
+func (msgs Messages) MobileWeakSecret() string {
+	return Catalog.Format(msgs.locale, "MobileWeakSecret", nil)
+}
+
+// MobileKeyAdd says "Add key"
+// in the language the app shows.
+func MobileKeyAdd() string { return In(i18n.Locale()).MobileKeyAdd() }
+
+// MobileKeyAdd says "Add key"
+// in the language of msgs.
+func (msgs Messages) MobileKeyAdd() string {
+	return Catalog.Format(msgs.locale, "MobileKeyAdd", nil)
+}
+
+// MobileKeyImportFile says "Import a key file"
+// in the language the app shows.
+func MobileKeyImportFile() string { return In(i18n.Locale()).MobileKeyImportFile() }
+
+// MobileKeyImportFile says "Import a key file"
+// in the language of msgs.
+func (msgs Messages) MobileKeyImportFile() string {
+	return Catalog.Format(msgs.locale, "MobileKeyImportFile", nil)
+}
+
+// MobileKeyImportHint says "OpenSSH or PEM, Ed25519 or RSA"
+// in the language the app shows.
+func MobileKeyImportHint() string { return In(i18n.Locale()).MobileKeyImportHint() }
+
+// MobileKeyImportHint says "OpenSSH or PEM, Ed25519 or RSA"
+// in the language of msgs.
+func (msgs Messages) MobileKeyImportHint() string {
+	return Catalog.Format(msgs.locale, "MobileKeyImportHint", nil)
+}
+
+// MobileKeyImportPaste says "Paste a private key"
+// in the language the app shows.
+func MobileKeyImportPaste() string { return In(i18n.Locale()).MobileKeyImportPaste() }
+
+// MobileKeyImportPaste says "Paste a private key"
+// in the language of msgs.
+func (msgs Messages) MobileKeyImportPaste() string {
+	return Catalog.Format(msgs.locale, "MobileKeyImportPaste", nil)
+}
+
+// MobileKeyLocked says "This key has a passphrase."
+// in the language the app shows.
+func MobileKeyLocked() string { return In(i18n.Locale()).MobileKeyLocked() }
+
+// MobileKeyLocked says "This key has a passphrase."
+// in the language of msgs.
+func (msgs Messages) MobileKeyLocked() string {
+	return Catalog.Format(msgs.locale, "MobileKeyLocked", nil)
+}
+
+// MobileKeyNewHint says "Make an Ed25519 key on this phone"
+// in the language the app shows.
+func MobileKeyNewHint() string { return In(i18n.Locale()).MobileKeyNewHint() }
+
+// MobileKeyNewHint says "Make an Ed25519 key on this phone"
+// in the language of msgs.
+func (msgs Messages) MobileKeyNewHint() string {
+	return Catalog.Format(msgs.locale, "MobileKeyNewHint", nil)
+}
+
+// MobileKeyNotAKey says "That isn't a private key"
+// in the language the app shows.
+func MobileKeyNotAKey() string { return In(i18n.Locale()).MobileKeyNotAKey() }
+
+// MobileKeyNotAKey says "That isn't a private key"
+// in the language of msgs.
+func (msgs Messages) MobileKeyNotAKey() string {
+	return Catalog.Format(msgs.locale, "MobileKeyNotAKey", nil)
+}
+
+// MobileKeyUnsupported says "This kind of key can't be imported. Use Ed25519, RSA (2048 bits or more) or ECDSA P-256 or P-384."
+// in the language the app shows.
+func MobileKeyUnsupported() string { return In(i18n.Locale()).MobileKeyUnsupported() }
+
+// MobileKeyUnsupported says "This kind of key can't be imported. Use Ed25519, RSA (2048 bits or more) or ECDSA P-256 or P-384."
+// in the language of msgs.
+func (msgs Messages) MobileKeyUnsupported() string {
+	return Catalog.Format(msgs.locale, "MobileKeyUnsupported", nil)
+}
+
+// MobileOthersInNetworks says "Others in my networks"
+// in the language the app shows.
+func MobileOthersInNetworks() string { return In(i18n.Locale()).MobileOthersInNetworks() }
+
+// MobileOthersInNetworks says "Others in my networks"
+// in the language of msgs.
+func (msgs Messages) MobileOthersInNetworks() string {
+	return Catalog.Format(msgs.locale, "MobileOthersInNetworks", nil)
+}
+
+// MobileOthersNone says "No other Kyokai device is online in your networks."
+// in the language the app shows.
+func MobileOthersNone() string { return In(i18n.Locale()).MobileOthersNone() }
+
+// MobileOthersNone says "No other Kyokai device is online in your networks."
+// in the language of msgs.
+func (msgs Messages) MobileOthersNone() string {
+	return Catalog.Format(msgs.locale, "MobileOthersNone", nil)
+}
+
+// MobileOthersNote says "Kyokai devices you haven't connected to"
+// in the language the app shows.
+func MobileOthersNote() string { return In(i18n.Locale()).MobileOthersNote() }
+
+// MobileOthersNote says "Kyokai devices you haven't connected to"
+// in the language of msgs.
+func (msgs Messages) MobileOthersNote() string {
+	return Catalog.Format(msgs.locale, "MobileOthersNote", nil)
+}
+
+// MobileOthersTitle says "Others in my networks"
+// in the language the app shows.
+func MobileOthersTitle() string { return In(i18n.Locale()).MobileOthersTitle() }
+
+// MobileOthersTitle says "Others in my networks"
+// in the language of msgs.
+func (msgs Messages) MobileOthersTitle() string {
+	return Catalog.Format(msgs.locale, "MobileOthersTitle", nil)
+}
+
+// MobileLaptopMode says "Laptop mode on foldables"
+// in the language the app shows.
+func MobileLaptopMode() string { return In(i18n.Locale()).MobileLaptopMode() }
+
+// MobileLaptopMode says "Laptop mode on foldables"
+// in the language of msgs.
+func (msgs Messages) MobileLaptopMode() string {
+	return Catalog.Format(msgs.locale, "MobileLaptopMode", nil)
+}
+
+// MobileLaptopModeHint says "Half-fold the phone like a laptop: the screen above the hinge, the keyboard and a touchpad below it"
+// in the language the app shows.
+func MobileLaptopModeHint() string { return In(i18n.Locale()).MobileLaptopModeHint() }
+
+// MobileLaptopModeHint says "Half-fold the phone like a laptop: the screen above the hinge, the keyboard and a touchpad below it"
+// in the language of msgs.
+func (msgs Messages) MobileLaptopModeHint() string {
+	return Catalog.Format(msgs.locale, "MobileLaptopModeHint", nil)
+}
+
+// MobilePictureTop says "Picture at the top"
+// in the language the app shows.
+func MobilePictureTop() string { return In(i18n.Locale()).MobilePictureTop() }
+
+// MobilePictureTop says "Picture at the top"
+// in the language of msgs.
+func (msgs Messages) MobilePictureTop() string {
+	return Catalog.Format(msgs.locale, "MobilePictureTop", nil)
+}
+
+// MobilePictureTopHint says "When the host's screen doesn't fill the view, keep it at the top instead of the middle"
+// in the language the app shows.
+func MobilePictureTopHint() string { return In(i18n.Locale()).MobilePictureTopHint() }
+
+// MobilePictureTopHint says "When the host's screen doesn't fill the view, keep it at the top instead of the middle"
+// in the language of msgs.
+func (msgs Messages) MobilePictureTopHint() string {
+	return Catalog.Format(msgs.locale, "MobilePictureTopHint", nil)
+}
+
+// MobileSendClipboard says "Send clipboard"
+// in the language the app shows.
+func MobileSendClipboard() string { return In(i18n.Locale()).MobileSendClipboard() }
+
+// MobileSendClipboard says "Send clipboard"
+// in the language of msgs.
+func (msgs Messages) MobileSendClipboard() string {
+	return Catalog.Format(msgs.locale, "MobileSendClipboard", nil)
+}
+
+// MobileHostKeyChanged says "The server's key changed"
+// in the language the app shows.
+func MobileHostKeyChanged() string { return In(i18n.Locale()).MobileHostKeyChanged() }
+
+// MobileHostKeyChanged says "The server's key changed"
+// in the language of msgs.
+func (msgs Messages) MobileHostKeyChanged() string {
+	return Catalog.Format(msgs.locale, "MobileHostKeyChanged", nil)
+}
+
+// MobileHostKeyChangedHint says "Trust the new key only if you know why it changed, such as a reinstalled system."
+// in the language the app shows.
+func MobileHostKeyChangedHint() string { return In(i18n.Locale()).MobileHostKeyChangedHint() }
+
+// MobileHostKeyChangedHint says "Trust the new key only if you know why it changed, such as a reinstalled system."
+// in the language of msgs.
+func (msgs Messages) MobileHostKeyChangedHint() string {
+	return Catalog.Format(msgs.locale, "MobileHostKeyChangedHint", nil)
+}
+
+// MobileTrustKey says "Trust the new key"
+// in the language the app shows.
+func MobileTrustKey() string { return In(i18n.Locale()).MobileTrustKey() }
+
+// MobileTrustKey says "Trust the new key"
+// in the language of msgs.
+func (msgs Messages) MobileTrustKey() string {
+	return Catalog.Format(msgs.locale, "MobileTrustKey", nil)
+}
+
+// MobileSvcNeedSignIn says "Sign in to continue"
+// in the language the app shows.
+func MobileSvcNeedSignIn() string { return In(i18n.Locale()).MobileSvcNeedSignIn() }
+
+// MobileSvcNeedSignIn says "Sign in to continue"
+// in the language of msgs.
+func (msgs Messages) MobileSvcNeedSignIn() string {
+	return Catalog.Format(msgs.locale, "MobileSvcNeedSignIn", nil)
+}
+
+// MobileSvcSignInRequired says "This server needs a sign-in"
+// in the language the app shows.
+func MobileSvcSignInRequired() string { return In(i18n.Locale()).MobileSvcSignInRequired() }
+
+// MobileSvcSignInRequired says "This server needs a sign-in"
+// in the language of msgs.
+func (msgs Messages) MobileSvcSignInRequired() string {
+	return Catalog.Format(msgs.locale, "MobileSvcSignInRequired", nil)
+}
+
+// MobileSvcSignInFailed says "The user name or password was refused"
+// in the language the app shows.
+func MobileSvcSignInFailed() string { return In(i18n.Locale()).MobileSvcSignInFailed() }
+
+// MobileSvcSignInFailed says "The user name or password was refused"
+// in the language of msgs.
+func (msgs Messages) MobileSvcSignInFailed() string {
+	return Catalog.Format(msgs.locale, "MobileSvcSignInFailed", nil)
+}
+
+// MobileSvcNoAnswer says "The server didn't answer"
+// in the language the app shows.
+func MobileSvcNoAnswer() string { return In(i18n.Locale()).MobileSvcNoAnswer() }
+
+// MobileSvcNoAnswer says "The server didn't answer"
+// in the language of msgs.
+func (msgs Messages) MobileSvcNoAnswer() string {
+	return Catalog.Format(msgs.locale, "MobileSvcNoAnswer", nil)
+}
+
+// MobileSvcNoSecureSignIn says "The server offers no secure sign-in, so the password wasn't sent"
+// in the language the app shows.
+func MobileSvcNoSecureSignIn() string { return In(i18n.Locale()).MobileSvcNoSecureSignIn() }
+
+// MobileSvcNoSecureSignIn says "The server offers no secure sign-in, so the password wasn't sent"
+// in the language of msgs.
+func (msgs Messages) MobileSvcNoSecureSignIn() string {
+	return Catalog.Format(msgs.locale, "MobileSvcNoSecureSignIn", nil)
+}
+
+// MobileSvcReplaced says "Signed in elsewhere: this session ended"
+// in the language the app shows.
+func MobileSvcReplaced() string { return In(i18n.Locale()).MobileSvcReplaced() }
+
+// MobileSvcReplaced says "Signed in elsewhere: this session ended"
+// in the language of msgs.
+func (msgs Messages) MobileSvcReplaced() string {
+	return Catalog.Format(msgs.locale, "MobileSvcReplaced", nil)
+}
+
+// MobileSvcUnreadable says "The server sent something this app can't read"
+// in the language the app shows.
+func MobileSvcUnreadable() string { return In(i18n.Locale()).MobileSvcUnreadable() }
+
+// MobileSvcUnreadable says "The server sent something this app can't read"
+// in the language of msgs.
+func (msgs Messages) MobileSvcUnreadable() string {
+	return Catalog.Format(msgs.locale, "MobileSvcUnreadable", nil)
+}
+
+// MobileSvcNoTunnel says "This device's Kyokai has no service tunnels; update it"
+// in the language the app shows.
+func MobileSvcNoTunnel() string { return In(i18n.Locale()).MobileSvcNoTunnel() }
+
+// MobileSvcNoTunnel says "This device's Kyokai has no service tunnels; update it"
+// in the language of msgs.
+func (msgs Messages) MobileSvcNoTunnel() string {
+	return Catalog.Format(msgs.locale, "MobileSvcNoTunnel", nil)
+}
+
+// MobileVncPassword says "VNC password"
+// in the language the app shows.
+func MobileVncPassword() string { return In(i18n.Locale()).MobileVncPassword() }
+
+// MobileVncPassword says "VNC password"
+// in the language of msgs.
+func (msgs Messages) MobileVncPassword() string {
+	return Catalog.Format(msgs.locale, "MobileVncPassword", nil)
+}
+
+// MobileMacAccount says "Mac account"
+// in the language the app shows.
+func MobileMacAccount() string { return In(i18n.Locale()).MobileMacAccount() }
+
+// MobileMacAccount says "Mac account"
+// in the language of msgs.
+func (msgs Messages) MobileMacAccount() string {
+	return Catalog.Format(msgs.locale, "MobileMacAccount", nil)
+}
+
+// MobileWindowsAccount says "Windows account"
+// in the language the app shows.
+func MobileWindowsAccount() string { return In(i18n.Locale()).MobileWindowsAccount() }
+
+// MobileWindowsAccount says "Windows account"
+// in the language of msgs.
+func (msgs Messages) MobileWindowsAccount() string {
+	return Catalog.Format(msgs.locale, "MobileWindowsAccount", nil)
+}
+
+// MobileNoSignIn says "No sign-in"
+// in the language the app shows.
+func MobileNoSignIn() string { return In(i18n.Locale()).MobileNoSignIn() }
+
+// MobileNoSignIn says "No sign-in"
+// in the language of msgs.
+func (msgs Messages) MobileNoSignIn() string {
+	return Catalog.Format(msgs.locale, "MobileNoSignIn", nil)
+}
+
+// MobileUserName says "User name"
+// in the language the app shows.
+func MobileUserName() string { return In(i18n.Locale()).MobileUserName() }
+
+// MobileUserName says "User name"
+// in the language of msgs.
+func (msgs Messages) MobileUserName() string {
+	return Catalog.Format(msgs.locale, "MobileUserName", nil)
+}
+
+// MobileDomainOptional says "Domain (optional)"
+// in the language the app shows.
+func MobileDomainOptional() string { return In(i18n.Locale()).MobileDomainOptional() }
+
+// MobileDomainOptional says "Domain (optional)"
+// in the language of msgs.
+func (msgs Messages) MobileDomainOptional() string {
+	return Catalog.Format(msgs.locale, "MobileDomainOptional", nil)
+}
+
+// MobileSshKeyHint says "Signs in with this phone's sign-in keys (Settings › Sign-in keys); the server must list the public key."
+// in the language the app shows.
+func MobileSshKeyHint() string { return In(i18n.Locale()).MobileSshKeyHint() }
+
+// MobileSshKeyHint says "Signs in with this phone's sign-in keys (Settings › Sign-in keys); the server must list the public key."
+// in the language of msgs.
+func (msgs Messages) MobileSshKeyHint() string {
+	return Catalog.Format(msgs.locale, "MobileSshKeyHint", nil)
+}
+
+// MobileRememberSignIn says "Remember sign-in"
+// in the language the app shows.
+func MobileRememberSignIn() string { return In(i18n.Locale()).MobileRememberSignIn() }
+
+// MobileRememberSignIn says "Remember sign-in"
+// in the language of msgs.
+func (msgs Messages) MobileRememberSignIn() string {
+	return Catalog.Format(msgs.locale, "MobileRememberSignIn", nil)
+}
+
+// MobilePaste says "Paste"
+// in the language the app shows.
+func MobilePaste() string { return In(i18n.Locale()).MobilePaste() }
+
+// MobilePaste says "Paste"
+// in the language of msgs.
+func (msgs Messages) MobilePaste() string {
+	return Catalog.Format(msgs.locale, "MobilePaste", nil)
+}
+
+// MobileLaptopSafeArea says "Keep clear of system bars"
+// in the language the app shows.
+func MobileLaptopSafeArea() string { return In(i18n.Locale()).MobileLaptopSafeArea() }
+
+// MobileLaptopSafeArea says "Keep clear of system bars"
+// in the language of msgs.
+func (msgs Messages) MobileLaptopSafeArea() string {
+	return Catalog.Format(msgs.locale, "MobileLaptopSafeArea", nil)
+}
+
+// MobileLaptopSafeAreaHint says "In laptop mode, leave room for the status bar at the top and the navigation bar at the bottom"
+// in the language the app shows.
+func MobileLaptopSafeAreaHint() string { return In(i18n.Locale()).MobileLaptopSafeAreaHint() }
+
+// MobileLaptopSafeAreaHint says "In laptop mode, leave room for the status bar at the top and the navigation bar at the bottom"
+// in the language of msgs.
+func (msgs Messages) MobileLaptopSafeAreaHint() string {
+	return Catalog.Format(msgs.locale, "MobileLaptopSafeAreaHint", nil)
+}
+
+// MobileSettingsNavPlacement says "Navigation position"
+// in the language the app shows.
+func MobileSettingsNavPlacement() string { return In(i18n.Locale()).MobileSettingsNavPlacement() }
+
+// MobileSettingsNavPlacement says "Navigation position"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsNavPlacement() string {
+	return Catalog.Format(msgs.locale, "MobileSettingsNavPlacement", nil)
+}
+
+// MobileSettingsNavPlacementDesc says "Bottom everywhere, at the side on wide screens such as unfolded foldables and tablets, or at the side everywhere (not…"
+// in the language the app shows.
+func MobileSettingsNavPlacementDesc() string {
+	return In(i18n.Locale()).MobileSettingsNavPlacementDesc()
+}
+
+// MobileSettingsNavPlacementDesc says "Bottom everywhere, at the side on wide screens such as unfolded foldables and tablets, or at the side everywhere (not…"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsNavPlacementDesc() string {
+	return Catalog.Format(msgs.locale, "MobileSettingsNavPlacementDesc", nil)
+}
+
+// MobileSettingsNavPlacementBottom says "Bottom"
+// in the language the app shows.
+func MobileSettingsNavPlacementBottom() string {
+	return In(i18n.Locale()).MobileSettingsNavPlacementBottom()
+}
+
+// MobileSettingsNavPlacementBottom says "Bottom"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsNavPlacementBottom() string {
+	return Catalog.Format(msgs.locale, "MobileSettingsNavPlacementBottom", nil)
+}
+
+// MobileSettingsNavPlacementSideOnWide says "Side on wide"
+// in the language the app shows.
+func MobileSettingsNavPlacementSideOnWide() string {
+	return In(i18n.Locale()).MobileSettingsNavPlacementSideOnWide()
+}
+
+// MobileSettingsNavPlacementSideOnWide says "Side on wide"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsNavPlacementSideOnWide() string {
+	return Catalog.Format(msgs.locale, "MobileSettingsNavPlacementSideOnWide", nil)
+}
+
+// MobileSettingsNavPlacementSide says "Side"
+// in the language the app shows.
+func MobileSettingsNavPlacementSide() string {
+	return In(i18n.Locale()).MobileSettingsNavPlacementSide()
+}
+
+// MobileSettingsNavPlacementSide says "Side"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsNavPlacementSide() string {
+	return Catalog.Format(msgs.locale, "MobileSettingsNavPlacementSide", nil)
+}
+
+// MobileSettingsRailSide says "Side navigation position"
+// in the language the app shows.
+func MobileSettingsRailSide() string { return In(i18n.Locale()).MobileSettingsRailSide() }
+
+// MobileSettingsRailSide says "Side navigation position"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsRailSide() string {
+	return Catalog.Format(msgs.locale, "MobileSettingsRailSide", nil)
+}
+
+// MobileSettingsRailSideDesc says "Which side of the window the navigation rail sits on."
+// in the language the app shows.
+func MobileSettingsRailSideDesc() string { return In(i18n.Locale()).MobileSettingsRailSideDesc() }
+
+// MobileSettingsRailSideDesc says "Which side of the window the navigation rail sits on."
+// in the language of msgs.
+func (msgs Messages) MobileSettingsRailSideDesc() string {
+	return Catalog.Format(msgs.locale, "MobileSettingsRailSideDesc", nil)
+}
+
+// MobileSettingsRailSideLeft says "Left"
+// in the language the app shows.
+func MobileSettingsRailSideLeft() string { return In(i18n.Locale()).MobileSettingsRailSideLeft() }
+
+// MobileSettingsRailSideLeft says "Left"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsRailSideLeft() string {
+	return Catalog.Format(msgs.locale, "MobileSettingsRailSideLeft", nil)
+}
+
+// MobileSettingsRailSideRight says "Right"
+// in the language the app shows.
+func MobileSettingsRailSideRight() string { return In(i18n.Locale()).MobileSettingsRailSideRight() }
+
+// MobileSettingsRailSideRight says "Right"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsRailSideRight() string {
+	return Catalog.Format(msgs.locale, "MobileSettingsRailSideRight", nil)
+}
+
+// MobileSettingsSelectItem says "Select an item from the list"
+// in the language the app shows.
+func MobileSettingsSelectItem() string { return In(i18n.Locale()).MobileSettingsSelectItem() }
+
+// MobileSettingsSelectItem says "Select an item from the list"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsSelectItem() string {
+	return Catalog.Format(msgs.locale, "MobileSettingsSelectItem", nil)
+}
+
+// MobileAboutApp says "Kyokai for Android"
+// in the language the app shows.
+func MobileAboutApp() string { return In(i18n.Locale()).MobileAboutApp() }
+
+// MobileAboutApp says "Kyokai for Android"
+// in the language of msgs.
+func (msgs Messages) MobileAboutApp() string {
+	return Catalog.Format(msgs.locale, "MobileAboutApp", nil)
+}
+
+// MobileAboutAppHint says "Connects to your Kyokai computers over your own networks."
+// in the language the app shows.
+func MobileAboutAppHint() string { return In(i18n.Locale()).MobileAboutAppHint() }
+
+// MobileAboutAppHint says "Connects to your Kyokai computers over your own networks."
+// in the language of msgs.
+func (msgs Messages) MobileAboutAppHint() string {
+	return Catalog.Format(msgs.locale, "MobileAboutAppHint", nil)
+}
+
+// MobileAboutVersion says "Version"
+// in the language the app shows.
+func MobileAboutVersion() string { return In(i18n.Locale()).MobileAboutVersion() }
+
+// MobileAboutVersion says "Version"
+// in the language of msgs.
+func (msgs Messages) MobileAboutVersion() string {
+	return Catalog.Format(msgs.locale, "MobileAboutVersion", nil)
+}
+
+// MobileAboutCore says "Kyokai Core"
+// in the language the app shows.
+func MobileAboutCore() string { return In(i18n.Locale()).MobileAboutCore() }
+
+// MobileAboutCore says "Kyokai Core"
+// in the language of msgs.
+func (msgs Messages) MobileAboutCore() string {
+	return Catalog.Format(msgs.locale, "MobileAboutCore", nil)
+}
+
+// MobileAboutCoreHint says "The engine shared with Kyokai on the desktop: networks, sessions, keys"
+// in the language the app shows.
+func MobileAboutCoreHint() string { return In(i18n.Locale()).MobileAboutCoreHint() }
+
+// MobileAboutCoreHint says "The engine shared with Kyokai on the desktop: networks, sessions, keys"
+// in the language of msgs.
+func (msgs Messages) MobileAboutCoreHint() string {
+	return Catalog.Format(msgs.locale, "MobileAboutCoreHint", nil)
+}
+
+// MobileAboutLicense says "License (AGPLv3)"
+// in the language the app shows.
+func MobileAboutLicense() string { return In(i18n.Locale()).MobileAboutLicense() }
+
+// MobileAboutLicense says "License (AGPLv3)"
+// in the language of msgs.
+func (msgs Messages) MobileAboutLicense() string {
+	return Catalog.Format(msgs.locale, "MobileAboutLicense", nil)
+}
+
+// MobileAboutLicenses says "Open source licenses"
+// in the language the app shows.
+func MobileAboutLicenses() string { return In(i18n.Locale()).MobileAboutLicenses() }
+
+// MobileAboutLicenses says "Open source licenses"
+// in the language of msgs.
+func (msgs Messages) MobileAboutLicenses() string {
+	return Catalog.Format(msgs.locale, "MobileAboutLicenses", nil)
+}
+
+// MobileAboutSource says "Source code"
+// in the language the app shows.
+func MobileAboutSource() string { return In(i18n.Locale()).MobileAboutSource() }
+
+// MobileAboutSource says "Source code"
+// in the language of msgs.
+func (msgs Messages) MobileAboutSource() string {
+	return Catalog.Format(msgs.locale, "MobileAboutSource", nil)
+}
+
+// MobileNetworkServerHint says "Such as tcp://host:11010"
+// in the language the app shows.
+func MobileNetworkServerHint() string { return In(i18n.Locale()).MobileNetworkServerHint() }
+
+// MobileNetworkServerHint says "Such as tcp://host:11010"
+// in the language of msgs.
+func (msgs Messages) MobileNetworkServerHint() string {
+	return Catalog.Format(msgs.locale, "MobileNetworkServerHint", nil)
+}
+
+// MobileNetworkServerAdd says "Add server"
+// in the language the app shows.
+func MobileNetworkServerAdd() string { return In(i18n.Locale()).MobileNetworkServerAdd() }
+
+// MobileNetworkServerAdd says "Add server"
+// in the language of msgs.
+func (msgs Messages) MobileNetworkServerAdd() string {
+	return Catalog.Format(msgs.locale, "MobileNetworkServerAdd", nil)
+}
+
+// MobileKeyPassphrase says "Key passphrase"
+// in the language the app shows.
+func MobileKeyPassphrase() string { return In(i18n.Locale()).MobileKeyPassphrase() }
+
+// MobileKeyPassphrase says "Key passphrase"
+// in the language of msgs.
+func (msgs Messages) MobileKeyPassphrase() string {
+	return Catalog.Format(msgs.locale, "MobileKeyPassphrase", nil)
+}
+
+// MobileKeyWrongPassphrase says "That passphrase didn't open the key"
+// in the language the app shows.
+func MobileKeyWrongPassphrase() string { return In(i18n.Locale()).MobileKeyWrongPassphrase() }
+
+// MobileKeyWrongPassphrase says "That passphrase didn't open the key"
+// in the language of msgs.
+func (msgs Messages) MobileKeyWrongPassphrase() string {
+	return Catalog.Format(msgs.locale, "MobileKeyWrongPassphrase", nil)
+}
+
+// MobileClipHistory says "Clipboard history"
+// in the language the app shows.
+func MobileClipHistory() string { return In(i18n.Locale()).MobileClipHistory() }
+
+// MobileClipHistory says "Clipboard history"
+// in the language of msgs.
+func (msgs Messages) MobileClipHistory() string {
+	return Catalog.Format(msgs.locale, "MobileClipHistory", nil)
+}
+
+// MobileClipHistoryClear says "Clear history"
+// in the language the app shows.
+func MobileClipHistoryClear() string { return In(i18n.Locale()).MobileClipHistoryClear() }
+
+// MobileClipHistoryClear says "Clear history"
+// in the language of msgs.
+func (msgs Messages) MobileClipHistoryClear() string {
+	return Catalog.Format(msgs.locale, "MobileClipHistoryClear", nil)
+}
+
+// MobileClipHistoryEmpty says "Nothing has been copied between this phone and your devices yet."
+// in the language the app shows.
+func MobileClipHistoryEmpty() string { return In(i18n.Locale()).MobileClipHistoryEmpty() }
+
+// MobileClipHistoryEmpty says "Nothing has been copied between this phone and your devices yet."
+// in the language of msgs.
+func (msgs Messages) MobileClipHistoryEmpty() string {
+	return Catalog.Format(msgs.locale, "MobileClipHistoryEmpty", nil)
+}
+
+// MobileClipFromHost says "Copied on {name}"
+// in the language the app shows.
+func MobileClipFromHost(name string) string { return In(i18n.Locale()).MobileClipFromHost(name) }
+
+// MobileClipFromHost says "Copied on {name}"
+// in the language of msgs.
+func (msgs Messages) MobileClipFromHost(name string) string {
+	return Catalog.Format(msgs.locale, "MobileClipFromHost", map[string]any{"name": name})
+}
+
+// MobileClipToHost says "Sent to {name}"
+// in the language the app shows.
+func MobileClipToHost(name string) string { return In(i18n.Locale()).MobileClipToHost(name) }
+
+// MobileClipToHost says "Sent to {name}"
+// in the language of msgs.
+func (msgs Messages) MobileClipToHost(name string) string {
+	return Catalog.Format(msgs.locale, "MobileClipToHost", map[string]any{"name": name})
+}
+
+// MobileClipFromPhone says "Copied on this phone"
+// in the language the app shows.
+func MobileClipFromPhone() string { return In(i18n.Locale()).MobileClipFromPhone() }
+
+// MobileClipFromPhone says "Copied on this phone"
+// in the language of msgs.
+func (msgs Messages) MobileClipFromPhone() string {
+	return Catalog.Format(msgs.locale, "MobileClipFromPhone", nil)
+}
+
+// MobileClipFiles says "{count, plural, one {1 file} other {# files}}"
+// in the language the app shows.
+func MobileClipFiles(count int) string { return In(i18n.Locale()).MobileClipFiles(count) }
+
+// MobileClipFiles says "{count, plural, one {1 file} other {# files}}"
+// in the language of msgs.
+func (msgs Messages) MobileClipFiles(count int) string {
+	return Catalog.Format(msgs.locale, "MobileClipFiles", map[string]any{"count": count})
+}
+
+// MobileClipFilesGone says "These files are no longer on this phone."
+// in the language the app shows.
+func MobileClipFilesGone() string { return In(i18n.Locale()).MobileClipFilesGone() }
+
+// MobileClipFilesGone says "These files are no longer on this phone."
+// in the language of msgs.
+func (msgs Messages) MobileClipFilesGone() string {
+	return Catalog.Format(msgs.locale, "MobileClipFilesGone", nil)
+}
+
+// MobileAiHistory says "Task history"
+// in the language the app shows.
+func MobileAiHistory() string { return In(i18n.Locale()).MobileAiHistory() }
+
+// MobileAiHistory says "Task history"
+// in the language of msgs.
+func (msgs Messages) MobileAiHistory() string {
+	return Catalog.Format(msgs.locale, "MobileAiHistory", nil)
+}
+
+// MobileAiHistoryEmpty says "Tasks this device showed while you were connected appear here."
+// in the language the app shows.
+func MobileAiHistoryEmpty() string { return In(i18n.Locale()).MobileAiHistoryEmpty() }
+
+// MobileAiHistoryEmpty says "Tasks this device showed while you were connected appear here."
+// in the language of msgs.
+func (msgs Messages) MobileAiHistoryEmpty() string {
+	return Catalog.Format(msgs.locale, "MobileAiHistoryEmpty", nil)
+}
+
+// MobileAiTokens says "{input} tokens in, {output} out"
+// in the language the app shows.
+func MobileAiTokens(input int, output int) string {
+	return In(i18n.Locale()).MobileAiTokens(input, output)
+}
+
+// MobileAiTokens says "{input} tokens in, {output} out"
+// in the language of msgs.
+func (msgs Messages) MobileAiTokens(input int, output int) string {
+	return Catalog.Format(msgs.locale, "MobileAiTokens", map[string]any{"input": input, "output": output})
+}
+
+// MobileSwitchTo says "Switch to {name}"
+// in the language the app shows.
+func MobileSwitchTo(name string) string { return In(i18n.Locale()).MobileSwitchTo(name) }
+
+// MobileSwitchTo says "Switch to {name}"
+// in the language of msgs.
+func (msgs Messages) MobileSwitchTo(name string) string {
+	return Catalog.Format(msgs.locale, "MobileSwitchTo", map[string]any{"name": name})
+}
+
+// MobileNanokvm says "NanoKVM"
+// in the language the app shows.
+func MobileNanokvm() string { return In(i18n.Locale()).MobileNanokvm() }
+
+// MobileNanokvm says "NanoKVM"
+// in the language of msgs.
+func (msgs Messages) MobileNanokvm() string {
+	return Catalog.Format(msgs.locale, "MobileNanokvm", nil)
+}
+
+// MobileHostAsleep says "The screen is asleep"
+// in the language the app shows.
+func MobileHostAsleep() string { return In(i18n.Locale()).MobileHostAsleep() }
+
+// MobileHostAsleep says "The screen is asleep"
+// in the language of msgs.
+func (msgs Messages) MobileHostAsleep() string {
+	return Catalog.Format(msgs.locale, "MobileHostAsleep", nil)
+}
+
+// MobileWaking says "Waking the screen…"
+// in the language the app shows.
+func MobileWaking() string { return In(i18n.Locale()).MobileWaking() }
+
+// MobileWaking says "Waking the screen…"
+// in the language of msgs.
+func (msgs Messages) MobileWaking() string {
+	return Catalog.Format(msgs.locale, "MobileWaking", nil)
+}
+
+// MobileWakeSent says "Asked the device to wake its screen"
+// in the language the app shows.
+func MobileWakeSent() string { return In(i18n.Locale()).MobileWakeSent() }
+
+// MobileWakeSent says "Asked the device to wake its screen"
+// in the language of msgs.
+func (msgs Messages) MobileWakeSent() string {
+	return Catalog.Format(msgs.locale, "MobileWakeSent", nil)
+}
+
+// MobileWakeFailed says "Couldn't wake it"
+// in the language the app shows.
+func MobileWakeFailed() string { return In(i18n.Locale()).MobileWakeFailed() }
+
+// MobileWakeFailed says "Couldn't wake it"
+// in the language of msgs.
+func (msgs Messages) MobileWakeFailed() string {
+	return Catalog.Format(msgs.locale, "MobileWakeFailed", nil)
+}
+
+// MobileAiSend says "Send"
+// in the language the app shows.
+func MobileAiSend() string { return In(i18n.Locale()).MobileAiSend() }
+
+// MobileAiSend says "Send"
+// in the language of msgs.
+func (msgs Messages) MobileAiSend() string {
+	return Catalog.Format(msgs.locale, "MobileAiSend", nil)
+}
+
+// MobileA11yShowPassword says "Show password"
+// in the language the app shows.
+func MobileA11yShowPassword() string { return In(i18n.Locale()).MobileA11yShowPassword() }
+
+// MobileA11yShowPassword says "Show password"
+// in the language of msgs.
+func (msgs Messages) MobileA11yShowPassword() string {
+	return Catalog.Format(msgs.locale, "MobileA11yShowPassword", nil)
+}
+
+// MobileA11yHidePassword says "Hide password"
+// in the language the app shows.
+func MobileA11yHidePassword() string { return In(i18n.Locale()).MobileA11yHidePassword() }
+
+// MobileA11yHidePassword says "Hide password"
+// in the language of msgs.
+func (msgs Messages) MobileA11yHidePassword() string {
+	return Catalog.Format(msgs.locale, "MobileA11yHidePassword", nil)
+}
+
+// MobileA11yShowToolbar says "Show the toolbar"
+// in the language the app shows.
+func MobileA11yShowToolbar() string { return In(i18n.Locale()).MobileA11yShowToolbar() }
+
+// MobileA11yShowToolbar says "Show the toolbar"
+// in the language of msgs.
+func (msgs Messages) MobileA11yShowToolbar() string {
+	return Catalog.Format(msgs.locale, "MobileA11yShowToolbar", nil)
+}
+
+// MobileA11yHideToolbar says "Hide the toolbar"
+// in the language the app shows.
+func MobileA11yHideToolbar() string { return In(i18n.Locale()).MobileA11yHideToolbar() }
+
+// MobileA11yHideToolbar says "Hide the toolbar"
+// in the language of msgs.
+func (msgs Messages) MobileA11yHideToolbar() string {
+	return Catalog.Format(msgs.locale, "MobileA11yHideToolbar", nil)
+}
+
+// MobileA11yResetZoom says "Zoom out to the whole screen"
+// in the language the app shows.
+func MobileA11yResetZoom() string { return In(i18n.Locale()).MobileA11yResetZoom() }
+
+// MobileA11yResetZoom says "Zoom out to the whole screen"
+// in the language of msgs.
+func (msgs Messages) MobileA11yResetZoom() string {
+	return Catalog.Format(msgs.locale, "MobileA11yResetZoom", nil)
+}
+
+// MobileA11yRemoteScreen says "Screen of {name}"
+// in the language the app shows.
+func MobileA11yRemoteScreen(name string) string {
+	return In(i18n.Locale()).MobileA11yRemoteScreen(name)
+}
+
+// MobileA11yRemoteScreen says "Screen of {name}"
+// in the language of msgs.
+func (msgs Messages) MobileA11yRemoteScreen(name string) string {
+	return Catalog.Format(msgs.locale, "MobileA11yRemoteScreen", map[string]any{"name": name})
+}
+
+// MobileFilesTitle says "Files"
+// in the language the app shows.
+func MobileFilesTitle() string { return In(i18n.Locale()).MobileFilesTitle() }
+
+// MobileFilesTitle says "Files"
+// in the language of msgs.
+func (msgs Messages) MobileFilesTitle() string {
+	return Catalog.Format(msgs.locale, "MobileFilesTitle", nil)
+}
+
+// MobileFilesNoSftp says "This computer's SSH server does not offer file access (SFTP)."
+// in the language the app shows.
+func MobileFilesNoSftp() string { return In(i18n.Locale()).MobileFilesNoSftp() }
+
+// MobileFilesNoSftp says "This computer's SSH server does not offer file access (SFTP)."
+// in the language of msgs.
+func (msgs Messages) MobileFilesNoSftp() string {
+	return Catalog.Format(msgs.locale, "MobileFilesNoSftp", nil)
+}
+
+// MobileFilesErrPermission says "You don't have permission to do that on the server."
+// in the language the app shows.
+func MobileFilesErrPermission() string { return In(i18n.Locale()).MobileFilesErrPermission() }
+
+// MobileFilesErrPermission says "You don't have permission to do that on the server."
+// in the language of msgs.
+func (msgs Messages) MobileFilesErrPermission() string {
+	return Catalog.Format(msgs.locale, "MobileFilesErrPermission", nil)
+}
+
+// MobileFilesErrNotFound says "It's no longer there."
+// in the language the app shows.
+func MobileFilesErrNotFound() string { return In(i18n.Locale()).MobileFilesErrNotFound() }
+
+// MobileFilesErrNotFound says "It's no longer there."
+// in the language of msgs.
+func (msgs Messages) MobileFilesErrNotFound() string {
+	return Catalog.Format(msgs.locale, "MobileFilesErrNotFound", nil)
+}
+
+// MobileFilesErrExists says "That name is already taken here."
+// in the language the app shows.
+func MobileFilesErrExists() string { return In(i18n.Locale()).MobileFilesErrExists() }
+
+// MobileFilesErrExists says "That name is already taken here."
+// in the language of msgs.
+func (msgs Messages) MobileFilesErrExists() string {
+	return Catalog.Format(msgs.locale, "MobileFilesErrExists", nil)
+}
+
+// MobileFilesErrIsFolder says "Folders can't be copied, only files."
+// in the language the app shows.
+func MobileFilesErrIsFolder() string { return In(i18n.Locale()).MobileFilesErrIsFolder() }
+
+// MobileFilesErrIsFolder says "Folders can't be copied, only files."
+// in the language of msgs.
+func (msgs Messages) MobileFilesErrIsFolder() string {
+	return Catalog.Format(msgs.locale, "MobileFilesErrIsFolder", nil)
+}
+
+// MobileFilesErrConnectionLost says "The connection to the server was lost."
+// in the language the app shows.
+func MobileFilesErrConnectionLost() string { return In(i18n.Locale()).MobileFilesErrConnectionLost() }
+
+// MobileFilesErrConnectionLost says "The connection to the server was lost."
+// in the language of msgs.
+func (msgs Messages) MobileFilesErrConnectionLost() string {
+	return Catalog.Format(msgs.locale, "MobileFilesErrConnectionLost", nil)
+}
+
+// MobileFilesErrOther says "The server refused: {error}"
+// in the language the app shows.
+func MobileFilesErrOther(error string) string { return In(i18n.Locale()).MobileFilesErrOther(error) }
+
+// MobileFilesErrOther says "The server refused: {error}"
+// in the language of msgs.
+func (msgs Messages) MobileFilesErrOther(error string) string {
+	return Catalog.Format(msgs.locale, "MobileFilesErrOther", map[string]any{"error": error})
+}
+
+// MobileFilesListFailed says "Couldn't read this folder"
+// in the language the app shows.
+func MobileFilesListFailed() string { return In(i18n.Locale()).MobileFilesListFailed() }
+
+// MobileFilesListFailed says "Couldn't read this folder"
+// in the language of msgs.
+func (msgs Messages) MobileFilesListFailed() string {
+	return Catalog.Format(msgs.locale, "MobileFilesListFailed", nil)
+}
+
+// MobileFilesEmpty says "This folder is empty"
+// in the language the app shows.
+func MobileFilesEmpty() string { return In(i18n.Locale()).MobileFilesEmpty() }
+
+// MobileFilesEmpty says "This folder is empty"
+// in the language of msgs.
+func (msgs Messages) MobileFilesEmpty() string {
+	return Catalog.Format(msgs.locale, "MobileFilesEmpty", nil)
+}
+
+// MobileFilesUp says "Up"
+// in the language the app shows.
+func MobileFilesUp() string { return In(i18n.Locale()).MobileFilesUp() }
+
+// MobileFilesUp says "Up"
+// in the language of msgs.
+func (msgs Messages) MobileFilesUp() string {
+	return Catalog.Format(msgs.locale, "MobileFilesUp", nil)
+}
+
+// MobileFilesUpload says "Upload"
+// in the language the app shows.
+func MobileFilesUpload() string { return In(i18n.Locale()).MobileFilesUpload() }
+
+// MobileFilesUpload says "Upload"
+// in the language of msgs.
+func (msgs Messages) MobileFilesUpload() string {
+	return Catalog.Format(msgs.locale, "MobileFilesUpload", nil)
+}
+
+// MobileFilesDownload says "Download"
+// in the language the app shows.
+func MobileFilesDownload() string { return In(i18n.Locale()).MobileFilesDownload() }
+
+// MobileFilesDownload says "Download"
+// in the language of msgs.
+func (msgs Messages) MobileFilesDownload() string {
+	return Catalog.Format(msgs.locale, "MobileFilesDownload", nil)
+}
+
+// MobileFilesDownloading says "Downloading {name}…"
+// in the language the app shows.
+func MobileFilesDownloading(name string) string {
+	return In(i18n.Locale()).MobileFilesDownloading(name)
+}
+
+// MobileFilesDownloading says "Downloading {name}…"
+// in the language of msgs.
+func (msgs Messages) MobileFilesDownloading(name string) string {
+	return Catalog.Format(msgs.locale, "MobileFilesDownloading", map[string]any{"name": name})
+}
+
+// MobileFilesDownloaded says "{name} downloaded"
+// in the language the app shows.
+func MobileFilesDownloaded(name string) string { return In(i18n.Locale()).MobileFilesDownloaded(name) }
+
+// MobileFilesDownloaded says "{name} downloaded"
+// in the language of msgs.
+func (msgs Messages) MobileFilesDownloaded(name string) string {
+	return Catalog.Format(msgs.locale, "MobileFilesDownloaded", map[string]any{"name": name})
+}
+
+// MobileFilesShare says "Share"
+// in the language the app shows.
+func MobileFilesShare() string { return In(i18n.Locale()).MobileFilesShare() }
+
+// MobileFilesShare says "Share"
+// in the language of msgs.
+func (msgs Messages) MobileFilesShare() string {
+	return Catalog.Format(msgs.locale, "MobileFilesShare", nil)
+}
+
+// MobileFilesSaved says "Saved"
+// in the language the app shows.
+func MobileFilesSaved() string { return In(i18n.Locale()).MobileFilesSaved() }
+
+// MobileFilesSaved says "Saved"
+// in the language of msgs.
+func (msgs Messages) MobileFilesSaved() string {
+	return Catalog.Format(msgs.locale, "MobileFilesSaved", nil)
+}
+
+// MobileFilesTooBigToSave says "This file is too large to save from here. Use Share instead."
+// in the language the app shows.
+func MobileFilesTooBigToSave() string { return In(i18n.Locale()).MobileFilesTooBigToSave() }
+
+// MobileFilesTooBigToSave says "This file is too large to save from here. Use Share instead."
+// in the language of msgs.
+func (msgs Messages) MobileFilesTooBigToSave() string {
+	return Catalog.Format(msgs.locale, "MobileFilesTooBigToSave", nil)
+}
+
+// MobileFilesNewFolder says "New folder"
+// in the language the app shows.
+func MobileFilesNewFolder() string { return In(i18n.Locale()).MobileFilesNewFolder() }
+
+// MobileFilesNewFolder says "New folder"
+// in the language of msgs.
+func (msgs Messages) MobileFilesNewFolder() string {
+	return Catalog.Format(msgs.locale, "MobileFilesNewFolder", nil)
+}
+
+// MobileFilesFolderName says "Folder name"
+// in the language the app shows.
+func MobileFilesFolderName() string { return In(i18n.Locale()).MobileFilesFolderName() }
+
+// MobileFilesFolderName says "Folder name"
+// in the language of msgs.
+func (msgs Messages) MobileFilesFolderName() string {
+	return Catalog.Format(msgs.locale, "MobileFilesFolderName", nil)
+}
+
+// MobileFilesCreate says "Create"
+// in the language the app shows.
+func MobileFilesCreate() string { return In(i18n.Locale()).MobileFilesCreate() }
+
+// MobileFilesCreate says "Create"
+// in the language of msgs.
+func (msgs Messages) MobileFilesCreate() string {
+	return Catalog.Format(msgs.locale, "MobileFilesCreate", nil)
+}
+
+// MobileFilesRename says "Rename"
+// in the language the app shows.
+func MobileFilesRename() string { return In(i18n.Locale()).MobileFilesRename() }
+
+// MobileFilesRename says "Rename"
+// in the language of msgs.
+func (msgs Messages) MobileFilesRename() string {
+	return Catalog.Format(msgs.locale, "MobileFilesRename", nil)
+}
+
+// MobileFilesNewName says "New name"
+// in the language the app shows.
+func MobileFilesNewName() string { return In(i18n.Locale()).MobileFilesNewName() }
+
+// MobileFilesNewName says "New name"
+// in the language of msgs.
+func (msgs Messages) MobileFilesNewName() string {
+	return Catalog.Format(msgs.locale, "MobileFilesNewName", nil)
+}
+
+// MobileFilesBadName says "A name can't contain /"
+// in the language the app shows.
+func MobileFilesBadName() string { return In(i18n.Locale()).MobileFilesBadName() }
+
+// MobileFilesBadName says "A name can't contain /"
+// in the language of msgs.
+func (msgs Messages) MobileFilesBadName() string {
+	return Catalog.Format(msgs.locale, "MobileFilesBadName", nil)
+}
+
+// MobileFilesDelete says "Delete"
+// in the language the app shows.
+func MobileFilesDelete() string { return In(i18n.Locale()).MobileFilesDelete() }
+
+// MobileFilesDelete says "Delete"
+// in the language of msgs.
+func (msgs Messages) MobileFilesDelete() string {
+	return Catalog.Format(msgs.locale, "MobileFilesDelete", nil)
+}
+
+// MobileFilesDeleteAsk says "Delete {name}?"
+// in the language the app shows.
+func MobileFilesDeleteAsk(name string) string { return In(i18n.Locale()).MobileFilesDeleteAsk(name) }
+
+// MobileFilesDeleteAsk says "Delete {name}?"
+// in the language of msgs.
+func (msgs Messages) MobileFilesDeleteAsk(name string) string {
+	return Catalog.Format(msgs.locale, "MobileFilesDeleteAsk", map[string]any{"name": name})
+}
+
+// MobileFilesDeleteFolderHint says "Only an empty folder can be deleted."
+// in the language the app shows.
+func MobileFilesDeleteFolderHint() string { return In(i18n.Locale()).MobileFilesDeleteFolderHint() }
+
+// MobileFilesDeleteFolderHint says "Only an empty folder can be deleted."
+// in the language of msgs.
+func (msgs Messages) MobileFilesDeleteFolderHint() string {
+	return Catalog.Format(msgs.locale, "MobileFilesDeleteFolderHint", nil)
+}
+
+// MobileFilesTransfers says "Transfers"
+// in the language the app shows.
+func MobileFilesTransfers() string { return In(i18n.Locale()).MobileFilesTransfers() }
+
+// MobileFilesTransfers says "Transfers"
+// in the language of msgs.
+func (msgs Messages) MobileFilesTransfers() string {
+	return Catalog.Format(msgs.locale, "MobileFilesTransfers", nil)
+}
+
+// MobileFilesClearEnded says "Clear finished"
+// in the language the app shows.
+func MobileFilesClearEnded() string { return In(i18n.Locale()).MobileFilesClearEnded() }
+
+// MobileFilesClearEnded says "Clear finished"
+// in the language of msgs.
+func (msgs Messages) MobileFilesClearEnded() string {
+	return Catalog.Format(msgs.locale, "MobileFilesClearEnded", nil)
+}
+
+// MobileFilesWaiting says "Waiting"
+// in the language the app shows.
+func MobileFilesWaiting() string { return In(i18n.Locale()).MobileFilesWaiting() }
+
+// MobileFilesWaiting says "Waiting"
+// in the language of msgs.
+func (msgs Messages) MobileFilesWaiting() string {
+	return Catalog.Format(msgs.locale, "MobileFilesWaiting", nil)
+}
+
+// MobileFilesProgress says "{done} of {total}"
+// in the language the app shows.
+func MobileFilesProgress(done string, total string) string {
+	return In(i18n.Locale()).MobileFilesProgress(done, total)
+}
+
+// MobileFilesProgress says "{done} of {total}"
+// in the language of msgs.
+func (msgs Messages) MobileFilesProgress(done string, total string) string {
+	return Catalog.Format(msgs.locale, "MobileFilesProgress", map[string]any{"done": done, "total": total})
+}
+
+// MobileFilesDone says "Done"
+// in the language the app shows.
+func MobileFilesDone() string { return In(i18n.Locale()).MobileFilesDone() }
+
+// MobileFilesDone says "Done"
+// in the language of msgs.
+func (msgs Messages) MobileFilesDone() string {
+	return Catalog.Format(msgs.locale, "MobileFilesDone", nil)
+}
+
+// MobileFilesCancelled says "Cancelled"
+// in the language the app shows.
+func MobileFilesCancelled() string { return In(i18n.Locale()).MobileFilesCancelled() }
+
+// MobileFilesCancelled says "Cancelled"
+// in the language of msgs.
+func (msgs Messages) MobileFilesCancelled() string {
+	return Catalog.Format(msgs.locale, "MobileFilesCancelled", nil)
+}

@@ -126,6 +126,7 @@ struct Connect {
     #[serde(default)]
     nanokvm: bool,
     /// Opening this device's own NanoKVM ends a controller's session of it.
+    #[cfg_attr(target_os = "android", allow(dead_code))]
     #[serde(default)]
     take_over: bool,
 }
@@ -831,6 +832,9 @@ fn start(input: &[u8]) -> Result<(), String> {
         serde_json::from_slice(input).map_err(|e| format!("bad start config: {e}"))?;
     let mut guard = CORE.lock().map_err(|_| "core state poisoned")?;
     if guard.is_some() {
+        #[cfg(target_os = "android")]
+        return Ok(());
+        #[cfg(not(target_os = "android"))]
         return Err("the core is already started".into());
     }
     let core = build(cfg)?;

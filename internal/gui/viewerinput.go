@@ -247,6 +247,11 @@ func (v *viewer) qualityPacket() []byte {
 	if size == "" {
 		size = "auto"
 	}
+	if size == "auto" && runtime.GOOS == "android" && v.app != nil && v.app.mobile != nil {
+		if capSize := v.app.mobile.autoSizeCap(); capSize != "" {
+			size = capSize
+		}
+	}
 	msg := map[string]any{"type": "quality", "preset": qualityPresets[min(max(v.preset, 0), presetCustom)], "fps": fps, "i444": v.full, "size": size}
 	if v.preset == presetCustom {
 		msg["custom"] = v.custom

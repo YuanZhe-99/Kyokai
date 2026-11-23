@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -56,17 +57,20 @@ type clipEntry struct {
 	thumb *ui.Bitmap
 	// The image's size, or the files' names, count and total size.
 	width, height int
+	pngData       []byte
 	names         []string
+	paths         []string
 	files         int
 	size          int64
 }
 
 // clipPacket is the body of a clipboard packet.
 type clipPacket struct {
-	From  string `json:"from"`
-	At    int64  `json:"at"`
-	Text  string `json:"text"`
-	PNG   string `json:"png"`
+	From  string   `json:"from"`
+	At    int64    `json:"at"`
+	Text  string   `json:"text"`
+	PNG   string   `json:"png"`
+	Paths []string `json:"paths"`
 	Files []struct {
 		Path string `json:"path"`
 		Size int64  `json:"size"`
@@ -96,6 +100,9 @@ func (v *viewer) clipPacketIn(body []byte) {
 			}
 		}
 		if p.PNG == "" {
+			if runtime.GOOS == "android" && e.host {
+				e.paths = v.app.mobileHandleHostClipboard(p)
+			}
 			v.update(func() { v.addClip(e) })
 			return
 		}
@@ -104,6 +111,14 @@ func (v *viewer) clipPacketIn(body []byte) {
 			return
 		}
 		e.width, e.height = w, h
+		if runtime.GOOS == "android" {
+			if raw, err := base64.StdEncoding.DecodeString(p.PNG); err == nil {
+				e.pngData = raw
+				if e.host {
+					v.app.mobileSetHostPNG(raw)
+				}
+			}
+		}
 		v.update(func() {
 			e.thumb = ui.NewBitmap(thumb)
 			v.addClip(e)

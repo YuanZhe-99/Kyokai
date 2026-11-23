@@ -36,7 +36,7 @@ pub enum Persistence {
     /// a minute); the stored secrets
     /// are left untouched, this run keeps secrets in memory, and opening
     /// again asks again.
-    #[cfg_attr(windows, allow(dead_code))]
+    #[cfg_attr(any(windows, target_os = "android"), allow(dead_code))]
     Denied,
 }
 
@@ -241,6 +241,7 @@ fn decrypt(key: &[u8; 32], data: &[u8]) -> Option<Map> {
     )
 }
 
+#[cfg(not(target_os = "android"))]
 fn new_key() -> Option<Zeroizing<[u8; 32]>> {
     let mut key = Zeroizing::new([0u8; 32]);
     getrandom::fill(key.as_mut()).ok()?;

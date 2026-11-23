@@ -4,7 +4,7 @@
 
 | 进程 | 可执行文件 | 运行身份 | 职责 |
 |---|---|---|---|
-| 界面 | `Kyokai`（MyGo） | 当前用户，从不提权 | 窗口、托盘、设置。自身不持有身份，只显示引擎推送的内容。 |
+| 界面 | `Kyokai`（MyGo） | 当前用户，从不提权 | 窗口、托盘、设置（在 Android 上为自适应控制端应用，在同一进程内以 `host.serve = "none"` 运行 `internal/engine`）。自身不持有身份，只显示引擎推送的内容。 |
 | 引擎 | `kyokai-svc run --host user` | 当前用户，界面的子进程 | 加载 Rust 核心（由它持有设备身份、密码、内嵌的 EasyTier 节点（[networking.md](networking.md)）以及会话两端（[protocol.md](protocol.md)））；提供本地 API。 |
 | 命令行 | `kyokai …`（也可用 `kyokai-svc ctl …`） | 当前用户 | 面向人与脚本的本地 API 客户端（[cli.md](cli.md)）。 |
 
@@ -33,7 +33,8 @@
 | `internal/gui` | 界面状态、视图、托盘、应用更新、引擎子进程 |
 | `internal/engine` | 引擎宿主：生命线、基于核心的本地 API 处理 |
 | `internal/localapi` | 基于 AF_UNIX 的带版本 NDJSON 协议、对端凭据授权 |
-| `internal/core` | 通过 purego 绑定 Rust 核心 |
+| `internal/core` | 通过 purego 绑定 Rust 核心（在 Android 上按 SONAME 加载 `libkyokai_core.so`） |
+| `internal/androidhost` | Android 原生模块（Kotlin + Cgo）：Keystore `"kyokai-master"`、`SessionService` 前台服务、`MediaCodec` 探测与 NDK `AMediaCodec` + `AImageReader`（`NV12`）解码器、Opus 声音、剪贴板图片、折叠屏铰链姿态 |
 | `internal/fsutil` | 原子写入与 JSON 文档 |
 | `internal/version` | 唯一的产品版本 |
 | `core/kyokai-core` | Rust 核心库：C ABI、机密存储、设备身份、密码与 OPAQUE（`auth`）、访问决定（`access`）、会话（`session`）、EasyTier 节点（`net`）、屏幕采集与编解码器（`video`；Media Foundation 为 `mf`，VideoToolbox 为 `vt`，VA-API 的 H.264 与 HEVC 为 `va`，系统的 FFmpeg 为 `ff`，libvpx 与 libaom 为 `soft`，H.264 与 HEVC 的封装格式为 `annexb`，查看窗口把解码后的画面转换进界面缓冲区为 `convert`）、被控端的声音（`audio`、`opus`）、输入服务（`input`）、查看窗口的键盘抓取（`keyboard`）、NanoKVM USB（`kvm`：它的采集卡、经串口的键盘和鼠标）、AI 任务（`ai`：服务商、任务运行时及其驱动的桌面）、登录密钥（`keys`）、通往被控端自身服务的隧道（`tunnel`）、被控端的状态（`system`）及其查看者（`watch`） |

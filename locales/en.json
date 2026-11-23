@@ -2065,5 +2065,437 @@
   "TermPreview": "Preview",
   "TermPreviewLight": "Preview in light mode",
   "TermPreviewDark": "Preview in dark mode",
-  "FilesSettings": "Settings"
+  "FilesSettings": "Settings",
+  "MobileAboutText": "Kyokai for Android, core {version}. Connects to your Kyokai computers over your own networks.",
+  "@MobileAboutText": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "MobileActionBlockInput": "Block the host's own input",
+  "MobileActionLock": "Lock the host",
+  "MobileActionPrivacy": "Privacy screen",
+  "MobileActionWake": "Wake the screen",
+  "MobileActionWakeHint": "Turns the host's display back on",
+  "MobileAiAsksBefore": "Asks before: {actions}",
+  "@MobileAiAsksBefore": {
+    "placeholders": {
+      "actions": {
+        "type": "String"
+      }
+    }
+  },
+  "MobileAiCancelled": "Cancelled",
+  "MobileAiConfirming": "Waiting for the host to confirm",
+  "MobileAiDone": "Done",
+  "MobileAiFailed": "Failed",
+  "MobileAiNoTask": "No task running",
+  "MobileAiNotAllowed": "This device may not run or approve AI tasks on this host.",
+  "MobileAiOnHost": "AI on the host",
+  "MobileAiPause": "Pause",
+  "MobileAiPaused": "Paused",
+  "MobileAiPausedBy": "Paused by {who}",
+  "@MobileAiPausedBy": {
+    "placeholders": {
+      "who": {
+        "type": "String"
+      }
+    }
+  },
+  "MobileAiReplyHint": "Reply or add an instruction",
+  "MobileAiResume": "Resume",
+  "MobileAiRunning": "Running",
+  "MobileAiSteps": "Steps",
+  "MobileAiStop": "Stop",
+  "MobileAiTask": "AI task",
+  "MobileAiTaskHint": "What should the host do?",
+  "MobileAiWaitingApproval": "Waiting for your approval",
+  "MobileApprove": "Approve",
+  "MobileAuto": "Auto",
+  "MobileCancel": "Cancel",
+  "MobileConfirmingOnHost": "Someone at the host needs to accept this connection.",
+  "MobileConnect": "Connect",
+  "MobileConnectHint": "Device ID, name or address",
+  "MobileConnecting": "Connecting…",
+  "MobileCopied": "Copied",
+  "MobileCopy": "Copy",
+  "MobileCopyReport": "Copy report",
+  "MobileCopyStatus": "Copy core status",
+  "MobileDecline": "Decline",
+  "MobileDesktop": "Desktop",
+  "MobileDeviceGone": "This device is no longer in your list.",
+  "MobileDeviceId": "Device ID",
+  "MobileDeviceName": "Device name",
+  "MobileDiagnostics": "Diagnostics",
+  "MobileDiagnosticsHint": "Build, decoders, network, and logs to share",
+  "MobileDirectPaths": "Direct paths",
+  "MobileDirectPathsHint": "Try to reach devices directly instead of through a relay",
+  "MobileDisconnect": "Disconnect",
+  "MobileDisplayN": "Display {n}",
+  "@MobileDisplayN": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "MobileDisplays": "Displays",
+  "MobileFailAbsent": "The device isn't online",
+  "MobileFailBroken": "The connection broke",
+  "MobileFailBusy": "The host is busy",
+  "MobileFailDenied": "The host declined",
+  "MobileFailIncompatible": "The host's Kyokai version isn't compatible",
+  "MobileFailKeyChanged": "The host's identity changed. Forget it and connect again only if you trust it.",
+  "MobileFailPassword": "Wrong password",
+  "MobileFailRateLimited": "Too many attempts. Try again later.",
+  "MobileFailSelf": "That's this device",
+  "MobileFailServiceDown": "The service isn't running on the host",
+  "MobileFailTimeout": "Timed out",
+  "MobileFailUnknown": "Couldn't connect",
+  "MobileFailUnreachable": "Can't reach the device",
+  "MobileFailUnsupported": "The host doesn't support this",
+  "MobileFailWrongDevice": "A different device answered at that address",
+  "MobileFilterAll": "All",
+  "MobileFilterOffline": "Offline",
+  "MobileFilterOnline": "Online",
+  "MobileForget": "Forget",
+  "MobileForgetIdentity": "Start over",
+  "MobileForgetIdentityHint": "A new device ID; every host has to trust this phone again",
+  "MobileInputPaused": "Input paused",
+  "MobileKeyAdmitted": "Admitted",
+  "MobileKeyName": "Key name",
+  "MobileKeyNew": "New key",
+  "MobileKeyboard": "Keyboard",
+  "MobileLanguage": "Language",
+  "MobileLatencyFirst": "Lowest latency first",
+  "MobileLatencyFirstHint": "Prefer the fastest path over the cheapest",
+  "MobileLogsPrivacy": "Logs hold device IDs, addresses and errors, never passwords or keys.",
+  "MobileMemoryOnly": "Secrets in memory only",
+  "MobileMemoryOnlyHint": "This phone's keystore isn't available, so saved passwords and keys are lost when the app closes.",
+  "MobileMore": "More",
+  "MobileMouseLeft": "Left click",
+  "MobileMouseRight": "Right click",
+  "MobileNavDevices": "Devices",
+  "MobileNavSessions": "Sessions",
+  "MobileNavSettings": "Settings",
+  "MobileNetConnecting": "Connecting",
+  "MobileNetError": "Network error",
+  "MobileNetOff": "No network",
+  "MobileNetOnline": "Online",
+  "MobileNetworkAdd": "Add network",
+  "MobileNetworkDevices": "{count, plural, one {1 device} other {# devices}}",
+  "@MobileNetworkDevices": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "MobileNetworkEdit": "Edit network",
+  "MobileNetworkLabel": "Label",
+  "MobileNetworkName": "Network name",
+  "MobileNetworkSecret": "Network secret",
+  "MobileNetworkSecretKeep": "Leave empty to keep the current secret",
+  "MobileNetworkServers": "Servers",
+  "MobileNetworks": "Networks",
+  "MobileNetworksExplain": "Join up to 8 EasyTier networks. Devices on any of them can reach each other.",
+  "MobileNoDeviceSelected": "Choose a device",
+  "MobileNoDevices": "No devices yet",
+  "MobileNoDevicesHint": "Devices on your networks appear here. You can also connect by ID or address.",
+  "MobileNoDevicesNoNetwork": "Join a network in Settings to see your devices.",
+  "MobileNoSessions": "No open sessions",
+  "MobileNoViewPermission": "This device may not view the host's screen.",
+  "MobileNotInThisBuild": "Not in this build yet",
+  "MobileNotSaved": "Not saved",
+  "MobileOfflineHint": "The device is offline. It shows up when it's back on a network you share.",
+  "MobileOk": "OK",
+  "MobileOpenDesktop": "Open desktop",
+  "MobilePassword": "Password",
+  "MobilePasswordFor": "Password for {name}",
+  "@MobilePasswordFor": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "MobilePasswordHint": "The host's connection password",
+  "MobilePathAddress": "Via {address}",
+  "@MobilePathAddress": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
+  "MobilePathDirect": "Direct",
+  "MobilePathLan": "Local network",
+  "MobilePathRelay": "Relay",
+  "MobilePointerSpeed": "Pointer speed",
+  "MobileCursorSize": "Cursor size",
+  "MobilePointerTouch": "Touch",
+  "MobilePointerTrackpad": "Trackpad",
+  "MobilePrimary": "Primary",
+  "MobilePublicKeyCopied": "Public key copied",
+  "MobileQuality": "Quality",
+  "MobileQualityBalanced": "Balanced",
+  "MobileQualityBest": "Best picture",
+  "MobileQualityCodec": "Codec",
+  "MobileQualityFps": "Frame rate",
+  "MobileQualityPreset": "Preset",
+  "MobileQualityResolution": "Resolution",
+  "MobileQualitySpeed": "Fastest",
+  "MobileReconnecting": "Reconnecting…",
+  "MobileRememberPassword": "Remember password",
+  "MobileRemove": "Remove",
+  "MobileRemoveDevice": "Remove device",
+  "MobileRemoveDeviceHint": "Remove {name} and what this phone saved for it?",
+  "@MobileRemoveDeviceHint": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "MobileRouteAdd": "Add an address",
+  "MobileRouteAddHint": "IP or host name, optionally with :port",
+  "MobileRouteAuto": "Automatic",
+  "MobileRouteAutoHint": "Use the best path Kyokai finds",
+  "MobileRouteNetwork": "Through the network",
+  "MobileRouteOk": "Reachable",
+  "MobileSave": "Save",
+  "MobileSaved": "Saved",
+  "MobileSavedPassword": "Saved password",
+  "MobileScroll": "Scroll",
+  "MobileSectionAbout": "About",
+  "MobileSectionAppearance": "Appearance",
+  "MobileSectionInput": "Input",
+  "MobileSectionKeys": "Sign-in keys",
+  "MobileSectionNetworks": "Networks",
+  "MobileSectionRoutes": "Paths",
+  "MobileSectionSignIn": "Sign-in",
+  "MobileSectionStatus": "Status",
+  "MobileSectionThisDevice": "This device",
+  "MobileSend": "Send",
+  "MobileServiceRdp": "Remote Desktop (RDP)",
+  "MobileServiceSsh": "Terminal (SSH)",
+  "MobileServiceVnc": "VNC",
+  "MobileSessionEnded": "Session ended",
+  "MobileShareClipboard": "Share clipboard",
+  "MobileShareLogs": "Share logs",
+  "MobileSharePublicKey": "Share public key",
+  "MobileShowVideoDetails": "Show video details",
+  "MobileShowVideoDetailsHint": "Codec, decoder, frame rate and latency over the picture",
+  "MobileSignInKey": "Sign-in key",
+  "MobileSignInKeys": "Sign-in keys",
+  "MobileSignInKeysExplain": "A key lets this phone sign in without a password once a host admits it.",
+  "MobileSignInKeysHint": "Sign in without typing passwords",
+  "MobileSound": "Sound",
+  "MobileSplitKeyboard": "Split keyboard",
+  "MobileSplitKeyboardHint": "On wide screens, split the keys with the touchpad between them",
+  "MobileStartFailed": "Kyokai couldn't start",
+  "MobileStarting": "Starting…",
+  "MobileStatBattery": "Battery",
+  "MobileStatCpu": "CPU",
+  "MobileStatDisk": "Disk",
+  "MobileStatGpu": "GPU",
+  "MobileStatMemory": "Memory",
+  "MobileStatUptime": "Uptime",
+  "MobileStateConfirming": "Waiting for the host",
+  "MobileStateConnected": "Connected",
+  "MobileStatusNeedsSignIn": "Sign in once to see this device's status.",
+  "MobileTheme": "Theme",
+  "MobileThemeDark": "Dark",
+  "MobileThemeLight": "Light",
+  "MobileThemeSystem": "System",
+  "MobileThinkHigh": "Thorough",
+  "MobileThinkLow": "Quick",
+  "MobileThinkMedium": "Normal",
+  "MobileThisDevice": "This device · {id}",
+  "@MobileThisDevice": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "MobileTryAgain": "Try again",
+  "MobileTypePassword": "Enter password",
+  "MobileTypeText": "Type text",
+  "MobileTypeTextHint": "Sent to the host as typing",
+  "MobileVideoUnsupported": "This phone can't decode {codec} video",
+  "@MobileVideoUnsupported": {
+    "placeholders": {
+      "codec": {
+        "type": "String"
+      }
+    }
+  },
+  "MobileWaitingForPicture": "Waiting for the picture…",
+  "MobileWeakSecret": "Weak secret",
+  "MobileKeyAdd": "Add key",
+  "MobileKeyImportFile": "Import a key file",
+  "MobileKeyImportHint": "OpenSSH or PEM, Ed25519 or RSA",
+  "MobileKeyImportPaste": "Paste a private key",
+  "MobileKeyLocked": "This key has a passphrase.",
+  "MobileKeyNewHint": "Make an Ed25519 key on this phone",
+  "MobileKeyNotAKey": "That isn't a private key",
+  "MobileKeyUnsupported": "This kind of key can't be imported. Use Ed25519, RSA (2048 bits or more) or ECDSA P-256 or P-384.",
+  "MobileOthersInNetworks": "Others in my networks",
+  "MobileOthersNone": "No other Kyokai device is online in your networks.",
+  "MobileOthersNote": "Kyokai devices you haven't connected to",
+  "MobileOthersTitle": "Others in my networks",
+  "MobileLaptopMode": "Laptop mode on foldables",
+  "MobileLaptopModeHint": "Half-fold the phone like a laptop: the screen above the hinge, the keyboard and a touchpad below it",
+  "MobilePictureTop": "Picture at the top",
+  "MobilePictureTopHint": "When the host's screen doesn't fill the view, keep it at the top instead of the middle",
+  "MobileSendClipboard": "Send clipboard",
+  "MobileHostKeyChanged": "The server's key changed",
+  "MobileHostKeyChangedHint": "Trust the new key only if you know why it changed, such as a reinstalled system.",
+  "MobileTrustKey": "Trust the new key",
+  "MobileSvcNeedSignIn": "Sign in to continue",
+  "MobileSvcSignInRequired": "This server needs a sign-in",
+  "MobileSvcSignInFailed": "The user name or password was refused",
+  "MobileSvcNoAnswer": "The server didn't answer",
+  "MobileSvcNoSecureSignIn": "The server offers no secure sign-in, so the password wasn't sent",
+  "MobileSvcReplaced": "Signed in elsewhere: this session ended",
+  "MobileSvcUnreadable": "The server sent something this app can't read",
+  "MobileSvcNoTunnel": "This device's Kyokai has no service tunnels; update it",
+  "MobileVncPassword": "VNC password",
+  "MobileMacAccount": "Mac account",
+  "MobileWindowsAccount": "Windows account",
+  "MobileNoSignIn": "No sign-in",
+  "MobileUserName": "User name",
+  "MobileDomainOptional": "Domain (optional)",
+  "MobileSshKeyHint": "Signs in with this phone's sign-in keys (Settings › Sign-in keys); the server must list the public key.",
+  "MobileRememberSignIn": "Remember sign-in",
+  "MobilePaste": "Paste",
+  "MobileLaptopSafeArea": "Keep clear of system bars",
+  "MobileLaptopSafeAreaHint": "In laptop mode, leave room for the status bar at the top and the navigation bar at the bottom",
+  "MobileSettingsNavPlacement": "Navigation position",
+  "MobileSettingsNavPlacementDesc": "Bottom everywhere, at the side on wide screens such as unfolded foldables and tablets, or at the side everywhere (not recommended on phones).",
+  "MobileSettingsNavPlacementBottom": "Bottom",
+  "MobileSettingsNavPlacementSideOnWide": "Side on wide",
+  "MobileSettingsNavPlacementSide": "Side",
+  "MobileSettingsRailSide": "Side navigation position",
+  "MobileSettingsRailSideDesc": "Which side of the window the navigation rail sits on.",
+  "MobileSettingsRailSideLeft": "Left",
+  "MobileSettingsRailSideRight": "Right",
+  "MobileSettingsSelectItem": "Select an item from the list",
+  "MobileAboutApp": "Kyokai for Android",
+  "MobileAboutAppHint": "Connects to your Kyokai computers over your own networks.",
+  "MobileAboutVersion": "Version",
+  "MobileAboutCore": "Kyokai Core",
+  "MobileAboutCoreHint": "The engine shared with Kyokai on the desktop: networks, sessions, keys",
+  "MobileAboutLicense": "License (AGPLv3)",
+  "MobileAboutLicenses": "Open source licenses",
+  "MobileAboutSource": "Source code",
+  "MobileNetworkServerHint": "Such as tcp://host:11010",
+  "MobileNetworkServerAdd": "Add server",
+  "MobileKeyPassphrase": "Key passphrase",
+  "MobileKeyWrongPassphrase": "That passphrase didn't open the key",
+  "MobileClipHistory": "Clipboard history",
+  "MobileClipHistoryClear": "Clear history",
+  "MobileClipHistoryEmpty": "Nothing has been copied between this phone and your devices yet.",
+  "MobileClipFromHost": "Copied on {name}",
+  "@MobileClipFromHost": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "MobileClipToHost": "Sent to {name}",
+  "@MobileClipToHost": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "MobileClipFromPhone": "Copied on this phone",
+  "MobileClipFiles": "{count, plural, one {1 file} other {# files}}",
+  "@MobileClipFiles": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "MobileClipFilesGone": "These files are no longer on this phone.",
+  "MobileAiHistory": "Task history",
+  "MobileAiHistoryEmpty": "Tasks this device showed while you were connected appear here.",
+  "MobileAiTokens": "{input} tokens in, {output} out",
+  "@MobileAiTokens": {
+    "placeholders": {
+      "input": {
+        "type": "int"
+      },
+      "output": {
+        "type": "int"
+      }
+    }
+  },
+  "MobileSwitchTo": "Switch to {name}",
+  "@MobileSwitchTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "MobileNanokvm": "NanoKVM",
+  "MobileHostAsleep": "The screen is asleep",
+  "MobileWaking": "Waking the screen…",
+  "MobileWakeSent": "Asked the device to wake its screen",
+  "MobileWakeFailed": "Couldn't wake it",
+  "MobileAiSend": "Send",
+  "MobileA11yShowPassword": "Show password",
+  "MobileA11yHidePassword": "Hide password",
+  "MobileA11yShowToolbar": "Show the toolbar",
+  "MobileA11yHideToolbar": "Hide the toolbar",
+  "MobileA11yResetZoom": "Zoom out to the whole screen",
+  "MobileA11yRemoteScreen": "Screen of {name}",
+  "@MobileA11yRemoteScreen": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "MobileFilesTitle": "Files",
+  "MobileFilesNoSftp": "This computer's SSH server does not offer file access (SFTP).",
+  "MobileFilesErrPermission": "You don't have permission to do that on the server.",
+  "MobileFilesErrNotFound": "It's no longer there.",
+  "MobileFilesErrExists": "That name is already taken here.",
+  "MobileFilesErrIsFolder": "Folders can't be copied, only files.",
+  "MobileFilesErrConnectionLost": "The connection to the server was lost.",
+  "MobileFilesErrOther": "The server refused: {error}",
+  "MobileFilesListFailed": "Couldn't read this folder",
+  "MobileFilesEmpty": "This folder is empty",
+  "MobileFilesUp": "Up",
+  "MobileFilesUpload": "Upload",
+  "MobileFilesDownload": "Download",
+  "MobileFilesDownloading": "Downloading {name}…",
+  "MobileFilesDownloaded": "{name} downloaded",
+  "MobileFilesShare": "Share",
+  "MobileFilesSaved": "Saved",
+  "MobileFilesTooBigToSave": "This file is too large to save from here. Use Share instead.",
+  "MobileFilesNewFolder": "New folder",
+  "MobileFilesFolderName": "Folder name",
+  "MobileFilesCreate": "Create",
+  "MobileFilesRename": "Rename",
+  "MobileFilesNewName": "New name",
+  "MobileFilesBadName": "A name can't contain /",
+  "MobileFilesDelete": "Delete",
+  "MobileFilesDeleteAsk": "Delete {name}?",
+  "MobileFilesDeleteFolderHint": "Only an empty folder can be deleted.",
+  "MobileFilesTransfers": "Transfers",
+  "MobileFilesClearEnded": "Clear finished",
+  "MobileFilesWaiting": "Waiting",
+  "MobileFilesProgress": "{done} of {total}",
+  "MobileFilesDone": "Done",
+  "MobileFilesCancelled": "Cancelled"
 }

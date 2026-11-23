@@ -3,6 +3,8 @@ package gui
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"runtime"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -41,6 +43,29 @@ func (a *App) identityBackup(c *ui.Context, r *rows) {
 // backUp asks where to save, then writes the encrypted backup there.
 // Side effects: writes a file readable only by this user.
 func (a *App) backUp(passphrase, deviceID string) {
+	if runtime.GOOS == "android" {
+		var doc []byte
+		a.identityRequest(localapi.Request{Type: localapi.RequestIdentityExport, Backup: &localapi.IdentityBackup{Passphrase: passphrase}},
+			func(resp *localapi.Response) { doc = []byte(resp.Document) })
+		if doc == nil {
+			return
+		}
+		tmp := filepath.Join(os.TempDir(), "kyokai-identity-"+deviceID+".json")
+		if err := os.WriteFile(tmp, doc, 0o600); err != nil {
+			a.update(func() { a.setToast(err.Error(), true) })
+			return
+		}
+		defer os.Remove(tmp)
+		saved, err := mygo.Dialog.SaveCopy(tmp, "kyokai-identity-"+deviceID+".json")
+		a.update(func() {
+			if err != nil {
+				a.setToast(err.Error(), true)
+			} else if saved != "" {
+				a.setToast(L.BackupSaved(), false)
+			}
+		})
+		return
+	}
 	path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
 		Parent: a.window, Title: L.ActionBackUp(), DefaultPath: "kyokai-identity-" + deviceID + ".json",
 		Filters: []mygo.FileFilter{{Name: L.BackupFileKind(), Extensions: []string{"json"}}},

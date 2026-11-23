@@ -62,17 +62,41 @@ type Options struct {
 	// AgentSocket is where the helper's session agent connects (macOS,
 	// where launchd starts the agent); empty elsewhere.
 	AgentSocket string
+	// MasterKey, set on Android, is the base64 32-byte key wrapped by the
+	// Android Keystore; empty keeps secrets in memory only.
+	MasterKey string
+	// CacheDir, set on Android, is the app's cache folder where received
+	// clipboard files are written.
+	CacheDir string
+	// Decoders, set on Android, are the MediaCodec video codecs ("hevc",
+	// "h264") this device decodes.
+	Decoders []string
+	// DefaultName, when non-empty, sets the device's friendly name on first
+	// start while none is chosen yet.
+	DefaultName string
+	// ControllerOnly keeps host.serve at "none" (Android, which is only a
+	// controller).
+	ControllerOnly bool
 }
 
-// DefaultStateDir is %APPDATA%\Kyokai on Windows and
-// ~/Library/Application Support/Kyokai on macOS; a profile gets its own
-// "Kyokai-<profile>" folder.
+// DefaultStateDir is %APPDATA%\Kyokai on Windows,
+// ~/Library/Application Support/Kyokai on macOS, ~/.config/Kyokai on Linux,
+// and ${filesDir}/kyokai on Android (preserving Kyokai-Mobile's path); a
+// profile gets its own "Kyokai-<profile>" ("kyokai-<profile>" on Android)
+// folder.
 func DefaultStateDir(profile string) (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
 	name := "Kyokai"
+	if filepath.Base(base) == "files" && strings.Contains(base, "com.yuanzhe.kyokai") {
+		// Android sets XDG_CONFIG_HOME to context.filesDir: keep
+		// Kyokai-Mobile's lowercase "kyokai" directory across upgrades.
+		if _, err := os.Stat(filepath.Join(base, "Kyokai")); err != nil {
+			name = "kyokai"
+		}
+	}
 	if profile != "" {
 		name += "-" + profile
 	}
@@ -107,7 +131,10 @@ func Run(ctx context.Context, opts Options) error {
 		ln.Close()
 		return err
 	}
-	cfg := core.Config{Version: opts.Version, StateDir: opts.StateDir, Profile: opts.Profile}
+	cfg := core.Config{
+		Version: opts.Version, StateDir: opts.StateDir, Profile: opts.Profile,
+		MasterKey: opts.MasterKey, CacheDir: opts.CacheDir,
+	}
 	if opts.Helper != nil {
 		// The helper starts its own copy of kyokai-svc as the session agent
 		// (Windows), or its LaunchAgent connects to a socket (macOS).
@@ -137,8 +164,14 @@ func Run(ctx context.Context, opts Options) error {
 		}
 		started.Store(true)
 		logf("engine %s started: device %s, secrets %s", opts.Version, st.DeviceID, st.Persistence)
+		if len(opts.Decoders) > 0 {
+			_ = lib.Call("android.decoders", map[string]any{"decode": opts.Decoders}, nil)
+		}
+		if opts.DefaultName != "" && st.Name == "" {
+			_ = lib.Call("device.set_name", map[string]any{"name": opts.DefaultName}, nil)
+		}
 		h := &handler{lib: lib, stop: cancel, started: time.Now(), sessions: map[chan localapi.Response]bool{}, poke: make(chan struct{}, 1),
-			runMode: runMode, stateDir: opts.StateDir, update: opts.Update, remove: opts.Remove}
+			runMode: runMode, stateDir: opts.StateDir, update: opts.Update, remove: opts.Remove, controllerOnly: opts.ControllerOnly}
 		if runMode == "helper" {
 			var m struct {
 				Background bool `json:"background"`
@@ -235,6 +268,8 @@ type handler struct {
 	stateDir string
 	// background: the helper serves from boot, not only with a GUI.
 	background bool
+	// controllerOnly keeps host.serve at "none" (Android).
+	controllerOnly bool
 	// served is what the core was last told to serve.
 	served string
 	// update is Options.Update.
@@ -724,6 +759,19 @@ func (h *handler) Handle(ctx context.Context, req localapi.Request) localapi.Res
 			return localapi.Fail(localapi.CodeInvalid, "%v", err)
 		}
 		return localapi.Response{OK: true}
+	case localapi.RequestAndroidClipboard:
+		params := map[string]any{}
+		if req.ClipboardPNG != "" {
+			params["png"] = req.ClipboardPNG
+		} else if req.ClipboardText != nil {
+			params["text"] = *req.ClipboardText
+		} else {
+			return localapi.Fail(localapi.CodeInvalid, "clipboard content missing")
+		}
+		if err := h.lib.Call("android.clipboard", params, nil); err != nil {
+			return localapi.Fail(localapi.CodeInvalid, "%v", err)
+		}
+		return localapi.Response{OK: true}
 	case localapi.RequestShutdown:
 		h.stop()
 		return localapi.Response{OK: true}
@@ -995,7 +1043,10 @@ func (h *handler) closeOrphans() {
 func (h *handler) updateServe() {
 	h.mu.Lock()
 	serve := "all"
-	if h.runMode == "helper" && len(h.sessions) == 0 {
+	switch {
+	case h.controllerOnly:
+		serve = "none"
+	case h.runMode == "helper" && len(h.sessions) == 0:
 		serve = "none"
 		if h.background {
 			serve = "unattended"

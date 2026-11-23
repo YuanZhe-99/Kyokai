@@ -123,13 +123,11 @@ ssh -o ProxyCommand="kyokai-svc ctl tunnel --device 482916735 --service ssh" me@
 
 ### 在 Android 上
 
-Android 控制端 Kyokai-Mobile 没有引擎，也没有 Go 界面。`cmd/kyokai-clients` 把同样的 SSH、远程桌面与 VNC
-客户端编译为 C 库（`libkyokai_clients.so`，`-buildmode=c-shared`），应用像使用 core 一样使用它：一个 JSON
-调用（`ssh.open`、`rdp.open`、`vnc.open`，以及之后的输入），以及每个客户端一条数据包流——状态、SSH shell
-的输出、画面中改变的部分（RGBA，读取时才截取，读得慢也不会积压）与被控端的剪贴板文本。应用把 core 的
-`kyokai_call`、`kyokai_free`、`kyokai_media_read` 与 `kyokai_media_write` 交给它；它自己用
-`tunnel.open`/`tunnel.wait` 打开隧道并收发 14 号数据包，用 `keys.sign` 为 SSH 密钥签名，并按与桌面相同的规则用
-`credentials.set` 保存登录信息。它从不启动或停止 core。SSH 部分复制自 `internal/gui/ssh.go`（该文件依赖 MyGo）。
+在 Android 上（`cmd/kyokai`），`internal/engine` 在同一进程内运行（`host.serve = "none"`），`internal/gui` 直接通过本地
+API 的隧道（`openTunnel`）驱动相同的 Go SSH（`sshDial`、`remoteFiles`）、远程桌面（`internal/rdp`，经 NDK
+`AMediaCodec` 解码 H.264）与 VNC（`internal/rfb`）客户端，用 `keys.sign` 为 SSH 密钥签名，并按与桌面相同的规则用
+`credentials.set` 保存登录信息。SSH 会话在软键盘上方提供扩展键栏（`Esc`、`Tab`、`Ctrl`、`Alt`、方向键、常用符号）以及“文件”面板（上传经
+`mygo.Dialog.Open`，下载经 `SaveCopy` 与 `Share`）。
 
 ## 通过 SSH 传输文件
 

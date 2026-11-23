@@ -505,7 +505,7 @@ func (c *sshClient) entryMenu(m *ui.Menu, r *remoteFiles, at string, dir bool) {
 			folder = path.Dir(at)
 		}
 		if cd, ok := cdCommand(folder, c.windows); ok {
-			c.term.Send([]byte(cd + "\r"))
+			c.sendInput([]byte(cd + "\r"))
 		} else {
 			c.panel.note = L.FilesNoCd()
 		}

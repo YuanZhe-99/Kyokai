@@ -1,5 +1,26 @@
 # Version history
 
+## 0.8.0 (2026-11-22)
+
+Android controller merged into Kyokai.
+
+- Android controller (`com.yuanzhe.kyokai`, Android 8.0+ / `minSdk = 26`, 16 KB page-size aligned,
+  controller only): folds `Kyokai-Mobile` (`0.1.3`) into the main MyGo codebase and retires
+  `cmd/kyokai-clients`. `internal/engine` runs in-process with `host.serve = "none"`, loading
+  `libkyokai_core.so` by SONAME and preserving `${filesDir}/kyokai` and the Android Keystore
+  `"kyokai-master"` key (`noBackupFilesDir/master.key`) for in-place upgrades (`versionCode = 800`).
+- Adaptive mobile, tablet and foldable shell (`internal/gui`): bottom navigation on compact screens
+  and side rail with two-pane master-detail on wide screens (`≥ 600 dp`); NDK `AMediaCodec` +
+  `AImageReader` (`NV12`) H.264/HEVC video decoding presented through `ui.Bitmap.UpdateYUV` alongside
+  NanoKVM `mjpeg`, `raw-rgba` and 48 kHz Opus audio; multi-touch touchpad with velocity acceleration
+  and inertia scroll; phone, desktop and split on-screen computer keyboards (`Shift` and macOS
+  `Option` layers, Set-1 scan codes, RDP scan codes and VNC keysyms); foldable hinge laptop posture;
+  foreground session service (`SessionService`); bidirectional text/image/file clipboard with Share
+  and Save; host AI task sheet and history; and built-in SSH, SFTP/SCP, Remote Desktop and VNC.
+- Upstreams: MyGo v0.9.1 → v0.10.0, Bun 1.4.4 → 1.4.5, Pi 1.5.2 → 1.6.0; checked, unchanged:
+  EasyTier v2.7.1 (`0d9c52b`), RustDesk 1.5.3, vcpkg 2026.10.16, smoltcp 0.14.0, Rust 1.100.0
+  (checked 2026-11-22).
+
 ## 0.7.4 (2026-11-16)
 
 Clipboard on Linux and clipboard images across systems.

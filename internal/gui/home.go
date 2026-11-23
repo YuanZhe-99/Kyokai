@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -190,6 +191,11 @@ func watchLease(open, visible bool, recent []localapi.RecentDevice, panes []stri
 // Home's pane in the group shown, not under the Settings sheet (nor in
 // protected mode).
 func (a *App) homeVisible() bool {
+	if runtime.GOOS == "android" {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		return a.visible && a.mobile != nil && a.mobile.navTab == 0 && a.mobile.activeSession == ""
+	}
 	a.mu.Lock()
 	shown := a.visible && !a.settingsOpen && !a.protected()
 	main := a.main

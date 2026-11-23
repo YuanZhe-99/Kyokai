@@ -140,6 +140,7 @@ const (
 	RequestStoreForgetMove      RequestType = "store.forget_move"          // a parked engine (its store moved out) starts over with a new identity
 	RequestCloseControllers     RequestType = "sessions.close_controllers" // end this engine's controller sessions (a GUI that quits)
 	RequestClipboardMine        RequestType = "clipboard.mine"             // the clipboard holds what this device itself put there (Request.Digest)
+	RequestAndroidClipboard     RequestType = "android.clipboard"          // Android: push text or PNG bytes copied on this device to the core
 	RequestShutdown             RequestType = "shutdown"
 )
 
@@ -274,6 +275,10 @@ type Request struct {
 	// Digest is RequestClipboardMine's: the SHA-256 of the clipboard's
 	// content, lowercase hex.
 	Digest string `json:"digest,omitempty"`
+	// ClipboardText and ClipboardPNG are RequestAndroidClipboard's text or
+	// base64 PNG image copied on the Android device.
+	ClipboardText *string `json:"clipboard_text,omitempty"`
+	ClipboardPNG  string  `json:"clipboard_png,omitempty"`
 }
 
 // LoginKey is one of this device's sign-in keys. Private is set only in a

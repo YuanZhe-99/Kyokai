@@ -195,6 +195,9 @@ type App struct {
 	// autoFailed is the version an automatic install failed for in this
 	// run; it is not tried again until the next start.
 	autoFailed string
+
+	// mobile holds the Android controller shell and session state (nil on desktops).
+	mobile *mobileState
 }
 
 // New creates the GUI for a profile ("" outside development).
@@ -220,6 +223,10 @@ func New(profile, stateDir, socket string) *App {
 	a.main.homeGroupLocked()
 	a.lastWin = a.main
 	a.socket = startSocket(a.prefs.Helper || movedToHelper(stateDir), helper.Installed(), socket)
+	if runtime.GOOS == "android" {
+		a.tour = nil
+		a.initMobile()
+	}
 	return a
 }
 
@@ -251,6 +258,19 @@ func (a *App) mainWindow() *mygo.Window {
 	show := a.prefs.ShowInCapture
 	a.mu.Unlock()
 	if w != nil {
+		return w
+	}
+	if runtime.GOOS == "android" {
+		w = mygo.NewWindow(mygo.WindowOptions{
+			Title:   "Kyokai",
+			Hidden:  true,
+			Content: ui.View(a.MobileView),
+		})
+		a.mu.Lock()
+		a.window = w
+		a.main.win = w
+		a.mu.Unlock()
+		a.watchMobileWindow(w)
 		return w
 	}
 	// The window's controls sit over the sidebar and the panes

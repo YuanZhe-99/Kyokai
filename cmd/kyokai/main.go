@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/egoist/mygo"
 
@@ -29,7 +30,7 @@ func main() {
 	}
 	mygo.App.SetName(name)
 	mygo.App.SetVersion(version.Version)
-	if !mygo.App.RequestSingleInstanceLock() {
+	if runtime.GOOS != "android" && !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
 	stateDir, err := engine.DefaultStateDir(profile)
