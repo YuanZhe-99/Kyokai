@@ -1,6 +1,8 @@
 package com.github.yuanzhe_99.kyokai.internal.androidhost
 
 import android.Manifest
+import android.app.Activity
+import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -30,6 +32,7 @@ import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -120,13 +123,17 @@ private class AndroidHost : Host {
 
     override fun setClipboardImage(png: ByteArray): String = ClipSync.setImage(Native.context, png)
 
+    override fun dynamicPalette(): MaterialPalette = DynamicColorsReader.read(Native.context)
+
     override fun watchPosture(onChange: (Posture) -> Unit): AutoCloseable {
         val watcher = PostureWatcher(Native.context, onChange)
         watcher.start()
         return NativeCloser { watcher.stop() }
     }
 
-    override fun setTouchRegion(
+    override fun watchTouch(onTouch: (RawTouch) -> Unit): AutoCloseable = TouchBridge.watch(onTouch)
+
+    override fun setTouchBounds(
         capture: Boolean,
         r1L: Double,
         r1T: Double,
@@ -144,12 +151,118 @@ private class AndroidHost : Host {
         ex2T: Double,
         ex2R: Double,
         ex2B: Double,
-        onTouch: (RawTouch) -> Unit,
     ) {
-        TouchBridge.configure(capture, r1L, r1T, r1R, r1B, r2L, r2T, r2R, r2B, ex1L, ex1T, ex1R, ex1B, ex2L, ex2T, ex2R, ex2B, onTouch)
+        TouchBridge.configure(capture, r1L, r1T, r1R, r1B, r2L, r2T, r2R, r2B, ex1L, ex1T, ex1R, ex1B, ex2L, ex2T, ex2R, ex2B)
     }
 
     override fun openSound(): SoundPlayer = OpusSound.open() ?: throw NativeException("audio", -1, "cannot open Opus decoder")
+}
+
+/**
+ * Reads Android 12+ (API 31+) Material You tonal palette colors directly from
+ * system resources without requiring extra AndroidX dependencies.
+ */
+private object DynamicColorsReader {
+    private fun empty(): MaterialPalette = MaterialPalette(
+        available = false,
+        primaryLight = 0u, onPrimaryLight = 0u, primaryContainerLight = 0u, onPrimaryContainerLight = 0u,
+        secondaryContainerLight = 0u, onSecondaryContainerLight = 0u,
+        surfaceLight = 0u, surfaceContainerLowestLight = 0u, surfaceContainerLowLight = 0u,
+        surfaceContainerLight = 0u, surfaceContainerHighLight = 0u, surfaceContainerHighestLight = 0u,
+        onSurfaceLight = 0u, onSurfaceVariantLight = 0u, outlineLight = 0u, outlineVariantLight = 0u,
+        primaryDark = 0u, onPrimaryDark = 0u, primaryContainerDark = 0u, onPrimaryContainerDark = 0u,
+        secondaryContainerDark = 0u, onSecondaryContainerDark = 0u,
+        surfaceDark = 0u, surfaceContainerLowestDark = 0u, surfaceContainerLowDark = 0u,
+        surfaceContainerDark = 0u, surfaceContainerHighDark = 0u, surfaceContainerHighestDark = 0u,
+        onSurfaceDark = 0u, onSurfaceVariantDark = 0u, outlineDark = 0u, outlineVariantDark = 0u,
+    )
+
+    private fun mixArgb(a: Int, b: Int, t: Float): Int {
+        val k = t.coerceIn(0f, 1f)
+        val aa = (a ushr 24) and 0xFF
+        val ar = (a ushr 16) and 0xFF
+        val ag = (a ushr 8) and 0xFF
+        val ab = a and 0xFF
+        val ba = (b ushr 24) and 0xFF
+        val br = (b ushr 16) and 0xFF
+        val bg = (b ushr 8) and 0xFF
+        val bb = b and 0xFF
+        val ra = (aa + (ba - aa) * k).toInt() and 0xFF
+        val rr = (ar + (br - ar) * k).toInt() and 0xFF
+        val rg = (ag + (bg - ag) * k).toInt() and 0xFF
+        val rb = (ab + (bb - ab) * k).toInt() and 0xFF
+        return (ra shl 24) or (rr shl 16) or (rg shl 8) or rb
+    }
+
+    private fun Int.toU32(): UInt = this.toUInt()
+
+    fun read(ctx: Context): MaterialPalette {
+        if (Build.VERSION.SDK_INT < 31) return empty()
+        return try {
+            fun c(id: Int): Int = ctx.getColor(id)
+            val a1_0 = c(android.R.color.system_accent1_0)
+            val a1_100 = c(android.R.color.system_accent1_100)
+            val a1_200 = c(android.R.color.system_accent1_200)
+            val a1_600 = c(android.R.color.system_accent1_600)
+            val a1_700 = c(android.R.color.system_accent1_700)
+            val a1_800 = c(android.R.color.system_accent1_800)
+            val a1_900 = c(android.R.color.system_accent1_900)
+            val a2_100 = c(android.R.color.system_accent2_100)
+            val a2_700 = c(android.R.color.system_accent2_700)
+            val a2_900 = c(android.R.color.system_accent2_900)
+            val n1_0 = c(android.R.color.system_neutral1_0)
+            val n1_10 = c(android.R.color.system_neutral1_10)
+            val n1_50 = c(android.R.color.system_neutral1_50)
+            val n1_100 = c(android.R.color.system_neutral1_100)
+            val n1_200 = c(android.R.color.system_neutral1_200)
+            val n1_700 = c(android.R.color.system_neutral1_700)
+            val n1_800 = c(android.R.color.system_neutral1_800)
+            val n1_900 = c(android.R.color.system_neutral1_900)
+            val n1_1000 = c(android.R.color.system_neutral1_1000)
+            val n2_200 = c(android.R.color.system_neutral2_200)
+            val n2_400 = c(android.R.color.system_neutral2_400)
+            val n2_500 = c(android.R.color.system_neutral2_500)
+            val n2_700 = c(android.R.color.system_neutral2_700)
+
+            MaterialPalette(
+                available = true,
+                primaryLight = a1_600.toU32(),
+                onPrimaryLight = a1_0.toU32(),
+                primaryContainerLight = a1_100.toU32(),
+                onPrimaryContainerLight = a1_900.toU32(),
+                secondaryContainerLight = a2_100.toU32(),
+                onSecondaryContainerLight = a2_900.toU32(),
+                surfaceLight = mixArgb(n1_10, n1_0, 0.35f).toU32(),
+                surfaceContainerLowestLight = n1_0.toU32(),
+                surfaceContainerLowLight = mixArgb(n1_10, n1_50, 0.75f).toU32(),
+                surfaceContainerLight = mixArgb(n1_50, n1_100, 0.45f).toU32(),
+                surfaceContainerHighLight = mixArgb(n1_50, n1_100, 0.80f).toU32(),
+                surfaceContainerHighestLight = mixArgb(n1_100, n1_200, 0.15f).toU32(),
+                onSurfaceLight = n1_900.toU32(),
+                onSurfaceVariantLight = n2_700.toU32(),
+                outlineLight = n2_500.toU32(),
+                outlineVariantLight = n2_200.toU32(),
+                primaryDark = a1_200.toU32(),
+                onPrimaryDark = a1_800.toU32(),
+                primaryContainerDark = a1_700.toU32(),
+                onPrimaryContainerDark = a1_100.toU32(),
+                secondaryContainerDark = a2_700.toU32(),
+                onSecondaryContainerDark = a2_100.toU32(),
+                surfaceDark = mixArgb(n1_1000, n1_900, 0.60f).toU32(),
+                surfaceContainerLowestDark = mixArgb(n1_1000, n1_900, 0.40f).toU32(),
+                surfaceContainerLowDark = n1_900.toU32(),
+                surfaceContainerDark = mixArgb(n1_900, n1_800, 0.25f).toU32(),
+                surfaceContainerHighDark = mixArgb(n1_900, n1_800, 0.70f).toU32(),
+                surfaceContainerHighestDark = mixArgb(n1_800, n1_700, 0.20f).toU32(),
+                onSurfaceDark = n1_100.toU32(),
+                onSurfaceVariantDark = n2_200.toU32(),
+                outlineDark = n2_400.toU32(),
+                outlineVariantDark = n2_700.toU32(),
+            )
+        } catch (_: Throwable) {
+            empty()
+        }
+    }
 }
 
 /**
@@ -181,6 +294,13 @@ private object TouchBridge {
     @Volatile private var callback: ((RawTouch) -> Unit)? = null
     private var attached: SurfaceView? = null
     private var activeZone = 0
+
+    fun watch(cb: (RawTouch) -> Unit): AutoCloseable {
+        callback = cb
+        return NativeCloser {
+            if (callback === cb) callback = null
+        }
+    }
 
     private fun findSurface(v: View?): SurfaceView? {
         if (v is SurfaceView) return v
@@ -264,7 +384,6 @@ private object TouchBridge {
         z2L: Double, z2T: Double, z2R: Double, z2B: Double,
         e1L: Double, e1T: Double, e1R: Double, e1B: Double,
         e2L: Double, e2T: Double, e2R: Double, e2B: Double,
-        cb: (RawTouch) -> Unit,
     ) {
         val changed = capture != cap
         capture = cap
@@ -272,14 +391,7 @@ private object TouchBridge {
         r2L = z2L; r2T = z2T; r2R = z2R; r2B = z2B
         ex1L = e1L; ex1T = e1T; ex1R = e1R; ex1B = e1B
         ex2L = e2L; ex2T = e2T; ex2R = e2R; ex2B = e2B
-        if (cap) {
-            if (callback == null) {
-                callback = cb
-            }
-        } else {
-            callback = null
-        }
-        if (changed || (cap && attached == null)) {
+        if (changed || (cap && (attached == null || attached?.isAttachedToWindow != true))) {
             mainHandler.post {
                 val act = Native.activity
                 val sv = findSurface(act?.findViewById(android.R.id.content))
@@ -287,7 +399,7 @@ private object TouchBridge {
                     activeZone = 0
                     attached?.setOnTouchListener(null)
                     attached = null
-                } else if (sv != null && sv !== attached) {
+                } else if (sv != null && sv.isAttachedToWindow && sv !== attached) {
                     attached?.setOnTouchListener(null)
                     sv.setOnTouchListener(listener)
                     attached = sv
@@ -572,49 +684,108 @@ class ClipProvider : ContentProvider() {
 
 /**
  * Observes both Sensor.TYPE_HINGE_ANGLE and Jetpack Window's FoldingFeature
- * so foldable laptop mode works across OEMs (Pixel Fold, Galaxy Z Fold, etc.).
+ * across Activity transitions so foldable laptop mode works reliably on
+ * horizontal tabletop folds while never triggering on vertical book folds.
  */
 private class PostureWatcher(
     private val context: Context,
     private val onChange: (Posture) -> Unit,
 ) : SensorEventListener {
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val sensors = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val hinge: Sensor? = if (Build.VERSION.SDK_INT >= 30) sensors.getDefaultSensor(Sensor.TYPE_HINGE_ANGLE) else null
+    private var appRef: Application? = null
+    private var boundActivity: Activity? = null
     private var windowJob: Job? = null
 
     @Volatile private var angle = -1.0
     @Volatile private var foldHalf = false
     @Volatile private var foldTop = 0L
     @Volatile private var foldBottom = 0L
+    @Volatile private var foldOrientation = ""
     @Volatile private var last: Posture? = null
 
-    fun start() {
-        hinge?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
-        val act = Native.activity
-        if (act != null) {
-            windowJob = Native.scope.launch(Dispatchers.Main) {
-                WindowInfoTracker.getOrCreate(act).windowLayoutInfo(act).collect { info ->
-                    val feat = info.displayFeatures.filterIsInstance<FoldingFeature>()
-                        .firstOrNull { it.orientation == FoldingFeature.Orientation.HORIZONTAL }
-                    if (feat != null && feat.state == FoldingFeature.State.HALF_OPENED) {
+    private val lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
+        override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+        override fun onActivityStarted(activity: Activity) { attachWindow(activity) }
+        override fun onActivityResumed(activity: Activity) { attachWindow(activity) }
+        override fun onActivityPaused(activity: Activity) {}
+        override fun onActivityStopped(activity: Activity) {
+            if (boundActivity === activity) {
+                windowJob?.cancel()
+                windowJob = null
+                boundActivity = null
+            }
+        }
+        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+        override fun onActivityDestroyed(activity: Activity) {
+            if (boundActivity === activity) {
+                windowJob?.cancel()
+                windowJob = null
+                boundActivity = null
+            }
+        }
+    }
+
+    private fun attachWindow(act: Activity) {
+        if (boundActivity === act && windowJob?.isActive == true) return
+        boundActivity = act
+        windowJob?.cancel()
+        windowJob = Native.scope.launch(Dispatchers.Main) {
+            WindowInfoTracker.getOrCreate(act).windowLayoutInfo(act).collect { info ->
+                val features = info.displayFeatures.filterIsInstance<FoldingFeature>()
+                val horiz = features.firstOrNull { it.orientation == FoldingFeature.Orientation.HORIZONTAL }
+                val vert = features.firstOrNull { it.orientation == FoldingFeature.Orientation.VERTICAL }
+                when {
+                    horiz != null && horiz.state == FoldingFeature.State.HALF_OPENED -> {
                         foldHalf = true
-                        foldTop = feat.bounds.top.toLong()
-                        foldBottom = feat.bounds.bottom.toLong()
-                    } else {
+                        foldTop = horiz.bounds.top.toLong()
+                        foldBottom = horiz.bounds.bottom.toLong()
+                        foldOrientation = "horizontal"
+                    }
+                    horiz != null -> {
                         foldHalf = false
                         foldTop = 0L
                         foldBottom = 0L
+                        foldOrientation = "horizontal"
                     }
-                    emit()
+                    vert != null -> {
+                        foldHalf = false
+                        foldTop = 0L
+                        foldBottom = 0L
+                        foldOrientation = "vertical"
+                    }
+                    else -> {
+                        foldHalf = false
+                        foldTop = 0L
+                        foldBottom = 0L
+                        foldOrientation = ""
+                    }
                 }
+                emit()
             }
+        }
+    }
+
+    fun start() {
+        hinge?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+        appRef = (context.applicationContext as? Application)?.also {
+            it.registerActivityLifecycleCallbacks(lifecycleCallbacks)
+        }
+        Native.activity?.let { act ->
+            mainHandler.post { attachWindow(act) }
         }
     }
 
     fun stop() {
         sensors.unregisterListener(this)
-        windowJob?.cancel()
-        windowJob = null
+        appRef?.unregisterActivityLifecycleCallbacks(lifecycleCallbacks)
+        appRef = null
+        mainHandler.post {
+            windowJob?.cancel()
+            windowJob = null
+            boundActivity = null
+        }
     }
 
     override fun onSensorChanged(event: SensorEvent) {
@@ -625,18 +796,20 @@ private class PostureWatcher(
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     private fun emit() {
-        val sensorHalf = angle in 30.0..150.0
+        val sensorHalf = foldOrientation != "vertical" && angle in 30.0..150.0
         val p = Posture(
             halfOpened = foldHalf || sensorHalf,
             hingeTop = foldTop,
             hingeBottom = foldBottom,
             angle = angle,
+            orientation = foldOrientation,
         )
         val prev = last
         val changed = prev == null ||
             prev.halfOpened != p.halfOpened ||
             prev.hingeTop != p.hingeTop ||
             prev.hingeBottom != p.hingeBottom ||
+            prev.orientation != p.orientation ||
             kotlin.math.abs(prev.angle - p.angle) >= 3.0
         if (changed) {
             last = p

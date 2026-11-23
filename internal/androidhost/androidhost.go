@@ -47,18 +47,60 @@ type Host interface {
 	// SetClipboardImage writes PNG bytes to the Android clipboard and
 	// returns its URI+timestamp mark so it is not echoed back.
 	SetClipboardImage(png []byte) string
+	// DynamicPalette returns Android 12+ (API 31+) Material You tonal palette
+	// tokens derived from the system wallpaper, or Available=false earlier.
+	DynamicPalette() MaterialPalette
 	// WatchPosture observes foldable hinge angle and Jetpack Window
 	// half-opened folding features until the returned closer is closed.
 	WatchPosture(onChange func(Posture)) io.Closer
-	// SetTouchRegion installs an intercepting touch listener when capture is
-	// true on up to two trackpad/screen areas (r1 for the stage, r2 for an
-	// optional split-keyboard center touchpad, in window DIPs, excluding up to
-	// two overlay rectangles on r1) so 1-, 2- and 3-finger gestures and mouse
-	// drags reach Go directly. Pass capture = false when leaving the viewer.
-	SetTouchRegion(capture bool, r1L, r1T, r1R, r1B, r2L, r2T, r2R, r2B, ex1L, ex1T, ex1R, ex1B, ex2L, ex2T, ex2R, ex2B float64, onTouch func(RawTouch))
+	// WatchTouch registers the persistent multi-touch/pointer callback used by
+	// Android's SurfaceView TouchBridge until the returned closer is closed.
+	WatchTouch(onTouch func(RawTouch)) io.Closer
+	// SetTouchBounds configures capture state and window-DIP regions (r1 for
+	// the remote screen stage, r2 for an optional keyboard touchpad, ex1/ex2 for
+	// overlay toolbar and zoom pill exclusions) without reallocating callbacks.
+	SetTouchBounds(capture bool, r1L, r1T, r1R, r1B, r2L, r2T, r2R, r2B, ex1L, ex1T, ex1R, ex1B, ex2L, ex2T, ex2R, ex2B float64)
 	// OpenSound opens a low-latency Opus 48 kHz stereo MediaCodec +
 	// AudioTrack player for a host's sound stream.
 	OpenSound() (SoundPlayer, error)
+}
+
+// MaterialPalette carries Android 12+ Material You light and dark tonal color
+// roles as packed ARGB uint32 values (0xAARRGGBB).
+type MaterialPalette struct {
+	Available                    bool
+	PrimaryLight                 uint32
+	OnPrimaryLight               uint32
+	PrimaryContainerLight        uint32
+	OnPrimaryContainerLight      uint32
+	SecondaryContainerLight      uint32
+	OnSecondaryContainerLight    uint32
+	SurfaceLight                 uint32
+	SurfaceContainerLowestLight  uint32
+	SurfaceContainerLowLight     uint32
+	SurfaceContainerLight        uint32
+	SurfaceContainerHighLight    uint32
+	SurfaceContainerHighestLight uint32
+	OnSurfaceLight               uint32
+	OnSurfaceVariantLight        uint32
+	OutlineLight                 uint32
+	OutlineVariantLight          uint32
+	PrimaryDark                  uint32
+	OnPrimaryDark                uint32
+	PrimaryContainerDark         uint32
+	OnPrimaryContainerDark       uint32
+	SecondaryContainerDark       uint32
+	OnSecondaryContainerDark     uint32
+	SurfaceDark                  uint32
+	SurfaceContainerLowestDark   uint32
+	SurfaceContainerLowDark      uint32
+	SurfaceContainerDark         uint32
+	SurfaceContainerHighDark     uint32
+	SurfaceContainerHighestDark  uint32
+	OnSurfaceDark                uint32
+	OnSurfaceVariantDark         uint32
+	OutlineDark                  uint32
+	OutlineVariantDark           uint32
 }
 
 // SoundPlayer decodes and plays 10 ms 48 kHz stereo Opus packets.
@@ -108,4 +150,6 @@ type Posture struct {
 	HingeBottom int
 	// Angle is the raw hinge angle in degrees (-1 when unavailable).
 	Angle float64
+	// Orientation is "horizontal", "vertical", or "" when unfolded/flat.
+	Orientation string
 }

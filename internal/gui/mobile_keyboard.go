@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -8,6 +9,22 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/mobile"
+
+	"github.com/YuanZhe-99/Kyokai/internal/androidhost"
+	L "github.com/YuanZhe-99/Kyokai/locales"
+)
+
+var (
+	kbShiftIcon     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l-7 7h4v8h6v-8h4z"/></svg>`))
+	kbCapsIcon      = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l-7 7h4v6h6v-6h4z"/><line x1="7" y1="20" x2="17" y2="20"/></svg>`))
+	kbBackspaceIcon = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 6H9l-6 6 6 6h12a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1z"/><path d="M16.5 9.5l-5 5"/><path d="M11.5 9.5l5 5"/></svg>`))
+	kbEnterIcon     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 5v6a4 4 0 0 1-4 4H4"/></svg>`))
+	kbDismissIcon   = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="11" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h8"/><path d="M9 18l3 3 3-3"/></svg>`))
+	kbArrowLeft     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>`))
+	kbArrowUp       = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>`))
+	kbArrowDown     = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>`))
+	kbArrowRight    = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`))
 )
 
 // Set-1 scan codes used by the mobile on-screen keyboard and hardware key mapping.
@@ -267,21 +284,33 @@ const (
 // MobileKeyboard holds the state of the on-screen computer keyboard for
 // Kyokai, NanoKVM, RDP and VNC viewers.
 type MobileKeyboard struct {
-	page     kbPage
-	latch    [4]kbLatch
-	held     [4]bool
-	hostHeld [4]bool
-	caps     bool
-	lastTap  [4]time.Time
-	pressed  string
-	pad      *Touchpad
-	padRect  ui.Rect
-	hwDown   map[uint32]bool
+	page         kbPage
+	latch        [4]kbLatch
+	held         [4]bool
+	hostHeld     [4]bool
+	caps         bool
+	lastTap      [4]time.Time
+	pressed      string
+	downKeys     map[string]bool
+	seenDown     map[string]bool
+	repeatKey    string
+	repeatCount  int
+	repeatCancel context.CancelFunc
+	popupKey     string
+	popupChar    string
+	popupRect    ui.Rect
+	pad          *Touchpad
+	padRect      ui.Rect
+	hwDown       map[uint32]bool
 }
 
 // NewMobileKeyboard creates a fresh mobile keyboard state.
 func NewMobileKeyboard(padSink TouchpadSink, pointerSpeed float32) *MobileKeyboard {
-	kb := &MobileKeyboard{hwDown: map[uint32]bool{}}
+	kb := &MobileKeyboard{
+		downKeys: map[string]bool{},
+		seenDown: map[string]bool{},
+		hwDown:   map[uint32]bool{},
+	}
 	if padSink != nil {
 		kb.pad = NewTouchpad(padSink, false, pointerSpeed)
 	}
@@ -305,8 +334,62 @@ func (kb *MobileKeyboard) active(m kbMod) bool {
 	return kb.latch[m] != kbOff || kb.held[m]
 }
 
+// stopRepeat cancels any active long-press key repeat loop and resets repeat counters.
+func (kb *MobileKeyboard) stopRepeat() {
+	if kb.repeatCancel != nil {
+		kb.repeatCancel()
+		kb.repeatCancel = nil
+	}
+	kb.repeatKey = ""
+	kb.repeatCount = 0
+}
+
+// startRepeat schedules repeating key presses (380ms initial delay, 55ms cadence)
+// while key kID remains held down.
+// Side effects: launches a cancellable goroutine invoking Dispatch onto the UI thread.
+func (kb *MobileKeyboard) startRepeat(kID string, sp kbKeySpec, o MobileKeyboardOptions) {
+	if o.Dispatch == nil || o.Send == nil {
+		return
+	}
+	kb.stopRepeat()
+	ctx, cancel := context.WithCancel(context.Background())
+	kb.repeatKey = kID
+	kb.repeatCancel = cancel
+	go func() {
+		timer := time.NewTimer(380 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		tick := time.NewTicker(55 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			o.Dispatch(func() {
+				if ctx.Err() != nil {
+					return
+				}
+				kb.repeatCount++
+				mygo.Haptics.Selection()
+				kb.activate(sp, o)
+			})
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+			}
+		}
+	}()
+}
+
 // ReleaseAll releases any modifier or hardware keys held down on the host.
 func (kb *MobileKeyboard) ReleaseAll(send func(code uint32, down, caps bool)) {
+	kb.stopRepeat()
+	clear(kb.downKeys)
+	kb.popupKey = ""
+	kb.popupChar = ""
+	kb.popupRect = ui.Rect{}
 	for m := range 4 {
 		if kb.hostHeld[m] {
 			send(kbMod(m).scan(), false, kb.caps)
@@ -344,7 +427,7 @@ func (kb *MobileKeyboard) HandleHardwareKey(ev ui.InputEvent, send func(code uin
 	return true
 }
 
-func (kb *MobileKeyboard) tapModifier(m kbMod, hostOS string, send func(code uint32, down, caps bool)) {
+func (kb *MobileKeyboard) tapModifier(m kbMod, _ string, _ func(code uint32, down, caps bool)) {
 	now := time.Now()
 	twice := !kb.lastTap[m].IsZero() && now.Sub(kb.lastTap[m]) < 350*time.Millisecond
 	kb.lastTap[m] = now
@@ -352,11 +435,6 @@ func (kb *MobileKeyboard) tapModifier(m kbMod, hostOS string, send func(code uin
 		kb.latch[m] = kbOff
 		kb.caps = !kb.caps
 		return
-	}
-	if m == kbWin && hostOS != "macos" && kb.latch[m] == kbOff && !twice {
-		// On Windows and Linux, tapping Win/Super alone opens Start / Overview
-		// unless double-tapped to lock. Still allow once-latch via Shift/Ctrl/Alt,
-		// or latch Win on single tap so Win+R works seamlessly on touchscreens:
 	}
 	switch kb.latch[m] {
 	case kbOff:
@@ -373,6 +451,9 @@ func (kb *MobileKeyboard) tapModifier(m kbMod, hostOS string, send func(code uin
 }
 
 func (kb *MobileKeyboard) tapCode(code uint32, needShift bool, send func(code uint32, down, caps bool)) {
+	if send == nil {
+		return
+	}
 	for m := range 4 {
 		if kb.held[m] && !kb.hostHeld[m] {
 			send(kbMod(m).scan(), true, kb.caps)
@@ -440,6 +521,23 @@ func (kb *MobileKeyboard) shownChar(ch string, hostOS string) string {
 	return ch
 }
 
+// shiftedLegend returns the secondary Shift legend glyph for non-letter US keys
+// so wide and laptop keys can hint punctuation such as ! over 1.
+func shiftedLegend(ch string) string {
+	e, ok := usKeyMap[ch]
+	if !ok || e.shift {
+		return ""
+	}
+	r := []rune(ch)
+	if len(r) == 1 && unicode.IsLetter(r[0]) {
+		return ""
+	}
+	if pair, ok := usCharByScan[e.code]; ok && pair[1] != ch {
+		return pair[1]
+	}
+	return ""
+}
+
 type kbKeyKind int
 
 const (
@@ -453,23 +551,26 @@ const (
 )
 
 type kbKeySpec struct {
-	label   string
-	kind    kbKeyKind
-	char    string
-	code    uint32
-	mod     kbMod
-	page    kbPage
-	mods    []uint32
-	special string
-	flex    float32
-	tonal   bool
+	label    string
+	secLabel string
+	icon     *ui.SVG
+	iconSize float32
+	kind     kbKeyKind
+	char     string
+	code     uint32
+	mod      kbMod
+	page     kbPage
+	mods     []uint32
+	special  string
+	flex     float32
+	tonal    bool
 }
 
 func kChar(c string, flex float32) kbKeySpec {
 	if flex == 0 {
 		flex = 10
 	}
-	return kbKeySpec{label: c, kind: kbKeyChar, char: c, flex: flex}
+	return kbKeySpec{label: c, secLabel: shiftedLegend(c), kind: kbKeyChar, char: c, flex: flex}
 }
 
 func kCode(label string, code uint32, flex float32) kbKeySpec {
@@ -477,6 +578,12 @@ func kCode(label string, code uint32, flex float32) kbKeySpec {
 		flex = 10
 	}
 	return kbKeySpec{label: label, kind: kbKeyCode, code: code, flex: flex, tonal: true}
+}
+
+func kCodeIcon(label string, icon *ui.SVG, code uint32, flex float32) kbKeySpec {
+	sp := kCode(label, code, flex)
+	sp.icon = icon
+	return sp
 }
 
 func kMod(label string, m kbMod, flex float32) kbKeySpec {
@@ -493,6 +600,19 @@ func kPage(label string, p kbPage, flex float32) kbKeySpec {
 	return kbKeySpec{label: label, kind: kbKeyPage, page: p, flex: flex, tonal: true}
 }
 
+func isRepeatableKey(sp kbKeySpec) bool {
+	if sp.kind == kbKeyChar && sp.char == " " {
+		return true
+	}
+	if sp.kind == kbKeyCode {
+		switch sp.code {
+		case scanBackspace, scanLeft, scanRight, scanUp, scanDown:
+			return true
+		}
+	}
+	return false
+}
+
 // MobileKeyboardOptions configures one render pass of the on-screen keyboard.
 type MobileKeyboardOptions struct {
 	TargetLabel string
@@ -500,7 +620,12 @@ type MobileKeyboardOptions struct {
 	OSPicked    bool
 	AutoLabel   string
 	Split       bool
+	Laptop      bool
+	DeckHeight  float32
+	UseSafeArea bool
 	NativeTouch bool
+	Colors      *mobileColors
+	Dispatch    func(func())
 	OnOSPick    func(choice string) // "" auto, "windows", "macos", "linux"
 	OnSplit     func(split bool)
 	OnHide      func()
@@ -509,9 +634,33 @@ type MobileKeyboardOptions struct {
 	Send        func(code uint32, down, caps bool)
 }
 
-// View renders the responsive mobile computer keyboard.
+// mobileKeyboardEstimatedHeight returns an approximate dock height for auto-open
+// blank-space planning without building a frame.
+func mobileKeyboardEstimatedHeight(width float32, split bool) float32 {
+	if width >= 600 && !split {
+		return 370
+	}
+	return 320
+}
+
+// View renders the responsive Material 3 mobile computer keyboard or, when
+// o.Laptop is true, the foldable Laptop Mode keyboard-and-touchpad deck.
+// Side effects: updates internal press/repeat state and padRect bounds.
 func (kb *MobileKeyboard) View(c *ui.Context, keyPrefix string, width float32, o MobileKeyboardOptions) {
-	t := c.Theme()
+	var mc mobileColors
+	if o.Colors != nil {
+		mc = *o.Colors
+	} else {
+		mc = resolveMobileColors(c.Theme().Dark, androidhost.MaterialPalette{})
+	}
+	clear(kb.seenDown)
+	defer kb.pruneDownState()
+
+	if o.Laptop {
+		kb.renderLaptopDeck(c, mc, keyPrefix, width, o)
+		return
+	}
+
 	wide := width >= 600
 	split := wide && o.Split
 	mac := o.HostOS == "macos"
@@ -520,107 +669,35 @@ func (kb *MobileKeyboard) View(c *ui.Context, keyPrefix string, width float32, o
 	if kbBot > mobileKeyboardThreshold {
 		kbBot = 0
 	}
+	// Guarantee generous Android edge-to-edge gesture clearance beneath
+	// Space/Enter even when the system gesture hint pill is hidden.
+	chinPad := max(kbBot, 16)
 
-	ui.Column(c.Key(keyPrefix)).FillWidth().Shrink(0).Background(t.Surface).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).
-		Padding(4, 6, 4+kbBot, 6).Margin(0, 0, -kbBot, 0).Gap(3).Children(func() {
-		// Header bar: OS badge, Type text button, Full/Split toggle on wide screens, Hide button.
-		ui.Row(c.Key(keyPrefix + "-hdr")).Height(36).FillWidth().AlignItems(ui.Center).Gap(6).PaddingX(4).Children(func() {
-			osName := map[string]string{"windows": "Windows", "macos": "macOS", "linux": "Linux"}[o.HostOS]
-			if osName == "" {
-				osName = "Windows"
-			}
-			badgeText := o.TargetLabel + " · " + osName
-			if !o.OSPicked && o.AutoLabel != "" {
-				badgeText += " (" + o.AutoLabel + ")"
-			}
-			badge := ui.ButtonBase(c.Key(keyPrefix+"-os")).Padding(4, 10).Radius(8).Background(t.Accent.Alpha(0.16)).Label(badgeText)
-			badge.Children(func() {
-				ui.Text(c, badgeText).FontSize(12).FontWeight(600).TextColor(t.Accent).NoWrap()
-			})
-			if badge.Clicked() && o.OnOSPick != nil {
-				kb.ReleaseAll(o.Send)
-				order := []string{"", "windows", "macos", "linux"}
-				cur := ""
-				if o.OSPicked {
-					cur = o.HostOS
-				}
-				next := order[0]
-				for i, v := range order {
-					if v == cur {
-						next = order[(i+1)%len(order)]
-						break
-					}
-				}
-				o.OnOSPick(next)
-			}
+	ui.Column(c.Key(keyPrefix)).FillWidth().Shrink(0).Background(mc.KbTray).
+		BorderWidth(1, 0, 0, 0).BorderColor(mc.OutlineVariant.Alpha(0.35)).
+		Padding(6, 6, chinPad, 6).Margin(0, 0, -kbBot, 0).Gap(4).Children(func() {
+		// Top utility strip tailored to layout (no duplicate Ctrl/Alt/Tab in Full mode).
+		strip := kb.stripSpecs(o.HostOS, wide && !split)
+		kb.renderRow(c, mc, keyPrefix+"-strip", strip, 36, true, wide, o)
 
-			ui.Box(c).Grow(1)
-
-			if o.OnTypeText != nil {
-				tb := ui.ButtonBase(c.Key(keyPrefix+"-typetext")).Padding(4, 10).Radius(8).Background(t.Background).Border(1, t.Border)
-				tb.Children(func() {
-					ui.Text(c, "Aa").FontSize(12).FontWeight(600).TextColor(t.Text)
-				})
-				if tb.Clicked() {
-					o.OnTypeText()
-				}
-			}
-
-			if wide && o.OnSplit != nil {
-				for _, mode := range []struct {
-					label string
-					sp    bool
-				}{{"Full", false}, {"Split", true}} {
-					active := o.Split == mode.sp
-					bg := t.Background
-					fg := t.TextMuted
-					if active {
-						bg = t.Accent.Alpha(0.16)
-						fg = t.Accent
-					}
-					mb := ui.ButtonBase(c.Key(keyPrefix+"-sp-"+mode.label)).Height(28).PaddingX(10).Radius(8).Background(bg).Border(1, t.Border).Center().Label(mode.label)
-					mb.Children(func() {
-						ui.Text(c, mode.label).FontSize(12).FontWeight(600).TextColor(fg)
-					})
-					if mb.Clicked() && !active {
-						o.OnSplit(mode.sp)
-					}
-				}
-			}
-
-			hide := ui.ButtonBase(c.Key(keyPrefix+"-hide")).Size(38, 32).Radius(8).Center().Label("Hide keyboard")
-			hide.Children(func() {
-				ui.Icon(c, barUnfold).FontSize(16).TextColor(t.TextMuted)
-			})
-			if hide.Clicked() {
-				kb.ReleaseAll(o.Send)
-				if o.OnHide != nil {
-					o.OnHide()
-				}
-			}
-		})
-
-		// Top computer-key strip.
-		strip := kb.stripSpecs(o.HostOS)
-		kb.renderRow(c, keyPrefix+"-strip", strip, 38, true, o)
-
-		rowH := float32(45)
+		rowH := float32(46)
 		if wide && !split {
 			rowH = 48
 		}
 		if split {
 			leftRows, rightRows := kb.splitRows(o.HostOS)
-			halfW := min(max(width*0.36, 180), 372)
+			halfW := min(max(width*0.35, 176), 368)
+			bodyH := rowH*float32(len(leftRows)) + 3*float32(max(len(leftRows)-1, 0))
 			ui.Row(c.Key(keyPrefix + "-split-body")).FillWidth().AlignItems(ui.End).Gap(6).Children(func() {
-				ui.Column(c.Key(keyPrefix + "-left")).Width(halfW).Gap(2).Children(func() {
+				ui.Column(c.Key(keyPrefix + "-left")).Width(halfW).Gap(3).Children(func() {
 					for i, r := range leftRows {
-						kb.renderRow(c, keyPrefix+"-l"+strconv.Itoa(i), r, rowH, false, o)
+						kb.renderRow(c, mc, keyPrefix+"-l"+strconv.Itoa(i), r, rowH, false, false, o)
 					}
 				})
-				kb.renderCenterPad(c, keyPrefix+"-pad", rowH*float32(len(leftRows)), o)
-				ui.Column(c.Key(keyPrefix + "-right")).Width(halfW).Gap(2).Children(func() {
+				kb.renderCenterPad(c, mc, keyPrefix+"-pad", bodyH, o)
+				ui.Column(c.Key(keyPrefix + "-right")).Width(halfW).Gap(3).Children(func() {
 					for i, r := range rightRows {
-						kb.renderRow(c, keyPrefix+"-r"+strconv.Itoa(i), r, rowH, false, o)
+						kb.renderRow(c, mc, keyPrefix+"-r"+strconv.Itoa(i), r, rowH, false, false, o)
 					}
 				})
 			})
@@ -632,78 +709,292 @@ func (kb *MobileKeyboard) View(c *ui.Context, keyPrefix string, width float32, o
 			} else {
 				rows = kb.phoneRows(o.HostOS)
 			}
-			ui.Column(c.Key(keyPrefix + "-rows")).FillWidth().MaxWidth(1100).AlignSelf(ui.Center).Gap(2).Children(func() {
+			ui.Column(c.Key(keyPrefix + "-rows")).FillWidth().MaxWidth(1080).AlignSelf(ui.Center).Gap(4).Children(func() {
 				for i, r := range rows {
-					kb.renderRow(c, keyPrefix+"-row"+strconv.Itoa(i), r, rowH, false, o)
+					kb.renderRow(c, mc, keyPrefix+"-row"+strconv.Itoa(i), r, rowH, false, wide, o)
 				}
 			})
 		}
+
+		// Bottom Material gesture chin holding dismiss chevron, host OS badge, Aa & Full/Split.
+		kb.renderBottomChin(c, mc, keyPrefix, wide, o)
 	})
+
+	// Compact-phone tactile key preview bubble above the active keycap.
+	if !wide && kb.popupKey != "" && kb.popupChar != "" && kb.popupRect.W > 0 {
+		px := max(kb.popupRect.X+(kb.popupRect.W-46)/2, 4)
+		if width > 50 && px+46 > width-4 {
+			px = width - 50
+		}
+		py := max(kb.popupRect.Y-56, 4)
+		ui.Overlay(c, func() {
+			ui.Box(c.Key(keyPrefix+"-key-popup")).Absolute().Left(px).Top(py).Size(46, 50).
+				Radius(14).Background(mc.SurfaceContainerHighest).
+				Border(1, mc.OutlineVariant.Alpha(0.5)).
+				Shadow(0, 6, 16, 0, mc.KbKeyShadow).Center().Children(func() {
+				ui.Text(c, kb.popupChar).FontSize(22).FontWeight(700).TextColor(mc.OnSurface).NoWrap()
+			})
+		})
+	}
 }
 
-func (kb *MobileKeyboard) renderCenterPad(c *ui.Context, key string, height float32, o MobileKeyboardOptions) {
-	t := c.Theme()
-	ui.Column(c.Key(key)).Grow(1).Basis(0).Height(height).Padding(2, 4).Gap(4).Children(func() {
-		pad := ui.Box(c.Key(key+"-area")).Grow(1).FillWidth().Radius(14).Border(1, t.Border).Background(t.Background).Center()
-		kb.padRect = pad.LayoutBounds()
-		if kb.pad != nil {
-			for _, te := range pad.Touches() {
-				now := time.Now()
-				switch te.Phase {
-				case ui.TouchBegan:
-					kb.pad.Down(int(te.ID), te.X, te.Y, now)
-				case ui.TouchMoved:
-					kb.pad.Move(int(te.ID), te.X, te.Y, now)
-				case ui.TouchEnded:
-					kb.pad.Up(int(te.ID), now)
-				case ui.TouchCanceled:
-					kb.pad.Cancel(int(te.ID))
-				}
-			}
-			// When Android's native TouchBridge is absent (e.g. unit tests or
-			// desktop view previews), fall back to HandleInput; on Android,
-			// TouchBridge owns raw multi-touch over padRect so local-vs-window
-			// coordinate mismatches never double-feed kb.pad.
-			if !o.NativeTouch {
-				pad.HandleInput(func(ev ui.InputEvent) bool {
-					now := time.Now()
-					switch ev.Kind {
-					case ui.InputPointerDown:
-						kb.pad.Down(0, ev.X, ev.Y, now)
-						return true
-					case ui.InputPointerMove:
-						kb.pad.Move(0, ev.X, ev.Y, now)
-						return true
-					case ui.InputPointerUp:
-						kb.pad.Up(0, now)
-						return true
-					}
-					return false
-				})
+func (kb *MobileKeyboard) pruneDownState() {
+	for k := range kb.downKeys {
+		if !kb.seenDown[k] {
+			delete(kb.downKeys, k)
+		}
+	}
+	if kb.repeatKey != "" && !kb.seenDown[kb.repeatKey] {
+		kb.stopRepeat()
+	}
+	if kb.popupKey != "" && !kb.seenDown[kb.popupKey] {
+		kb.popupKey = ""
+		kb.popupChar = ""
+	}
+}
+
+func (kb *MobileKeyboard) renderBottomChin(c *ui.Context, mc mobileColors, keyPrefix string, wide bool, o MobileKeyboardOptions) {
+	ui.Row(c.Key(keyPrefix + "-chin")).Height(38).FillWidth().AlignItems(ui.Center).Gap(8).PaddingX(4).Children(func() {
+		hide := ui.ButtonBase(c.Key(keyPrefix+"-hide")).Size(38, 34).Radius(17).
+			Background(mc.KbFuncKey).Center().Clip().Label("Hide keyboard")
+		mobile.Ink(hide)
+		hide.Children(func() {
+			ui.Icon(c, kbDismissIcon).FontSize(19).TextColor(mc.OnSurfaceVariant)
+		})
+		if hide.Clicked() {
+			mygo.Haptics.Light()
+			kb.ReleaseAll(o.Send)
+			if o.OnHide != nil {
+				o.OnHide()
 			}
 		}
-		pad.Children(func() {
-			ui.Text(c, "Touchpad").FontSize(12).TextColor(t.TextMuted)
+
+		kb.renderOSBadge(c, mc, keyPrefix+"-os", o)
+		ui.Box(c).Grow(1)
+		kb.renderTypeTextBtn(c, mc, keyPrefix+"-typetext", o)
+
+		if wide && o.OnSplit != nil {
+			kb.renderSplitSwitch(c, mc, keyPrefix+"-sp", o)
+		}
+	})
+}
+
+func (kb *MobileKeyboard) renderLaptopDeck(c *ui.Context, mc mobileColors, keyPrefix string, width float32, o MobileKeyboardOptions) {
+	_, _, safeBot, _ := c.SafeArea()
+	if safeBot > mobileKeyboardThreshold {
+		safeBot = 0
+	}
+	deckH := o.DeckHeight
+	if deckH <= 0 {
+		deckH = 420
+	}
+	padBot := float32(6)
+	if o.UseSafeArea {
+		padBot = max(safeBot, 8)
+	}
+	innerH := max(deckH-10-padBot, 220)
+	stripH := float32(32)
+	rowsAvail := max(innerH-stripH-8, 170)
+	kbZoneH := min(max(rowsAvail*0.62, 160), rowsAvail-98)
+	rowH := min(max((kbZoneH-12)/5, 30), 50)
+	padH := max(rowsAvail-kbZoneH-4, 96)
+
+	ui.Column(c.Key(keyPrefix+"-laptop")).FillWidth().Height(deckH).Shrink(0).Background(mc.KbTray).
+		BorderWidth(1, 0, 0, 0).BorderColor(mc.OutlineVariant.Alpha(0.35)).
+		Padding(4, 10, padBot, 10).Gap(4).Children(func() {
+		// Compact laptop deck top utility strip.
+		ui.Row(c.Key(keyPrefix + "-lap-bar")).Height(stripH).FillWidth().MaxWidth(1040).AlignSelf(ui.Center).
+			AlignItems(ui.Center).Gap(6).Children(func() {
+			kb.renderOSBadge(c, mc, keyPrefix+"-os", o)
+			strip := kb.laptopStripSpecs()
+			ui.Row(c.Key(keyPrefix + "-lap-strip")).Grow(1).Basis(0).MinWidth(0).Children(func() {
+				kb.renderRow(c, mc, keyPrefix+"-lstrip", strip, stripH, true, true, o)
+			})
+			kb.renderTypeTextBtn(c, mc, keyPrefix+"-typetext", o)
 		})
-		ui.Row(c.Key(key + "-btns")).Height(38).FillWidth().Gap(4).Children(func() {
-			for _, b := range []struct {
-				label string
-				btn   int
-			}{{"Left", 0}, {"Right", 1}} {
-				el := ui.ButtonBase(c.Key(key+"-b"+strconv.Itoa(b.btn))).Grow(1).Basis(0).FillHeight().Radius(10).Background(t.Background).Border(1, t.Border).Center().Label(b.label)
-				el.Children(func() { ui.Text(c, b.label).FontSize(12).FontWeight(500) })
-				if el.Clicked() && kb.pad != nil {
-					kb.pad.sink.Button(b.btn, true)
-					kb.pad.sink.Button(b.btn, false)
-				}
+
+		// Top 62%: full horizontal 5-row laptop ANSI keyboard.
+		rows := kb.laptopRows(o.HostOS)
+		ui.Column(c.Key(keyPrefix + "-lap-rows")).FillWidth().MaxWidth(1040).AlignSelf(ui.Center).Gap(3).Children(func() {
+			for i, r := range rows {
+				kb.renderRow(c, mc, keyPrefix+"-lrow"+strconv.Itoa(i), r, rowH, false, true, o)
 			}
+		})
+
+		// Bottom 38%: wide centered palmrest touchpad + integrated Left/Right click bar.
+		padW := min(max(width*0.66, 280), 540)
+		ui.Column(c.Key(keyPrefix+"-lap-pad")).Width(padW).Height(padH).AlignSelf(ui.Center).
+			Gap(6).Padding(2, 0, 0, 0).Children(func() {
+			pad := ui.Box(c.Key(keyPrefix+"-lap-pad-area")).Grow(1).Basis(0).MinHeight(52).FillWidth().
+				Radius(18).Background(mc.SurfaceContainerLow).
+				Border(1, mc.OutlineVariant.Alpha(0.55)).Center()
+			kb.bindTouchpadBox(pad, o)
+			pad.Children(func() {
+				ui.Text(c, L.MobileTouchpad()).FontSize(12).FontWeight(500).
+					TextColor(mc.OnSurfaceVariant.Alpha(0.75))
+			})
+			kb.renderPadClickButtons(c, mc, keyPrefix+"-lap-pbtns", 36)
 		})
 	})
 }
 
-func (kb *MobileKeyboard) renderRow(c *ui.Context, rowKey string, specs []kbKeySpec, height float32, strip bool, o MobileKeyboardOptions) {
-	t := c.Theme()
-	ui.Row(c.Key(rowKey)).FillWidth().Height(height).Gap(3).Children(func() {
+func (kb *MobileKeyboard) renderOSBadge(c *ui.Context, mc mobileColors, key string, o MobileKeyboardOptions) {
+	osName := map[string]string{"windows": "Windows", "macos": "macOS", "linux": "Linux"}[o.HostOS]
+	if osName == "" {
+		osName = "Windows"
+	}
+	badgeText := o.TargetLabel + " · " + osName
+	if !o.OSPicked && o.AutoLabel != "" {
+		badgeText += " (" + o.AutoLabel + ")"
+	}
+	badge := ui.ButtonBase(c.Key(key)).Height(30).PaddingX(12).Radius(15).
+		Background(mc.SecondaryContainer).Center().Clip().Label(badgeText)
+	mobile.Ink(badge)
+	badge.Children(func() {
+		ui.Text(c, badgeText).FontSize(12).FontWeight(600).TextColor(mc.OnSecondaryContainer).NoWrap()
+	})
+	if badge.Clicked() && o.OnOSPick != nil {
+		mygo.Haptics.Light()
+		kb.ReleaseAll(o.Send)
+		order := []string{"", "windows", "macos", "linux"}
+		cur := ""
+		if o.OSPicked {
+			cur = o.HostOS
+		}
+		next := order[0]
+		for i, v := range order {
+			if v == cur {
+				next = order[(i+1)%len(order)]
+				break
+			}
+		}
+		o.OnOSPick(next)
+	}
+}
+
+func (kb *MobileKeyboard) renderTypeTextBtn(c *ui.Context, mc mobileColors, key string, o MobileKeyboardOptions) {
+	if o.OnTypeText == nil {
+		return
+	}
+	tb := ui.ButtonBase(c.Key(key)).Height(30).PaddingX(12).Radius(15).
+		Background(mc.KbFuncKey).Border(1, mc.OutlineVariant.Alpha(0.3)).Center().Clip().Label("Aa")
+	mobile.Ink(tb)
+	tb.Children(func() {
+		ui.Text(c, "Aa").FontSize(12).FontWeight(600).TextColor(mc.OnSurface)
+	})
+	if tb.Clicked() {
+		mygo.Haptics.Light()
+		o.OnTypeText()
+	}
+}
+
+func (kb *MobileKeyboard) renderSplitSwitch(c *ui.Context, mc mobileColors, keyPrefix string, o MobileKeyboardOptions) {
+	idx := 0
+	if o.Split {
+		idx = 1
+	}
+	parts := ui.SegmentedBase(c.Key(keyPrefix), &idx, 2)
+	track := parts.Track.Height(30).Radius(15).Background(mc.KbFuncKey).
+		Border(1, mc.OutlineVariant.Alpha(0.35)).Clip()
+	labels := [2]string{L.MobileKeyboardFull(), L.MobileKeyboardSplit()}
+	track.Children(func() {
+		for i, lbl := range labels {
+			on := i == idx
+			seg := parts.Segment(i).Height(30).PaddingX(12).Center().Clip()
+			fg := mc.OnSurfaceVariant
+			if on {
+				seg.Background(mc.PrimaryContainer)
+				fg = mc.OnPrimaryContainer
+			}
+			mobile.Ink(seg)
+			seg.Children(func() {
+				ui.Text(c, lbl).FontSize(12).FontWeight(600).TextColor(fg).SingleLine()
+			})
+		}
+	})
+	if track.Changed() {
+		mygo.Haptics.Light()
+		o.OnSplit(idx == 1)
+	}
+}
+
+func (kb *MobileKeyboard) bindTouchpadBox(pad ui.Element, o MobileKeyboardOptions) {
+	kb.padRect = pad.LayoutBounds()
+	if kb.pad == nil {
+		return
+	}
+	for _, te := range pad.Touches() {
+		now := time.Now()
+		switch te.Phase {
+		case ui.TouchBegan:
+			kb.pad.Down(int(te.ID), te.X, te.Y, now)
+		case ui.TouchMoved:
+			kb.pad.Move(int(te.ID), te.X, te.Y, now)
+		case ui.TouchEnded:
+			kb.pad.Up(int(te.ID), now)
+		case ui.TouchCanceled:
+			kb.pad.Cancel(int(te.ID))
+		}
+	}
+	// When Android's native TouchBridge is absent (e.g. unit tests or
+	// desktop view previews), fall back to HandleInput; on Android,
+	// TouchBridge owns raw multi-touch over padRect so local-vs-window
+	// coordinate mismatches never double-feed kb.pad.
+	if !o.NativeTouch {
+		pad.HandleInput(func(ev ui.InputEvent) bool {
+			now := time.Now()
+			switch ev.Kind {
+			case ui.InputPointerDown:
+				kb.pad.Down(0, ev.X, ev.Y, now)
+				return true
+			case ui.InputPointerMove:
+				kb.pad.Move(0, ev.X, ev.Y, now)
+				return true
+			case ui.InputPointerUp:
+				kb.pad.Up(0, now)
+				return true
+			}
+			return false
+		})
+	}
+}
+
+func (kb *MobileKeyboard) renderPadClickButtons(c *ui.Context, mc mobileColors, key string, height float32) {
+	ui.Row(c.Key(key)).Height(height).FillWidth().Gap(6).Children(func() {
+		for _, b := range []struct {
+			label string
+			btn   int
+		}{{"Left", 0}, {"Right", 1}} {
+			el := ui.ButtonBase(c.Key(key+"-b"+strconv.Itoa(b.btn))).Grow(1).Basis(0).FillHeight().
+				Radius(12).Background(mc.KbFuncKey).Border(1, mc.OutlineVariant.Alpha(0.35)).
+				Center().Clip().Label(b.label)
+			mobile.Ink(el)
+			el.Children(func() {
+				ui.Text(c, b.label).FontSize(12).FontWeight(600).TextColor(mc.OnSurfaceVariant)
+			})
+			if el.Clicked() && kb.pad != nil {
+				mygo.Haptics.Light()
+				kb.pad.sink.Button(b.btn, true)
+				kb.pad.sink.Button(b.btn, false)
+			}
+		}
+	})
+}
+
+func (kb *MobileKeyboard) renderCenterPad(c *ui.Context, mc mobileColors, key string, height float32, o MobileKeyboardOptions) {
+	ui.Column(c.Key(key)).Grow(1).Basis(0).Height(height).Padding(2, 4).Gap(6).Children(func() {
+		pad := ui.Box(c.Key(key+"-area")).Grow(1).FillWidth().Radius(16).
+			Border(1, mc.OutlineVariant.Alpha(0.45)).Background(mc.SurfaceContainerLow).Center()
+		kb.bindTouchpadBox(pad, o)
+		pad.Children(func() {
+			ui.Text(c, L.MobileTouchpad()).FontSize(12).FontWeight(500).TextColor(mc.OnSurfaceVariant.Alpha(0.75))
+		})
+		kb.renderPadClickButtons(c, mc, key+"-btns", 38)
+	})
+}
+
+func (kb *MobileKeyboard) renderRow(c *ui.Context, mc mobileColors, rowKey string, specs []kbKeySpec, height float32, strip, wideHint bool, o MobileKeyboardOptions) {
+	ui.Row(c.Key(rowKey)).FillWidth().Height(height).Gap(4).Children(func() {
 		for i, sp := range specs {
 			kID := rowKey + "-" + strconv.Itoa(i)
 			if sp.kind == kbKeyGap {
@@ -711,45 +1002,117 @@ func (kb *MobileKeyboard) renderRow(c *ui.Context, rowKey string, specs []kbKeyS
 				continue
 			}
 			lit := false
+			latched := false
 			locked := false
 			switch sp.kind {
 			case kbKeyMod:
 				lit = kb.active(sp.mod)
+				latched = kb.latch[sp.mod] == kbOnce && !kb.held[sp.mod]
 				if sp.mod == kbShift {
-					locked = kb.caps || kb.latch[sp.mod] == kbLocked
+					locked = kb.caps || kb.latch[sp.mod] == kbLocked || kb.held[sp.mod]
 				} else {
-					locked = kb.latch[sp.mod] == kbLocked
+					locked = kb.latch[sp.mod] == kbLocked || kb.held[sp.mod]
 				}
 			case kbKeyPage:
 				if strip && sp.label == "Fn" {
 					lit = kb.page == kbPageFn
+					locked = lit
 				}
 			}
+
 			isEnter := sp.kind == kbKeyCode && sp.code == scanEnter
-			bg := t.Background
-			fg := t.Text
-			switch {
-			case lit || isEnter:
-				bg = t.Accent
-				fg = ui.RGB(255, 255, 255)
-			case sp.tonal || strip:
-				bg = t.SurfaceHover
-			}
-			radius := float32(10)
-			if isEnter {
-				radius = 18
+			radius := float32(9)
+			if strip {
+				radius = 10
+			} else if isEnter {
+				radius = 16
 			}
 			label := sp.label
 			if sp.kind == kbKeyChar {
 				label = kb.shownChar(sp.char, o.HostOS)
 			}
 			a11y := label
-			if a11y == "" && sp.kind == kbKeyChar && sp.char == " " {
+			if (a11y == "" || a11y == " ") && sp.kind == kbKeyChar && sp.char == " " {
 				a11y = "Space"
 			}
-			btn := ui.ButtonBase(c.Key(kID)).Grow(sp.flex).Basis(0).MinWidth(0).FillHeight().Radius(radius).
-				Background(bg).Border(1, t.Border.Alpha(0.5)).Center().Label(a11y)
-			// Multi-touch modifier hold when Element.Touches() fires (U1).
+			icon := sp.icon
+			if sp.kind == kbKeyMod && sp.mod == kbShift && icon != nil && locked {
+				icon = kbCapsIcon
+			}
+
+			btn := ui.ButtonBase(c.Key(kID))
+			wasPressed := kb.downKeys[kID]
+			nowPressed := btn.Pressed()
+			repeated := kb.repeatKey == kID && kb.repeatCount > 0
+			if nowPressed {
+				kb.seenDown[kID] = true
+				kb.downKeys[kID] = true
+				if !wasPressed {
+					if sp.tonal || strip {
+						mygo.Haptics.Light()
+					} else {
+						mygo.Haptics.Selection()
+					}
+					if isRepeatableKey(sp) {
+						kb.startRepeat(kID, sp, o)
+					}
+				}
+				if !wideHint && sp.kind == kbKeyChar && sp.char != " " {
+					kb.popupKey = kID
+					kb.popupChar = label
+					kb.popupRect = btn.LayoutBounds()
+				}
+			} else {
+				delete(kb.downKeys, kID)
+				if kb.repeatKey == kID {
+					kb.stopRepeat()
+				}
+				if kb.popupKey == kID {
+					kb.popupKey = ""
+					kb.popupChar = ""
+				}
+			}
+
+			bg := mc.KbKey
+			fg := mc.OnSurface
+			if sp.tonal || strip {
+				bg = mc.KbFuncKey
+				fg = mc.OnSurfaceVariant
+				if lit {
+					fg = mc.OnPrimaryContainer
+				}
+			}
+			switch {
+			case isEnter:
+				bg = mc.Primary
+				fg = mc.OnPrimary
+			case locked || (sp.kind == kbKeyMod && kb.held[sp.mod]):
+				bg = mc.Primary
+				fg = mc.OnPrimary
+			case lit || latched:
+				bg = mc.PrimaryContainer
+				fg = mc.OnPrimaryContainer
+			}
+			if nowPressed {
+				if isEnter || locked {
+					bg = bg.Mix(mc.OnPrimary, 0.16)
+				} else if sp.tonal || strip {
+					bg = mc.KbFuncPressed
+				} else {
+					bg = mc.KbKeyPressed
+				}
+			}
+
+			btn.Grow(sp.flex).Basis(0).MinWidth(0).FillHeight().Radius(radius).
+				Background(bg).Border(1, mc.OutlineVariant.Alpha(0.26)).Center().Clip().Label(a11y)
+			if nowPressed {
+				btn.Shadow(0, 0.5, 1, 0, mc.KbKeyShadow)
+			} else if !strip {
+				btn.Shadow(0, 1.5, 2.5, 0, mc.KbKeyShadow)
+			}
+			mobile.Ink(btn)
+
+			// Multi-touch modifier hold when Element.Touches() fires.
 			for _, te := range btn.Touches() {
 				if sp.kind == kbKeyMod {
 					switch te.Phase {
@@ -764,22 +1127,54 @@ func (kb *MobileKeyboard) renderRow(c *ui.Context, rowKey string, specs []kbKeyS
 					}
 				}
 			}
+
 			btn.Children(func() {
+				if icon != nil {
+					sz := sp.iconSize
+					if sz <= 0 {
+						sz = 18
+					}
+					col := ui.Column(c).AlignItems(ui.Center).Justify(ui.Center).Gap(2)
+					col.Children(func() {
+						ui.Icon(c, icon).FontSize(sz).TextColor(fg)
+						if locked {
+							ui.Box(c).Width(14).Height(2.5).Radius(1.25).Background(fg)
+						}
+					})
+					return
+				}
+				if wideHint && !strip && sp.secLabel != "" && !kb.active(kbShift) {
+					ui.Text(c, sp.secLabel).Absolute().Top(3).Right(5).FontSize(10).
+						FontWeight(500).TextColor(fg.Alpha(0.58)).NoWrap()
+				}
 				fontSize := float32(13)
 				if sp.kind == kbKeyChar && len([]rune(label)) == 1 {
-					fontSize = 18
+					fontSize = 17
+					if wideHint {
+						fontSize = 15
+					}
+				} else if strip {
+					fontSize = 11.5
 				}
 				col := ui.Column(c).AlignItems(ui.Center).Justify(ui.Center).Gap(1)
 				col.Children(func() {
 					ui.Text(c, label).FontSize(fontSize).FontWeight(500).TextColor(fg).NoWrap()
 					if locked {
-						ui.Box(c).Width(12).Height(2).Radius(1).Background(fg)
+						ui.Box(c).Width(14).Height(2.5).Radius(1.25).Background(fg)
 					}
 				})
 			})
 			if btn.Clicked() {
-				mygo.Haptics.Light()
-				kb.activate(sp, o)
+				if !wasPressed && !nowPressed {
+					if sp.tonal || strip {
+						mygo.Haptics.Light()
+					} else {
+						mygo.Haptics.Selection()
+					}
+				}
+				if !repeated {
+					kb.activate(sp, o)
+				}
 			}
 		}
 	})
@@ -788,11 +1183,18 @@ func (kb *MobileKeyboard) renderRow(c *ui.Context, rowKey string, specs []kbKeyS
 func (kb *MobileKeyboard) activate(sp kbKeySpec, o MobileKeyboardOptions) {
 	switch sp.kind {
 	case kbKeyMod:
-		if sp.mod == kbWin && o.HostOS != "macos" && kb.latch[sp.mod] == kbOff {
-			// Tap Win/Super latches once so Win+D / Super+L can be typed with
-			// one finger; tapping Win while latched sends standalone Win tap!
-			kb.tapModifier(sp.mod, o.HostOS, o.Send)
-			return
+		if sp.mod == kbWin && o.HostOS != "macos" {
+			now := time.Now()
+			twice := !kb.lastTap[kbWin].IsZero() && now.Sub(kb.lastTap[kbWin]) < 350*time.Millisecond
+			if kb.latch[kbWin] == kbOnce && !twice {
+				kb.lastTap[kbWin] = now
+				kb.latch[kbWin] = kbOff
+				if o.Send != nil {
+					o.Send(scanLWin, true, kb.caps)
+					o.Send(scanLWin, false, kb.caps)
+				}
+				return
+			}
 		}
 		kb.tapModifier(sp.mod, o.HostOS, o.Send)
 	case kbKeyPage:
@@ -804,6 +1206,9 @@ func (kb *MobileKeyboard) activate(sp kbKeySpec, o MobileKeyboardOptions) {
 		}
 	case kbKeyCombo:
 		if sp.special != "" && o.OnSpecial != nil && o.OnSpecial(sp.special) {
+			return
+		}
+		if o.Send == nil {
 			return
 		}
 		for _, m := range sp.mods {
@@ -839,18 +1244,18 @@ func (kb *MobileKeyboard) modLabel(m kbMod, hostOS string) string {
 		return "Shift"
 	case kbCtrl:
 		if hostOS == "macos" {
-			return "⌃ Ctrl"
+			return "⌃Ctrl"
 		}
 		return "Ctrl"
 	case kbAlt:
 		if hostOS == "macos" {
-			return "⌥ Opt"
+			return "⌥Opt"
 		}
 		return "Alt"
 	default:
 		switch hostOS {
 		case "macos":
-			return "⌘ Cmd"
+			return "⌘Cmd"
 		case "linux":
 			return "Super"
 		default:
@@ -866,7 +1271,27 @@ func (kb *MobileKeyboard) modOrder(hostOS string) []kbMod {
 	return []kbMod{kbCtrl, kbWin, kbAlt}
 }
 
-func (kb *MobileKeyboard) stripSpecs(hostOS string) []kbKeySpec {
+func (kb *MobileKeyboard) stripSpecs(hostOS string, fullANSI bool) []kbKeySpec {
+	nextFn := kbPageFn
+	if kb.page == kbPageFn {
+		nextFn = kbPageLetters
+	}
+	if fullANSI {
+		return []kbKeySpec{
+			kCode("Esc", scanEsc, 10),
+			kCode("Ins", scanInsert, 10),
+			kCode("Home", scanHome, 10),
+			kCode("PgUp", scanPageUp, 10),
+			kCode("PgDn", scanPageDown, 10),
+			kCode("End", scanEnd, 10),
+			kCode("Del", scanDelete, 10),
+			kCodeIcon("Left", kbArrowLeft, scanLeft, 9),
+			kCodeIcon("Up", kbArrowUp, scanUp, 9),
+			kCodeIcon("Down", kbArrowDown, scanDown, 9),
+			kCodeIcon("Right", kbArrowRight, scanRight, 9),
+			kPage("Fn", nextFn, 10),
+		}
+	}
 	mac := hostOS == "macos"
 	flex := float32(10)
 	if mac {
@@ -879,18 +1304,32 @@ func (kb *MobileKeyboard) stripSpecs(hostOS string) []kbKeySpec {
 	for _, m := range kb.modOrder(hostOS) {
 		out = append(out, kMod(kb.modLabel(m, hostOS), m, flex))
 	}
+	out = append(out,
+		kCodeIcon("Left", kbArrowLeft, scanLeft, 9),
+		kCodeIcon("Up", kbArrowUp, scanUp, 9),
+		kCodeIcon("Down", kbArrowDown, scanDown, 9),
+		kCodeIcon("Right", kbArrowRight, scanRight, 9),
+		kPage("Fn", nextFn, 10),
+	)
+	return out
+}
+
+func (kb *MobileKeyboard) laptopStripSpecs() []kbKeySpec {
 	nextFn := kbPageFn
 	if kb.page == kbPageFn {
 		nextFn = kbPageLetters
 	}
-	out = append(out,
-		kCode("←", scanLeft, 10),
-		kCode("↑", scanUp, 10),
-		kCode("↓", scanDown, 10),
-		kCode("→", scanRight, 10),
+	return []kbKeySpec{
+		kCode("Esc", scanEsc, 10),
+		kCode("Ins", scanInsert, 10),
+		kCode("Home", scanHome, 10),
+		kCode("PgUp", scanPageUp, 10),
+		kCode("PgDn", scanPageDown, 10),
+		kCode("End", scanEnd, 10),
+		kCode("Del", scanDelete, 10),
+		kCode("PrtSc", scanPrintScreen, 11),
 		kPage("Fn", nextFn, 10),
-	)
-	return out
+	}
 }
 
 func charsRow(s string) []kbKeySpec {
@@ -951,6 +1390,8 @@ func (kb *MobileKeyboard) fnRows(hostOS string) [][]kbKeySpec {
 	} else if hostOS == "linux" {
 		rWin = "RSuper"
 	}
+	shiftSpec := kMod("Shift", kbShift, 15)
+	shiftSpec.icon = kbShiftIcon
 	return [][]kbKeySpec{
 		fRow,
 		{
@@ -964,12 +1405,12 @@ func (kb *MobileKeyboard) fnRows(hostOS string) [][]kbKeySpec {
 		shortcuts,
 		{
 			kPage("ABC", kbPageLetters, 15),
-			kMod("Shift", kbShift, 15),
+			shiftSpec,
 			kCode("RCtrl", scanRCtrl, 10),
 			kCode(rAlt, scanRAlt, 10),
 			kCode(rWin, scanRWin, 12),
-			kCode("⌫", scanBackspace, 15),
-			kCode("⏎", scanEnter, 15),
+			kCodeIcon("Backspace", kbBackspaceIcon, scanBackspace, 15),
+			kCodeIcon("Enter", kbEnterIcon, scanEnter, 15),
 		},
 	}
 }
@@ -979,14 +1420,15 @@ func (kb *MobileKeyboard) phoneRows(hostOS string) [][]kbKeySpec {
 	if kb.page != kbPageLetters {
 		abcLabel, abcNext = "ABC", kbPageLetters
 	}
-	abc := kPage(abcLabel, abcNext, 15)
-	hide := kbKeySpec{label: "⌨", kind: kbKeyHide, flex: 10, tonal: true}
-	bottom := []kbKeySpec{abc, kChar(",", 10), hide, kChar(" ", 40), kChar(".", 10), kCode("⏎", scanEnter, 15)}
+	abc := kPage(abcLabel, abcNext, 16)
+	space := kChar(" ", 46)
+	enter := kCodeIcon("Enter", kbEnterIcon, scanEnter, 16)
+	bottom := []kbKeySpec{abc, kChar(",", 11), space, kChar(".", 11), enter}
 
 	switch kb.page {
 	case kbPageSymbols:
 		row3 := append([]kbKeySpec{kPage(`=\<`, kbPageMore, 15)}, charsRow(`*"':;!?`)...)
-		row3 = append(row3, kCode("⌫", scanBackspace, 15))
+		row3 = append(row3, kCodeIcon("Backspace", kbBackspaceIcon, scanBackspace, 15))
 		return [][]kbKeySpec{
 			charsRow("1234567890"),
 			charsRow(`@#$_&-+()/`),
@@ -996,7 +1438,7 @@ func (kb *MobileKeyboard) phoneRows(hostOS string) [][]kbKeySpec {
 	case kbPageMore:
 		row2 := append(charsRow(`<>=_-+@#&`), kCode("Del", scanDelete, 10))
 		row3 := append([]kbKeySpec{kPage("?123", kbPageSymbols, 15)}, charsRow(`.,!?/;:`)...)
-		row3 = append(row3, kCode("⌫", scanBackspace, 15))
+		row3 = append(row3, kCodeIcon("Backspace", kbBackspaceIcon, scanBackspace, 15))
 		return [][]kbKeySpec{
 			charsRow(`~` + "`" + `|\{}[]^%`),
 			row2,
@@ -1008,8 +1450,10 @@ func (kb *MobileKeyboard) phoneRows(hostOS string) [][]kbKeySpec {
 	default:
 		r2 := append([]kbKeySpec{{kind: kbKeyGap, flex: 5}}, charsRow("asdfghjkl")...)
 		r2 = append(r2, kbKeySpec{kind: kbKeyGap, flex: 5})
-		r3 := append([]kbKeySpec{kMod("⇧", kbShift, 15)}, charsRow("zxcvbnm")...)
-		r3 = append(r3, kCode("⌫", scanBackspace, 15))
+		shift := kMod("Shift", kbShift, 15)
+		shift.icon = kbShiftIcon
+		r3 := append([]kbKeySpec{shift}, charsRow("zxcvbnm")...)
+		r3 = append(r3, kCodeIcon("Backspace", kbBackspaceIcon, scanBackspace, 15))
 		return [][]kbKeySpec{
 			charsRow("qwertyuiop"),
 			r2,
@@ -1019,7 +1463,7 @@ func (kb *MobileKeyboard) phoneRows(hostOS string) [][]kbKeySpec {
 	}
 }
 
-func (kb *MobileKeyboard) fullRows(hostOS string, mac bool) [][]kbKeySpec {
+func (kb *MobileKeyboard) fullRows(hostOS string, _ bool) [][]kbKeySpec {
 	if kb.page != kbPageLetters {
 		return kb.phoneRows(hostOS)
 	}
@@ -1032,22 +1476,66 @@ func (kb *MobileKeyboard) fullRows(hostOS string, mac bool) [][]kbKeySpec {
 		rightMods = append(rightMods, kMod(kb.modLabel(order[i], hostOS), order[i], 13))
 	}
 	r1 := append([]kbKeySpec{kChar("`", 10)}, charsRow("1234567890")...)
-	r1 = append(r1, kChar("-", 10), kChar("=", 10), kCode("⌫", scanBackspace, 20))
+	r1 = append(r1, kChar("-", 10), kChar("=", 10), kCodeIcon("Backspace", kbBackspaceIcon, scanBackspace, 20))
 
 	r2 := append([]kbKeySpec{kCode("Tab", scanTab, 15)}, charsRow("qwertyuiop")...)
 	r2 = append(r2, kChar("[", 10), kChar("]", 10), kChar(`\`, 15))
 
 	r3 := append([]kbKeySpec{kCode("Caps", scanCaps, 18)}, charsRow("asdfghjkl")...)
-	r3 = append(r3, kChar(";", 10), kChar("'", 10), kCode("⏎", scanEnter, 22))
+	r3 = append(r3, kChar(";", 10), kChar("'", 10), kCodeIcon("Enter", kbEnterIcon, scanEnter, 22))
 
-	r4 := append([]kbKeySpec{kMod("Shift", kbShift, 23)}, charsRow("zxcvbnm")...)
-	r4 = append(r4, kChar(",", 10), kChar(".", 10), kChar("/", 10), kMod("Shift", kbShift, 27))
+	lShift := kMod("Shift", kbShift, 23)
+	lShift.icon = kbShiftIcon
+	rShift := kMod("Shift", kbShift, 27)
+	rShift.icon = kbShiftIcon
+	r4 := append([]kbKeySpec{lShift}, charsRow("zxcvbnm")...)
+	r4 = append(r4, kChar(",", 10), kChar(".", 10), kChar("/", 10), rShift)
 
 	r5 := []kbKeySpec{kPage("?123", kbPageSymbols, 15)}
 	r5 = append(r5, leftMods...)
 	r5 = append(r5, kChar(" ", 60))
 	r5 = append(r5, rightMods...)
-	r5 = append(r5, kbKeySpec{label: "⌨", kind: kbKeyHide, flex: 12, tonal: true})
+	return [][]kbKeySpec{r1, r2, r3, r4, r5}
+}
+
+func (kb *MobileKeyboard) laptopRows(hostOS string) [][]kbKeySpec {
+	if kb.page != kbPageLetters {
+		return kb.phoneRows(hostOS)
+	}
+	r1 := append([]kbKeySpec{kChar("`", 10)}, charsRow("1234567890")...)
+	r1 = append(r1, kChar("-", 10), kChar("=", 10), kCodeIcon("Backspace", kbBackspaceIcon, scanBackspace, 20))
+
+	r2 := append([]kbKeySpec{kCode("Tab", scanTab, 15)}, charsRow("qwertyuiop")...)
+	r2 = append(r2, kChar("[", 10), kChar("]", 10), kChar(`\`, 15))
+
+	r3 := append([]kbKeySpec{kCode("Caps", scanCaps, 18)}, charsRow("asdfghjkl")...)
+	r3 = append(r3, kChar(";", 10), kChar("'", 10), kCodeIcon("Enter", kbEnterIcon, scanEnter, 22))
+
+	lShift := kMod("Shift", kbShift, 22)
+	lShift.icon = kbShiftIcon
+	rShift := kMod("Shift", kbShift, 18)
+	rShift.icon = kbShiftIcon
+	r4 := append([]kbKeySpec{lShift}, charsRow("zxcvbnm")...)
+	r4 = append(r4, kChar(",", 10), kChar(".", 10), kChar("/", 10), rShift, kCodeIcon("Up", kbArrowUp, scanUp, 10))
+
+	order := kb.modOrder(hostOS)
+	r5 := []kbKeySpec{kPage("?123", kbPageSymbols, 13)}
+	for _, m := range order {
+		r5 = append(r5, kMod(kb.modLabel(m, hostOS), m, 11))
+	}
+	r5 = append(r5, kChar(" ", 44))
+	rightOrder := []kbMod{kbAlt, kbCtrl}
+	if hostOS == "macos" {
+		rightOrder = []kbMod{kbWin, kbAlt}
+	}
+	for _, m := range rightOrder {
+		r5 = append(r5, kMod(kb.modLabel(m, hostOS), m, 11))
+	}
+	r5 = append(r5,
+		kCodeIcon("Left", kbArrowLeft, scanLeft, 9),
+		kCodeIcon("Down", kbArrowDown, scanDown, 9),
+		kCodeIcon("Right", kbArrowRight, scanRight, 9),
+	)
 	return [][]kbKeySpec{r1, r2, r3, r4, r5}
 }
 
@@ -1056,9 +1544,11 @@ func (kb *MobileKeyboard) splitRows(hostOS string) ([][]kbKeySpec, [][]kbKeySpec
 	switch kb.page {
 	case kbPageLetters:
 		r3 := append([]kbKeySpec{{kind: kbKeyGap, flex: 5}}, charsRow("asdfghjkl")...)
-		r3 = append(r3, kCode("⏎", scanEnter, 15))
-		r4 := append([]kbKeySpec{kMod("⇧", kbShift, 15)}, charsRow("zxcvbnm")...)
-		r4 = append(r4, kCode("⌫", scanBackspace, 15))
+		r3 = append(r3, kCodeIcon("Enter", kbEnterIcon, scanEnter, 15))
+		shift := kMod("Shift", kbShift, 15)
+		shift.icon = kbShiftIcon
+		r4 := append([]kbKeySpec{shift}, charsRow("zxcvbnm")...)
+		r4 = append(r4, kCodeIcon("Backspace", kbBackspaceIcon, scanBackspace, 15))
 		base = [][]kbKeySpec{
 			charsRow("1234567890"),
 			charsRow("qwertyuiop"),
@@ -1090,15 +1580,17 @@ func (kb *MobileKeyboard) splitRows(hostOS string) ([][]kbKeySpec, [][]kbKeySpec
 		right = append(right, r)
 	}
 	if kb.page == kbPageFn {
-		left = append(left, []kbKeySpec{kPage("ABC", kbPageLetters, 15), kMod("Shift", kbShift, 15)})
-		right = append(right, []kbKeySpec{kCode("⌫", scanBackspace, 15), kCode("⏎", scanEnter, 15)})
+		shift := kMod("Shift", kbShift, 15)
+		shift.icon = kbShiftIcon
+		left = append(left, []kbKeySpec{kPage("ABC", kbPageLetters, 15), shift})
+		right = append(right, []kbKeySpec{kCodeIcon("Backspace", kbBackspaceIcon, scanBackspace, 15), kCodeIcon("Enter", kbEnterIcon, scanEnter, 15)})
 	} else {
 		abcLabel, abcNext := "?123", kbPageSymbols
 		if kb.page != kbPageLetters {
 			abcLabel, abcNext = "ABC", kbPageLetters
 		}
 		left = append(left, []kbKeySpec{kPage(abcLabel, abcNext, 15), kChar(",", 10), kChar(" ", 30)})
-		right = append(right, []kbKeySpec{kChar(" ", 30), kChar(".", 10), {label: "⌨", kind: kbKeyHide, flex: 10, tonal: true}})
+		right = append(right, []kbKeySpec{kChar(" ", 30), kChar(".", 10), kCodeIcon("Enter", kbEnterIcon, scanEnter, 12)})
 	}
 	return left, right
 }

@@ -86,6 +86,14 @@ SSH 小窗的终端采用“设置 › 通用 › SSH 终端”设置的外观�
 - **被控端的链接**（`aiLink`）：每台被控端一个，由其会话的小窗共用，最后一个关闭时结束；它是一个只请求 `run-ai-task` 与 `approve-ai-action` 的独立会话，因此被控端不发送画面；它的媒体连接带来被控端的任务（每个控制端看到的同一份记录）、共享的草稿与拒绝原因，并送出请求。持有活动链接的小窗在关闭其窗口时计为一个连接；链接结束会暂停它在被控端开始的任务，与任何控制端离开时一样。
 - **保存在本机**（`gui.json` 中的 `ai_sessions`，最新的 50 个）：每个会话的 id、设备、跟随的任务、标题、状态与时间——绝不包括截图；完全无日志打开时只在内存中。从未开始任务的会话在其小窗关闭后不保存。
 
+## Android 控制端
+
+- **Material Design 3 外壳与导航**：`MobileView` 采用 Material 3 色阶界面（`mobile_theme.go`），在 Android 12+ 上通过 `DynamicPalette()` 读取系统的 Material You 动态取色，低版本或无动态色时回退至 Kyokai 青玉绿（`#04342C` 种子色）浅色/深色色阶（`resolveMobileColors`），并通过 WCAG AA 4.5:1 对比度测试（`TestMobileMaterialContrast`）。紧凑手机采用带动画胶囊指示器与 `mobile.Ink` 水波纹的底部 `NavigationBar`；在“设置 › 外观”中可选择导航位置为“底部”、“宽屏侧边”（默认）或“侧边”，当在展开后的折叠屏或平板上选择“底部”时显示居中的悬浮胶囊底栏（`mobileFloatingBottomBar`）。
+- **主机实时状态**：设备列表卡片内嵌 4 项紧凑进度条（`compactFigures`），设备详情页展示带 `dotHistory` 点阵图的完整 Pulse 状态面板（`mobileDeviceStatusSection`），在 `statusHosts()` 中优先保持当前查看详情的主机订阅，并遵循与桌面端主页相同的新鲜度与过期隐藏规则。
+- **悬浮查看器工具栏**：半透明胶囊工具栏（`mobileFloatingToolbar`）收起后变为吸附四边并持久化位置的 44×44 手柄（`barOffset`、`ToolbarHandle`）。窗口坐标系排除矩形（由 `stageBounds + DragOffset` 直接计算的 `barRect`，以及 Kyokai/NanoKVM、RDP 与 VNC 画面上的 `zoomRect`）同步传入 `TouchBridge`（`WatchTouch`/`SetTouchBounds`），保证点击或拖拽收起后的手柄不会被远程鼠标/触控板捕获吞掉。
+- **空白较多时自动打开键盘**：开启 `AutoKeyboard`（`auto_keyboard`，位于“设置 › 输入”，默认开启）时，Kyokai/NanoKVM 与 RDP/VNC 查看器按视口几何桶执行 `shouldAutoOpenKeyboard`——当垂直黑边空白充足（至少 240 dp 且占可用高度至少 34%）时自动展开虚拟键盘；横屏时仅收起此前自动打开的键盘，并在同一几何桶内记住手动展开/隐藏状态。
+- **电脑键盘质感与折叠屏笔记本模式**：M3 键帽层叠在浅色与深色模式下均保持字符键帽亮于功能键与键区托盘，配备矢量 SVG 键标、宽屏 Shift 副字符提示、按下即触发的触觉反馈与即时按压下沉感、手机端字符放大气泡预览（`ui.Overlay`）、Backspace/空格/方向键长按连发、Win/Super 轻按触发与锁存修正，并在 Android 全面屏手势下于空格/Enter 下方提供显式手势留白底栏（即使系统隐藏手势条 `safeBottom == 0` 仍保留至少 54 dp 安全净空）。启用 `LaptopMode` 且 `PostureWatcher` 报告横向半折（`HalfOpened` 且 `Orientation == "horizontal"`）时，Kyokai/NanoKVM、RDP 与 VNC 均由 `mobileLaptopGeometry` 将远程画面严格置于 `hingeTop` 上方，并在 `hingeBottom` 下方渲染专用笔记本底座：上方完整 5 行横排 ANSI 笔记本键盘（含倒 T 方向键），下方宽幅居中掌托触控板与左右实体点击条（`renderLaptopDeck`），并遵循 `LaptopSafeArea`。
+
 ## 措辞规则
 
 - 文案写给使用应用的人。

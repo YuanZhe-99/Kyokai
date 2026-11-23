@@ -138,10 +138,146 @@ func (s *kyokaiTouchpadSink) Pinch(scale, focalX, focalY, panX, panY float32) {
 	}
 }
 
-func (a *App) mobileActiveSessionView(c *ui.Context, active string, winW float32) {
+func abs32(v float32) float32 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// mobileLaptopGeometry computes the upper screen height, hinge crease height, and
+// lower keyboard+touchpad deck height for foldable Laptop Mode.
+func mobileLaptopGeometry(winH, topSafe, botSafe float32, posture androidhost.Posture, scale float32, useSafe bool) (stageH, creaseH, deckH float32) {
+	insetTop := float32(0)
+	if useSafe {
+		insetTop = topSafe
+	}
+	avail := max(winH-insetTop, 0)
+	if botSafe > mobileKeyboardThreshold {
+		avail = max(avail-botSafe, 0)
+	}
+	if scale <= 0 {
+		scale = 1
+	}
+	if posture.HingeTop > 0 {
+		hingeTopDP := float32(posture.HingeTop) / scale
+		hingeBotDP := float32(posture.HingeBottom) / scale
+		if hingeBotDP < hingeTopDP {
+			hingeBotDP = hingeTopDP
+		}
+		stageH = hingeTopDP - insetTop
+		creaseH = max(hingeBotDP-hingeTopDP, 0)
+		deckH = winH - hingeBotDP
+		if botSafe > mobileKeyboardThreshold {
+			deckH = max(deckH-botSafe, 0)
+		}
+		if stageH >= 120 && deckH >= 180 {
+			return stageH, creaseH, deckH
+		}
+	}
+	stageH = avail * 0.48
+	deckH = max(avail-stageH, 0)
+	return stageH, 0, deckH
+}
+
+func mobileGeomBucket(w, h float32) string {
+	orient := "P"
+	if w > h {
+		orient = "L"
+	}
+	return fmt.Sprintf("%s:%dx%d", orient, int(w/32), int(h/32))
+}
+
+// shouldAutoOpenKeyboard reports whether the letterbox blank area below a
+// fitted remote screen is generous enough to open the on-screen keyboard
+// automatically.
+func shouldAutoOpenKeyboard(availW, availH float32, picW, picH int, _ bool) bool {
+	if availW <= 0 || availH <= 0 || picW <= 0 || picH <= 0 {
+		return false
+	}
+	_, _, _, ph := pictureBox(ui.Rect{W: availW, H: availH}, picW, picH)
+	blankH := availH - ph
+	return blankH >= 240 && blankH/availH >= 0.34
+}
+
+// evalMobileAutoKeyboard automatically opens or closes the virtual keyboard
+// when viewport orientation/geometry enters a new bucket and vertical blank
+// space crosses the auto-open threshold. Manual user toggles inside a bucket
+// are preserved.
+func (a *App) evalMobileAutoKeyboard(u *mobileViewerUI, availW, availH float32, picW, picH int, splitPref, autoPref, laptopActive bool) {
+	if laptopActive || picW <= 0 || picH <= 0 || availW <= 0 || availH <= 0 {
+		return
+	}
+	bucket := mobileGeomBucket(availW, availH)
+	if bucket == u.autoKBGeom {
+		return
+	}
+	u.autoKBGeom = bucket
+	want := autoPref && shouldAutoOpenKeyboard(availW, availH, picW, picH, splitPref)
+	if want && !u.kbOpen {
+		u.kbOpen = true
+		u.kbAutoOpened = true
+	} else if !want && u.kbOpen && u.kbAutoOpened {
+		u.kbOpen = false
+		u.kbAutoOpened = false
+	}
+}
+
+func mobileConfigureViewerRoot(root ui.Element, topSafe, rightSafe, nonIMESafeBot, leftSafe float32, laptopActive, useSafe bool) {
+	if !laptopActive {
+		return
+	}
+	if !useSafe {
+		root.Margin(-topSafe, -rightSafe, -nonIMESafeBot, -leftSafe)
+		return
+	}
+	root.Margin(0, 0, -nonIMESafeBot, 0)
+}
+
+func (a *App) mobileStageZoomResetPill(c *ui.Context, mc mobileColors, key string, u *mobileViewerUI) ui.Rect {
+	if u.zoom.Scale <= 1.05 {
+		return ui.Rect{}
+	}
+	zb := ui.ButtonBase(c.Key(key)).Absolute().Right(12).Bottom(12).MinWidth(52).Height(42).PaddingX(14).
+		Radius(21).Background(mc.SurfaceContainerHighest.Alpha(0.90)).Border(1, mc.OutlineVariant.Alpha(0.5)).
+		Shadow(0, 4, 12, 0, ui.RGBA(0, 0, 0, 0.30)).Center().Clip().Label(L.MobileA11yResetZoom())
+	mobile.Ink(zb)
+	zoomRect := zb.LayoutBounds()
+	zb.Children(func() {
+		ui.Text(c, fmt.Sprintf("%.1f×", u.zoom.Scale)).FontSize(12).FontWeight(700).TextColor(mc.OnSurface)
+	})
+	if zb.Clicked() {
+		mygo.Haptics.Light()
+		u.zoom.Reset()
+	}
+	if zoomRect.W <= 0 {
+		a.later(func() {})
+	}
+	return zoomRect
+}
+
+func mobileZone2Touch(u *mobileViewerUI, padRect ui.Rect, rt androidhost.RawTouch, now time.Time) {
+	if u.kb.pad == nil {
+		return
+	}
+	lx := float32(rt.X) - padRect.X
+	ly := float32(rt.Y) - padRect.Y
+	switch rt.Phase {
+	case "down":
+		u.kb.pad.Down(rt.ID, lx, ly, now)
+	case "move":
+		u.kb.pad.Move(rt.ID, lx, ly, now)
+	case "up":
+		u.kb.pad.Up(rt.ID, now)
+	case "cancel":
+		u.kb.pad.Cancel(rt.ID)
+	}
+}
+
+func (a *App) mobileActiveSessionView(c *ui.Context, mc mobileColors, active string, winW float32) {
 	ms := a.mobile
 	if ts := ms.terms[active]; ts != nil {
-		a.mobileSSHView(c, active, ts)
+		a.mobileSSHView(c, mc, active, ts)
 		return
 	}
 	a.mu.Lock()
@@ -152,17 +288,16 @@ func (a *App) mobileActiveSessionView(c *ui.Context, active string, winW float32
 	switch {
 	case v != nil:
 		v.setFront(ms.inFront)
-		a.mobileKyokaiViewer(c, v, winW)
+		a.mobileKyokaiViewer(c, mc, v, winW)
 	case svc != nil:
 		svc.setFront(ms.inFront)
-		a.mobileDesktopServiceViewer(c, svc, winW)
+		a.mobileDesktopServiceViewer(c, mc, svc, winW)
 	default:
 		ms.activeSession = ""
 	}
 }
 
-func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
-	t := c.Theme()
+func (a *App) mobileKyokaiViewer(c *ui.Context, mc mobileColors, v *viewer, winW float32) {
 	ms := a.mobile
 
 	v.mu.Lock()
@@ -181,21 +316,17 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 	// Before connected or after ended: show connection / password / host confirmation panel with Back.
 	if phase.State != "connected" {
 		a.mobileUpdateTouchCapture(false, ui.Rect{}, ui.Rect{}, ui.Rect{}, ui.Rect{}, nil)
-		ui.Column(c.Key("mob-vconn-" + v.tabKey())).Fill().Background(t.Background).Children(func() {
-			mobileHeaderBar(c, mobile.TopBarOptions{
+		ui.Column(c.Key("mob-vconn-" + v.tabKey())).Fill().Background(mc.Surface).Children(func() {
+			m3TopBar(c, mc, mobile.TopBarOptions{
 				Title: v.title,
 				Leading: func() {
-					b := ui.ButtonBase(c.Key("mob-vc-back")).Size(48, 48).Center().Label("Back")
-					b.Children(func() { ui.Icon(c, mobBackIcon).FontSize(20).TextColor(t.Text) })
-					if b.Clicked() {
+					if m3IconButton(c, "mob-vc-back", mobBackIcon, "Back", mc.OnSurface, ui.Transparent).Clicked() {
 						ms.activeSession = ""
 						a.mobileSyncSessions()
 					}
 				},
 				Trailing: func() {
-					b := ui.ButtonBase(c.Key("mob-vc-disc")).Size(48, 48).Center().Label(L.MobileDisconnect())
-					b.Children(func() { ui.Icon(c, paneClose).FontSize(18).TextColor(t.TextMuted) })
-					if b.Clicked() {
+					if m3IconButton(c, "mob-vc-disc", paneClose, L.MobileDisconnect(), mc.OnSurfaceVariant, ui.Transparent).Clicked() {
 						v.disconnect()
 						ms.activeSession = ""
 						a.mobileSyncSessions()
@@ -229,9 +360,17 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 	}
 
 	_, winH := c.Size()
-	topSafe, rightSafe, _, leftSafe := c.SafeArea()
+	topSafe, rightSafe, botSafe, leftSafe := c.SafeArea()
+	nonIMESafeBot := botSafe
+	if nonIMESafeBot > mobileKeyboardThreshold {
+		nonIMESafeBot = 0
+	}
 	laptopActive := p.LaptopMode && ms.posture.HalfOpened
 	useSafe := p.LaptopSafeArea == nil || *p.LaptopSafeArea
+
+	availW := max(winW-leftSafe-rightSafe, 0)
+	availH := max(winH-topSafe-nonIMESafeBot, 0)
+	a.evalMobileAutoKeyboard(u, availW, availH, start.Width, start.Height, p.SplitKeyboard, p.autoKeyboardOn(), laptopActive)
 
 	kbKey := v.device + ":kyokai"
 	if v.kvm {
@@ -257,32 +396,20 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 	var ox, oy, pw, ph float32
 	var touchMode bool
 	var stageBounds, barRect, zoomRect ui.Rect
+	var stageH, creaseH, deckH float32
+	if laptopActive {
+		stageH, creaseH, deckH = mobileLaptopGeometry(winH, topSafe, botSafe, ms.posture, u.dipScale, useSafe)
+	}
 
 	rootCol := ui.Column(c.Key("mob-viewer-" + v.tabKey())).Fill().Background(ui.RGB(0, 0, 0))
-	if laptopActive && !useSafe {
-		rootCol.Margin(-topSafe, -rightSafe, 0, -leftSafe)
-	}
+	mobileConfigureViewerRoot(rootCol, topSafe, rightSafe, nonIMESafeBot, leftSafe, laptopActive, useSafe)
 	rootCol.Children(func() {
 		// Screen stage (above hinge in laptop mode, else grows to fill above keyboard).
 		stage := ui.Box(c.Key("mob-vstage-" + v.tabKey())).FillWidth().Clip().Background(ui.RGB(0, 0, 0)).
 			Role(ui.RoleImage).Label(L.MobileA11yRemoteScreen(v.title)).Focusable()
 		stage.Draw(func(pt *ui.Painter, _ ui.Rect) { u.dipScale = pt.Scale() })
 		if laptopActive {
-			scale := max(u.dipScale, 1)
-			if ms.posture.HingeTop > 0 {
-				insetTop := topSafe
-				if !useSafe {
-					insetTop = 0
-				}
-				h := float32(ms.posture.HingeTop)/scale - insetTop
-				if h > 120 {
-					stage.Height(h)
-				} else {
-					stage.Grow(1).Basis(0)
-				}
-			} else {
-				stage.Height(winH * 0.48)
-			}
+			stage.Height(stageH).Shrink(0)
 		} else {
 			stage.Grow(1).Basis(0).MinHeight(0)
 		}
@@ -324,7 +451,7 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 						cx := ox + u.curX*pw - csz/2
 						cy := oy + u.curY*ph - csz/2
 						ui.Box(c.Key("mob-vcur")).Absolute().Left(cx).Top(cy).Size(csz, csz).Radius(csz/2).
-							Background(ui.RGBA(255, 255, 255, 0.85)).Border(2, t.Accent)
+							Background(ui.RGBA(255, 255, 255, 0.85)).Border(2, mc.Primary)
 					}
 				})
 			}
@@ -410,7 +537,7 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 			case state != "":
 				ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(24).Gap(12).Children(func() {
 					ui.Text(c, state).TextColor(ui.RGB(255, 255, 255)).TextAlign(ui.Center)
-					if ui.PrimaryButton(c.Key("mob-vreconn"), L.MobileTryAgain()).Height(46).Clicked() {
+					if m3FilledButton(c, mc, "mob-vreconn", L.MobileTryAgain(), false).Clicked() {
 						v.redial("", false)
 					}
 				})
@@ -419,7 +546,7 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 				ui.Column(c).Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(24).Gap(12).Children(func() {
 					if start.Placeholder == "asleep" || asleep {
 						ui.Text(c, L.MobileHostAsleep()).FontSize(16).Bold().TextColor(ui.RGB(255, 255, 255))
-						if ui.PrimaryButton(c.Key("mob-vwake-now"), L.MobileActionWake()).Height(48).Clicked() {
+						if m3FilledButton(c, mc, "mob-vwake-now", L.MobileActionWake(), false).Clicked() {
 							v.sendControl(map[string]any{"type": "action", "action": "wake"})
 							a.setToast(L.MobileWakeSent(), false)
 						}
@@ -438,26 +565,16 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 				}
 				info := fmt.Sprintf("%s · %s (%s) · %d×%d · %.0f fps · %.1f Mbps · RTT %d ms · Enc %d ms · TTFF %d ms",
 					codecLabel(start.Codec), dec.name, hwTag, start.Width, start.Height, fps, kbps/1000.0, host.DelayMS, host.EncodeMS, ttff)
-				ui.Text(c, info).Absolute().Left(8).Bottom(8).Padding(4, 8).Radius(6).
+				ui.Text(c, info).Absolute().Left(8).Bottom(8).Padding(4, 8).Radius(8).
 					Background(ui.RGBA(0, 0, 0, 0.72)).TextColor(ui.RGB(235, 240, 245)).FontSize(11).FontFeatures("tnum")
 			}
 
 			// Reset zoom pill (> 1.05x).
-			if u.zoom.Scale > 1.05 {
-				zb := ui.ButtonBase(c.Key("mob-vzoom-reset")).Absolute().Right(12).Bottom(12).MinWidth(48).Height(44).PaddingX(12).
-					Radius(22).Background(ui.RGBA(20, 24, 28, 0.85)).Border(1, ui.RGBA(255, 255, 255, 0.22)).Center().
-					Label(L.MobileA11yResetZoom())
-				zoomRect = zb.LayoutBounds()
-				zb.Children(func() {
-					ui.Text(c, fmt.Sprintf("%.1f×", u.zoom.Scale)).FontSize(12).Bold().TextColor(ui.RGB(255, 255, 255))
-				})
-				if zb.Clicked() {
-					u.zoom.Reset()
-				}
-			}
+			zoomRect = a.mobileStageZoomResetPill(c, mc, "mob-vzoom-reset", u)
 
 			// Floating collapsible toolbar.
-			barRect = a.mobileFloatingToolbar(c, v.tabKey(), u, bounds.W, bounds.H, func() {
+			barRect = a.mobileFloatingToolbar(c, mc, v.tabKey(), u, stageBounds, func() {
+				u.kbAutoOpened = false
 				u.kbOpen = !u.kbOpen
 			}, func() {
 				if !v.kvm {
@@ -470,7 +587,11 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 			})
 		})
 
-		// On-screen keyboard (always shown below hinge in laptop mode, or toggled via toolbar).
+		if laptopActive && creaseH > 0 {
+			ui.Box(c.Key("mob-vcrease-" + v.tabKey())).FillWidth().Height(creaseH).Shrink(0).Background(ui.RGB(0, 0, 0))
+		}
+
+		// On-screen keyboard (dedicated laptop deck below hinge in laptop mode, else dock on demand).
 		if u.kbOpen || laptopActive {
 			target := "Kyokai · Map"
 			if v.kvm {
@@ -481,8 +602,13 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 				HostOS:      effOS,
 				OSPicked:    osOverride != "",
 				AutoLabel:   L.MobileAuto(),
-				Split:       p.SplitKeyboard || laptopActive,
+				Split:       p.SplitKeyboard && !laptopActive,
+				Laptop:      laptopActive,
+				DeckHeight:  deckH,
+				UseSafeArea: useSafe,
 				NativeTouch: ms.host != nil,
+				Colors:      &mc,
+				Dispatch:    a.later,
 				OnOSPick: func(choice string) {
 					a.setMobileKeyboardOS(kbKey, choice)
 				},
@@ -495,6 +621,7 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 				},
 				OnHide: func() {
 					u.kbOpen = false
+					u.kbAutoOpened = false
 				},
 				OnSpecial: func(action string) bool {
 					if action == "ctrl_alt_del" {
@@ -519,28 +646,15 @@ func (a *App) mobileKyokaiViewer(c *ui.Context, v *viewer, winW float32) {
 		if u.kbOpen || laptopActive {
 			padRect = u.kb.padRect
 		}
-		if (u.kbOpen || laptopActive) && (p.SplitKeyboard || laptopActive) && winW >= 600 && padRect.W <= 0 {
-			// First frame after opening the split keyboard: LayoutBounds() reflects
+		if (laptopActive || (u.kbOpen && p.SplitKeyboard && winW >= 600)) && padRect.W <= 0 {
+			// First frame after opening the split/laptop deck: LayoutBounds() reflects
 			// the previous frame, so request one more frame to latch padRect cleanly.
 			a.later(func() {})
 		}
 		a.mobileUpdateTouchCapture(canCapture, stageBounds, padRect, barRect, zoomRect, func(rt androidhost.RawTouch) {
 			now := time.Now()
 			if rt.Zone == 2 {
-				if u.kb.pad != nil {
-					lx := float32(rt.X) - padRect.X
-					ly := float32(rt.Y) - padRect.Y
-					switch rt.Phase {
-					case "down":
-						u.kb.pad.Down(rt.ID, lx, ly, now)
-					case "move":
-						u.kb.pad.Move(rt.ID, lx, ly, now)
-					case "up":
-						u.kb.pad.Up(rt.ID, now)
-					case "cancel":
-						u.kb.pad.Cancel(rt.ID)
-					}
-				}
+				mobileZone2Touch(u, padRect, rt, now)
 				return
 			}
 			lx := float32(rt.X) - stageBounds.X
@@ -605,29 +719,52 @@ func (a *App) setMobileKeyboardOS(kbKey, choice string) {
 	a.setPrefs(p)
 }
 
-func (a *App) mobileFloatingToolbar(c *ui.Context, key string, u *mobileViewerUI, areaW, areaH float32, onKB, onAI, onMenu func()) ui.Rect {
+// mobileFloatingToolbar renders either the collapsed draggable edge handle or
+// the Material 3 pill toolbar inside stageBounds, returning its window-dp hit
+// exclusion rect for TouchBridge.
+func (a *App) mobileFloatingToolbar(c *ui.Context, mc mobileColors, key string, u *mobileViewerUI, stageBounds ui.Rect, onKB, onAI, onMenu func()) ui.Rect {
 	ms := a.mobile
-	t := c.Theme()
+	areaW, areaH := stageBounds.W, stageBounds.H
+	winW, winH := c.Size()
+	if areaW <= 0 {
+		areaW = winW
+	}
+	if areaH <= 0 {
+		areaH = winH
+	}
+	if stageBounds.W <= 0 || stageBounds.H <= 0 {
+		a.later(func() {})
+	}
 
 	if u.barFolded {
-		hx := min(max(u.dragHandle.X, 0), 1) * max(areaW-44, 0)
-		hy := max(6, min(max(u.dragHandle.Y, 0), 1)*max(areaH-44, 0))
-		off := ui.Point{X: hx, Y: hy}
-		hb := ui.ButtonBase(c.Key("mob-bar-handle-"+key)).Absolute().Left(0).Top(0).Size(44, 44).Radius(22).
-			Background(ui.RGBA(18, 22, 26, 0.84)).Border(1, ui.RGBA(255, 255, 255, 0.22)).Center().
+		maxX := max(areaW-56, 0)
+		maxY := max(areaH-56, 0)
+		hb := ui.ButtonBase(c.Key("mob-bar-handle-" + key))
+		sizeChanged := abs32(u.barAreaW-areaW) > 1 || abs32(u.barAreaH-areaH) > 1
+		if !u.barOffsetInit || (sizeChanged && !hb.Dragging()) {
+			u.barOffset = ui.Point{
+				X: 6 + min(max(u.dragHandle.X, 0), 1)*maxX,
+				Y: 6 + min(max(u.dragHandle.Y, 0), 1)*maxY,
+			}
+			u.barOffsetInit = true
+			u.barAreaW, u.barAreaH = areaW, areaH
+		}
+		hb.Absolute().Left(0).Top(0).Size(44, 44).Radius(22).
+			Background(mc.SurfaceContainerHighest.Alpha(0.92)).Border(1, mc.OutlineVariant.Alpha(0.55)).
+			Shadow(0, 4, 14, 0, ui.RGBA(0, 0, 0, 0.35)).Center().Clip().
 			Label(L.MobileA11yShowToolbar())
-		hb.Draggable(&off, ui.DraggableOptions{
-			Bounds: &ui.Rect{W: max(areaW-44, 1), H: max(areaH-44, 1)},
-		})
-		rect := hb.LayoutBounds()
-		hb.Children(func() { ui.Icon(c, barUnfold).FontSize(18).TextColor(ui.RGB(255, 255, 255)) })
-		if !hb.Dragging() && areaW > 44 && areaH > 44 {
-			nx := min(max(off.X/max(areaW-44, 1), 0), 1)
-			ny := min(max(off.Y/max(areaH-44, 1), 0), 1)
-			// Snap to nearest edge (left, right, top, bottom).
+		mobile.Ink(hb)
+		snapEdge := func(pt ui.Point) ui.Point {
+			nx := float32(0)
+			if maxX > 0 {
+				nx = min(max((pt.X-6)/maxX, 0), 1)
+			}
+			ny := float32(0)
+			if maxY > 0 {
+				ny = min(max((pt.Y-6)/maxY, 0), 1)
+			}
 			dLeft, dRight, dTop, dBot := nx, 1-nx, ny, 1-ny
-			minD := min(dLeft, dRight, dTop, dBot)
-			switch minD {
+			switch min(dLeft, dRight, dTop, dBot) {
 			case dTop:
 				ny = 0
 			case dBot:
@@ -637,7 +774,19 @@ func (a *App) mobileFloatingToolbar(c *ui.Context, key string, u *mobileViewerUI
 			case dRight:
 				nx = 1
 			}
-			if nx != u.dragHandle.X || ny != u.dragHandle.Y {
+			return ui.Point{X: 6 + nx*maxX, Y: 6 + ny*maxY}
+		}
+		hb.Draggable(&u.barOffset, ui.DraggableOptions{
+			Bounds: &ui.Rect{X: 6, Y: 6, W: maxX, H: maxY},
+			Rigid:  true,
+			Snap:   snapEdge,
+		})
+		hb.Children(func() { ui.Icon(c, barUnfold).FontSize(20).TextColor(mc.OnSurface) })
+
+		if !hb.Dragging() && !hb.Transitioning() && maxX > 0 && maxY > 0 {
+			nx := min(max((u.barOffset.X-6)/maxX, 0), 1)
+			ny := min(max((u.barOffset.Y-6)/maxY, 0), 1)
+			if abs32(nx-u.dragHandle.X) > 0.005 || abs32(ny-u.dragHandle.Y) > 0.005 {
 				u.dragHandle = ui.Point{X: nx, Y: ny}
 				a.mu.Lock()
 				pr := a.prefs
@@ -647,8 +796,21 @@ func (a *App) mobileFloatingToolbar(c *ui.Context, key string, u *mobileViewerUI
 				a.setPrefs(pr)
 			}
 		}
+		pos := u.barOffset
+		if hb.Dragging() || hb.Transitioning() {
+			pos = hb.DragOffset()
+		}
+		rect := ui.Rect{
+			X: stageBounds.X + pos.X - 6,
+			Y: stageBounds.Y + pos.Y - 6,
+			W: 56,
+			H: 56,
+		}
+		u.lastBarRect = rect
 		if hb.Clicked() {
+			mygo.Haptics.Light()
 			u.barFolded = false
+			a.later(func() {})
 		}
 		return rect
 	}
@@ -657,28 +819,30 @@ func (a *App) mobileFloatingToolbar(c *ui.Context, key string, u *mobileViewerUI
 	if onAI != nil {
 		slots = 5
 	}
-	wantW := float32(slots)*50 + 16
+	wantW := float32(slots)*50 + 20
 	barW := wantW
 	barLeft := float32(12)
 	if areaW > 0 {
 		barW = min(wantW, max(areaW-24, 200))
 		barLeft = max((areaW-barW)/2, 12)
 	}
-	bar := ui.Row(c.Key("mob-bar-"+key)).Absolute().Top(10).Left(barLeft).Width(barW).Height(46).
-		PaddingX(6).Radius(23).Background(ui.RGBA(18, 22, 26, 0.86)).Border(1, ui.RGBA(255, 255, 255, 0.18)).
+	bar := ui.Row(c.Key("mob-bar-"+key)).Absolute().Top(10).Left(barLeft).Width(barW).Height(48).
+		PaddingX(8).Radius(24).Background(mc.SurfaceContainerHighest.Alpha(0.92)).Border(1, mc.OutlineVariant.Alpha(0.55)).
 		Shadow(0, 4, 14, 0, ui.RGBA(0, 0, 0, 0.35)).AlignItems(ui.Center).Justify(ui.SpaceBetween)
-	rect := bar.LayoutBounds()
 	btn := func(id, label string, icon *ui.SVG, active bool, tap func()) {
-		fg := ui.RGB(240, 244, 248)
-		b := ui.ButtonBase(c.Key("mob-tb-"+id+"-"+key)).Size(44, 38).Radius(19).Center().Label(label)
+		fg := mc.OnSurface
+		bg := ui.Transparent
 		if active {
-			fg = t.Accent
-			b.Background(t.Accent.Alpha(0.20))
+			fg = mc.OnPrimaryContainer
+			bg = mc.PrimaryContainer
 		}
+		b := ui.ButtonBase(c.Key("mob-tb-"+id+"-"+key)).Size(44, 38).Radius(19).Background(bg).Center().Clip().Label(label)
+		mobile.Ink(b)
 		b.Children(func() {
 			ui.Icon(c, icon).FontSize(19).TextColor(fg)
 		})
 		if b.Clicked() {
+			mygo.Haptics.Light()
 			tap()
 		}
 	}
@@ -692,9 +856,19 @@ func (a *App) mobileFloatingToolbar(c *ui.Context, key string, u *mobileViewerUI
 		if onAI != nil {
 			btn("ai", L.MobileAiTask(), navAI, ms.aiSheetOpen, onAI)
 		}
-		btn("fold", L.MobileA11yHideToolbar(), barFold, false, func() { u.barFolded = true })
+		btn("fold", L.MobileA11yHideToolbar(), barFold, false, func() {
+			u.barFolded = true
+			a.later(func() {})
+		})
 		btn("more", L.MobileMore(), rowMore, false, onMenu)
 	})
+	rect := ui.Rect{
+		X: stageBounds.X + barLeft - 4,
+		Y: stageBounds.Y + 6,
+		W: barW + 8,
+		H: 56,
+	}
+	u.lastBarRect = rect
 	return rect
 }
 
@@ -763,8 +937,7 @@ func (s *deskTouchpadSink) Pinch(scale, focalX, focalY, panX, panY float32) {
 	}
 }
 
-func (a *App) mobileDesktopServiceViewer(c *ui.Context, s *serviceTab, winW float32) {
-	t := c.Theme()
+func (a *App) mobileDesktopServiceViewer(c *ui.Context, mc mobileColors, s *serviceTab, winW float32) {
 	ms := a.mobile
 	s.mu.Lock()
 	phase, client := s.phase, s.client
@@ -773,21 +946,17 @@ func (a *App) mobileDesktopServiceViewer(c *ui.Context, s *serviceTab, winW floa
 	sc, ok := client.(*screenClient)
 	if phase != svcRunning || !ok || sc == nil {
 		a.mobileUpdateTouchCapture(false, ui.Rect{}, ui.Rect{}, ui.Rect{}, ui.Rect{}, nil)
-		ui.Column(c.Key("mob-sconn-" + s.tabKey())).Fill().Background(t.Background).Children(func() {
-			mobileHeaderBar(c, mobile.TopBarOptions{
+		ui.Column(c.Key("mob-sconn-" + s.tabKey())).Fill().Background(mc.Surface).Children(func() {
+			m3TopBar(c, mc, mobile.TopBarOptions{
 				Title: s.title,
 				Leading: func() {
-					b := ui.ButtonBase(c.Key("mob-sc-back")).Size(48, 48).Center().Label("Back")
-					b.Children(func() { ui.Icon(c, mobBackIcon).FontSize(20).TextColor(t.Text) })
-					if b.Clicked() {
+					if m3IconButton(c, "mob-sc-back", mobBackIcon, "Back", mc.OnSurface, ui.Transparent).Clicked() {
 						ms.activeSession = ""
 						a.mobileSyncSessions()
 					}
 				},
 				Trailing: func() {
-					b := ui.ButtonBase(c.Key("mob-sc-disc")).Size(48, 48).Center().Label(L.MobileDisconnect())
-					b.Children(func() { ui.Icon(c, paneClose).FontSize(18).TextColor(t.TextMuted) })
-					if b.Clicked() {
+					if m3IconButton(c, "mob-sc-disc", paneClose, L.MobileDisconnect(), mc.OnSurfaceVariant, ui.Transparent).Clicked() {
 						s.disconnect()
 						ms.activeSession = ""
 						a.mobileSyncSessions()
@@ -815,6 +984,19 @@ func (a *App) mobileDesktopServiceViewer(c *ui.Context, s *serviceTab, winW floa
 	u := a.mobileEnsureViewerUI(s.tabKey(), sink)
 	sink.ui = u
 
+	_, winH := c.Size()
+	topSafe, rightSafe, botSafe, leftSafe := c.SafeArea()
+	nonIMESafeBot := botSafe
+	if nonIMESafeBot > mobileKeyboardThreshold {
+		nonIMESafeBot = 0
+	}
+	laptopActive := p.LaptopMode && ms.posture.HalfOpened
+	useSafe := p.LaptopSafeArea == nil || *p.LaptopSafeArea
+
+	availW := max(winW-leftSafe-rightSafe, 0)
+	availH := max(winH-topSafe-nonIMESafeBot, 0)
+	a.evalMobileAutoKeyboard(u, availW, availH, fbW, fbH, p.SplitKeyboard, p.autoKeyboardOn(), laptopActive)
+
 	kbKey := s.device + ":" + s.service
 	osOverride := p.KeyboardOS[kbKey]
 	defaultOS := a.deviceOS(s.device)
@@ -836,12 +1018,23 @@ func (a *App) mobileDesktopServiceViewer(c *ui.Context, s *serviceTab, winW floa
 	}
 
 	var dOx, dOy, dPw, dPh float32
-	var dBounds, dBarRect ui.Rect
+	var dBounds, dBarRect, dZoomRect ui.Rect
+	var stageH, creaseH, deckH float32
+	if laptopActive {
+		stageH, creaseH, deckH = mobileLaptopGeometry(winH, topSafe, botSafe, ms.posture, u.dipScale, useSafe)
+	}
 
-	ui.Column(c.Key("mob-dsvc-" + s.tabKey())).Fill().Background(ui.RGB(0, 0, 0)).Children(func() {
-		stage := ui.Box(c.Key("mob-dstage-" + s.tabKey())).Grow(1).Basis(0).FillWidth().MinHeight(0).Clip().
+	rootCol := ui.Column(c.Key("mob-dsvc-" + s.tabKey())).Fill().Background(ui.RGB(0, 0, 0))
+	mobileConfigureViewerRoot(rootCol, topSafe, rightSafe, nonIMESafeBot, leftSafe, laptopActive, useSafe)
+	rootCol.Children(func() {
+		stage := ui.Box(c.Key("mob-dstage-" + s.tabKey())).FillWidth().Clip().
 			Role(ui.RoleImage).Label(L.MobileA11yRemoteScreen(s.name)).Focusable()
 		stage.Draw(func(pt *ui.Painter, _ ui.Rect) { u.dipScale = pt.Scale() })
+		if laptopActive {
+			stage.Height(stageH).Shrink(0)
+		} else {
+			stage.Grow(1).Basis(0).MinHeight(0)
+		}
 		bounds := stage.LayoutBounds()
 		dBounds = bounds
 		sink.viewW, sink.viewH = bounds.W, bounds.H
@@ -851,8 +1044,8 @@ func (a *App) mobileDesktopServiceViewer(c *ui.Context, s *serviceTab, winW floa
 		}
 		dOx, dOy, dPw, dPh = ox, oy, pw, ph
 
-		// Dynamic RDP resolution matching on rotation / foldable resize.
-		if s.service == serviceRDP && bounds.W > 200 && bounds.H > 200 && sc.desk != nil {
+		// Dynamic RDP resolution matching on rotation / foldable resize / laptop half-open.
+		if s.service == serviceRDP && bounds.W > 200 && bounds.H > 120 && sc.desk != nil {
 			scFactor := max(u.dipScale, 1)
 			wantW := (int(bounds.W*scFactor) / 2) * 2
 			wantH := (int(bounds.H*scFactor) / 2) * 2
@@ -886,7 +1079,7 @@ func (a *App) mobileDesktopServiceViewer(c *ui.Context, s *serviceTab, winW floa
 						csz = 16
 					}
 					ui.Box(c).Absolute().Left(ox+u.curX*pw-csz/2).Top(oy+u.curY*ph-csz/2).
-						Size(csz, csz).Radius(csz/2).Background(ui.RGBA(255, 255, 255, 0.85)).Border(2, t.Accent)
+						Size(csz, csz).Radius(csz/2).Background(ui.RGBA(255, 255, 255, 0.85)).Border(2, mc.Primary)
 				})
 			}
 
@@ -941,14 +1134,21 @@ func (a *App) mobileDesktopServiceViewer(c *ui.Context, s *serviceTab, winW floa
 				return false
 			})
 
-			dBarRect = a.mobileFloatingToolbar(c, s.tabKey(), u, bounds.W, bounds.H, func() {
+			dZoomRect = a.mobileStageZoomResetPill(c, mc, "mob-dzoom-reset", u)
+
+			dBarRect = a.mobileFloatingToolbar(c, mc, s.tabKey(), u, bounds, func() {
+				u.kbAutoOpened = false
 				u.kbOpen = !u.kbOpen
 			}, nil, func() {
 				ms.menuSheetOpen = true
 			})
 		})
 
-		if u.kbOpen {
+		if laptopActive && creaseH > 0 {
+			ui.Box(c.Key("mob-dcrease-" + s.tabKey())).FillWidth().Height(creaseH).Shrink(0).Background(ui.RGB(0, 0, 0))
+		}
+
+		if u.kbOpen || laptopActive {
 			lbl := "Remote Desktop"
 			if s.service == serviceVNC {
 				lbl = "VNC"
@@ -958,8 +1158,13 @@ func (a *App) mobileDesktopServiceViewer(c *ui.Context, s *serviceTab, winW floa
 				HostOS:      effOS,
 				OSPicked:    osOverride != "",
 				AutoLabel:   L.MobileAuto(),
-				Split:       p.SplitKeyboard,
+				Split:       p.SplitKeyboard && !laptopActive,
+				Laptop:      laptopActive,
+				DeckHeight:  deckH,
+				UseSafeArea: useSafe,
 				NativeTouch: ms.host != nil,
+				Colors:      &mc,
+				Dispatch:    a.later,
 				OnOSPick:    func(ch string) { a.setMobileKeyboardOS(kbKey, ch) },
 				OnSplit: func(sp bool) {
 					a.mu.Lock()
@@ -968,7 +1173,10 @@ func (a *App) mobileDesktopServiceViewer(c *ui.Context, s *serviceTab, winW floa
 					pr.SplitKeyboard = sp
 					a.setPrefs(pr)
 				},
-				OnHide: func() { u.kbOpen = false },
+				OnHide: func() {
+					u.kbOpen = false
+					u.kbAutoOpened = false
+				},
 				OnSpecial: func(act string) bool {
 					if act == "ctrl_alt_del" {
 						sc.ctrlAltDel()
@@ -989,29 +1197,16 @@ func (a *App) mobileDesktopServiceViewer(c *ui.Context, s *serviceTab, winW floa
 		sheetOpen := ms.clipSheetOpen || ms.aiSheetOpen || ms.aiHistOpen || ms.typeTextOpen || ms.menuSheetOpen
 		canCapture := !sheetOpen && bm != nil && dBounds.W > 0 && dBounds.H > 0
 		var padRect ui.Rect
-		if u.kbOpen {
+		if u.kbOpen || laptopActive {
 			padRect = u.kb.padRect
 		}
-		if u.kbOpen && p.SplitKeyboard && winW >= 600 && padRect.W <= 0 {
+		if (laptopActive || (u.kbOpen && p.SplitKeyboard && winW >= 600)) && padRect.W <= 0 {
 			a.later(func() {})
 		}
-		a.mobileUpdateTouchCapture(canCapture, dBounds, padRect, dBarRect, ui.Rect{}, func(rt androidhost.RawTouch) {
+		a.mobileUpdateTouchCapture(canCapture, dBounds, padRect, dBarRect, dZoomRect, func(rt androidhost.RawTouch) {
 			now := time.Now()
 			if rt.Zone == 2 {
-				if u.kb.pad != nil {
-					lx := float32(rt.X) - padRect.X
-					ly := float32(rt.Y) - padRect.Y
-					switch rt.Phase {
-					case "down":
-						u.kb.pad.Down(rt.ID, lx, ly, now)
-					case "move":
-						u.kb.pad.Move(rt.ID, lx, ly, now)
-					case "up":
-						u.kb.pad.Up(rt.ID, now)
-					case "cancel":
-						u.kb.pad.Cancel(rt.ID)
-					}
-				}
+				mobileZone2Touch(u, padRect, rt, now)
 				return
 			}
 			lx := float32(rt.X) - dBounds.X
@@ -1188,7 +1383,7 @@ func (a *App) mobileDialSSH(ts *mobileTermSession, typed *credForm) {
 	}()
 }
 
-func (a *App) mobileSSHView(c *ui.Context, key string, ts *mobileTermSession) {
+func (a *App) mobileSSHView(c *ui.Context, mc mobileColors, key string, ts *mobileTermSession) {
 	t := c.Theme()
 	ms := a.mobile
 	a.mobileUpdateTouchCapture(false, ui.Rect{}, ui.Rect{}, ui.Rect{}, ui.Rect{}, nil)
@@ -1201,26 +1396,24 @@ func (a *App) mobileSSHView(c *ui.Context, key string, ts *mobileTermSession) {
 	filesOn := ts.filesOn
 	ts.mu.Unlock()
 
-	ui.Column(c.Key("mob-ssh-" + key)).Fill().Background(t.Background).Children(func() {
-		mobileHeaderBar(c, mobile.TopBarOptions{
+	ui.Column(c.Key("mob-ssh-" + key)).Fill().Background(mc.Surface).Children(func() {
+		m3TopBar(c, mc, mobile.TopBarOptions{
 			Title: ts.name + " · SSH",
 			Leading: func() {
-				b := ui.ButtonBase(c.Key("mob-ssh-back-"+key)).Size(48, 48).Center().Label("Back")
-				b.Children(func() { ui.Icon(c, mobBackIcon).FontSize(20).TextColor(t.Text) })
-				if b.Clicked() {
+				if m3IconButton(c, "mob-ssh-back-"+key, mobBackIcon, "Back", mc.OnSurface, ui.Transparent).Clicked() {
 					ms.activeSession = ""
 					a.mobileSyncSessions()
 				}
 			},
 			Trailing: func() {
 				if state == "connected" {
-					fb := ui.ButtonBase(c.Key("mob-ssh-files-"+key)).Size(48, 48).Center().Label(L.MobileFilesTitle())
-					col := t.TextMuted
+					col := mc.OnSurfaceVariant
+					bg := ui.Transparent
 					if filesOn {
-						col = t.Accent
+						col = mc.OnPrimaryContainer
+						bg = mc.PrimaryContainer
 					}
-					fb.Children(func() { ui.Icon(c, sshFiles).FontSize(20).TextColor(col) })
-					if fb.Clicked() {
+					if m3IconButton(c, "mob-ssh-files-"+key, sshFiles, L.MobileFilesTitle(), col, bg).Clicked() {
 						ts.mu.Lock()
 						ts.filesOn = !ts.filesOn
 						needOpen := ts.filesOn && ts.files == nil && ts.conn != nil
@@ -1238,17 +1431,13 @@ func (a *App) mobileSSHView(c *ui.Context, key string, ts *mobileTermSession) {
 							}()
 						}
 					}
-					pb := ui.ButtonBase(c.Key("mob-ssh-paste-"+key)).Size(48, 48).Center().Label(L.MobilePaste())
-					pb.Children(func() { ui.Icon(c, barClipboard).FontSize(20).TextColor(t.TextMuted) })
-					if pb.Clicked() {
+					if m3IconButton(c, "mob-ssh-paste-"+key, barClipboard, L.MobilePaste(), mc.OnSurfaceVariant, ui.Transparent).Clicked() {
 						if clip := mygo.Clipboard.ReadText(); clip != "" {
 							ts.sendText(clip)
 						}
 					}
 				}
-				xb := ui.ButtonBase(c.Key("mob-ssh-disc-"+key)).Size(48, 48).Center().Label(L.MobileDisconnect())
-				xb.Children(func() { ui.Icon(c, paneClose).FontSize(18).TextColor(t.TextMuted) })
-				if xb.Clicked() {
+				if m3IconButton(c, "mob-ssh-disc-"+key, paneClose, L.MobileDisconnect(), mc.OnSurfaceVariant, ui.Transparent).Clicked() {
 					a.mobileCloseSSH(key)
 					a.mobileSyncSessions()
 				}
@@ -1261,15 +1450,15 @@ func (a *App) mobileSSHView(c *ui.Context, key string, ts *mobileTermSession) {
 
 		case "hostkey":
 			ui.Column(c.Key("mob-ssh-hk")).Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(24).Children(func() {
-				ui.Column(c).FillWidth().MaxWidth(420).Padding(18).Radius(14).Background(t.Surface).Border(1, t.Border).Gap(10).Children(func() {
-					ui.Text(c, L.MobileHostKeyChanged()).FontSize(17).Bold().TextColor(textTone(t, t.Warning))
-					ui.Text(c, L.MobileHostKeyChangedHint()).FontSize(13).TextColor(t.TextMuted)
-					ui.Text(c, changed).FontSize(11).Font("monospace").Selectable()
+				m3Card(c, mc, "mob-ssh-hk-card").MaxWidth(420).Children(func() {
+					ui.Text(c, L.MobileHostKeyChanged()).FontSize(17).Bold().TextColor(textTone(t, mc.Warning))
+					ui.Text(c, L.MobileHostKeyChangedHint()).FontSize(13).TextColor(mc.OnSurfaceVariant)
+					ui.Text(c, changed).FontSize(11).Font("monospace").TextColor(mc.OnSurface).Selectable()
 					ui.Row(c).FillWidth().Gap(8).Children(func() {
-						if ui.Button(c.Key("mob-hk-cancel"), L.MobileCancel()).Grow(1).Height(46).Clicked() {
+						if m3OutlinedButton(c, mc, "mob-hk-cancel", L.MobileCancel(), mc.OnSurfaceVariant, false).Grow(1).Clicked() {
 							a.mobileCloseSSH(key)
 						}
-						if ui.PrimaryButton(c.Key("mob-hk-trust"), L.MobileTrustKey()).Grow(1).Height(46).Clicked() {
+						if m3FilledButton(c, mc, "mob-hk-trust", L.MobileTrustKey(), false).Grow(1).Clicked() {
 							ts.mu.Lock()
 							ts.trust = changed
 							ts.mu.Unlock()
@@ -1281,15 +1470,15 @@ func (a *App) mobileSSHView(c *ui.Context, key string, ts *mobileTermSession) {
 
 		case "form":
 			ui.Scroll(c.Key("mob-ssh-form")).Grow(1).FillWidth().Padding(20).AlignItems(ui.Center).Children(func() {
-				ui.Column(c).FillWidth().MaxWidth(420).Padding(18).Radius(14).Background(t.Surface).Border(1, t.Border).Gap(12).Children(func() {
+				m3Card(c, mc, "mob-ssh-form-card").MaxWidth(420).Gap(12).Children(func() {
 					if errNote != "" {
-						ui.Text(c, errNote).FontSize(13).TextColor(textTone(t, t.Danger))
+						ui.Text(c, errNote).FontSize(13).TextColor(mc.Error)
 					}
 					mIdx := 0
 					if form.method == methodPassword {
 						mIdx = 1
 					}
-					if ui.Segmented(c.Key("mob-ssh-m"), &mIdx, L.MobileSignInKey(), L.MobilePassword()).FillEqually().Changed() {
+					if m3Segmented(c, mc, "mob-ssh-m", &mIdx, L.MobileSignInKey(), L.MobilePassword()) {
 						if mIdx == 1 {
 							form.method = methodPassword
 						} else {
@@ -1300,16 +1489,16 @@ func (a *App) mobileSSHView(c *ui.Context, key string, ts *mobileTermSession) {
 					if form.method == methodPassword {
 						ui.TextInput(c.Key("mob-ssh-pw"), &form.password).Password().Placeholder(L.MobilePassword()).Label(L.MobilePassword()).FillWidth()
 					} else {
-						ui.Text(c, L.MobileSshKeyHint()).FontSize(12).TextColor(t.TextMuted)
+						ui.Text(c, L.MobileSshKeyHint()).FontSize(12).TextColor(mc.OnSurfaceVariant)
 					}
 					ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-						ui.Text(c, L.MobileRememberSignIn()).Grow(1)
-						ui.Switch(c.Key("mob-ssh-rem"), &form.remember).Label(L.MobileRememberSignIn())
+						ui.Text(c, L.MobileRememberSignIn()).Grow(1).TextColor(mc.OnSurface)
+						m3Switch(c, "mob-ssh-rem", &form.remember, L.MobileRememberSignIn())
 					})
 					ts.mu.Lock()
 					ts.form = form
 					ts.mu.Unlock()
-					if ui.PrimaryButton(c.Key("mob-ssh-go"), L.MobileConnect()).FillWidth().Height(48).Disabled(strings.TrimSpace(form.user) == "").Clicked() {
+					if m3FilledButton(c, mc, "mob-ssh-go", L.MobileConnect(), strings.TrimSpace(form.user) == "").FillWidth().Clicked() {
 						plan := form
 						a.mobileDialSSH(ts, &plan)
 					}
@@ -1317,8 +1506,8 @@ func (a *App) mobileSSHView(c *ui.Context, key string, ts *mobileTermSession) {
 			})
 
 		case "ended":
-			emptyState(c, "mob-ssh-end", func() { ui.Icon(c, kindSSH).FontSize(36).TextColor(t.Danger) }, errNote, "", func() {
-				if ui.PrimaryButton(c.Key("mob-ssh-retry"), L.MobileTryAgain()).Height(46).Clicked() {
+			emptyState(c, "mob-ssh-end", func() { ui.Icon(c, kindSSH).FontSize(36).TextColor(mc.Error) }, errNote, "", func() {
+				if m3FilledButton(c, mc, "mob-ssh-retry", L.MobileTryAgain(), false).Clicked() {
 					a.mobileDialSSH(ts, nil)
 				}
 			})
@@ -1522,9 +1711,8 @@ func (a *App) mobileDownloadAndShare(rf *remoteFiles, remotePath string) {
 
 // ---- Bottom Sheets: Menu, Type Text, Clipboard History, AI Task & History ---
 
-func (a *App) mobileSheets(c *ui.Context, wide bool) {
+func (a *App) mobileSheets(c *ui.Context, mc mobileColors, _ bool) {
 	ms := a.mobile
-	t := c.Theme()
 
 	// 1. Session options menu sheet (⋮).
 	mobile.Sheet(c, &ms.menuSheetOpen, mobile.SheetOptions{Detents: []float32{0.62, 0.9}, Label: L.MobileMore()}, func() {
@@ -1547,84 +1735,98 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 				actions := v.actions
 				v.mu.Unlock()
 
-				ui.Text(c, v.title).FontSize(17).Bold()
+				ui.Text(c, v.title).FontSize(18).FontWeight(700).TextColor(mc.OnSurface)
 
 				if len(displays.List) > 1 {
-					ui.Text(c, L.MobileDisplays()).FontSize(13).Bold().TextColor(t.TextMuted)
-					ui.Row(c).FillWidth().Gap(6).Wrap().Children(func() {
+					ui.Text(c, L.MobileDisplays()).FontSize(13).FontWeight(600).TextColor(mc.OnSurfaceVariant)
+					ui.Row(c).FillWidth().Gap(8).Wrap().Children(func() {
 						for i := range displays.List {
 							idx := i
 							lbl := L.MobileDisplayN(i + 1)
+							var btn ui.Element
 							if i == displays.Current {
-								lbl += " ✓"
+								btn = m3TonalButton(c, mc, "mob-disp-"+strconv.Itoa(i), lbl+" ✓", false)
+							} else {
+								btn = m3OutlinedButton(c, mc, "mob-disp-"+strconv.Itoa(i), lbl, mc.OnSurfaceVariant, false)
 							}
-							if ui.Button(c.Key("mob-disp-"+strconv.Itoa(i)), lbl).Height(42).Clicked() {
+							if btn.Clicked() {
 								v.sendControl(map[string]any{"type": "display", "index": idx})
 							}
 						}
 					})
 				}
 
-				ui.Text(c, L.MobileQuality()).FontSize(13).Bold().TextColor(t.TextMuted)
+				ui.Text(c, L.MobileQuality()).FontSize(13).FontWeight(600).TextColor(mc.OnSurfaceVariant)
 				pIdx := min(max(preset, 0), 2)
-				if ui.Segmented(c.Key("mob-q-preset"), &pIdx, L.MobileQualitySpeed(), L.MobileQualityBalanced(), L.MobileQualityBest()).FillEqually().Changed() {
+				if m3Segmented(c, mc, "mob-q-preset", &pIdx, L.MobileQualitySpeed(), L.MobileQualityBalanced(), L.MobileQualityBest()) {
 					v.setQuality(pIdx, fpsCap, false)
 				}
 
-				resList := []string{"auto", "native", "2160", "1440", "1080", "720"}
-				resLabels := make([]string, len(resList))
-				for i, r := range resList {
-					resLabels[i] = resolutionLabel(r)
-				}
-				curRes := resolutionLabel(size)
-				ui.Row(c).FillWidth().MinHeight(44).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, L.MobileQualityResolution()).Grow(1)
-					if ui.Select(c.Key("mob-q-res"), &curRes, resLabels).Width(150).Changed() {
-						if i := slices.Index(resLabels, curRes); i >= 0 {
-							v.setSize(resList[i])
+				m3Card(c, mc, "mob-menu-opts").Children(func() {
+					resList := []string{"auto", "native", "2160", "1440", "1080", "720"}
+					resLabels := make([]string, len(resList))
+					for i, r := range resList {
+						resLabels[i] = resolutionLabel(r)
+					}
+					curRes := resolutionLabel(size)
+					ui.Row(c).FillWidth().MinHeight(44).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, L.MobileQualityResolution()).Grow(1).TextColor(mc.OnSurface)
+						if ui.Select(c.Key("mob-q-res"), &curRes, resLabels).Width(150).Changed() {
+							if i := slices.Index(resLabels, curRes); i >= 0 {
+								v.setSize(resList[i])
+							}
 						}
-					}
-				})
+					})
 
-				cNames, cLabels := codecChoices(offer)
-				curCodec := codecLabel(codec)
-				ui.Row(c).FillWidth().MinHeight(44).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, L.MobileQualityCodec()).Grow(1)
-					if ui.Select(c.Key("mob-q-codec"), &curCodec, cLabels).Width(150).Changed() {
-						if i := slices.Index(cLabels, curCodec); i >= 0 {
-							v.setCodec(cNames[i])
+					cNames, cLabels := codecChoices(offer)
+					curCodec := codecLabel(codec)
+					ui.Row(c).FillWidth().MinHeight(44).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, L.MobileQualityCodec()).Grow(1).TextColor(mc.OnSurface)
+						if ui.Select(c.Key("mob-q-codec"), &curCodec, cLabels).Width(150).Changed() {
+							if i := slices.Index(cLabels, curCodec); i >= 0 {
+								v.setCodec(cNames[i])
+							}
 						}
+					})
+
+					sndOn := !mute
+					ui.Row(c).FillWidth().MinHeight(44).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, L.MobileSound()).Grow(1).TextColor(mc.OnSurface)
+						if m3Switch(c, "mob-q-snd", &sndOn, L.MobileSound()) {
+							v.setSound(sndOn)
+						}
+					})
+
+					ui.Row(c).FillWidth().MinHeight(44).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, L.MobileShareClipboard()).Grow(1).TextColor(mc.OnSurface)
+						if m3Switch(c, "mob-q-clip", &shareClip, L.MobileShareClipboard()) {
+							v.setClipShare(shareClip)
+						}
+					})
+
+					if v.hostHas(featureLockAfter) {
+						ui.Row(c).FillWidth().MinHeight(44).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, L.ViewerLockAfter()).Grow(1).TextColor(mc.OnSurface)
+							if m3Switch(c, "mob-lock-after", &lockAfter, L.ViewerLockAfter()) {
+								v.setLockAfter(lockAfter)
+							}
+						})
 					}
 				})
 
-				sndOn := !mute
-				ui.Row(c).FillWidth().MinHeight(44).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, L.MobileSound()).Grow(1)
-					if ui.Switch(c.Key("mob-q-snd"), &sndOn).Label(L.MobileSound()).Changed() {
-						v.setSound(sndOn)
-					}
-				})
-
-				ui.Row(c).FillWidth().MinHeight(44).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, L.MobileShareClipboard()).Grow(1)
-					if ui.Switch(c.Key("mob-q-clip"), &shareClip).Label(L.MobileShareClipboard()).Changed() {
-						v.setClipShare(shareClip)
-					}
-				})
-
-				if ui.Button(c.Key("mob-open-cliphist"), L.MobileClipHistory()).FillWidth().Height(46).Clicked() {
+				if m3TonalButton(c, mc, "mob-open-cliphist", L.MobileClipHistory(), false).FillWidth().Clicked() {
 					ms.menuSheetOpen = false
 					ms.clipSheetOpen = true
 				}
 
 				// Host actions.
 				ui.Row(c).FillWidth().Gap(8).Wrap().Children(func() {
-					if ui.Button(c.Key("mob-act-lock"), L.MobileActionLock()).Height(44).Clicked() {
+					if m3OutlinedButton(c, mc, "mob-act-lock", L.MobileActionLock(), mc.OnSurface, false).Clicked() {
 						v.sendControl(map[string]any{"type": "action", "action": "lock"})
 						ms.menuSheetOpen = false
 					}
 					if actions != nil && actions.CtrlAltDel {
-						if ui.Button(c.Key("mob-act-cad"), "Ctrl+Alt+Del").Height(44).Clicked() {
+						if m3OutlinedButton(c, mc, "mob-act-cad", "Ctrl+Alt+Del", mc.OnSurface, false).Clicked() {
 							v.sendControl(map[string]any{"type": "action", "action": "ctrl-alt-del"})
 							ms.menuSheetOpen = false
 						}
@@ -1634,48 +1836,39 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 						if actions.Blocked {
 							blk = "unblock"
 						}
-						if ui.Button(c.Key("mob-act-blk"), L.MobileActionBlockInput()).Height(44).Clicked() {
+						if m3OutlinedButton(c, mc, "mob-act-blk", L.MobileActionBlockInput(), mc.OnSurface, false).Clicked() {
 							v.sendControl(map[string]any{"type": "action", "action": blk})
 						}
 						prv := "privacy-on"
 						if actions.Privacy {
 							prv = "privacy-off"
 						}
-						if ui.Button(c.Key("mob-act-prv"), L.MobileActionPrivacy()).Height(44).Clicked() {
+						if m3OutlinedButton(c, mc, "mob-act-prv", L.MobileActionPrivacy(), mc.OnSurface, false).Clicked() {
 							v.sendControl(map[string]any{"type": "action", "action": prv})
 						}
 					}
 				})
 
-				if v.hostHas(featureLockAfter) {
-					ui.Row(c).FillWidth().MinHeight(44).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, L.ViewerLockAfter()).Grow(1)
-						if ui.Switch(c.Key("mob-lock-after"), &lockAfter).Label(L.ViewerLockAfter()).Changed() {
-							v.setLockAfter(lockAfter)
-						}
-					})
-				}
-
-				ui.Divider(c)
-				if ui.Button(c.Key("mob-v-disc"), L.MobileDisconnect()).FillWidth().Height(46).Clicked() {
+				ui.Box(c).FillWidth().Height(1).Background(mc.OutlineVariant.Alpha(0.35))
+				if m3OutlinedButton(c, mc, "mob-v-disc", L.MobileDisconnect(), mc.Error, false).FillWidth().Clicked() {
 					v.disconnect()
 					ms.menuSheetOpen = false
 					ms.activeSession = ""
 					a.mobileSyncSessions()
 				}
 			} else if svc != nil {
-				ui.Text(c, svc.title).FontSize(17).Bold()
+				ui.Text(c, svc.title).FontSize(18).FontWeight(700).TextColor(mc.OnSurface)
 				if sc, ok := svc.running().(*screenClient); ok && sc != nil {
-					if ui.Button(c.Key("mob-svc-typeclip"), L.MobileSendClipboard()).FillWidth().Height(46).Clicked() {
+					if m3TonalButton(c, mc, "mob-svc-typeclip", L.MobileSendClipboard(), false).FillWidth().Clicked() {
 						go sc.typeClipboard(svc)
 						ms.menuSheetOpen = false
 					}
-					if ui.Button(c.Key("mob-svc-cad"), "Ctrl+Alt+Del").FillWidth().Height(46).Clicked() {
+					if m3OutlinedButton(c, mc, "mob-svc-cad", "Ctrl+Alt+Del", mc.OnSurface, false).FillWidth().Clicked() {
 						sc.ctrlAltDel()
 						ms.menuSheetOpen = false
 					}
 				}
-				if ui.Button(c.Key("mob-svc-disc"), L.MobileDisconnect()).FillWidth().Height(46).Clicked() {
+				if m3OutlinedButton(c, mc, "mob-svc-disc", L.MobileDisconnect(), mc.Error, false).FillWidth().Clicked() {
 					svc.disconnect()
 					ms.menuSheetOpen = false
 					ms.activeSession = ""
@@ -1687,9 +1880,9 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 
 	// 2. System-IME Type Text sheet.
 	mobile.Sheet(c, &ms.typeTextOpen, mobile.SheetOptions{Detents: []float32{0.72, 0.92}, Label: L.MobileTypeText()}, func() {
-		ui.Column(c.Key("mob-typetext-body")).FillWidth().Padding(12, 16, 20, 16).Gap(10).Children(func() {
-			ui.Text(c, L.MobileTypeText()).FontSize(16).Bold()
-			ui.Text(c, L.MobileTypeTextHint()).FontSize(12).TextColor(t.TextMuted)
+		ui.Column(c.Key("mob-typetext-body")).FillWidth().Padding(12, 16, 20, 16).Gap(12).Children(func() {
+			ui.Text(c, L.MobileTypeText()).FontSize(17).FontWeight(700).TextColor(mc.OnSurface)
+			ui.Text(c, L.MobileTypeTextHint()).FontSize(12).TextColor(mc.OnSurfaceVariant)
 			in := ui.TextInput(c.Key("mob-typetext-in"), &ms.typeTextValue).FillWidth().AutoFocus()
 			sendNow := func(txt string) {
 				if txt == "" {
@@ -1708,11 +1901,11 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 				}
 			}
 			ui.Row(c).FillWidth().Gap(8).Children(func() {
-				if ui.Button(c.Key("mob-tt-clip"), L.MobileSendClipboard()).Grow(1).Height(46).Clicked() {
+				if m3TonalButton(c, mc, "mob-tt-clip", L.MobileSendClipboard(), false).Grow(1).Clicked() {
 					sendNow(mygo.Clipboard.ReadText())
 					ms.typeTextOpen = false
 				}
-				if ui.PrimaryButton(c.Key("mob-tt-send"), L.MobileSend()).Grow(1).Height(46).Clicked() || in.Submitted() {
+				if m3FilledButton(c, mc, "mob-tt-send", L.MobileSend(), false).Grow(1).Clicked() || in.Submitted() {
 					sendNow(ms.typeTextValue)
 					ms.typeTextValue = ""
 					ms.typeTextOpen = false
@@ -1735,8 +1928,8 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 
 		ui.Column(c.Key("mob-clip-sheet")).Fill().Padding(8, 16, 20, 16).Gap(10).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, L.MobileClipHistory()).FontSize(17).Bold().Grow(1)
-				if len(entries) > 0 && ui.Button(c.Key("mob-clip-clear"), L.MobileClipHistoryClear()).Clicked() {
+				ui.Text(c, L.MobileClipHistory()).FontSize(17).FontWeight(700).TextColor(mc.OnSurface).Grow(1)
+				if len(entries) > 0 && m3TonalButton(c, mc, "mob-clip-clear", L.MobileClipHistoryClear(), false).Height(38).Clicked() {
 					a.mu.Lock()
 					for _, v := range a.viewers {
 						v.mu.Lock()
@@ -1747,39 +1940,39 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 				}
 			})
 			if len(entries) == 0 {
-				ui.Text(c, L.MobileClipHistoryEmpty()).TextColor(t.TextMuted)
+				ui.Text(c, L.MobileClipHistoryEmpty()).TextColor(mc.OnSurfaceVariant)
 				return
 			}
 			ui.Scroll(c.Key("mob-clip-list")).Grow(1).FillWidth().Gap(8).Children(func() {
 				for i, e := range entries {
 					e := e
 					id := "mob-ce-" + strconv.Itoa(i)
-					ui.Column(c.Key(id)).FillWidth().Padding(12).Radius(12).Background(t.Surface).Border(1, t.Border).Gap(6).Children(func() {
+					m3Card(c, mc, id).Padding(14).Gap(6).Children(func() {
 						who := L.MobileClipFromPhone()
 						if e.host {
 							who = "↓ Host"
 						}
 						ui.Row(c).FillWidth().Children(func() {
-							ui.Text(c, who).FontSize(12).Bold().Grow(1)
-							ui.Text(c, e.at.Local().Format("15:04:05")).FontSize(11).TextColor(t.TextMuted)
+							ui.Text(c, who).FontSize(12).FontWeight(600).TextColor(mc.Primary).Grow(1)
+							ui.Text(c, e.at.Local().Format("15:04:05")).FontSize(11).TextColor(mc.OnSurfaceVariant)
 						})
 						switch {
 						case e.thumb != nil:
 							w, h := e.thumb.Size()
-							ui.Image(c, e.thumb).Size(float32(w), float32(h)).Radius(6)
-							if len(e.pngData) > 0 && ui.Button(c.Key(id+"-cpimg"), L.MobileCopy()).Clicked() {
+							ui.Image(c, e.thumb).Size(float32(w), float32(h)).Radius(8)
+							if len(e.pngData) > 0 && m3TonalButton(c, mc, id+"-cpimg", L.MobileCopy(), false).Height(38).Clicked() {
 								a.mobileSetHostPNG(e.pngData)
 								a.setToast(L.MobileCopied(), false)
 							}
 						case len(e.names) > 0 || e.files > 0:
-							ui.Text(c, strings.Join(e.names, ", ")).FontWeight(500)
-							ui.Text(c, fmt.Sprintf("%s · %s", L.MobileClipFiles(max(e.files, 1)), sizeLabel(e.size))).FontSize(12).TextColor(t.TextMuted)
+							ui.Text(c, strings.Join(e.names, ", ")).FontWeight(600).TextColor(mc.OnSurface)
+							ui.Text(c, fmt.Sprintf("%s · %s", L.MobileClipFiles(max(e.files, 1)), sizeLabel(e.size))).FontSize(12).TextColor(mc.OnSurfaceVariant)
 							files := collectShareFiles(e.paths)
 							if len(files) == 0 {
-								ui.Text(c, L.MobileClipFilesGone()).FontSize(12).TextColor(t.TextMuted)
+								ui.Text(c, L.MobileClipFilesGone()).FontSize(12).TextColor(mc.OnSurfaceVariant)
 							} else {
 								ui.Row(c).FillWidth().Gap(8).Children(func() {
-									if len(files) == 1 && ui.Button(c.Key(id+"-save"), L.MobileSave()).Grow(1).Height(42).Clicked() {
+									if len(files) == 1 && m3OutlinedButton(c, mc, id+"-save", L.MobileSave(), mc.OnSurface, false).Grow(1).Clicked() {
 										f := files[0]
 										go func() {
 											saved, err := mygo.Dialog.SaveCopy(f, filepath.Base(f))
@@ -1788,7 +1981,7 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 											}
 										}()
 									}
-									if ui.PrimaryButton(c.Key(id+"-share"), L.MobileFilesShare()).Grow(1).Height(42).Clicked() {
+									if m3FilledButton(c, mc, id+"-share", L.MobileFilesShare(), false).Grow(1).Clicked() {
 										go func() { _ = mygo.Share(mygo.ShareOptions{Files: files}) }()
 									}
 								})
@@ -1798,8 +1991,8 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 							if len(preview) > 300 {
 								preview = strings.ToValidUTF8(preview[:300], "") + "…"
 							}
-							ui.Text(c, preview).FontSize(13)
-							if ui.Button(c.Key(id+"-cptxt"), L.MobileCopy()).Clicked() {
+							ui.Text(c, preview).FontSize(13).TextColor(mc.OnSurface)
+							if m3TonalButton(c, mc, id+"-cptxt", L.MobileCopy(), false).Height(38).Clicked() {
 								a.copyText(e.text)
 								a.setToast(L.MobileCopied(), false)
 							}
@@ -1812,7 +2005,7 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 
 	// 4. Host AI Task sheet.
 	mobile.Sheet(c, &ms.aiSheetOpen, mobile.SheetOptions{Detents: []float32{0.76, 0.94}, Label: L.MobileAiOnHost()}, func() {
-		a.mobileAISheetBody(c, ms.aiSheetDevice)
+		a.mobileAISheetBody(c, mc, ms.aiSheetDevice)
 	})
 
 	// 5. Persisted AI Task History sheet.
@@ -1825,8 +2018,8 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 
 		ui.Column(c.Key("mob-aihist-body")).Fill().Padding(8, 16, 20, 16).Gap(10).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, L.MobileAiHistory()).FontSize(17).Bold().Grow(1)
-				if len(list) > 0 && ui.Button(c.Key("mob-aihist-clr"), L.MobileClipHistoryClear()).Clicked() {
+				ui.Text(c, L.MobileAiHistory()).FontSize(17).FontWeight(700).TextColor(mc.OnSurface).Grow(1)
+				if len(list) > 0 && m3TonalButton(c, mc, "mob-aihist-clr", L.MobileClipHistoryClear(), false).Height(38).Clicked() {
 					hist := make(map[string][]MobileAITaskSummary, len(p.MobileAIHistory))
 					for k, v := range p.MobileAIHistory {
 						if k != dev {
@@ -1838,19 +2031,18 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 				}
 			})
 			if len(list) == 0 {
-				ui.Text(c, L.MobileAiHistoryEmpty()).TextColor(t.TextMuted)
+				ui.Text(c, L.MobileAiHistoryEmpty()).TextColor(mc.OnSurfaceVariant)
 				return
 			}
 			ui.Scroll(c.Key("mob-aihist-scroll")).Grow(1).FillWidth().Gap(8).Children(func() {
 				for _, item := range list {
-					ui.Column(c.Key("mob-aih-"+strconv.FormatUint(item.ID, 10))).FillWidth().Padding(12).Radius(12).
-						Background(t.Surface).Border(1, t.Border).Gap(4).Children(func() {
-						ui.Text(c, item.Instruction).FontWeight(600)
+					m3Card(c, mc, "mob-aih-"+strconv.FormatUint(item.ID, 10)).Padding(14).Gap(4).Children(func() {
+						ui.Text(c, item.Instruction).FontWeight(600).TextColor(mc.OnSurface)
 						meta := fmt.Sprintf("#%d · %s · %d steps", item.ID, item.State, item.Steps)
 						if item.InputTokens > 0 || item.OutTokens > 0 {
 							meta += " · " + L.MobileAiTokens(item.InputTokens, item.OutTokens)
 						}
-						ui.Text(c, meta).FontSize(12).TextColor(t.TextMuted)
+						ui.Text(c, meta).FontSize(12).TextColor(mc.OnSurfaceVariant)
 					})
 				}
 			})
@@ -1858,14 +2050,14 @@ func (a *App) mobileSheets(c *ui.Context, wide bool) {
 	})
 }
 
-func (a *App) mobileAISheetBody(c *ui.Context, device string) {
+func (a *App) mobileAISheetBody(c *ui.Context, mc mobileColors, device string) {
 	t := c.Theme()
 	a.mu.Lock()
 	link := a.aiLinks[device]
 	a.mu.Unlock()
 	if link == nil {
 		ui.Column(c).Fill().Padding(20).Children(func() {
-			ui.Text(c, L.MobileConnecting()).TextColor(t.TextMuted)
+			ui.Text(c, L.MobileConnecting()).TextColor(mc.OnSurfaceVariant)
 		})
 		return
 	}
@@ -1876,54 +2068,53 @@ func (a *App) mobileAISheetBody(c *ui.Context, device string) {
 
 	ui.Column(c.Key("mob-ai-sheet-"+device)).Fill().Padding(8, 16, 16, 16).Gap(10).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, L.MobileAiOnHost()).FontSize(17).Bold().Grow(1)
-			hb := ui.ButtonBase(c.Key("mob-ai-openhist")).Height(38).PaddingX(10).Radius(8).Background(t.Surface).Border(1, t.Border).Label(L.MobileAiHistory())
-			hb.Children(func() { ui.Text(c, L.MobileAiHistory()).FontSize(12) })
-			if hb.Clicked() {
+			ui.Text(c, L.MobileAiOnHost()).FontSize(17).FontWeight(700).TextColor(mc.OnSurface).Grow(1)
+			if m3TonalButton(c, mc, "mob-ai-openhist", L.MobileAiHistory(), false).Height(38).Clicked() {
 				a.mobile.aiHistDevice = device
 				a.mobile.aiHistOpen = true
 			}
 		})
 
 		if snap.phase.State != "connected" {
-			ui.Text(c, L.MobileConnecting()+" ("+snap.phase.State+")").TextColor(t.TextMuted)
+			ui.Text(c, L.MobileConnecting()+" ("+snap.phase.State+")").TextColor(mc.OnSurfaceVariant)
 			return
 		}
 		if !snap.run && !snap.approve {
-			ui.Text(c, L.MobileAiNotAllowed()).TextColor(textTone(t, t.Danger))
+			ui.Text(c, L.MobileAiNotAllowed()).TextColor(mc.Error)
 			return
 		}
 		if snap.err != "" {
-			ui.Text(c, snap.err).FontSize(12).TextColor(textTone(t, t.Danger))
+			ui.Text(c, snap.err).FontSize(12).TextColor(mc.Error)
 		}
 
 		ui.Scroll(c.Key("mob-ai-conv-" + device)).Grow(1).Basis(0).FillWidth().MinHeight(0).Gap(8).Children(func() {
 			task := snap.task
 			if task == nil {
-				ui.Text(c, L.MobileAiNoTask()).TextColor(t.TextMuted)
+				ui.Text(c, L.MobileAiNoTask()).TextColor(mc.OnSurfaceVariant)
 				return
 			}
-			ui.Column(c).FillWidth().Padding(12).Radius(12).Background(t.Surface).Border(1, t.Border).Gap(6).Children(func() {
-				ui.Text(c, task.Instruction).Bold()
-				ui.Text(c, fmt.Sprintf("State: %s · Steps: %d", task.State, len(task.Steps))).FontSize(12).TextColor(t.TextMuted)
+			m3Card(c, mc, "mob-ai-taskcard").Padding(14).Gap(6).Children(func() {
+				ui.Text(c, task.Instruction).FontWeight(700).TextColor(mc.OnSurface)
+				ui.Text(c, fmt.Sprintf("State: %s · Steps: %d", task.State, len(task.Steps))).FontSize(12).TextColor(mc.OnSurfaceVariant)
 				if task.Tokens.Input > 0 || task.Tokens.Output > 0 {
-					ui.Text(c, L.MobileAiTokens(int(task.Tokens.Input), int(task.Tokens.Output))).FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, L.MobileAiTokens(int(task.Tokens.Input), int(task.Tokens.Output))).FontSize(12).TextColor(mc.OnSurfaceVariant)
 				}
 				if task.Text != "" {
-					ui.Text(c, task.Text).FontSize(13).Selectable()
+					ui.Text(c, task.Text).FontSize(13).TextColor(mc.OnSurface).Selectable()
 				}
 			})
 
 			// Safety confirmation banner when waiting for approval.
 			if task.Approval != nil && snap.approve {
-				ui.Column(c.Key("mob-ai-approve")).FillWidth().Padding(12).Radius(12).Background(t.Warning.Alpha(0.14)).Border(1, t.Warning).Gap(8).Children(func() {
-					ui.Text(c, L.MobileAiWaitingApproval()).Bold().TextColor(textTone(t, t.Warning))
-					ui.Text(c, describeAction(task.Approval.Action)).FontSize(13)
+				ui.Column(c.Key("mob-ai-approve")).FillWidth().Padding(14).Radius(mobileCardRadius).
+					Background(mc.Warning.Alpha(0.14)).Border(1, mc.Warning).Gap(8).Children(func() {
+					ui.Text(c, L.MobileAiWaitingApproval()).FontWeight(700).TextColor(textTone(t, mc.Warning))
+					ui.Text(c, describeAction(task.Approval.Action)).FontSize(13).TextColor(mc.OnSurface)
 					ui.Row(c).FillWidth().Gap(8).Children(func() {
-						if ui.Button(c.Key("mob-ai-dec-no"), L.MobileDecline()).Grow(1).Height(44).Clicked() {
+						if m3OutlinedButton(c, mc, "mob-ai-dec-no", L.MobileDecline(), mc.Error, false).Grow(1).Clicked() {
 							link.send(map[string]any{"type": "ai-decide", "id": task.ID, "approve": false})
 						}
-						if ui.PrimaryButton(c.Key("mob-ai-dec-yes"), L.MobileApprove()).Grow(1).Height(44).Clicked() {
+						if m3FilledButton(c, mc, "mob-ai-dec-yes", L.MobileApprove(), false).Grow(1).Clicked() {
 							link.send(map[string]any{"type": "ai-decide", "id": task.ID, "approve": true})
 						}
 					})
@@ -1934,22 +2125,22 @@ func (a *App) mobileAISheetBody(c *ui.Context, device string) {
 			ui.Row(c).FillWidth().Gap(8).Wrap().Children(func() {
 				switch task.State {
 				case "running":
-					if ui.Button(c.Key("mob-ai-pause"), L.MobileAiPause()).Height(42).Clicked() {
+					if m3TonalButton(c, mc, "mob-ai-pause", L.MobileAiPause(), false).Height(42).Clicked() {
 						link.send(map[string]any{"type": "ai-command", "id": task.ID, "command": "pause"})
 					}
-					if ui.Button(c.Key("mob-ai-stop"), L.MobileAiStop()).Height(42).Clicked() {
+					if m3OutlinedButton(c, mc, "mob-ai-stop", L.MobileAiStop(), mc.Error, false).Height(42).Clicked() {
 						link.send(map[string]any{"type": "ai-command", "id": task.ID, "command": "cancel"})
 					}
 				case "paused":
-					if ui.PrimaryButton(c.Key("mob-ai-resume"), L.MobileAiResume()).Height(42).Clicked() {
+					if m3FilledButton(c, mc, "mob-ai-resume", L.MobileAiResume(), false).Height(42).Clicked() {
 						link.send(map[string]any{"type": "ai-command", "id": task.ID, "command": "resume"})
 					}
-					if ui.Button(c.Key("mob-ai-stop2"), L.MobileAiStop()).Height(42).Clicked() {
+					if m3OutlinedButton(c, mc, "mob-ai-stop2", L.MobileAiStop(), mc.Error, false).Height(42).Clicked() {
 						link.send(map[string]any{"type": "ai-command", "id": task.ID, "command": "cancel"})
 					}
 				}
 				if a.hostHas(device, featureAISessions) {
-					if ui.Button(c.Key("mob-ai-export"), L.AIExport()).Height(42).Clicked() {
+					if m3OutlinedButton(c, mc, "mob-ai-export", L.AIExport(), mc.OnSurface, false).Height(42).Clicked() {
 						outPath := filepath.Join(os.TempDir(), fmt.Sprintf("kyokai-task-%d.md", task.ID))
 						link.exportTo(task.ID, outPath)
 					}
@@ -1957,8 +2148,9 @@ func (a *App) mobileAISheetBody(c *ui.Context, device string) {
 			})
 
 			for i, step := range task.Steps {
-				ui.Row(c.Key("mob-aistep-"+strconv.Itoa(i))).FillWidth().Padding(6, 10).Radius(8).Background(t.Surface).Children(func() {
-					ui.Text(c, describeAction(step.Action)).FontSize(12).TextColor(t.TextMuted)
+				ui.Row(c.Key("mob-aistep-"+strconv.Itoa(i))).FillWidth().Padding(8, 12).Radius(12).
+					Background(mc.SurfaceContainerLow).Children(func() {
+					ui.Text(c, describeAction(step.Action)).FontSize(12).TextColor(mc.OnSurfaceVariant)
 				})
 			}
 		})
@@ -1970,7 +2162,7 @@ func (a *App) mobileAISheetBody(c *ui.Context, device string) {
 				link.setDraft(draft)
 			}
 			activeTask := snap.task != nil && (snap.task.State == "running" || snap.task.State == "paused" || snap.task.State == "approval")
-			if ui.PrimaryButton(c.Key("mob-ai-send-"+device), L.MobileAiSend()).FillWidth().Height(46).Disabled(strings.TrimSpace(draft) == "").Clicked() || (in.Submitted() && strings.TrimSpace(draft) != "") {
+			if m3FilledButton(c, mc, "mob-ai-send-"+device, L.MobileAiSend(), strings.TrimSpace(draft) == "").FillWidth().Clicked() || (in.Submitted() && strings.TrimSpace(draft) != "") {
 				txt := strings.TrimSpace(draft)
 				link.setDraft("")
 				if activeTask || (snap.task != nil && snap.task.State == "done") {

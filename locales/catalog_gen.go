@@ -14290,3 +14290,77 @@ func MobileFilesCancelled() string { return In(i18n.Locale()).MobileFilesCancell
 func (msgs Messages) MobileFilesCancelled() string {
 	return Catalog.Format(msgs.locale, "MobileFilesCancelled", nil)
 }
+
+// MobileAutoKeyboard says "Auto-open keyboard"
+// in the language the app shows.
+func MobileAutoKeyboard() string { return In(i18n.Locale()).MobileAutoKeyboard() }
+
+// MobileAutoKeyboard says "Auto-open keyboard"
+// in the language of msgs.
+func (msgs Messages) MobileAutoKeyboard() string {
+	return Catalog.Format(msgs.locale, "MobileAutoKeyboard", nil)
+}
+
+// MobileAutoKeyboardHint says "Open the on-screen keyboard automatically when the screen has generous blank space"
+// in the language the app shows.
+func MobileAutoKeyboardHint() string { return In(i18n.Locale()).MobileAutoKeyboardHint() }
+
+// MobileAutoKeyboardHint says "Open the on-screen keyboard automatically when the screen has generous blank space"
+// in the language of msgs.
+func (msgs Messages) MobileAutoKeyboardHint() string {
+	return Catalog.Format(msgs.locale, "MobileAutoKeyboardHint", nil)
+}
+
+// MobileTouchpad says "Touchpad"
+// in the language the app shows.
+func MobileTouchpad() string { return In(i18n.Locale()).MobileTouchpad() }
+
+// MobileTouchpad says "Touchpad"
+// in the language of msgs.
+func (msgs Messages) MobileTouchpad() string {
+	return Catalog.Format(msgs.locale, "MobileTouchpad", nil)
+}
+
+// MobileKeyboardFull says "Full"
+// in the language the app shows.
+func MobileKeyboardFull() string { return In(i18n.Locale()).MobileKeyboardFull() }
+
+// MobileKeyboardFull says "Full"
+// in the language of msgs.
+func (msgs Messages) MobileKeyboardFull() string {
+	return Catalog.Format(msgs.locale, "MobileKeyboardFull", nil)
+}
+
+// MobileKeyboardSplit says "Split"
+// in the language the app shows.
+func MobileKeyboardSplit() string { return In(i18n.Locale()).MobileKeyboardSplit() }
+
+// MobileKeyboardSplit says "Split"
+// in the language of msgs.
+func (msgs Messages) MobileKeyboardSplit() string {
+	return Catalog.Format(msgs.locale, "MobileKeyboardSplit", nil)
+}
+
+// MobileSettingsSummaryKeys says "{count, plural, one {1 key} other {# keys}}"
+// in the language the app shows.
+func MobileSettingsSummaryKeys(count int) string {
+	return In(i18n.Locale()).MobileSettingsSummaryKeys(count)
+}
+
+// MobileSettingsSummaryKeys says "{count, plural, one {1 key} other {# keys}}"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsSummaryKeys(count int) string {
+	return Catalog.Format(msgs.locale, "MobileSettingsSummaryKeys", map[string]any{"count": count})
+}
+
+// MobileSettingsSummaryNetworks says "{count, plural, one {1 network} other {# networks}}"
+// in the language the app shows.
+func MobileSettingsSummaryNetworks(count int) string {
+	return In(i18n.Locale()).MobileSettingsSummaryNetworks(count)
+}
+
+// MobileSettingsSummaryNetworks says "{count, plural, one {1 network} other {# networks}}"
+// in the language of msgs.
+func (msgs Messages) MobileSettingsSummaryNetworks(count int) string {
+	return Catalog.Format(msgs.locale, "MobileSettingsSummaryNetworks", map[string]any{"count": count})
+}

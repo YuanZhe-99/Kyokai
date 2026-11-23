@@ -45,8 +45,10 @@ const (
 type mobileState struct {
 	host       androidhost.Host
 	info       androidhost.DeviceInfo
+	palette    androidhost.MaterialPalette
 	decoders   []androidhost.DecoderCap
 	postureSub io.Closer
+	touchSub   io.Closer
 	posture    androidhost.Posture
 
 	engineMu       sync.Mutex
@@ -80,6 +82,9 @@ type mobileState struct {
 	routeAddAddr  string
 	devNameEdit   string
 	devNameDirty  bool
+	aliasDev      string
+	aliasEdit     string
+	aliasDirty    bool
 
 	// clipboard sync deduplication & display wake lock.
 	clipMu       sync.Mutex
@@ -91,15 +96,22 @@ type mobileState struct {
 }
 
 type mobileViewerUI struct {
-	pad        *Touchpad
-	kb         *MobileKeyboard
-	kbOpen     bool
-	zoom       mobile.ZoomState
-	curX, curY float32 // normalized 0..1 local cursor position
-	curInit    bool
-	barFolded  bool
-	dragHandle ui.Point
-	dipScale   float32
+	pad           *Touchpad
+	kb            *MobileKeyboard
+	kbOpen        bool
+	kbAutoOpened  bool
+	autoKBGeom    string
+	zoom          mobile.ZoomState
+	curX, curY    float32 // normalized 0..1 local cursor position
+	curInit       bool
+	barFolded     bool
+	dragHandle    ui.Point
+	barOffset     ui.Point
+	barOffsetInit bool
+	barAreaW      float32
+	barAreaH      float32
+	lastBarRect   ui.Rect
+	dipScale      float32
 }
 
 func (a *App) initMobile() {
@@ -112,13 +124,20 @@ func (a *App) initMobile() {
 		if info, err := h.Info(); err == nil {
 			ms.info = info
 		}
+		ms.palette = h.DynamicPalette()
 		ms.decoders = h.Decoders()
 		ms.postureSub = h.WatchPosture(func(p androidhost.Posture) {
 			a.update(func() {
-				if a.mobile != nil {
-					a.mobile.posture = p
-				}
+				ms.posture = p
 			})
+		})
+		ms.touchSub = h.WatchTouch(func(rt androidhost.RawTouch) {
+			ms.touchMu.Lock()
+			fn := ms.touchHandler
+			ms.touchMu.Unlock()
+			if fn != nil {
+				fn(rt)
+			}
 		})
 	}
 	// Wipe stale received clipboard files from previous cold starts.
@@ -524,20 +543,12 @@ func (a *App) mobileUpdateTouchCapture(
 	if same {
 		return
 	}
-	ms.host.SetTouchRegion(
+	ms.host.SetTouchBounds(
 		capture,
 		cfg[1], cfg[2], cfg[3], cfg[4],
 		cfg[5], cfg[6], cfg[7], cfg[8],
 		cfg[9], cfg[10], cfg[11], cfg[12],
 		cfg[13], cfg[14], cfg[15], cfg[16],
-		func(rt androidhost.RawTouch) {
-			ms.touchMu.Lock()
-			fn := ms.touchHandler
-			ms.touchMu.Unlock()
-			if fn != nil {
-				fn(rt)
-			}
-		},
 	)
 }
 

@@ -8,7 +8,9 @@ import (
 	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/YuanZhe-99/Kyokai/internal/androidhost"
 	"github.com/YuanZhe-99/Kyokai/internal/localapi"
+	L "github.com/YuanZhe-99/Kyokai/locales"
 )
 
 func TestMobileViewsResponsiveAndLocales(t *testing.T) {
@@ -139,6 +141,8 @@ func TestMobileToolbarTouchAndIMEInsets(t *testing.T) {
 	}
 
 	// Connected viewer: touching the floating Keyboard button must click it rather than stage swallowing it.
+	off := false
+	a.prefs.AutoKeyboard = &off
 	tt.SetInsets(24, 0, 20, 0)
 	v := a.newViewer("657365333", localapi.About{Name: "Studio Mac", OS: "macos"}, desktopWant, false, 0)
 	v.mu.Lock()
@@ -207,8 +211,14 @@ func TestMobileCompactSettingsDrilldownAndSessionOrder(t *testing.T) {
 	if _, ok := tt.Find("Remote Desktop"); ok {
 		t.Fatal("Remote Desktop button shown when host sample only advertises ssh")
 	}
-	if _, ok := tt.Find("Memory 50%"); !ok {
-		t.Fatal("expected Memory 50% summary without 100x double-multiplication")
+	if _, ok := tt.Find("50 %"); !ok {
+		t.Fatal("expected 50 % memory telemetry without 100x double-multiplication")
+	}
+	if _, ok := tt.Find("5000%"); ok {
+		t.Fatal("unexpected 5000% memory value")
+	}
+	if _, ok := tt.Find("5000 %"); ok {
+		t.Fatal("unexpected 5000 % memory value")
 	}
 
 	// Compact Settings shows category menu first, pushes sub-page on tap, and pops on Back.
@@ -290,4 +300,391 @@ func TestMobileCompactSettingsDrilldownAndSessionOrder(t *testing.T) {
 		t.Fatalf("host pointer overwrote active split-keyboard touchpad cursor: got %.3f, want %.3f", u.curX, movedX)
 	}
 	u.kb.pad.Up(0, now.Add(40*time.Millisecond))
+}
+
+func makeMobileConnectedViewer(t *testing.T, a *App, dev string, vidW, vidH int) *viewer {
+	t.Helper()
+	v := a.newViewer(dev, localapi.About{Name: "Studio Mac", OS: "macos"}, desktopWant, false, 0)
+	v.mu.Lock()
+	v.phase = localapi.SessionInfo{State: "connected", DeviceID: dev, Peer: localapi.About{Name: "Studio Mac", OS: "macos"}}
+	v.start = videoStart{Codec: "hevc", Width: vidW, Height: vidH}
+	v.bm = ui.NewBitmap(image.NewRGBA(image.Rect(0, 0, 64, 36)))
+	v.control = true
+	v.mu.Unlock()
+	a.mobile.activeSession = v.tabKey()
+	return v
+}
+
+func TestMobileCollapsedToolbarHitAndDrag(t *testing.T) {
+	defer i18n.SetLocaleFunc(nil)
+	i18n.SetLocaleFunc(func() string { return "en" })
+
+	a := demoApp(t)
+	a.initMobile()
+	off := false
+	a.prefs.AutoKeyboard = &off
+	v := makeMobileConnectedViewer(t, a, "657365333", 1920, 1080)
+
+	tt := ui.NewTester(a.MobileView, 390, 844)
+	tt.SetInsets(24, 0, 20, 0)
+	tt.Frame()
+	tt.Frame()
+
+	foldBtn, ok := tt.Find(L.MobileA11yHideToolbar())
+	if !ok {
+		t.Fatal("fold toolbar button not found")
+	}
+	tt.FingerDown(foldBtn.X+foldBtn.W/2, foldBtn.Y+foldBtn.H/2)
+	tt.FingerUp(foldBtn.X+foldBtn.W/2, foldBtn.Y+foldBtn.H/2)
+	tt.Frame()
+	tt.Frame()
+
+	u := a.mobile.views[v.tabKey()]
+	if u == nil || !u.barFolded {
+		t.Fatal("tapping fold button did not collapse toolbar")
+	}
+	hbRect, ok := tt.Find(L.MobileA11yShowToolbar())
+	if !ok {
+		t.Fatal("collapsed toolbar handle not found")
+	}
+	hx, hy := hbRect.X+hbRect.W/2, hbRect.Y+hbRect.H/2
+	if hx < u.lastBarRect.X || hx > u.lastBarRect.X+u.lastBarRect.W || hy < u.lastBarRect.Y || hy > u.lastBarRect.Y+u.lastBarRect.H {
+		t.Fatalf("collapsed handle center (%.1f, %.1f) outside TouchBridge exclusion rect %+v", hx, hy, u.lastBarRect)
+	}
+
+	// Tapping collapsed handle must expand the toolbar cleanly.
+	tt.FingerDown(hx, hy)
+	tt.FingerUp(hx, hy)
+	tt.Frame()
+	if u.barFolded {
+		t.Fatal("tapping collapsed handle did not expand toolbar")
+	}
+
+	// Fold again and drag toward the left edge: handle must move, snap left, and keep exclusion synced.
+	foldBtn, ok = tt.Find(L.MobileA11yHideToolbar())
+	if !ok {
+		t.Fatal("fold toolbar button not found after expand")
+	}
+	tt.FingerDown(foldBtn.X+foldBtn.W/2, foldBtn.Y+foldBtn.H/2)
+	tt.FingerUp(foldBtn.X+foldBtn.W/2, foldBtn.Y+foldBtn.H/2)
+	tt.Frame()
+	tt.Frame()
+	hbRect, ok = tt.Find(L.MobileA11yShowToolbar())
+	if !ok {
+		t.Fatal("collapsed handle missing on second fold")
+	}
+	hx, hy = hbRect.X+hbRect.W/2, hbRect.Y+hbRect.H/2
+	tt.FingerDown(hx, hy)
+	tt.FingerMove(100, 320)
+	tt.FingerMove(18, 380)
+	tt.FingerUp(18, 380)
+	for range 12 {
+		tt.Advance(50 * time.Millisecond)
+		tt.Frame()
+	}
+	if !u.barFolded {
+		t.Fatal("dragging collapsed handle unexpectedly unfolded toolbar")
+	}
+	if u.dragHandle.X != 0 {
+		t.Fatalf("dragged handle X = %.3f, want snapped 0 (left edge)", u.dragHandle.X)
+	}
+	hbRect2, ok := tt.Find(L.MobileA11yShowToolbar())
+	if !ok {
+		t.Fatal("collapsed handle missing after drag")
+	}
+	hx2, hy2 := hbRect2.X+hbRect2.W/2, hbRect2.Y+hbRect2.H/2
+	if hx2 < u.lastBarRect.X || hx2 > u.lastBarRect.X+u.lastBarRect.W || hy2 < u.lastBarRect.Y || hy2 > u.lastBarRect.Y+u.lastBarRect.H {
+		t.Fatalf("post-drag handle center (%.1f, %.1f) outside TouchBridge exclusion rect %+v", hx2, hy2, u.lastBarRect)
+	}
+}
+
+func TestMobileNavPlacementBottomAndWide(t *testing.T) {
+	defer i18n.SetLocaleFunc(nil)
+	i18n.SetLocaleFunc(func() string { return "en" })
+
+	a := demoApp(t)
+	a.initMobile()
+	tt := ui.NewTester(a.MobileView, 904, 1000)
+
+	// Open Appearance settings on a wide foldable screen and select "Bottom".
+	a.mobile.navTab = 2
+	a.mobile.settingsOpen = true
+	a.mobile.settingsPage = mobSetAppearance
+	tt.Frame()
+
+	botBtn, ok := tt.Find(L.MobileSettingsNavPlacementBottom())
+	if !ok {
+		t.Fatal("Bottom option in Navigation position not found")
+	}
+	tt.FingerDown(botBtn.X+botBtn.W/2, botBtn.Y+botBtn.H/2)
+	tt.FingerUp(botBtn.X+botBtn.W/2, botBtn.Y+botBtn.H/2)
+	tt.Frame()
+	if a.prefs.NavPlacement != "bottom" {
+		t.Fatalf("NavPlacement = %q after selecting Bottom, want %q", a.prefs.NavPlacement, "bottom")
+	}
+
+	// Switch back to Devices tab: wide screen with "bottom" must render the centered floating capsule bar.
+	a.mobile.navTab = 0
+	tt.Frame()
+	devsInfo, ok := tt.AccessByRole(ui.RoleTab, L.MobileNavDevices())
+	if !ok {
+		t.Fatal("Devices tab missing from wide floating bottom bar")
+	}
+	setsInfo, ok := tt.AccessByRole(ui.RoleTab, L.MobileNavSettings())
+	if !ok {
+		t.Fatal("Settings tab missing from wide floating bottom bar")
+	}
+	devs, sets := devsInfo.Bounds, setsInfo.Bounds
+	if devs.Y < 850 || sets.Y < 850 {
+		t.Fatalf("expected wide floating bottom bar near bottom of 904x1000, got Devices.Y=%.1f Settings.Y=%.1f", devs.Y, sets.Y)
+	}
+	if devs.X < 180 || sets.X+sets.W > 740 {
+		t.Fatalf("expected centered capsule dock on wide screen, got Devices.X=%.1f Settings.Right=%.1f", devs.X, sets.X+sets.W)
+	}
+}
+
+func TestMobileAutoOpenKeyboard(t *testing.T) {
+	defer i18n.SetLocaleFunc(nil)
+	i18n.SetLocaleFunc(func() string { return "en" })
+
+	// 1. Portrait 16:9 remote screen has generous blank space -> auto-opens keyboard.
+	a := demoApp(t)
+	a.initMobile()
+	v := makeMobileConnectedViewer(t, a, "657365333", 1920, 1080)
+	tt := ui.NewTester(a.MobileView, 390, 844)
+	tt.SetInsets(24, 0, 20, 0)
+	tt.Frame()
+	tt.Frame()
+
+	u := a.mobile.views[v.tabKey()]
+	if u == nil || !u.kbOpen || !u.kbAutoOpened {
+		t.Fatalf("expected auto-open keyboard in portrait 16:9 viewer (u=%+v)", u)
+	}
+
+	// 2. Manual hide within the same geometry bucket keeps keyboard hidden.
+	hideBtn, ok := tt.Find("Hide keyboard")
+	if !ok {
+		t.Fatal("Hide keyboard button not found")
+	}
+	tt.FingerDown(hideBtn.X+hideBtn.W/2, hideBtn.Y+hideBtn.H/2)
+	tt.FingerUp(hideBtn.X+hideBtn.W/2, hideBtn.Y+hideBtn.H/2)
+	tt.Frame()
+	tt.Frame()
+	if u.kbOpen || u.kbAutoOpened {
+		t.Fatalf("expected manually hidden keyboard to stay closed in same geometry (kbOpen=%v)", u.kbOpen)
+	}
+
+	// 3. Auto-opened portrait keyboard closes automatically on landscape rotation.
+	a2 := demoApp(t)
+	a2.initMobile()
+	v2 := makeMobileConnectedViewer(t, a2, "657365333", 1920, 1080)
+	tt2 := ui.NewTester(a2.MobileView, 390, 844)
+	tt2.SetInsets(24, 0, 20, 0)
+	tt2.Frame()
+	u2 := a2.mobile.views[v2.tabKey()]
+	if u2 == nil || !u2.kbOpen || !u2.kbAutoOpened {
+		t.Fatal("expected auto-open before rotation")
+	}
+	tt2.SetSize(844, 390)
+	tt2.Frame()
+	if u2.kbOpen {
+		t.Fatal("expected auto-opened keyboard to close automatically on landscape rotation")
+	}
+
+	// 4. Setting AutoKeyboard = false disables auto-opening.
+	a3 := demoApp(t)
+	a3.initMobile()
+	off := false
+	a3.prefs.AutoKeyboard = &off
+	v3 := makeMobileConnectedViewer(t, a3, "657365333", 1920, 1080)
+	tt3 := ui.NewTester(a3.MobileView, 390, 844)
+	tt3.Frame()
+	if u3 := a3.mobile.views[v3.tabKey()]; u3 != nil && u3.kbOpen {
+		t.Fatal("expected keyboard to stay closed when AutoKeyboard is disabled")
+	}
+}
+
+func TestMobileHostStatusRichDashboard(t *testing.T) {
+	defer i18n.SetLocaleFunc(nil)
+	i18n.SetLocaleFunc(func() string { return "en" })
+
+	a := demoApp(t)
+	a.initMobile()
+	a.net = netState{loaded: true}
+	a.keys = keysState{loaded: true}
+	a.status.Recent = []localapi.RecentDevice{
+		{
+			DeviceID: "111222333",
+			Features: []string{"desktop", "tunnel"},
+			About:    localapi.About{Name: "Workstation", OS: "linux"},
+		},
+	}
+	a.status.Network.Devices = []localapi.NetworkDevice{
+		{DeviceID: "111222333", Path: "direct", LatencyMS: 6},
+	}
+	sample := &localapi.SystemSample{
+		CPU:      localapi.CPUUse{Usage: 42, Cores: 8, User: 32, System: 10},
+		Memory:   localapi.Usage{Used: 8, Total: 16},
+		Disk:     localapi.Usage{Used: 256, Total: 512},
+		GPU:      &localapi.GPUUse{Usage: 25},
+		UptimeS:  7200,
+		Services: []string{"ssh"},
+	}
+	a.status.Watching = []localapi.Watched{
+		{DeviceID: "111222333", ReceivedAt: time.Now().UnixMilli(), Sample: sample},
+	}
+
+	tt := ui.NewTester(a.MobileView, 390, 844)
+
+	// Device card strip shows compact 4-metric figures on the Devices list.
+	tt.Frame()
+	if !tt.HasText("42") {
+		t.Fatalf("expected CPU 42 figure on device card, texts=%v", tt.Texts())
+	}
+
+	// Device detail shows Pulse telemetry tiles.
+	a.mobile.selectedDev = "111222333"
+	tt.Frame()
+	for _, want := range []string{"CPU", "Memory", "50 %"} {
+		if _, ok := tt.Find(want); !ok {
+			t.Fatalf("device detail telemetry tile missing %q (texts=%v)", want, tt.Texts())
+		}
+	}
+
+	// Stale sample beyond freshness window hides live figures.
+	a.status.Watching[0].ReceivedAt = time.Now().Add(-5 * time.Minute).UnixMilli()
+	tt.Frame()
+	if _, ok := tt.Find("50 %"); ok {
+		t.Fatal("stale host telemetry should not render live percentage tiles")
+	}
+}
+
+func TestMobileLaptopModeDeckAndGestureChin(t *testing.T) {
+	defer i18n.SetLocaleFunc(nil)
+	i18n.SetLocaleFunc(func() string { return "en" })
+
+	posture := androidhost.Posture{HalfOpened: true, Orientation: "horizontal", HingeTop: 450, HingeBottom: 470}
+	sh, ch, dh := mobileLaptopGeometry(900, 24, 20, posture, 1, true)
+	if sh != 426 || ch != 20 || dh != 430 {
+		t.Fatalf("mobileLaptopGeometry(useSafe=true) = (%.1f, %.1f, %.1f), want (426, 20, 430)", sh, ch, dh)
+	}
+	sh2, ch2, dh2 := mobileLaptopGeometry(900, 24, 20, posture, 1, false)
+	if sh2 != 450 || ch2 != 20 || dh2 != 430 {
+		t.Fatalf("mobileLaptopGeometry(useSafe=false) = (%.1f, %.1f, %.1f), want (450, 20, 430)", sh2, ch2, dh2)
+	}
+
+	// 1. Half-open foldable Laptop Mode: stage above hinge, full keyboard + centered touchpad below hinge.
+	a := demoApp(t)
+	a.initMobile()
+	a.prefs.LaptopMode = true
+	a.mobile.posture = posture
+	v := makeMobileConnectedViewer(t, a, "657365333", 1920, 1080)
+	tt := ui.NewTester(a.MobileView, 904, 900)
+	tt.SetScale(1)
+	tt.SetInsets(24, 0, 20, 0)
+	tt.Frame()
+	tt.Frame()
+
+	u := a.mobile.views[v.tabKey()]
+	if u == nil || u.kb.padRect.W <= 0 || u.kb.padRect.Y <= 470 {
+		t.Fatalf("expected laptop deck touchpad below hinge (Y>470), got padRect=%+v", func() ui.Rect {
+			if u == nil {
+				return ui.Rect{}
+			}
+			return u.kb.padRect
+		}())
+	}
+	if scr, ok := tt.AccessByRole(ui.RoleImage, L.MobileA11yRemoteScreen(v.title)); !ok || scr.Bounds.Y+scr.Bounds.H > 451 {
+		t.Fatalf("laptop stage should sit above hingeTop=450, got ok=%v rect=%+v", ok, scr.Bounds)
+	}
+	for _, want := range []string{"Tab", "Caps", L.MobileTouchpad()} {
+		r, ok := tt.Find(want)
+		if !ok || r.Y <= 470 {
+			t.Fatalf("laptop deck key/pad %q should render below hingeBottom=470, ok=%v rect=%+v", want, ok, r)
+		}
+	}
+
+	// 2. Portrait phone docked keyboard must preserve >=50dp bottom gesture chin clearance even when safeBottom == 0.
+	a2 := demoApp(t)
+	a2.initMobile()
+	makeMobileConnectedViewer(t, a2, "657365333", 1920, 1080)
+	tt2 := ui.NewTester(a2.MobileView, 390, 844)
+	tt2.SetInsets(24, 0, 0, 0)
+	tt2.Frame()
+	tt2.Frame()
+
+	spInfo, ok := tt2.AccessByRole(ui.RoleButton, "Space")
+	if !ok {
+		t.Fatal("Spacebar not found on docked phone keyboard")
+	}
+	sp := spInfo.Bounds
+	if sp.Y+sp.H > 844-50 {
+		t.Fatalf("Spacebar bottom %.1f too close to screen bottom (844) without Android gesture chin clearance", sp.Y+sp.H)
+	}
+}
+
+func TestMobileMaterialContrast(t *testing.T) {
+	dyn := androidhost.MaterialPalette{
+		Available:                    true,
+		PrimaryLight:                 0xFF006A60,
+		OnPrimaryLight:               0xFFFFFFFF,
+		PrimaryContainerLight:        0xFF74F8E5,
+		OnPrimaryContainerLight:      0xFF00201C,
+		SecondaryContainerLight:      0xFFCCE8E2,
+		OnSecondaryContainerLight:    0xFF05201C,
+		SurfaceLight:                 0xFFF4FBF8,
+		SurfaceContainerLowestLight:  0xFFFFFFFF,
+		SurfaceContainerLowLight:     0xFFEEF5F2,
+		SurfaceContainerLight:        0xFFE9EFEC,
+		SurfaceContainerHighLight:    0xFFE3EAE7,
+		SurfaceContainerHighestLight: 0xFFDDE4E1,
+		OnSurfaceLight:               0xFF161D1C,
+		OnSurfaceVariantLight:        0xFF3F4947,
+		OutlineLight:                 0xFF6F7977,
+		OutlineVariantLight:          0xFFBEC9C6,
+		PrimaryDark:                  0xFF53DBC9,
+		OnPrimaryDark:                0xFF003731,
+		PrimaryContainerDark:         0xFF005048,
+		OnPrimaryContainerDark:       0xFF74F8E5,
+		SecondaryContainerDark:       0xFF334B47,
+		OnSecondaryContainerDark:     0xFFCCE8E2,
+		SurfaceDark:                  0xFF0E1513,
+		SurfaceContainerLowestDark:   0xFF090F0E,
+		SurfaceContainerLowDark:      0xFF161D1C,
+		SurfaceContainerDark:         0xFF1A2120,
+		SurfaceContainerHighDark:     0xFF252B2A,
+		SurfaceContainerHighestDark:  0xFF2F3635,
+		OnSurfaceDark:                0xFFDDE4E1,
+		OnSurfaceVariantDark:         0xFFBEC9C6,
+		OutlineDark:                  0xFF899390,
+		OutlineVariantDark:           0xFF3F4947,
+	}
+
+	for _, tc := range []struct {
+		name string
+		mc   mobileColors
+	}{
+		{"fallback-light", resolveMobileColors(false, androidhost.MaterialPalette{})},
+		{"fallback-dark", resolveMobileColors(true, androidhost.MaterialPalette{})},
+		{"dynamic-light", resolveMobileColors(false, dyn)},
+		{"dynamic-dark", resolveMobileColors(true, dyn)},
+	} {
+		check := func(pair string, fg, bg ui.Color) {
+			t.Helper()
+			if r := contrast(fg, bg); r < 4.5 {
+				t.Errorf("%s %s contrast %.2f:1 < 4.5:1", tc.name, pair, r)
+			}
+		}
+		check("OnPrimary/Primary", tc.mc.OnPrimary, tc.mc.Primary)
+		check("OnPrimaryContainer/PrimaryContainer", tc.mc.OnPrimaryContainer, tc.mc.PrimaryContainer)
+		check("OnSecondaryContainer/SecondaryContainer", tc.mc.OnSecondaryContainer, tc.mc.SecondaryContainer)
+		check("OnSurface/Surface", tc.mc.OnSurface, tc.mc.Surface)
+		check("OnSurface/KbKey", tc.mc.OnSurface, tc.mc.KbKey)
+		if tc.mc.Dark {
+			lTray, lFunc, lKey := luminance(tc.mc.KbTray), luminance(tc.mc.KbFuncKey), luminance(tc.mc.KbKey)
+			if !(lKey > lFunc && lFunc > lTray) {
+				t.Errorf("%s expected dark keycap luminance KbKey(%.4f) > KbFuncKey(%.4f) > KbTray(%.4f)", tc.name, lKey, lFunc, lTray)
+			}
+		}
+	}
 }

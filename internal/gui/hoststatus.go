@@ -306,15 +306,22 @@ func (s *statusTab) syncGrab(bool) {}
 func (s *statusTab) endGrab()      {}
 func (s *statusTab) setFront(bool) {}
 
-// statusHosts are the hosts whose status panes are open.
+// statusHosts are the hosts whose status panes are open, plus the inspected
+// mobile device detail host while viewing Devices on mobile.
 // Notes: the caller holds a.mu.
 func (a *App) statusHosts() []string {
-	hosts := make([]string, 0, len(a.statuses))
-	for device := range a.statuses {
-		hosts = append(hosts, device)
+	var hosts []string
+	if a.mobile != nil && a.mobile.navTab == 0 && a.mobile.activeSession == "" && a.mobile.selectedDev != "" {
+		hosts = append(hosts, a.mobile.selectedDev)
 	}
-	slices.Sort(hosts)
-	return hosts
+	var panes []string
+	for device := range a.statuses {
+		if !slices.Contains(hosts, device) {
+			panes = append(panes, device)
+		}
+	}
+	slices.Sort(panes)
+	return append(hosts, panes...)
 }
 
 // hostStatusView is a watched host's status in full (its pane): its tiles

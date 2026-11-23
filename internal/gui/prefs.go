@@ -117,6 +117,9 @@ type Prefs struct {
 	PictureTop bool `json:"picture_top,omitempty"`
 	// SplitKeyboard splits wide on-screen keyboards around a center touchpad.
 	SplitKeyboard bool `json:"split_keyboard,omitempty"`
+	// AutoKeyboard opens the on-screen keyboard automatically when the screen
+	// has generous vertical blank space outside the remote picture (nil means true).
+	AutoKeyboard *bool `json:"auto_keyboard,omitempty"`
 	// LaptopMode auto-splits at the hinge on half-opened foldables.
 	LaptopMode bool `json:"laptop_mode,omitempty"`
 	// LaptopSafeArea keeps clear of system bars in laptop mode (nil means true).
@@ -163,6 +166,12 @@ type AIRecord struct {
 	State   string `json:"state,omitempty"`
 	Created int64  `json:"created"`
 	Updated int64  `json:"updated"`
+}
+
+// autoKeyboardOn reports whether generous blank screen space opens the mobile
+// keyboard automatically (true by default when AutoKeyboard is nil).
+func (p Prefs) autoKeyboardOn() bool {
+	return p.AutoKeyboard == nil || *p.AutoKeyboard
 }
 
 // named is what a device says about itself, with the name this device's

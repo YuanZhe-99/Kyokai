@@ -2497,5 +2497,26 @@
   "MobileFilesWaiting": "Waiting",
   "MobileFilesProgress": "{done} of {total}",
   "MobileFilesDone": "Done",
-  "MobileFilesCancelled": "Cancelled"
+  "MobileFilesCancelled": "Cancelled",
+  "MobileAutoKeyboard": "Auto-open keyboard",
+  "MobileAutoKeyboardHint": "Open the on-screen keyboard automatically when the screen has generous blank space",
+  "MobileTouchpad": "Touchpad",
+  "MobileKeyboardFull": "Full",
+  "MobileKeyboardSplit": "Split",
+  "MobileSettingsSummaryKeys": "{count, plural, one {1 key} other {# keys}}",
+  "@MobileSettingsSummaryKeys": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "MobileSettingsSummaryNetworks": "{count, plural, one {1 network} other {# networks}}",
+  "@MobileSettingsSummaryNetworks": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

@@ -1,6 +1,9 @@
 package gui
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestMobileKeyboardLayersAndKeysyms(t *testing.T) {
 	if got := KeysymFor(0x02, false); got != '1' {
@@ -80,5 +83,49 @@ func TestNormalizeHostOS(t *testing.T) {
 	}
 	if got := NormalizeHostOS("macos", "windows", true); got != "macos" {
 		t.Fatalf("override macos = %q, want macos", got)
+	}
+}
+
+func TestMobileKeyboardWinTapAndStandalone(t *testing.T) {
+	kb := NewMobileKeyboard(nil, 1.6)
+	var sent [][2]uint32
+	opts := MobileKeyboardOptions{
+		HostOS: "windows",
+		Send: func(code uint32, down, _ bool) {
+			var d uint32
+			if down {
+				d = 1
+			}
+			sent = append(sent, [2]uint32{code, d})
+		},
+	}
+	winSpec := kMod("Win", kbWin, 10)
+
+	// First tap latches Win once so Win+D works single-handed.
+	kb.activate(winSpec, opts)
+	if kb.latch[kbWin] != kbOnce {
+		t.Fatalf("1st Win tap latch = %v, want kbOnce", kb.latch[kbWin])
+	}
+	if len(sent) != 0 {
+		t.Fatalf("1st Win tap sent %v, want 0", sent)
+	}
+
+	// Deliberate second tap (>350ms later) sends standalone Win press+release and clears latch.
+	kb.lastTap[kbWin] = time.Now().Add(-400 * time.Millisecond)
+	kb.activate(winSpec, opts)
+	if kb.latch[kbWin] != kbOff {
+		t.Fatalf("2nd Win tap latch = %v, want kbOff", kb.latch[kbWin])
+	}
+	if len(sent) != 2 || sent[0] != [2]uint32{scanLWin, 1} || sent[1] != [2]uint32{scanLWin, 0} {
+		t.Fatalf("standalone Win events = %v, want LWin down+up", sent)
+	}
+
+	// Rapid double tap (<350ms) locks Win.
+	sent = nil
+	kb.lastTap[kbWin] = time.Time{}
+	kb.activate(winSpec, opts)
+	kb.activate(winSpec, opts)
+	if kb.latch[kbWin] != kbLocked {
+		t.Fatalf("rapid double Win tap latch = %v, want kbLocked", kb.latch[kbWin])
 	}
 }

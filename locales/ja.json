@@ -1564,5 +1564,12 @@
   "MobileFilesWaiting": "待機中",
   "MobileFilesProgress": "{done} / {total}",
   "MobileFilesDone": "完了",
-  "MobileFilesCancelled": "キャンセルしました"
+  "MobileFilesCancelled": "キャンセルしました",
+  "MobileAutoKeyboard": "キーボードを自動で開く",
+  "MobileAutoKeyboardHint": "画面の余白が多いときにスクリーンキーボードを自動で開きます",
+  "MobileTouchpad": "タッチパッド",
+  "MobileKeyboardFull": "フル",
+  "MobileKeyboardSplit": "分割",
+  "MobileSettingsSummaryKeys": "{count, plural, other{{count} 個の鍵}}",
+  "MobileSettingsSummaryNetworks": "{count, plural, other{{count} 個のネットワーク}}"
 }

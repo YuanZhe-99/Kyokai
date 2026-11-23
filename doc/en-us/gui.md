@@ -649,6 +649,44 @@ colors a shell uses most, and the cursor (`termPreview`).
   device, the task it follows, title, state and times — never a screenshot; with No logs on,
   only in memory. A session that never started a task is not kept once its pane closes.
 
+## Android controller
+
+- **Material Design 3 shell and navigation**: `MobileView` renders a tonal Material 3 interface
+  (`mobile_theme.go`), sourcing Android 12+ Material You system colors via `DynamicPalette()` and
+  falling back to Kyokai's jade-teal (`#04342C` seed) light/dark tonal surface ladder
+  (`resolveMobileColors`), verified to meet WCAG AA 4.5:1 contrast (`TestMobileMaterialContrast`).
+  Compact phones use a bottom `NavigationBar` with animated pill indicators and `mobile.Ink`
+  ripples; Settings › Appearance lets the person pick `Bottom`, `Side on wide` (default), or `Side`
+  for the navigation position, rendering a centered floating capsule dock on wide unfolded
+  foldables/tablets when `Bottom` is chosen (`mobileFloatingBottomBar`).
+- **Host telemetry**: Devices cards embed the 4-metric compact progress strip (`compactFigures`),
+  while Device Detail renders the full Pulse telemetry tiles with `dotHistory`
+  (`mobileDeviceStatusSection`), prioritizing the open detail device in `statusHosts()` and
+  honouring the same freshness and staleness rules as desktop Home.
+- **Floating viewer toolbar**: the translucent pill bar (`mobileFloatingToolbar`) collapses into a
+  44×44 edge-snapping handle persisted across sessions (`barOffset`, `ToolbarHandle`). Window-dp
+  exclusion rectangles (`barRect` computed directly from `stageBounds + DragOffset`, plus
+  `zoomRect` on Kyokai/NanoKVM, RDP and VNC) are synced through `TouchBridge`
+  (`WatchTouch`/`SetTouchBounds`) so tapping or dragging the collapsed handle never leaks to the
+  remote cursor.
+- **Auto-open keyboard**: when `AutoKeyboard` (`auto_keyboard`, Settings › Input, on by default)
+  is enabled, Kyokai/NanoKVM and RDP/VNC viewers evaluate `shouldAutoOpenKeyboard` per viewport
+  geometry bucket and open the keyboard automatically when vertical letterbox space is generous
+  (at least 240 dp and 34% of available height). Rotating to landscape closes an auto-opened
+  keyboard automatically while preserving manual show/hide choices within that geometry bucket.
+- **Computer keyboard and Foldable Laptop Mode**: elevated M3 keycaps keep lighter character key
+  faces above tonal function keys and the deeper tray in both light and dark appearances, with
+  vector SVG glyphs, secondary Shift legend hints on wide layouts, immediate press-down highlights
+  and haptics, a compact-phone key preview bubble (`ui.Overlay`), repeatable Backspace/Space/arrow
+  keys, standalone Win/Super tap when latched, and an Android edge-to-edge bottom chin bar providing
+  at least 54 dp of gesture clearance below Space and Enter even when the system gesture bar is
+  hidden (`safeBottom == 0`). When `LaptopMode` is enabled and `PostureWatcher` reports a
+  horizontal half-opened fold (`HalfOpened` with `Orientation == "horizontal"`), `mobileLaptopGeometry`
+  places the remote picture strictly above `hingeTop` and a dedicated lower laptop deck below
+  `hingeBottom` across Kyokai/NanoKVM, RDP and VNC: a full 5-row ANSI horizontal keyboard with
+  inverted-T arrow keys above a wide centered palmrest touchpad and integrated Left/Right click
+  buttons (`renderLaptopDeck`), honouring `LaptopSafeArea`.
+
 ## Wording rules
 
 - Copy is written for the person using the app.

@@ -1564,5 +1564,12 @@
   "MobileFilesWaiting": "等待中",
   "MobileFilesProgress": "{done} / {total}",
   "MobileFilesDone": "已完成",
-  "MobileFilesCancelled": "已取消"
+  "MobileFilesCancelled": "已取消",
+  "MobileAutoKeyboard": "自動開啟鍵盤",
+  "MobileAutoKeyboardHint": "畫面留白較多時自動彈出螢幕鍵盤",
+  "MobileTouchpad": "觸控板",
+  "MobileKeyboardFull": "全鍵盤",
+  "MobileKeyboardSplit": "分離",
+  "MobileSettingsSummaryKeys": "{count, plural, other{{count} 把金鑰}}",
+  "MobileSettingsSummaryNetworks": "{count, plural, other{{count} 個網路}}"
 }
