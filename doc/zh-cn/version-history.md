@@ -1,5 +1,24 @@
 # 版本历史
 
+## 0.8.1（2026-11-23）
+
+Android 控制端界面重构、键盘质感优化与折叠屏笔记本底座。
+
+- Material Design 3 外壳与导航（`internal/gui`、`internal/androidhost`）：支持 Android 12+ Material You
+  动态取色（`DynamicPalette()`）与 Kyokai 青玉绿（`#04342C`）默认回退色阶、通过 WCAG AA 对比度检查的浅色/深色表面层级、
+  带动画指示器的胶囊底部 `NavigationBar`、宽屏选择“底部”时的居中悬浮胶囊底栏，并修复“导航位置”无法选中“底部”的问题。
+- 移动端主机状态遥测与查看器控制：设备列表卡片新增 4 项紧凑指标进度条（`compactFigures`），设备详情页升级为带 `dotHistory`
+  点阵图的完整 Pulse 状态面板（优先保活 `selectedDev` 订阅）；修复悬浮工具栏收起后点击展不开、拖拽被鼠标覆盖的问题（`TouchBridge`
+  `WatchTouch`/`SetTouchBounds` 窗口坐标系排除矩形与持久化 `barOffset`）。
+- 自动展开键盘与电脑键盘质感优化：新增 `AutoKeyboard`（`auto_keyboard`，默认开启），在 Kyokai/NanoKVM、RDP 与 VNC
+  竖屏空白充足时自动展开虚拟键盘、横屏时自动收起；优化 M3 键帽明暗对比与层级阴影、矢量 SVG 图标、Shift 副字符提示、按下即触发的触觉反馈与高亮、
+  手机端放大预览气泡、方向/空格/退格长按连发、Win 键单按触发，以及 Android 全面屏底部手势留白底栏（空格/Enter 下方至少 `54 dp`）。
+- 折叠屏笔记本模式（`versionCode = 801`）：横向半折姿态（`PostureWatcher` 与 `ActivityLifecycleCallbacks`）在
+  Kyokai/NanoKVM、RDP 与 VNC 下均将远程画面置于 `hingeTop` 上方，并在 `hingeBottom` 下方渲染上方完整 5 行横排 ANSI 键盘、
+  下方宽幅居中掌托触控板的专用笔记本底座。
+- 已检查上游，未变化：MyGo v0.10.0、EasyTier v2.7.1（`0d9c52b`）、RustDesk 1.5.3、vcpkg 2026.10.16、smoltcp 0.14.0、
+  Rust 1.100.0、Bun 1.4.5、Pi 1.6.0（2026-11-23 检查）。
+
 ## 0.8.0（2026-11-22）
 
 Android 控制端合入 Kyokai。

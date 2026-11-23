@@ -127,7 +127,7 @@ Built and verified on the Android 17 (API 37) emulator and on Galaxy Z Fold 8 (`
 
 ## 0.8.1
 
-Implemented and verified locally (`ui.Tester` unit/view suites, WCAG AA contrast checks, Light/Dark & Phone/Foldable screenshots, `go tool mygo native check`, `platform-notes.md`); live verification on Galaxy Z Fold 8 remains before tagging `0.8.1`:
+Implemented and verified locally (`ui.Tester` unit/view suites, WCAG AA contrast checks, Light/Dark & Phone/Foldable screenshots, `go tool mygo native check`, `platform-notes.md`); live verification on Galaxy Z Fold 8 remains on device:
 
 | Item | Scope | Done when |
 |---|---|---|

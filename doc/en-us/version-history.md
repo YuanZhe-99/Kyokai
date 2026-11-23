@@ -1,5 +1,30 @@
 # Version history
 
+## 0.8.1 (2026-11-23)
+
+Android controller UI overhaul, keyboard polish, and foldable laptop deck.
+
+- Material Design 3 shell and navigation (`internal/gui`, `internal/androidhost`): Android 12+ Material
+  You dynamic colors (`DynamicPalette()`) with Kyokai's jade-teal (`#04342C`) fallback, WCAG AA
+  verified light/dark tonal surfaces, animated capsule bottom `NavigationBar`, centered wide floating
+  capsule dock when `Bottom` is selected, and fixed `Navigation position` `"Bottom"` selection.
+- Rich mobile host telemetry and viewer controls: 4-metric compact status strip (`compactFigures`) on
+  Devices cards, full Pulse telemetry tiles with `dotHistory` in Device Detail (`selectedDev` watch
+  priority), and fixed collapsed floating viewer toolbar tap/drag pass-through (`TouchBridge`
+  `WatchTouch`/`SetTouchBounds` window-dp exclusion rectangles and persisted `barOffset`).
+- Auto-open keyboard and computer keyboard polish: `AutoKeyboard` (`auto_keyboard`, on by default)
+  opens the virtual keyboard automatically on generous portrait letterbox space and closes it on
+  landscape rotation across Kyokai/NanoKVM, RDP and VNC; enhanced M3 keycap contrast and elevation,
+  vector SVG glyphs, Shift legends, press-down haptics and highlights, phone key preview bubble,
+  repeatable navigation/Space/Backspace keys, standalone Win tap, and an explicit Android edge-to-edge
+  bottom gesture chin (`≥ 54 dp` below Space/Enter).
+- Foldable Laptop Mode (`versionCode = 801`): horizontal half-opened posture (`PostureWatcher` with
+  `ActivityLifecycleCallbacks`) places the remote display above `hingeTop` and a full 5-row horizontal
+  ANSI keyboard above a wide centered palmrest touchpad below `hingeBottom` across Kyokai/NanoKVM,
+  RDP and VNC.
+- Upstreams checked, unchanged: MyGo v0.10.0, EasyTier v2.7.1 (`0d9c52b`), RustDesk 1.5.3, vcpkg
+  2026.10.16, smoltcp 0.14.0, Rust 1.100.0, Bun 1.4.5, Pi 1.6.0 (checked 2026-11-23).
+
 ## 0.8.0 (2026-11-22)
 
 Android controller merged into Kyokai.
