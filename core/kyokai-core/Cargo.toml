@@ -37,7 +37,7 @@ smoltcp = { version = "0.14.0", default-features = false, features = ["std", "so
 network-interface = "2.0.5"
 # AI scope's folders: files changed outside them while the AI acts
 # (ai/task.rs, `Watch`).
-notify = "8.2.2"
+notify = "9.0.0"
 base64 = "0.23.1"
 chacha20poly1305 = "0.11.0"
 ed25519-dalek = "3.0.0"
