@@ -12,7 +12,7 @@ both sides (let others in, and reach your other machines); on Android it acts as
 [User guide](doc/en-us/user-guide.md) · [Documentation](doc/en-us/README.md) ·
 [中文文档](doc/zh-cn/README.md)
 
-> **0.8.1** — Windows (x64, ARM64), macOS 14+ (Apple silicon, Intel), Linux (x64, ARM64; X11
+> **0.8.2** — Windows (x64, ARM64), macOS 14+ (Apple silicon, Intel), Linux (x64, ARM64; X11
 > and Wayland) and Android 8.0+ (`arm64-v8a`, controller only; merged from the archived
 > [Kyokai-Mobile](https://github.com/YuanZhe-99/Kyokai-Mobile) repository in `0.8.0`). Windows is
 > the most complete and the most tested. On macOS a few checks remain; on Linux, GNOME and KDE

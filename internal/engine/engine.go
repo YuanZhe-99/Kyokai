@@ -1134,6 +1134,10 @@ var logFile struct {
 // logTail is how much of each log ReadLogs returns: its newest part.
 const logTail = 1 << 20
 
+// logMaxBytes caps each log file (engine.log, agent.log, gui-crash.log,
+// helper.log) in place so logs stay bounded without rotation backups.
+const logMaxBytes = 10 << 20
+
 // ReadLogs returns the logs a state directory keeps (logs/*.log and the
 // macOS helper's helper.log), each under its name and cut to its newest
 // logTail bytes.
@@ -1176,6 +1180,7 @@ func Logger(path string) func(string, ...any) {
 		var w io.Writer = os.Stderr
 		switch {
 		case logFile.f != nil:
+			trimOpenLogLocked(logMaxBytes)
 			w = logFile.f
 		case logFile.off:
 			return
@@ -1202,8 +1207,11 @@ func CrashLog(path string) *os.File {
 		_ = os.Remove(filepath.Join(stateDir, "helper.log"))
 		return nil
 	}
+	trimPathTo(filepath.Join(stateDir, "helper.log"), logMaxBytes)
 	return openLog()
 }
+
+var logCapOnce sync.Once
 
 // openLog opens logFile.path and points this process's stderr, and the
 // standard logger, at it; where stderr cannot be pointed there, the crash
@@ -1214,18 +1222,102 @@ func openLog() *os.File {
 	if err := os.MkdirAll(filepath.Dir(logFile.path), 0o700); err != nil {
 		return nil
 	}
+	_ = os.Remove(logFile.path + ".1")
 	f, err := os.OpenFile(logFile.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil
 	}
+	logFile.f = f
+	trimOpenLogLocked(logMaxBytes)
 	if logStderr(f) {
 		// The standard logger kept the stderr it started with (Windows).
 		log.SetOutput(f)
 	} else {
 		_ = debug.SetCrashOutput(f, debug.CrashOptions{})
 	}
-	logFile.f = f
+	logCapOnce.Do(func() {
+		go func() {
+			t := time.NewTicker(30 * time.Second)
+			defer t.Stop()
+			for range t.C {
+				logFile.Lock()
+				if logFile.f != nil {
+					trimOpenLogLocked(logMaxBytes)
+					stateDir := filepath.Dir(filepath.Dir(logFile.path))
+					trimPathTo(filepath.Join(stateDir, "helper.log"), logMaxBytes)
+				}
+				logFile.Unlock()
+			}
+		}()
+	})
 	return f
+}
+
+// trimOpenLogLocked shrinks logFile.f when its size exceeds maxBytes, keeping
+// the newest half on a newline boundary and rebinding stderr/log/crash output.
+func trimOpenLogLocked(maxBytes int64) {
+	if logFile.f == nil || maxBytes <= 0 {
+		return
+	}
+	info, err := logFile.f.Stat()
+	if err != nil || info.Size() <= maxBytes {
+		return
+	}
+	_ = logFile.f.Close()
+	logFile.f = nil
+	trimPathTo(logFile.path, maxBytes)
+	f, err := os.OpenFile(logFile.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	logFile.f = f
+	if logStderr(f) {
+		log.SetOutput(f)
+	} else {
+		_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+	}
+}
+
+func trimPathTo(path string, maxBytes int64) {
+	if maxBytes <= 0 {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Size() <= maxBytes {
+		return
+	}
+	tail := readLogTail(path, info.Size(), maxBytes/2)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return
+	}
+	_, _ = f.Write(tail)
+	_ = f.Close()
+}
+
+func readLogTail(path string, size, keep int64) []byte {
+	keep = max(keep, 1)
+	r, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer r.Close()
+	start := max(size-keep, 0)
+	if _, err := r.Seek(start, io.SeekStart); err != nil {
+		return nil
+	}
+	tail, err := io.ReadAll(r)
+	if err != nil {
+		return nil
+	}
+	if start > 0 {
+		if i := bytes.IndexByte(tail, '\n'); i >= 0 {
+			tail = tail[i+1:]
+		} else {
+			tail = nil
+		}
+	}
+	return tail
 }
 
 // SetLogsOff turns logs off for a state directory and this process, and

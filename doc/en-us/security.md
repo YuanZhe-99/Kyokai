@@ -139,7 +139,7 @@ reaches a log) and what the stream had sent, and the viewer one
 line per stretch without a picture — counts and states, never a picture. The helper's logs need
 administrator rights to open; `logs.read` returns the logs of the engine's state directory (each
 cut to its newest megabyte) to the engine's owner or the helper's operator only, never to the
-`kyokai` group, nor in protected mode, and nothing while No logs is on.
+`kyokai` group, nor in protected mode, and nothing while No logs is on. Each log file (`engine.log`, `agent.log`, `gui-crash.log`, `helper.log`) is capped at 10 MiB in place by trimming oldest lines when exceeded.
 
 ### No logs
 

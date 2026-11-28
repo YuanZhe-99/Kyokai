@@ -1,5 +1,12 @@
 # 版本历史
 
+## 0.8.2（2026-11-27）
+
+- 为日志文件添加大小上限（`internal/engine`）：`engine.log`、`agent.log`、`gui-crash.log` 与 `helper.log`
+  现在原地限制上限为 10 MiB（在打开、`Logger` 写入及每 30 秒检查时原地裁剪最旧行，同时保持 stderr 重定向不断开）。
+- Android `versionCode = 802`。
+- 已检查上游，未变化：MyGo v0.10.0、EasyTier v2.7.1（`0d9c52b`）、RustDesk 1.5.3、vcpkg 2026.10.16、smoltcp 0.14.0（2026-11-27 检查）。
+
 ## 0.8.1（2026-11-23）
 
 Android 控制端界面重构、键盘质感优化与折叠屏笔记本底座。

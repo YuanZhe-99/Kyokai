@@ -1,5 +1,14 @@
 # Version history
 
+## 0.8.2 (2026-11-27)
+
+- Bounded log files (`internal/engine`): `engine.log`, `agent.log`, `gui-crash.log` and
+  `helper.log` are now capped at 10 MiB in place (trimming oldest lines on open, on `Logger`
+  writes, and periodically on a 30 s check while keeping stderr redirection intact).
+- Android `versionCode = 802`.
+- Upstreams checked, unchanged: MyGo v0.10.0, EasyTier v2.7.1 (`0d9c52b`), RustDesk 1.5.3, vcpkg
+  2026.10.16, smoltcp 0.14.0 (checked 2026-11-27).
+
 ## 0.8.1 (2026-11-23)
 
 Android controller UI overhaul, keyboard polish, and foldable laptop deck.

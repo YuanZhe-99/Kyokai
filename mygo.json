@@ -1,7 +1,7 @@
 {
   "name": "Kyokai",
   "identifier": "com.yuanzhe.kyokai",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "copyright": "Copyright (C) 2026 YuanZhe",
   "main": "./cmd/kyokai",
   "out": "build",
@@ -48,7 +48,7 @@
   },
   "android": {
     "minSdk": 26,
-    "versionCode": 801,
+    "versionCode": 802,
     "permissions": [
       "ACCESS_NETWORK_STATE",
       "ACCESS_WIFI_STATE",

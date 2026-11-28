@@ -119,3 +119,43 @@ func TestReadLogs(t *testing.T) {
 		t.Errorf("logs read with No logs on: %q", got)
 	}
 }
+
+func TestTrimLogCapsSize(t *testing.T) {
+	t.Cleanup(keepStderr())
+	dir := t.TempDir()
+	t.Cleanup(closeLog)
+	path := filepath.Join(dir, "logs", "engine.log")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := strings.Repeat("2026-11-27 old log line\n", 20) + "2026-11-27 newest line\n"
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if CrashLog(path) == nil {
+		t.Fatal("CrashLog returned nil")
+	}
+	logFile.Lock()
+	trimOpenLogLocked(120)
+	logFile.Unlock()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b) > 120 || !strings.Contains(string(b), "newest line") {
+		t.Fatalf("trimmed engine.log len=%d content=%q", len(b), string(b))
+	}
+
+	helperLog := filepath.Join(dir, "helper.log")
+	if err := os.WriteFile(helperLog, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	trimPathTo(helperLog, 120)
+	hb, err := os.ReadFile(helperLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hb) > 120 || !strings.Contains(string(hb), "newest line") {
+		t.Fatalf("trimmed helper.log len=%d content=%q", len(hb), string(hb))
+	}
+}
