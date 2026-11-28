@@ -59,8 +59,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.KeyStore
 import java.security.SecureRandom
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -132,6 +134,8 @@ private class AndroidHost : Host {
     }
 
     override fun watchTouch(onTouch: (RawTouch) -> Unit): AutoCloseable = TouchBridge.watch(onTouch)
+
+    override fun watchTaskRemoved(onRemoved: () -> Unit): AutoCloseable = TaskExit.watch(Native.context, onRemoved)
 
     override fun setTouchBounds(
         capture: Boolean,
@@ -551,6 +555,24 @@ class SessionService : Service() {
         super.onDestroy()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        try {
+            if (Build.VERSION.SDK_INT >= 24) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (_: Throwable) {
+        }
+        try {
+            stopSelf()
+        } catch (_: Throwable) {
+        }
+        TaskExit.onTaskRemoved(applicationContext)
+        super.onTaskRemoved(rootIntent)
+    }
+
     companion object {
         private const val ID = 1
         private const val CHANNEL = "sessions"
@@ -593,6 +615,98 @@ class SessionService : Service() {
                 }
             }
         }
+    }
+}
+
+/**
+ * Coordinates clean Recents-swipe exit so sessions and the EasyTier core
+ * disconnect and no background process lingers after the user closes Kyokai
+ * from the Android app switcher.
+ */
+private object TaskExit {
+    @Volatile private var callback: (() -> Unit)? = null
+    private val exiting = AtomicBoolean(false)
+
+    fun watch(context: Context, onRemoved: () -> Unit): AutoCloseable {
+        callback = onRemoved
+        val app = context.applicationContext as? Application
+        val mainHandler = Handler(Looper.getMainLooper())
+        val startGuard = {
+            try {
+                context.startService(Intent(context, TaskGuardService::class.java))
+            } catch (_: Throwable) {
+            }
+        }
+        val callbacks = object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityStarted(activity: Activity) {}
+            override fun onActivityResumed(activity: Activity) { startGuard() }
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        }
+        app?.registerActivityLifecycleCallbacks(callbacks)
+        if (Native.activity != null) {
+            mainHandler.post { startGuard() }
+        }
+        return NativeCloser {
+            app?.unregisterActivityLifecycleCallbacks(callbacks)
+            if (callback === onRemoved) callback = null
+            if (!exiting.get()) {
+                try {
+                    context.stopService(Intent(context, TaskGuardService::class.java))
+                } catch (_: Throwable) {
+                }
+            }
+        }
+    }
+
+    fun onTaskRemoved(context: Context) {
+        if (!exiting.compareAndSet(false, true)) return
+        SessionService.update(context, null)
+        try {
+            context.stopService(Intent(context, TaskGuardService::class.java))
+        } catch (_: Throwable) {
+        }
+        val cb = callback
+        if (cb != null) {
+            val latch = CountDownLatch(1)
+            Thread({
+                try {
+                    cb()
+                } catch (_: Throwable) {
+                } finally {
+                    latch.countDown()
+                }
+            }, "kyokai-task-exit").apply { isDaemon = true }.start()
+            try {
+                latch.await(2500, TimeUnit.MILLISECONDS)
+            } catch (_: InterruptedException) {
+            }
+        }
+        android.os.Process.killProcess(android.os.Process.myPid())
+        System.exit(0)
+    }
+}
+
+/**
+ * Lightweight non-foreground service whose sole purpose is receiving
+ * onTaskRemoved when the user swipes Kyokai away from Recents even when
+ * SessionService is not running (e.g. in default power-saving mode).
+ */
+class TaskGuardService : Service() {
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        try {
+            stopSelf()
+        } catch (_: Throwable) {
+        }
+        TaskExit.onTaskRemoved(applicationContext)
+        super.onTaskRemoved(rootIntent)
     }
 }
 

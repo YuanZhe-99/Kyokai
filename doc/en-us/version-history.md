@@ -1,5 +1,25 @@
 # Version history
 
+## 0.8.3 (2026-11-28)
+
+Android background power-saving mode and clean Recents exit.
+
+- Default power-saving background behavior on Android (`internal/gui`, `internal/androidhost`):
+  `KeepBackgroundSessions` (`keep_background_sessions` in `gui.json`) defaults to `false` so
+  moving Kyokai to the background (`mobileEnterBackground` via `Power.OnSuspend`) releases screen
+  wake locks, drops host status watches, and disconnects all active controller sessions (desktop,
+  NanoKVM, RDP, VNC, SSH, AI links) without starting `SessionService` or a background wake lock.
+- Optional **Keep connections in background** toggle in Settings › This device allows keeping
+  active sessions running in the background with `SessionService`'s foreground notification.
+- Clean Recents swipe-away exit (`TaskGuardService`, `SessionService.onTaskRemoved`,
+  `WatchTaskRemoved`, `mobileOnTaskRemoved`): closing Kyokai from Android's app switcher stops
+  `SessionService`, disconnects every open session, cleanly shuts down the in-process engine and
+  embedded EasyTier network, and exits the process with no lingering background service or process.
+- Android `versionCode = 803`.
+- Upstreams: Rust `1.100.0` → `1.100.1`, Pi `1.6.0` → `1.7.0`; checked, unchanged: MyGo v0.10.0,
+  EasyTier v2.7.1 (`0d9c52b`), RustDesk 1.5.3, vcpkg 2026.10.16, smoltcp 0.14.0, Bun 1.4.5
+  (checked 2026-11-28).
+
 ## 0.8.2 (2026-11-27)
 
 - Bounded log files (`internal/engine`): `engine.log`, `agent.log`, `gui-crash.log` and

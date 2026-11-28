@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image"
+	"sync"
 	"testing"
 	"time"
 
@@ -686,5 +687,198 @@ func TestMobileMaterialContrast(t *testing.T) {
 				t.Errorf("%s expected dark keycap luminance KbKey(%.4f) > KbFuncKey(%.4f) > KbTray(%.4f)", tc.name, lKey, lFunc, lTray)
 			}
 		}
+	}
+}
+
+type fakeAndroidHost struct {
+	androidhost.Host
+	mu       sync.Mutex
+	sessions []string
+}
+
+func (f *fakeAndroidHost) SetSessions(text string) {
+	f.mu.Lock()
+	f.sessions = append(f.sessions, text)
+	f.mu.Unlock()
+}
+
+func (f *fakeAndroidHost) calls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, len(f.sessions))
+	copy(out, f.sessions)
+	return out
+}
+
+func stubMobileKeepAwake(t *testing.T) (acquired, released *int) {
+	t.Helper()
+	var acq, rel int
+	prev := mobileKeepAwake
+	t.Cleanup(func() { mobileKeepAwake = prev })
+	mobileKeepAwake = func() func() {
+		acq++
+		return func() { rel++ }
+	}
+	return &acq, &rel
+}
+
+func TestMobileBackgroundPowerSavingDefault(t *testing.T) {
+	acq, rel := stubMobileKeepAwake(t)
+	a := demoApp(t)
+	a.initMobile()
+	h := &fakeAndroidHost{}
+	a.mobile.host = h
+	a.visible = true
+
+	if a.prefs.KeepBackgroundSessions {
+		t.Fatal("KeepBackgroundSessions should default to false (power-saving mode)")
+	}
+
+	v := makeMobileConnectedViewer(t, a, "657365333", 1920, 1080)
+	svc := &serviceTab{app: a, device: "222333444", service: serviceRDP, name: "Win", kind: "Remote Desktop", phase: svcRunning}
+	a.services[svc.tabKey()] = svc
+	a.mobile.terms["555000555:ssh:1"] = &mobileTermSession{app: a, device: "555000555", name: "Linux", state: "connected"}
+	a.aiLinks["333444555"] = &aiLink{app: a, device: "333444555", panes: 2}
+
+	a.mobileSyncSessions()
+	if calls := h.calls(); len(calls) != 0 {
+		t.Fatalf("power-saving mode should not start foreground SessionService, got %v", calls)
+	}
+	if *acq != 1 || *rel != 0 {
+		t.Fatalf("expected wake lock acquired once while viewing, got acq=%d rel=%d", *acq, *rel)
+	}
+
+	a.mobileEnterBackground()
+
+	if a.visible {
+		t.Fatal("mobileEnterBackground should mark app not visible")
+	}
+	if *rel != 1 {
+		t.Fatalf("expected wake lock released on background, got rel=%d", *rel)
+	}
+	if a.mobile.activeSession != "" {
+		t.Fatalf("activeSession = %q, want empty after background disconnect", a.mobile.activeSession)
+	}
+	if n := a.mobileOpenSessionCount(); n != 0 {
+		t.Fatalf("open session count = %d after backgrounding in power-saving mode, want 0", n)
+	}
+	if _, ok := a.viewers[v.tabKey()]; ok {
+		t.Fatal("viewer remained open after backgrounding in power-saving mode")
+	}
+	if len(a.services) != 0 || len(a.mobile.terms) != 0 || len(a.aiLinks) != 0 {
+		t.Fatalf("expected all sessions closed, got services=%d terms=%d aiLinks=%d", len(a.services), len(a.mobile.terms), len(a.aiLinks))
+	}
+}
+
+func TestMobileKeepBackgroundSessions(t *testing.T) {
+	_, rel := stubMobileKeepAwake(t)
+	a := demoApp(t)
+	a.initMobile()
+	h := &fakeAndroidHost{}
+	a.mobile.host = h
+	a.visible = true
+	a.prefs.KeepBackgroundSessions = true
+
+	v := makeMobileConnectedViewer(t, a, "657365333", 1920, 1080)
+	a.mobileSyncSessions()
+	calls := h.calls()
+	if len(calls) != 1 || calls[0] == "" {
+		t.Fatalf("expected SessionService started when KeepBackgroundSessions is true, got %v", calls)
+	}
+
+	a.mobileEnterBackground()
+	if a.visible {
+		t.Fatal("mobileEnterBackground should mark app not visible")
+	}
+	if *rel != 1 {
+		t.Fatalf("expected screen wake lock released in background even when keeping sessions, got rel=%d", *rel)
+	}
+	if _, ok := a.viewers[v.tabKey()]; !ok {
+		t.Fatal("viewer disconnected despite KeepBackgroundSessions = true")
+	}
+	if calls := h.calls(); len(calls) != 1 || calls[0] == "" {
+		t.Fatalf("SessionService should remain active while keeping background sessions, got %v", calls)
+	}
+
+	a.mu.Lock()
+	a.prefs.KeepBackgroundSessions = false
+	a.mu.Unlock()
+	a.mobileSyncSessions()
+	calls = h.calls()
+	if len(calls) != 2 || calls[1] != "" {
+		t.Fatalf("expected SessionService stopped when KeepBackgroundSessions turned off, got %v", calls)
+	}
+}
+
+func TestMobileTaskRemovedStopsEngineAndSessions(t *testing.T) {
+	stubMobileKeepAwake(t)
+	a := demoApp(t)
+	a.initMobile()
+	h := &fakeAndroidHost{}
+	a.mobile.host = h
+	a.visible = true
+	a.prefs.KeepBackgroundSessions = true
+
+	done := make(chan struct{})
+	a.mobile.engineDone = done
+	go func() {
+		<-a.ctx.Done()
+		close(done)
+	}()
+
+	_ = makeMobileConnectedViewer(t, a, "657365333", 1920, 1080)
+	svc := &serviceTab{app: a, device: "222333444", service: serviceVNC, name: "Mac", kind: "VNC", phase: svcRunning}
+	a.services[svc.tabKey()] = svc
+	a.mobile.terms["555000555:ssh:1"] = &mobileTermSession{app: a, device: "555000555", name: "Linux", state: "connected"}
+	a.aiLinks["333444555"] = &aiLink{app: a, device: "333444555", panes: 1}
+
+	a.mobileOnTaskRemoved()
+
+	if !a.quitting {
+		t.Fatal("mobileOnTaskRemoved should mark app quitting")
+	}
+	if a.ctx.Err() == nil {
+		t.Fatal("mobileOnTaskRemoved should cancel app context to stop in-process engine")
+	}
+	if n := a.mobileOpenSessionCount(); n != 0 {
+		t.Fatalf("open session count = %d after task removed, want 0", n)
+	}
+	select {
+	case <-done:
+	default:
+		t.Fatal("mobileOnTaskRemoved returned before engineDone closed")
+	}
+}
+
+func TestMobileSettingsKeepBackgroundToggle(t *testing.T) {
+	defer i18n.SetLocaleFunc(nil)
+	i18n.SetLocaleFunc(func() string { return "en" })
+
+	a := demoApp(t)
+	a.initMobile()
+	a.mobile.navTab = 2
+	a.mobile.settingsOpen = true
+	a.mobile.settingsPage = mobSetDevice
+
+	tt := ui.NewTester(a.MobileView, 390, 844)
+	tt.Frame()
+
+	swInfo, ok := tt.AccessByRole(ui.RoleSwitch, L.MobileKeepBackground())
+	if !ok {
+		t.Fatalf("switch %q not found on Device settings page", L.MobileKeepBackground())
+	}
+	r := swInfo.Bounds
+	tt.FingerDown(r.X+r.W/2, r.Y+r.H/2)
+	tt.FingerUp(r.X+r.W/2, r.Y+r.H/2)
+	tt.Frame()
+	if !a.prefs.KeepBackgroundSessions {
+		t.Fatal("tapping KeepBackgroundSessions switch did not enable it")
+	}
+
+	tt.FingerDown(r.X+r.W/2, r.Y+r.H/2)
+	tt.FingerUp(r.X+r.W/2, r.Y+r.H/2)
+	tt.Frame()
+	if a.prefs.KeepBackgroundSessions {
+		t.Fatal("tapping KeepBackgroundSessions switch again did not disable it")
 	}
 }

@@ -1291,11 +1291,16 @@ func (a *App) mobileStartSSH(device, address string) {
 
 func (a *App) mobileCloseSSH(key string) {
 	ms := a.mobile
+	if ms == nil {
+		return
+	}
+	a.mu.Lock()
 	ts := ms.terms[key]
 	delete(ms.terms, key)
 	if ms.activeSession == key {
 		ms.activeSession = ""
 	}
+	a.mu.Unlock()
 	if ts != nil {
 		ts.mu.Lock()
 		conn, files := ts.conn, ts.files

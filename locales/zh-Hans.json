@@ -1567,6 +1567,8 @@
   "MobileFilesCancelled": "已取消",
   "MobileAutoKeyboard": "自动打开键盘",
   "MobileAutoKeyboardHint": "画面留白较多时自动弹出屏幕键盘",
+  "MobileKeepBackground": "后台保持连接",
+  "MobileKeepBackgroundHint": "默认关闭以省电省流量：切换到后台时自动断开当前会话。从后台管理界面关闭时始终断开会话与网络。",
   "MobileTouchpad": "触控板",
   "MobileKeyboardFull": "全键盘",
   "MobileKeyboardSplit": "分体",

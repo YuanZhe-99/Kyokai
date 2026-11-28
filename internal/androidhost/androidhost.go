@@ -56,6 +56,10 @@ type Host interface {
 	// WatchTouch registers the persistent multi-touch/pointer callback used by
 	// Android's SurfaceView TouchBridge until the returned closer is closed.
 	WatchTouch(onTouch func(RawTouch)) io.Closer
+	// WatchTaskRemoved registers a callback invoked when the user swipes
+	// Kyokai away from Android's Recents screen (onTaskRemoved) so sessions
+	// and the EasyTier network can be closed cleanly before the process exits.
+	WatchTaskRemoved(onRemoved func()) io.Closer
 	// SetTouchBounds configures capture state and window-DIP regions (r1 for
 	// the remote screen stage, r2 for an optional keyboard touchpad, ex1/ex2 for
 	// overlay toolbar and zoom pill exclusions) without reallocating callbacks.

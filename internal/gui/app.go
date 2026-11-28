@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"log"
 	"runtime"
 	"strconv"
@@ -525,6 +526,24 @@ func (a *App) watchMain() {
 func (a *App) Stop() {
 	_ = a.writePrefs() // what the writer has not saved yet
 	a.cancel()
+	if a.mobile != nil {
+		a.mu.Lock()
+		rel := a.mobile.awakeRelease
+		a.mobile.awakeRelease = nil
+		a.mobile.lastSvcText = ""
+		a.mu.Unlock()
+		if rel != nil {
+			rel()
+		}
+		if a.mobile.host != nil {
+			a.mobile.host.SetSessions("")
+		}
+		for _, sub := range []io.Closer{a.mobile.postureSub, a.mobile.touchSub, a.mobile.taskSub} {
+			if sub != nil {
+				_ = sub.Close()
+			}
+		}
+	}
 	// Only the GUI's own engine stops; the helper keeps running.
 	a.engine.stop(a.userSocket)
 }

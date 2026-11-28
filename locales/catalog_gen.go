@@ -14311,6 +14311,26 @@ func (msgs Messages) MobileAutoKeyboardHint() string {
 	return Catalog.Format(msgs.locale, "MobileAutoKeyboardHint", nil)
 }
 
+// MobileKeepBackground says "Keep connections in background"
+// in the language the app shows.
+func MobileKeepBackground() string { return In(i18n.Locale()).MobileKeepBackground() }
+
+// MobileKeepBackground says "Keep connections in background"
+// in the language of msgs.
+func (msgs Messages) MobileKeepBackground() string {
+	return Catalog.Format(msgs.locale, "MobileKeepBackground", nil)
+}
+
+// MobileKeepBackgroundHint says "Off by default to save battery and data: active sessions disconnect when Kyokai moves to the background. Closing Kyok…"
+// in the language the app shows.
+func MobileKeepBackgroundHint() string { return In(i18n.Locale()).MobileKeepBackgroundHint() }
+
+// MobileKeepBackgroundHint says "Off by default to save battery and data: active sessions disconnect when Kyokai moves to the background. Closing Kyok…"
+// in the language of msgs.
+func (msgs Messages) MobileKeepBackgroundHint() string {
+	return Catalog.Format(msgs.locale, "MobileKeepBackgroundHint", nil)
+}
+
 // MobileTouchpad says "Touchpad"
 // in the language the app shows.
 func MobileTouchpad() string { return In(i18n.Locale()).MobileTouchpad() }

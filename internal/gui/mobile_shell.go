@@ -1506,6 +1506,18 @@ func (a *App) mobileSettingsContent(c *ui.Context, mc mobileColors, pg mobileSet
 						a.setNoLogs(p, noLogs)
 					}
 				})
+				keepBg := p.KeepBackgroundSessions
+				ui.Row(c).FillWidth().MinHeight(52).AlignItems(ui.Center).Gap(10).Children(func() {
+					ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+						ui.Text(c, L.MobileKeepBackground()).FontWeight(500).TextColor(mc.OnSurface)
+						ui.Text(c, L.MobileKeepBackgroundHint()).FontSize(12).TextColor(mc.OnSurfaceVariant)
+					})
+					if m3Switch(c, "mob-keep-bg", &keepBg, L.MobileKeepBackground()) {
+						p.KeepBackgroundSessions = keepBg
+						a.setPrefs(p)
+						a.mobileSyncSessions()
+					}
+				})
 			})
 			a.mobileIdentityBackupCard(c, mc, st.DeviceID)
 		})

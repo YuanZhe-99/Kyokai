@@ -128,6 +128,10 @@ type Prefs struct {
 	VideoOverlay bool `json:"video_overlay,omitempty"`
 	// SoundMuted mutes host sound by default on mobile (false means sound on).
 	SoundMuted bool `json:"sound_muted,omitempty"`
+	// KeepBackgroundSessions keeps remote sessions open in the background
+	// via a foreground service; false (the zero value) disconnects sessions
+	// when the app moves to the background to save battery and data.
+	KeepBackgroundSessions bool `json:"keep_background_sessions,omitempty"`
 	// ToolbarHandle is the normalized (0..1) edge position of the collapsed
 	// floating toolbar arrow on mobile; nil means top-center (0.5, 0).
 	ToolbarHandle *[2]float32 `json:"toolbar_handle,omitempty"`

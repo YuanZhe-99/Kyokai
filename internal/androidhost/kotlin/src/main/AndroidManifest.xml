@@ -8,6 +8,10 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps remote desktop and SSH sessions to the user's own computers open while the app is in the background." />
         </service>
+        <service
+            android:name="com.github.yuanzhe_99.kyokai.internal.androidhost.TaskGuardService"
+            android:exported="false"
+            android:stopWithTask="false" />
         <provider
             android:name="com.github.yuanzhe_99.kyokai.internal.androidhost.ClipProvider"
             android:authorities="com.yuanzhe.kyokai.clip"

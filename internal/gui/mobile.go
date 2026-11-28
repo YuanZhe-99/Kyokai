@@ -49,11 +49,13 @@ type mobileState struct {
 	decoders   []androidhost.DecoderCap
 	postureSub io.Closer
 	touchSub   io.Closer
+	taskSub    io.Closer
 	posture    androidhost.Posture
 
 	engineMu       sync.Mutex
 	engineStarted  bool
 	engineStartErr error
+	engineDone     chan struct{}
 
 	// Navigation shell.
 	navTab        int    // 0 Devices, 1 Sessions, 2 Settings
@@ -139,6 +141,9 @@ func (a *App) initMobile() {
 				fn(rt)
 			}
 		})
+		ms.taskSub = h.WatchTaskRemoved(func() {
+			a.mobileOnTaskRemoved()
+		})
 	}
 	// Wipe stale received clipboard files from previous cold starts.
 	cacheDir := ms.info.CacheDir
@@ -164,6 +169,8 @@ func (a *App) ensureInProcessEngine(ctx context.Context, socket string) error {
 	if !ms.engineStarted {
 		ms.engineStarted = true
 		ms.engineStartErr = nil
+		done := make(chan struct{})
+		ms.engineDone = done
 		var masterKey, cacheDir, defaultName string
 		var decNames []string
 		if ms.host != nil {
@@ -197,6 +204,7 @@ func (a *App) ensureInProcessEngine(ctx context.Context, socket string) error {
 			ControllerOnly: true,
 		}
 		go func() {
+			defer close(done)
 			err := engine.Run(ctx, opts)
 			if err != nil && ctx.Err() == nil {
 				ms.engineMu.Lock()
@@ -241,6 +249,153 @@ func (a *App) watchMobileWindow(w *mygo.Window) {
 		a.SetVisible(false)
 		a.mobileForeground(false)
 	})
+	mygo.Power.OnSuspend(func() {
+		a.mobileEnterBackground()
+	})
+	mygo.Power.OnResume(func() {
+		a.mobileEnterForeground()
+	})
+}
+
+// mobileEnterBackground runs when the Android activity moves to the
+// background: drops visibility and host status watches, releases any screen
+// wake lock, and disconnects open sessions unless KeepBackgroundSessions is
+// enabled.
+func (a *App) mobileEnterBackground() {
+	if a.mobile == nil {
+		return
+	}
+	a.SetVisible(false)
+	a.mobileForeground(false)
+	a.mu.Lock()
+	rel := a.mobile.awakeRelease
+	a.mobile.awakeRelease = nil
+	keep := a.prefs.KeepBackgroundSessions
+	a.mu.Unlock()
+	if rel != nil {
+		rel()
+	}
+	if !keep {
+		a.mobileDisconnectAllSessions()
+		return
+	}
+	a.mobileSyncSessions()
+}
+
+// mobileEnterForeground runs when the Android activity returns to the
+// foreground: restores visibility and refreshes session service state.
+func (a *App) mobileEnterForeground() {
+	if a.mobile == nil {
+		return
+	}
+	a.SetVisible(true)
+	a.mobileForeground(true)
+	a.mobileSyncSessions()
+}
+
+// mobileDisconnectAllSessions closes every open desktop, service, SSH and
+// AI-link controller session on mobile and clears session-bound sheets.
+func (a *App) mobileDisconnectAllSessions() {
+	ms := a.mobile
+	a.mu.Lock()
+	viewers := make([]*viewer, 0, len(a.viewers))
+	for _, v := range a.viewers {
+		viewers = append(viewers, v)
+	}
+	services := make([]*serviceTab, 0, len(a.services))
+	for _, s := range a.services {
+		services = append(services, s)
+	}
+	links := make([]*aiLink, 0, len(a.aiLinks))
+	for k, l := range a.aiLinks {
+		links = append(links, l)
+		delete(a.aiLinks, k)
+	}
+	var termKeys []string
+	if ms != nil {
+		for k := range ms.terms {
+			termKeys = append(termKeys, k)
+		}
+		ms.activeSession = ""
+		ms.clipSheetOpen = false
+		ms.aiSheetOpen = false
+		ms.typeTextOpen = false
+		ms.menuSheetOpen = false
+	}
+	connected := a.connected
+	quitting := a.quitting
+	a.mu.Unlock()
+
+	for _, v := range viewers {
+		v.disconnect()
+	}
+	for _, s := range services {
+		s.disconnect()
+	}
+	for _, k := range termKeys {
+		a.mobileCloseSSH(k)
+	}
+	for _, l := range links {
+		l.mu.Lock()
+		conn := l.conn
+		l.mu.Unlock()
+		if conn != nil {
+			_ = conn.Close()
+		}
+		if id := l.sid.Load(); id != 0 {
+			a.dropSession(id)
+			go a.closeSession(id)
+		}
+	}
+	if connected && !quitting {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer cancel()
+			_, _ = localapi.NewClient(a.sock()).Do(ctx, localapi.Request{Type: localapi.RequestCloseControllers})
+		}()
+	}
+	a.mobileSyncSessions()
+	a.homeVisibilityChanged()
+}
+
+// mobileOnTaskRemoved runs when the user dismisses Kyokai from Android's
+// Recents screen: disconnects every session, stops the in-process engine
+// (and its EasyTier network), and waits briefly for cleanup before exit.
+func (a *App) mobileOnTaskRemoved() {
+	a.MarkQuitting()
+	ms := a.mobile
+	if ms != nil {
+		a.mu.Lock()
+		ms.lastSvcText = ""
+		rel := ms.awakeRelease
+		ms.awakeRelease = nil
+		a.mu.Unlock()
+		if rel != nil {
+			// Release off the calling path so Android's main-thread onTaskRemoved wait cannot deadlock.
+			go rel()
+		}
+	}
+	a.mobileDisconnectAllSessions()
+	_ = a.writePrefs()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	client := localapi.NewClient(a.sock())
+	_, _ = client.Do(ctx, localapi.Request{Type: localapi.RequestCloseControllers})
+	_, _ = client.Do(ctx, localapi.Request{Type: localapi.RequestShutdown})
+	cancel()
+	a.cancel()
+
+	if ms != nil {
+		ms.engineMu.Lock()
+		done := ms.engineDone
+		ms.engineMu.Unlock()
+		if done != nil {
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+			}
+		}
+	}
 }
 
 func (a *App) mobileForeground(front bool) {
@@ -366,6 +521,9 @@ func collectShareFiles(paths []string) []string {
 	return out
 }
 
+// mobileKeepAwake keeps the screen on while viewing a remote session; tests replace it.
+var mobileKeepAwake = func() func() { return mygo.Power.KeepAwake("Remote session", true) }
+
 // mobileSyncSessions updates the Android foreground service notification and
 // records any observed AI task summaries into MobileAIHistory.
 func (a *App) mobileSyncSessions() {
@@ -373,32 +531,63 @@ func (a *App) mobileSyncSessions() {
 		return
 	}
 	count := a.mobileOpenSessionCount()
-	var text string
+	var titles []string
 	if count > 0 {
-		text = fmt.Sprintf("%d active session(s)", count)
-		if names := a.mobileOpenSessionTitles(); len(names) > 0 {
-			text = strings.Join(names, ", ")
-		}
-	}
-	if a.mobile.host != nil && text != a.mobile.lastSvcText {
-		a.mobile.lastSvcText = text
-		a.mobile.host.SetSessions(text)
+		titles = a.mobileOpenSessionTitles()
 	}
 
-	// Keep screen awake while actively viewing a remote screen.
 	a.mu.Lock()
-	viewing := a.mobile.activeSession != ""
+	keep := a.prefs.KeepBackgroundSessions
+	visible := a.visible
+	viewing := a.mobile.activeSession != "" && visible
+	quitting := a.quitting
 	noLogs := a.prefs.NoLogs
 	links := make([]*aiLink, 0, len(a.aiLinks))
 	for _, l := range a.aiLinks {
 		links = append(links, l)
 	}
+	var text string
+	if keep && count > 0 {
+		text = fmt.Sprintf("%d active session(s)", count)
+		if len(titles) > 0 {
+			text = strings.Join(titles, ", ")
+		}
+	}
+	var svcHost androidhost.Host
+	if !quitting && a.mobile.host != nil && text != a.mobile.lastSvcText {
+		a.mobile.lastSvcText = text
+		svcHost = a.mobile.host
+	}
+	var rel func()
+	needAwake := false
+	if !quitting {
+		if viewing && a.mobile.awakeRelease == nil {
+			needAwake = true
+		} else if !viewing && a.mobile.awakeRelease != nil {
+			rel = a.mobile.awakeRelease
+			a.mobile.awakeRelease = nil
+		}
+	}
 	a.mu.Unlock()
-	if viewing && a.mobile.awakeRelease == nil {
-		a.mobile.awakeRelease = mygo.Power.KeepAwake("Remote session", true)
-	} else if !viewing && a.mobile.awakeRelease != nil {
-		a.mobile.awakeRelease()
-		a.mobile.awakeRelease = nil
+
+	if svcHost != nil {
+		svcHost.SetSessions(text)
+	}
+	if rel != nil {
+		rel()
+	}
+	if needAwake {
+		if acquired := mobileKeepAwake(); acquired != nil {
+			a.mu.Lock()
+			if a.mobile != nil && a.mobile.awakeRelease == nil && !a.quitting && a.visible && a.mobile.activeSession != "" {
+				a.mobile.awakeRelease = acquired
+				acquired = nil
+			}
+			a.mu.Unlock()
+			if acquired != nil {
+				acquired()
+			}
+		}
 	}
 	if !noLogs {
 		for _, l := range links {

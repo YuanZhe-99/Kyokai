@@ -1567,6 +1567,8 @@
   "MobileFilesCancelled": "已取消",
   "MobileAutoKeyboard": "自動開啟鍵盤",
   "MobileAutoKeyboardHint": "畫面留白較多時自動彈出螢幕鍵盤",
+  "MobileKeepBackground": "背景保持連線",
+  "MobileKeepBackgroundHint": "預設關閉以省電省流量：切換到背景時自動中斷目前工作階段。從背景管理介面關閉時始終中斷工作階段與網路。",
   "MobileTouchpad": "觸控板",
   "MobileKeyboardFull": "全鍵盤",
   "MobileKeyboardSplit": "分離",

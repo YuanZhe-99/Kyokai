@@ -1567,6 +1567,8 @@
   "MobileFilesCancelled": "キャンセルしました",
   "MobileAutoKeyboard": "キーボードを自動で開く",
   "MobileAutoKeyboardHint": "画面の余白が多いときにスクリーンキーボードを自動で開きます",
+  "MobileKeepBackground": "バックグラウンドで接続を維持",
+  "MobileKeepBackgroundHint": "省電力と通信量節約のため既定ではオフです。バックグラウンドに移るとセッションを自動切断します。最近のアプリから終了するとセッションとネットワークを常に切断します。",
   "MobileTouchpad": "タッチパッド",
   "MobileKeyboardFull": "フル",
   "MobileKeyboardSplit": "分割",

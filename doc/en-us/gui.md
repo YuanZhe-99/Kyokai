@@ -686,6 +686,17 @@ colors a shell uses most, and the cursor (`termPreview`).
   `hingeBottom` across Kyokai/NanoKVM, RDP and VNC: a full 5-row ANSI horizontal keyboard with
   inverted-T arrow keys above a wide centered palmrest touchpad and integrated Left/Right click
   buttons (`renderLaptopDeck`), honouring `LaptopSafeArea`.
+- **Background power-saving and Recents exit**: by default (`KeepBackgroundSessions` /
+  `keep_background_sessions` in `gui.json` is `false`, toggleable under Settings › This device),
+  moving Kyokai to the background (`mobileEnterBackground` on `Power.OnSuspend`) releases any screen
+  wake lock, stops host status watches, and disconnects all active controller sessions (desktops,
+  NanoKVM, RDP, VNC, SSH, and AI links) via `mobileDisconnectAllSessions`, without starting
+  `SessionService` or holding a foreground wake lock. Enabling **Keep connections in background**
+  keeps sessions open in the background with `SessionService`'s ongoing notification. Swiping Kyokai
+  away from Android's Recents screen triggers `onTaskRemoved` on `SessionService` and the lightweight
+  `TaskGuardService` (`WatchTaskRemoved`), which stops `SessionService`, calls `mobileOnTaskRemoved`
+  to disconnect every session and stop the in-process engine (disconnecting the EasyTier network),
+  and terminates the process so no background process or network usage remains.
 
 ## Wording rules
 

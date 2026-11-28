@@ -2500,6 +2500,8 @@
   "MobileFilesCancelled": "Cancelled",
   "MobileAutoKeyboard": "Auto-open keyboard",
   "MobileAutoKeyboardHint": "Open the on-screen keyboard automatically when the screen has generous blank space",
+  "MobileKeepBackground": "Keep connections in background",
+  "MobileKeepBackgroundHint": "Off by default to save battery and data: active sessions disconnect when Kyokai moves to the background. Closing Kyokai from Recents always disconnects sessions and the network.",
   "MobileTouchpad": "Touchpad",
   "MobileKeyboardFull": "Full",
   "MobileKeyboardSplit": "Split",

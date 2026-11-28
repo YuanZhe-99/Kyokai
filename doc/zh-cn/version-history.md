@@ -1,5 +1,21 @@
 # 版本历史
 
+## 0.8.3（2026-11-28）
+
+Android 后台省电模式与从最近任务界面彻底退出。
+
+- Android 默认后台省电行为（`internal/gui`、`internal/androidhost`）：`KeepBackgroundSessions`
+  （`gui.json` 中的 `keep_background_sessions`）默认为 `false`；应用切到后台时（经 `Power.OnSuspend`
+  触发 `mobileEnterBackground`）自动释放屏幕唤醒锁、停止主机状态查看租约，并断开全部活动控制端会话（桌面、
+  NanoKVM、RDP、VNC、SSH、AI 链接），同时不再启动 `SessionService` 前台保活服务与唤醒锁。
+- “设置 › 本机”新增可选开关**后台保持连接**，开启后可在后台通过 `SessionService` 前台通知保持会话连接。
+- 在系统最近任务界面关闭时彻底退出（`TaskGuardService`、`SessionService.onTaskRemoved`、`WatchTaskRemoved`、
+  `mobileOnTaskRemoved`）：从应用管理界面划掉 Kyokai 后，立即停止 `SessionService`、断开全部会话、关闭进程内引擎与
+  内嵌 EasyTier 网络并退出进程，不再占用流量、电量或驻留任何后台进程。
+- Android `versionCode = 803`。
+- 上游：Rust `1.100.0` → `1.100.1`，Pi `1.6.0` → `1.7.0`；已检查、未变化：MyGo v0.10.0、EasyTier v2.7.1
+  （`0d9c52b`）、RustDesk 1.5.3、vcpkg 2026.10.16、smoltcp 0.14.0、Bun 1.4.5（2026-11-28 检查）。
+
 ## 0.8.2（2026-11-27）
 
 - 为日志文件添加大小上限（`internal/engine`）：`engine.log`、`agent.log`、`gui-crash.log` 与 `helper.log`
